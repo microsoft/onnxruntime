@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/cpuid_info.h"  // for CPUIDInfo::GetCPUIDInfo().HasArm_SME()
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
@@ -166,7 +165,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
   bool SupportsKleidiaiDynamicQuant() const override {
-    if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME()) {
+    if (!MlasIsDynamicQGemmAvailable()) {
       return false;
     }
     return true;
@@ -195,10 +194,6 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
  protected:
   int GetBIdx() const override { return IN_B; }
-
- private:
-  // Indicates when MlasDynamicQGemmBatch() can be used
-  // Flag storage is handled by MatMulIntegerBase.
 };
 
 class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {

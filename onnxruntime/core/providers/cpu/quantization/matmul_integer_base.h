@@ -25,7 +25,7 @@ class MatMulIntegerBase : public OpKernel {
                  /*out*/ PrePackedWeights* prepacked_weights) override {
     is_packed = false;
 
-    // only pack Matrix B++
+    // only pack Matrix B
     if (input_idx == GetBIdx()) {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
       if (TryKleidiaiDynamicPrePack(tensor, input_idx, alloc, is_packed, prepacked_weights)) {
@@ -128,7 +128,14 @@ class MatMulIntegerBase : public OpKernel {
     size_t N{0};
     std::optional<Tensor> transposed_buffer;
   };
+  /*
+    Helper method to pre-pack Matrix B using Arm® KleidiAI™ packing if eligible.
 
+    Returns false if KleidiAI dynamic qantization is not supported or the index of the input tensor is not input B's index.
+    If these checks passes, prepares a dynamic quantization pack content and calls PrepareKleidiaiDynamicPack for futher policies.
+    If those policies also satisfy, it calls the helper to execute the pre-packing in KleidiAI context.
+    Returns true of pre-packing was performed and false otherwise.
+  */
   bool TryKleidiaiDynamicPrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                  bool& is_packed,
                                  PrePackedWeights* prepacked_weights) {
@@ -143,7 +150,14 @@ class MatMulIntegerBase : public OpKernel {
 
     return ExecuteKleidiaiDynamicPack(ctx, alloc, is_packed, prepacked_weights);
   }
+  /*
+      Helper method to determine if Arm® KleidiAI™ dynamic quantization pre-packing policies are satisfied.
 
+      Checks for the presence of the constant input tensor B, symmetricity on the zero point and validity of the scales.
+      Also checks if the shape of the tensor B is supported by KleidiAI and if bias tensor is also a constant input.
+      Makes B transposition if necessary.
+      Sets can_use_dynamic_quant_mlas_ flag accordingly nd returns true if all policies are satisfied.
+  */
   bool PrepareKleidiaiDynamicPack(const Tensor& tensor,
                                   AllocatorPtr alloc,
                                   KleidiaiDynamicPackContext& ctx) {
@@ -186,7 +200,14 @@ class MatMulIntegerBase : public OpKernel {
     can_use_dynamic_quant_mlas_ = true;
     return true;
   }
+  /*
+    Helper method to execute Arm® KleidiAI™ dynamic quantization pre-packing.
 
+    If can_use_dynamic_quant_mlas_ flag was true from previous policy controls then it checks the packed
+    RHS matrix size in bytes and allocates the packed buffer. If the size is 0 returns false.
+    It then assigns the scale and bias data accordingly and calls the packing function.
+    It caches this pre-packed buffer as Mlas does.
+  */
   bool ExecuteKleidiaiDynamicPack(const KleidiaiDynamicPackContext& ctx,
                                   AllocatorPtr alloc,
                                   bool& is_packed,
@@ -200,7 +221,7 @@ class MatMulIntegerBase : public OpKernel {
     const size_t packed_b_size = MlasDynamicQgemmPackBSize(ctx.N, ctx.K);
     if (packed_b_size == 0) {
       can_use_dynamic_quant_mlas_ = false;
-      return true;
+      return false;
     }
 
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
@@ -227,7 +248,14 @@ class MatMulIntegerBase : public OpKernel {
     is_packed = true;
     return true;
   }
+  /*
+  Helper for checking the zero points tensor of the input. Arm® KleidiAI™ supports symmetric zero points.
 
+  This helper method checks if zero point tensor , if its present in the inputs with its index, it checks it the data type aither uint8_t or int8_t.
+  It also checks if all the zero point values are zeros. If not sets the can_use_dynamic_quant_mlas_ flag to false.
+  If zero point tensor is not present, it sets the falg true as symmetric zero point is assumed.
+  Returns the flag.
+  */
   bool IsZeroPointSymmetric() {
     const Tensor* b_zp_constant_tensor = GetConstantInputTensor(GetBZeroPointIdx());
     if (b_zp_constant_tensor != nullptr) {
@@ -247,7 +275,11 @@ class MatMulIntegerBase : public OpKernel {
     can_use_dynamic_quant_mlas_ = !b_zp_input_exists;
     return can_use_dynamic_quant_mlas_;
   }
-
+  /*
+  Heper method to check the validity of the scales tensor for Arm® KleidiAI™ dynamic qantization.
+  Scales are invalid and can_use_dynamic_quant_mlas_ flag is false returns if the float scales are non-finite or non-positive.
+  Otherwise can_use_dynamic_quant_mlas_ flag returned true.
+  */
   bool AreScalesValid(const Tensor& b_scale_tensor) {
     const auto bs = b_scale_tensor.DataAsSpan<float>();
     const bool has_invalid =
@@ -259,7 +291,10 @@ class MatMulIntegerBase : public OpKernel {
     }
     return can_use_dynamic_quant_mlas_;
   }
-
+  /*
+    Helper method to check the shape policy of the tensor B is passes for Arm® KleidiAI™ dynamic quantization.
+    The shape should be at least 2D and all the dimentions except the last two should be 1.
+  */
   bool IsBShapeSupportedForDynamicQuant(const TensorShape& tensor_shape) {
     b_shape_ = tensor_shape;
     if (b_shape_.NumDimensions() < 2) {
@@ -273,7 +308,10 @@ class MatMulIntegerBase : public OpKernel {
     }
     return true;
   }
-
+  /*
+    Checks against the constant initilized tensor index and returns the constant tensor if present.
+    Returns nullptr if index is invalid or the tensor is not hold by the kernel instance.
+  */
   const Tensor* GetConstantInputTensor(int input_idx) const {
     if (input_idx < 0) {
       return nullptr;
