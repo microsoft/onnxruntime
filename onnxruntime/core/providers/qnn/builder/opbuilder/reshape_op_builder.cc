@@ -38,7 +38,7 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     NodeAttrHelper node_helper(node_unit);
     auto allowzero = node_helper.Get("allowzero", static_cast<int64_t>(0));
 
-    // Only reject allowzero=1 if dynamic shape or the shape actually contains zeros
+    // Only reject allowzero=1 if the shape input is not constant or it actually contains zeros
     if (0 != allowzero) {
       const auto& inputs = node_unit.Inputs();
       const auto& initializer_tensors = qnn_model_wrapper.GetInitializerTensors();
