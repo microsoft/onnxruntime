@@ -4762,10 +4762,44 @@ TEST(CApiTest, custom_cast) {
                                custom_op_domain, nullptr);
 }
 
-TEST(CApiTest, ModelWithMaliciousExternalDataShouldFailToLoad) {
+TEST(CApiTest, ModelWithMaliciousExternalDataInMemoryShouldFailToLoad) {
   // Attempt to create an ORT session with the malicious model
-  // This should fail due to the invalid external data reference
+  // This should fail due to the invalid external in-memory reference
   constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_evil_weights.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::SessionOptions session_options;
+
+  bool exception_thrown = false;
+  std::string exception_message;
+
+  try {
+    // This should throw an exception due to malicious external data
+    Ort::Session session(env, model_path, session_options);
+  } catch (const Ort::Exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  } catch (const std::exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  }
+
+  // Verify that loading the model failed
+  EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious in-memory data";
+
+  // Verify that the exception message indicates security or external data issues
+  EXPECT_TRUE(exception_message.find("in-memory") != std::string::npos ||
+              exception_message.find("references") != std::string::npos ||
+              exception_message.find("invalid") != std::string::npos ||
+              exception_message.find("model") != std::string::npos)
+      << "Exception message should indicate external data or security issue. Got: " << exception_message;
+}
+
+TEST(CApiTest, ModelWithExternalDataOutsideModelDirectoryShouldFailToLoad) {
+  // Attempt to create an ORT session with the malicious model
+  // This should fail due to the external file that is not under model directory structure
+  // i.e. ../../../../etc/passwd
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_arbitrary_external_file.onnx");
 
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
   Ort::SessionOptions session_options;
@@ -4788,8 +4822,7 @@ TEST(CApiTest, ModelWithMaliciousExternalDataShouldFailToLoad) {
   EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious external data";
 
   // Verify that the exception message indicates security or external data issues
-  EXPECT_TRUE(exception_message.find("in-memory") != std::string::npos ||
-              exception_message.find("references") != std::string::npos ||
+  EXPECT_TRUE(exception_message.find("External data path escapes model directory") != std::string::npos ||
               exception_message.find("invalid") != std::string::npos ||
               exception_message.find("model") != std::string::npos)
       << "Exception message should indicate external data or security issue. Got: " << exception_message;
