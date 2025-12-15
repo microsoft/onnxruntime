@@ -124,7 +124,7 @@ stages:
     - script: |
         brew tap wix/brew
         brew install applesimutils
-      displayName: applesimutils
+      displayName: Install applesimutils
 
     - script: |
         gem install securerandom -v 0.3.2 --user-install --force
@@ -145,6 +145,8 @@ stages:
 
     - script: |
         set -e -x
+        xcrun simctl list runtimes
+        xcrun simctl list devices
         detox build --configuration ios.sim.release
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
         detox test --record-logs all \
