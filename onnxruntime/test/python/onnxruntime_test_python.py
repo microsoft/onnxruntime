@@ -1982,6 +1982,7 @@ class TestInferenceSession(unittest.TestCase):
         ep_subgraphs = session.get_provider_graph_partitioning_info()
 
         # Check that the single subgraph was assigned to CPU EP
+        print(f"Subgraph EPs: {', '.join([s.ep_name for s in ep_subgraphs])}")
         self.assertEqual(len(ep_subgraphs), 1)
         self.assertEqual(ep_subgraphs[0].ep_name, "CPUExecutionProvider")
 
