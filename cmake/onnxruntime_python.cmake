@@ -70,15 +70,58 @@ endif()
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
 if (Python_EXECUTABLE)
-  execute_process(
-    COMMAND "${Python_EXECUTABLE}" -c "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED'))"
-    OUTPUT_VARIABLE Py_GIL_DISABLED_VALUE
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
+  message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+  message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
+  message(STATUS "Python3_LIBRARIES: ${Python3_LIBRARIES}")
 
-  if ("${Py_GIL_DISABLED_VALUE}" STREQUAL "1")
-    message(STATUS "Py_GIL_DISABLED=1 detected: enabling free-threaded support for onnxruntime_pybind11_state")
+  # Use a cached variable so we don't re-run detection on every configure
+  if (NOT DEFINED ORT_PYTHON_FREE_THREADED_DETECTED)
+    message(STATUS "Checking for Free-threaded Python environment...")
+
+    # Check 1: Query Py_GIL_DISABLED directly (PEP 703)
+    execute_process(
+      COMMAND "${Python_EXECUTABLE}" -c "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED'))"
+      RESULT_VARIABLE _py_result
+      OUTPUT_VARIABLE Py_GIL_DISABLED_VALUE
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    if (NOT _py_result EQUAL 0)
+      message(WARNING "Failed to query Py_GIL_DISABLED from Python interpreter. Result: ${_py_result}")
+      set(Py_GIL_DISABLED_VALUE "0")
+    endif()
+
+    # Handle explicit "None" string or empty output (common on Windows/older Pythons)
+    if (Py_GIL_DISABLED_VALUE STREQUAL "" OR Py_GIL_DISABLED_VALUE STREQUAL "None")
+      set(Py_GIL_DISABLED_VALUE "0")
+
+      # Check 2: Fallback to ABI flags if config var wasn't explicit
+      execute_process(
+        COMMAND "${Python_EXECUTABLE}" -c "import sysconfig; print(sysconfig.get_config_var('ABIFLAGS') or sysconfig.get_config_var('SOABI') or '')"
+        RESULT_VARIABLE _abi_result
+        OUTPUT_VARIABLE Py_ABI_VALUE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+
+      if (_abi_result EQUAL 0)
+        # Safer regex: Matches "t" at end of string or before a hyphen (e.g., "cp313t-win_amd64")
+        # OR matches standard ABI string pattern like "cp313t"
+        if ("${Py_ABI_VALUE}" MATCHES "cp[0-9]+t" OR "${Py_ABI_VALUE}" MATCHES "t(-|$)")
+          set(Py_GIL_DISABLED_VALUE "1")
+          message(STATUS "Detected 't' suffix in Python ABI flags (${Py_ABI_VALUE}). Assuming Free-threaded build.")
+        endif()
+      endif()
+    endif()
+
+    # Cache the result
+    set(ORT_PYTHON_FREE_THREADED_DETECTED "${Py_GIL_DISABLED_VALUE}" CACHE STRING "Detected free-threaded Python status" FORCE)
+  endif()
+
+  if ("${ORT_PYTHON_FREE_THREADED_DETECTED}" STREQUAL "1")
+    message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
     target_compile_definitions(onnxruntime_pybind11_state PRIVATE Py_GIL_DISABLED=1)
+  else()
+    message(STATUS "Free-threaded Python support NOT enabled.")
   endif()
 endif()
 
