@@ -19,8 +19,8 @@ RUN dnf install -y --nodocs \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2025.3.0
-ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.3/linux/openvino_toolkit_rhel8_2025.3.0.19807.44526285f24_x86_64.tgz
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2025.4.0
+ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4/linux/openvino_toolkit_rhel8_2025.4.0.20398.8fdad55727d_x86_64.tgz
 ARG TEMP_DIR=/tmp/openvino_installer
 
 RUN mkdir -p ${TEMP_DIR} && \

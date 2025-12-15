@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <charconv>
+#include <mutex>
 
 #include "core/framework/error_code_helper.h"
 #include "core/providers/webgpu/buffer_manager.h"
@@ -12,9 +13,49 @@
 #include "core/session/ort_apis.h"
 
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/providers/webgpu/data_transfer.h"
 using namespace onnxruntime::webgpu::options;
 
 namespace onnxruntime {
+// Helper struct that holds configuration parameters for creating a WebGPU context with default settings.
+// This is used during lazy initialization of the data transfer to create a context if one doesn't exist.
+struct WebGpuContextParams {
+  webgpu::WebGpuContextConfig context_config;           // WebGPU context configuration
+  webgpu::WebGpuBufferCacheConfig buffer_cache_config;  // Buffer cache settings
+  int backend_type;                                     // Dawn backend type (D3D12, Vulkan, etc.)
+  bool enable_pix_capture;                              // Enable PIX GPU capture for debugging
+};
+
+static WebGpuContextParams GetDefaultWebGpuContextParams() {
+  WebGpuContextParams params;
+  params.context_config.context_id = 0;
+  params.context_config.instance = nullptr;
+  params.context_config.device = nullptr;
+  params.context_config.dawn_proc_table = nullptr;
+  params.context_config.validation_mode = webgpu::ValidationMode::Disabled;
+  params.context_config.preserve_device = false;
+  params.context_config.max_storage_buffer_binding_size = 0;
+  params.context_config.power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);
+
+  params.buffer_cache_config.storage.mode = webgpu::BufferCacheMode::Bucket;
+  params.buffer_cache_config.uniform.mode = webgpu::BufferCacheMode::Simple;
+  params.buffer_cache_config.query_resolve.mode = webgpu::BufferCacheMode::Disabled;
+  params.buffer_cache_config.default_entry.mode = webgpu::BufferCacheMode::Disabled;
+
+#ifdef _WIN32
+#if defined(DAWN_ENABLE_D3D12)
+  params.backend_type = static_cast<int>(WGPUBackendType_D3D12);
+#elif defined(DAWN_ENABLE_VULKAN)
+  params.backend_type = static_cast<int>(WGPUBackendType_Vulkan);
+#else
+  params.backend_type = static_cast<int>(WGPUBackendType_D3D12);
+#endif
+#else
+  params.backend_type = 0;
+#endif
+  params.enable_pix_capture = false;
+  return params;
+}
 
 struct WebGpuProviderFactory : IExecutionProviderFactory {
   WebGpuProviderFactory(int context_id, webgpu::WebGpuContext& context, WebGpuExecutionProviderConfig&& webgpu_ep_config)
@@ -289,6 +330,136 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
 
   // Create WebGPU EP factory.
   return std::make_shared<WebGpuProviderFactory>(context_id, context, std::move(webgpu_ep_config));
+}
+
+// WebGPU DataTransfer implementation wrapper for the C API with lazy initialization
+struct WebGpuDataTransferImpl : OrtDataTransferImpl {
+  WebGpuDataTransferImpl(const OrtApi& ort_api_in)
+      : ort_api{ort_api_in},
+        ep_api{*ort_api_in.GetEpApi()},
+        data_transfer_{nullptr},
+        context_id_{0},  // Always use context 0 for Environment's data transfer
+        init_mutex_{} {
+    ort_version_supported = ORT_API_VERSION;
+    CanCopy = CanCopyImpl;          // OrtDataTransferImpl::CanCopy callback
+    CopyTensors = CopyTensorsImpl;  // OrtDataTransferImpl::CopyTensors callback
+    Release = ReleaseImpl;          // OrtDataTransferImpl::Release callback
+  }
+
+  static bool CanCopyImpl(const OrtDataTransferImpl* this_ptr,
+                          const OrtMemoryDevice* src_memory_device,
+                          const OrtMemoryDevice* dst_memory_device) noexcept {
+    const auto& impl = *static_cast<const WebGpuDataTransferImpl*>(this_ptr);
+    OrtMemoryInfoDeviceType src_type = impl.ep_api.MemoryDevice_GetDeviceType(src_memory_device);
+    OrtMemoryInfoDeviceType dst_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_memory_device);
+
+    // Check if at least one device is GPU
+    bool has_gpu = (src_type == OrtMemoryInfoDeviceType_GPU) || (dst_type == OrtMemoryInfoDeviceType_GPU);
+    if (!has_gpu) {
+      return false;
+    }
+
+    // WebGPU uses vendor ID 0 (VendorIds::NONE). Only handle GPU devices with vendor ID 0.
+    // This prevents attempting to copy data for other EPs' fake GPU devices (e.g., example EP with vendor 0xBE57)
+    if (src_type == OrtMemoryInfoDeviceType_GPU) {
+      uint32_t src_vendor = impl.ep_api.MemoryDevice_GetVendorId(src_memory_device);
+      if (src_vendor != 0) {
+        return false;  // Not a WebGPU device
+      }
+    }
+
+    if (dst_type == OrtMemoryInfoDeviceType_GPU) {
+      uint32_t dst_vendor = impl.ep_api.MemoryDevice_GetVendorId(dst_memory_device);
+      if (dst_vendor != 0) {
+        return false;  // Not a WebGPU device
+      }
+    }
+
+    // If both are GPU, they must have the same device ID
+    if (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) {
+      uint64_t src_device_id = impl.ep_api.MemoryDevice_GetDeviceId(src_memory_device);
+      uint64_t dst_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_memory_device);
+      if (src_device_id != dst_device_id) {
+        return false;  // Cannot copy between different devices
+      }
+    }
+
+    // WebGPU supports GPU<->GPU, GPU<->CPU copies (where GPU has vendor ID 0)
+    return (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) ||
+           (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_CPU) ||
+           (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
+  }
+
+  static OrtStatus* CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
+                                    const OrtValue** src_tensors,
+                                    OrtValue** dst_tensors,
+                                    OrtSyncStream** /*streams*/,
+                                    size_t num_tensors) noexcept {
+    auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
+
+    if (num_tensors == 0) {
+      return nullptr;
+    }
+
+    // Lazy initialization: Use double-checked locking to avoid unnecessary lock operations
+    if (impl.data_transfer_ == nullptr) {
+      std::lock_guard<std::mutex> lock(impl.init_mutex_);
+      if (impl.data_transfer_ == nullptr) {
+        // Always create a new context with context_id 0
+        WebGpuContextParams params = GetDefaultWebGpuContextParams();
+        params.context_config.context_id = impl.context_id_;
+        auto* context_ptr = &webgpu::WebGpuContextFactory::CreateContext(params.context_config);
+        context_ptr->Initialize(params.buffer_cache_config, params.backend_type, params.enable_pix_capture);
+
+        // Create the DataTransfer instance
+        // Note: The DataTransfer holds a const reference to BufferManager. The BufferManager's lifecycle
+        // is managed by the WebGpuContext, which is stored in a static WebGpuContextFactory and persists
+        // for the lifetime of the application, ensuring the reference remains valid.
+        impl.data_transfer_ = std::make_unique<webgpu::DataTransfer>(context_ptr->BufferManager());
+      }
+    }
+
+    // Now perform the actual tensor copy
+    for (size_t idx = 0; idx < num_tensors; ++idx) {
+      const OrtValue* src_tensor = src_tensors[idx];
+      OrtValue* dst_tensor = dst_tensors[idx];
+      auto status = impl.data_transfer_->CopyTensor(src_tensor->Get<Tensor>(), *dst_tensor->GetMutable<Tensor>());
+      if (!status.IsOK()) {
+        return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
+      }
+    }
+    return nullptr;
+  }
+
+  static void ReleaseImpl(OrtDataTransferImpl* this_ptr) noexcept {
+    auto* p_impl = static_cast<WebGpuDataTransferImpl*>(this_ptr);
+    int context_id = p_impl->context_id_;
+    bool data_transfer_initialized = false;
+    {
+      std::lock_guard<std::mutex> lock(p_impl->init_mutex_);
+      data_transfer_initialized = (p_impl->data_transfer_ != nullptr);
+    }
+    delete p_impl;
+    if (data_transfer_initialized) {
+      webgpu::WebGpuContextFactory::ReleaseContext(context_id);
+    }
+  }
+
+  const OrtApi& ort_api;
+  const OrtEpApi& ep_api;
+  std::unique_ptr<webgpu::DataTransfer> data_transfer_;  // Lazy-initialized
+  int context_id_;                                       // Track which context we're using
+  std::mutex init_mutex_;                                // Protects lazy initialization
+};
+
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer() {
+  // Validate API version is supported
+  const OrtApi* api = OrtApis::GetApi(ORT_API_VERSION);
+  if (!api) {
+    // API version not supported - return nullptr to indicate failure
+    return nullptr;
+  }
+  return new WebGpuDataTransferImpl(*api);
 }
 
 }  // namespace onnxruntime
