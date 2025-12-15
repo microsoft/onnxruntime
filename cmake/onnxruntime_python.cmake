@@ -91,7 +91,8 @@ if (Python_EXECUTABLE)
       set(Py_GIL_DISABLED_VALUE "0")
     endif()
 
-    # Handle explicit "None" string or empty output (common on Windows/older Pythons)
+    # Handle explicit "None" string or empty output
+    # (common on Windows and pre-PEP 703 Python builds where the var is unset)
     if (Py_GIL_DISABLED_VALUE STREQUAL "" OR Py_GIL_DISABLED_VALUE STREQUAL "None")
       set(Py_GIL_DISABLED_VALUE "0")
 
@@ -104,8 +105,7 @@ if (Python_EXECUTABLE)
       )
 
       if (_abi_result EQUAL 0)
-        # Safer regex: Matches "t" at end of string or before a hyphen (e.g., "cp313t-win_amd64")
-        # OR matches standard ABI string pattern like "cp313t"
+        # Matches "cp313t", "cp314t" etc., or "t" followed by hyphen/end-of-string (e.g., "cp313t-win_amd64")
         if ("${Py_ABI_VALUE}" MATCHES "cp[0-9]+t" OR "${Py_ABI_VALUE}" MATCHES "t(-|$)")
           set(Py_GIL_DISABLED_VALUE "1")
           message(STATUS "Detected 't' suffix in Python ABI flags (${Py_ABI_VALUE}). Assuming Free-threaded build.")
@@ -113,11 +113,18 @@ if (Python_EXECUTABLE)
       endif()
     endif()
 
-    # Cache the result
-    set(ORT_PYTHON_FREE_THREADED_DETECTED "${Py_GIL_DISABLED_VALUE}" CACHE STRING "Detected free-threaded Python status" FORCE)
+    # Normalize to 0/1 to avoid edge cases downstream
+    if (NOT Py_GIL_DISABLED_VALUE STREQUAL "1")
+        set(Py_GIL_DISABLED_VALUE "0")
+    endif()
+
+    # Cache the result as BOOL so users can override it (e.g. -DORT_PYTHON_FREE_THREADED_DETECTED=OFF)
+    set(ORT_PYTHON_FREE_THREADED_DETECTED "${Py_GIL_DISABLED_VALUE}" CACHE BOOL "Detected free-threaded Python status" FORCE)
+  else()
+    message(STATUS "Using cached free-threaded Python detection: ORT_PYTHON_FREE_THREADED_DETECTED=${ORT_PYTHON_FREE_THREADED_DETECTED}")
   endif()
 
-  if ("${ORT_PYTHON_FREE_THREADED_DETECTED}" STREQUAL "1")
+  if (ORT_PYTHON_FREE_THREADED_DETECTED)
     message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
     target_compile_definitions(onnxruntime_pybind11_state PRIVATE Py_GIL_DISABLED=1)
   else()
