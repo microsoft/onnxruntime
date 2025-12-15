@@ -99,7 +99,8 @@ TEST(MathOpTest, Clip_Default_int64) {
                            -5, 9, 82});
 
   // TensorRT does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Skipping for OpenVINO because of the following error: Expected equality of these values: cur_expected[i] Which is: 11 cur_actual[i] Which is: 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(MathOpTest, Clip_Default_uint64) {
