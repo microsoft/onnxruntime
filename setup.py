@@ -536,6 +536,7 @@ extra = [
     "ThirdPartyNotices.txt",
     "Privacy.md",
     "Qualcomm_LICENSE.pdf",
+    "TRT_RTX_LICENSE.txt",
     "TRT_RTX_README.txt",
     "TRT_RTX_Acknowledgements.txt",
 ]

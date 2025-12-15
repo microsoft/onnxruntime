@@ -972,17 +972,24 @@ if (onnxruntime_USE_NV)
         $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-
-  add_custom_command(
+  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/LICENSE.txt")
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/LICENSE.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_LICENSE.txt
+    )
+  endif()
+  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/Acknowledgements.txt")
+    add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/Acknowledgements.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_Acknowledgements.txt
-  )
-
-  add_custom_command(
+    )
+  endif()
+  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/README.txt")
+    add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/README.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_README.txt
-  )
-
+    )
+  endif()
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
