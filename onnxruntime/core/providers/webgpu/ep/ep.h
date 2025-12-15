@@ -8,8 +8,6 @@
 #include <string>
 #include <unordered_map>
 
-#include "api.h"
-
 namespace onnxruntime {
 struct IExecutionProvider;
 }

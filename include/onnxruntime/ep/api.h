@@ -37,7 +37,7 @@ inline const ApiPtrs& Api() {
 /// <summary>
 /// Initialize the EP API pointers and global OrtEnv if not already done.
 /// </summary>
-void ApiInit(const OrtApiBase* ort_api_base) {
+inline void ApiInit(const OrtApiBase* ort_api_base) {
   // Manual init for the C++ API
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();

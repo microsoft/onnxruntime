@@ -7,8 +7,6 @@
 #include <string>
 #include <type_traits>
 
-#include "api.h"
-
 namespace onnxruntime {
 namespace webgpu {
 namespace ep {

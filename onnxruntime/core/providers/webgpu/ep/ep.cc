@@ -15,6 +15,8 @@ namespace onnxruntime {
 namespace webgpu {
 namespace ep {
 
+using onnxruntime::ep::Api;
+
 // Constructor
 Ep::Ep(IExecutionProvider* impl, Factory& factory, const OrtLogger& logger, const Config& config)
     : OrtEp{},

@@ -220,7 +220,7 @@ class UpsampleBase {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
       int64_t rank = -1;
-      if constexpr (std::is_same_v<Info, OpKernelInfo>) {
+      if constexpr (std::is_same_v<KernelInfoType, OpKernelInfo>) {
         auto x_shape = node.InputDefs()[0]->Shape();
         if (x_shape != nullptr) {
           rank = x_shape->dim_size();

@@ -15,6 +15,8 @@ namespace onnxruntime {
 namespace webgpu {
 namespace ep {
 
+using onnxruntime::ep::Api;
+
 // Constructor
 Factory::Factory() : OrtEpFactory{} {
   ort_version_supported = ORT_API_VERSION;
