@@ -2842,6 +2842,27 @@ inline KeyValuePairs KernelInfoImpl<T>::GetConfigEntries() const {
   return KeyValuePairs{out};
 }
 
+template <typename T>
+inline std::string KernelInfoImpl<T>::GetOperatorType() const {
+  const char* op_type = nullptr;
+  Ort::ThrowOnError(GetEpApi().KernelInfo_GetOperatorType(this->p_, &op_type));
+  return std::string{op_type};
+}
+
+template <typename T>
+inline int KernelInfoImpl<T>::GetSinceVersion() const {
+  int out = 0;
+  ThrowOnError(GetEpApi().KernelInfo_GetSinceVersion(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline const OrtEp* KernelInfoImpl<T>::GetEp() const {
+  const OrtEp* ep = nullptr;
+  ThrowOnError(GetEpApi().KernelInfo_GetEp(this->p_, &ep));
+  return ep;
+}
+
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
   Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_float(p, name, &out));
 }

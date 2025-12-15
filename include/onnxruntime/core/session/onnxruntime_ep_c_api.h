@@ -846,6 +846,42 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
                   _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def);
+
+  /** \brief Get the graph node operator type from OrtKernelInfo.
+   *
+   * \note Used within OrtKernelImpl implementations to obtain operator information.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] operator_type Output parameter set to the name of the node's operator type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Outptr_ const char** operator_type);
+
+  /** \brief Get the opset version in which the given node's operator type was first defined from OrtKernelInfo.
+   *
+   * \note Used within OrtKernelImpl implementations to obtain operator information.
+   *
+   * \param[in] info The ::OrtKernelInfo instance.
+   * \param[out] since_version The opset version in which the node's operator type was first defined.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetSinceVersion, _In_ const OrtKernelInfo* info, _Out_ int* since_version);
+
+  /** \brief Get the OrtEp instance to which the node is assigned from the OrtKernelInfo.
+   *
+   * \note Used within OrtKernelImpl implementations to obtain a reference to the OrtEp.
+   *
+   * \param[in] info The ::OrtKernelInfo instance.
+   * \param[out] ep Output parameter set to the OrtEp instance associated with the OrtKernelInfo.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
 };
 
 /**

@@ -765,4 +765,8 @@ Status PluginExecutionProvider::ValidateCompiledModelCompatibilityInfo(const std
   return Status::OK();
 }
 
+const OrtEp* PluginExecutionProvider::GetOrtEp() const {
+  return ort_ep_.get();
+}
+
 }  // namespace onnxruntime

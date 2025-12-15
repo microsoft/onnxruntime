@@ -582,6 +582,59 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo*
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Outptr_ const char** operator_type) {
+  API_IMPL_BEGIN
+  if (operator_type == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter for the operator type");
+  }
+
+  auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  *operator_type = op_info->node().OpType().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelInfo_GetSinceVersion, _In_ const OrtKernelInfo* info, _Out_ int* since_version) {
+  API_IMPL_BEGIN
+  if (since_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter for the operator type");
+  }
+
+  auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  *since_version = op_info->node().SinceVersion();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep) {
+  API_IMPL_BEGIN
+  if (ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter in which to store the OrtEp instance");
+  }
+
+  auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  auto internal_ep = op_info->GetExecutionProvider();
+
+  if (internal_ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtKernelInfo does not have a valid reference to an execution provider instance");
+  }
+
+  const OrtEp* ort_ep = internal_ep->GetOrtEp();
+
+  if (ort_ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtKernelInfo is not associated with a plugin EP (OrtEp) instance.");
+  }
+
+  *ep = ort_ep;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -636,6 +689,9 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDef_GetOutputMemType,
     &OrtExecutionProviderApi::GetTensorDataType,
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
+    &OrtExecutionProviderApi::KernelInfo_GetOperatorType,
+    &OrtExecutionProviderApi::KernelInfo_GetSinceVersion,
+    &OrtExecutionProviderApi::KernelInfo_GetEp,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
