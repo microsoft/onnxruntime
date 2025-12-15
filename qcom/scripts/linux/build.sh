@@ -141,7 +141,7 @@ if [ -n "${use_cache}" ]; then
   PATH="$(get_ccache_bindir):${PATH}"
 fi
 
-if [ -n "${warnings_as_errors}" ]; then
+if [ -z "${warnings_as_errors}" ]; then
   common_args+=("--compile_no_warning_as_error")
 fi
 
