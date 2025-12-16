@@ -36,6 +36,7 @@ namespace test {
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
 static void CheckGetSubGraph(const OrtGraph& api_graph);
 static void CheckGetSubGraphForSpecificModel(const OrtGraph& api_graph);
+static void CheckGraphWithDFSTraversal(const GraphViewer& graph_viewer);
 
 //
 //  Tests
@@ -53,10 +54,27 @@ TEST(EpGraphTest, BasicCApiUse) {
 // Use public C APIs to check that the OrtGraph for a model with subgraphs is correct.
 // Traverse OrtGraph with Scan nodes, which tests handling of subgraphs, implicit inputs, and variadic I/O.
 TEST(EpGraphTest, CheckModelWithSubgraphs) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/scan_1.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+// Use public C APIs to check that the OrtGraph from a subset of nodes from another OrtGraph is correct.
+TEST(EpGraphTest, CheckModelWithGetGraphFromSubsetOfNodes) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGetSubGraphForSpecificModel(test_graph->GetOrtGraph());
+}
+
+// Use public C APIs to check that the OrtGraph for a model with subgraphs is correct.
+// Subgraph inside the control flow op first, then the op itself. Simialr to EP's GetCapability() bottom-up approach.
+TEST(EpGraphTest, CheckModelWithSubgraphsWithDFSTraversal) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/scan_1.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphWithDFSTraversal(test_graph->GetGraphViewer());
 }
 
 // Use public C APIs to check that the OrtGraph for bart_tiny.onnx is correct.
@@ -1029,6 +1047,33 @@ static void CheckGetSubGraphForSpecificModel(const OrtGraph& api_graph) {
   // model_proto->SerializeToOstream(&dump);
 
   CheckSubGraphTopoSort(api_graph);
+}
+
+static void CheckGraphWithDFSTraversal(const GraphViewer& graph_viewer) {
+  std::vector<NodeIndex> node_indices = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
+  for (const auto& node_idx : node_indices) {
+    const Node* node = graph_viewer.GetNode(node_indices[node_idx]);
+
+    // Check node subgraphs
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> node_subgraphs_map =
+        node->GetAttributeNameToSubgraphMap();
+
+    if (!node_subgraphs_map.empty()) {
+      for (const auto& name_subgraph : node_subgraphs_map) {
+        auto subgraph_viewer = std::make_unique<GraphViewer>(*name_subgraph.second);
+        CheckGraphWithDFSTraversal(*subgraph_viewer);
+      }
+    }
+  }
+
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  ORT_ENFORCE(EpGraph::Create(graph_viewer, ep_graph, true).IsOK());
+
+  if (graph_viewer.ParentNode()) {
+    const OrtNode* parent_node = nullptr;
+    ORT_ENFORCE(ep_graph->GetParentNode(parent_node).IsOK());
+    ASSERT_NE(parent_node, nullptr);
+  }
 }
 
 // Checks that the contents of the original GraphViewer matches the contents of the OrtGraph.

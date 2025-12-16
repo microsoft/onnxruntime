@@ -576,10 +576,10 @@ EpGraph::EpGraph(std::unique_ptr<GraphViewer> graph_viewer,
       owned_indexed_sub_graph_(std::move(indexed_sub_graph)) {}
 
 // Static class function to create a std::unique_ptr<EpGraph>.
-Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
+Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result, bool create_parent_node) {
   auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
 
-  return CreateImpl(std::move(ep_graph), graph_viewer, result);
+  return CreateImpl(std::move(ep_graph), graph_viewer, result, create_parent_node);
 }
 
 // Static class function to create a std::unique_ptr<EpGraph>.
@@ -594,7 +594,8 @@ Status EpGraph::Create(std::unique_ptr<GraphViewer> src_graph_viewer,
   return CreateImpl(std::move(ep_graph), graph_viewer, result);
 }
 
-Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
+Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer,
+                           /*out*/ std::unique_ptr<EpGraph>& result, bool create_parent_node) {
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
 
@@ -697,12 +698,22 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
     }
   }
 
+  std::unique_ptr<EpNode> ep_parent_node = nullptr;
+
   // If this is a subgraph, add the OrtValueInfo and OrtValue objects that come from the outer scope.
   // Wait until we have already processed OrtValueInfos consumed and produced by nodes so that we only add
   // outer OrtValueInfo/OrtValue if they are actually used by the nodes in this GraphViewer.
   if (graph_viewer.IsSubgraph()) {
     gsl::not_null<const Graph*> parent_graph = graph_viewer.GetGraph().ParentGraph();
     gsl::not_null<const Node*> parent_node = graph_viewer.ParentNode();
+
+    if (create_parent_node) {
+      std::unique_ptr<EpNode> ep_node = nullptr;
+
+      std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map_tmp;  // won't be used
+      ORT_RETURN_IF_ERROR(EpNode::Create(*parent_node, ep_graph.get(), value_infos_map_tmp, ep_node));
+      ep_parent_node = std::move(ep_node);
+    }
 
     for (gsl::not_null<const NodeArg*> implicit_node_arg : parent_node->ImplicitInputDefs()) {
       const std::string& implicit_name = implicit_node_arg->Name();
@@ -751,6 +762,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   ep_graph->outer_scope_initializer_values_ = std::move(outer_scope_initializer_values);
   ep_graph->inputs_ = std::move(graph_input_value_infos);
   ep_graph->outputs_ = std::move(graph_output_value_infos);
+  ep_graph->parent_node_owned_ = std::move(ep_parent_node);
 
   result = std::move(ep_graph);
 
@@ -882,7 +894,14 @@ Status EpGraph::GetNodes(gsl::span<const OrtNode*> dst) const {
 }
 
 Status EpGraph::GetParentNode(const OrtNode*& result) const {
-  result = parent_node_ != nullptr ? parent_node_->ToExternal() : nullptr;
+  if (parent_node_ != nullptr) {
+    result = parent_node_->ToExternal();
+  } else if (parent_node_owned_) {
+    result = parent_node_owned_->ToExternal();
+  } else {
+    result = nullptr;
+  }
+
   return Status::OK();
 }
 
