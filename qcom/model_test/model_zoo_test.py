@@ -14,6 +14,13 @@ assert MODEL_ZOO_BACKEND in get_args(BackendT)
 MODEL_ZOO_ENABLE_CONTEXT = os.getenv("ORT_MODEL_ZOO_ENABLE_CONTEXT", "1") == "1"
 MODEL_ZOO_ENABLE_CPU_FALLBACK = os.getenv("ORT_MODEL_ZOO_ENABLE_CPU_FALLBACK", "0") == "1"
 
+
+def get_xfails(env_var: str) -> dict[str, str]:
+    xfails_def = [s.split("=") for s in os.environ.get(env_var, "").split(";") if len(s) != 0]
+    assert all(len(xd) == 2 for xd in xfails_def), f"{env_var} must be of format MODEL=REASON[;MODEL=REASON;...]"
+    return {xd[0]: xd[1] for xd in xfails_def}
+
+
 for model_zoo_root in MODEL_ZOO_ROOTS:
     TEST_DEFS = list(
         ModelTestSuite(
@@ -30,4 +37,7 @@ for model_zoo_root in MODEL_ZOO_ROOTS:
 
     @pytest.mark.parametrize("test_def", TEST_DEFS, ids=TEST_IDS)
     def test_models(test_def: ModelTestDef) -> None:
+        xfails = get_xfails("ORT_MODEL_ZOO_TEST_XFAILS")
+        if test_def.model_root.name in xfails:
+            pytest.xfail(xfails[test_def.model_root.name])
         ModelTestCase(test_def).run()
