@@ -122,6 +122,21 @@ stages:
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
+        export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
+        # Clear any cached gems to avoid architecture conflicts
+        rm -rf $HOME/.gem/ruby/2.6.0/cache
+        # Install gems with platform-specific compilation
+        gem install securerandom -v 0.3.2 --user-install --force
+        gem install drb -v 2.0.6 --user-install --force
+        gem install zeitwerk -v 2.6.18 --user-install --force
+        gem install activesupport -v 6.0.6.1 --user-install --force
+        gem install ffi -v 1.15.5 --user-install --force
+        gem install cocoapods -v 1.11.3 --user-install --force
+      displayName: Install CocoaPods
+
+    - script: |
+        export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
+        export LANG=en_US.UTF-8
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
         pod install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
@@ -137,7 +152,7 @@ stages:
         scheme: 'OnnxruntimeModuleTest'
         packageApp: false
         destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 15,OS=17.4'
+        destinationSimulators: 'iPhone 16,OS=18.6'
         workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
         xcprettyArgs: '--output build/reports/test-results.xml'
         publishJUnitResults: true
