@@ -138,20 +138,13 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   }
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
-  auto metadata = shared_context_.shared_weights.metadata;
   if (session_context_.so_share_ep_contexts) {
-    initializer = [&metadata](OVInferRequestPtr ir_ptr) {
-      const auto input_count = ir_ptr->GetNumInputs();
-      for (auto i = 0u; i < input_count; i++) {
-        using Key = SharedContext::SharedWeights::Metadata::Key;
-        const auto tensor_key = Key{ir_ptr->GetInputTensorName(i)};
-        if (metadata.contains(tensor_key)) {
-          auto& value = metadata.at(tensor_key);
-          ir_ptr->SetTensor(tensor_key.name, value.tensor);
-        }
-      }
+    auto model_dir = session_context_.GetModelPath().parent_path();
+    initializer = [this, model_dir = std::move(model_dir)](OVInferRequestPtr ir_ptr) {
+      shared_context_.SetSharedWeightsOnInferRequest(ir_ptr->GetInfReq(), model_dir);
     };
   }
+
   infer_req_pool_ = std::make_unique<InferRequestPool>(exe_network_, num_infer_req, std::move(initializer));
   bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
 }
@@ -242,13 +235,13 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableCaching() {
+void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (subgraph_context_.is_ep_ctx_graph) return;
 
   if (!session_context_.cache_dir.empty() && !session_context_.so_context_enable) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    OVCore::Get()->SetCache(session_context_.cache_dir.string());
+    device_config.emplace(ov::cache_dir(session_context_.cache_dir.string()));
   }
 }
 
@@ -262,7 +255,7 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableStreams() {
+void BasicBackend::EnableStreams(ov::AnyMap& device_config) {
   // Return silently for NPU as it's currently treated as a read-only flag by the NPU plugin
   // and throws an exception for the same
   if (session_context_.device_type.find("NPU") != std::string::npos)
@@ -279,7 +272,7 @@ void BasicBackend::EnableStreams() {
     }
     // Do nothing
   } else {
-    OVCore::Get()->SetStreams(session_context_.device_type, session_context_.num_streams);
+    device_config.emplace(ov::num_streams(session_context_.num_streams));
   }
 }
 
@@ -293,13 +286,13 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching();
+  EnableCaching(device_config);
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
   // Enable streams; default=1 unless overridden by user configuration
-  EnableStreams();
+  EnableStreams(device_config);
 
   // Set the inference_num_threads property of the CPU
   SetNumThreads(device_config);

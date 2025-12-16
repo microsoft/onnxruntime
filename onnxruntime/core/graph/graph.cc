@@ -3724,14 +3724,44 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   std::vector<Graph*> all_subgraphs;
   FindAllSubgraphs(all_subgraphs);
 
+  const auto& model_path = GetModel().ModelPath();
+  PathString model_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, model_dir));
+  }
+
   auto put_weights_maybe_in_memory_func = [&](Graph& graph) -> Status {
     // if we have any initializers that are not in memory, put them there.
-    const auto& model_path = graph.ModelPath();
     auto& graph_proto = *graph.graph_proto_;
     for (int i = 0, lim = graph_proto.initializer_size(); i < lim; ++i) {
       auto& tensor_proto = *graph_proto.mutable_initializer(i);
+
       if (utils::HasExternalData(tensor_proto)) {
-        continue;  // ignore data on disk, that will be loaded either by EP or at session_state finalize
+        if (utils::HasExternalDataInMemory(tensor_proto)) {
+          // This can happen when the model is created with ModelEditor.
+          // We want to guard against malicious models with arbitrary in-memory references.
+          if (OrtValue v; GetOrtValueInitializer(tensor_proto.name(), v)) {
+            ORT_RETURN_IF_NOT(graph_utils::CheckInMemoryDataMatch(tensor_proto, v.Get<Tensor>()),
+                              "In-memory data mismatch for initializer: ", tensor_proto.name(),
+                              " this is an invalid model");
+          } else {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "The model contains initializers with arbitrary in-memory references.",
+                                   "This is an invalid model.");
+          }
+        } else {
+          // Validate external data location
+          std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+          ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+          const auto& location = external_data_info->GetRelPath();
+          auto st = utils::ValidateExternalDataPath(model_dir, location);
+          if (!st.IsOK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "External data path validation failed for initializer: ", tensor_proto.name(),
+                                   ". Error: ", st.ErrorMessage());
+          }
+        }
+        continue;
       }
 
       size_t size_in_bytes = 0;
@@ -3829,6 +3859,10 @@ Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_p
                       "Element type mismatch between tensor proto and ortvalue_initializer");
     const auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
     ORT_RETURN_IF_NOT(proto_shape == tensor.Shape(), "Shape mismatch with ortvalue_initializer");
+
+    const bool data_ptr_match = graph_utils::CheckInMemoryDataMatch(tensor_proto, tensor);
+    ORT_RETURN_IF_NOT(data_ptr_match,
+                      "In-memory data pointer mismatch between tensor proto and ortvalue_initializer");
 
     ortvalue_initializers_.insert_or_assign(tensor_proto.name(), ortvalue_initializer);
   } else {

@@ -15,6 +15,11 @@ namespace webgpu {
 
 class ShaderVariableHelper;
 
+template <typename T>
+inline T CeilDiv(T numerator, T denominator) {
+  return (numerator + denominator - 1) / denominator;
+}
+
 /**
  * Returns the maximum number of components `N` to be used as `vecN` for the given size.
  */
@@ -101,7 +106,7 @@ class SplitKConfig {
   explicit SplitKConfig(const wgpu::AdapterInfo& adapter_info);
 
   bool UseSplitK(
-      bool is_vec4, ActivationKind activation_kind, uint64_t batch_size,
+      bool is_vec4, ActivationKind activation_kind, uint64_t batch_size, bool is_gemm,
       bool is_channels_last, uint32_t dim_a_outer,
       uint32_t dim_b_outer, uint32_t dim_inner) const;
 

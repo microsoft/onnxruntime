@@ -96,6 +96,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Atanh", V_2020_4, {"CPU"}},
     {"Atanh", V_2022_1, {"GPU"}},
     {"Attention", V_2023_0, {"CPU", "GPU"}},
+    {"GroupQueryAttention", V_2025_1, {"GPU"}},
     {"AveragePool", V_2020_4, {"CPU", "GPU"}},
     {"BatchNormalization", V_2020_4, {"CPU", "GPU"}},
     {"BiasGelu", V_2023_0, {"CPU", "GPU"}},
@@ -407,7 +408,7 @@ void DataOps::populate_op_mode_supported() {
 
   // populate unsupportedmode_t
   {
-    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2},
+    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the Input of ReduceMax op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -424,7 +425,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
-                              V_2025_2},
+                              V_2025_2, V_2025_3, V_2025_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_args = node->InputDefs();
                                const auto& input_arg = (input_args.size() > 1) ? input_args[1] : input_args[0];
@@ -444,7 +445,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
-                              V_2025_2},
+                              V_2025_2, V_2025_3, V_2025_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
@@ -460,7 +461,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5,
-                              V_2024_6, V_2025_0, V_2025_1, V_2025_2},
+                              V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -560,9 +561,7 @@ bool DataOps::type_is_supported(const NodeArg* node_arg, bool is_initializer) {
   }
 
   auto dtype = type_proto->tensor_type().elem_type();
-  // Enable bfloat16 -> float16 on-the-fly conversion
-  if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16 ||
-      dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 ||
+  if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16 ||
       dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16)
     return true;
   if (is_initializer) {

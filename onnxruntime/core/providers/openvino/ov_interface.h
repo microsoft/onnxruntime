@@ -18,8 +18,20 @@
 #include "openvino/frontend/manager.hpp"
 #include "openvino/core/dimension.hpp"
 #include "openvino/core/partial_shape.hpp"
+#include "weak_singleton.h"
 
 #include <string>
+
+// Helper macro to test OpenVINO version at compile time.
+// Usage: #if OPENVINO_VERSION_AT_LEAST(2025, 3)
+// Falls back to 0 if OPENVINO_VERSION_MAJOR/MINOR are not defined.
+#if defined(OPENVINO_VERSION_MAJOR) && defined(OPENVINO_VERSION_MINOR)
+#define OPENVINO_VERSION_AT_LEAST(major, minor) \
+  ((OPENVINO_VERSION_MAJOR > (major)) ||        \
+   (OPENVINO_VERSION_MAJOR == (major) && OPENVINO_VERSION_MINOR >= (minor)))
+#else
+#define OPENVINO_VERSION_AT_LEAST(major, minor) 0
+#endif
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -35,32 +47,6 @@ typedef std::shared_ptr<OVInferRequest> OVInferRequestPtr;
 typedef std::shared_ptr<OVTensor> OVTensorPtr;
 
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
-
-template <typename T>
-class WeakSingleton {
- public:
-  static std::shared_ptr<T> Get() {
-    static std::weak_ptr<T> instance;
-    static std::mutex mutex;
-
-    auto ptr = instance.lock();
-    if (!ptr) {
-      std::lock_guard<std::mutex> lock(mutex);
-      // ensure another thread didn't create an instance while this thread was waiting
-      ptr = instance.lock();
-      if (!ptr) {
-        ptr = std::make_shared<T>();
-        instance = ptr;
-      }
-    }
-    return ptr;
-  }
-
- protected:
-  WeakSingleton() = default;
-  virtual ~WeakSingleton() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WeakSingleton);
-};
 
 struct OVCore : WeakSingleton<OVCore> {
   ov::Core core;
@@ -124,7 +110,7 @@ class OVInferRequest {
 
  public:
   uint32_t GetNumInputs();
-  OVTensorPtr GetTensor(const std::string& name);
+  virtual OVTensorPtr GetTensor(const std::string& name);
   std::string GetInputTensorName(uint32_t index);
 
   // Set tensor call infer req tensor if ort_ptr differs from last set ptr.
@@ -144,7 +130,7 @@ class OVInferRequest {
   virtual void Infer();
   explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
   OVInferRequest() : ovInfReq(ov::InferRequest()) {}
-  ov::InferRequest& GetNewObj() {
+  ov::InferRequest& GetInfReq() {
     return ovInfReq;
   }
   virtual void RewindKVCache([[maybe_unused]] size_t index) {}
@@ -161,6 +147,7 @@ class StatefulOVInferRequest : public OVInferRequest {
   void CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache);
   void SetTensorFromCache(const std::string& tensor_name, const std::vector<int64_t>& cache_data);
   std::optional<ov::Tensor> FindTensor(const std::string& tensor_name);
+  OVTensorPtr GetTensor(const std::string& name) override;
 
  private:
   void PreProcessInferRequest();
@@ -171,6 +158,9 @@ class StatefulOVInferRequest : public OVInferRequest {
   bool prefill_use_full_chat_history = false;
   std::vector<int64_t> cached_input_ids;
   std::vector<int64_t> cached_position_ids;
+
+  bool IsNPULogitsSliceRequired();
+  bool _npu_logits_slice_required = false;
 };
 
 }  // namespace openvino_ep

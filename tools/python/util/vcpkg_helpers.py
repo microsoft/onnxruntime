@@ -24,9 +24,24 @@ def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
         "-DBENCHMARK_ENABLE_WERROR=OFF"
     )
-endif()
 """
     )
+    if is_emscripten:
+        # workaround for https://github.com/google/benchmark/issues/2057
+        f.write(
+            r"""
+    string(APPEND VCPKG_C_FLAGS
+        " -Wno-c2y-extensions"
+    )
+    string(APPEND VCPKG_CXX_FLAGS
+        " -Wno-c2y-extensions"
+    )
+"""
+        )
+    f.write(r"""
+endif()  # benchmark
+""")
+
     f.write(
         r"""if(PORT MATCHES "date")
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
