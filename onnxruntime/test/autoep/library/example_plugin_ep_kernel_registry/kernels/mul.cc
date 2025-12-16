@@ -19,10 +19,12 @@ Mul::Mul(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(in
 
 /*static*/
 OrtStatus* Mul::Create(const OrtKernelInfo* info, void* state,
-                       /*out*/ std::unique_ptr<Mul>& result) {
+                       /*out*/ std::unique_ptr<Mul>& result) noexcept {
+  EXCEPT_TO_STATUS_BEGIN
   // Note: can do basic validation or preprocessing via the OrtKernelInfo APIs.
   result = std::make_unique<Mul>(info, state, PrivateTag{});
   return nullptr;
+  EXCEPT_TO_STATUS_END
 }
 
 OrtStatus* Mul::DoCompute(OrtKernelContext* kernel_ctx) {

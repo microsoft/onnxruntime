@@ -21,7 +21,7 @@ class Mul : public BaseKernelImpl {
   };
 
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Mul>& kernel);
+  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Mul>& kernel) noexcept;
   Mul(const OrtKernelInfo* info, void* state, PrivateTag);
 
  private:

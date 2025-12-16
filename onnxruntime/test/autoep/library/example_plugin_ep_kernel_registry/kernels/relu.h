@@ -11,7 +11,7 @@ class Relu : public BaseKernelImpl {
   struct PrivateTag {};
 
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel);
+  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) noexcept;
   Relu(const OrtKernelInfo* info, void* state, PrivateTag);
 
  private:

@@ -11,7 +11,7 @@ class Squeeze : public BaseKernelImpl {
   struct PrivateTag {};
 
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel);
+  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel) noexcept;
   Squeeze(const OrtKernelInfo* info, void* state, PrivateTag);
 
  private:

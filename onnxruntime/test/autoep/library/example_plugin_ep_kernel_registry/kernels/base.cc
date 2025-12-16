@@ -30,6 +30,7 @@ OrtStatus* BaseKernelImpl::DoSetSharedPrePackedWeight(const void* const* /*buffe
 }
 
 OrtStatus* BaseKernelImpl::CopyTensor(Ort::ConstValue src_tensor, Ort::UnownedValue dst_tensor) noexcept {
+  EXCEPT_TO_STATUS_BEGIN
   const OrtMemoryDevice* src_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(src_tensor.GetTensorMemoryInfo());
   const OrtMemoryDevice* dst_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(dst_tensor.GetTensorMemoryInfo());
 
@@ -49,20 +50,15 @@ OrtStatus* BaseKernelImpl::CopyTensor(Ort::ConstValue src_tensor, Ort::UnownedVa
                                                    /*streams*/ nullptr, src_tensors.size()));
 
   return nullptr;
+  EXCEPT_TO_STATUS_END
 }
 
 /*static*/
 OrtStatus* ORT_API_CALL BaseKernelImpl::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
-  try {
-    BaseKernelImpl* base_kernel = static_cast<BaseKernelImpl*>(this_ptr);
-    return base_kernel->DoCompute(kernel_ctx);
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  } catch (const std::exception& ex) {
-    Ort::Status status(ex.what(), ORT_EP_FAIL);
-    return status.release();
-  }
+  EXCEPT_TO_STATUS_BEGIN
+  BaseKernelImpl* base_kernel = static_cast<BaseKernelImpl*>(this_ptr);
+  return base_kernel->DoCompute(kernel_ctx);
+  EXCEPT_TO_STATUS_END
 }
 
 /*static*/
@@ -75,30 +71,18 @@ OrtStatus* ORT_API_CALL BaseKernelImpl::PrePackWeightImpl(OrtKernelImpl* this_pt
                                                           int input_index, OrtAllocator* alloc,
                                                           OrtSharedPrePackedWeightCache* prepacked_weight_cache,
                                                           /*out*/ bool* is_packed) noexcept {
-  try {
-    BaseKernelImpl* base_kernel = static_cast<BaseKernelImpl*>(this_ptr);
-    return base_kernel->DoPrePackWeight(tensor, input_index, alloc, prepacked_weight_cache, *is_packed);
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  } catch (const std::exception& ex) {
-    Ort::Status status(ex.what(), ORT_EP_FAIL);
-    return status.release();
-  }
+  EXCEPT_TO_STATUS_BEGIN
+  BaseKernelImpl* base_kernel = static_cast<BaseKernelImpl*>(this_ptr);
+  return base_kernel->DoPrePackWeight(tensor, input_index, alloc, prepacked_weight_cache, *is_packed);
+  EXCEPT_TO_STATUS_END
 }
 
 /*static*/
 OrtStatus* ORT_API_CALL BaseKernelImpl::SetSharedPrePackedWeightImpl(OrtKernelImpl* this_ptr,
                                                                      const void* const* buffer_data_ptrs,
                                                                      size_t num_buffers, int input_index) noexcept {
-  try {
-    BaseKernelImpl* base_kernel = static_cast<BaseKernelImpl*>(this_ptr);
-    return base_kernel->DoSetSharedPrePackedWeight(buffer_data_ptrs, num_buffers, input_index);
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  } catch (const std::exception& ex) {
-    Ort::Status status(ex.what(), ORT_EP_FAIL);
-    return status.release();
-  }
+  EXCEPT_TO_STATUS_BEGIN
+  BaseKernelImpl* base_kernel = static_cast<BaseKernelImpl*>(this_ptr);
+  return base_kernel->DoSetSharedPrePackedWeight(buffer_data_ptrs, num_buffers, input_index);
+  EXCEPT_TO_STATUS_END
 }

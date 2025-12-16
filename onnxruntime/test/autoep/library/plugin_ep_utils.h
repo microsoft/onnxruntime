@@ -76,6 +76,22 @@
   ss << __VA_ARGS__;     \
   throw std::runtime_error(ss.str())
 
+#define EXCEPT_TO_STATUS_BEGIN try {
+#define EXCEPT_TO_STATUS_END                              \
+  }                                                       \
+  catch (const Ort::Exception& ex) {                      \
+    Ort::Status status(ex);                               \
+    return status.release();                              \
+  }                                                       \
+  catch (const std::exception& ex) {                      \
+    Ort::Status status(ex.what(), ORT_EP_FAIL);           \
+    return status.release();                              \
+  }                                                       \
+  catch (...) {                                           \
+    Ort::Status status("Unknown exception", ORT_EP_FAIL); \
+    return status.release();                              \
+  }
+
 struct ApiPtrs {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;

@@ -22,10 +22,12 @@ ONNX_OPERATOR_KERNEL_EX(
 Relu::Relu(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(info, state) {}
 
 /*static*/
-OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) {
+OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) noexcept {
+  EXCEPT_TO_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
   kernel = std::make_unique<Relu>(info, state, PrivateTag{});
   return nullptr;
+  EXCEPT_TO_STATUS_END
 }
 
 OrtStatus* Relu::DoCompute(OrtKernelContext* kernel_ctx) {

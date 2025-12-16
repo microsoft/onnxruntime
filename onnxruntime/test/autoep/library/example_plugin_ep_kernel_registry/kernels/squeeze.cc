@@ -52,10 +52,12 @@ ONNX_OPERATOR_KERNEL_EX(
 Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(info, state) {}
 
 /*static*/
-OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel) {
+OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel) noexcept {
+  EXCEPT_TO_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
   kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
   return nullptr;
+  EXCEPT_TO_STATUS_END
 }
 
 static int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
