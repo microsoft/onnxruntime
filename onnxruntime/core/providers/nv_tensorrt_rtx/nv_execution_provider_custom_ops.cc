@@ -8,6 +8,12 @@
 #include "nv_execution_provider_custom_ops.h"
 #include "nv_execution_provider.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
 #define LIBRARY_PREFIX
@@ -125,7 +131,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     if (status.IsOK()) {
       LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] External plugins loaded: tensorrt_plugins (GQA + RotaryEmbedding)";
     } else {
-      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] tensorrt_plugins library not found in runtime path (optional)";
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] tensorrt_plugins library not found in EP library path (optional)";
     }
   } catch (const std::exception& e) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] tensorrt_plugins library not available: " << e.what();
