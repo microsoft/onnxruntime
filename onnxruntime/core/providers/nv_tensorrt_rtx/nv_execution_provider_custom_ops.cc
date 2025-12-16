@@ -23,6 +23,48 @@
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 
+/// @brief Gets the directory path of the EP library that contains the current function
+/// @return The directory path containing the EP library, or an empty string if the path cannot be determined.
+static PathString GetEPLibraryDirectory() {
+#ifdef _WIN32
+  HMODULE hModule = NULL;
+  // Get handle to the DLL executing this code
+  if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                          GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          reinterpret_cast<LPCWSTR>(&GetEPLibraryDirectory),
+                          &hModule)) {
+      return PathString(L"");
+  }
+
+  wchar_t buffer[MAX_PATH];
+  DWORD len = GetModuleFileNameW(hModule, buffer, MAX_PATH);
+  if (len == 0 || len >= MAX_PATH) {
+      return PathString(L"");
+  }
+
+  std::wstring path(buffer);
+  size_t lastSlash = path.find_last_of(L"\\/");
+  if (lastSlash != std::wstring::npos) {
+      return PathString(path.substr(0, lastSlash + 1));
+  }
+  return PathString(path);
+#else
+  // Linux and other Unix-like platforms
+  Dl_info dl_info;
+
+  if (dladdr((void*)&GetEPLibraryDirectory, &dl_info) == 0 || dl_info.dli_fname == nullptr) {
+    return PathString("");
+  }
+
+  std::string so_path(dl_info.dli_fname);
+  size_t last_slash = so_path.find_last_of('/');
+  if (last_slash != std::string::npos) {
+    return PathString(so_path.substr(0, last_slash + 1));
+  }
+  return PathString(so_path);
+#endif
+}
+
 /*
  * Create custom op domain list for TRT plugins.
  *
@@ -76,7 +118,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   // This library contains GroupQueryAttention and RotaryEmbedding plugins for transformer models
   try {
     const auto& env = onnxruntime::GetDefaultEnv();
-    auto external_plugin_path = env.GetRuntimePath() +
+    auto external_plugin_path = GetEPLibraryDirectory() +
                                 PathString(LIBRARY_PREFIX ORT_TSTR("tensorrt_plugins") LIBRARY_EXTENSION);
     void* external_plugin_handle = nullptr;
     auto status = env.LoadDynamicLibrary(external_plugin_path, false, &external_plugin_handle);
