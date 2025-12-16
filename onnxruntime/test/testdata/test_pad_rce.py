@@ -16,7 +16,10 @@ def create_pad_model():
         mode="constant",  # or reflect/edge
     )
     graph = helper.make_graph(
-        nodes=[pad_node], name="PadModel", inputs=[input_data, pads, constant_value], outputs=[output]
+        nodes=[pad_node],
+        name="PadModel",
+        inputs=[input_data, pads, constant_value],
+        outputs=[output]
     )
 
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 14)])
