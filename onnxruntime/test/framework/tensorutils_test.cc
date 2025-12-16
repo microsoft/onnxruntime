@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <fstream>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -502,5 +503,88 @@ TEST(TensorProtoUtilsTest, ConstantTensorProtoWithExternalData) {
   TestConstantNodeConversionWithExternalData<float>(TensorProto_DataType_FLOAT);
   TestConstantNodeConversionWithExternalData<double>(TensorProto_DataType_DOUBLE);
 }
+
+// Test fixture for creating temporary directories and files for path validation tests.
+class PathValidationTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    // Create a temporary directory for the tests.
+    base_dir_ = std::filesystem::temp_directory_path() / "PathValidationTest";
+    outside_dir_ = std::filesystem::temp_directory_path() / "outside";
+    std::filesystem::create_directories(base_dir_);
+    std::filesystem::create_directories(outside_dir_);
+  }
+
+  void TearDown() override {
+    // Clean up the temporary directory.
+    std::filesystem::remove_all(base_dir_);
+    std::filesystem::remove_all(outside_dir_);
+  }
+
+  std::filesystem::path base_dir_;
+  std::filesystem::path outside_dir_;
+};
+
+// Test cases for ValidateExternalDataPath.
+TEST_F(PathValidationTest, ValidateExternalDataPath) {
+  // Valid relative path.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin"));
+
+  // Empty base directory.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "data.bin"));
+
+  // Empty location.
+  // Only validate it is not an absolute path.
+  ASSERT_TRUE(utils::ValidateExternalDataPath(base_dir_, "").IsOK());
+
+  // Path with ".." that escapes the base directory.
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin").IsOK());
+
+  // Absolute path.
+#ifdef _WIN32
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "C:\\data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath("", "C:\\data.bin").IsOK());
+#else
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "/data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath("", "/data.bin").IsOK());
+#endif  // Absolute path.
+
+  // Windows vs Unix path separators.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "sub/data.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "sub\\data.bin"));
+
+  // Base directory does not exist.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir", "data.bin"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
+  // Symbolic link that points inside the base directory.
+  try {
+    auto target = base_dir_ / "target.bin";
+    std::ofstream{target};
+    auto link = base_dir_ / "link.bin";
+    std::filesystem::create_symlink(target, link);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
+                 << e.what();
+  }
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "link.bin"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
+  // Symbolic link that points outside the base directory.
+  auto outside_target = outside_dir_ / "outside.bin";
+  try {
+    {
+      std::ofstream{outside_target};
+      auto outside_link = base_dir_ / "outside_link.bin";
+      std::filesystem::create_symlink(outside_target, outside_link);
+    }
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: " << e.what();
+  }
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
+}
+
 }  // namespace test
 }  // namespace onnxruntime

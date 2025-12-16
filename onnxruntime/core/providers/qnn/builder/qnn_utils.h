@@ -431,7 +431,9 @@ Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
 Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
                              std::vector<uint32_t>& data_shape,
                              const onnx::TensorProto& initializer,
-                             std::vector<uint8_t>& transposed_data);
+                             std::vector<uint8_t>& transposed_data,
+                             const logging::Logger& logger,
+                             bool skip_output_data_copy = false);
 
 Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                        const std::string& convert_input_name,

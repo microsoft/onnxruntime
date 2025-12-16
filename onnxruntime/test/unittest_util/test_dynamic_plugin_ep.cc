@@ -90,6 +90,7 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
     config.selected_ep_name = parsed_json.value<decltype(config.selected_ep_name)>("selected_ep_name", {});
     config.selected_ep_device_indices =
         parsed_json.value<decltype(config.selected_ep_device_indices)>("selected_ep_device_indices", {});
+    config.tests_to_skip = parsed_json.value<decltype(config.tests_to_skip)>("tests_to_skip", {});
 
     config_out = std::move(config);
     return Status::OK();
@@ -196,6 +197,14 @@ std::optional<std::string> GetEpName() {
   }
 
   return g_plugin_ep_infrastructure_state->ep_name;
+}
+
+std::vector<std::string> GetTestsToSkip() {
+  if (!IsInitialized()) {
+    return {};
+  }
+
+  return g_plugin_ep_infrastructure_state->config.tests_to_skip;
 }
 
 }  // namespace onnxruntime::test::dynamic_plugin_ep_infra
