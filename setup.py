@@ -119,6 +119,8 @@ manylinux_tags = [
     "manylinux_2_28_aarch64",
     "manylinux_2_34_x86_64",
     "manylinux_2_34_aarch64",
+    "manylinux_2_35_x86_64",
+    "manylinux_2_35_aarch64"
 ]
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 
