@@ -747,7 +747,7 @@ Status UnfusedAttention(
             mask_index, nullptr, data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
             data.scratch, scratch2, parameters.is_unidirectional, scale, mask_dimension,
             parameters.max_sequence_length, use_persistent_softmax, persistent_softmax_workspace,
-            parameters.mask_filter_value));
+            parameters.mask_filter_value, parameters.past_sequence_length));
   } else if (nullptr != mask_index) {  // 1d mask index
     assert(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
@@ -755,7 +755,7 @@ Status UnfusedAttention(
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
         stream, total_sequence_length, sequence_length, batch_size, num_heads,
         mask_index, mask_start, data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
-        data.scratch, scratch2, parameters.is_unidirectional));
+        data.scratch, scratch2, parameters.is_unidirectional, parameters.past_sequence_length));
   } else {  // no mask
     if (nullptr != data.output_qk) {
       int64_t qk_size = (int64_t)batch_size * num_heads * sequence_length * total_sequence_length;
@@ -766,7 +766,7 @@ Status UnfusedAttention(
         ComputeSoftmax<T>(
             stream, total_sequence_length, sequence_length, batch_size, num_heads,
             data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
-            data.scratch, scratch2, parameters.is_unidirectional));
+            data.scratch, scratch2, parameters.is_unidirectional, parameters.past_sequence_length));
   }
 
   DUMP_TENSOR_D("Softmax", scratch2, batch_size, num_heads, sequence_length, total_sequence_length);
