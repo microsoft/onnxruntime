@@ -49,8 +49,6 @@
     onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
       onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
-    set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
-    set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
   else()
     #
     # Build WebGPU EP as a shared library
@@ -118,9 +116,10 @@
     endif()
 
     set_target_properties(onnxruntime_providers_webgpu PROPERTIES LINKER_LANGUAGE CXX)
-    set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
-    set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
   endif()
+
+  set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # target "emdawnwebgpu_c" is created by Dawn, including "-fno-exceptions" in its compile options by default.
@@ -346,5 +345,3 @@
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
-
-  set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")

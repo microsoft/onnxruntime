@@ -4,7 +4,7 @@ The current folder contains the implementation of EP ABI adapter for WebGPU.
 
 ### Design considerations
 
-To ensure both static library and dynamic library builds work, we need to make as less changes to existing code as possible. A few design decisions are as below:
+To ensure both static library and dynamic library builds work, we need to make as few changes to existing code as possible. A few design decisions are as below:
 
 - No changes to static library build. It should still work as before.
 
