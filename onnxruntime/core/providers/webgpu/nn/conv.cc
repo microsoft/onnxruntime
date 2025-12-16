@@ -127,7 +127,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
 
   if (CanApplyIm2ColMatMulProgram(context,
                                   is_channels_last,
-                                  activation_.activation_kind_,
+                                  activation_.activation_kind_ != ActivationKind::None,
                                   kernel_shape,
                                   conv_attrs_.auto_pad,
                                   onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
@@ -277,8 +277,31 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     return Status::OK();
   }
 
-  // Get group attribute
-  int64_t group = conv_attrs_.group;
+  // Grouped convolution (group > 1):
+  //   - Only transposes when is_channels_last
+  //   - channels_first: no transpose
+  if (conv_attrs_.group > 1) {
+    if constexpr (!is_channels_last) {
+      // channels_first grouped conv doesn't transpose
+      return Status::OK();
+    }
+    // is_channels_last grouped conv transposes - proceed to transpose below
+  }
+
+  // When auto_pad is not NOTSET (i.e., SAME_UPPER, SAME_LOWER, or VALID),
+  // the actual padding values are computed at runtime based on input dimensions.
+  // We can't predict the execution path without knowing the runtime padding,
+  // so skip prepacking to avoid incorrect behavior.
+  if (conv_attrs_.auto_pad != AutoPadType::NOTSET) {
+    return Status::OK();
+  }
+
+  // Im2ColMatMul path uses a different transpose (OIHW -> OHWI) and reads
+  // kernel directly from context.Input(1), ignoring prepacked weights.
+  // Skip prepacking when this path will be used at runtime.
+  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, is_fused, kernel_shape, conv_attrs_.auto_pad, onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
+    return Status::OK();
+  }
 
   // Get kernel spatial dimensions
   const int64_t kernel_height = dims[2];
@@ -316,14 +339,11 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     }
   }
 
-  // Get pads and strides
-  const auto& pads_vec = conv_attrs_.pads;
-  const auto& strides_vec = conv_attrs_.strides;
+  // Get pads and strides (mirroring ComputeInternal logic)
+  std::vector<int64_t> pads(conv_attrs_.pads.begin(), conv_attrs_.pads.end());
+  std::vector<int64_t> strides(conv_attrs_.strides.begin(), conv_attrs_.strides.end());
 
-  std::vector<int64_t> pads(pads_vec.begin(), pads_vec.end());
-  std::vector<int64_t> strides(strides_vec.begin(), strides_vec.end());
-
-  // Default pads and strides if not specified
+  // Default pads and strides if not specified (for 4D/Conv2D: 4 pads, 2 strides)
   if (pads.empty()) {
     pads.resize(4, 0);
   }
@@ -331,47 +351,39 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     strides.resize(2, 1);
   }
 
+  // At this point, auto_pad == NOTSET (we early-returned otherwise),
+  // so we can use the explicit pads directly.
+
   // Analyze execution paths to determine if kernel needs pre-transformation:
 
-  // Path 1: Grouped convolution (group > 1)
-  //   - Only transposes when is_channels_last
-  //   - channels_first: no transpose
-  if (group > 1) {
+  // MatMul optimization (same_size or 1x1 conv conditions)
+  //   - channels_last: same_size OR 1x1 -> transposes
+  //   - channels_first: 1x1 only (same_size requires is_channels_last) -> does NOT transpose
+
+  // Note: same_size in ComputeInternal has `is_channels_last &&` prefix,
+  // so for channels_first it's always false regardless of dimensions.
+  const bool same_size = is_channels_last && (input_height > 0 && input_width > 0 &&
+                                              input_height == kernel_height && input_width == kernel_width &&
+                                              pads[0] == 0 && pads[1] == 0);
+
+  const bool is_1x1_conv =
+      (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides.size() > 0 &&
+       strides[0] == 1 && (strides.size() == 1 || strides[1] == 1));
+
+  if (same_size || is_1x1_conv) {
     if constexpr (!is_channels_last) {
-      // channels_first grouped conv doesn't transpose
+      // MatMul optimization for channels_first (1x1 only) does NOT transpose
       return Status::OK();
     }
-    // is_channels_last grouped conv transposes - proceed to transpose below
-  } else {
-    // Path 2: MatMul optimization (same_size or 1x1 conv conditions)
-    //   - channels_last: same_size OR 1x1 -> transposes
-    //   - channels_first: 1x1 only (same_size requires is_channels_last) -> does NOT transpose
-
-    // Note: same_size in ComputeInternal has `is_channels_last &&` prefix,
-    // so for channels_first it's always false regardless of dimensions.
-    const bool same_size = is_channels_last && (input_height > 0 && input_width > 0 &&
-                                                input_height == kernel_height && input_width == kernel_width &&
-                                                pads[0] == 0 && pads[1] == 0);
-
-    const bool is_1x1_conv =
-        (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides.size() > 0 &&
-         strides[0] == 1 && (strides.size() == 1 || strides[1] == 1));
-
-    if (same_size || is_1x1_conv) {
-      if constexpr (!is_channels_last) {
-        // MatMul optimization for channels_first (1x1 only) does NOT transpose
-        return Status::OK();
-      }
-      // is_channels_last MatMul optimization transposes - proceed to transpose below
-    }
-
-    // Path 3: General convolution (fallback path)
-    //   - ALWAYS transposes regardless of is_channels_last
-    //   - For channels_first with dynamic input shapes, we still need to transpose
-    //     because if we don't hit the 1x1 optimization, we'll hit this general path
-    //     which always transposes. The only risk is if runtime dimensions turn out
-    //     to match 1x1 conditions, but we can't know that at PrePack time.
+    // is_channels_last MatMul optimization transposes - proceed to transpose below
   }
+
+  // General convolution (fallback path)
+  //   - ALWAYS transposes regardless of is_channels_last
+  //   - For channels_first with dynamic input shapes, we still need to transpose
+  //     because if we don't hit the 1x1 optimization, we'll hit this general path
+  //     which always transposes. The only risk is if runtime dimensions turn out
+  //     to match 1x1 conditions, but we can't know that at PrePack time.
 
   // Perform the transpose using same logic as TransposeKernel
   // For 4D: perm = {2, 3, 1, 0} transforms [O, I, H, W] -> [H, W, I, O]
