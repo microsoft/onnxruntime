@@ -258,38 +258,6 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       }
       delete_mask_data = true;
     }
-  } else if (mask_index->IsDataType<bool>() || causal) {
-    // We need a copy.
-    size_t mask_data_bytes = SafeInt<size_t>(mask_index->Shape().Size()) * sizeof(T);
-    mask_data = static_cast<T*>(allocator->Alloc(mask_data_bytes));
-    delete_mask_data = true;
-
-    if (mask_index->IsDataType<bool>()) {
-      // Convert bool mask to 0/1
-      make_copy(mask_data, mask_index->Data<bool>(), SafeInt<size_t>(mask_index->Shape().Size()));
-    } else if (mask_index != nullptr) {
-      // We make a copy because causal is True.
-      make_copy(mask_data, mask_index->Data<T>(), SafeInt<size_t>(mask_index->Shape().Size()));
-    }
-    if (causal) {
-      // This loop could be parallelized.
-      // According to the specifications, this configuration is not supported
-      // as is_causal=1 or mask is not None (exclusive or).
-      int n_iter = mask_batch_size * mask_num_heads;
-      for (int i = 0; i < n_iter; ++i) {
-        for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
-          for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
-            mask_data[s_i * parameters.total_sequence_length + m_i + probs_matrix_size * i] = mask_filter_value<T>();
-          }
-        }
-      }
-    }
-  } else {
-    // Nothing to do, no necessary copy.
-    mask_data = const_cast<T*>(mask_index->Data<T>());
-  }
-
-  bool transposed_k = parameters.transpose_output && nullptr == present_key;
   } else {
     const bool is_bool_mask = mask_index->IsDataType<bool>();
     const bool need_copy = is_bool_mask || causal;  // copy if we must convert or overlay causal pattern
@@ -309,7 +277,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
           T* base = mask_data + probs_matrix_size * slice;
           for (int s = 0; s < parameters.q_sequence_length; ++s) {
             for (int t = parameters.past_sequence_length + s + 1; t < parameters.total_sequence_length; ++t) {
-              base[s * parameters.total_sequence_length + t] = negative_infinity<T>();
+              base[s * parameters.total_sequence_length + t] = mask_filter_value<T>();
             }
           }
         }
