@@ -142,9 +142,9 @@ class BasicBackend : public IBackend {
  private:
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);
-  void EnableCaching();
+  void EnableCaching(ov::AnyMap& device_config);
   void EnableGPUThrottling(ov::AnyMap& device_config);
-  void EnableStreams();
+  void EnableStreams(ov::AnyMap& device_config);
   void SetNumThreads(ov::AnyMap& device_config);
   void SetOVDeviceConfiguration(ov::AnyMap& device_config);
   void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
