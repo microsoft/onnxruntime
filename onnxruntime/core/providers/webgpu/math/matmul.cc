@@ -241,14 +241,14 @@ Status ComputeMatMul(ComputeContext* context,
   uint32_t split_dim_inner = 1;
 
   const SplitKConfig& split_k_config = context->GetSplitKConfig();
-  const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
+  const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, /*is_gemm*/ false, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
   if (need_split_k) {
     ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
     ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
     ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
 
     // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
-    const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, output_shape_temp);
+    const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, /*bias_is_scalar*/ false, output_shape_temp);
     ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
 
     // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
@@ -288,32 +288,35 @@ Status ComputeMatMul(ComputeContext* context,
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
-    const TensorShape& output_shape_vec4) {
+    bool is_gemm,
+    float beta,
+    uint32_t output_components,
+    bool bias_is_scalar,
+    const TensorShape& output_shape) {
   const bool has_bias = bias != nullptr;
 
-  // Currently we only support bias in vec4 and channels last format for Split-K MatMul.
-  constexpr uint32_t bias_components = 4;
-  MatMulFillBiasOrZeroBeforeSplitKProgram program(has_bias);
+  // Currently we only support GEMM and channels last format for MatMul with Split-K.
+  MatMulFillBiasOrZeroBeforeSplitKProgram program(is_gemm, has_bias, output_components, bias_is_scalar);
 
-  const uint32_t dim_a_outer = narrow<uint32_t>(output_shape_vec4[output_shape_vec4.NumDimensions() - 2]);
-  const uint32_t dim_b_outer_vec4 = narrow<uint32_t>(output_shape_vec4[output_shape_vec4.NumDimensions() - 1]);
+  const uint32_t dim_a_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 2]);
+  const uint32_t dim_b_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 1]);
 
-  // Fill one value (currently only vec4) per invocation. Now we use default workgroup size (64) for
-  // this program.
-  const uint32_t total_outputs_vec4 = dim_a_outer * dim_b_outer_vec4;
-  const uint32_t dispatch_x = (total_outputs_vec4 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+  // Fill one value per invocation. Now we use default workgroup size (64) for this program.
+  const uint32_t total_outputs = dim_a_outer * dim_b_outer;
+  const uint32_t dispatch_x = (total_outputs + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
-  // To reuse `MatMulWriteFnSource()` we need to set `dim_a_outer` and `dim_b_outer` in scalar
-  // instead of vec4, while use `output_shape_vec4` directly as the output shape.
-  const uint32_t dim_b_outer = narrow<uint32_t>(dim_b_outer_vec4 * bias_components);
-  program.CacheHint(has_bias)
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape_vec4, static_cast<int32_t>(bias_components)})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}})
+  // To reuse `MatMulWriteFnSource()` we need to set `dim_b_outer` in components when `output_shape`
+  // is in `vec4`, while use `output_shape` directly as the output shape.
+  const uint32_t dim_b_outer_components = narrow<uint32_t>(dim_b_outer * output_components);
+  program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar)
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, static_cast<int32_t>(output_components)})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer_components}, {beta}})
       .SetDispatchGroupSize(dispatch_x);
 
   if (has_bias) {
-    const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, static_cast<int32_t>(bias_components)});
+    // We always use `c_components` as `output_components` in GEMM, and 4 in MatMul.
+    const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), output_components);
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, static_cast<int32_t>(output_components)});
   }
 
   return program;
