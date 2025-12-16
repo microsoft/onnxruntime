@@ -30,7 +30,8 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
     if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
         adapter_info.architecture == std::string_view{"xe-2hpg"} ||
         adapter_info.architecture == std::string_view{"xe-lpg"} ||
-        adapter_info.architecture == std::string_view{"gen-12hp"}) {
+        adapter_info.architecture == std::string_view{"gen-12hp"} ||
+        adapter_info.architecture == std::string_view{"xe-3lpg"}) {
       enable_split_k_ = true;
 
       // Below thresholds are only verified on the above Intel GPUs without any regressions. The
