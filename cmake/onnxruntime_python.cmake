@@ -69,64 +69,18 @@ endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
-if (Python_EXECUTABLE)
-  message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
 
-  # Use a cached variable so we don't re-run detection on every configure
-  if (NOT DEFINED ORT_PYTHON_FREE_THREADED_DETECTED)
-    message(STATUS "Checking for Free-threaded Python environment...")
-
-    # Check 1: Query Py_GIL_DISABLED directly (PEP 703)
-    execute_process(
-      COMMAND "${Python_EXECUTABLE}" -c "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED'))"
-      RESULT_VARIABLE _py_result
-      OUTPUT_VARIABLE Py_GIL_DISABLED_VALUE
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-    if (NOT _py_result EQUAL 0)
-      message(WARNING "Failed to query Py_GIL_DISABLED from Python interpreter. Result: ${_py_result}")
-      set(Py_GIL_DISABLED_VALUE "0")
-    endif()
-
-    # Handle explicit "None" string or empty output
-    # (common on Windows and pre-PEP 703 Python builds where the var is unset)
-    if (Py_GIL_DISABLED_VALUE STREQUAL "" OR Py_GIL_DISABLED_VALUE STREQUAL "None")
-      set(Py_GIL_DISABLED_VALUE "0")
-
-      # Check 2: Fallback to ABI flags if config var wasn't explicit
-      execute_process(
-        COMMAND "${Python_EXECUTABLE}" -c "import sysconfig; print(sysconfig.get_config_var('ABIFLAGS') or sysconfig.get_config_var('SOABI') or '')"
-        RESULT_VARIABLE _abi_result
-        OUTPUT_VARIABLE Py_ABI_VALUE
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-      )
-
-      if (_abi_result EQUAL 0)
-        # Matches "cp313t", "cp314t" etc., or "t" followed by hyphen/end-of-string (e.g., "cp313t-win_amd64")
-        if ("${Py_ABI_VALUE}" MATCHES "cp[0-9]+t" OR "${Py_ABI_VALUE}" MATCHES "t(-|$)")
-          set(Py_GIL_DISABLED_VALUE "1")
-          message(STATUS "Detected 't' suffix in Python ABI flags (${Py_ABI_VALUE}). Assuming Free-threaded build.")
-        endif()
-      endif()
-    endif()
-
-    # Normalize to 0/1 to avoid edge cases downstream
-    if (NOT Py_GIL_DISABLED_VALUE STREQUAL "1")
-        set(Py_GIL_DISABLED_VALUE "0")
-    endif()
-
-    # Cache the result as BOOL so users can override it (e.g. -DORT_PYTHON_FREE_THREADED_DETECTED=OFF)
-    set(ORT_PYTHON_FREE_THREADED_DETECTED "${Py_GIL_DISABLED_VALUE}" CACHE BOOL "Detected free-threaded Python status" FORCE)
-  else()
-    message(STATUS "Using cached free-threaded Python detection: ORT_PYTHON_FREE_THREADED_DETECTED=${ORT_PYTHON_FREE_THREADED_DETECTED}")
-  endif()
-
-  if (ORT_PYTHON_FREE_THREADED_DETECTED)
-    message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
-  else()
-    message(STATUS "Free-threaded Python support NOT enabled.")
-  endif()
+# Query Py_GIL_DISABLED (PEP 703)
+execute_process(
+    COMMAND "${Python_EXECUTABLE}" -c
+            "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED') or '0')"
+    RESULT_VARIABLE _py_result
+    OUTPUT_VARIABLE _py_gil_disabled
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+if (_py_result EQUAL 0 AND _py_gil_disabled STREQUAL "1")
+  message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
 endif()
 
 if(MSVC)
