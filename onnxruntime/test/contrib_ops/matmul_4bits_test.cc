@@ -17,14 +17,15 @@
 #include "core/session/inference_session.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -341,11 +342,19 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     RunTest<AType>(opts);
   }
 #endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
+#if defined(USE_WEBGPU)
+  {
+    // WebGPU does support bias but no g_idx
+    TestOptions opts = base_opts;
+    opts.has_bias = true;
+    RunTest<AType>(opts);
+  }
+#endif
 }
 
 #if !defined(USE_OPENVINO)
 
-TEST(MatMulNBits, Float32_Accuracy0) {
+TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
   // TestMatMulNBitsTyped<float, 1, 2, 16, 16, 0>();
   // TestMatMulNBitsTyped<float, 1, 32, 16, 16, 0>();
@@ -372,7 +381,7 @@ TEST(MatMulNBits, Float32_Accuracy0) {
   // TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 0>();
 }
 
-TEST(MatMulNBits, Float32_Accuracy1) {
+TEST(MatMulNBits, Float32_4b_Accuracy1) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 1>();
   // TestMatMulNBitsTyped<float, 1, 288, 1024, 128, 1>();
   // TestMatMulNBitsTyped<float, 1, 288, 93, 32, 1>();
@@ -383,7 +392,7 @@ TEST(MatMulNBits, Float32_Accuracy1) {
   // TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 1>();
 }
 
-TEST(MatMulNBits, Float32_Accuracy4) {
+TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 4>();
   // TestMatMulNBitsTyped<float, 1, 2, 16, 16, 4>();
   // TestMatMulNBitsTyped<float, 1, 32, 16, 16, 4>();
@@ -415,7 +424,7 @@ TEST(MatMulNBits, Float32_Accuracy4) {
 #if !defined(USE_DML)
 // Actual and expected difference is over 0.01 with DmlExecutionProvider.
 // Skip the tests instead of raising the tolerance to make is pass.
-TEST(MatMulNBits, Float16_Accuracy2) {
+TEST(MatMulNBits, Float16_4b_Accuracy2) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 2>();
   // TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 2>();
   // TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 16, 2>();
@@ -442,7 +451,7 @@ TEST(MatMulNBits, Float16_Accuracy2) {
   // TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 2>();
 }
 
-TEST(MatMulNBits, Float16_Accuracy0) {
+TEST(MatMulNBits, Float16_4b_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 0>();
   // TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 0>();
   // TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 0>();
@@ -453,7 +462,7 @@ TEST(MatMulNBits, Float16_Accuracy0) {
   // TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
 }
 
-TEST(MatMulNBits, Float16_Accuracy4) {
+TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 4>();
   // TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4>();
   // TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 16, 4>();
@@ -483,7 +492,7 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   // TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
 
-TEST(MatMulNBits, LegacyShape) {
+TEST(MatMulNBits, LegacyShape_4b) {
   constexpr bool legacy_shape = true;
   TestMatMulNBitsTyped<float, 4, 2, 16, 16, 4, legacy_shape>();
   TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4, legacy_shape>();
@@ -493,7 +502,7 @@ TEST(MatMulNBits, LegacyShape) {
 #endif
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU)
 
 namespace {
 // Legacy test function.
@@ -529,10 +538,6 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     execution_providers.push_back(DefaultCudaExecutionProvider());
     RunTest<MLFloat16>(opts, std::move(execution_providers));
 #endif
-#ifdef USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
-    RunTest<MLFloat16>(opts, std::move(execution_providers));
-#endif
 #ifdef USE_DML
     execution_providers.push_back(DefaultDmlExecutionProvider());
     RunTest<MLFloat16>(opts, std::move(execution_providers));
@@ -542,10 +547,11 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     RunTest<MLFloat16>(opts, std::move(execution_providers));
 #endif
   } else {
-#ifdef USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
+#ifdef USE_WEBGPU
+    ConfigOptions config_options{};
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728").IsOK());
+    execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
 #endif
-
     RunTest<float>(opts, std::move(execution_providers));
   }
 }
@@ -598,6 +604,23 @@ TEST(MatMulNBits, Float16_Large) {
     }
   }
 }
+
+#ifdef USE_WEBGPU
+// Similar to Float16_Large but for float32 and crafted so that the input_b and output buffer size exceeds
+// maxStorageBufferBindingSize (128MB) so it must be split into 2 segments internally (~128.00006MB).
+//
+// input_b size(4-bits): N * K / 2 = 8388612 * 32 / 2 = 134217792 bytes > 134217728 bytes (128MB)
+// output size(float32): M * N * 4 = 4 * 8388612 * 4 = 134217792 bytes > 134217728 bytes (128MB)
+TEST(MatMulNBits, Float32_Large) {
+  // Keep tolerance similar to Float16_Large (float path typically equal or better numerically).
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+  constexpr auto block_size = 16;
+
+  RunTest<float>(4 /*M*/, 8388612 /*N*/, 32 /*K*/, block_size, has_zeropoint, zp_is_4bit, abs_error);
+}
+#endif
 
 #ifdef USE_CUDA
 TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
@@ -707,7 +730,7 @@ TEST(MatMulNBits, BFloat16_Int4_NoZeroPoint) {
 }
 #endif
 
-#endif  // defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#endif  // defined(USE_CUDA) || defined(USE_DML)
 }  // namespace test
 }  // namespace onnxruntime
 

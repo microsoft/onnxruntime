@@ -15,7 +15,7 @@
 
 #include "vaip/node.h"
 #include "vaip/node_arg.h"
-
+#include "./tensor_proto.h"
 namespace vaip {
 
 struct NodeEdgeT {
@@ -248,12 +248,6 @@ Node& graph_fuse(Graph& graph, const std::string& name,
   indexed_subgraph->SetMetaDef(std::move(meta_def));
 
   auto& fused_node = graph.FuseSubGraph(*indexed_subgraph, name);
-  auto function_body = fused_node.GetFunctionBody();
-  if (function_body) {
-    auto proto = function_body->Body().ToGraphProto();
-    *proto->mutable_name() = name;
-    fused_node.AddAttribute("body", *proto);
-  }
   for (auto&& o : fused_node.OutputDefs()) {
     graph.UpdateProducerNode(o->Name(), fused_node.Index());
   }
@@ -285,7 +279,7 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
   }
   for (auto& node : original_graph.Nodes()) {
     auto* node_proto = graph_proto->add_node();
-    node->ToProto(*node_proto, false);
+    node->ToProto(*node_proto, true);
     for (auto output : node->OutputDefs()) {
       if (output->Exists()) {
         auto* value_info = graph_proto->mutable_value_info()->Add();
@@ -309,7 +303,14 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
       cloned_tensor->add_dims(dim);
       size = size * dim;
     }
-    if (size >= external_data_threshold) {
+    auto ORT_MEM_ADDR_tag = process_ext_address(*original_tensor);
+    if (!ORT_MEM_ADDR_tag.empty()) {
+      cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+      auto external_data = cloned_tensor->mutable_external_data();
+      auto p = external_data->Add();
+      *p->mutable_key() = "location";
+      *p->mutable_value() = std::string("<") + graph_ptr;
+    } else if (size >= external_data_threshold) {
       cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
       auto external_data = cloned_tensor->mutable_external_data();
       auto p = external_data->Add();

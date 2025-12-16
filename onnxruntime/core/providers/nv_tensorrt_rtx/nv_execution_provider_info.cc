@@ -16,7 +16,9 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
                                                                      const ConfigOptions& session_options) {
   NvExecutionProviderInfo info{};
   void* user_compute_stream = nullptr;
+  void* user_aux_stream_array = nullptr;
   void* onnx_bytestream = nullptr;
+  void* external_data_bytestream = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -40,29 +42,33 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
                 user_compute_stream = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
+          .AddValueParser(
+              nv::provider_option_names::kUserAuxStreamArray,
+              [&user_aux_stream_array](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                user_aux_stream_array = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
           .AddAssignmentToReference(nv::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(nv::provider_option_names::kMaxSharedMemSize, info.max_shared_mem_size)
+          .AddAssignmentToReference(nv::provider_option_names::kLengthAuxStreamArray, info.auxiliary_streams)
           .AddAssignmentToReference(nv::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(nv::provider_option_names::kDetailedBuildLog, info.detailed_build_log)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMinShapes, info.profile_min_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMaxShapes, info.profile_max_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesOptShapes, info.profile_opt_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kCudaGraphEnable, info.cuda_graph_enable)
+          .AddAssignmentToReference(nv::provider_option_names::kUseExternalDataInitializer, info.use_external_data_initializer)
           .AddAssignmentToReference(nv::provider_option_names::kMultiProfileEnable, info.multi_profile_enable)
-          .AddValueParser(
-              nv::provider_option_names::kONNXBytestream,
-              [&onnx_bytestream](const std::string& value_str) -> Status {
-                size_t address;
-                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                onnx_bytestream = reinterpret_cast<void*>(address);
-                return Status::OK();
-              })
-          .AddAssignmentToReference(nv::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
+          .AddAssignmentToReference(nv::provider_option_names::kRuntimeCacheFile, info.runtime_cache_path)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
   info.has_user_compute_stream = (user_compute_stream != nullptr);
+  info.user_aux_stream_array = user_aux_stream_array;
   info.onnx_bytestream = onnx_bytestream;
+  info.external_data_bytestream = external_data_bytestream;
 
   // EP context settings
   // when EP context is enabled, default is to embed the engine in the context model
@@ -73,7 +79,8 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
     info.dump_ep_context_model = false;
   } else if (ep_context_enable == "1") {
     info.dump_ep_context_model = true;
-    info.weight_stripped_engine_enable = true;
+    // We want to reenable weightless engines as soon constant initializers are supported as inputs
+    info.weight_stripped_engine_enable = false;
   } else {
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEnable, " must 0 or 1");
   }
@@ -102,17 +109,18 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {nv::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {nv::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
+      {nv::provider_option_names::kUserAuxStreamArray, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_aux_stream_array))},
       {nv::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {nv::provider_option_names::kMaxSharedMemSize, MakeStringWithClassicLocale(info.max_shared_mem_size)},
+      {nv::provider_option_names::kLengthAuxStreamArray, MakeStringWithClassicLocale(info.auxiliary_streams)},
       {nv::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
       {nv::provider_option_names::kDetailedBuildLog, MakeStringWithClassicLocale(info.detailed_build_log)},
       {nv::provider_option_names::kProfilesMinShapes, MakeStringWithClassicLocale(info.profile_min_shapes)},
       {nv::provider_option_names::kProfilesMaxShapes, MakeStringWithClassicLocale(info.profile_max_shapes)},
       {nv::provider_option_names::kProfilesOptShapes, MakeStringWithClassicLocale(info.profile_opt_shapes)},
       {nv::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
-      {nv::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(info.onnx_bytestream)},
-      {nv::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
-  };
+      {nv::provider_option_names::kUseExternalDataInitializer, MakeStringWithClassicLocale(info.use_external_data_initializer)},
+      {nv::provider_option_names::kRuntimeCacheFile, MakeStringWithClassicLocale(info.runtime_cache_path)}};
   return options;
 }
 }  // namespace onnxruntime

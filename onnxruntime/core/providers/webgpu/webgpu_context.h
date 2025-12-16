@@ -9,9 +9,9 @@
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
-#include "core/framework/library_handles.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
@@ -22,7 +22,7 @@ class Tensor;
 
 namespace webgpu {
 class WebGpuContext;
-class ComputeContext;
+class ComputeContextBase;
 class ProgramBase;
 
 // Definition for CapturedCommandInfo in the webgpu namespace
@@ -31,6 +31,7 @@ struct CapturedCommandInfo {
   WGPUBindGroup bind_group;
   WGPUBindGroupLayout bind_group_layout;
   std::array<uint32_t, 3> dispatch_group;
+  WGPUBuffer indirect_buffer;  // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
 };
 
 struct WebGpuContextConfig {
@@ -40,6 +41,8 @@ struct WebGpuContextConfig {
   const void* dawn_proc_table;
   ValidationMode validation_mode;
   bool preserve_device;
+  uint64_t max_storage_buffer_binding_size;
+  int power_preference;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -132,10 +135,27 @@ class WebGpuContext final {
 
   void Flush(const webgpu::BufferManager& buffer_mgr);
 
+  /**
+   * Get the buffer manager.
+   */
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
+
+  /**
+   * Get the initializer buffer manager.
+   *
+   * This buffer manager is used for read-only buffers (e.g. initializers).
+   */
+  webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
+  }
+
+  //
+  // Get Split-K configuration.
+  //
+  const SplitKConfig& GetSplitKConfig() const {
+    return *split_k_config_;
   }
 
   void StartProfiling();
@@ -156,7 +176,7 @@ class WebGpuContext final {
   //
   Status PopErrorScope();
 
-  Status Run(ComputeContext& context, const ProgramBase& program);
+  Status Run(ComputeContextBase& context, const ProgramBase& program);
   void OnRunEnd();
 
  private:
@@ -166,14 +186,30 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device)
-      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device} {}
+  WebGpuContext(WGPUInstance instance,
+                WGPUDevice device,
+                webgpu::ValidationMode validation_mode,
+                bool preserve_device,
+                uint64_t max_storage_buffer_binding_size,
+                int power_preference = static_cast<int>(wgpu::PowerPreference::HighPerformance))
+      : instance_{instance},
+        device_{device},
+        validation_mode_{validation_mode},
+        query_type_{TimestampQueryType::None},
+        preserve_device_{preserve_device},
+        max_storage_buffer_binding_size_{max_storage_buffer_binding_size},
+        power_preference_{power_preference} {
+    ORT_ENFORCE(max_storage_buffer_binding_size_ == 0 || max_storage_buffer_binding_size_ >= 134217728,
+                "max_storage_buffer_binding_size must be 0 or at least 128MB");
+  }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                              const std::vector<WGPUBuffer>& bind_buffers,
+                             const std::vector<uint32_t>& bind_buffers_segments,
                              const ProgramArtifact& program_artifact,
-                             uint32_t x, uint32_t y, uint32_t z);
+                             uint32_t x, uint32_t y, uint32_t z,
+                             const Tensor* indirect_dispatch_tensor = nullptr);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
@@ -217,8 +253,6 @@ class WebGpuContext final {
 
   std::once_flag init_flag_;
 
-  LibraryHandles modules_;
-
   wgpu::Instance instance_;
   wgpu::Device device_;
 
@@ -236,10 +270,13 @@ class WebGpuContext final {
   wgpu::ComputePassEncoder current_compute_pass_encoder_;
 
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
+  std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
 
   uint32_t num_pending_dispatches_ = 0;
   const uint32_t max_num_pending_dispatches_ = 16;
+
+  std::unique_ptr<SplitKConfig> split_k_config_;
 
   // profiling
   TimestampQueryType query_type_;
@@ -254,6 +291,8 @@ class WebGpuContext final {
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
   bool preserve_device_;
+  uint64_t max_storage_buffer_binding_size_;
+  int power_preference_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 
   // External vector to store captured commands, owned by EP

@@ -2,15 +2,15 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
-#include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
-
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Transpose,
     kOnnxDomain,
@@ -100,7 +100,7 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
+Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
                               gsl::span<const size_t> permutations,
                               const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
@@ -131,25 +131,40 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
     new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
   }
 
-  uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(input_shape.Size());
   TransposeProgram program{permutations, use_shared};
 
-  if (use_shared) {
-    program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
-  }
   program
       .CacheHint(absl::StrJoin(permutations, "-"))
       .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
       .AddOutputs({{&output, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
-      .SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
-                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
-      .AddUniformVariables({
-          {static_cast<uint32_t>(output_size)},
-      });
+      .AddUniformVariables({{output_size}});
 
-  use_shared ? program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
-                                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
-             : program.SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  if (use_shared) {
+    program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
+    program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
+                                 static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)));
+  } else {
+    program.SetWorkgroupSize(64u);
+
+    uint32_t dispatch_x = CeilDiv(output_size, 64u);
+    uint32_t dispatch_y = 1;
+    uint32_t dispatch_z = 1;
+
+    // This temporary workaround addresses a significant performance bottleneck
+    // (~12x slower) for the input shape (1280, 2560, 3, 3) due to an issue with Intel's
+    // GPU drivers. We manually normalize the dispatch group size to restore
+    // performance.
+    //
+    // TODO: Revert this change once the driver issue is fixed.
+    if (context.AdapterInfo().vendor == std::string_view{"intel"} && rank == 4) {
+      uint32_t dispatch_size = dispatch_x;
+      dispatch_x = 4;
+      dispatch_y = 8;
+      dispatch_z = CeilDiv(dispatch_size, dispatch_x * dispatch_y);
+    }
+    program.SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z);
+  }
   return context.RunProgram(program);
 }
 

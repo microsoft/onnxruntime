@@ -232,7 +232,7 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
     so.AppendExecutionProvider("QNN", options);
 
     // Invalid! Adds CPU EP to session, but also disables CPU fallback.
-    Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+    so.AppendExecutionProvider_CPU(1);
 
     const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
 
@@ -285,7 +285,7 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
 
   so.AppendExecutionProvider("QNN", options);
 
-  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+  so.AppendExecutionProvider_CPU(1);
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_external_ini.onnx";
 
@@ -1042,10 +1042,11 @@ TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
 // cast_input -> Cast -> Q -> DQ ----
 //                                   |
 //             input2 -> Q -> DQ -> Add -> Q -> DQ -> output
-static GetTestModelFn BuildCastAddTestCase() {
-  return [](ModelTestBuilder& builder) {
+template <typename InputType, typename QuantType>
+static GetTestQDQModelFn<QuantType> BuildCastAddQDQTestCase() {
+  return [](ModelTestBuilder& builder, std::vector<QuantParams<QuantType>>& output_qparams) {
     // Creat Cast node int32 -> float32
-    NodeArg* cast_input = MakeTestInput(builder, TestInputDef<int32_t>({2, 3}, false, {0, 1, 0, 1, 0, 1}));
+    NodeArg* cast_input = MakeTestInput(builder, TestInputDef<InputType>({2, 3}, false, {0, 1, 0, 1, 0, 1}));
 
     auto* cast_output = builder.MakeIntermediate();
     Node& cast_node = builder.AddNode("Cast", {cast_input}, {cast_output});
@@ -1054,29 +1055,52 @@ static GetTestModelFn BuildCastAddTestCase() {
     // Create Add node
     std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
     gsl::span<float> data_range = gsl::make_span(data);
-    QuantParams<uint8_t> q_parameter = GetDataQuantParams<uint8_t>(data_range);
-    auto* add_input1_qdq = AddQDQNodePair<uint8_t>(builder, cast_output, q_parameter.scale, q_parameter.zero_point);
+    QuantParams<QuantType> q_parameter = GetDataQuantParams<QuantType>(data_range);
+    auto* add_input1_qdq = AddQDQNodePair<QuantType>(builder, cast_output, q_parameter.scale, q_parameter.zero_point);
 
     NodeArg* add_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, false, data));
-    auto* add_input2_qdq = AddQDQNodePair<uint8_t>(builder, add_input2, q_parameter.scale, q_parameter.zero_point);
+    auto* add_input2_qdq = AddQDQNodePair<QuantType>(builder, add_input2, q_parameter.scale, q_parameter.zero_point);
 
     auto* add_output = builder.MakeIntermediate();
 
     builder.AddNode("Add", {add_input1_qdq, add_input2_qdq}, {add_output});
 
     // add_output -> Q -> DQ -> output
-    AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add_output, q_parameter.scale, q_parameter.zero_point);
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, add_output, output_qparams[0].scale, output_qparams[0].zero_point);
   };
+}
+
+template <typename InputType>
+static GetTestModelFn BuildCastAddTestCase() {
+  return [](ModelTestBuilder& builder) {
+    // Creat Cast node int32 -> float32
+    NodeArg* cast_input = MakeTestInput(builder, TestInputDef<InputType>({2, 3}, false, {0, 1, 0, 1, 0, 1}));
+
+    auto* cast_output = builder.MakeIntermediate();
+    Node& cast_node = builder.AddNode("Cast", {cast_input}, {cast_output});
+    cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+
+    // Create Add node
+    NodeArg* add_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, false, {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f}));
+    auto* add_output = builder.MakeOutput();
+
+    builder.AddNode("Add", {cast_output, add_input2}, {add_output});
+  };
+}
+
+void VerifyFileExistsAndIsNonEmpty(const std::string& filepath) {
+  std::ifstream csv_file(filepath, std::ifstream::binary);
+  ASSERT_TRUE(csv_file.good());
+
+  csv_file.seekg(0, csv_file.end);
+  size_t buffer_size = static_cast<size_t>(csv_file.tellg());
+  EXPECT_NE(0, buffer_size);
 }
 
 TEST_F(QnnHTPBackendTests, ProfilingTest) {
   onnxruntime::ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";
   provider_options["profiling_level"] = "detailed";
@@ -1089,21 +1113,91 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
                   13,
                   ExpectedEPNodeAssignment::All,
                   0.008f);
+
+  VerifyFileExistsAndIsNonEmpty(provider_options["profiling_file_path"]);
+  std::remove(provider_options["profiling_file_path"].c_str());
+
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+  VerifyFileExistsAndIsNonEmpty("detailed_profile_qnn.log");
+  std::remove("detailed_profile_qnn.log");
+#endif
 }
 
-TEST_F(QnnHTPBackendTests, CastAddHTPAccuracyTest) {
-  ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
+TEST_F(QnnHTPBackendTests, OptraceTest) {
+  onnxruntime::ProviderOptions provider_options;
+
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["enable_htp_fp16_precision"] = "1";
+  provider_options["profiling_level"] = "optrace";
+  provider_options["profiling_file_path"] = "optrace_profile.csv";
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+
+  VerifyFileExistsAndIsNonEmpty(provider_options["profiling_file_path"]);
+  std::remove(provider_options["profiling_file_path"].c_str());
+
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+  VerifyFileExistsAndIsNonEmpty("optrace_profile_qnn.log");
+  std::remove("optrace_profile_qnn.log");
 #endif
+}
+
+TEST_F(QnnHTPBackendTests, CastAddQDQU8) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
-  RunQnnModelTest(BuildCastAddTestCase(),
-                  provider_options,
-                  13,  // opset
-                  ExpectedEPNodeAssignment::All);
+  TestQDQModelAccuracy<uint8_t>(BuildCastAddTestCase<uint8_t>(),
+                                BuildCastAddQDQTestCase<uint8_t, uint8_t>(),
+                                provider_options,
+                                21,
+                                ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, CastAddQDQU16) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  TestQDQModelAccuracy<uint16_t>(BuildCastAddTestCase<uint8_t>(),
+                                 BuildCastAddQDQTestCase<uint8_t, uint16_t>(),
+                                 provider_options,
+                                 21,
+                                 ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, CastAddQDQS8) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  TestQDQModelAccuracy<int8_t>(BuildCastAddTestCase<uint8_t>(),
+                               BuildCastAddQDQTestCase<uint8_t, int8_t>(),
+                               provider_options,
+                               21,
+                               ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, CastAddQDQS16) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  TestQDQModelAccuracy<int16_t>(BuildCastAddTestCase<uint8_t>(),
+                                BuildCastAddQDQTestCase<uint8_t, int16_t>(),
+                                provider_options,
+                                21,
+                                // QNN has not yet supported S16 Quantize/Dequantize
+                                ExpectedEPNodeAssignment::Some);
 }
 
 // Test float32 model with FP16 precision
@@ -1336,7 +1430,8 @@ TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
 }
 #endif  // BUILD_QNN_EP_STATIC_LIB
 
-#if !BUILD_QNN_EP_STATIC_LIB
+// TODO: Test will be re-enabled for Linux once QNN API issue is resolved
+#if !BUILD_QNN_EP_STATIC_LIB && !defined(__linux__)
 // Tests that loading and unloading of an EP library in the same process does not cause a segfault.
 TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
@@ -1365,7 +1460,7 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
     EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
   }
 }
-#endif  // !BUILD_QNN_EP_STATIC_LIB
+#endif  // !BUILD_QNN_EP_STATIC_LIB && !defined(__linux__)
 
 #if defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 // Tests autoEP feature to automatically select an EP that supports the NPU.
@@ -1378,6 +1473,20 @@ TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
   so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
+}
+
+TEST_F(QnnGPUBackendTests, AutoEp_PreferGpu) {
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
+                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+
+  Ort::SessionOptions so;
+  so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx";
   Ort::Session session(*ort_env, ort_model_path, so);
   EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
 

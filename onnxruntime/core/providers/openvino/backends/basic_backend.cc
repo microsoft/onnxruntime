@@ -59,7 +59,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
         };
         // If the EPContext node with OVIR Encapsulation, then create
         // an executable network from EP_CACHE_CONTEXT using read_model() & compile_model()
-        exe_network_ = OVCore::Get()->ImportEPCtxOVIREncapsulation(*model_stream,
+        exe_network_ = OVCore::Get()->ImportEPCtxOVIREncapsulation(*model_stream->stream_,
                                                                    hw_target,
                                                                    device_config,
                                                                    enable_causallm,
@@ -98,6 +98,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                !subgraph_context_.has_dynamic_input_shape &&
                                !session_context_.so_context_enable &&
                                session_context_.reshape.empty() &&
+                               session_context_.layout.empty() &&
                                !enable_causallm &&
                                !eligible_for_cpu_fallback &&
                                auto_unified_compile);
@@ -137,20 +138,13 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   }
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
-  auto metadata = shared_context_.shared_weights.metadata;
   if (session_context_.so_share_ep_contexts) {
-    initializer = [&metadata](OVInferRequestPtr ir_ptr) {
-      const auto input_count = ir_ptr->GetNumInputs();
-      for (auto i = 0u; i < input_count; i++) {
-        using Key = SharedContext::SharedWeights::Metadata::Key;
-        const auto tensor_key = Key{ir_ptr->GetInputTensorName(i)};
-        if (metadata.contains(tensor_key)) {
-          auto& value = metadata.at(tensor_key);
-          ir_ptr->SetTensor(tensor_key.name, value.tensor);
-        }
-      }
+    auto model_dir = session_context_.GetModelPath().parent_path();
+    initializer = [this, model_dir = std::move(model_dir)](OVInferRequestPtr ir_ptr) {
+      shared_context_.SetSharedWeightsOnInferRequest(ir_ptr->GetInfReq(), model_dir);
     };
   }
+
   infer_req_pool_ = std::make_unique<InferRequestPool>(exe_network_, num_infer_req, std::move(initializer));
   bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
 }
@@ -213,134 +207,41 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   if (!session_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = session_context_.load_config;
 
-    if ((session_context_.device_type.find("NPU") != std::string::npos) && session_context_.enable_causallm) {
-      if (target_config.find("NPU") != target_config.end()) {
-        auto npu_genai_config = target_config.at("NPU");
-        CausalLMConfig().ApplyConfig(npu_genai_config, device_config);
-      } else {
-        LOGS_DEFAULT(WARNING) << "ORT GenAI CausalLMConfig Configuration not found.";
-      }
-    }
+    // Extract device names from device string and apply their configs
+    // Examples: "GPU" -> ["GPU"], "AUTO:GPU.0,CPU" -> ["AUTO", "GPU", "CPU"]
+    auto apply_device_config = [&](std::string_view device) {
+      if (device.empty()) return;
 
-    if (session_context_.device_type.find("NPU") != std::string::npos) {
-      auto npuw_config = target_config.at("NPU");
+      // Remove device index: "GPU.0" -> "GPU"
+      auto base_device = device.substr(0, device.find('.'));
 
-      // Check if "NPU_USE_NPUW" exists and is set to "YES"
-      auto npu_use_npuw_it = npuw_config.find("NPU_USE_NPUW");
-      if (npu_use_npuw_it != npuw_config.end() &&
-          npu_use_npuw_it->second.is<std::string>() &&
-          npu_use_npuw_it->second.as<std::string>() == "YES") {
-        // Only add NPUW-related keys if NPU_USE_NPUW is "YES"
-        for (const auto& [key, value] : npuw_config) {
-          if (key.find("NPUW") != std::string::npos) {
-            if (!value.is<std::string>()) {
-              LOGS_DEFAULT(ERROR) << "Invalid value type for key: " << key;
-              continue;
-            }
-            device_config[key] = value;
-          }
-        }
-      } else {
-        // Check if there are any "NPUW" keys and log a warning
-        if (std::any_of(npuw_config.begin(), npuw_config.end(),
-                        [&](const auto& pair) { return pair.first.find("NPUW") != std::string::npos; })) {
-          LOGS_DEFAULT(WARNING) << "Skipping NPUW-related configurations as NPU_USE_NPUW is not set to 'YES'.";
-        }
-      }
-    }
-    auto find_device_type_mode = [&](const std::string& device_type) -> std::string {
-      std::string device_mode = "";
-      auto delimiter_pos = device_type.find(':');
-      if (delimiter_pos != std::string::npos) {
-        std::stringstream str_stream(device_type.substr(0, delimiter_pos));
-        std::getline(str_stream, device_mode, ',');
-      }
-      return device_mode;
-    };
-
-    // Parse device types like "AUTO:CPU,GPU" and extract individual devices
-    auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {
-      std::vector<std::string> devices;
-      auto delimiter_pos = device_type.find(':');
-      if (delimiter_pos != std::string::npos) {
-        std::stringstream str_stream(device_type.substr(delimiter_pos + 1));
-        std::string device;
-        while (std::getline(str_stream, device, ',')) {
-          devices.emplace_back(device);
-        }
-      } else {
-        devices.emplace_back(device_type);
-      }
-      return devices;
-    };
-
-    // Check if a property is supported and mutable
-    auto is_supported_and_mutable = [&](const std::string& key,
-                                        const std::vector<ov::PropertyName>& supported_config) -> bool {
-      auto it = std::find_if(supported_config.begin(), supported_config.end(), [&](const ov::PropertyName& property) {
-        return property == key && property.is_mutable();
-      });
-      return it != supported_config.end();
-    };
-
-    // Set properties if they are valid, else log a warning if the property is missing or immutable by skipping the same
-    auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
-                                     const std::vector<ov::PropertyName>& supported_properties) {
-      for (const auto& [key, value] : config_options) {
-        if ((key.find("NPUW") != std::string::npos) ||
-            ((device_config.find(key) != device_config.end()) && session_context_.enable_causallm)) {
-          continue;
-        }
-        if (is_supported_and_mutable(key, supported_properties)) {
-          OVCore::Get()->core.set_property(device, ov::AnyMap{{key, value}});
-        } else {
-          LOGS_DEFAULT(WARNING) << "WARNING: Property \"" << key
-                                << "\" is either unsupported in current OpenVINO version"
-                                << " or property is immutable for target device \""
-                                << device << "\". Skipping setting this property.";
+      if (auto config_it = target_config.find(std::string(base_device)); config_it != target_config.end()) {
+        for (const auto& [key, value] : config_it->second) {
+          device_config[key] = value;
         }
       }
     };
 
-    // Check if the device type is AUTO, HETERO, or MULTI
-    if (session_context_.device_type.find("AUTO") == 0 ||
-        session_context_.device_type.find("HETERO") == 0 ||
-        session_context_.device_type.find("MULTI") == 0) {
-      //// Parse to get the device mode (e.g., "AUTO:CPU,GPU" -> "AUTO")
-      std::unordered_set<std::string> supported_mode = {"AUTO", "HETERO", "MULTI"};
-      auto device_mode = find_device_type_mode(session_context_.device_type);
-      ORT_ENFORCE(supported_mode.find(device_mode) != supported_mode.end(), " Invalid device mode is passed : ", session_context_.device_type);
-      // Parse individual devices (e.g., "AUTO:CPU,GPU" -> ["CPU", "GPU"])
-      auto individual_devices = parse_individual_devices(session_context_.device_type);
-      if (!device_mode.empty()) individual_devices.emplace_back(device_mode);
-
-      // Set properties only for individual devices (e.g., "CPU", "GPU")
-      for (const std::string& device : individual_devices) {
-        if (target_config.count(device)) {
-          // Get supported properties for each individual device
-          auto device_properties = OVCore::Get()->core.get_property(device, ov::supported_properties);
-          // Set properties for the device
-          set_target_properties(device, target_config.at(device), device_properties);
+    // Parse device string by splitting on ':' and ',' delimiters
+    const auto& device_str = session_context_.device_type;
+    for (size_t start = 0, pos = 0; pos <= device_str.size(); ++pos) {
+      if (pos == device_str.size() || device_str[pos] == ':' || device_str[pos] == ',') {
+        if (pos > start) {
+          apply_device_config(std::string_view(device_str).substr(start, pos - start));
         }
-      }
-    } else {
-      if (target_config.count(session_context_.device_type)) {
-        auto supported_properties = OVCore::Get()->core.get_property(session_context_.device_type,
-                                                                     ov::supported_properties);
-        set_target_properties(session_context_.device_type,
-                              target_config.at(session_context_.device_type), supported_properties);
+        start = pos + 1;
       }
     }
   }
 }
 
-void BasicBackend::EnableCaching() {
+void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (subgraph_context_.is_ep_ctx_graph) return;
 
   if (!session_context_.cache_dir.empty() && !session_context_.so_context_enable) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    OVCore::Get()->SetCache(session_context_.cache_dir.string());
+    device_config.emplace(ov::cache_dir(session_context_.cache_dir.string()));
   }
 }
 
@@ -354,7 +255,7 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableStreams() {
+void BasicBackend::EnableStreams(ov::AnyMap& device_config) {
   // Return silently for NPU as it's currently treated as a read-only flag by the NPU plugin
   // and throws an exception for the same
   if (session_context_.device_type.find("NPU") != std::string::npos)
@@ -371,7 +272,7 @@ void BasicBackend::EnableStreams() {
     }
     // Do nothing
   } else {
-    OVCore::Get()->SetStreams(session_context_.device_type, session_context_.num_streams);
+    device_config.emplace(ov::num_streams(session_context_.num_streams));
   }
 }
 
@@ -385,13 +286,13 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching();
+  EnableCaching(device_config);
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
   // Enable streams; default=1 unless overridden by user configuration
-  EnableStreams();
+  EnableStreams(device_config);
 
   // Set the inference_num_threads property of the CPU
   SetNumThreads(device_config);

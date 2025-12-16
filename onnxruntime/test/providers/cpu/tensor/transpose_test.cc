@@ -771,11 +771,9 @@ TEST(TransposeOpTest, DoTransposeEltWise) {
 
 #if USE_CUDA
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_ROCM
-constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 static void TestTranspose(
     const std::vector<int64_t>& perm,
     const std::vector<int64_t>& x_dims,
@@ -867,7 +865,7 @@ TEST(TransposeOpTest, TransposeBigMLFloat16) {  // Exercises CanUse_cublasTransp
   const std::vector<int64_t> Y_dims{1, 1449, 1449, 3};
   TestTransposeMLFloat16(perm, X_dims, Y_dims);
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 }  // namespace test
 }  // namespace onnxruntime

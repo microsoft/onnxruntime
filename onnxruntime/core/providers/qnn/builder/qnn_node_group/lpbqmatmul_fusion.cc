@@ -127,7 +127,7 @@ Status ProcessInput0(QnnModelWrapper& qnn_model_wrapper,
   std::string actual_input_0_name = original_input_0_name;
 
   if (reshape_input_0) {
-    actual_input_0_name = original_input_0_name + "_ort_qnn_ep_reshape";
+    actual_input_0_name = utils::GetUniqueName(original_input_0_name, "_reshape");
     std::vector<uint32_t> shape_2d{1, input_0_info.shape[0]};
     QnnQuantParamsWrapper quant_param_2d = input_0_info.quant_param.Copy();
     ORT_RETURN_IF_ERROR(quant_param_2d.HandleUnsqueeze<uint32_t>(input_0_info.shape, shape_2d));
@@ -166,14 +166,15 @@ Status UnpackWeightTensorData(const QnnModelWrapper& qnn_model_wrapper,
                               const onnx::TensorProto* weight_tensor_proto,
                               std::vector<uint32_t>& weight_shape,
                               int64_t& input_channel_axis,
-                              std::vector<uint8_t>& unpacked_tensor) {
+                              std::vector<uint8_t>& unpacked_tensor,
+                              const logging::Logger& logger) {
   ORT_RETURN_IF_NOT(weight_tensor_proto != nullptr, "Weight tensor proto is null");
 
   if (input_channel_axis == 0) {
     // Transpose to keep output_channel at index 0;
     // The current logic that quantizes with LPBQ encodings requires out_channels at index 0
     input_channel_axis = weight_shape.size() - 1;
-    return utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, *weight_tensor_proto, unpacked_tensor);
+    return utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, *weight_tensor_proto, unpacked_tensor, logger);
   } else {
     // No transpose needed, just unpack the initializer data
     return qnn_model_wrapper.UnpackInitializerData(*weight_tensor_proto, unpacked_tensor);
@@ -273,7 +274,7 @@ Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint8_t> unpacked_tensor;
   const auto& weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
   // if input_channel_axis = 0, UnpackWeightTensorData will transpose and keep output_channel at 0
-  ORT_RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor));
+  ORT_RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor, logger));
 
   // Quantize weight tensor
   size_t weight_elements = unpacked_tensor.size() / sizeof(float);
@@ -329,7 +330,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
          w_ql_node_unit.OpType() == "QuantizeLinear" &&
          matmul_node_unit.OpType() == "MatMul");
 
-  const auto& node_name = utils::GetNodeName(matmul_node_unit);
+  const auto& node_name = utils::GetUniqueName(matmul_node_unit);
 
   std::vector<std::string> input_names;
 

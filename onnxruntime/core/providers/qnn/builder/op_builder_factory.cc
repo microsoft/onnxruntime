@@ -201,7 +201,27 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateRandomUniformLikeOpBuilder("RandomUniformLike", *this);
+  }
+
+  {
     CreateGatherNDOpBuilder("GatherND", *this);
+  }
+
+  {
+    CreateModOpBuilder("Mod", *this);
+  }
+
+  {
+    CreateThresholdedReluOpBuilder("ThresholdedRelu", *this);
+  }
+
+  {
+    CreateSTFTOpBuilder("STFT", *this);
+  }
+
+  {
+    CreateInverseOpBuilder("Inverse", *this);
   }
 }
 

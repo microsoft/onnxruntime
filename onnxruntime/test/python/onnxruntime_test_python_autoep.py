@@ -66,7 +66,7 @@ class TestAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
@@ -98,7 +98,7 @@ class TestAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
@@ -146,7 +146,7 @@ class TestAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
@@ -226,6 +226,16 @@ class TestAutoEP(AutoEpTestCase):
         hw_metadata = hw_device.metadata
         self.assertGreater(len(hw_metadata), 0)  # Should have at least SPDRP_HARDWAREID on Windows
 
+        test_mem_info = test_ep_device.memory_info(onnxrt.OrtDeviceMemoryType.DEFAULT)
+        self.assertIsNotNone(test_mem_info)
+        del test_mem_info
+
+        test_sync_stream = test_ep_device.create_sync_stream()
+        self.assertIsNotNone(test_sync_stream)
+        stream_handle = test_sync_stream.get_handle()
+        self.assertIsNotNone(stream_handle)
+        del test_sync_stream
+
         # Add EP plugin's OrtEpDevice to the SessionOptions.
         sess_options = onnxrt.SessionOptions()
         sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
@@ -239,7 +249,7 @@ class TestAutoEP(AutoEpTestCase):
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
@@ -272,13 +282,62 @@ class TestAutoEP(AutoEpTestCase):
         gpu_value = onnxrt.OrtValue.ortvalue_from_numpy(data, "gpu", 0, 0xBE57)
         # copy back to CPU
         cpu_data = gpu_value.numpy()
-        np.testing.assert_equal(data, cpu_data)
+        np.testing.assert_equal(cpu_data, data)
 
         gpu_value.update_inplace(data2)  # update the fake GPU data
         cpu_data_2 = gpu_value.numpy()  # copy back to CPU
-        np.testing.assert_equal(data2, cpu_data_2)
+        np.testing.assert_equal(cpu_data_2, data2)
 
         gpu_value = None  # Delete OrtValue before unregistering library as the allocator will be destroyed.
+
+        self.unregister_execution_provider_library(ep_name)
+
+    def test_copy_tensors(self):
+        """
+        Test global api copy_tensors between OrtValue objects
+        using EP plug-in data transfer
+        """
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because device discovery is only supported on Windows")
+
+        ep_lib_path = "example_plugin_ep.dll"
+        try:
+            ep_lib_path = get_name("example_plugin_ep.dll")
+        except FileNotFoundError:
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        ep_name = "example_ep"
+        self.register_execution_provider_library(ep_name, os.path.realpath(ep_lib_path))
+
+        # Generate 2 numpy arrays
+        a = np.random.rand(3, 2).astype(np.float32)
+        b = np.random.rand(3, 2).astype(np.float32)
+
+        # Create OrtValue from numpy arrays on EP device
+        # the example EP pretends to use GPU memory, so we place it there
+        a_device = onnxrt.OrtValue.ortvalue_from_numpy(a, "gpu", 0, 0xBE57)
+        b_device = onnxrt.OrtValue.ortvalue_from_numpy(b, "gpu", 0, 0xBE57)
+
+        # Create destination ort values with the same shape on CPU
+        a_cpu_copy = onnxrt.OrtValue.ortvalue_from_shape_and_type(a.shape, a.dtype)
+        b_cpu_copy = onnxrt.OrtValue.ortvalue_from_shape_and_type(b.shape, b.dtype)
+
+        # source list
+        src_list = [a_device, b_device]
+        dst_list = [a_cpu_copy, b_cpu_copy]
+        # Passing None for stream as we copy between CPU
+        # Test None because it is allowed
+        onnxrt.copy_tensors(src_list, dst_list, None)
+
+        # Release the OrtValue on the EP device
+        # before the EP library is unregistered
+        del src_list
+        del a_device
+        del b_device
+
+        # Verify the contents
+        np.testing.assert_array_equal(a_cpu_copy.numpy(), a)
+        np.testing.assert_array_equal(b_cpu_copy.numpy(), b)
 
         self.unregister_execution_provider_library(ep_name)
 

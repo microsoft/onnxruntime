@@ -19,14 +19,7 @@ namespace contrib {
 namespace webgpu {
 
 namespace {
-
 constexpr unsigned int kMinMForTileOptimization = 4;
-
-template <typename T>
-inline T ceil_div(T numerator, T denominator) {
-  return (numerator + denominator - 1) / denominator;
-}
-
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -42,13 +35,16 @@ ONNX_OPERATOR_KERNEL_EX(
     MatMulNBits);
 
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("scales", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& b = shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& scales = shader.AddInput("scales", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   }
-  shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  if (has_bias_) {
+    shader.AddInput("bias", ShaderUsage::UseUniform);
+  }
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
   ORT_ENFORCE(tile_m_ == workgroup_size / 8, "tile_m must be workgroup_size / 8.");
@@ -56,160 +52,58 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   ORT_ENFORCE(nbits_ == 4 || nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits.");
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_wide_tile.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
                              WGSL_TEMPLATE_PARAMETER(nbits, nbits_),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
-                             WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_));
+                             WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
+                             WGSL_TEMPLATE_VARIABLE(a, a),
+                             WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales, scales));
 }
 
 // Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
 Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
   const auto& b = shader.AddInput("input_b");
-  shader.AddInput("scales_b");
+  const auto& scales_b = shader.AddInput("scales_b");
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+  if (has_bias_) {
+    shader.AddInput("bias", ShaderUsage::UseUniform);
+  }
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+
   const uint32_t components_a = a.NumComponents();
-  const uint32_t components_b = b.NumComponents() / 4;  // b is stored as uint32 which includs 4 uint8.
+  const uint32_t components_b = b.NumComponents() / 4;  // b is stored as uint32 which includes 4 uint8.
   constexpr uint32_t tile_size_k_vec = 16;
-  uint32_t elements_in_value_b = components_b * (32 / nbits_);
-  uint32_t tile_k_size = tile_size_k_vec * elements_in_value_b;
-  const uint32_t a_length_per_tile = tile_k_size / components_a;
+  const uint32_t elements_in_value_b = components_b * (32 / nbits_);
+  const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;
+  const uint32_t a_length_per_tile = tile_size_k / components_a;
+  uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
 
-  shader.AdditionalImplementation() << "const a_length_per_tile = " << a_length_per_tile << "u;\n"
-                                    << "const tile_size_k_vec = " << tile_size_k_vec << ";\n"
-                                    << "const tile_size_k = " << tile_k_size << "u;\n"
-                                    << "const tile_size = " << tile_size_ << "u;\n"
-                                    << "const elements_in_value_b = " << elements_in_value_b << "u;\n"
-                                    << "const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
-                                    << "const component_a = " << components_a << "u;\n"
-                                    << "const component_b = " << components_b << "u;\n";
-  shader.AdditionalImplementation() << R"ADDNL_FN(
-  // Shared memory
-  var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
-  var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
-  fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
-  {
-    let k_offset = kidx / component_a + col;
-    if (batch < uniforms.batch_count && k_offset < uniforms.K_of_a) {
-      tile_A[col] = input_a[batch * uniforms.M * uniforms.K_of_a + a_global * uniforms.K_of_a + k_offset];
-    } else {
-      tile_A[col] = input_a_value_t(0);
-    }
-  }
-)ADDNL_FN"
-                                    << GenerateZeroPointReadingCode(nbits_, has_zero_points_);
-
-  shader.MainFunctionBody() << R"MAIN_FN(
-  let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
-  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.M;
-  let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
-
-  let idx = local_idx % tile_size_k_vec;
-  let idy = local_idx / tile_size_k_vec;
-
-  for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k)
-  {
-    for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
-    {
-      loadSHMA(batch, a_global, kidx, id);
-    }
-    workgroupBarrier();
-
-    for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count)
-    {
-      var b_global = b_global_base + local_row_offset + idy;
-      var k_offset = kidx / elements_in_value_b + idx;
-      if (b_global < uniforms.N && k_offset < uniforms.K_of_b)
-      {
-        let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
-        let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
-        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
-        var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
-)MAIN_FN";
-
-  if (nbits_ == 4) {
-    shader.MainFunctionBody() << R"MAIN_FN(
-        var sum = output_element_t(0);
-        var a_offset = idx * (8 / component_a) * component_b;
-        for (var i = 0u; i < component_b; i++) {
-          let b_value_lower = vec4<output_element_t>(unpack4xU8(b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero);
-          let b_value_upper = vec4<output_element_t>(unpack4xU8((b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(zero);
-          let b0 = vec4<output_element_t>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]) * scale_b;
-          let b1 = vec4<output_element_t>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]) * scale_b;
-)MAIN_FN";
-    switch (components_a) {
-      case 1:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]), b0) +"
-                                     " dot(vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5], tile_A[a_offset + 6], tile_A[a_offset + 7]), b1);\n"
-                                     "          a_offset += 8;\n";
-        break;
-      case 2:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b0) +"
-                                     "dot(vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]), b1);\n"
-                                     "          a_offset += 4;\n";
-        break;
-      case 4:
-        shader.MainFunctionBody() << "          sum += dot(tile_A[a_offset], b0) + dot(tile_A[a_offset + 1], b1);\n"
-                                     "          a_offset += 2;\n";
-        break;
-      default:
-        break;
-    }
-    shader.MainFunctionBody() << "        }\n";
-  } else {
-    shader.MainFunctionBody() << R"MAIN_FN(
-        var sum = output_element_t(0);
-        var a_offset = idx * (4 / component_a) * component_b;
-        for (var i = 0u; i < component_b; i++) {
-          let b_value = (vec4<output_element_t>(unpack4xU8(b_value[i])) - vec4<output_element_t>(zero)) * scale_b;
-)MAIN_FN";
-    switch (components_a) {
-      case 1:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]), b_value);\n"
-                                     "          a_offset += 4;\n";
-        break;
-      case 2:
-        shader.MainFunctionBody() << "          sum += dot(vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]), b_value);\n"
-                                     "          a_offset += 2;\n";
-        break;
-      case 4:
-        shader.MainFunctionBody() << "          sum += dot(tile_A[a_offset], b_value);\n"
-                                     "          a_offset += 1;\n";
-        break;
-      default:
-        break;
-    }
-    shader.MainFunctionBody() << "        }\n";
-  }
-
-  shader.MainFunctionBody() << R"MAIN_FN(
-        inter_results[local_row_offset + idy][idx] += sum;
-      }
-    }
-    workgroupBarrier();
-  }
-
-  if (batch >= uniforms.batch_count) {
-    return;
-  }
-
-  if (local_idx < tile_size) {
-    var output_value = output_element_t(0);
-    for (var b = 0u; b < tile_size_k_vec; b++) {
-      output_value += inter_results[local_idx][b];
-    }
-    let b_global =  b_global_base + local_idx;
-    let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
-    if (b_global < uniforms.N) {
-      output[output_idx] = output_value;
-    }
-  }
-)MAIN_FN";
-
-  return Status::OK();
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                             WGSL_TEMPLATE_PARAMETER(component_a, components_a),
+                             WGSL_TEMPLATE_PARAMETER(component_b, components_b),
+                             WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
+                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
+                             WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_),
+                             WGSL_TEMPLATE_PARAMETER(n_bits, nbits_),
+                             WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
+                             WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
+                             WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
+                             WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+                             WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
+                             WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                             WGSL_TEMPLATE_VARIABLE(a, a),
+                             WGSL_TEMPLATE_VARIABLE(b, b),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
 
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -221,31 +115,92 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const Tensor* bias = context.Input(5);
 
   ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
-  ORT_ENFORCE(bias == nullptr, "bias as input is not supported yet.");
 
   const bool has_zero_points = zero_points != nullptr;
+  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
   if (has_zero_points) {
     ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+    ORT_ENFORCE(nbits != 2, "Currently, zero points are not supported for Q2 quantization.");
   }
 
   MatMulComputeHelper helper;
   TensorShape b_shape({N_, K_});
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
-  auto* y = context.Output(0, helper.OutputShape());
+  auto output_shape = helper.OutputShape();
+  Tensor* y = context.Output(0, output_shape);
   const uint32_t data_size = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
+  }
+
+  return ApplyMatMulNBits(a, b, scales, zero_points, bias, K_, N_, block_size_, accuracy_level_, bits_, context, y, 0);
+}
+
+/**
+ * @brief Applies a quantized matrix multiplication using N-bit precision.
+ *
+ * This function computes the matrix multiplication of the quantized tensor inputs with multiple
+ * optional optimizations tailored to the GPU backend. Depending on the provided parameters and GPU
+ * capabilities, it selects one of several optimized kernels (such as subgroup matrix multiplication,
+ * DP4A, wide tile programs, or the default matmul program) to perform the computation.
+ * It can be called by the MatMulNBits operator or directly for custom scenarios like QMoe.
+ *
+ * @param a              Pointer to the left-hand side (activation) tensor.
+ * @param b              Pointer to the quantized weight tensor.
+ *                       b has the shape (N, k_blocks, blob_size) or (weight_batch, N, k_blocks, blob_size)
+ * @param scales         Pointer to the tensor containing scaling factors for quantization.
+ *                       scales has the shape (N) or (weight_batch, N)
+ * @param zero_points    Pointer to the zero-point tensor for quantization; must be of type uint8 if provided.
+ *                       weight_index > 0 is only supported when zero_points is nullptr.
+ * @param bias           Pointer to the bias tensor; optional.
+ * @param K_op           The K dimension of the operation (number of columns in 'a' and rows in 'b' before quantization).
+ * @param N_op           The N dimension of the operation (number of columns in 'b').
+ * @param block_size_op  The block size used for quantization partitioning.
+ * @param accuracy_level Accuracy level influencing the choice of optimized kernel.
+ * @param nbits          Number of bits used for quantization.
+ * @param weight_index   Index of the weight matrix in case of stacked weights; defaults to 0.
+ * @param context        Compute context for WebGPU, providing device-specific information and execution facilities.
+ * @param y              Pointer to the output tensor that will hold the result.
+ *
+ * @return Status indicating whether the operation was successful or if an error occurred.
+ *
+ * @note Special optimizations are considered:
+ *       - Subgroup matrix multiplication for eligible Apple/Intel GPUs.
+ *       - DP4A-based multiplication on FP32-only GPUs for specific dimensions and conditions.
+ *       - A wide tile program is used when block size, component count, and other criteria are met.
+ *       - Otherwise, a default matmul program is used.
+ */
+Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, const Tensor* zero_points, const Tensor* bias,
+                        int64_t K_op,
+                        int64_t N_op,
+                        int64_t block_size_op,
+                        int64_t accuracy_level,
+                        int64_t nbits,
+                        onnxruntime::webgpu::ComputeContext& context,
+                        Tensor* y,
+                        const uint32_t weight_index) {
+  TensorShape b_shape({N_op, K_op});
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
+
+  const bool has_bias = bias != nullptr;
+  const bool has_weight_idx = weight_index > 0;
+  const bool has_zero_points = zero_points != nullptr;
+  if (has_zero_points) {
+    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
   }
 
   const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
   const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
   const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
-  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
-  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
+  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
 
-  const uint32_t n_blocks_per_col = (K + block_size - 1) / block_size;
-  const uint32_t blob_size = (block_size / 8) * nbits;
+  // Special case matrix used by bitnets where there is a single scale for the entire
+  const bool single_scale_weights = (block_size == K * N);
+  const uint32_t block_size_per_col = single_scale_weights ? K : block_size;
+  const uint32_t n_blocks_per_col = (K + block_size_per_col - 1) / block_size_per_col;
+  const uint32_t blob_size = (block_size_per_col / 8) * static_cast<uint32_t>(nbits);
   const uint32_t blob_size_in_words = blob_size / 4;
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
@@ -258,16 +213,15 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   int32_t subgroup_matrix_config_index = -1;
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   if (M >= kMinMForTileOptimization && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
-      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, subgroup_matrix_config_index)) {
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, M, N, K, nbits, zero_blocks_per_col, subgroup_matrix_config_index, context, y);
+      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, subgroup_matrix_config_index)) {
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index);
   }
 #endif
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
-  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() ||
-       context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
-      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, nbits, context, y);
+  if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
+      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, components_a)) {
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index);
   }
 
   // WideTileProgram
@@ -275,7 +229,9 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const bool use_wide_tile_program = block_size == 32 &&
                                      components_a == 4 &&
                                      components_b == 4 &&
+                                     nbits != 2 &&
                                      M >= kMinMForTileOptimization;
+
   if (use_wide_tile_program) {
     // Enforce output components to 1.
     components = 1;
@@ -283,10 +239,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
-    const uint32_t num_N_tile = ceil_div(N, tile_n);
-    const uint32_t num_M_tile = ceil_div(M, tile_m);
+    const uint32_t num_N_tile = CeilDiv(N, tile_n);
+    const uint32_t num_M_tile = CeilDiv(M, tile_m);
 
-    MatMulNBitsWideTileProgram program{has_zero_points, tile_m, tile_n, nbits};
+    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, tile_m, tile_n, static_cast<uint32_t>(nbits)};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
@@ -305,8 +261,11 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     if (has_zero_points) {
       program.AddInput({zero_points,
                         ProgramTensorMetadataDependency::TypeAndRank,
-                        {ceil_div(zero_points->Shape().Size(), static_cast<int64_t>(4))},
+                        {CeilDiv(zero_points->Shape().Size(), static_cast<int64_t>(4))},
                         4});
+    }
+    if (has_bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::None});
     }
     program.AddOutput({y,
                        ProgramTensorMetadataDependency::TypeAndRank,
@@ -319,8 +278,9 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                                  {n_blocks_per_col},
                                  {zero_blocks_per_col},
                                  {num_N_tile},
-                                 {num_M_tile}});
-    program.CacheHint(nbits, has_zero_points);
+                                 {num_M_tile},
+                                 {weight_index}});
+    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx);
 
     return context.RunProgram(program);
   }
@@ -330,7 +290,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
-  MatMulNBitsProgram program{tile_size, nbits, has_zero_points};
+  uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
+  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, single_scale_weights};
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
   program
@@ -338,10 +299,23 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
                   {scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / components_b_with_u32}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}, {num_N_tile}, {batch_count}})
-      .CacheHint(nbits, has_zero_points);
+      .AddUniformVariables({{M},
+                            {N},
+                            {K},
+                            {K / components_a},
+                            {K_of_b},
+                            {block_size},
+                            {n_blocks_per_col},
+                            {zero_blocks_per_col},
+                            {num_N_tile},
+                            {batch_count},
+                            {weight_index}})
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+  }
+  if (has_bias) {
+    program.AddInput({bias, ProgramTensorMetadataDependency::None});
   }
   return context.RunProgram(program);
 }

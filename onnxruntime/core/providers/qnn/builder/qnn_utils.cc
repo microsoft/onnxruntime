@@ -790,13 +790,33 @@ Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::Type
   return Status::OK();
 }
 
-const std::string& GetNodeName(const NodeUnit& node_unit) {
-  const std::string& node_name = node_unit.Name();
-  if (node_name.empty()) {
-    return node_unit.Outputs()[0].node_arg.Name();
+std::string GetUniqueName(const std::string& base, std::string_view suffix) {
+  std::string name = base;
+  if (!suffix.empty()) {
+    name += suffix;
   }
+  {
+    static std::unordered_map<std::string, int> counter;
+    static std::mutex counter_mutex;
+    std::lock_guard<std::mutex> lock(counter_mutex);
 
-  return node_name;
+    int& count = counter[name];
+    if (count++ > 0) {
+      return name + "_" + std::to_string(count);
+    }
+  }
+  return name;
+}
+
+std::string GetUniqueName(const NodeUnit& node_unit, std::string_view suffix) {
+  // Preserve node name when exist. Otherwise, use op type with index
+  std::string base;
+  if (!node_unit.Name().empty()) {
+    base = node_unit.Name();
+  } else {
+    base = node_unit.OpType() + std::to_string(node_unit.Index());
+  }
+  return GetUniqueName(base, suffix);
 }
 
 bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized) {
@@ -1235,10 +1255,13 @@ static Status TransposeDataRank5(const TensorShape& input_shape,
   return Status::OK();
 }
 
+// Use skip_output_data_copy flag when performing only QNN op validation and no real tensor data is required.
 Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
                              std::vector<uint32_t>& data_shape,
                              const onnx::TensorProto& initializer,
-                             std::vector<uint8_t>& transposed_data) {
+                             std::vector<uint8_t>& transposed_data,
+                             const logging::Logger& logger,
+                             bool skip_output_data_copy) {
   ORT_RETURN_IF_NOT(data_shape.size() == 2, "Expected shape of rank 2");
 
   std::array<size_t, 2> perm = {1, 0};
@@ -1251,12 +1274,23 @@ Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
 
   std::vector<uint8_t> input_buffer;
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
-  transposed_data.resize(input_buffer.size());
+  transposed_data.resize(input_buffer.size(), 0);
 
-  for (size_t row = 0; row < data_shape[0]; row++) {
-    for (size_t col = 0; col < data_shape[1]; col++) {
-      const size_t src_elem_index = (row * data_shape[1] + col);
-      const size_t dst_elem_index = (col * output_shape[1] + row);
+  if (skip_output_data_copy) {  // Only shape & dtype validation are needed, no need for real tensor
+    LOGS(logger, VERBOSE) << "Only shape and dtype validation are required, so we can use dummy tensor to avoid heavy memcpy.";
+    data_shape = std::move(output_shape);  // Update parameter with final transposed shape
+    return Status::OK();
+  }
+
+  // Actual tensor content is required.
+  const size_t rows = data_shape[0];
+  const size_t cols = data_shape[1];
+  const size_t output_cols = output_shape[1];
+
+  for (size_t row = 0; row < rows; row++) {
+    for (size_t col = 0; col < cols; col++) {
+      const size_t src_elem_index = (row * cols + col);
+      const size_t dst_elem_index = (col * output_cols + row);
       const size_t src_byte_index = src_elem_index * elem_byte_size;
       const size_t dst_byte_index = dst_elem_index * elem_byte_size;
       assert(src_byte_index < input_buffer.size());
@@ -1380,10 +1414,9 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                                                 QnnQuantParamsWrapper(scale, offset),
                                                 std::move(output_shape_copy));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(convert_output_tensorwrapper)), "Failed to add tensor.");
-
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(convert_output_name,
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(convert_output_name, QNN_OP_CONVERT),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    "Convert",
+                                                    QNN_OP_CONVERT,
                                                     {convert_input_name},
                                                     {convert_output_name},
                                                     {},
@@ -1405,6 +1438,11 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
   perm[rank - 1] = axis;
 
   return Status::OK();
+}
+
+uint64_t GetTimeStampInUs() {
+  auto timestamp = std::chrono::steady_clock::now().time_since_epoch();
+  return std::chrono::duration_cast<std::chrono::microseconds>(timestamp).count();
 }
 
 }  // namespace utils

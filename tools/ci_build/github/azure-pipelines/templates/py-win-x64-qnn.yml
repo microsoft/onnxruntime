@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.36.1.250708
+  default: 2.39.0.250926
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -33,14 +33,14 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
   strategy:
     matrix:
-      Python310_x64:
-        PythonVersion: '3.10'
       Python311_x64:
         PythonVersion: '3.11'
       Python312_x64:
         PythonVersion: '3.12'
       Python313_x64:
         PythonVersion: '3.13'
+      Python314_x64:
+        PythonVersion: '3.14'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -49,21 +49,13 @@ jobs:
         clean: true
         submodules: recursive
 
-      - template: telemetry-steps.yml
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: $(PythonVersion)
-          addToPath: true
-          architecture: 'x64'
-
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
+      - template: setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: $(PythonVersion)
 
       - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
-      
+
       - template: set-nightly-build-option-variable-step.yml
 
       - template: jobs/download_win_qnn_sdk.yml

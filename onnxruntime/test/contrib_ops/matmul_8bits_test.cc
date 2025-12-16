@@ -16,16 +16,18 @@
 #include "core/session/inference_session.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
 
-#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
+#if ((defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)) &&    \
+     !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || \
+    defined(USE_CUDA) || defined(USE_WEBGPU)
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -247,7 +249,7 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   }
 
 // CUDA/WEBGPU does not support bias for MatMulNBits
-#if !defined(USE_CUDA) && !defined(USE_WEBGPU)
+#if !defined(USE_CUDA)
   {
     TestOptions8Bits opts = base_opts;
     opts.has_zero_point = false;
@@ -275,6 +277,7 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   GTEST_SKIP() << "Skipping test on Android x86_64 (emulator).";
 #endif
   TestMatMul8BitsTyped<float, 1, 1, 16, 16, 4>();
+  TestMatMul8BitsTyped<float, 1, 8, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 2, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 32, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 4, 32, 16, 4>();

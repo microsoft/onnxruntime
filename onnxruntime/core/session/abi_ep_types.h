@@ -10,6 +10,7 @@
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/status.h"
+#include "core/framework/execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
@@ -39,7 +40,8 @@ struct OrtEpGraphSupportInfo {
     OrtNodeFusionOptions fusion_options = {};
   };
 
-  explicit OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph) : ort_graph(graph) {}
+  OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph,
+                        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup);
 
   onnxruntime::Status AddNodesToFuse(gsl::span<const OrtNode* const> nodes,
                                      const OrtNodeFusionOptions* node_fusion_options = nullptr);
@@ -47,4 +49,5 @@ struct OrtEpGraphSupportInfo {
 
   const onnxruntime::EpGraph& ort_graph;
   std::vector<NodeGrouping> node_groupings;
+  const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup;
 };

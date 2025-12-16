@@ -10,21 +10,15 @@
 
 void run_ort_trt2() {
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
-  const auto& api = Ort::GetApi();
-  OrtTensorRTProviderOptionsV2* tensorrt_options;
 
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
-
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 
   const char* model_path = "squeezenet.onnx";
 
-  Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
-      tensorrt_options, api.ReleaseTensorRTProviderOptions);
-  Ort::ThrowOnError(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options),
-                                                                          rel_trt_options.get()));
+  Ort::TensorRTProviderOptions tensorrt_options;
+  session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
 
   std::cout << "Running ORT TRT EP with default provider options" << std::endl;
 
@@ -127,7 +121,7 @@ void run_ort_trt2() {
 void run_ort_trt() {
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
   const auto& api = Ort::GetApi();
-  OrtTensorRTProviderOptionsV2* tensorrt_options;
+  Ort::TensorRTProviderOptions tensorrt_options;
 
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
@@ -136,11 +130,7 @@ void run_ort_trt() {
 
   const char* model_path = "/data/ep-perf-models/onnx-zoo-models/squeezenet1.0-7/squeezenet/model.onnx";
 
-  Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
-  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
-      tensorrt_options, api.ReleaseTensorRTProviderOptions);
-  Ort::ThrowOnError(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options),
-                                                                          rel_trt_options.get()));
+  session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
 
   std::cout << "Running ORT TRT EP with default provider options" << std::endl;
 

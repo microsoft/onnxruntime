@@ -17,7 +17,7 @@ jobs:
     name: Optional Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:
@@ -27,7 +27,7 @@ jobs:
           level: info
           filter_mode: diff_context
       - name: shellcheck # Static check shell scripts
-        uses: reviewdog/action-shellcheck@v1.30.0
+        uses: reviewdog/action-shellcheck@v1.31.0
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
@@ -37,14 +37,18 @@ jobs:
   lint-python-format:
     # Required workflow
     name: Python format
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=lint-python-format-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     permissions:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           # Use the version configured in target-version of [tool.black] section in pyproject.toml.
           python-version: "3.10"
@@ -87,7 +91,7 @@ jobs:
     name: Optional Lint C++
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v6
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -114,10 +118,14 @@ jobs:
 
   lint-js:
     name: Lint JavaScript
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=lint-js-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - uses: reviewdog/action-eslint@v1

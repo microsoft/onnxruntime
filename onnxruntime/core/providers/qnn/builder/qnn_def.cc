@@ -574,6 +574,10 @@ bool QnnOpConfigWrapper::CreateQnnGraphOp(const QNN_INTERFACE_VER_TYPE& qnn_inte
   return true;
 }
 
+bool IsIrBackend(QnnBackendType backend_type) {
+  return backend_type == QnnBackendType::SERIALIZER;
+}
+
 bool IsNpuBackend(QnnBackendType backend_type) {
   return backend_type == QnnBackendType::HTP || backend_type == QnnBackendType::DSP;
 }

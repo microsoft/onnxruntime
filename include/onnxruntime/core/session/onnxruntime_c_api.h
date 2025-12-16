@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 23
+#define ORT_API_VERSION 24
 
 #ifdef __cplusplus
 extern "C" {
@@ -87,7 +87,7 @@ extern "C" {
 #else
 #define ORT_EXPORT
 #endif
-#define ORT_API_CALL _stdcall
+#define ORT_API_CALL __stdcall
 #define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
@@ -206,7 +206,9 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
   // Int4 types were introduced in ONNX 1.16. See https://onnx.ai/onnx/technical/int4.html
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,  // maps to a pair of packed uint4 values (size == 1 byte)
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4    // maps to a pair of packed int4 values (size == 1 byte)
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4,   // maps to a pair of packed int4 values (size == 1 byte)
+  // Float4 types were introduced in ONNX 1.18. See https://onnx.ai/onnx/technical/float4.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1,  // maps to a pair of packed float4 values (size == 1 byte)
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -533,6 +535,57 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
                                                       _Out_ size_t* num_selected,
                                                       _In_ void* state);
 
+/** \brief Function called by ORT to write a buffer to a custom destination (e.g., file, stream, etc.).
+ *
+ * \param state Opaque pointer holding the user's state.
+ * \param buffer The buffer to write.
+ * \param buffer_num_bytes The size of the buffer in bytes.
+ *
+ * \return OrtStatus* Write status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
+                                                     _In_ const void* buffer,
+                                                     _In_ size_t buffer_num_bytes);
+
+/** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
+ * written to an external file or stored within the model. ORT calls this function for every initializer when
+ * generating a model.
+ *
+ * If the function implementation sets the `new_external_info` output parameter to NULL, ORT stores the initializer data
+ * within the generated model.
+ *
+ * Otherwise, if the function implementation sets `new_external_info` to a valid OrtExternalInitializerInfo instance,
+ * ORT assumes that this function stores the initializer data in a file. In this case, ORT configures the model's
+ * initializer to point to the location specified by the `new_external_info` output parameter.
+ *
+ * \param[in] state Opaque pointer holding the user's state.
+ * \param[in] initializer_name The initializer's name as a null-terminated string.
+ * \param[in] initializer_value OrtValue containing the initializer's data, type, and shape.
+ * \param[in] external_info If the initializer is originally stored in an external file, `external_info` contains
+ *                          the file path, file offset, and the data's byte size within the file. Otherwise,
+ *                          `external_info` is NULL if the initializer is not originally stored in a file.
+ * \param[out] new_external_info Output parameter set to a new OrtExternalInitializerInfo instance indicating the
+ *                               location where the function implementation stored the initializer data.
+ *                               The function implementation must use `OrtApi::CreateExternalInitializerInfo()` to
+ *                               create the instance.
+ *                               If the function implementation sets `new_external_info` to NULL,
+ *                               ORT stores the initializers within the model.
+ *
+ * \note ORT takes ownership of the `new_external_info` output parameter.
+ *
+ * \return OrtStatus* Write status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtGetInitializerLocationFunc)(
+    _In_ void* state,
+    _In_ const char* initializer_name,
+    _In_ const OrtValue* initializer_value,
+    _In_opt_ const OrtExternalInitializerInfo* external_info,
+    _Outptr_result_maybenull_ OrtExternalInitializerInfo** new_external_info);
+
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -754,13 +807,13 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
   int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
-  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
-  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
+  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, nonzero = true
   const char* migraphx_save_model_path;              // migraphx model path name
-  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
+  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, nonzero = true
   const char* migraphx_load_model_path;              // migraphx model path name
-  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+  bool migraphx_exhaustive_tune;                     // MIGraphX tuned compile. Default = false, nonzero = true
 
   /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
    *   Defaults to SIZE_MAX.
@@ -776,6 +829,7 @@ typedef struct OrtMIGraphXProviderOptions {
    */
   int migraphx_arena_extend_strategy;
 
+  // This is the legacy struct and don't add new fields here.
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -901,6 +955,16 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
  *
  * \nosubgrouping
  */
+/*
+ * Public enum for compiled model compatibility across EPs.
+ */
+typedef enum OrtCompiledModelCompatibility {
+  OrtCompiledModelCompatibility_EP_NOT_APPLICABLE = 0,
+  OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL,
+  OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION,
+  OrtCompiledModelCompatibility_EP_UNSUPPORTED,
+} OrtCompiledModelCompatibility;
+
 struct OrtApi {
   /// \name OrtStatus
   /// @{
@@ -3873,6 +3937,7 @@ struct OrtApi {
    *      -# "69"
    *      -# "73"
    *      -# "75"
+   *      -# "81"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
    *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
    *      Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
@@ -3899,6 +3964,9 @@ struct OrtApi {
    *     where op_type is the name of the operation, op_package_path is the path to the op package shared library,
    *     interface is the symbol name to register the op life cycle functions, and target is the backend type. For more
    *     details, refer to: https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/op_packages.html
+   *     [Advanced] "skip_qnn_version_check": Set to "1" to allow a different version of QNN to be used than what was compiled
+   *     into ONNX Runtime. Differences in operator support, accuracy, performance, and QNN's ABI may lead to crashes, inaccurate
+   *     results, and poor performance. Use with caution and test thoroughly.
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
@@ -5044,7 +5112,7 @@ struct OrtApi {
    *
    * \since Version 1.22.
    */
-  const OrtModelEditorApi*(ORT_API_CALL* GetModelEditorApi)();
+  const OrtModelEditorApi*(ORT_API_CALL* GetModelEditorApi)(void);
 
   /** \brief Create an OrtValue for a Tensor that uses pre-existing memory.
    *
@@ -5102,7 +5170,7 @@ struct OrtApi {
    *
    * \since Version 1.22.
    */
-  const OrtCompileApi*(ORT_API_CALL* GetCompileApi)();
+  const OrtCompileApi*(ORT_API_CALL* GetCompileApi)(void);
 
   //
   // OrtKeyValuePairs
@@ -5370,7 +5438,7 @@ struct OrtApi {
    *
    * \since Version 1.22.
    */
-  const OrtEpApi*(ORT_API_CALL* GetEpApi)();
+  const OrtEpApi*(ORT_API_CALL* GetEpApi)(void);
 
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
@@ -5828,7 +5896,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph,
+  ORT_API2_STATUS(Graph_GetNodes, _In_ const OrtGraph* graph,
                   _Out_writes_(num_nodes) const OrtNode** nodes, _In_ size_t num_nodes);
 
   /** \brief Get the parent node for the given graph, if any exists.
@@ -6068,7 +6136,6 @@ struct OrtApi {
 
   /** \brief Get the OrtNode's 'TENSOR' attribute as an OrtValue.
    *
-   * \param[in] node The OrtNode instance.
    * \param[in] attribute The OrtOpAttr instance.
    * \param[out] attr_tensor If successful, contains the 'TENSOR' attribute as a newly created OrtValue.
                              Must be freed with OrtApi::ReleaseValue.
@@ -6077,7 +6144,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetTensorAttributeAsOrtValue, _In_ const OrtNode* node, _In_ const OrtOpAttr* attribute,
+  ORT_API2_STATUS(OpAttr_GetTensorAttributeAsOrtValue, _In_ const OrtOpAttr* attribute,
                   _Outptr_result_maybenull_ OrtValue** attr_tensor);
 
   /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
@@ -6468,6 +6535,79 @@ struct OrtApi {
                   _In_reads_(num_tensors) OrtValue* const* dst_tensors,
                   _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
+
+  /** \brief Get ::OrtModelMetadata from an ::OrtGraph
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] out Newly created ::OrtModelMetadata. Must be freed using OrtApi::ReleaseModelMetadata.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetModelMetadata, _In_ const OrtGraph* graph, _Outptr_ OrtModelMetadata** out);
+
+  /** \brief Validate a compiled model's compatibility information for one or more EP devices.
+   *
+   * \param[in] ep_devices The EP devices to validate against (e.g., from GetEpDevices).
+   *                        All devices must belong to the same execution provider.
+   * \param[in] num_ep_devices The number of EP devices provided.
+   * \param[in] compatibility_info The compatibility info string produced when the model was compiled.
+   * \param[out] out_status The resulting compatibility status for the EP devices.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetModelCompatibilityForEpDevices,
+                  _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices,
+                  _In_ size_t num_ep_devices,
+                  _In_ const char* compatibility_info,
+                  _Out_ OrtCompiledModelCompatibility* out_status);
+
+  /// \name OrtExternalInitializerInfo
+  /// @{
+
+  /** \brief Creates an OrtExternalInitializerInfo instance.
+   *
+   * \param[in] filepath The relative path to the file that stores the initializer's data. ORT copies this path string.
+   * \param[in] file_offset The byte offset where the initializer's data is stored within the file.
+   * \param[in] byte_size The size in bytes of the initializer's data within the file.
+   * \param[out] out Output parameter set to the new OrtExternalInitializerInfo instance.
+   *                 Must be released by calling ReleaseExternalInitializerInfo().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateExternalInitializerInfo, _In_ const ORTCHAR_T* filepath, _In_ int64_t file_offset,
+                  _In_ size_t byte_size, _Outptr_ OrtExternalInitializerInfo** out);
+
+  /// @}
+  /** \brief Fetch whether the tensor has shape information.
+   * \param[in] info The OrtTensorTypeAndShapeInfo instance.
+   * \return true if the tensor has shape information, false otherwise.
+   *
+   * \since Version 1.24
+   */
+  ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /** \brief Get all config entries from ::OrtKernelInfo.
+   *
+   * Gets all configuration entries from the ::OrtKernelInfo object as key-value pairs.
+   * Config entries are set on the ::OrtSessionOptions and are accessible in custom operator kernels.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to access all session configuration entries
+   * during kernel construction.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out A pointer to a newly created OrtKeyValuePairs instance containing all config entries.
+   *                 Note: the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
 };
 
 /*
@@ -7035,6 +7175,9 @@ struct OrtCompileApi {
    * ReleaseOrtModelCompilationsOptions must be called to free the OrtModelCompilationOptions after calling
    * CompileModel.
    *
+   * \note By default, the GraphOptimizationLevel is set to ORT_DISABLE_ALL. Use
+   * ModelCompilationOptions_SetGraphOptimizationLevel to enable graph optimizations.
+   *
    * \param[in] env OrtEnv object.
    * \param[in] session_options The OrtSessionOptions instance from which to create the OrtModelCompilationOptions.
    * \param[out] out The created OrtModelCompilationOptions instance.
@@ -7191,7 +7334,7 @@ struct OrtCompileApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
-                  size_t flags);
+                  uint32_t flags);
 
   /** Sets information related to EP context binary file.
    *
@@ -7210,6 +7353,56 @@ struct OrtCompileApi {
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const ORTCHAR_T* output_directory,
                   _In_ const ORTCHAR_T* model_name);
+
+  /** Set the graph optimization level.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] graph_optimization_level The graph optimization level.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetGraphOptimizationLevel,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ GraphOptimizationLevel graph_optimization_level);
+
+  /** \brief Sets a OrtWriteBufferFunc function that is called by ORT to write out the output model's serialized
+   * ONNX bytes.
+   *
+   * The provided write function may be called repeatedly until then entire output model has been written out. Each call
+   * to the write function is expected to consume the entire input buffer.
+   *
+   * The output model's destination (e.g., file path, memory buffer, or stream) can be set with any of the functions
+   * that begin with ModelCompilationOptions_SetOutputModel____.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] write_func The OrtWriteBufferFunc function called by ORT when writing out the model.
+   * \param[in] state Opaque state passed as the first argument to OrtWriteBufferFunc. Can be NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelWriteFunc,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ OrtWriteBufferFunc write_func, _In_ void* state);
+
+  /** \brief Sets a OrtGetInitializerLocationFunc function that is called by ORT for every initializer in the generated
+   * model. Allows implementer to specify whether initializers should be stored within the model or externally.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] get_initializer_location_func The OrtGetInitializerLocationFunc function called by ORT when
+   *                                          to determine the location of the initializer.
+   * \param[in] state Opaque state passed as the first argument to OrtGetInitializerLocationFunc. Can be NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state);
 };
 
 /*

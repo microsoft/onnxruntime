@@ -45,7 +45,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     string(APPEND CMAKE_CXX_FLAGS " -msimd128")
   endif()
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
+  # Enable WebAssembly exception catching.
+  if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+    string(APPEND CMAKE_C_FLAGS " -fwasm-exceptions -s WASM_LEGACY_EXCEPTIONS=0")
+    string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions -s WASM_LEGACY_EXCEPTIONS=0")
+  elseif (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
     string(APPEND CMAKE_C_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
     string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
   endif()
@@ -217,30 +221,20 @@ endmacro()
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
 if (MSVC)
-  if (CMAKE_VS_PLATFORM_NAME)
-    # Multi-platform generator
-    set(onnxruntime_target_platform ${CMAKE_VS_PLATFORM_NAME})
-  else()
-    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
-  endif()
-  if (onnxruntime_target_platform STREQUAL "ARM64")
-    set(onnxruntime_target_platform "ARM64")
+  if (onnxruntime_target_platform STREQUAL "ARM64" OR
+      onnxruntime_target_platform STREQUAL "ARM64EC" OR
+      onnxruntime_target_platform STREQUAL "ARM")
     enable_language(ASM_MARMASM)
-  elseif (onnxruntime_target_platform STREQUAL "ARM64EC")
-    enable_language(ASM_MARMASM)
-  elseif (onnxruntime_target_platform STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
-    set(onnxruntime_target_platform "ARM")
-    enable_language(ASM_MARMASM)
-  elseif (onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform STREQUAL "x86_64" OR onnxruntime_target_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
-    set(onnxruntime_target_platform "x64")
+  elseif (onnxruntime_target_platform STREQUAL "x64" OR
+          onnxruntime_target_platform STREQUAL "x86")
     enable_language(ASM_MASM)
-  elseif (onnxruntime_target_platform STREQUAL "Win32" OR onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
-    set(onnxruntime_target_platform "x86")
-    enable_language(ASM_MASM)
-    message("Enabling SAFESEH for x86 build")
-    set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
+
+    if (onnxruntime_target_platform STREQUAL "x86")
+      message("Enabling SAFESEH for x86 build")
+      set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
+    endif()
   else()
-    message(FATAL_ERROR "Unknown CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
+    message(FATAL_ERROR "Unsupported onnxruntime_target_platform value: ${onnxruntime_target_platform}")
   endif()
 
   #Always enable exception handling, even for Windows ARM
@@ -269,34 +263,6 @@ if (MSVC)
     set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
   endif()
 else()
-  if (NOT APPLE)
-    #XXX: Sometimes the value of CMAKE_SYSTEM_PROCESSOR is set but it's wrong. For example, if you run an armv7 docker
-    #image on an aarch64 machine with an aarch64 Ubuntu host OS, in the docker instance cmake may still report
-    # CMAKE_SYSTEM_PROCESSOR as aarch64 by default. Given compiling this code may need more than 2GB memory, we do not
-    # support compiling for ARM32 natively(only support cross-compiling), we will ignore this issue for now.
-    if(NOT CMAKE_SYSTEM_PROCESSOR)
-      message(WARNING "CMAKE_SYSTEM_PROCESSOR is not set. Please set it in your toolchain cmake file.")
-      # Try to detect it
-      if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
-        execute_process(
-		COMMAND "${CMAKE_C_COMPILER}" -dumpmachine
-		OUTPUT_VARIABLE GCC_DUMP_MACHINE_OUT OUTPUT_STRIP_TRAILING_WHITESPACE
-		ERROR_VARIABLE _err
-		RESULT_VARIABLE _res
-		)
-		if(NOT _res EQUAL 0)
-			message(SEND_ERROR "Failed to run 'gcc -dumpmachine':\n ${_res}")
-		endif()
-		string(REPLACE "-" ";" GCC_DUMP_MACHINE_OUT_LIST "${GCC_DUMP_MACHINE_OUT}")
-		list(LENGTH GCC_DUMP_MACHINE_OUT_LIST GCC_TRIPLET_LEN)
-		if(GCC_TRIPLET_LEN EQUAL 4)
-		  list(GET GCC_DUMP_MACHINE_OUT_LIST 0 CMAKE_SYSTEM_PROCESSOR)
-          message("Setting CMAKE_SYSTEM_PROCESSOR to ${CMAKE_SYSTEM_PROCESSOR}")
-        endif()
-      endif()
-    endif()
-    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
-  endif()
   if (onnxruntime_BUILD_FOR_NATIVE_MACHINE)
     string(APPEND CMAKE_CXX_FLAGS " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS " -march=native -mtune=native")

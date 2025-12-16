@@ -10,7 +10,7 @@ parameters:
 - name: PoolName
   displayName: 'Agent pool name'
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
 - name: PackageName
   displayName: 'Package name'
   type: string
@@ -144,7 +144,7 @@ stages:
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
-      ExtraBuildArgs: '--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti ${{ parameters.ExtraBuildArgs }}'
+      ExtraBuildArgs: '--target onnxruntime_webassembly --skip_tests --disable_rtti ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
       BuildWebGPU: ${{ parameters.BuildWebGPU }}

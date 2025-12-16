@@ -162,7 +162,6 @@ static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(const Graph& gra
     // Empty node provider means CPU EP
     if (!node_provider.empty() &&
         !(node_provider == kCudaExecutionProvider ||
-          node_provider == kRocmExecutionProvider ||
           node_provider == kJsExecutionProvider ||
           node_provider == kWebGpuExecutionProvider ||
           node_provider == kDmlExecutionProvider) &&
@@ -1320,6 +1319,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                                   *session_logger_));
   }
 
+  // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
+  // take advantage of the initializers being in OrtValue format and not to deal with protobuf.
+  //
+  // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
+  // with a TensorProto that has the same data type, shape and name. However, its external data
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
+  // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it. For this reason,
+  // we do not convert them at the graph constructor because Node::ToProto() reconstructs Graph instances for subgraphs
+  // and we do not want to have initializers converted at shape inference time, as Resolve() is called from EPs when
+  // op_types are not assigned yet.
+  //
+  // If any transformations are applied later, they would not introduce any in-memory initializers,
+  // type and shape inference would run only on any newly added nodes and any new initializers
+  // will be converted at session finalization time.
+  //
+  // The conversion is performed using the following steps (within ConvertInitializersIntoOrtValues())
+  //   constexpr const bool use_tensor_buffer_true = true;
+  //   auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
+  //                                                        use_tensor_buffer_true);
+  //   ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto_to_add, ort_value));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ConvertInitializersIntoOrtValues());
+
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
                                    Graph& graph, bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
     bool modified = false;
@@ -1494,12 +1516,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Insert copy node/s.
   {
-    std::vector<std::string> provider_types;
+    InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
     for (auto& provider_ptr : execution_providers_) {
-      provider_types.push_back(provider_ptr->Type());
+      providers.push_back(provider_ptr.get());
     }
 
-    MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager_};
+    MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 
@@ -2269,7 +2291,7 @@ common::Status InferenceSession::Initialize() {
                                "Session initialization canceled due to user request.");
       }
 
-      // Currently graph capture is only considered by CUDA EP, TRT EP, ROCM EP and JS EP.
+      // Currently graph capture is only considered by CUDA EP, TRT EP and JS EP.
       //
       // Check for CUDA EP:
       // If the CUDA EP is part of the providers list for this session AND
@@ -2289,16 +2311,9 @@ common::Status InferenceSession::Initialize() {
       // All the "compute" graph nodes have been assigned to the JS EP,
       // Then the JS EP is cached for triggering a ReplayGraph() in Run().
       //
-      // Check for ROCM EP:
-      // If the ROCM EP is part of the providers list for this session AND
-      // The ROCM EP is configured to do a graph capture AND
-      // All the "compute" graph nodes have been assigned to the ROCM EP,
-      // Then the ROCM EP is cached for triggering a ReplayGraph() in Run().
-      //
       std::vector<const char*> graph_support_ep_list = {
           onnxruntime::kTensorrtExecutionProvider,
           onnxruntime::kCudaExecutionProvider,
-          onnxruntime::kRocmExecutionProvider,
           onnxruntime::kJsExecutionProvider,
           onnxruntime::kWebGpuExecutionProvider,
           onnxruntime::kDmlExecutionProvider};
@@ -2321,7 +2336,6 @@ common::Status InferenceSession::Initialize() {
           }
 
           if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kRocmExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kWebGpuExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kDmlExecutionProvider) == 0) {
@@ -2512,6 +2526,12 @@ common::Status InferenceSession::Initialize() {
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    });
+  }
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ex.Category(), ex.Code(), MakeString("Exception during initialization: ", ex.what()));
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     });
   }
@@ -2943,6 +2963,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
                                  << cached_execution_provider_for_graph_replay_.Type()
                                  << " CUDA Graph for this model with tag: " << run_options.run_tag
                                  << " with graph annotation id: " << graph_annotation_id;
+    // log evaluation start to trace logging provider
+    env.GetTelemetryProvider().LogEvaluationStart(session_id_);
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id));
   } else {
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
@@ -3134,7 +3156,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
   // so that users just need one session run to capture the graph.
   // N is defined in min_num_runs_before_cuda_graph_capture_ for CUDA EP,
-  // N is defined in min_num_runs_before_hip_graph_capture_ for ROCM EP,
   // and the value could be different for other EP.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
@@ -3360,17 +3381,58 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
 
   for (const auto* def : def_list) {
     InlinedVector<SessionState::NodeInfo> node_info_vec;
+    Status status;
     if (type == SessionInputOutputType::kOutput) {
-      ORT_RETURN_IF_ERROR(session_state_->GetOutputNodeInfo(def->Name(), node_info_vec));
+      status = session_state_->GetOutputNodeInfo(def->Name(), node_info_vec);
     } else {
-      ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
+      status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
     }
 
-    // all entries are for the same OrtDevice so use the first one.
-    // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
-    // from the session state and use its OrtMemoryInfo.
-    auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
-    memory_info.push_back(&allocator->Info());
+    if (!status.IsOK()) {
+      if (type == SessionInputOutputType::kInput) {
+        return status;
+      }
+
+      // Check first if this output is produced by an input that directly
+      // propagates to output with the same name.
+      status = session_state_->GetInputNodeInfo(def->Name(), node_info_vec);
+      if (status.IsOK()) {
+        // all entries are for the same OrtDevice so use the first one.
+        // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+        // from the session state and use its OrtMemoryInfo.
+        auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+        memory_info.push_back(&allocator->Info());
+      } else {
+        // Check if this output is produced by a constant initializer
+        // Pick the MemoryInfo from the initializer's OrtValue
+        const auto& ort_value_map = session_state_->GetOrtValueNameIdxMap();
+
+        OrtValueIndex ort_value_index;
+        status = ort_value_map.GetIdx(def->Name(), ort_value_index);
+        if (!status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to find node output or a constant initializer producing output: ",
+                                 def->Name(), ".");
+        }
+
+        const auto& idx_to_ort_value = session_state_->GetInitializedTensors();
+        auto it = idx_to_ort_value.find(ort_value_index);
+        if (it == idx_to_ort_value.end()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to find node output or a constant initializer producing output: ",
+                                 def->Name(), ".");
+        }
+        const auto& tensor = it->second.Get<Tensor>();
+        auto allocator = session_state_->GetAllocator(tensor.Location());
+        memory_info.push_back(&allocator->Info());
+      }
+    } else {
+      // all entries are for the same OrtDevice so use the first one.
+      // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+      // from the session state and use its OrtMemoryInfo.
+      auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+      memory_info.push_back(&allocator->Info());
+    }
   }
 
   return Status::OK();
@@ -3399,15 +3461,19 @@ common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpD
   for (const auto* def : def_list) {
     InlinedVector<SessionState::NodeInfo> node_info_vec;
     ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
-
-    // if we have a lot of inputs or there are a lot of execution providers it may be worth creating a map
-    // instead of doing a linear search each time.
-    const auto& ep_name = node_info_vec.front().p_node->GetExecutionProviderType();
-    auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
-      return entry->ep_name == ep_name;
-    });
-
-    ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+    assert(!node_info_vec.empty());
+    // If we have an input that is not consumed by any node,
+    // including nodes in subgraphs, then we return nullptr.
+    const auto* p_node = node_info_vec.front().p_node;
+    if (p_node != nullptr) {
+      const auto ep_name = p_node->GetExecutionProviderType();
+      auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
+        return entry->ep_name == ep_name;
+      });
+      ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
+    } else {
+      ep_devices.push_back(nullptr);
+    }
   }
 
   return Status::OK();
@@ -3597,7 +3663,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<BFCArena*>(alloc.get())->Shrink();
+    auto status = static_cast<IArena*>(alloc.get())->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()

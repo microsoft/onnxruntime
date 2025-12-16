@@ -1,0 +1,61 @@
+# This template packages the Java artifacts for either CPU or GPU.
+# It calls the PowerShell script with the correct package type and ensures
+# that the correct final JAR file is signed and published.
+# Currently this file only runs on Windows x64.
+
+parameters:
+  - name: package_type
+    type: string
+    default: 'cpu'
+    values:
+      - 'cpu'
+      - 'gpu'
+
+steps:
+- checkout: self
+  submodules: false
+
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.13'
+    addToPath: true
+
+- task: PipAuthenticate@1
+  displayName: 'Pip Authenticate'
+  inputs:
+    artifactFeeds: 'Lotus'
+
+- template: set-version-number-variables-step.yml
+
+- script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+
+- task: PythonScript@0
+  displayName: 'Package Java Artifacts'
+  inputs:
+    scriptPath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_packaging.py
+    arguments: '--package_type ${{ parameters.package_type }} --build_dir $(Build.BinariesDirectory)'
+    workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+
+- script: dir $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
+
+- template: jar-esrp-dll.yml
+  parameters:
+    JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
+- task: AzureKeyVault@2
+  displayName: 'Get GnuPG signing keys'
+  inputs:
+   azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+   KeyVaultName: 'ort-release'
+   SecretsFilter: 'java-pgp-pwd,java-pgp-key'
+   RunAsPreJob: false
+
+- task: PythonScript@0
+  displayName: 'Sign files: GnuPG, sha1, and md5'
+  env:
+    JAVA_PGP_PWD: $(java-pgp-pwd)
+    JAVA_PGP_KEY: $(java-pgp-key)
+  inputs:
+   scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/sign_java_artifacts.py'
+   arguments: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+   workingDirectory: '$(Build.SourcesDirectory)'

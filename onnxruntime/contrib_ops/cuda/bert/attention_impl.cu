@@ -787,8 +787,6 @@ Status UnfusedAttention(
   return result;
 }
 
-#ifndef USE_ROCM  // exclude the following from hipify since they are not used in ROCM EP
-
 template <typename T>
 Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
                            int sequence_length, int total_sequence_length,
@@ -859,7 +857,6 @@ template Status ConcatPastToPresent<half>(int batch_size, int num_heads, int qk_
                                           cudaStream_t stream,
                                           int max_threads_per_block,
                                           AttentionData<half>& data);
-#endif
 
 template <typename T>
 Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, int v_head_size,
@@ -952,6 +949,13 @@ Status QkvToContext(
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data) {
+  if constexpr (std::is_same<T, BFloat16>::value || std::is_same<QK, BFloat16>::value) {
+    if (device_prop.major < 8) {
+      ORT_THROW("BF16 Attention requires Ampere (sm_80)+ with BF16 support. This GPU (",
+                device_prop.name, ", cc ", device_prop.major, ".", device_prop.minor, ") is not supported.");
+    }
+  }
+
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
@@ -1040,6 +1044,8 @@ template struct AttentionData<float>;
 
 template struct AttentionData<half>;
 
+template struct AttentionData<BFloat16>;
+
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
@@ -1056,6 +1062,14 @@ template Status QkvToContext<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
 
+template Status QkvToContext<BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
+    Stream* ort_stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<BFloat16>& data);
+
 template Status QkvToContext<float, half>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
@@ -1071,6 +1085,16 @@ template Status QkvToContext<half, float>(
     Stream* ort_stream,
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
+
+template onnxruntime::common::Status
+QkvToContext<float, BFloat16>(
+    const cudaDeviceProp&, cublasHandle_t&, cudnnHandle_t&,
+    Stream*, contrib::AttentionParameters&, AttentionData<float>&);
+
+template onnxruntime::common::Status
+QkvToContext<BFloat16, float>(
+    const cudaDeviceProp&, cublasHandle_t&, cudnnHandle_t&,
+    Stream*, contrib::AttentionParameters&, AttentionData<BFloat16>&);
 
 template Status LaunchDecoderMaskedMultiHeadAttention<float, float>(
     const DecoderMaskedMultiHeadAttentionParameters& parameters,

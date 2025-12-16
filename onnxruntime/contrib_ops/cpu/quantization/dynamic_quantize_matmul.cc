@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/cpuid_info.h"  // for CPUIDInfo::GetCPUIDInfo().HasArm_SME()
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
@@ -200,17 +199,34 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
       can_use_dynamic_quant_mlas_ = (!b_quantization_might_be_asymmetric && b_scale_available);
 
-      // Currently, MlasDynamicQGemmBatch() and associated functions require SME or else they are no-ops.
-      // We check that here too before attempting to use them.
-      if (!CPUIDInfo::GetCPUIDInfo().HasArm_SME()) {
+      // Kleidi dynamic path requires strictly positive, finite scales.
+      // Disable if any invalid scale is detected.
+      if (can_use_dynamic_quant_mlas_) {
+        const auto bs = b_scale_tensor->DataAsSpan<float>();
+        const bool has_invalid =
+            std::any_of(bs.begin(), bs.end(),
+                        [](float s) { return !std::isfinite(s) || s <= 0.0f; });
+
+        if (has_invalid) {
+          can_use_dynamic_quant_mlas_ = false;
+        }
+      }
+
+      if (!MlasIsDynamicQGemmAvailable()) {
         can_use_dynamic_quant_mlas_ = false;
       }
 
       // Only handle the common case of a 2D weight matrix. Additional matrices
       // could be handled by stacking the packed buffers.
       b_shape_ = tensor.Shape();
-      // TO DO: handle b_shape_.NumDimensions() > 2 and all dimension values but the last two being 1.
-      if (!(b_shape_.NumDimensions() == 2 || (b_shape_.NumDimensions() == 3 && b_shape_[0] == 1))) {
+      if (b_shape_.NumDimensions() >= 2) {
+        for (size_t i = 0; i < (b_shape_.NumDimensions() - 2); ++i) {
+          if (b_shape_[i] != 1) {
+            can_use_dynamic_quant_mlas_ = false;
+            break;
+          }
+        }
+      } else {
         can_use_dynamic_quant_mlas_ = false;
       }
 
@@ -289,8 +305,10 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   int GetBIdx() const override { return IN_B; }
 
  private:
+  // Indicates when MlasDynamicQGemmBatch() can be used
   bool can_use_dynamic_quant_mlas_{false};
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+  // Indicates that the biases are a constant input and thus already quantized / packed
   bool dynamic_quant_mlas_bias_data_was_packed_{false};
 #endif
 };
@@ -379,7 +397,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     if (y->Shape().Size() == 0)
       return Status::OK();
 
-    auto a_data = static_cast<const uint8_t*>(ctx->Input<Tensor>(IN_A)->DataRaw());
+    const float* a_data = ctx->Input<Tensor>(IN_A)->Data<float>();
     auto* y_data = y->MutableData<float>();
 
     // batch gemm
@@ -393,7 +411,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
 
     for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
       auto& params = gemm_data_vec[gemm_idx];
-      params.A = reinterpret_cast<const float*>(a_data + helper.LeftOffsets()[gemm_idx]);
+      params.A = a_data + helper.LeftOffsets()[gemm_idx];
       params.lda = gemm_shape.K;
       params.PackedB = packed_b_.get();
       params.C = y_data + helper.OutputOffsets()[gemm_idx];

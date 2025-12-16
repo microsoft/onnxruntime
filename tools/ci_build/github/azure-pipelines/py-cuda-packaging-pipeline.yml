@@ -42,11 +42,14 @@ extends:
           enabled: false
           justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
     pool:
-      name: 'onnxruntime-Win-CPU-2022'  # Name of your hosted pool
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'  # Name of your hosted pool
       os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
 
     stages:
       - template: stages/py-gpu-packaging-stage.yml
         parameters:
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          cuda_version: '12.2'
+          cuda_version: '12.8'
+          cudnn_folder: ''
+          cmake_cuda_archs: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'

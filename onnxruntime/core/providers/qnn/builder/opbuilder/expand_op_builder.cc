@@ -114,6 +114,10 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
         FillShapeInputData(shape_data, shape_size, static_cast<float>(1.0));
         break;
       }
+      case QNN_DATATYPE_FLOAT_16: {
+        FillShapeInputData(shape_data, shape_size, static_cast<MLFloat16>(1.0f));
+        break;
+      }
       case QNN_DATATYPE_INT_64: {
         // QNN-EP doesn't support INT64 shape input.
         qnn_data_type = QNN_DATATYPE_INT_32;
@@ -138,7 +142,7 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }  // if-else
 
   const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
-  std::string shape_input_name(input_name + "_" + output_name);
+  std::string shape_input_name = utils::GetUniqueName(input_name, output_name);
   QnnTensorWrapper input_tensorwrapper(shape_input_name, QNN_TENSOR_TYPE_STATIC, qnn_data_type,
                                        std::move(quantize_param), std::move(input_shape),
                                        std::move(shape_data));

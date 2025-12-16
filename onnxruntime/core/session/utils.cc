@@ -17,6 +17,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/plugin_ep/ep_factory_internal.h"
@@ -133,20 +134,29 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
 
-  // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
+  // Check EPContext model generation options when the input model is loaded from memory (no input model path).
   if (options && model_path == nullptr) {
-    EpContextModelGenerationOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
+    epctx::ModelGenOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
 
-    // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
-    // the user used the older SessionOptions' configuration entries to generate a compiled model.
-    if (ep_ctx_gen_options.enable &&
-        ep_ctx_gen_options.output_model_file_path.empty() &&
-        ep_ctx_gen_options.output_model_buffer_ptr == nullptr) {
-      return OrtApis::CreateStatus(ORT_FAIL,
-                                   "Inference session was configured with EPContext model generation enabled but "
-                                   "without a valid location (e.g., file or buffer) for the output model. "
-                                   "Please specify a valid ep.context_file_path via SessionOption configs "
-                                   "or use the OrtCompileApi to compile a model to a file or buffer.");
+    if (ep_ctx_gen_options.enable) {
+      auto* output_model_path = ep_ctx_gen_options.TryGetOutputModelPath();
+
+      // If the user does not provide an output model location, ORT normally generates an output model file path based
+      // on the input model's path (i.e., replace ".onnx" with "_ctx.onnx"). However, because there is no input model
+      // path, we require the application to explicitly set the output model's location.
+      //
+      // Note: This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
+      // the user used the older SessionOptions' configuration entries to generate a compiled model.
+      if (!ep_ctx_gen_options.HasOutputModelLocation() ||               // No output model location (file, buffer, etc.)
+          (output_model_path != nullptr && output_model_path->empty())  // Has an output file, but it is empty.
+      ) {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "Inference session with a model loaded from bytes was configured with EPContext "
+                                     "model generation enabled but without a valid location (e.g., file or buffer) "
+                                     "for the output model. Please specify a valid ep.context_file_path via "
+                                     "SessionOption configs or use the OrtCompileApi to compile a model to a "
+                                     "file or buffer.");
+      }
     }
   }
 
@@ -206,6 +216,117 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   return CreateSessionAndLoadModelImpl(options, env->GetEnvironment(), model_path, model_data, model_data_length, sess);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static const char* GetCompatibilityStatusString(OrtCompiledModelCompatibility status) {
+  switch (status) {
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
+      return "SUPPORTED_OPTIMAL";
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
+      return "SUPPORTED_PREFER_RECOMPILATION";
+    case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
+      return "UNSUPPORTED";
+    case OrtCompiledModelCompatibility_EP_NOT_APPLICABLE:
+      return "NOT_APPLICABLE";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
+  // Get model metadata
+  auto [status, model_metadata] = sess.GetModelMetadata();
+  if (!status.IsOK() || !model_metadata) {
+    // No metadata available, skip validation
+    return Status::OK();
+  }
+
+  const auto& custom_metadata = model_metadata->custom_metadata_map;
+  if (custom_metadata.empty()) {
+    // No custom metadata available, skip validation
+    return Status::OK();
+  }
+
+  // Check if user wants to fail on suboptimal models
+  bool fail_on_suboptimal = sess.GetSessionOptions().config_options.GetConfigEntry(
+                                kOrtSessionOptionsFailOnSuboptimalCompiledModel) == "1";
+
+  const auto& registered_provider_types = sess.GetRegisteredProviderTypes();
+
+  // Access the execution providers through the session state (available after Initialize)
+  const auto& execution_providers = sess.GetSessionState().GetExecutionProviders();
+
+  for (const auto& ep_type : registered_provider_types) {
+    // Construct the full metadata key using the prefix + EP type
+    const std::string metadata_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + ep_type;
+
+    auto metadata_it = custom_metadata.find(metadata_key);
+    if (metadata_it != custom_metadata.end()) {
+      const std::string& compatibility_info = metadata_it->second;
+
+      // Get the actual EP instance to call validation
+      const IExecutionProvider* ep = execution_providers.Get(ep_type);
+
+      if (ep != nullptr) {
+        // Call the EP's validation method (virtual method with default implementation)
+        OrtCompiledModelCompatibility compatibility_status;
+        Status validation_result = ep->ValidateCompiledModelCompatibilityInfo(
+            compatibility_info, compatibility_status);
+
+        if (validation_result.IsOK()) {
+          // Log the compatibility status
+          const char* status_str = GetCompatibilityStatusString(compatibility_status);
+          LOGS(*sess.GetLogger(), INFO)
+              << "EP " << ep_type << " compiled model compatibility: " << status_str;
+
+          // Enforce compatibility based on status
+          switch (compatibility_status) {
+            case OrtCompiledModelCompatibility_EP_NOT_APPLICABLE:
+            case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
+              // Continue execution
+              break;
+
+            case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
+              // Always fail for unsupported models
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                     "Compiled model is not supported by execution provider: " + ep_type);
+
+            case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
+              // Behavior depends on user setting
+              if (fail_on_suboptimal) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                       "Compiled model is suboptimal for execution provider: " + ep_type +
+                                           ". Recompilation recommended for better performance.");
+              }
+              // Otherwise continue with warning
+              LOGS(*sess.GetLogger(), WARNING)
+                  << "EP " << ep_type << " reports compiled model is supported but suboptimal. "
+                  << "Consider recompiling for better performance.";
+              break;
+
+            default:
+              // Handle any unknown status values
+              LOGS(*sess.GetLogger(), WARNING)
+                  << "EP " << ep_type << " returned unknown compatibility status: " << compatibility_status;
+              break;
+          }
+        } else {
+          // Validation failed - this should cause session initialization to fail
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Failed to validate compiled model compatibility for EP " + ep_type +
+                                     ": " + validation_result.ErrorMessage());
+        }
+      }
+    } else {
+      // No compatibility info found for this EP - normal for non-compiled models
+      LOGS(*sess.GetLogger(), VERBOSE)
+          << "No compiled model compatibility info found for EP " << ep_type;
+    }
+  }
+
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
@@ -253,6 +374,12 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
 
+#if !defined(ORT_MINIMAL_BUILD)
+  // Validate compiled model compatibility for all registered execution providers
+  // This must be done after Initialize() so the session state is available
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateCompiledModelCompatibility(sess));
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   return nullptr;
 }
 
@@ -265,7 +392,7 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
   const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
 
   if (model_compile_options.InputModelComesFromFile()) {
-    PathString input_model_path = ToPathString(model_compile_options.GetInputModelPath());
+    const std::filesystem::path& input_model_path = model_compile_options.GetInputModelPath();
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
                                                                          input_model_path.c_str(),
                                                                          nullptr, 0, session)));
@@ -277,6 +404,7 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
                                                          session)));
   }
 
+  Env::Default().GetTelemetryProvider().LogCompileModel(session->GetCurrentSessionId());
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(InitializeSession(session_options, *session)));
   return Status::OK();
 }
@@ -303,13 +431,14 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
                      << (is_provider_bridge ? " as a provider bridge" : " as a plugin");
 
   // create EpLibraryPlugin to ensure CreateEpFactories and ReleaseEpFactory are available
-  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, std::move(resolved_library_path));
+  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, resolved_library_path);
   ORT_RETURN_IF_ERROR(ep_library_plugin->Load());
 
   if (is_provider_bridge) {
     // wrap the EpLibraryPlugin with EpLibraryProviderBridge to add to directly create an IExecutionProvider
     auto ep_library_provider_bridge = std::make_unique<EpLibraryProviderBridge>(std::move(provider_library),
-                                                                                std::move(ep_library_plugin));
+                                                                                std::move(ep_library_plugin),
+                                                                                resolved_library_path);
     ORT_RETURN_IF_ERROR(ep_library_provider_bridge->Load());
     internal_factories = ep_library_provider_bridge->GetInternalFactories();
     ep_library = std::move(ep_library_provider_bridge);
@@ -321,20 +450,11 @@ Status LoadPluginOrProviderBridge(const std::string& registration_name,
 }
 
 Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
-                                                   SessionOptions& session_options,
                                                    gsl::span<const OrtEpDevice* const> ep_devices,
-                                                   gsl::span<const char* const> ep_option_keys,
-                                                   gsl::span<const char* const> ep_option_vals,
                                                    /*output*/ std::unique_ptr<IExecutionProviderFactory>& out) {
   if (ep_devices.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Must provide one or more OrtEpDevice instances.");
-  }
-
-  const size_t num_ep_options = ep_option_keys.size();
-  if (ep_option_vals.size() != num_ep_options) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Must provide the same number of keys and values for EP options.");
   }
 
   const auto& ep_name = ep_devices[0]->ep_name;
@@ -346,6 +466,27 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
   if (!all_match) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "All OrtEpDevice values in ep_devices must have the same execution provider.");
+  }
+
+  EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_factory);
+
+  if (internal_factory) {
+    out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
+  } else {
+    out = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
+  }
+
+  return Status::OK();
+}
+
+Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
+                                    gsl::span<const char* const> ep_option_keys,
+                                    gsl::span<const char* const> ep_option_vals,
+                                    SessionOptions& session_options) {
+  const size_t num_ep_options = ep_option_keys.size();
+  if (ep_option_vals.size() != num_ep_options) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Must provide the same number of keys and values for EP options.");
   }
 
   for (const OrtEpDevice* ep_device : ep_devices) {
@@ -364,14 +505,6 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
 
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
     }
-  }
-
-  EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_factory);
-
-  if (internal_factory) {
-    out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
-  } else {
-    out = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
   }
 
   return Status::OK();

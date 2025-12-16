@@ -17,9 +17,9 @@
 #include "core/session/inference_session.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -198,6 +198,9 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if constexpr (std::is_same<T1, float>::value) {
     execution_providers.emplace_back(DefaultCpuExecutionProvider());
+#ifdef USE_WEBGPU
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
+#endif
     test.ConfigEps(std::move(execution_providers));
     test.RunWithConfig();
   }
@@ -244,39 +247,47 @@ void TestMatMul2BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
 }  // namespace
 
-TEST(MatMulNBits, Float32_2Bits_Accuracy0) {
-  // Currently, only fallback option enabled for 2bit datatypes
-  // where the 2bits are dequantized to fp32
-  TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 2, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 32, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 32, 32, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 32, 16, 128, 0>();
-  TestMatMul2BitsTyped<float, 1, 288, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 4, 2, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 4, 32, 16, 16, 0>();
-  TestMatMul2BitsTyped<float, 4, 32, 32, 16, 0>();
-  TestMatMul2BitsTyped<float, 4, 32, 16, 128, 0>();
-  TestMatMul2BitsTyped<float, 4, 288, 16, 16, 0>();
+template <int BatchSize, int MVal, int NVal, int KVal>
+struct TypedTestParams {
+  static constexpr int batch_size = BatchSize;
+  static constexpr int M = MVal;
+  static constexpr int N = NVal;
+  static constexpr int K = KVal;
+};
+
+using TestTypes = ::testing::Types<
+    TypedTestParams<1, 1, 16, 16>,
+    TypedTestParams<1, 2, 16, 16>,
+    TypedTestParams<1, 32, 16, 16>,
+    TypedTestParams<1, 32, 32, 16>,
+    TypedTestParams<1, 32, 16, 128>,
+    TypedTestParams<1, 288, 16, 16>,
+    TypedTestParams<4, 1, 16, 16>,
+    TypedTestParams<4, 2, 16, 16>,
+    TypedTestParams<4, 32, 16, 16>,
+    TypedTestParams<4, 32, 32, 16>,
+    TypedTestParams<4, 32, 16, 128>,
+    TypedTestParams<4, 288, 16, 16>>;
+
+template <typename T>
+class MatMulNBits : public ::testing::Test {
+ public:
+  static constexpr int batch_size = T::batch_size;
+  static constexpr int M = T::M;
+  static constexpr int N = T::N;
+  static constexpr int K = T::K;
+};
+
+TYPED_TEST_SUITE(MatMulNBits, TestTypes);
+
+TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy0) {
+  TestMatMul2BitsTyped<float, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 0>();
 }
 
-TEST(MatMulNBits, Float32_2Bits_Accuracy4) {
-  // Currently, only fallback option enabled for 2bit datatypes
-  // where the 2bits are dequantized to fp32
-  TestMatMul2BitsTyped<float, 1, 1, 16, 16, 5>();
-  TestMatMul2BitsTyped<float, 1, 2, 16, 16, 5>();
-  TestMatMul2BitsTyped<float, 1, 32, 16, 16, 5>();
-  TestMatMul2BitsTyped<float, 1, 32, 32, 16, 5>();
-  TestMatMul2BitsTyped<float, 1, 32, 16, 128, 5>();
-  TestMatMul2BitsTyped<float, 1, 288, 16, 16, 5>();
-  TestMatMul2BitsTyped<float, 1, 1, 16, 16, 5>();
-  TestMatMul2BitsTyped<float, 4, 2, 16, 16, 5>();
-  TestMatMul2BitsTyped<float, 4, 32, 16, 16, 5>();
-  TestMatMul2BitsTyped<float, 4, 32, 32, 16, 5>();
-  TestMatMul2BitsTyped<float, 4, 32, 16, 128, 5>();
-  TestMatMul2BitsTyped<float, 4, 288, 16, 16, 5>();
+TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy4) {
+  TestMatMul2BitsTyped<float, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 4>();
 }
+
 }  // namespace test
 }  // namespace onnxruntime
 

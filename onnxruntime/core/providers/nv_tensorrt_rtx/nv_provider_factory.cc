@@ -2,19 +2,22 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
-#include "nv_provider_factory.h"
+#include <string.h>
 #include <atomic>
+
+#include "core/providers/shared_library/provider_api.h"
+#include "core/framework/provider_options.h"
+#include "core/framework/plugin_ep_stream.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
+#include "core/providers/nv_tensorrt_rtx/nv_execution_provider_custom_ops.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cuda_stream_handle.h"
+
+#include "nv_provider_factory.h"
 #include "nv_execution_provider.h"
 #include "nv_provider_factory_creator.h"
 #include "nv_data_transfer.h"
 #include "nv_allocator.h"
-#include "core/framework/provider_options.h"
-#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
-#include "core/providers/nv_tensorrt_rtx/nv_execution_provider_custom_ops.h"
-#include <string.h>
-#include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/cuda_stream_handle.h"
 
 using namespace onnxruntime;
 
@@ -199,6 +202,7 @@ struct NvTrtRtxOrtAllocator : OrtAllocator {
   NvTrtRtxOrtAllocator(const OrtMemoryInfo* mem_info, const OrtApi& api) : memory_info_{mem_info} {
     version = ORT_API_VERSION;
     Alloc = AllocImpl;
+    AllocOnStream = AllocOnStreamImpl;
     Free = FreeImpl;
     Info = InfoImpl;
     Reserve = AllocImpl;  // no special behavior for Reserve so use AllocImpl
@@ -221,6 +225,11 @@ struct NvTrtRtxOrtAllocator : OrtAllocator {
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
     auto& impl = *static_cast<NvTrtRtxOrtAllocator*>(this_);
     return impl.allocator_->Alloc(size);
+  }
+
+  static void* ORT_API_CALL AllocOnStreamImpl(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
+    auto& impl = *static_cast<NvTrtRtxOrtAllocator*>(this_);
+    return impl.allocator_->AllocOnStream(size, stream);
   }
 
   static void ORT_API_CALL FreeImpl(struct OrtAllocator* this_, void* p) {
@@ -431,7 +440,7 @@ struct NvTrtRtxSyncNotificationImpl : OrtSyncNotificationImpl {
     Release = ReleaseImpl;
   }
 
-  cudaStream_t& stream_;
+  cudaStream_t stream_;
   cudaEvent_t event_;
 
   const OrtApi& ort_api;
@@ -477,9 +486,9 @@ struct NvTrtRtxSyncStreamImpl : OrtSyncStreamImpl {
     *notification_impl = nullptr;
 
     std::unique_ptr<NvTrtRtxSyncNotificationImpl> notification;
-    cudaStream_t* cuda_stream = static_cast<cudaStream_t*>(impl.stream_.GetHandle());
+    cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.stream_.GetHandle());
 
-    RETURN_IF_ERROR(NvTrtRtxSyncNotificationImpl::Create(*cuda_stream, impl.ort_api, notification));
+    RETURN_IF_ERROR(NvTrtRtxSyncNotificationImpl::Create(cuda_stream, impl.ort_api, notification));
     *notification_impl = notification.release();
 
     return nullptr;

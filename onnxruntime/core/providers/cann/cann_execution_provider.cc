@@ -18,6 +18,7 @@
 #include "core/providers/cann/cann_fwd.h"
 #include "core/providers/cann/cann_stream_handle.h"
 #include "core/providers/cann/npu_data_transfer.h"
+#include "core/providers/cann/cann_utils.h"
 
 using onnxruntime::cann::BuildONNXModel;
 using onnxruntime::cann::CannModelPreparation;
@@ -1068,7 +1069,9 @@ void DeleteRegistry() {
 
   ge::aclgrphBuildFinalize();
 
-  CANN_CALL_THROW(aclFinalize());
+  if (!cann::GetRepeatInitFlag()) {
+    CANN_CALL_THROW(aclFinalize());
+  }
 }
 
 std::shared_ptr<KernelRegistry> CANNExecutionProvider::GetKernelRegistry() const {
@@ -1266,17 +1269,16 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
   // the single operator operation mode of CANN
   if (info_.enable_cann_graph) {
     std::vector<NodeIndex>&& unsupported_nodes = SupportONNXModel(graph_viewer);
-
-    if (unsupported_nodes.empty()) {
-      auto sub_graph = GetSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-    } else {
+    if (info_.enable_cann_subgraph && !unsupported_nodes.empty()) {
       auto partitions = GetSubGraphPartition(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
       for (const auto& partition : partitions) {
         auto sub_graph = GetSubGraph(partition, graph_viewer);
         result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       }
+    } else {
+      auto sub_graph = GetSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
   } else {
     InlinedVector<NodeIndex> candidates;
@@ -1394,7 +1396,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         modelID = modelIDs_[filename];
       } else {
         std::lock_guard<std::mutex> lock(g_mutex);
-        auto filename_with_suffix = cann::RegexMatchFile(filename);
+        auto filename_with_suffix = cann::MatchFile(filename);
         if (!filename_with_suffix.empty()) {
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
         } else {

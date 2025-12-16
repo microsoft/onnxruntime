@@ -3,11 +3,12 @@
 
 #include "core/mlas/inc/mlas.h"
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK) || defined(USE_WEBGPU)
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
+#include "test/common/random_generator.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/providers/run_options_config_keys.h"
 #include "default_providers.h"
 
 using namespace std;
@@ -40,12 +41,13 @@ please add the EP to the excluded_providers list.
 void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                     const vector<vector<MLFloat16>>& inputs,
                     const vector<vector<int64_t>>& input_shapes,
-                    const std::initializer_list<MLFloat16>& expected_output,
+                    const vector<MLFloat16>& expected_output,
                     const vector<int64_t>& expected_output_shape,
                     bool weight_is_initializer = false,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& err_str = "",
-                    int opset = 11) {
+                    int opset = 11,
+                    float rel_error = 0.002f) {
   std::unique_ptr<OpTester> tester;
   if (!attributes.activation.empty()) {
     tester = std::make_unique<OpTester>("NhwcFusedConv", 1, onnxruntime::kMSDomain);
@@ -85,7 +87,7 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
   if (inputs.size() >= 4)
     tester->AddInput<MLFloat16>(szNames[3], input_shapes[3], inputs[3]);
 
-  tester->AddOutput<MLFloat16>("Y", expected_output_shape, expected_output, /*no sort*/ false, 0.002f, 0.0f);
+  tester->AddOutput<MLFloat16>("Y", expected_output_shape, expected_output, /*no sort*/ false, rel_error, 0.0f);
 
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
   // Disable TensorRT because weight as input is not supported
@@ -273,6 +275,68 @@ TEST(ConvFp16Test, Conv1D_Bias) {
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvBF16Test, Conv2D_1) {
+#ifndef USE_CUDA
+  GTEST_SKIP() << "BFloat16 tests are only enabled on CUDA builds";
+#else
+  if (!CudaHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Conv", 22);
+
+  ConvOpAndTestAttributes attributes = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{1, 1, 1, 2},  // pads
+      vector<int64_t>{3, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<BFloat16> X = {BFloat16(-0.0910644531f), BFloat16(-0.325195312f)};
+  vector<int64_t> X_shape = {2, 1, 1, 1};
+  vector<BFloat16> W = {BFloat16(0.431152344f), BFloat16(-0.125610352f), BFloat16(0.448974609f),
+                        BFloat16(-0.310058594f), BFloat16(0.135253906f), BFloat16(-0.0679321289f),
+                        BFloat16(0.226684570f), BFloat16(-0.173950195f), BFloat16(-0.312988281f),
+                        BFloat16(-0.315429688f), BFloat16(0.065612793f), BFloat16(0.265625f),
+                        BFloat16(0.413574219f), BFloat16(0.312255859f), BFloat16(-0.375976562f),
+                        BFloat16(-0.00571060181f), BFloat16(0.349121094f), BFloat16(0.450927734f)};
+  vector<int64_t> W_shape = {2, 1, 3, 3};
+  vector<int64_t> Y_shape = {2, 2, 1, 2};
+  auto expected_vals = {BFloat16(-0.012316823f), BFloat16(0.0282353163f),
+                        BFloat16(-0.0284354091f), BFloat16(-0.0376619101f),
+                        BFloat16(-0.0439839363f), BFloat16(0.100829601f),
+                        BFloat16(-0.101544142f), BFloat16(-0.134492397f)};
+
+  test.AddAttribute("group", attributes.group);
+  test.AddAttribute("kernel_shape", attributes.kernel_shape);
+
+  if (!attributes.dilations.empty()) {
+    test.AddAttribute("dilations", attributes.dilations);
+  }
+
+  // Only one of pads / auto_pad can be present
+  if (!attributes.pads.empty()) {
+    test.AddAttribute("pads", attributes.pads);
+  } else {
+    test.AddAttribute("auto_pad", attributes.auto_pad);
+  }
+
+  if (!attributes.strides.empty()) {
+    test.AddAttribute("strides", attributes.strides);
+  }
+
+  test.AddInput<BFloat16>("X", X_shape, X);
+  test.AddInput<BFloat16>("W", W_shape, W, false /*weight_is_initializer*/);
+  test.AddOutput<BFloat16>("Y", Y_shape, expected_vals, /*no sort*/ false, 0.002f, 0.0f);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+#endif
+}
+
 TEST(ConvFp16Test, Conv2D_1) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
@@ -361,6 +425,118 @@ TEST(ConvFp16Test, Conv2D_2) {
 
   // NNAPI/CoreML EP requires weight to be an initializer
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvFp16Test, Conv2D_MatMul_SplitK_No_Bias) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  // Define the matrix shapes to test a matmul-like convolution
+  constexpr int64_t M = 16;
+  constexpr int64_t K = 768;
+  constexpr int64_t N = 64;
+
+  vector<int64_t> X_shape = {1, K, M, 1};
+  vector<int64_t> W_shape = {N, K, 1, 1};
+  vector<int64_t> Y_shape = {1, N, M, 1};
+
+  RandomValueGenerator random{1234};
+  vector<float> X_float32(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  vector<float> W_float32(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+
+  vector<MLFloat16> X = FloatsToMLFloat16s(X_float32);
+  vector<MLFloat16> W = FloatsToMLFloat16s(W_float32);
+
+  // Calculate expected output values
+  vector<float> expected_vals_float32;
+  expected_vals_float32.resize(M * N);
+  for (int m = 0; m < M; ++m) {
+    for (int n = 0; n < N; ++n) {
+      float sum{};
+      for (int k = 0; k < K; ++k) {
+        int x_index = k * M + m;
+        int w_index = n * K + k;
+        sum += X[x_index].ToFloat() * W[w_index].ToFloat();
+      }
+      int y_index = n * M + m;
+      expected_vals_float32[y_index] = sum;
+    }
+  }
+  vector<MLFloat16> expected_vals = FloatsToMLFloat16s(expected_vals_float32);
+
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false,
+                 OpTester::ExpectResult::kExpectSuccess, "", 11);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true,
+                 OpTester::ExpectResult::kExpectSuccess, "", 11);
+}
+
+TEST(ConvFp16Test, Conv2D_MatMul_SplitK_With_Bias) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  // Define the matrix shapes to test a matmul-like convolution
+  constexpr int64_t M = 16;
+  constexpr int64_t K = 768;
+  constexpr int64_t N = 64;
+
+  vector<int64_t> X_shape = {1, K, M, 1};
+  vector<int64_t> W_shape = {N, K, 1, 1};
+  vector<int64_t> Y_shape = {1, N, M, 1};
+  vector<int64_t> B_shape = {N};
+
+  RandomValueGenerator random{1234};
+  vector<float> X_float32(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  vector<float> W_float32(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+  vector<float> B_float32(random.Gaussian<float>(AsSpan(B_shape), 0.0f, 0.25f));
+
+  vector<MLFloat16> X = FloatsToMLFloat16s(X_float32);
+  vector<MLFloat16> W = FloatsToMLFloat16s(W_float32);
+  vector<MLFloat16> B = FloatsToMLFloat16s(B_float32);
+
+  // Calculate expected output values
+  vector<float> expected_vals_float32;
+  expected_vals_float32.resize(M * N);
+  for (int m = 0; m < M; ++m) {
+    for (int n = 0; n < N; ++n) {
+      float sum{};
+      for (int k = 0; k < K; ++k) {
+        int x_index = k * M + m;
+        int w_index = n * K + k;
+        sum += X[x_index].ToFloat() * W[w_index].ToFloat();
+      }
+      sum += B[n].ToFloat();
+      int y_index = n * M + m;
+      expected_vals_float32[y_index] = sum;
+    }
+  }
+  vector<MLFloat16> expected_vals = FloatsToMLFloat16s(expected_vals_float32);
+
+  // Using a higher relative error threshold for the Linux arm64 bots
+  constexpr float rel_error = 0.02f;
+  TestConvFp16Op(
+      attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false,
+      OpTester::ExpectResult::kExpectSuccess, "", 11, rel_error);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvFp16Op(
+      attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true,
+      OpTester::ExpectResult::kExpectSuccess, "", 11, rel_error);
 }
 
 TEST(ConvFp16Test, Conv2D_Bias_1) {

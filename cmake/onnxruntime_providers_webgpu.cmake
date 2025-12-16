@@ -47,17 +47,42 @@
       list(REMOVE_ITEM EM_DAWN_WEBGPU_C_COMPILE_OPTIONS "-fno-exceptions")
       set_property(TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS ${EM_DAWN_WEBGPU_C_COMPILE_OPTIONS})
     endif()
+    if (CMAKE_CXX_FLAGS MATCHES "-fwasm-exceptions")
+      get_property(EM_DAWN_WEBGPU_C_COMPILE_OPTIONS TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS)
+      list(REMOVE_ITEM EM_DAWN_WEBGPU_C_COMPILE_OPTIONS "-fno-exceptions")
+      set_property(TARGET emdawnwebgpu_c PROPERTY COMPILE_OPTIONS ${EM_DAWN_WEBGPU_C_COMPILE_OPTIONS})
+    endif()
 
     # target "emdawnwebgpu_cpp" is created by Dawn. When it is linked to onnxruntime_providers_webgpu as "PUBLIC"
     # dependency, a few build/link flags will be set automatically to make sure emscripten can generate correct
     # WebAssembly/JavaScript code for WebGPU support.
     target_link_libraries(onnxruntime_providers_webgpu PUBLIC emdawnwebgpu_cpp)
 
-    # ASYNCIFY is required for WGPUFuture support (ie. async functions in WebGPU API)
-    target_link_options(onnxruntime_providers_webgpu PUBLIC
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+    # Dawn's emdawnwebgpu_cpp target has a bug: it lists ${DAWN_INCLUDE_DIR}/webgpu/webgpu_enum_class_bitmasks.h
+    # in INTERFACE_SOURCES but doesn't add ${DAWN_INCLUDE_DIR} to INTERFACE_INCLUDE_DIRECTORIES.
+    # In emsdk 4.0.11, this was masked because Emscripten bundled its own copy of the WebGPU headers.
+    # In emsdk 4.0.21+, Emscripten removed the bundled WebGPU headers, exposing this bug.
+    # We need to manually add the Dawn include directory to find webgpu_enum_class_bitmasks.h.
+    #
+    # IMPORTANT: We must also add the generated emdawnwebgpu include directory BEFORE the Dawn source
+    # include directory, because ${dawn_SOURCE_DIR}/include/webgpu/webgpu_cpp.h is a stub that redirects
+    # to dawn/webgpu_cpp.h (native Dawn), but we need the generated Emscripten-specific webgpu_cpp.h.
+    target_include_directories(onnxruntime_providers_webgpu PRIVATE
+        "${dawn_BINARY_DIR}/gen/src/emdawnwebgpu/include"
+        "${dawn_SOURCE_DIR}/include"
     )
+
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      target_link_options(onnxruntime_providers_webgpu PUBLIC
+        "SHELL:-s JSPI=1"
+      )
+    else()
+      # ASYNCIFY is required for WGPUFuture support (ie. async functions in WebGPU API)
+      target_link_options(onnxruntime_providers_webgpu PUBLIC
+        "SHELL:-s ASYNCIFY=1"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      )
+    endif()
   else()
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu dawn::dawncpp_headers dawn::dawn_headers)
 

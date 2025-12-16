@@ -76,7 +76,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     ort_value.GetMutable<Tensor>()->Reshape(new_shape);
   }
 
-  auto& new_node_arg = graph_utils::AddInitializerWithExternalData(graph, new_tensor_proto, ort_value);
+  auto& new_node_arg = graph_utils::AddInitializerWithOrtValue(graph, new_tensor_proto, ort_value);
   graph_utils::ReplaceNodeWithInitializer(graph, node, new_node_arg);
 
   // Remove the Unsqueeze node and replace it with the initializer.

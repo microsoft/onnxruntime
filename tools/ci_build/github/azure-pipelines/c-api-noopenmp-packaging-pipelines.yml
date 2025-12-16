@@ -55,7 +55,15 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.36.1.250708
+  default: 2.39.0.250926
+
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.8'
+  values:
+  - 12.8
+  - 13.0
 
 resources:
   repositories:
@@ -70,15 +78,22 @@ resources:
 
 variables:
 - template: templates/common-variables.yml
-- name: ReleaseVersionSuffix
-  value: ''
-- name: win_trt_version
-  value: 12.2
-
 - name: win_trt_home
-  value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
 - name: win_cuda_home
-  value: $(Agent.TempDirectory)\v12.2
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: $(Agent.TempDirectory)\v12.8
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\v13.0
+- name: CudaArchs
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: '75-real;86-real;89-real;90-virtual'
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
+
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
   # For non-production pipelines, use "Unofficial" as defined below.
@@ -92,7 +107,7 @@ extends:
         enabled: true
         scanOutputDirectoryOnly: true
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
       componentgovernance:
         ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
@@ -122,12 +137,12 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: stages/download-java-tools-stage.yml
-
     - template: templates/c-api-cpu.yml
       parameters:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
         ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
           OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
         ${{ else }}:
@@ -135,20 +150,14 @@ extends:
         AdditionalBuildFlags: ''
         AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
         BuildVariant: 'default'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
         QnnSDKVersion: ${{ parameters.QnnSdk }}
         is1ES: true
 
     - template: stages/java-cuda-packaging-stage.yml
-      parameters:
-        CudaVersion: 12.2
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
-        CudaVersion: 12.2
+        CudaVersion: ${{ parameters.CudaVersion }}
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
         win_trt_home: ${{ variables.win_trt_home }}
@@ -159,6 +168,9 @@ extends:
         buildNodejs: true
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+        CudaArchs: ${{ variables.CudaArchs }}
 
     - template: stages/nodejs-win-packaging-stage.yml
       parameters:

@@ -47,13 +47,7 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
             "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
       } else if (strcmp(GetDeviceName(device), HIP) == 0) {
-#if USE_ROCM
-        if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-          throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-        }
-
-        allocator = GetRocmAllocator(device.Id());
-#elif USE_MIGRAPHX
+#if USE_MIGRAPHX
         allocator = GetMIGraphXAllocator(device.Id());
 #else
         throw std::runtime_error(
@@ -123,20 +117,6 @@ void addOrtValueMethods(pybind11::module& m) {
             // in CUDA
             CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
                                  true, false, CpuToCudaMemCpy);
-          } else
-#endif
-#ifdef USE_ROCM
-              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
-            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-            }
-
-            // InputDeflist is null because OrtValue creation is not tied to a specific model
-            // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-            // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors
-            // in ROCM
-            CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
-                                 true, false, CpuToRocmMemCpy);
           } else
 #endif
 #if USE_MIGRAPHX
@@ -210,19 +190,6 @@ void addOrtValueMethods(pybind11::module& m) {
                 values_type,
                 *(ml_value->GetMutable<Tensor>()),
                 CpuToCudaMemCpy);
-          } else
-#endif
-#if USE_ROCM
-              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
-            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-            }
-
-            onnxruntime::python::CopyDataToTensor(
-                py_values,
-                values_type,
-                *(ml_value->GetMutable<Tensor>()),
-                CpuToRocmMemCpy);
           } else
 #endif
 #if USE_MIGRAPHX
@@ -333,7 +300,7 @@ void addOrtValueMethods(pybind11::module& m) {
       })
 #endif
       // Get a pointer to Tensor data
-      .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
+      .def("data_ptr", [](OrtValue* ml_value) -> uintptr_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
 
@@ -344,7 +311,7 @@ void addOrtValueMethods(pybind11::module& m) {
         }
 
         // Should cover x86 and x64 platforms
-        return reinterpret_cast<int64_t>(tensor->MutableDataRaw());
+        return reinterpret_cast<uintptr_t>(tensor->MutableDataRaw());
       })
       .def("device_name", [](const OrtValue* ort_value) -> std::string {
         if (ort_value->IsTensor()) {
@@ -421,21 +388,39 @@ void addOrtValueMethods(pybind11::module& m) {
       // Converts Tensor into a numpy array
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
-
-#ifdef USE_CUDA
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction());
-#elif USE_ROCM
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetRocmToHostMemCpyFunction());
-#elif USE_CANN
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
-#elif USE_DML
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
-#elif USE_MIGRAPHX
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction());
-#else
-        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
+        [[maybe_unused]] const auto& device = ml_value->Get<Tensor>().Location().device;
+#ifdef _MSC_VER
+// The switch statement may only contain the 'default' label. In such a case, the MSVC compiler
+// will warn about it, and since the warnings are treated as errors, the compilation will break.
+// Below pragmas turn off warning generation for this switch only.
+#pragma warning(push)
+#pragma warning(disable : 4065)
 #endif
-        return obj; })
+        switch (device.Vendor()) {
+#ifdef USE_CUDA
+          case OrtDevice::VendorIds::NVIDIA:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device));
+#endif
+#ifdef USE_CANN
+          case OrtDevice::VendorIds::HUAWEI:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
+#endif
+
+#ifdef USE_DML
+          case OrtDevice::VendorIds::MICROSOFT:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction(device));
+#endif
+#ifdef USE_MIGRAPHX
+          case OrtDevice::VendorIds::AMD:
+            return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction(device));
+#endif
+          default:
+            return GetPyObjFromTensor(*ml_value, nullptr, nullptr);
+        }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+      })
 #if defined(ENABLE_DLPACK)
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
            "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "

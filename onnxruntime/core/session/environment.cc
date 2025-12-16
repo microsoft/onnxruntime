@@ -79,7 +79,7 @@ static bool AreOrtMemoryInfosEquivalent(
     bool ignore_alignment = false) {
   return left.mem_type == right.mem_type &&
          (ignore_alignment ? left.device.EqualIgnoringAlignment(right.device) : left.device == right.device) &&
-         (!match_name || strcmp(left.name, right.name) == 0);
+         (!match_name || left.name == right.name);
 }
 
 std::vector<AllocatorPtr>::const_iterator FindExistingAllocator(const std::vector<AllocatorPtr>& allocators,
@@ -180,11 +180,6 @@ Status Environment::UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool 
   // shared_ort_allocators_ are internal only so never an error if there's no match
   if (auto it2 = FindExistingAllocator(shared_ort_allocators_, mem_info); it2 != shared_ort_allocators_.end()) {
     shared_ort_allocators_.erase(it2);
-  }
-
-  // also remove an arena wrapped allocator from an EP if the user called CreateSharedAllocator to create one
-  if (auto it3 = arena_ort_allocators_.find(&mem_info); it3 != arena_ort_allocators_.end()) {
-    arena_ort_allocators_.erase(it3);
   }
 
   if (found_shared_allocator) {
@@ -436,6 +431,10 @@ Environment::~Environment() {
   // instance and will call Release on it. If the plugin EP has been freed the Release will fail.
   shared_allocators_.clear();
 
+  // and as any OrtAllocator instances in shared_ort_allocators_ were owned by values in shared_allocators_ and have
+  // now been released we need to clear that too before calling UnregisterExecutionProviderLibrary().
+  shared_ort_allocators_.clear();
+
 #if !defined(ORT_MINIMAL_BUILD)
   // unregister any remaining EP libraries so they're cleaned up in a determistic way.
   while (!ep_libraries_.empty()) {
@@ -673,11 +672,6 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
     shared_ort_allocators_.erase(it);
   }
 
-  // if a previous call created an arena wrapped allocator for the EP's memory_info we also need to remove that
-  if (auto it = arena_ort_allocators_.find(&memory_info); it != arena_ort_allocators_.end()) {
-    arena_ort_allocators_.erase(it);
-  }
-
   // we only want one shared allocator for an OrtDevice in the shared_allocators_ so that it's deterministic which
   // one will be used for an inference session. ignore the name so that is the case.
   if (auto it = FindExistingAllocator(shared_allocators_, memory_info, /*match_name*/ false);
@@ -752,6 +746,29 @@ std::vector<const OrtHardwareDevice*> SortDevicesByType() {
 
   return sorted_devices;
 }
+
+bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
+  constexpr std::string_view suffix{".virtual"};
+
+  return lib_registration_name.size() >= suffix.size() &&
+         lib_registration_name.compare(lib_registration_name.size() - suffix.size(),
+                                       suffix.size(), suffix) == 0;
+}
+
+Status SetEpFactoryEnvironmentOptions(OrtEpFactory& factory, std::string_view lib_registration_name) {
+  // OrtEpFactory::SetEnvironmentOptions was added in ORT 1.24
+  if (factory.ort_version_supported < 24 || factory.SetEnvironmentOptions == nullptr) {
+    return Status::OK();
+  }
+
+  // We only set one option now but this can be generalized if necessary.
+  OrtKeyValuePairs options;
+  options.Add("allow_virtual_devices", AreVirtualDevicesAllowed(lib_registration_name) ? "1" : "0");
+
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(factory.SetEnvironmentOptions(&factory, &options)));
+
+  return Status::OK();
+}
 }  // namespace
 
 Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
@@ -777,6 +794,8 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
                 instance.library->RegistrationName());
 
     auto& factory = *factory_ptr;
+
+    ORT_RETURN_IF_ERROR(SetEpFactoryEnvironmentOptions(factory, instance.library->RegistrationName()));
 
     std::array<OrtEpDevice*, 8> ep_devices{nullptr};
     size_t num_ep_devices = 0;

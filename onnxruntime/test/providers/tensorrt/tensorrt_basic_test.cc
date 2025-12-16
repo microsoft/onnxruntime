@@ -1,9 +1,10 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -17,6 +18,8 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 
@@ -299,7 +302,9 @@ void RunWithOneSessionMultiThreadsInference(PathString model_name, std::string s
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 }
 
-TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
+// The test is disabled due to the issue described at
+// https://github.com/microsoft/onnxruntime/issues/26366
+TEST(TensorrtExecutionProviderTest, DISABLED_SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
   PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
   std::string graph_name = "multithreading_test";
@@ -685,7 +690,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_op_x = {12, 256, 256};
-  std::vector<float> values_op_x(1.0f, 786432);  // 786432=12*256*256
+  std::vector<float> values_op_x(786432, 1.0f);  // 786432=12*256*256
   OrtValue ml_value_x;
   CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
   OrtValue ml_value_y;
@@ -709,6 +714,52 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+}
+
+TEST(TensorrtExecutionProviderTest, DDSOutputTest) {
+  PathString model_name = ORT_TSTR("testdata/ort_github_issue_26272_dds.onnx");
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderRunWithDDSOutput";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_op_x = {3, 4};
+  std::vector<float> values_op_x(12, 0.f);  // 12=3*4
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cuda_allocator, dims_op_x, values_op_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("data", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("output");
+  std::vector<OrtValue> fetches;
+
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  // First pass run
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+
+  // Second pass run with new shape
+  dims_op_x = {6, 4};
+  values_op_x.resize(24, 0.f);  // 24=6*4
+  CreateMLValue<float>(cuda_allocator, dims_op_x, values_op_x, &ml_value_x);
+  feeds.clear();
+
+  feeds.insert(std::make_pair("data", ml_value_x));
+
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
 }
@@ -1311,6 +1362,50 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   // Now run
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+}
+
+TEST(TensorrtExecutionProviderTest, TestSessionOutputs) {
+  /*
+   * Model #1:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+  {
+    OrtTensorRTProviderOptionsV2 provider_options;
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+
+    auto model_path = ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 4);
+  }
+
+  /*
+   * Model #2:
+   *
+   * "X" ---> Dropout ---> MatMul ---> "Y"
+   *          ^     |
+   *          |     |
+   * "W" ------     ----> Can't be graph's output
+   *
+   */
+  {
+    OrtTensorRTProviderOptionsV2 provider_options;
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_TensorRT_V2(provider_options);
+
+    auto model_path = ORT_TSTR("testdata/node_output_not_used.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 1);
+  }
 }
 }  // namespace test
 }  // namespace onnxruntime

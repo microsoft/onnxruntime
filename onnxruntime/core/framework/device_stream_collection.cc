@@ -21,7 +21,8 @@ struct DummyStream : Stream {
 
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams, const AllocatorMap& allocators, bool is_main_graph) : num_streams_(num_streams), allocators_(allocators), is_main_graph_(is_main_graph) {
+  DeviceStreamCollectionImpl(size_t num_streams, const AllocatorMap& allocators, bool is_main_graph)
+      : num_streams_(num_streams), allocators_(allocators), is_main_graph_(is_main_graph) {
     device_streams_.resize(num_streams, nullptr);
     owned_streams_.reserve(num_streams);
     root_stream_ = std::make_unique<DummyStream>(nullptr, root_stream_device_);
@@ -32,13 +33,16 @@ class DeviceStreamCollectionImpl {
 
   void ReleaseSingleStreamBuffers(Stream* stream) {
     if (!stream) return;
-    for (auto it : allocators_) {
+    for (const auto& it : allocators_) {
       if (it.second->Info().device == stream->GetDevice() &&
           it.second->Info().alloc_type == OrtArenaAllocator) {
-        auto* arena_alloc = static_cast<BFCArena*>(it.second.get());
-        auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
-        if (stream_aware_alloc) {
-          stream_aware_alloc->ReleaseStreamBuffers(stream);
+        if (it.second->IsStreamAware()) {
+          // Previously we only had one StreamAwareBFCArena. We need to guard
+          // against multiple allocators now.
+          auto* arena_alloc = IArena::SafeArenaCast(it.second.get());
+          if (arena_alloc) {
+            arena_alloc->ReleaseStreamBuffers(stream);
+          }
         }
       }
     }

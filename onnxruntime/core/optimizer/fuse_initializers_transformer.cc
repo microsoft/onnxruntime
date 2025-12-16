@@ -142,7 +142,7 @@ static void FuseInitializerWithNode(Graph& graph,
     new_data = OrtValue();  // Data is inline
   }
 
-  auto& new_arg = graph_utils::AddInitializerWithExternalData(graph, dst_tensor, std::move(new_data));
+  auto& new_arg = graph_utils::AddInitializerWithOrtValue(graph, dst_tensor, std::move(new_data));
   graph_utils::ReplaceNodeInput(next_node, static_cast<int>(next_node_arg_index), new_arg);
 }
 

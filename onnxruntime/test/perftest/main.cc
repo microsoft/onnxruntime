@@ -13,6 +13,9 @@
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
 
+int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
+Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
+
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
 #else
@@ -35,7 +38,7 @@ int real_main(int argc, char* argv[]) {
     }
     ORT_CATCH(const Ort::Exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {
-        fprintf(stderr, "Error creating environment: %s \n", e.what());
+        std::cerr << "Error creating environment: " << e.what() << std::endl;
         failed = true;
       });
     }
@@ -67,6 +70,51 @@ int real_main(int argc, char* argv[]) {
     return 0;
   }
 
+  int status = 0;
+
+  // EP context perf test
+  if (test_config.run_config.compile_ep_context) {
+    {
+      std::cout << "\n> Compiling model...\n";
+      auto compile_status = CompileEpContextModel(env, test_config);
+
+      if (!compile_status.IsOK())
+        return -1;
+    }
+
+    {
+      test_config.model_info.model_file_path = test_config.run_config.compile_model_path;
+      status = RunPerfTest(env, test_config);
+    }
+  } else {
+    // regular perf test
+    status = RunPerfTest(env, test_config);
+  }
+  return status;
+}
+
+#ifdef _WIN32
+int wmain(int argc, wchar_t* argv[]) {
+#else
+int main(int argc, char* argv[]) {
+#endif
+  int retval = -1;
+  ORT_TRY {
+    retval = real_main(argc, argv);
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      std::cerr << ex.what() << std::endl;
+      retval = -1;
+    });
+  }
+
+  ::google::protobuf::ShutdownProtobufLibrary();
+
+  return retval;
+}
+
+int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
 
@@ -83,27 +131,57 @@ int real_main(int argc, char* argv[]) {
   }
 
   perf_runner.SerializeResult();
-
   return 0;
 }
 
-#ifdef _WIN32
-int wmain(int argc, wchar_t* argv[]) {
-#else
-int main(int argc, char* argv[]) {
-#endif
-  int retval = -1;
-  ORT_TRY {
-    retval = real_main(argc, argv);
-  }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      fprintf(stderr, "%s\n", ex.what());
-      retval = -1;
-    });
+Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
+  auto output_ctx_model_path = test_config.run_config.compile_model_path;
+  const auto provider_name = test_config.machine_config.provider_type_name;
+
+  Ort::SessionOptions session_options;
+
+  std::unordered_map<std::string, std::string> provider_options;
+  session_options.AppendExecutionProvider(provider_name, provider_options);
+
+  // free dim override
+  if (!test_config.run_config.free_dim_name_overrides.empty()) {
+    for (auto const& dim_override : test_config.run_config.free_dim_name_overrides) {
+      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToUTF8String(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
+      }
+    }
   }
 
-  ::google::protobuf::ShutdownProtobufLibrary();
+  if (!test_config.run_config.free_dim_denotation_overrides.empty()) {
+    for (auto const& dim_override : test_config.run_config.free_dim_denotation_overrides) {
+      if (g_ort->AddFreeDimensionOverride(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToUTF8String(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
+      }
+    }
+  }
 
-  return retval;
+  Ort::ModelCompilationOptions model_compile_options(env, session_options);
+  model_compile_options.SetEpContextEmbedMode(test_config.run_config.compile_binary_embed);
+  model_compile_options.SetInputModelPath(test_config.model_info.model_file_path.c_str());
+  model_compile_options.SetOutputModelPath(output_ctx_model_path.c_str());
+
+  Ort::Status status;
+  std::chrono::duration<double> compile_duration;
+  {
+    auto compile_time_start = std::chrono::high_resolution_clock::now();
+    status = Ort::CompileModel(env, model_compile_options);
+    auto compile_time_end = std::chrono::high_resolution_clock::now();
+    compile_duration = compile_time_end - compile_time_start;
+  }
+
+  if (!status.IsOK()) {
+    std::cout << "Failed to compile model: " << status.GetErrorMessage() << std::endl;
+  } else {
+    std::cout << "Compile time cost: " << compile_duration.count() << " s\n";
+  }
+  return status;
 }

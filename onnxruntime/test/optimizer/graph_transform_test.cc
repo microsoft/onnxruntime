@@ -83,11 +83,11 @@
 #include "test/capturing_sink.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -631,22 +631,41 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   }
 }
 
-TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant_float16_mul.onnx";
+TEST_F(GraphTransformationTests, ConstantFoldingTransposeEmptyInitializer) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant_folding_transpose_empty_initializer.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Mul"] == 1);
+  ASSERT_TRUE(op_to_count["Transpose"] == 1);
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
       TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+}
 
-  // assign all nodes to CUDA. the constant folding should try folding the node on the CPU and fail, thus leaving the
-  // EP as CUDA and not constant folding the node.
+TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16TopK) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant_float16_topk.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["TopK"] == 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const ConfigOptions empty_config_options;
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      TransformerLevel::Level1));
+
+  // assign all nodes to CUDA. constant folding will be attempted on CPU but fail, leaving nodes on CUDA.
   for (auto& node : graph.Nodes()) {
     node.SetExecutionProviderType(kCudaExecutionProvider);
   }
@@ -654,9 +673,8 @@ TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Mul"] == 1);
+  ASSERT_TRUE(op_to_count["TopK"] == 1);
 
-  // all nodes should still be on CUDA
   for (auto& node : graph.Nodes()) {
     EXPECT_STREQ(node.GetExecutionProviderType().c_str(), kCudaExecutionProvider);
   }
@@ -5789,12 +5807,6 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_GpuOnly) {
   tester.TestNoFusionOccurs();
 }
 
-TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Rocm) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
-  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kRocmExecutionProvider);
-  tester.TestFusionOccurs(1, true);
-}
-
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Cuda) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
@@ -6497,7 +6509,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
       });
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
   std::shared_ptr<Model> p_model;

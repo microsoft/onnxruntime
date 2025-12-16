@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/* eslint-disable @typescript-eslint/naming-convention */
+/* eslint-disable @typescript-eslint/naming-convention, @typescript-eslint/no-empty-object-type */
 
 interface NavigatorML {
   readonly ml: ML;
 }
 interface Navigator extends NavigatorML {}
 interface WorkerNavigator extends NavigatorML {}
-type MLDeviceType = 'cpu'|'gpu'|'npu';
-type MLPowerPreference = 'default'|'high-performance'|'low-power';
+type MLDeviceType = 'cpu' | 'gpu' | 'npu';
+type MLPowerPreference = 'default' | 'high-performance' | 'low-power';
 interface MLContextOptions {
   deviceType?: MLDeviceType;
   powerPreference?: MLPowerPreference;
@@ -27,8 +27,18 @@ interface MLContext {
   compute(graph: MLGraph, inputs: MLNamedArrayBufferViews, outputs: MLNamedArrayBufferViews): Promise<MLComputeResult>;
 }
 interface MLGraph {}
-type MLInputOperandLayout = 'nchw'|'nhwc';
-type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8'|'int4'|'uint4';
+type MLInputOperandLayout = 'nchw' | 'nhwc';
+type MLOperandDataType =
+  | 'float32'
+  | 'float16'
+  | 'int32'
+  | 'uint32'
+  | 'int64'
+  | 'uint64'
+  | 'int8'
+  | 'uint8'
+  | 'int4'
+  | 'uint4';
 interface MLOperandDescriptor {
   dataType: MLOperandDataType;
   shape?: readonly number[];
@@ -43,7 +53,7 @@ interface MLActivation {}
 type MLNamedOperands = Record<string, MLOperand>;
 interface MLGraphBuilder {
   // eslint-disable-next-line @typescript-eslint/no-misused-new
-  new(context: MLContext): MLGraphBuilder;
+  new (context: MLContext): MLGraphBuilder;
   input(name: string, descriptor: MLOperandDescriptor): MLOperand;
   constant(descriptor: MLOperandDescriptor, bufferView: ArrayBufferView): MLOperand;
   constant(type: MLOperandDataType, value: number): MLOperand;
@@ -65,8 +75,12 @@ interface MLBatchNormalizationOptions {
   epsilon?: number;
 }
 interface MLGraphBuilder {
-  batchNormalization(input: MLOperand, mean: MLOperand, variance: MLOperand, options?: MLBatchNormalizationOptions):
-      MLOperand;
+  batchNormalization(
+    input: MLOperand,
+    mean: MLOperand,
+    variance: MLOperand,
+    options?: MLBatchNormalizationOptions,
+  ): MLOperand;
 }
 interface MLGraphBuilder {
   cast(input: MLOperand, type: MLOperandDataType): MLOperand;
@@ -82,7 +96,7 @@ interface MLGraphBuilder {
 interface MLGraphBuilder {
   concat(inputs: MLOperand[], axis: number): MLOperand;
 }
-type MLConv2dFilterOperandLayout = 'oihw'|'hwio'|'ohwi'|'ihwo';
+type MLConv2dFilterOperandLayout = 'oihw' | 'hwio' | 'ohwi' | 'ihwo';
 interface MLConv2dOptions {
   padding?: number[];
   strides?: number[];
@@ -95,7 +109,7 @@ interface MLConv2dOptions {
 interface MLGraphBuilder {
   conv2d(input: MLOperand, filter: MLOperand, options?: MLConv2dOptions): MLOperand;
 }
-type MLConvTranspose2dFilterOperandLayout = 'iohw'|'hwoi'|'ohwi';
+type MLConvTranspose2dFilterOperandLayout = 'iohw' | 'hwoi' | 'ohwi';
 interface MLConvTranspose2dOptions {
   padding?: number[];
   strides?: number[];
@@ -172,8 +186,8 @@ interface MLGemmOptions {
 interface MLGraphBuilder {
   gemm(a: MLOperand, b: MLOperand, options?: MLGemmOptions): MLOperand;
 }
-type MLGruWeightLayout = 'zrn'|'rzn';
-type MLRecurrentNetworkDirection = 'forward'|'backward'|'both';
+type MLGruWeightLayout = 'zrn' | 'rzn';
+type MLRecurrentNetworkDirection = 'forward' | 'backward' | 'both';
 interface MLGruOptions {
   bias?: MLOperand;
   recurrentBias?: MLOperand;
@@ -185,8 +199,14 @@ interface MLGruOptions {
   activations?: MLActivation[];
 }
 interface MLGraphBuilder {
-  gru(input: MLOperand, weight: MLOperand, recurrentWeight: MLOperand, steps: number, hiddenSize: number,
-      options?: MLGruOptions): MLOperand[];
+  gru(
+    input: MLOperand,
+    weight: MLOperand,
+    recurrentWeight: MLOperand,
+    steps: number,
+    hiddenSize: number,
+    options?: MLGruOptions,
+  ): MLOperand[];
 }
 interface MLGruCellOptions {
   bias?: MLOperand;
@@ -197,8 +217,13 @@ interface MLGruCellOptions {
 }
 interface MLGraphBuilder {
   gruCell(
-      input: MLOperand, weight: MLOperand, recurrentWeight: MLOperand, hiddenState: MLOperand, hiddenSize: number,
-      options?: MLGruCellOptions): MLOperand;
+    input: MLOperand,
+    weight: MLOperand,
+    recurrentWeight: MLOperand,
+    hiddenState: MLOperand,
+    hiddenSize: number,
+    options?: MLGruCellOptions,
+  ): MLOperand;
 }
 interface MLHardSigmoidOptions {
   alpha?: number;
@@ -245,7 +270,7 @@ interface MLGraphBuilder {
   linear(input: MLOperand, options?: MLLinearOptions): MLOperand;
   linear(options?: MLLinearOptions): MLActivation;
 }
-type MLLstmWeightLayout = 'iofg'|'ifgo';
+type MLLstmWeightLayout = 'iofg' | 'ifgo';
 interface MLLstmOptions {
   bias?: MLOperand;
   recurrentBias?: MLOperand;
@@ -259,8 +284,13 @@ interface MLLstmOptions {
 }
 interface MLGraphBuilder {
   lstm(
-      input: MLOperand, weight: MLOperand, recurrentWeight: MLOperand, steps: number, hiddenSize: number,
-      options?: MLLstmOptions): MLOperand[];
+    input: MLOperand,
+    weight: MLOperand,
+    recurrentWeight: MLOperand,
+    steps: number,
+    hiddenSize: number,
+    options?: MLLstmOptions,
+  ): MLOperand[];
 }
 interface MLLstmCellOptions {
   bias?: MLOperand;
@@ -271,13 +301,19 @@ interface MLLstmCellOptions {
 }
 interface MLGraphBuilder {
   lstmCell(
-      input: MLOperand, weight: MLOperand, recurrentWeight: MLOperand, hiddenState: MLOperand, cellState: MLOperand,
-      hiddenSize: number, options?: MLLstmCellOptions): MLOperand[];
+    input: MLOperand,
+    weight: MLOperand,
+    recurrentWeight: MLOperand,
+    hiddenState: MLOperand,
+    cellState: MLOperand,
+    hiddenSize: number,
+    options?: MLLstmCellOptions,
+  ): MLOperand[];
 }
 interface MLGraphBuilder {
   matmul(a: MLOperand, b: MLOperand): MLOperand;
 }
-type MLPaddingMode = 'constant'|'edge'|'reflection'|'symmetric';
+type MLPaddingMode = 'constant' | 'edge' | 'reflection' | 'symmetric';
 interface MLPadOptions {
   mode?: MLPaddingMode;
   value?: number;
@@ -285,7 +321,7 @@ interface MLPadOptions {
 interface MLGraphBuilder {
   pad(input: MLOperand, beginningPadding: number[], endingPadding: number[], options?: MLPadOptions): MLOperand;
 }
-type MLRoundingType = 'floor'|'ceil';
+type MLRoundingType = 'floor' | 'ceil';
 interface MLPool2dOptions {
   windowDimensions?: number[];
   padding?: number[];
@@ -323,7 +359,7 @@ interface MLGraphBuilder {
   relu(input: MLOperand): MLOperand;
   relu(): MLActivation;
 }
-type MLInterpolationMode = 'nearest-neighbor'|'linear';
+type MLInterpolationMode = 'nearest-neighbor' | 'linear';
 interface MLResample2dOptions {
   mode?: MLInterpolationMode;
   scales?: number[];
@@ -359,7 +395,7 @@ interface MLSplitOptions {
   axis?: number;
 }
 interface MLGraphBuilder {
-  split(input: MLOperand, splits: number|number[], options?: MLSplitOptions): MLOperand[];
+  split(input: MLOperand, splits: number | number[], options?: MLSplitOptions): MLOperand[];
 }
 interface MLGraphBuilder {
   tanh(input: MLOperand): MLOperand;
@@ -410,12 +446,15 @@ interface MLTensorDescriptor extends MLOperandDescriptor {
 interface MLContext {
   createTensor(descriptor: MLTensorDescriptor): Promise<MLTensor>;
   writeTensor(
-      destinationTensor: MLTensor, sourceData: ArrayBufferView|ArrayBuffer, sourceElementOffset?: number,
-      sourceElementSize?: number): void;
+    destinationTensor: MLTensor,
+    sourceData: ArrayBufferView | ArrayBuffer,
+    sourceElementOffset?: number,
+    sourceElementSize?: number,
+  ): void;
   readTensor(sourceTensor: MLTensor): Promise<ArrayBuffer>;
-  readTensor(sourceTensor: MLTensor, destinationData: ArrayBufferView|ArrayBuffer): Promise<undefined>;
+  readTensor(sourceTensor: MLTensor, destinationData: ArrayBufferView | ArrayBuffer): Promise<undefined>;
   dispatch(graph: MLGraph, inputs: MLNamedTensor, outputs: MLNamedTensor): void;
-  opSupportLimits() : MLOpSupportLimits;
+  opSupportLimits(): MLOpSupportLimits;
 }
 
 interface MLOpSupportLimits {

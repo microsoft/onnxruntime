@@ -71,7 +71,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool ConcurrentRunSupported() const override { return false; }
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
-  Status OnSessionInitializationEnd() override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
@@ -100,7 +99,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
   int m_current_graph_annotation_id = 0;
-  webgpu::GpuBufferAllocator* allocator_ = nullptr;
 
   // Buffer manager specifically for graph capture mode
   std::unique_ptr<webgpu::BufferManager> graph_buffer_mgr_ = nullptr;

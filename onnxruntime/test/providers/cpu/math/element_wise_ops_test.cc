@@ -6,10 +6,11 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/current_test_name.h"
 #include "test/util/include/test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
+#include "test/common/random_generator.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <limits>
@@ -39,8 +40,6 @@ void TestBinaryFloat16(const char* op_name,
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
     if (execution_providers.size() > 0) {
       OpTester tester(op_name, 14);
@@ -55,8 +54,6 @@ void TestBinaryFloat16(const char* op_name,
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
 
     if (enable_bf16 && execution_providers.size() > 0) {
@@ -83,8 +80,6 @@ void TestUnaryFloat16(const char* op_name,
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
     if (execution_providers.size() > 0) {
       OpTester tester(op_name, opset);
@@ -99,8 +94,6 @@ void TestUnaryFloat16(const char* op_name,
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
 
     if (run_bf16 && execution_providers.size() > 0) {
@@ -1298,10 +1291,16 @@ TEST(MathOpTest, Pow_Float_15) {
   test.Run();
 }
 
-#if defined(USE_DNNL)
+#if defined(USE_DNNL) || defined(USE_CUDA)
 TEST(MathOpTest, Pow_bfloat16_15) {
 #ifdef USE_DNNL
   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#ifdef USE_CUDA
+  if (!CudaHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
@@ -1319,6 +1318,9 @@ TEST(MathOpTest, Pow_bfloat16_15) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+#if defined(USE_CUDA)
+  execution_providers.push_back(DefaultCudaExecutionProvider());
 #endif
   test_bf16.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -1429,7 +1431,7 @@ TEST(MathOpTest, Pow_float16_float16) {
                     dims, {1.0f, 256.0f, 2.0f, 1.0f}, false);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST(MathOpTest, Pow_float_float16) {
   OpTester test("Pow", 12);
   std::vector<int64_t> dims{4};
@@ -1441,8 +1443,6 @@ TEST(MathOpTest, Pow_float_float16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_COREML
   execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #endif
@@ -3690,6 +3690,74 @@ TEST(MathOpTest, Equal_multidirectional_broadcastAB_bool) {
   test.Run();
 }
 
+TEST(MathOpTest, Max_12_Int8) {
+  OpTester test("Max", 12);
+  test.AddInput<int8_t>("data_0", {1, 3},
+                        {1, 2, 3});
+  test.AddInput<int8_t>("data_2", {3, 3},
+                        {10, 20, 30,
+                         40, 50, 60,
+                         70, 80, 90});
+  test.AddInput<int8_t>("data_1", {3, 1},
+                        {-1, -2, 127});
+  test.AddOutput<int8_t>("max", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          127, 127, 127});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Max_12_UInt8) {
+  OpTester test("Max", 12);
+  test.AddInput<uint8_t>("data_0", {1, 3},
+                         {1, 20, 30});
+  test.AddInput<uint8_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<uint8_t>("data_1", {3, 1},
+                         {100, 20, 30});
+  test.AddOutput<uint8_t>("max", {3, 3},
+                          {100, 100, 100,
+                           40, 50, 60,
+                           70, 80, 90});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(MathOpTest, Min_12_Int8) {
+  OpTester test("Min", 12);
+  test.AddInput<int8_t>("data_0", {1, 3},
+                        {1, 2, 3});
+  test.AddInput<int8_t>("data_2", {3, 3},
+                        {10, 20, 30,
+                         40, 50, 60,
+                         -70, -80, -90});
+  test.AddInput<int8_t>("data_1", {3, 1},
+                        {-1, 20, 127});
+  test.AddOutput<int8_t>("min", {3, 3},
+                         {-1, -1, -1,
+                          1, 2, 3,
+                          -70, -80, -90});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(MathOpTest, Min_12_UInt8) {
+  OpTester test("Min", 12);
+  test.AddInput<uint8_t>("data_0", {1, 3},
+                         {1, 20, 30});
+  test.AddInput<uint8_t>("data_2", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<uint8_t>("data_1", {3, 1},
+                         {1, 20, 30});
+  test.AddOutput<uint8_t>("min", {3, 3},
+                          {1, 1, 1,
+                           1, 20, 20,
+                           1, 20, 30});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(MathOpTest, Mean_6) {
   OpTester test("Mean", 6);
   std::vector<int64_t> dims{3, 3};
@@ -3914,6 +3982,14 @@ TEST(MathOpTest, Erf) {
   test.Run();
 }
 
+TEST(MathOpTest, Erf_f16) {
+  OpTester test("Erf", 9);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<MLFloat16>("A", dims, MakeMLFloat16({0.5f, 1.0f, 0.7f, 2.0f}));
+  test.AddOutput<MLFloat16>("B", dims, MakeMLFloat16({0.5204999f, 0.8427008f, 0.6778012f, 0.9953223f}));
+  test.Run();
+}
+
 TEST(MathOpTest, ErfMoreData) {
   OpTester test("Erf", 9);
   std::vector<float> inputs{
@@ -3941,6 +4017,21 @@ TEST(MathOpTest, ErfMoreData) {
   test.Run();
 }
 
+TEST(MathOpTest, ErfCheckMultiThreadDataChunking) {
+  OpTester test("Erf", 9);
+  static constexpr int64_t size = 100;
+  std::vector<int64_t> dims{size};
+  RandomValueGenerator random(42);
+  std::vector<float> inputs = random.Uniform<float>(dims, -5.0f, 5.0f);
+  std::vector<float> outputs(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    outputs[i] = std::erf(inputs[i]);
+  }
+  test.AddInput<float>("A", dims, inputs);
+  test.AddOutput<float>("B", dims, outputs);
+  test.Run();
+}
+
 constexpr int ModOp_ver = 10;
 
 TEST(ModOpTest, Fmod_float_mixed_sign) {
@@ -3950,7 +4041,8 @@ TEST(ModOpTest, Fmod_float_mixed_sign) {
   test.AddInput<float>("Y", {6}, {2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f});
   test.AddOutput<float>("Z", {6}, {-0.1f, 0.4f, 5.f, 0.1f, -0.4f, 3.f});
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Fmod_double_mixed_sign) {
@@ -3959,7 +4051,9 @@ TEST(ModOpTest, Fmod_double_mixed_sign) {
   test.AddInput<double>("X", {6}, {-4.3, 7.2, 5.0, 4.3, -7.2, 8.0});
   test.AddInput<double>("Y", {6}, {2.1f, -3.4, 8.0, -2.1, 3.4, 5.0});
   test.AddOutput<double>("Z", {6}, {-0.1, 0.4, 5., 0.1, -0.4, 3.});
-  test.Run();
+
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Fmod_float16_mixed_sign) {
@@ -3971,22 +4065,21 @@ TEST(ModOpTest, Fmod_float16_mixed_sign) {
   // The output above is {-0.1f, 0.4f, 5.f, 0.1f, -0.4f, 3.f} for float
   test.AddOutput<MLFloat16>("Z", {6}, MakeMLFloat16({-0.1015625f, 0.3984375f, 5.f, 0.1015625f, -0.3984375f, 3.f}));
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   OpTester test("Mod", 13);
   test.AddAttribute<int64_t>("fmod", 1);
-  // Due to BFloat16's precision, if the result is too small, it's not easy get pass for both CUDA and ROCm.
+  // Due to BFloat16's precision, if the result is too small, it's not easy get pass for both CUDA.
   test.AddInput<BFloat16>("X", {4}, MakeBFloat16({8.0f, 5.0f, -8.0f, 8.0f}));
   test.AddInput<BFloat16>("Y", {4}, MakeBFloat16({-3.4f, 8.0f, 3.4f, 5.0f}));
   test.AddOutput<BFloat16>("Z", {4}, MakeBFloat16({1.2f, 5.f, -1.2f, 3.f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -3997,8 +4090,9 @@ TEST(ModOpTest, Int8_mixed_sign) {
   test.AddInput<int8_t>("X", {6}, {-4, 7, 5, 4, -7, 8});
   test.AddInput<int8_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int8_t>("Z", {6}, {0, -2, 5, 0, 2, 3});
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  // For QNN EP, when input is not fp32/fp16/ufxp16/ufxp8/sfxp8, Mod is lowered to Cast(a - b*floor(a/b)). And Int8 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Int8_mixed_sign_fmod) {
@@ -4009,7 +4103,10 @@ TEST(ModOpTest, Int8_mixed_sign_fmod) {
   test.AddInput<int8_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int8_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  // For TensorRT running in these in INT8 quantization scales are needed, so skip it now
+  // For QNN EP, when input is not fp32/fp16/ufxp16/ufxp8/sfxp8, Mod is lowered to Cast(a - b*floor(a/b)). And Int8 is not supported by Cast, so skip it now
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, UInt8_mod) {
@@ -4027,7 +4124,8 @@ TEST(ModOpTest, Int16_mixed_sign) {
   test.AddInput<int16_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int16_t>("Z", {6}, {0, -2, 5, 0, 2, 3});
 
-  test.Run();
+  // For QNN EP, when input is not fp32/fp16/ufxp16/ufxp8/sfxp8, Mod is lowered to Cast(a - b*floor(a/b)). And Int16 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Int16_mixed_sign_fmod) {
@@ -4038,7 +4136,9 @@ TEST(ModOpTest, Int16_mixed_sign_fmod) {
   test.AddInput<int16_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int16_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  // For QNN EP, when input is not fp32, fp16, ufxp16, ufxp8, sfxp8 Mod is lowered to Cast(a - b*floor(a/b)). And Int16 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, UInt16_mod) {
@@ -4047,7 +4147,8 @@ TEST(ModOpTest, UInt16_mod) {
   test.AddInput<uint16_t>("Y", {6}, {2, 3, 8, 2, 3, 5});
   test.AddOutput<uint16_t>("Z", {6}, {0, 1, 5, 0, 1, 3});
 
-  test.Run();
+  // For QNN EP, when input is not fp32, fp16, ufxp16, ufxp8, sfxp8 Mod is lowered to Cast(a - b*floor(a/b)). And Uint16 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Int32_mixed_sign) {
@@ -4067,7 +4168,8 @@ TEST(ModOpTest, Int32_mixed_sign_fmod) {
   test.AddInput<int32_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int32_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, UInt32_mod) {
@@ -4096,7 +4198,8 @@ TEST(ModOpTest, Int64_mixed_sign_fmod) {
   test.AddInput<int64_t>("Y", {6}, {2, -3, 8, -2, 3, 5});
   test.AddOutput<int64_t>("Z", {6}, {0, 1, 5, 0, -1, 3});
 
-  test.Run();
+  // QNN EP doesn't support Fmod
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, UInt64_mod) {
@@ -4105,7 +4208,8 @@ TEST(ModOpTest, UInt64_mod) {
   test.AddInput<uint64_t>("Y", {6}, {2, 3, 8, 2, 3, 5});
   test.AddOutput<uint64_t>("Z", {6}, {0, 1, 5, 0, 1, 3});
 
-  test.Run();
+  // For QNN EP, when input is not fp32/fp16/ufxp16/ufxp8/sfxp8, Mod is lowered to Cast(a - b*floor(a/b)). And Uint64 is not supported by Cast, so skip it now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(ModOpTest, Int32_mod_bcast) {

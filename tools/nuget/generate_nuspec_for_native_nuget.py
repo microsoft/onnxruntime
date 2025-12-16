@@ -4,8 +4,15 @@
 import argparse
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
+
+# These platform version values are the default target platform versions for .NET 9 from the table here:
+# https://learn.microsoft.com/en-us/dotnet/standard/frameworks#os-version-in-tfms
+platform_version_android = "35.0"
+platform_version_ios = "18.0"
+platform_version_maccatalyst = "18.0"
 
 
 # What does the names of our C API tarball/zip files looks like
@@ -20,8 +27,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-cuda"
         elif ep == "tensorrt":
             pkg_name += "-tensorrt"
-        elif ep == "rocm":
-            pkg_name += "-rocm"
+        elif ep == "migraphx":
+            pkg_name += "-migraphx"
     elif os == "linux":
         pkg_name += "-linux-"
         pkg_name += cpu_arch
@@ -29,8 +36,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-cuda"
         elif ep == "tensorrt":
             pkg_name += "-tensorrt"
-        elif ep == "rocm":
-            pkg_name += "-rocm"
+        elif ep == "migraphx":
+            pkg_name += "-migraphx"
     elif os == "osx":
         pkg_name = "onnxruntime-osx-" + cpu_arch
     return pkg_name
@@ -44,7 +51,11 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 def is_this_file_needed(ep, filename, package_name):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         return False
-    return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename)
+    return (
+        (ep != "cuda" or "cuda" in filename)
+        and (ep != "tensorrt" or "cuda" not in filename)
+        and (ep != "migraphx" or "migraphx" not in filename)
+    )
 
 
 # nuget_artifacts_dir: the directory with uncompressed C API tarball/zip files
@@ -138,7 +149,7 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "qnn", "None"],
+        choices=["cuda", "dnnl", "openvino", "migraphx", "tensorrt", "snpe", "qnn", "None"],
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
@@ -182,6 +193,8 @@ def generate_description(line_list, package_name):
         description = "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
     elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
         description = "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
+    elif "Microsoft.ML.OnnxRuntime.MIGraphX" in package_name:
+        description = "This package contains native shared library artifacts for ONNX Runtime with MIGraphX."
     elif "Intel.ML.OnnxRuntime" in package_name:
         description = "This package contains native shared library artifacts for ONNX Runtime with OpenVINO."
     elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
@@ -269,17 +282,17 @@ def generate_dependencies(xml_text, package_name, version):
         xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
             xml_text.append('<group targetFramework="native" />')
-            # Support net8.0-android
-            xml_text.append('<group targetFramework="net8.0-android31.0">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            # Support Android
+            xml_text.append(f'<group targetFramework="net9.0-android{platform_version_android}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
-            # Support net8.0-ios
-            xml_text.append('<group targetFramework="net8.0-ios15.4">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            # Support iOS
+            xml_text.append(f'<group targetFramework="net9.0-ios{platform_version_ios}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
-            # Support net8.0-maccatalyst
-            xml_text.append('<group targetFramework="net8.0-maccatalyst14.0">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            # Support MacCatalyst
+            xml_text.append(f'<group targetFramework="net9.0-maccatalyst{platform_version_maccatalyst}">')
+            xml_text.append(f'<dependency id="Microsoft.ML.OnnxRuntime.Managed" version="{version}"/>')
             xml_text.append("</group>")
         # Support Native C++
         if include_dml:
@@ -342,6 +355,10 @@ def generate_metadata(line_list, args):
     line_list += metadata_list
 
 
+def copy_file(src_path, dst_path):
+    shutil.copyfile(src_path, dst_path)
+
+
 def generate_files(line_list, args):
     files_list = ["<files>"]
 
@@ -354,11 +371,11 @@ def generate_files(line_list, args):
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
     is_cuda_gpu_win_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu.Windows"
     is_cuda_gpu_linux_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu.Linux"
-    is_rocm_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.ROCm"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
     is_qnn_package = args.package_name == "Microsoft.ML.OnnxRuntime.QNN"
+    is_migraphx_package = args.package_name == "Microsoft.ML.OnnxRuntime.MIGraphX"
     is_training_package = args.package_name in [
         "Microsoft.ML.OnnxRuntime.Training",
         "Microsoft.ML.OnnxRuntime.Training.Gpu",
@@ -384,11 +401,28 @@ def generate_files(line_list, args):
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
             "qnn_ep_shared_lib": "onnxruntime_providers_qnn.dll",
+            "migraphx_ep_shared_lib": "onnxruntime_providers_migraphx.dll",
+            "amd_comgr0602": "amd_comgr0602.dll",
+            "amd_comgr0604": "amd_comgr0604.dll",
+            "amd_comgr0700": "amd_comgr0700.dll",
+            "hiprtc0602": "hiprtc0602.dll",
+            "hiprtc0604": "hiprtc0604.dll",
+            "hiprtc0700": "hiprtc0700.dll",
+            "hiprtc-builtins0602": "hiprtc-builtins0602.dll",
+            "hiprtc-builtins0604": "hiprtc-builtins0604.dll",
+            "hiprtc-builtins0700": "hiprtc-builtins0700.dll",
+            "migraphx-hiprtc-driver": "migraphx-hiprtc-driver.exe",
+            "migraphx": "migraphx.dll",
+            "migraphx_c": "migraphx_c.dll",
+            "migraphx_cpu": "migraphx_cpu.dll",
+            "migraphx_device": "migraphx_device.dll",
+            "migraphx_gpu": "migraphx_gpu.dll",
+            "migraphx_onnx": "migraphx_onnx.dll",
+            "migraphx_tf": "migraphx_tf",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
 
-        copy_command = "copy"
         runtimes_target = '" target="runtimes\\win-'
     else:
         nuget_dependencies = {
@@ -401,12 +435,11 @@ def generate_files(line_list, args):
             "tensorrt_ep_shared_lib": "libonnxruntime_providers_tensorrt.so",
             "openvino_ep_shared_lib": "libonnxruntime_providers_openvino.so",
             "cuda_ep_shared_lib": "libonnxruntime_providers_cuda.so",
-            "rocm_ep_shared_lib": "libonnxruntime_providers_rocm.so",
+            "migraphx_ep_shared_lib": "libonnxruntime_providers_migraphx.so",
             "onnxruntime_perf_test": "onnxruntime_perf_test",
             "onnx_test_runner": "onnx_test_runner",
         }
 
-        copy_command = "cp"
         runtimes_target = '" target="runtimes\\linux-'
 
     if is_windowsai_package:
@@ -421,7 +454,7 @@ def generate_files(line_list, args):
     include_dir = f"{build_dir}\\native\\include"
 
     # Sub.Gpu packages do not include the onnxruntime headers
-    if args.package_name != "Microsoft.ML.OnnxRuntime.Gpu":
+    if args.package_name != "Microsoft.ML.OnnxRuntime.Gpu" and args.package_name != "Microsoft.ML.OnnxRuntime.MIGraphX":
         files_list.append(
             "<file src="
             + '"'
@@ -556,15 +589,28 @@ def generate_files(line_list, args):
             files_list.append(
                 "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpPrepare.dll") + runtimes + " />"
             )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpV73Stub.dll") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "libQnnHtpV73Skel.so") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "libqnnhtpv73.cat") + runtimes + " />"
-            )
+            for htp_arch in [73, 81]:
+                files_list.append(
+                    "<file src="
+                    + '"'
+                    + os.path.join(args.native_build_path, f"QnnHtpV{htp_arch}Stub.dll")
+                    + runtimes
+                    + " />"
+                )
+                files_list.append(
+                    "<file src="
+                    + '"'
+                    + os.path.join(args.native_build_path, f"libQnnHtpV{htp_arch}Skel.so")
+                    + runtimes
+                    + " />"
+                )
+                files_list.append(
+                    "<file src="
+                    + '"'
+                    + os.path.join(args.native_build_path, f"libqnnhtpv{htp_arch}.cat")
+                    + runtimes
+                    + " />"
+                )
 
     is_ado_packaging_build = False
     # Process runtimes
@@ -579,8 +625,8 @@ def generate_files(line_list, args):
             # downloaded from other build jobs
             if is_cuda_gpu_package or is_cuda_gpu_win_sub_package or is_cuda_gpu_linux_sub_package:
                 ep_list = ["tensorrt", "cuda", None]
-            elif is_rocm_gpu_package:
-                ep_list = ["rocm", None]
+            elif is_migraphx_package:
+                ep_list = ["migraphx", None]
             else:
                 ep_list = [None]
             for ep in ep_list:
@@ -688,24 +734,6 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-    if args.execution_provider == "rocm" or (is_rocm_gpu_package and not is_ado_packaging_build):
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
-            + runtimes_target
-            + args.target_architecture
-            + '\\native" />'
-        )
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, nuget_dependencies["rocm_ep_shared_lib"])
-            + runtimes_target
-            + args.target_architecture
-            + '\\native" />'
-        )
-
     if args.execution_provider == "openvino":
         openvino_path = get_env_var("INTEL_OPENVINO_DIR")
         files_list.append(
@@ -785,6 +813,52 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
+    if args.execution_provider == "migraphx":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["migraphx_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
+        if is_windows_build:
+            native_build_path = Path(args.native_build_path)
+
+            def _files_list_append(key: str):
+                path = native_build_path / nuget_dependencies[key]
+                if path.exists():
+                    files_list.append(
+                        "<file src=" + '"' + str(path) + runtimes_target + args.target_architecture + '\\native" />'
+                    )
+
+            _files_list_append("amd_comgr0602")
+            _files_list_append("amd_comgr0604")
+            _files_list_append("amd_comgr0700")
+            _files_list_append("hiprtc0602")
+            _files_list_append("hiprtc0604")
+            _files_list_append("hiprtc0700")
+            _files_list_append("hiprtc-builtins0602")
+            _files_list_append("hiprtc-builtins0604")
+            _files_list_append("hiprtc-builtins0700")
+            _files_list_append("migraphx-hiprtc-driver")
+            _files_list_append("migraphx")
+            _files_list_append("migraphx_c")
+            _files_list_append("migraphx_cpu")
+            _files_list_append("migraphx_device")
+            _files_list_append("migraphx_gpu")
+            _files_list_append("migraphx_onnx")
+            _files_list_append("migraphx_tf")
+
     if is_dml_package:
         files_list.append(
             "<file src="
@@ -796,7 +870,7 @@ def generate_files(line_list, args):
         )
 
     # process all other library dependencies
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
+    if is_cpu_package or is_cuda_gpu_package or is_migraphx_package or is_dml_package or is_mklml_package:
         # Process dnnl dependency
         if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["dnnl"])):
             files_list.append(
@@ -898,7 +972,7 @@ def generate_files(line_list, args):
         or is_cuda_gpu_package
         or is_cuda_gpu_linux_sub_package
         or is_cuda_gpu_win_sub_package
-        or is_rocm_gpu_package
+        or is_migraphx_package
         or is_dml_package
         or is_mklml_package
         or is_snpe_package
@@ -928,7 +1002,7 @@ def generate_files(line_list, args):
             "netstandard",
             args.package_name + ".props",
         )
-        os.system(copy_command + " " + source_props + " " + target_props)
+        copy_file(source_props, target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\native" />')
         if not is_snpe_package and not is_qnn_package:
             files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.0"  />')
@@ -947,7 +1021,7 @@ def generate_files(line_list, args):
             "netstandard",
             args.package_name + ".targets",
         )
-        os.system(copy_command + " " + source_targets + " " + target_targets)
+        copy_file(source_targets, target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\native"  />')
         if not is_snpe_package and not is_qnn_package:
             files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.0" />')
@@ -955,104 +1029,120 @@ def generate_files(line_list, args):
 
         # Process xamarin targets files
         if args.package_name == "Microsoft.ML.OnnxRuntime":
-            net8_android_source_targets = os.path.join(
+            net9_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-android",
+                "net9.0-android",
                 "targets.xml",
             )
-            net8_android_target_targets = os.path.join(
+            net9_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-android",
+                "net9.0-android",
                 args.package_name + ".targets",
             )
 
-            net8_ios_source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net8.0-ios", "targets.xml"
+            net9_ios_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net9.0-ios", "targets.xml"
             )
-            net8_ios_target_targets = os.path.join(
+            net9_ios_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-ios",
+                "net9.0-ios",
                 args.package_name + ".targets",
             )
 
-            net8_maccatalyst_source_targets = os.path.join(
+            net9_maccatalyst_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-maccatalyst",
+                "net9.0-maccatalyst",
                 "_._",
             )
+            net9_maccatalyst_target_targets = net9_maccatalyst_source_targets
 
-            net8_maccatalyst_target_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net8.0-maccatalyst", "_._"
-            )
-
-            os.system(copy_command + " " + net8_android_source_targets + " " + net8_android_target_targets)
-            os.system(copy_command + " " + net8_ios_source_targets + " " + net8_ios_target_targets)
-            os.system(copy_command + " " + net8_maccatalyst_source_targets + " " + net8_maccatalyst_target_targets)
+            copy_file(net9_android_source_targets, net9_android_target_targets)
+            copy_file(net9_ios_source_targets, net9_ios_target_targets)
 
             files_list.append(
-                "<file src=" + '"' + net8_android_target_targets + '" target="build\\net8.0-android31.0" />'
-            )
-            files_list.append(
-                "<file src=" + '"' + net8_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
-            )
-
-            files_list.append("<file src=" + '"' + net8_ios_target_targets + '" target="build\\net8.0-ios15.4" />')
-            files_list.append(
-                "<file src=" + '"' + net8_ios_target_targets + '" target="buildTransitive\\net8.0-ios15.4" />'
-            )
-            files_list.append(
-                "<file src=" + '"' + net8_maccatalyst_target_targets + '" target="build\\net8.0-maccatalyst14.0" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="build\\net9.0-android{platform_version_android}" />'
             )
             files_list.append(
                 "<file src="
                 + '"'
-                + net8_maccatalyst_target_targets
-                + '" target="buildTransitive\\net8.0-maccatalyst14.0" />'
+                + net9_android_target_targets
+                + f'" target="buildTransitive\\net9.0-android{platform_version_android}" />'
+            )
+
+            files_list.append(
+                "<file src=" + '"' + net9_ios_target_targets + f'" target="build\\net9.0-ios{platform_version_ios}" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net9_ios_target_targets
+                + f'" target="buildTransitive\\net9.0-ios{platform_version_ios}" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net9_maccatalyst_target_targets
+                + f'" target="build\\net9.0-maccatalyst{platform_version_maccatalyst}" />'
+            )
+            files_list.append(
+                "<file src="
+                + '"'
+                + net9_maccatalyst_target_targets
+                + f'" target="buildTransitive\\net9.0-maccatalyst{platform_version_maccatalyst}" />'
             )
 
         # Process Training specific targets and props
         if args.package_name == "Microsoft.ML.OnnxRuntime.Training":
-            net8_android_source_targets = os.path.join(
+            net9_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-android",
+                "net9.0-android",
                 "targets.xml",
             )
-            net8_android_target_targets = os.path.join(
+            net9_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "net8.0-android",
+                "net9.0-android",
                 args.package_name + ".targets",
             )
 
-            os.system(copy_command + " " + net8_android_source_targets + " " + net8_android_target_targets)
+            copy_file(net9_android_source_targets, net9_android_target_targets)
             files_list.append(
-                "<file src=" + '"' + net8_android_target_targets + '" target="build\\net8.0-android31.0" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="build\\net9.0-android{platform_version_android}" />'
             )
             files_list.append(
-                "<file src=" + '"' + net8_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
+                "<file src="
+                + '"'
+                + net9_android_target_targets
+                + f'" target="buildTransitive\\net9.0-android{platform_version_android}" />'
             )
 
     # README
@@ -1123,11 +1213,11 @@ def validate_execution_provider(execution_provider):
             or execution_provider == "cuda"
             or execution_provider == "tensorrt"
             or execution_provider == "openvino"
-            or execution_provider == "rocm"
+            or execution_provider == "migraphx"
         ):
             raise Exception(
                 "On Linux platform nuget generation is supported only "
-                "for cpu|cuda|dnnl|tensorrt|openvino|rocm execution providers."
+                "for cpu|cuda|dnnl|tensorrt|openvino|migraphx execution providers."
             )
 
 

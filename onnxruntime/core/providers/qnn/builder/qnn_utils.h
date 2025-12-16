@@ -90,7 +90,11 @@ std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wr
 Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::TypeProto* type_proto,
                       Qnn_DataType_t& tensor_data_type);
 
-const std::string& GetNodeName(const NodeUnit& node_unit);
+// Returns an unique name string based on a base string and an optional suffix.
+std::string GetUniqueName(const std::string& base, std::string_view suffix = {});
+
+// Returns an unique name string from its name or op type and index, plus an optional suffix.
+std::string GetUniqueName(const NodeUnit& node_unit, std::string_view suffix = {});
 
 bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
 
@@ -427,7 +431,9 @@ Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
 Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
                              std::vector<uint32_t>& data_shape,
                              const onnx::TensorProto& initializer,
-                             std::vector<uint8_t>& transposed_data);
+                             std::vector<uint8_t>& transposed_data,
+                             const logging::Logger& logger,
+                             bool skip_output_data_copy = false);
 
 Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                        const std::string& convert_input_name,
@@ -449,6 +455,12 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
  * @return execution status of this function
  */
 Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
+/**
+ * Get the current timestamp in microseconds
+ *
+ * @return the current timestamp in microseconds
+ */
+uint64_t GetTimeStampInUs();
 
 }  // namespace utils
 }  // namespace qnn

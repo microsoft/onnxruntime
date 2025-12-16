@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <cuda_bf16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
@@ -41,6 +42,18 @@ __device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
   Half4 r;
   r.x = a.x + b.x;
   r.y = a.y + b.y;
+  return r;
+}
+
+struct __align__(8) nv_bfloat164 {
+  __nv_bfloat162 x;
+  __nv_bfloat162 y;
+};
+
+__device__ __forceinline__ nv_bfloat164 operator+(const nv_bfloat164& a, const nv_bfloat164& b) {
+  nv_bfloat164 r;
+  r.x = __hadd2(a.x, b.x);
+  r.y = __hadd2(a.y, b.y);
   return r;
 }
 
@@ -63,8 +76,6 @@ struct Float4_ {
   float2 x;
   float2 y;
 };
-
-#ifndef USE_ROCM
 
 template <typename T>
 struct num_elems;
@@ -139,6 +150,24 @@ struct Vec_t<half2> {
 
 template <>
 struct Vec_t<Half4> {
+  using Type = uint4;
+  static constexpr int size = 8;
+};
+
+template <>
+struct Vec_t<onnxruntime::BFloat16> {
+  using Type = uint32_t;
+  static constexpr int size = 2;
+};
+
+template <>
+struct Vec_t<__nv_bfloat162> {
+  using Type = uint2;
+  static constexpr int size = 4;
+};
+
+template <>
+struct Vec_t<nv_bfloat164> {
   using Type = uint4;
   static constexpr int size = 8;
 };
@@ -903,8 +932,6 @@ inline __device__ void ConvertFromFloat(uint4& dst, Float8_ src) {
   dst.z = Float2ToHalf2(src.z);
   dst.w = Float2ToHalf2(src.w);
 }
-
-#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

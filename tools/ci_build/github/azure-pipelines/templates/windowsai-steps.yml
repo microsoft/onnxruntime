@@ -23,19 +23,9 @@ jobs:
       inputs:
         version: '6.x'
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
-        ${{ if eq(parameters.BuildArch, 'x86') }}:
-          architecture: 'x86'
-
-    - task: PipAuthenticate@1
-      displayName: 'Pip Authenticate'
-      inputs:
-        artifactFeeds: 'Lotus'
-
-    - template: telemetry-steps.yml
+    - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: ${{ parameters.BuildArch }}
 
     - task: NuGetCommand@2
       displayName: 'NuGet restore'

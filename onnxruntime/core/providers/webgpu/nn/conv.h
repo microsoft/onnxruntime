@@ -23,9 +23,16 @@ class Conv : public WebGpuKernel {
   }
   Status ComputeInternal(ComputeContext& context) const override;
 
+  Status PrePackInternal(ComputeContextBase& context,
+                         const Tensor& tensor,
+                         int input_idx,
+                         AllocatorPtr alloc,
+                         /*out*/ bool& is_packed) override;
+
  protected:
   ConvAttributes conv_attrs_;
   Activation activation_;
+  std::unique_ptr<Tensor> transposed_kernel_;  // should only have value when `is_initializer` AND `is_4D` AND `is_NHWC`
 };
 
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm);

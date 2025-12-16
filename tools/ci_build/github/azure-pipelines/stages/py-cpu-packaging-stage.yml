@@ -59,7 +59,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.36.1.250708
+  default: 2.39.0.250926
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -68,7 +68,7 @@ stages:
     jobs:
     - job: Windows_py_Wheels
       pool:
-        name: 'onnxruntime-Win-CPU-2022'
+        name: 'onnxruntime-Win-CPU-VS2022-Latest'
         os: windows
       templateContext:
         sdl:
@@ -88,22 +88,14 @@ stages:
           artifactName: onnxruntime-win-$(PythonVersion)
       strategy:
         matrix:
-          Python310_x64:
-            PythonVersion: '3.10'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python311_x64:
             PythonVersion: '3.11'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python312_x64:
             PythonVersion: '3.12'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python313_x64:
             PythonVersion: '3.13'
-            MsbuildPlatform: x64
-            buildArch: x64
+          Python314_x64:
+            PythonVersion: '3.14'
       variables:
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         ExtraParam: ${{ parameters.build_py_parameters }}
@@ -116,17 +108,10 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: ../templates/telemetry-steps.yml
-
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: $(PythonVersion)
-          addToPath: true
-          architecture: $(buildArch)
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: $(PythonVersion)
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -155,7 +140,7 @@ stages:
           parameters:
             ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
               symbolExpiryTime: 60
-            includePublicSymbolServer: true            
+            includePublicSymbolServer: true
             symbolsArtifactName: onnxruntime_cpu_win_x64_$(PythonVersion)
             symbolsVersion: $(Build.BuildId)
             symbolProject: 'ONNX Runtime'
@@ -192,15 +177,18 @@ stages:
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'unzip the package'
 
+
       - powershell: |
-         python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
-         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-         Remove-Item -Recurse -Force onnxruntime
-         if ("$(ExtraParam)" -contains "--use_azure") {
-           $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
-           python onnxruntime_test_python_azure.py
-         }
-         python onnx_backend_test_series.py
+          if ("$(PythonVersion)" -notcontains "3.14") {
+            python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
+            Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+            Remove-Item -Recurse -Force onnxruntime
+            if ("$(ExtraParam)" -contains "--use_azure") {
+              $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
+              python onnxruntime_test_python_azure.py
+            }
+            python onnx_backend_test_series.py
+          }
         workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
         displayName: 'Run Python Tests'
 
@@ -208,80 +196,33 @@ stages:
   - stage: Python_Packaging_MacOS
     dependsOn: []
     jobs:
-    - job: MacOS_py_Wheels
-      timeoutInMinutes: 360
-      workspace:
-        clean: all
-      pool:
-        name: "Azure Pipelines"
-        image: "macOS-14"
-        os: macOS
-      templateContext:
-        outputs:
-        - output: pipelineArtifact
-          targetPath: $(Build.SourcesDirectory)/build/Release/dist/fixed_wheels
-          artifactName: onnxruntime-macos-$(PythonVersion)
-      variables:
-        MACOSX_DEPLOYMENT_TARGET: '13.4'
-      strategy:
-        matrix:
-          Python310:
-            PythonVersion: '3.10'
-          Python311:
-            PythonVersion: '3.11'
-          Python312:
-            PythonVersion: '3.12'
-          Python313:
-            PythonVersion: '3.13'
-      steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.11'
 
-      - task: UsePythonVersion@0
-        displayName: 'Use Python'
-        inputs:
-          versionSpec: $(PythonVersion)
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.12'
 
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.13'
 
-      - template: ../templates/use-xcode-version.yml
-
-      - script: |
-          set -e -x
-          export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-universal2
-          python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          # Note: There is a build error when we set CMAKE_OSX_ARCHITECTURES="arm64;x86_64" and KleidiAI is enabled.
-          # Disable KleidiAI as a workaround with --no_kleidiai.
-          # TODO Re-enable KleidiAI once https://github.com/microsoft/onnxruntime/issues/24152 is fixed.
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-            --build_dir $(Build.SourcesDirectory)/build \
-            --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
-            --use_binskim_compliant_compile_flags \
-            --config Release \
-            --build_wheel \
-            --use_coreml \
-            --no_kleidiai \
-            ${{ parameters.build_py_parameters }} \
-            --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            --update --skip_submodule_sync --build --parallel
-        displayName: 'Command Line Script'
-
-      - script: |
-          set -ex
-          python -m pip install --upgrade delocate
-          cd '$(Build.SourcesDirectory)/build/Release/dist'
-          ls
-          for file in *.whl
-          do
-            delocate-listdeps "$file"
-            delocate-wheel --require-archs=x86_64,arm64 -w fixed_wheels -v "$file"
-          done
-        displayName: 'delocate wheel'
-
+      - template: ../templates/py-macos.yml
+        parameters:
+          arch: 'arm64'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          python_version: '3.14'
 
 - ${{ if eq(parameters.enable_linux_arm, true) }}:
   - stage: Python_Packaging_Linux_ARM
@@ -331,6 +272,13 @@ stages:
         QNN_SDK: ${{ parameters.qnn_sdk_version }}
         BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
         PYTHON_VERSION: '3.13'
+
+    - template: ../templates/py-win-arm64-qnn.yml
+      parameters:
+        MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
+        QNN_SDK: ${{ parameters.qnn_sdk_version }}
+        BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+        PYTHON_VERSION: '3.14'
 
 - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
   - stage: Python_Packaging_Windows_arm64ec_QNN

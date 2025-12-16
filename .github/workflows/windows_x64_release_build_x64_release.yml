@@ -13,17 +13,21 @@ concurrency:
 
 jobs:
   build_x64_release:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "JobId=windows-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
     timeout-minutes: 300
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: false
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: x64
@@ -38,12 +42,12 @@ jobs:
         run: python -m pip install -r "${{ github.workspace }}\tools\ci_build\github\windows\python\requirements.txt"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20.x'
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -60,7 +64,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Use .NET 8.x
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.x'
         env:
@@ -82,13 +86,6 @@ jobs:
           path: ${{ github.workspace }}/js/test/
           key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Build and Test
         shell: pwsh
         run: |
@@ -100,6 +97,34 @@ jobs:
         env:
           ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
           DocUpdateNeeded: 'false'
+
+      - name: Run onnxruntime_provider_test with example_plugin_ep
+        shell: pwsh
+        run: |
+          # Note on skipped tests:
+          # The skipped tests are either:
+          # - relying on CPU EP fallback for BFloat16 which is not supported
+          # - testing the LayerNormalization contrib op with mixed input/output types (only supported by a few EPs)
+          # Some other hardcoded EP types are skipped in these tests. For a plugin EP, we skip these tests by
+          # specifying them in the dynamic plugin EP configuration.
+
+          $env:ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON = @"
+          {
+            "ep_library_registration_name": "example_ep",
+            "ep_library_path": "./example_plugin_ep.dll",
+            "selected_ep_name": "example_ep",
+            "tests_to_skip": [
+              "LayerNormTest.LayerNorm_BFloat16Input",
+              "LayerNormTest.LayerNorm_Scale_Float16Input",
+              "LayerNormTest.LayerNorm_Scale_Float16ScaleOutput",
+              "LayerNormTest.LayerNorm_Scale_Bias_Float16Input",
+              "LayerNormTest.LayerNorm_Scale_Bias_Float16ScaleBiasOutput"
+            ]
+          }
+          "@
+
+          .\onnxruntime_provider_test.exe
+        working-directory: ${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo
 
       - name: Validate C# native delegates
         shell: cmd
@@ -114,14 +139,14 @@ jobs:
         working-directory: "${{ github.workspace }}\\build\\RelWithDebInfo\\RelWithDebInfo"
 
       - name: Publish OperatorKernels.md (Conditional)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: OperatorKernels.md
           path: ${{ github.workspace }}/docs/OperatorKernels.md
 
       - name: Publish ContribOperators.md (Conditional)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: ContribOperators.md

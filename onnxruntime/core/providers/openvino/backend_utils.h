@@ -79,6 +79,8 @@ int GetFirstAvailableDevice(SessionContext& session_context);
 
 void FillOutputsWithConstantData(std::shared_ptr<ov::Node> node, Ort::UnownedValue& out_tensor);
 
+std::shared_ptr<OVNetwork> Set_Layout(std::shared_ptr<OVNetwork> ov_model, const layout_t& layout);
+
 template <typename T>
 void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ov::Node> node);
 
@@ -96,11 +98,6 @@ std::shared_ptr<const OVNetwork>
 CreateOVModel(std::string&& model,
               const SessionContext& session_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
-
-void CreateOVTensors(const std::string& device_name,
-                     SharedContext::SharedWeights::Metadata::Map& metadata_map,
-                     SharedContext::SharedWeights::WeightsFile& weights);
-void DestroyOVTensors(SharedContext::SharedWeights::Metadata::Map& metadata_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);

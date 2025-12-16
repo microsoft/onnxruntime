@@ -42,7 +42,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
     # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory
     # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
-    if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
+    if(NOT f STREQUAL cuda)
       file(GLOB _provider_headers CONFIGURE_DEPENDS
         "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
       )
@@ -350,8 +350,19 @@ if (winml_is_inbox)
   endif()
 endif()
 
-# Assemble the Apple static framework (iOS and macOS)
+# Assemble the Apple static framework
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS|visionOS|tvOS")
+    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
+  endif()
+
+  list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
+  if (CMAKE_OSX_ARCHITECTURES_LEN GREATER 1)
+    # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
+    # but that would not work for universal static libraries
+    message(FATAL_ERROR "universal binary is not supported for apple framework")
+  endif()
+
   # when building for mac catalyst, the CMAKE_OSX_SYSROOT is set to MacOSX as well, to avoid duplication,
   # we specify as `-macabi` in the name of the output static apple framework directory.
   if (PLATFORM_NAME STREQUAL "macabi")

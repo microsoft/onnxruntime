@@ -1220,7 +1220,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the GraphProto representation of this Graph only. */
+  /** Gets the GraphProto representation of this Graph only.
+   * This does not remove in-memory tags for graph initializers.
+   * Use ToGraphProto() const to get a GraphProto that can be serialized externally.
+   */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
 
   /// <summary>
@@ -1243,6 +1246,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   const ModelSavingOptions& model_saving_options) const;
+
+  /// <summary>
+  /// Serialize the Graph to a onnx::GraphProto. Caller provides a function that determines where each initializer
+  /// is stored (i.e., either in an external file or within the model).
+  /// </summary>
+  /// <param name="handle_initializer_func">Function called for every initializer.</param>
+  /// <param name="state">Opaque user state passed to the handle_initializer_func.</param>
+  /// <param name="graph_proto">Output parameter set to the serialized onnx::GraphProto.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  common::Status ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                           void* state,
+                                                           /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -1439,6 +1454,24 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return Resolve(default_options);
   }
 
+  /// <summary>
+  /// This function converts all the graph TensorProto initializers into OrtValues
+  /// and creates a in-memory external data reference for each OrtValue.
+  /// </summary>
+  /// <returns></returns>
+  Status ConvertInitializersIntoOrtValues();
+
+  /**
+   * @brief This function examines the specified initializers in the graph and converts them inline
+   *        if any has external data in memory.
+   *
+   * @param iterators Span of iterators pointing to the initializers and the order that should be processed
+   * @param output_graph_proto The GraphProto to be updated with the modified initializers
+   * @return Status Returns a Status object indicating success or any errors that occurred during conversion
+   */
+  Status RegenerateInitializersAndReplaceInMemory(gsl::span<const InitializedTensorSet::const_iterator> iterators,
+                                                  ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
+
   const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept {
     return outer_scope_node_arg_names_;
   }
@@ -1595,20 +1628,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// This function is used by ToGraphProto() to ensure in-memory external data references
   /// don't leak externally since they are non-standard.
   ///
-  /// It handles two scenarios:
-  /// - When GraphSynchronizationNeeded() is false: GraphProto is simply copied
+  /// It is used when GraphSynchronizationNeeded() is false: GraphProto is simply copied
   ///   from graph_proto_ by ToGraphProto(). This copy includes both main graph
   ///   and subgraph initializers. This function examines all initializers
   ///   and inlines any in-memory data references.
-  /// - When GraphSynchronizationNeeded() is true: ToGraphProto() generates a new GraphProto
-  ///   using ToGraphProtoInternal(). This doesn't transfer main graph initializers, which are
-  ///   copied and inlined by ToGraphProto() itself. This function processes only the subgraph initializers
-  ///   as needed.
   /// </summary>
   /// <param name="output_graph_proto">The GraphProto to process</param>
-  /// <param name="process_main">Whether to process the main graph initializers</param>
-  /// <returns>Status indicating success or failure</returns>  ///
-  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto, bool process_main) const;
+  /// <returns>Status indicating success or failure</returns>
+  Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes
@@ -1635,6 +1662,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       std::ostream& external_stream,
       int64_t& external_offset) const;
 
+  Status ToGraphProtoWithCustomInitializerHandlingImpl(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                       void* state,
+                                                       /*out*/ ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 #endif
 
   Version IrVersion() const noexcept {
@@ -1715,6 +1745,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                     const std::vector<const ONNX_NAMESPACE::TypeProto*>& input_types,
                                                     std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types,
                                                     const Graph::ResolveOptions& options);
+
+  // If ONNX operator's PartialDataPropagationFunction() infers concrete shape values in the output
+  // save them to the output NodeArg as a TensorShapeProto or a scalar value so that downstream (consumer) nodes
+  // can use them later for their TypeAndShapeInferenceFunction() and PartialDataPropagationFunction().
+  common::Status SaveShapeValuesFromDataPropagation(const Node& node, NodeArg& output_def,
+                                                    const ONNX_NAMESPACE::TypeProto& propagated_value_as_type_proto) const;
+
+  // Remove intermediate inferred shape values stored in all NodeArgs to reduce memory usage.
+  common::Status CleanUpShapeValuesFromDataPropagation();
 
   // Apply type-inference and type-checking to all inputs and initializers:
   common::Status TypeCheckInputsAndInitializers();

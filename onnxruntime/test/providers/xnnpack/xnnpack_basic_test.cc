@@ -15,7 +15,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -25,7 +25,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
-#include "test/optimizer/qdq_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 #endif
 
 #include "gtest/gtest.h"
