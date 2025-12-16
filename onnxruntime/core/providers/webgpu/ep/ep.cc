@@ -19,6 +19,7 @@ using onnxruntime::ep::Api;
 
 // Constructor
 Ep::Ep(IExecutionProvider* impl, Factory& factory, const OrtLogger& logger, const Config& config)
+//    : onnxruntime::ep::detail::Ep{impl},
     : OrtEp{},
       impl_{impl},
       factory_{factory},
@@ -168,7 +169,7 @@ OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
 OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
                                                 _In_ const OrtMemoryInfo* memory_info,
                                                 _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept {
-  // TODO: Implement allocator creation
+  // TODO(fs-eire): Implement allocator creation
   (void)this_ptr;
   (void)memory_info;
   *allocator = nullptr;

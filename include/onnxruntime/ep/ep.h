@@ -3,16 +3,28 @@
 
 #pragma once
 
-// This header is only used when building WebGPU/CUDA EP as a shared library.
-//
-// This header file is used as a precompiled header so it is always included first.
-
-#pragma push_macro("ORT_EP_API_HEADER_INCLUDED")
-#define ORT_EP_API_HEADER_INCLUDED
+#if !defined(ORT_EP_API_HEADER_INCLUDED)
+#error "This header should not be included directly. Include ep/pch.h instead."
+#endif
 
 #include "api.h"
-#include "common.h"
-#include "logging.h"
-#include "kernel_registry.h"
 
-#pragma pop_macro("ORT_EP_API_HEADER_INCLUDED")
+namespace onnxruntime {
+class IExecutionProvider;
+}
+
+namespace onnxruntime {
+namespace ep {
+namespace detail {
+
+class Ep : public OrtEp {
+ protected:
+  explicit Ep(IExecutionProvider* impl) : OrtEp{}, impl_(impl) {}
+
+ public:
+  IExecutionProvider* impl_;
+};
+
+}  // namespace detail
+}  // namespace ep
+}  // namespace onnxruntime

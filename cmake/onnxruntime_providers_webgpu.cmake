@@ -122,7 +122,7 @@
     set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
 
     # Configure precompiled headers for shared library build
-    # PCH ensures ep/ep.h is included first and improves compilation speed
+    # PCH ensures ep/pch.h is included first and improves compilation speed
     if (onnxruntime_BUILD_CACHE)
       message(FATAL_ERROR "WebGPU EP shared library build does not support build cache. Please disable build cache or use static library build.")
     endif()
@@ -130,7 +130,7 @@
       message(FATAL_ERROR "WebGPU EP shared library build is not supported on Emscripten. Please use static library build.")
     endif()
     target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
-      "${REPO_ROOT}/include/onnxruntime/ep/ep.h"
+      "${REPO_ROOT}/include/onnxruntime/ep/pch.h"
     )
   endif()
 

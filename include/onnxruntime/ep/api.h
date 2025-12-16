@@ -4,7 +4,7 @@
 #pragma once
 
 #if !defined(ORT_EP_API_HEADER_INCLUDED)
-#error "This header should not be included directly. Include ep/ep.h instead."
+#error "This header should not be included directly. Include ep/pch.h instead."
 #endif
 
 #include <memory>

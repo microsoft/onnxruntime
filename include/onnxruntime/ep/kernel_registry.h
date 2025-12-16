@@ -4,7 +4,7 @@
 #pragma once
 
 #if !defined(ORT_EP_API_HEADER_INCLUDED)
-#error "This header should not be included directly. Include ep/ep.h instead."
+#error "This header should not be included directly. Include ep/pch.h instead."
 #endif
 
 #include <memory>
@@ -90,18 +90,3 @@ struct KernelRegistry {
   using OpKernelInfo = onnxruntime::ep::detail::OpKernelInfo;                      \
   using OpKernelContext = onnxruntime::ep::detail::OpKernelContext;                \
   using OpKernel = onnxruntime::ep::detail::OpKernel;
-
-namespace onnxruntime {
-namespace webgpu {
-EP_SPECIFIC_USING_DECLARATIONS
-}  // namespace webgpu
-
-#ifndef DISABLE_CONTRIB_OPS
-namespace contrib {
-namespace webgpu {
-EP_SPECIFIC_USING_DECLARATIONS
-}  // namespace webgpu
-}  // namespace contrib
-#endif
-
-}  // namespace onnxruntime

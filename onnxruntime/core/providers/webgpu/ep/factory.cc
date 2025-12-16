@@ -96,8 +96,6 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   const char* const* keys = nullptr;
   const char* const* values = nullptr;
   size_t num_entries = 0;
-  // extract EP metadata
-  // Api().ort.GetKeyValuePairs(ep_metadata, &keys, &values, &num_entries);
   Api().ort.GetKeyValuePairs(session_config_entries, &keys, &values, &num_entries);
   for (size_t i = 0; i < num_entries; ++i) {
     auto status = config_options.AddConfigEntry(keys[i], values[i]);
@@ -118,7 +116,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
 }
 
 void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
-  // TODO: Implement release logic
+  // delete static_cast<Ep*>(ep);
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(

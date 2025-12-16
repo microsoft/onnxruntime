@@ -21,6 +21,7 @@ class Factory;
 /// <summary>
 /// A bridge class between the EP API and the WebGPU EP implementation.
 /// </summary>
+//class Ep : public onnxruntime::ep::detail::Ep {
 class Ep : public OrtEp {
  public:
   struct Config {
