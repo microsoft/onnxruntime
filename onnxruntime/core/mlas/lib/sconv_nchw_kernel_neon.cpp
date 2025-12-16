@@ -63,13 +63,13 @@ MLAS_FORCEINLINE void DepthwiseAccumulateRowVector(
     }
 
     const float* r = row + base;
-    const float32x4_t c0 = vld1q_f32(r);
-    const float32x4_t c1 = vld1q_f32(r + 1);
-    const float32x4_t c2 = vld1q_f32(r + 2);
+    const float32x4_t c0 = MlasLoadFloat32x4(r);
+    const float32x4_t c1 = MlasLoadFloat32x4(r + 1);
+    const float32x4_t c2 = MlasLoadFloat32x4(r + 2);
 
-    acc = vmlaq_n_f32(acc, c0, w0);
-    acc = vmlaq_n_f32(acc, c1, w1);
-    acc = vmlaq_n_f32(acc, c2, w2);
+    acc = MlasMultiplyAddFloat32x4(c0, w0, acc);
+    acc = MlasMultiplyAddFloat32x4(c1, w1, acc);
+    acc = MlasMultiplyAddFloat32x4(c2, w2, acc);
 }
 
 MLAS_FORCEINLINE float DepthwiseComputeEdge(
@@ -185,18 +185,18 @@ static void DepthwiseConv3x3Stride1PadLe1Neon(
             }
 
             const size_t base = static_cast<size_t>(iw);
-            float32x4_t acc = vdupq_n_f32(0.0f);
+            float32x4_t acc = MlasZeroFloat32x4();
 
             DepthwiseAccumulateRowVector(acc, row0, base, w00, w01, w02);
             DepthwiseAccumulateRowVector(acc, row1, base, w10, w11, w12);
             DepthwiseAccumulateRowVector(acc, row2, base, w20, w21, w22);
 
             if (accumulate_output) {
-                const float32x4_t prev = vld1q_f32(out_row + ow);
-                acc = vmlaq_n_f32(acc, prev, beta);
+                const float32x4_t prev = MlasLoadFloat32x4(out_row + ow);
+                acc = MlasMultiplyAddFloat32x4(prev, beta, acc);
             }
 
-            vst1q_f32(out_row + ow, acc);
+            MlasStoreFloat32x4(out_row + ow, acc);
             ow += 4;
             processed += 4;
         }
