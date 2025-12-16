@@ -1,6 +1,6 @@
 import onnx
-from onnx import helper, TensorProto
-import numpy as np
+from onnx import TensorProto, helper
+
 
 def create_pad_model():
     input_data = helper.make_tensor_value_info("input", TensorProto.UINT64, [None, None, None])
@@ -13,13 +13,10 @@ def create_pad_model():
         op_type="Pad",
         inputs=["input", "pads", "constant_value"],
         outputs=["output"],
-        mode="constant"  # or reflect/edge
+        mode="constant",  # or reflect/edge
     )
     graph = helper.make_graph(
-        nodes=[pad_node],
-        name="PadModel",
-        inputs=[input_data, pads, constant_value],
-        outputs=[output]
+        nodes=[pad_node], name="PadModel", inputs=[input_data, pads, constant_value], outputs=[output]
     )
 
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 14)])
