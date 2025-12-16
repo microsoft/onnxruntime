@@ -16,6 +16,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
 #include "core/framework/float4.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/to_tensor_proto_element_type.h"
@@ -285,7 +286,7 @@ template <typename T>
 struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                               int32_t, int64_t, std::string, bool, MLFloat16,
                                               double, uint32_t, uint64_t, BFloat16,
-                                              Int4x2, UInt4x2
+                                              Int4x2, UInt4x2, Int2x4, UInt2x4
 #if !defined(DISABLE_FLOAT8_TYPES)
                                               ,
                                               Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
