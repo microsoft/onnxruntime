@@ -124,7 +124,6 @@ if (Python_EXECUTABLE)
 
   if (ORT_PYTHON_FREE_THREADED_DETECTED)
     message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
-    target_compile_definitions(onnxruntime_pybind11_state PRIVATE Py_GIL_DISABLED=1)
   else()
     message(STATUS "Free-threaded Python support NOT enabled.")
   endif()
