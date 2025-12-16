@@ -103,9 +103,6 @@ class MlasEltwiseMulTest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferInputRight;
   MatrixGuardBuffer<float> BufferOutput;
   MatrixGuardBuffer<float> BufferOutputReference;
-  MatrixGuardBuffer<MLAS_FP16> BufferInputLeftFp16;
-  MatrixGuardBuffer<MLAS_FP16> BufferInputRightFp16;
-  MatrixGuardBuffer<MLAS_FP16> BufferOutputFp16;
 
   void Test(size_t N, float MinimumValue, float MaximumValue, const std::optional<float>& ScalarValue = std::nullopt) {
     float* InputLeft = BufferInputLeft.GetBuffer(N);
