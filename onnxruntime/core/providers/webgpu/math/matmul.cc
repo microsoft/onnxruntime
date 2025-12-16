@@ -102,6 +102,19 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status MatMulTiledSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+
+  ORT_ENFORCE(tile_n_ == 32 || tile_n_ == 16, "tile_n must be 32 or 16.");
+
+  return WGSL_TEMPLATE_APPLY(shader,
+                             "math/matmul_tiled_subgroup.wgsl.template",
+                             narrow<int32_t>(tile_n_),
+                             true);
+}
+
 Status MatMul::ComputeInternal(ComputeContext& context) const {
   // calculate output shape
   MatMulComputeHelper helper;
@@ -154,6 +167,69 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 
     return context.RunProgram(program);
   }
+
+#if 1
+  {
+    auto a_shape = a->Shape();
+    auto b_shape = b->Shape();
+    bool are_matrices = a_shape.NumDimensions() >= 2 && b_shape.NumDimensions() >= 2;
+
+    TensorShape batch_dims_a = a_shape.NumDimensions() > 2
+                                   ? a_shape.Slice(0, a_shape.NumDimensions() - 2)
+                                   : TensorShape({});
+    TensorShape batch_dims_b = b_shape.NumDimensions() > 2
+                                   ? b_shape.Slice(0, b_shape.NumDimensions() - 2)
+                                   : TensorShape({});
+
+    const bool is_vec4 = helper.K() % 4 == 0 && helper.N() % 4 == 0;
+
+    // TODO: Implement broadcasting for batch dimensions.
+    if (!has_bias && are_matrices && batch_dims_a == batch_dims_b && is_vec4) {
+      const uint32_t m = narrow<uint32_t>(helper.M());
+      const uint32_t n = narrow<uint32_t>(helper.N());
+      const uint32_t k = narrow<uint32_t>(helper.K());
+
+      auto output_shape = output_tensor->Shape();
+
+      TensorShape batch_dims = output_shape.NumDimensions() > 2
+                                   ? output_shape.Slice(0, output_shape.NumDimensions() - 2)
+                                   : TensorShape({});
+      const uint32_t batch_size = narrow<uint32_t>(batch_dims.Size());
+
+      const uint32_t kTileM = 64;
+      // TODO: Choose an optimal tile size for the N dimension based on the matrix size.
+      uint32_t kTileN = (n > 128) ? 32 : 16;
+
+      const uint32_t kMTiles = (m + kTileM - 1) / kTileM;
+      const uint32_t kNTiles = (n + kTileN - 1) / kTileN;
+      const uint32_t kKTiles = (k + 15) / 16;
+
+      MatMulTiledSubgroupProgram program(kTileN);
+      program.SetWorkgroupSize(64, 1, 1);
+      program.SetDispatchGroupSize(kNTiles, kMTiles, batch_size);
+
+      program.AddInput({a,
+                        ProgramTensorMetadataDependency::TypeAndRank,
+                        4});
+      program.AddInput({b,
+                        ProgramTensorMetadataDependency::TypeAndRank,
+                        4});
+      program.AddOutput({output_tensor,
+                         ProgramTensorMetadataDependency::TypeAndRank,
+                         4});
+      program.AddUniformVariables({{narrow<uint32_t>(batch_size)},
+                                   {m},
+                                   {k},
+                                   {k / 4},
+                                   {n / 4},
+                                   {kMTiles},
+                                   {kKTiles},
+                                   {kNTiles}});
+
+      return context.RunProgram(program);
+    }
+  }
+#endif
 
   std::vector<const Tensor*> inputs(has_bias ? 3 : 2);
   inputs[0] = a;
