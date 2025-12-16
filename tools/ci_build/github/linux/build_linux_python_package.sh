@@ -112,6 +112,7 @@ do
   python3_dir=$(dirname "$PYTHON_EXE")
   ls "$python3_dir"
   ${PYTHON_EXE} -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
+  auditwheel --version
   PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
