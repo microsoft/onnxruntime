@@ -574,9 +574,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     } else if ("0" == htp_extended_udma_pos->second) {
       enable_htp_extended_udma_mode_ = false;
     } else {
-      LOGS_DEFAULT(WARNING) << "Invalid enable_htp_extended_udma_mode_ " << enable_htp_extended_udma_mode_ << " only 0 or 1 allowed. Set to 0.";
+      LOGS_DEFAULT(WARNING) << "Invalid extended_udma mode: " << enable_htp_extended_udma_mode_ << " only 0 or 1 allowed. Set to 0.";
     }
-    LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_extended_udma_mode_: " << enable_htp_extended_udma_mode_;
+    LOGS_DEFAULT(VERBOSE) << "User specified extended_udma mode: " << enable_htp_extended_udma_mode_;
   }
 
   // Option to skip QNN API interface version check to use other QNN library other than default.
