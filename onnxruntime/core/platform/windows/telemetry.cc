@@ -334,20 +334,6 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
   }
 }
 
-void WindowsTelemetry::LogCompileModel(uint32_t session_id) const {
-  if (global_register_count_ == 0 || enabled_ == false)
-    return;
-
-  TraceLoggingWrite(telemetry_provider_handle,
-                    "CompileModel",
-                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingUInt32(session_id, "sessionId"));
-}
-
 void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
                                             const std::string& input_source,
                                             const std::string& output_target,

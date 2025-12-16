@@ -81,10 +81,6 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(captureState);
 }
 
-void Telemetry::LogCompileModel(uint32_t session_id) const {
-  ORT_UNUSED_PARAMETER(session_id);
-}
-
 void Telemetry::LogCompileModelStart(uint32_t session_id,
                                      const std::string& input_source,
                                      const std::string& output_target,

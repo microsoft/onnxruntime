@@ -59,8 +59,6 @@ class WindowsTelemetry : public Telemetry {
                           const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                           bool use_fp16, bool captureState) const override;
 
-  void LogCompileModel(uint32_t session_id) const override;
-
   void LogCompileModelStart(uint32_t session_id,
                             const std::string& input_source,
                             const std::string& output_target,

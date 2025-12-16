@@ -430,9 +430,6 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
       model_compile_options.HasExternalInitializersFileForTelemetry(),
       session->GetRegisteredProviderTypes());
 
-  // Keep existing telemetry call for backward compatibility
-  telemetry_provider.LogCompileModel(session->GetCurrentSessionId());
-
   status = ToStatusAndRelease(InitializeSession(session_options, *session));
 
   telemetry_provider.LogCompileModelComplete(
