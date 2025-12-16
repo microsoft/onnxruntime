@@ -86,9 +86,7 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
 
 bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    bool use_subgroup = (context.AdapterInfo().architecture == std::string_view{"xe-2lpg"} ||
-                         context.AdapterInfo().architecture == std::string_view{"xe-2hpg"}) &&
-                        context.HasFeature(wgpu::FeatureName::Subgroups) &&
+    bool use_subgroup = context.HasFeature(wgpu::FeatureName::Subgroups) &&
                         M >= 64 && N >= 512 && K >= 32 && !transA && !transB;
     return use_subgroup;
   }
