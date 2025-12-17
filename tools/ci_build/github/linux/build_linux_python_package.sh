@@ -115,6 +115,7 @@ do
   auditwheel --version
   strings /usr/lib64/libc.so.6 | grep GLIBC_
   ldd --version
+  dnf install -y clang
   export AUDITWHEEL_PLAT=manylinux_2_35_x86_64
   export AUDITWHEEL_POLICY=manylinux_2_35
   PATH=$python3_dir:$PATH ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
