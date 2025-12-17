@@ -148,14 +148,24 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // Operators without DML QLinear kernel support (CPU only).
+  // DML EP does not have QLinearLeakyRelu or QLinearSoftmax kernels.
+  // See https://github.com/microsoft/onnxruntime/issues/26531
+  std::vector<const char*> cpu_only_providers = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> cpu_selector = std::make_unique<QDQ::UnarySelector>(cpu_only_providers);
+  qdq_selector_action_registry.RegisterSelectorAndAction("1DQ_CPU",
+                                                         {{"LeakyRelu", {}},
+                                                          {"Softmax", {}}},
+                                                         std::move(cpu_selector),
+                                                         std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain));
+
+  // Operators with DML QLinear kernel support (QLinearAveragePool, QLinearGlobalAveragePool, QLinearSigmoid)
   std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
-                                                          {"LeakyRelu", {}},
                                                           {"GlobalAveragePool", {}},
-                                                          {"Sigmoid", {}},
-                                                          {"Softmax", {}}},
+                                                          {"Sigmoid", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
