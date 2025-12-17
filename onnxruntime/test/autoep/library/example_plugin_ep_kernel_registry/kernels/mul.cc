@@ -106,7 +106,7 @@ OrtStatus* ORT_API_CALL Mul::PrePackWeightImpl(OrtKernelImpl* this_ptr, const Or
   // transform to an appropriate data layout.
 
   if (input_index != 1) {
-    is_packed = false;
+    *is_packed = false;
     return nullptr;
   }
 
