@@ -870,7 +870,7 @@ typedef enum OrtEpDataLayout {
 struct OrtEp {
   /** \brief The ONNX Runtime version the execution provider was compiled with.
    *
-   * Implementation should set to ORT_API_VERSION.
+   * Implementation must set this to ORT_API_VERSION.
    * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
    *
    * \since Version 1.22.
@@ -879,7 +879,7 @@ struct OrtEp {
 
   /** \brief Get the execution provider name.
    *
-   * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
+   * The returned string must be a null-terminated, UTF-8 encoded string. ORT will copy it.
    *
    * \param[in] this_ptr The OrtEp instance.
    * \return The execution provider name.
@@ -889,9 +889,6 @@ struct OrtEp {
   ORT_API_T(const char*, GetName, _In_ const OrtEp* this_ptr);
 
   /** \brief Get information about the nodes supported by the OrtEp instance.
-   *
-   * IMPORTANT: This is not the final version of this API function. This is currently experimental but will
-   * be stabilized by the ONNX Runtime 1.23 release.
    *
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graph The OrtGraph instance for which to populate node support. The OrtGraph could be a nested subgraph
@@ -969,7 +966,7 @@ struct OrtEp {
 
   /** \brief Get the EP's preferred data layout.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *       If not implemented, ORT will assume that this EP prefers the data layout `OrtEpDataLayout::NCHW`.
    *
    * \param[in] this_ptr The OrtEp instance.
@@ -986,7 +983,7 @@ struct OrtEp {
    *         If the EP prefers a non-default data layout (see `GetPreferredDataLayout()`), this function will be called
    *         during layout transformation with `target_data_layout` set to the EP's preferred data layout.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *       If an EP prefers a non-default data layout, it may implement this to customize the specific op data layout
    *       preferences at a finer granularity.
    *
@@ -1017,7 +1014,7 @@ struct OrtEp {
    * \param[in] option_values The dynamic option values.
    * \param[in] num_options The number of dynamic options.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *       An EP should only implement this if it needs to handle any dynamic options.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -1034,7 +1031,7 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] run_options The run options for this run.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1049,7 +1046,7 @@ struct OrtEp {
    * \param[in] sync_stream Whether any associated stream should be synchronized during this call.
    *                        Only applicable if there is such a stream.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1062,7 +1059,8 @@ struct OrtEp {
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    * Any allocator specific options should be read from the session options.
    *
-   * If nullptr OrtEpFactory::CreateAllocator will be used.
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, OrtEpFactory::CreateAllocator will be used.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
@@ -1078,15 +1076,17 @@ struct OrtEp {
 
   /** \brief Create a synchronization stream for the given memory device for an OrtSession.
    *
-   * This is used to create a synchronization stream for the execution provider and is used to synchronize
+   * This is used to create a synchronization stream for the execution provider that will be used to synchronize
    * operations on the device during model execution.
    * Any stream specific options should be read from the session options.
    *
-   * If nullptr OrtEpFactory::CreateSyncStreamForDevice will be used.
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, OrtEpFactory::CreateSyncStreamForDevice will be used.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.
-   * \param[out] stream The created OrtSyncStreamImpl instance. nullptr if the execution provider is not stream aware.
+   * \param[out] stream The created OrtSyncStreamImpl instance. Set to nullptr if the execution provider is not stream
+   *                    aware.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1094,13 +1094,13 @@ struct OrtEp {
    */
   ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEp* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
-                  _Outptr_ OrtSyncStreamImpl** stream);
+                  _Outptr_result_maybenull_ OrtSyncStreamImpl** stream);
 
   /** \brief Get a string with details about the EP stack used to produce a compiled model.
    *
    * This function gets a compatibility information string that contains details about the execution provider
-   * used to compile a given model. This string can later be used with ValidateCompiledModelCompatibilityInfo
-   * to determine if a compiled model is compatible with the EP.
+   * used to compile a given model. This string can later be used with
+   * OrtEpFactory::ValidateCompiledModelCompatibilityInfo to determine if a compiled model is compatible with the EP.
    *
    * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
    *
@@ -1123,7 +1123,8 @@ struct OrtEp {
    *                             the lifetime of the EP. Can be NULL if the EP doesn't use a kernel registry.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP compiles nodes.
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, ORT assumes the EP compiles nodes.
    *
    * \since Version 1.24.
    */
@@ -1174,7 +1175,7 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
 struct OrtEpFactory {
   /** \brief The ONNX Runtime version the execution provider was compiled with.
    *
-   * Implementation should set to ORT_API_VERSION.
+   * Implementation must set this to ORT_API_VERSION.
    * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
    *
    * \since Version 1.22.
@@ -1267,7 +1268,7 @@ struct OrtEpFactory {
    */
   ORT_API_T(void, ReleaseEp, OrtEpFactory* this_ptr, struct OrtEp* ep);
 
-  /** \brief Get the vendor id who owns the execution provider that the factory creates.
+  /** \brief Get the vendor id of the vendor who owns the execution provider that the factory creates.
    *
    * This is typically the PCI vendor ID. See https://pcisig.com/membership/member-companies
    *
@@ -1405,7 +1406,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] options The configuration options.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *       An EP factory should only implement this if it needs to handle any environment options.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
