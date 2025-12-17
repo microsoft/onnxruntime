@@ -18,16 +18,38 @@ The static quantization tool expects the directory structure of model and data.
 work_dir\resnet18-v1-7
 ├───model.onnx
 ├───test_data_set_0
+│   ├───input_0.pb
+│   └───input_1.pb
 ├───test_data_set_1
+│   ├───input_0.pb
+│   └───input_1.pb
 ├───test_data_set_2
+│   ├───input_0.pb
+│   └───input_1.pb
 ├───test_data_set_3
+│   ├───input_0.pb
+│   └───input_1.pb
 ├───test_data_set_4
+│   ├───input_0.pb
+│   └───input_1.pb
 ├───test_data_set_5
+│   ├───input_0.pb
+│   └───input_1.pb
 ├───test_data_set_6
+│   ├───input_0.pb
+│   └───input_1.pb
 ├───test_data_set_7
+│   ├───input_0.pb
+│   └───input_1.pb
 ├───test_data_set_8
+│   ├───input_0.pb
+│   └───input_1.pb
 └───test_data_set_9
+    ├───input_0.pb
+    └───input_1.pb
 ```
+
+Note that the indexing must fully align the order of model inputs (i.e., `input_0.pb` is expected to be the data for the 1st model input, `input_1.pb` for the 2nd, and so on).
 
 ### Usage
 Install the python tools built in onnxruntime
