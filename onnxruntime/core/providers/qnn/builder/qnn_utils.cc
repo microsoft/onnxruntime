@@ -15,6 +15,7 @@
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/common.h"
 #include "nlohmann/json.hpp"
 
 namespace onnxruntime {
@@ -957,7 +958,7 @@ Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t>
   size_t block_size = num_elems;
 
   if (axis.has_value()) {
-    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    size_t axis_no_neg = static_cast<size_t>(HandleNegativeAxis(*axis, static_cast<int64_t>(num_dims)));
     block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
     broadcast_dim = shape[axis_no_neg];
     block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
@@ -1003,7 +1004,7 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
   size_t block_size = num_elems;
 
   if (axis.has_value()) {
-    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    size_t axis_no_neg = static_cast<size_t>(HandleNegativeAxis(*axis, static_cast<int64_t>(num_dims)));
     block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
     broadcast_dim = shape[axis_no_neg];
     block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
@@ -1073,7 +1074,7 @@ Status DequantizePerChannel(gsl::span<const uint8_t> quant_bytes, gsl::span<cons
   size_t block_size = num_elems;
 
   if (axis.has_value()) {
-    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    size_t axis_no_neg = static_cast<size_t>(HandleNegativeAxis(*axis, static_cast<int64_t>(num_dims)));
     block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
     broadcast_dim = shape[axis_no_neg];
     block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
@@ -1532,7 +1533,7 @@ Status RequantizeBiasTensor(const std::vector<uint8_t>& original_bias_data,
   // Step 2: Calculate new quantization parameters
   size_t broadcast_dim = 1;
   if (axis.has_value()) {
-    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    size_t axis_no_neg = static_cast<size_t>(HandleNegativeAxis(*axis, static_cast<int64_t>(num_dims)));
     broadcast_dim = bias_shape[axis_no_neg];
   }
 
