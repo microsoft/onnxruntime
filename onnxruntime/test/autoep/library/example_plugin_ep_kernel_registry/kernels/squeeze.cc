@@ -100,8 +100,9 @@ static std::vector<int64_t> ComputeOutputShape(gsl::span<const int64_t> input_sh
 OrtStatus* ORT_API_CALL Squeeze::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Squeeze* squeeze_kernel = static_cast<Squeeze*>(this_ptr);
-  Ort::KernelContext kernel_context(kernel_ctx);
+  static_cast<void>(squeeze_kernel->info_);  // NOTE: Unused in this example.
 
+  Ort::KernelContext kernel_context(kernel_ctx);
   gsl::span<const float> input0;
   std::vector<int64_t> shape0;
   Ort::ConstValue input = kernel_context.GetInput(0);

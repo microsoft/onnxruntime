@@ -618,21 +618,43 @@ ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
                                  "Caching of weight buffers is only supported for CPU-accessible data");
   }
 
-  for (size_t i = 0; i < num_buffers; i++) {
-    void* data = buffer_data_ptrs[i];
-    size_t num_bytes = buffer_data_sizes[i];
-    auto data_unique_ptr = onnxruntime::IAllocatorUniquePtr<void>(data,
-                                                                  [deleter](void* d) {
-                                                                    deleter->Free(deleter, d);
-                                                                  });
+  OrtStatus* status = nullptr;
 
-    prepacked_weight_cache->buffer_data_ptrs.push_back(std::move(data_unique_ptr));
-    prepacked_weight_cache->buffer_sizes.push_back(num_bytes);
+  ORT_TRY {
+    prepacked_weight_cache->buffer_data_ptrs.reserve(num_buffers);
+    prepacked_weight_cache->buffer_sizes.reserve(num_buffers);
+
+    for (size_t i = 0; i < num_buffers; i++) {
+      void* data = buffer_data_ptrs[i];
+      size_t num_bytes = buffer_data_sizes[i];
+      auto data_unique_ptr = onnxruntime::IAllocatorUniquePtr<void>(data,
+                                                                    [deleter](void* d) {
+                                                                      deleter->Free(deleter, d);
+                                                                    });
+
+      prepacked_weight_cache->buffer_data_ptrs.push_back(std::move(data_unique_ptr));
+      prepacked_weight_cache->buffer_sizes.push_back(num_bytes);
+    }
+
+    prepacked_weight_cache->allocator = deleter;
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      // This API function promises that ORT will take ownership of the data only if it returns successfully.
+      // If any exception occurred while filling out `prepacked_weight_cache`, we try to release ownership so that
+      // the caller retains ownership of all of the original data and can delete it.
+
+      for (onnxruntime::IAllocatorUniquePtr<void>& data_unique_ptr : prepacked_weight_cache->buffer_data_ptrs) {
+        if (data_unique_ptr) {
+          data_unique_ptr.release();
+        }
+      }
+
+      status = OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
   }
 
-  prepacked_weight_cache->allocator = deleter;
-
-  return nullptr;
+  return status;
   API_IMPL_END
 }
 
