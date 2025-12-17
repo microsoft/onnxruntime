@@ -367,7 +367,7 @@ struct OrtKernelImpl {
    *
    * This function is called after a prior call to OrtKernelImpl::PrePackWeight set `is_packed` to true and
    * stored weight data (that the kernel wants to share) into the provided `OrtSharedPrePackedWeightCache` instance.
-   * If the this function is called for an unexpected shared weight (as identified by `input_index`), the
+   * If this function is called for an unexpected shared weight (as identified by `input_index`), the
    * implementation should return an error OrtStatus with an error code of ORT_EP_FAIL.
    * Refer to the description of the "sharing-mode" in the documentation for OrtKernelImpl::PrePackWeight().
    *
@@ -941,6 +941,8 @@ struct OrtEpApi {
    * \note Used within the implementation of OrtKernelImpl::PrePackWeight() when the kernel wants to share pre-packed
    *       weight data with other kernels.
    *
+   * \note After calling this function, ownership of weight data transfers to ORT.
+   *
    * \param[in] this_ptr The OrtKernelImpl instance.
    * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
    *                             single shared weight. Note that sometimes a single weight may have multiple pre-packed
@@ -949,7 +951,7 @@ struct OrtEpApi {
    * \param[in] buffer_data_sizes An array of buffer byte sizes, one per element in `buffer_data_ptrs`.
    * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
    *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_sizes` arrays.
-   * \param[in] deleter The OrtAllocator that should be used to delete the buffer data.
+   * \param[in] deleter The OrtAllocator that ORT should use to delete the buffer data.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

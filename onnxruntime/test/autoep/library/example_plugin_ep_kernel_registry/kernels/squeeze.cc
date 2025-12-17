@@ -49,15 +49,22 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddInputOutputAlias(0, 0)),
     Squeeze)
 
-Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(info, state) {}
+Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag)
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
+      info_{info},
+      data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
+  ort_version_supported = ORT_API_VERSION;
+  Compute = ComputeImpl;
+  Release = ReleaseImpl;
+}
 
 /*static*/
 OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel) noexcept {
-  EXCEPT_TO_STATUS_BEGIN
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
   kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
   return nullptr;
-  EXCEPT_TO_STATUS_END
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 static int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
@@ -89,7 +96,10 @@ static std::vector<int64_t> ComputeOutputShape(gsl::span<const int64_t> input_sh
   return output_shape;
 }
 
-OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
+/*static*/
+OrtStatus* ORT_API_CALL Squeeze::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  Squeeze* squeeze_kernel = static_cast<Squeeze*>(this_ptr);
   Ort::KernelContext kernel_context(kernel_ctx);
 
   gsl::span<const float> input0;
@@ -113,8 +123,14 @@ OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
   std::vector<int64_t> output_shape = ComputeOutputShape(shape0, axes);
   Ort::UnownedValue output = kernel_context.GetOutput(0, output_shape);
 
-  // Copy input to the output. Use the OrtDataTransferImpl created by the EP factory to handle copies across devices
-  // more generically (although a memcpy would be enough for this example EP).
-  RETURN_IF_ERROR(CopyTensor(input, output));
+  // This kernel aliases the input and output, so a copy is not really necessary.
+  // CopyTensor() will not do a copy if the source and destination buffers are the same.
+  RETURN_IF_ERROR(CopyTensor(*squeeze_kernel->data_transfer_impl_, input, output));
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+/*static*/
+void ORT_API_CALL Squeeze::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
+  delete static_cast<Squeeze*>(this_ptr);
 }

@@ -76,8 +76,8 @@
   ss << __VA_ARGS__;     \
   throw std::runtime_error(ss.str())
 
-#define EXCEPT_TO_STATUS_BEGIN try {
-#define EXCEPT_TO_STATUS_END                              \
+#define EXCEPTION_TO_RETURNED_STATUS_BEGIN try {
+#define EXCEPTION_TO_RETURNED_STATUS_END                  \
   }                                                       \
   catch (const Ort::Exception& ex) {                      \
     Ort::Status status(ex);                               \

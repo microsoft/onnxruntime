@@ -4,11 +4,10 @@
 #pragma once
 
 #include <vector>
-#include "base.h"
 #include "../../plugin_ep_utils.h"
 #include "../ep_allocator.h"
 
-class Mul : public BaseKernelImpl {
+class Mul : public OrtKernelImpl {
  private:
   struct PrivateTag {};
 
@@ -17,19 +16,31 @@ class Mul : public BaseKernelImpl {
     std::vector<int64_t> shape;
     ONNXTensorElementDataType elem_type;
     size_t num_bytes;
-    AllocationUniquePtr data{};  // raw bytes
+
+    // Only one of the following data fields will be set.
+    // If pre-packed data is shared with other kernels, `shared_data` will be non-null. Otherwise, this kernel
+    // sets `owned_data`, whose lifetime it manages.
+    AllocationUniquePtr owned_data{};
+    const void* shared_data{nullptr};  // not owned by this kernel.
   };
 
  public:
   static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Mul>& kernel) noexcept;
   Mul(const OrtKernelInfo* info, void* state, PrivateTag);
 
- private:
-  OrtStatus* DoCompute(OrtKernelContext* kernel_ctx) override;
-  OrtStatus* DoPrePackWeight(const OrtValue* tensor, int input_index, OrtAllocator* alloc,
-                             OrtSharedPrePackedWeightCache* prepacked_weight_cache, /*out*/ bool& is_packed) override;
-  OrtStatus* DoSetSharedPrePackedWeight(const void* const* buffer_data_ptrs, size_t num_buffers,
-                                        int input_index) override;
+  // Static functions assigned to the OrtKernelImpl fields:
+  static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
+  static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL PrePackWeightImpl(OrtKernelImpl* this_ptr, const OrtValue* tensor,
+                                                   int input_index, OrtAllocator* alloc,
+                                                   OrtSharedPrePackedWeightCache* prepacked_weight_cache,
+                                                   /*out*/ bool* is_packed) noexcept;
+  static OrtStatus* ORT_API_CALL SetSharedPrePackedWeightImpl(OrtKernelImpl* this_ptr,
+                                                              const void* const* buffer_data_ptrs,
+                                                              size_t num_buffers, int input_index) noexcept;
 
+ private:
+  const OrtKernelInfo* info_;
+  OrtDataTransferImpl* data_transfer_impl_;  // Custom state passed from OrtEp
   std::optional<PackedWeightInfo> packed_weight_1_info_ = std::nullopt;
 };

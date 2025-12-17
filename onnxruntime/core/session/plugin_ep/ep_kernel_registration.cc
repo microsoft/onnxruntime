@@ -69,7 +69,7 @@ class PluginEpOpKernel final : public OpKernel {
     bool enable_weight_sharing = alloc->Info().device.UsesCpuMemory() && prepacked_weights != nullptr;
     OrtSharedPrePackedWeightCache shared_weight_cache = {};
 
-    // Convert AllocatorPtr to an OrtAllocator* and cache it to ensure it lives long enough.
+    // Convert AllocatorPtr to an OrtAllocator* (that wraps the AllocatorPtr) and cache it.
     OrtAllocator* ort_allocator = GetPrePackOrtAllocator(alloc);
 
     // Create a non-owning OrtValue that wraps the const Tensor& with an empty deleter.
@@ -93,6 +93,8 @@ class PluginEpOpKernel final : public OpKernel {
         void* data_ptr = shared_weight_cache.buffer_data_ptrs[i].release();
         size_t num_bytes = shared_weight_cache.buffer_sizes[i];
 
+        // Note: using the AllocatorPtr as the "deleter" (instead of the wrapping OrtAllocator cached by this kernel)
+        // because the AllocatorPtr lifetime likely exceeds the lifetime of the session and kernel instance.
         prepacked_weights->buffers_.push_back(IAllocatorUniquePtr<void>(data_ptr, BufferDeleter(alloc)));
         prepacked_weights->buffer_sizes_.push_back(num_bytes);
       }
@@ -152,9 +154,10 @@ class PluginEpOpKernel final : public OpKernel {
 
   OrtKernelImpl* kernel_impl_ = nullptr;
 
-  // We create and cache a OrtAllocator for each unique IAllocator passed to PrePack(). Need to keep these
+  // We create and cache a OrtAllocator that wraps each unique IAllocator passed to PrePack(). Need to keep these
   // OrtAllocator instances alive because the plugin EP kernel implementation uses the OrtAllocators to allocate
-  // and free packed weight data.
+  // and free packed weight data. Note: use a vector instead of an unordered_map because this will almost always
+  // contain only one element and we want to limit the size of this class.
   std::vector<PrePackAllocatorMapping> prepack_allocator_mappings_;
 };
 
