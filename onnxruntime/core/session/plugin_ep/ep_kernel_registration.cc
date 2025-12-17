@@ -55,8 +55,8 @@ class PluginEpOpKernel final : public OpKernel {
                  /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
     assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
 
-    if (kernel_impl_->PrePackWeight == nullptr) {
-      // OrtKernelImpl did not define a PrePack implementation.
+    if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->PrePackWeight == nullptr) {
+      // OrtKernelImpl does not define a PrePack implementation.
       is_packed = false;
       return Status::OK();
     }
@@ -64,8 +64,8 @@ class PluginEpOpKernel final : public OpKernel {
     // Only allow kernel to store/share pre-packed weights if the weight data will be stored in cpu-accessible memory.
     // ORT requires that the data reside in cpu memory to be able to compute the hash of the weight's contents.
     //
-    // If the allocator does not use CPU memory, we pass a NULL OrtPrePackWeightCache instance to the kernel to indicate
-    // that storing/sharing is not allowed and the kernel should manage the memory for the pre-packed weight.
+    // If the allocator does not use CPU memory, we pass a NULL OrtSharedPrePackedWeightCache instance to the kernel to
+    // indicate that storing/sharing is not allowed and the kernel should manage the memory for the pre-packed weight.
     bool allow_weight_sharing = alloc->Info().device.UsesCpuMemory() && prepacked_weights != nullptr;
     OrtSharedPrePackedWeightCache shared_weight_cache = {};
 
@@ -117,8 +117,8 @@ class PluginEpOpKernel final : public OpKernel {
                                    int input_idx, /*out*/ bool& used_shared_buffers) override {
     assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
 
-    if (kernel_impl_->SetSharedPrePackedWeight == nullptr) {
-      // OrtKernelImpl did not define an implementation. The session state, which calls this function,
+    if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->SetSharedPrePackedWeight == nullptr) {
+      // OrtKernelImpl does not define an implementation. The session state, which calls this function,
       // generates an error if necessary (i.e., kernel indicated it wanted to share weights but did not define this).
       used_shared_buffers = false;
       return Status::OK();
