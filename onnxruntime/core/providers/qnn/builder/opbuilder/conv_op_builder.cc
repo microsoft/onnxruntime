@@ -341,7 +341,13 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
 
       if (input0_info.quant_param.IsQuantized() && input1_info.quant_param.IsQuantized()) {
         // Get activation scale (must be per-tensor for Conv)
-        float activation_scale = input0_info.quant_param.Get().scaleOffsetEncoding.scale;
+        float activation_scale = 1.0f;
+        const auto& act_quant_params = input0_info.quant_param.Get();
+        if (act_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+          activation_scale = act_quant_params.scaleOffsetEncoding.scale;
+        } else if (act_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET) {
+          activation_scale = act_quant_params.bwScaleOffsetEncoding.scale;
+        }
 
         // Get weight scales (per-tensor or per-channel)
         std::vector<float> weights_scales;
