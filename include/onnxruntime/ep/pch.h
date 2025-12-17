@@ -11,12 +11,16 @@
 #define ORT_EP_API_HEADER_INCLUDED
 
 #include "api.h"
-//#include "ep.h"
+#include "allocator.h"
+#include "ep.h"
+#include "data_transfer_manager.h"
 #include "common.h"
 #include "logging.h"
 #include "kernel_registry.h"
 
 #pragma pop_macro("ORT_EP_API_HEADER_INCLUDED")
+
+#include "using_declarations.h"
 
 namespace onnxruntime {
 namespace webgpu {

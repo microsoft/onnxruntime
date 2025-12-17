@@ -13,6 +13,8 @@ namespace onnxruntime {
 namespace ep {
 namespace detail {
 
+/// <summary>
+/// </summary>
 struct Node {
   explicit Node(const OrtKernelInfo* kernel_info) : kernel_info_{kernel_info} {}
   /** Gets the Node's name. */
@@ -22,14 +24,14 @@ struct Node {
 
   /** Gets the Node's operator type. */
   const std::string OpType() const noexcept {
-    return "";  // TODO(fs-eire): implement
+    return kernel_info_.GetOperatorType();
   }
 
+  /** Gets the since version of the operator. */
   int SinceVersion() const noexcept {
-    return 0;  // TODO(fs-eire): implement
+    return kernel_info_.GetSinceVersion();
   }
 
-  // const std::vector<NodeArg*>& InputDefs() const noexcept;
  private:
   const Ort::ConstKernelInfo kernel_info_;
 };

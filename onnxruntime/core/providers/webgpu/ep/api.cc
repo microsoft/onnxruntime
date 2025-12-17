@@ -38,7 +38,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const 
   }
 
   // Initialize the global default logger
-  ::onnxruntime::ep::detail::Logger::CreateDefaultLogger(default_logger);
+  ::onnxruntime::ep::Logger::CreateDefaultLogger(default_logger);
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<onnxruntime::webgpu::ep::Factory>();

@@ -77,18 +77,16 @@ struct OpKernelInfo {
   }
 
   const DataTransferManager& GetDataTransferManager() const noexcept {
-    // TODO(fs-eire): implement GetDataTransferManager()
-    ORT_THROW("GetDataTransferManager() is not implemented yet.");
+    return (static_cast<const Ep*>(info_.GetEp()))->GetDataTransferManager();
   }
   const Node& node() const {
     return cache_->node;
   }
   const IExecutionProvider* GetExecutionProvider() const noexcept {
-    // TODO(fs-eire): implement GetExecutionProvider()
-    ORT_THROW("GetExecutionProvider() is not implemented yet.");
+    return (static_cast<const Ep*>(info_.GetEp()))->EpImpl();
   }
 
-  const OrtKernelInfo* GetKernelInfo() const noexcept {
+  const Ort::ConstKernelInfo GetKernelInfo() const noexcept {
     return info_;
   }
 
@@ -161,8 +159,6 @@ struct OpKernelInfo {
     TensorShapeVector tmp;
     return GetAttrs(name, tmp).IsOK() ? tmp : default_value;
   }
-
-  int SinceVersion() const noexcept;
 
  private:
   const Ort::ConstKernelInfo info_;

@@ -19,9 +19,7 @@ using onnxruntime::ep::Api;
 
 // Constructor
 Ep::Ep(IExecutionProvider* impl, Factory& factory, const OrtLogger& logger, const Config& config)
-//    : onnxruntime::ep::detail::Ep{impl},
-    : OrtEp{},
-      impl_{impl},
+    : onnxruntime::ep::Ep{impl, config.cpu_allocator, config.device_allocator},
       factory_{factory},
       logger_{logger},
       config_{config} {
@@ -41,10 +39,6 @@ Ep::Ep(IExecutionProvider* impl, Factory& factory, const OrtLogger& logger, cons
   CreateAllocator = CreateAllocatorImpl;
   CreateSyncStreamForDevice = nullptr;          // Not stream aware
   GetCompiledModelCompatibilityInfo = nullptr;  // Not a compiled EP
-}
-
-Ep::~Ep() {
-  delete impl_;
 }
 
 // OrtEp interface implementations
@@ -98,7 +92,7 @@ OrtStatus* ORT_API_CALL Ep::GetKernelRegistryImpl(
     auto* ep = static_cast<Ep*>(this_ptr);
     const char* ep_name = ep->factory_.GetName(&ep->factory_);
 
-    auto& webgpu_ep = static_cast<WebGpuExecutionProvider&>(*ep->impl_);
+    auto& webgpu_ep = *ep->EpImpl();
 
     *kernel_registry = *onnxruntime::webgpu::GetKernelRegistry(webgpu_ep.IsGraphCaptureEnabled()).get();
     return nullptr;
@@ -116,7 +110,7 @@ OrtStatus* ORT_API_CALL Ep::GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
   // Delegate to the underlying WebGPU EP's GetPreferredLayout()
   // DataLayout enum values map 1:1 to OrtEpDataLayout (NCHW=0, NHWC=1)
   auto* ep = static_cast<Ep*>(this_ptr);
-  *preferred_data_layout = static_cast<OrtEpDataLayout>(ep->impl_->GetPreferredLayout());
+  *preferred_data_layout = static_cast<OrtEpDataLayout>(ep->EpImpl()->GetPreferredLayout());
   return nullptr;
 }
 
@@ -127,8 +121,8 @@ OrtStatus* ORT_API_CALL Ep::ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this_pt
                                                              _Outptr_ int* should_convert) noexcept {
   // DataLayout enum values map 1:1 to OrtEpDataLayout (NCHW=0, NHWC=1)
   auto* ep = static_cast<Ep*>(this_ptr);
-  auto result = ep->impl_->ShouldConvertDataLayoutForOp(domain, op_type,
-                                                        static_cast<DataLayout>(target_data_layout));
+  auto result = ep->EpImpl()->ShouldConvertDataLayoutForOp(domain, op_type,
+                                                           static_cast<DataLayout>(target_data_layout));
   if (result.has_value()) {
     *should_convert = result.value() ? 1 : 0;
   } else {
@@ -146,7 +140,7 @@ OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
     options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, graph_annotation_str);
   }
   auto* ep = static_cast<Ep*>(this_ptr);
-  auto status = ep->impl_->OnRunStart(options);
+  auto status = ep->EpImpl()->OnRunStart(options);
   if (!status.IsOK()) {
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());
@@ -158,7 +152,7 @@ OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
                                          _In_ const OrtRunOptions* run_options,
                                          _In_ bool sync_stream) noexcept {
   auto* ep = static_cast<Ep*>(this_ptr);
-  auto status = ep->impl_->OnRunEnd(sync_stream, {});
+  auto status = ep->EpImpl()->OnRunEnd(sync_stream, {});
   if (!status.IsOK()) {
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());
@@ -169,10 +163,12 @@ OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
 OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
                                                 _In_ const OrtMemoryInfo* memory_info,
                                                 _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept {
-  // TODO(fs-eire): Implement allocator creation
-  (void)this_ptr;
-  (void)memory_info;
-  *allocator = nullptr;
+  auto* ep = static_cast<Ep*>(this_ptr);
+  if (memory_info && memory_info->alloc_type == OrtReadOnlyAllocator) {
+    *allocator = new onnxruntime::ep::Allocator(ep->config_.initializer_allocator);
+  } else {
+    *allocator = new onnxruntime::ep::Allocator(ep->config_.device_allocator);
+  }
   return nullptr;
 }
 

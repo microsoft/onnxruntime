@@ -26,8 +26,38 @@ namespace onnxruntime {
 namespace ep {
 namespace detail {
 
+struct OpKernelContext;
+
+struct OpKernel {
+  explicit OpKernel(const OpKernelInfo& info) : cache_{info.GetKernelInfo()},
+                                                op_kernel_info_{info.GetKernelInfo(), &cache_} {}
+  virtual ~OpKernel() {}
+
+  const Node& Node() const {
+    return cache_.node;
+  }
+  const OpKernelInfo& Info() const {
+    return op_kernel_info_;
+  }
+
+  virtual Status Compute(OpKernelContext* p_op_kernel_context) const = 0;
+  virtual Status PrePack(const Tensor& tensor,
+                         int input_idx,
+                         AllocatorPtr alloc,
+                         /*out*/ bool& is_packed,
+                         /*out*/ PrePackedWeights* prepacked_weights) {
+    // TODO(fs-eire): implement PrePack
+    is_packed = false;
+    return Status::OK();
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
+  KernelInfoCache cache_;
+  OpKernelInfo op_kernel_info_;
+};
+
 struct OpKernelContext {
-  explicit OpKernelContext(OrtKernelContext* context) : context_{context} {
+  explicit OpKernelContext(OrtKernelContext* context, const OpKernel& op_kernel) : context_{context}, op_kernel_{op_kernel} {
     input_tensors_.resize(InputCount());
     output_tensors_.resize(OutputCount());
   }
@@ -100,10 +130,10 @@ struct OpKernelContext {
     return Output(index, TensorShape{shape});
   }
   [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
-    return Status::OK();  // TODO(fs-eire): Implement GetTempSpaceCPUAllocator
+    return static_cast<const Ep*>(op_kernel_.Info().GetKernelInfo().GetEp())->GetTempSpaceCPUAllocator(output);
   }
   [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
-    return Status::OK();  // TODO(fs-eire): Implement GetTempSpaceAllocator
+    return static_cast<const Ep*>(op_kernel_.Info().GetKernelInfo().GetEp())->GetTempSpaceAllocator(output);
   }
   size_t InputCount() const {
     return context_.GetInputCount();
@@ -115,36 +145,9 @@ struct OpKernelContext {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernelContext);
   Ort::KernelContext context_;
+  const OpKernel& op_kernel_;
   mutable std::vector<std::unique_ptr<Tensor>> input_tensors_;
   std::vector<std::unique_ptr<Tensor>> output_tensors_;
-};
-
-struct OpKernel {
-  explicit OpKernel(const OpKernelInfo& info) : cache_{info.GetKernelInfo()},
-                                                op_kernel_info_{info.GetKernelInfo(), &cache_} {}
-  virtual ~OpKernel() {}
-
-  const Node& Node() const {
-    return cache_.node;
-  }
-  const OpKernelInfo& Info() const {
-    return op_kernel_info_;
-  }
-
-  virtual Status Compute(OpKernelContext* p_op_kernel_context) const = 0;
-  virtual Status PrePack(const Tensor& tensor,
-                         int input_idx,
-                         AllocatorPtr alloc,
-                         /*out*/ bool& is_packed,
-                         /*out*/ PrePackedWeights* prepacked_weights) {
-    // TODO(fs-eire): implement PrePack
-    is_packed = false;
-    return Status::OK();
-  }
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
-  KernelInfoCache cache_;
-  OpKernelInfo op_kernel_info_;
 };
 
 struct KernelImpl : OrtKernelImpl {
@@ -158,9 +161,9 @@ struct KernelImpl : OrtKernelImpl {
  private:
   static OrtStatus* ORT_API_CALL ComputeImpl(_In_ OrtKernelImpl* this_ptr,
                                              _In_ OrtKernelContext* context) noexcept {
-    // Implement the compute logic here, possibly delegating to impl_
-    OpKernelContext ctx{context};
-    Status status = static_cast<KernelImpl*>(this_ptr)->impl_->Compute(&ctx);
+    const auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
+    OpKernelContext ctx{context, *kernel_impl};
+    Status status = kernel_impl->Compute(&ctx);
     if (status.IsOK()) {
       return nullptr;
     } else {

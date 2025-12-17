@@ -72,7 +72,6 @@
         safeint_interface)
 
     target_link_libraries(onnxruntime_providers_webgpu PRIVATE
-        onnxruntime_session
         onnxruntime_optimizer
         onnxruntime_providers
         onnxruntime_lora

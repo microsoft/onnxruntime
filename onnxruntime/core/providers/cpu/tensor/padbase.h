@@ -125,7 +125,7 @@ class PadBase {
         ORT_THROW("Invalid 'mode' attribute value");
     }
 
-    if constexpr (std::is_same_v<KernelInfoType, OpKernelInfo>) {
+    if constexpr (std::is_same_v<KernelInfoType, onnxruntime::OpKernelInfo>) {
       const auto& kernel_def = info.GetKernelDef();
 
       int start_ver, end_ver;
@@ -136,7 +136,9 @@ class PadBase {
         is_dynamic_ = true;
       }
     } else {
-      // TODO(fs-eire): support opset version check for OrtKernelInfo
+      if (info.node().SinceVersion() >= 11) {  // TODO(fs-eire): support contrib domain check
+        is_dynamic_ = true;
+      }
     }
 
     if (!is_dynamic_) {

@@ -8,23 +8,48 @@
 #endif
 
 #include "api.h"
+#include "data_transfer_manager.h"
 
-namespace onnxruntime {
-class IExecutionProvider;
-}
+#include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 namespace ep {
-namespace detail {
 
+/// <summary>
+/// Wrapper around IExecutionProvider to expose via OrtEp.
+/// </summary>
 class Ep : public OrtEp {
  protected:
-  explicit Ep(IExecutionProvider* impl) : OrtEp{}, impl_(impl) {}
+  explicit Ep(IExecutionProvider* impl, AllocatorPtr temp_space_cpu_allocator, AllocatorPtr temp_space_allocator)
+      : OrtEp{},
+        impl_(impl),
+        data_transfer_manager_{impl->GetDataTransfer()},
+        temp_space_cpu_allocator_{temp_space_cpu_allocator},
+        temp_space_allocator_{temp_space_allocator} {
+  }
 
  public:
-  IExecutionProvider* impl_;
+  inline IExecutionProvider* EpImpl() const noexcept {
+    return impl_.get();
+  }
+  inline const detail::DataTransferManager& GetDataTransferManager() const noexcept {
+    return data_transfer_manager_;
+  }
+  [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
+    *output = temp_space_cpu_allocator_;
+    return Status::OK();
+  }
+  [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
+    *output = temp_space_allocator_;
+    return Status::OK();
+  }
+
+ private:
+  std::unique_ptr<IExecutionProvider> impl_;
+  detail::DataTransferManager data_transfer_manager_;
+  AllocatorPtr temp_space_cpu_allocator_;
+  AllocatorPtr temp_space_allocator_;
 };
 
-}  // namespace detail
 }  // namespace ep
 }  // namespace onnxruntime

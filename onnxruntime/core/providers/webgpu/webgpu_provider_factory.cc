@@ -334,11 +334,11 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
 
 // WebGPU DataTransfer implementation wrapper for the C API with lazy initialization
 struct WebGpuDataTransferImpl : OrtDataTransferImpl {
-  WebGpuDataTransferImpl(const OrtApi& ort_api_in)
+  WebGpuDataTransferImpl(const OrtApi& ort_api_in, int context_id)
       : ort_api{ort_api_in},
         ep_api{*ort_api_in.GetEpApi()},
         data_transfer_{nullptr},
-        context_id_{0},  // Always use context 0 for Environment's data transfer
+        context_id_{context_id},  // Always use context 0 for Environment's data transfer
         init_mutex_{} {
     ort_version_supported = ORT_API_VERSION;
     CanCopy = CanCopyImpl;          // OrtDataTransferImpl::CanCopy callback
@@ -377,9 +377,9 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
     // If both are GPU, they must have the same device ID
     if (src_type == OrtMemoryInfoDeviceType_GPU && dst_type == OrtMemoryInfoDeviceType_GPU) {
-      uint64_t src_device_id = impl.ep_api.MemoryDevice_GetDeviceId(src_memory_device);
-      uint64_t dst_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_memory_device);
-      if (src_device_id != dst_device_id) {
+      int src_device_id = impl.ep_api.MemoryDevice_GetDeviceId(src_memory_device);
+      int dst_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_memory_device);
+      if (src_device_id != impl.context_id_ || dst_device_id != impl.context_id_) {
         return false;  // Cannot copy between different devices
       }
     }
@@ -452,14 +452,18 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
   std::mutex init_mutex_;                                // Protects lazy initialization
 };
 
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer() {
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
+#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
   // Validate API version is supported
   const OrtApi* api = OrtApis::GetApi(ORT_API_VERSION);
   if (!api) {
     // API version not supported - return nullptr to indicate failure
     return nullptr;
   }
-  return new WebGpuDataTransferImpl(*api);
+  return new WebGpuDataTransferImpl(*api, context_id);
+#else
+  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort, context_id);
+#endif
 }
 
 }  // namespace onnxruntime

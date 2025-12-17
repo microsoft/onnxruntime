@@ -10,6 +10,8 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
+#include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/allocator.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -107,7 +109,17 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   try {
     auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
     auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
-    *ep = new Ep(webgpu_ep.release(), *(static_cast<Factory*>(this_ptr)), *logger, {});
+    auto webgpu_ep_impl = static_cast<WebGpuExecutionProvider*>(webgpu_ep.release());
+    int device_id = webgpu_ep_impl->GetDeviceId();
+    auto& webgpu_context = WebGpuContextFactory::GetContext(device_id);
+    *ep = new Ep(webgpu_ep_impl,
+                 *(static_cast<Factory*>(this_ptr)),
+                 *logger,
+                 {
+                     CPUAllocator::DefaultInstance(),                                                                // CPU allocator
+                     std::make_shared<webgpu::GpuBufferAllocator>(webgpu_context.BufferManager(), false),            // default device allocator
+                     std::make_shared<webgpu::GpuBufferAllocator>(webgpu_context.InitializerBufferManager(), true),  // initializer device allocator
+                 });
     return nullptr;
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);
@@ -116,7 +128,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
 }
 
 void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
-  // delete static_cast<Ep*>(ep);
+  delete static_cast<Ep*>(ep);
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
@@ -130,14 +142,20 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
 }
 
 void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* this_ptr, OrtAllocator* allocator) noexcept {
-  // Default implementation does nothing
+  onnxruntime::ep::Allocator* ptr = static_cast<onnxruntime::ep::Allocator*>(allocator);
+  delete ptr;
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
     OrtEpFactory* this_ptr,
     OrtDataTransferImpl** data_transfer) noexcept {
-  *data_transfer = nullptr;
-  return nullptr;  // Default implementation does nothing
+  try {
+    *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
+    return nullptr;
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
+  }
 }
 
 bool ORT_API_CALL Factory::IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept {

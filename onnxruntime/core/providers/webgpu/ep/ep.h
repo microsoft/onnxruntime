@@ -8,9 +8,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace onnxruntime {
-struct IExecutionProvider;
-}
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -21,20 +19,16 @@ class Factory;
 /// <summary>
 /// A bridge class between the EP API and the WebGPU EP implementation.
 /// </summary>
-//class Ep : public onnxruntime::ep::detail::Ep {
-class Ep : public OrtEp {
+class Ep : public onnxruntime::ep::Ep {
  public:
   struct Config {
-    // Add per-kernel EP specific configuration options here
-    // For example:
-    // bool enable_profiling = false;
-    // int max_batch_size = 1;
+    AllocatorPtr cpu_allocator;
+    AllocatorPtr device_allocator;
+    AllocatorPtr initializer_allocator;
   };
 
   // Do not use a std::unique_ptr for impl_ because this requires the actual type definition.
   Ep(IExecutionProvider* impl, Factory& factory, const OrtLogger& logger, const Config& config);
-
-  ~Ep();
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
@@ -66,7 +60,6 @@ class Ep : public OrtEp {
                                               _In_ const OrtRunOptions* run_options,
                                               _In_ bool sync_stream) noexcept;
 
-  IExecutionProvider* impl_;
   Factory& factory_;
   const OrtLogger& logger_;
   Config config_{};

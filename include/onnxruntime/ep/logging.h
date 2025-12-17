@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 namespace ep {
-namespace detail {
+
 struct Logger {
   Logger(const OrtLogger* logger) : logger_(logger) {}
 
@@ -42,6 +42,8 @@ struct Logger {
   Ort::Logger logger_;
   inline static Logger* instance_ = nullptr;
 };
+
+namespace detail {
 struct LoggerCapture {
   LoggerCapture(const Logger& logger,
                 logging::Severity severity,
@@ -81,7 +83,7 @@ inline ::onnxruntime::logging::Capture CreateMessageCapture(
 }
 
 inline detail::LoggerCapture CreateMessageCapture(
-    const detail::Logger& logger,
+    const Logger& logger,
     ::onnxruntime::logging::Severity severity,
     const char* category,
     ::onnxruntime::logging::DataType datatype,
@@ -96,7 +98,7 @@ inline detail::LoggerCapture CreateMessageCapture(
 // Undefine and redefine LOGS_DEFAULT
 #undef LOGS_DEFAULT_CATEGORY
 #define LOGS_DEFAULT_CATEGORY(severity, category) \
-  LOGS_CATEGORY(::onnxruntime::ep::detail::Logger::DefaultLogger(), severity, category)
+  LOGS_CATEGORY(::onnxruntime::ep::Logger::DefaultLogger(), severity, category)
 
 #undef CREATE_MESSAGE
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
