@@ -53,7 +53,9 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 

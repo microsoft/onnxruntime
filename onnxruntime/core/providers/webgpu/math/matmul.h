@@ -21,7 +21,11 @@ Status ComputeMatMul(ComputeContext* context, const Activation& activation, std:
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
-    const TensorShape& output_shape_vec4);
+    bool is_gemm,
+    float beta,
+    uint32_t output_components,
+    bool bias_is_scalar,
+    const TensorShape& output_shape);
 
 class MatMul final : public WebGpuKernel {
  public:
