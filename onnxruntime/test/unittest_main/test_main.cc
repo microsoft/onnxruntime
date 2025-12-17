@@ -165,7 +165,16 @@ int TEST_MAIN(int argc, char** argv) {
   int status = 0;
 
   ORT_TRY {
-    ortenv_setup();
+    bool only_help = false;
+    for (int i = 0; i < argc; i++) {
+      if (strcmp(argv[i], "--help") == 0) {
+        only_help = true;
+        break;
+      }
+    }
+    if (!only_help) {
+      ortenv_setup();
+    }
     ::testing::InitGoogleTest(&argc, argv);
 
     {
