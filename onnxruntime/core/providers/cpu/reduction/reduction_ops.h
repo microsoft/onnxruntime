@@ -784,6 +784,15 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
   }
 };
 
+// Traits indicating whether a reduction aggregator applies element-wise transforms
+// in addition to reduction.
+// For axes=[] with noop_with_empty_axes=1, no reduction is performed; we either
+// apply the aggregator's element-wise PreOp/PostOp to each element, or
+// return the input unchanged for identity aggregators.
+//
+// PreOp: per-element transform during accumulation (AGG::update).
+// PostOp: transform applied after accumulation (AGG::get_value).
+// Add a specialization for aggregators that define a PreOp and/or PostOp.
 template <typename AGG>
 struct ReduceAggTraits {
   static constexpr bool kHasPreOp = false;

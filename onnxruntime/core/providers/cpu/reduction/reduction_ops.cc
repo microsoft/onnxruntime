@@ -914,6 +914,10 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
   return true;
 }
 
+// Handles the ONNX noop_with_empty_axes=1 behavior when axes=[] for reduction operators.
+// In this case no reduction is performed. Instead, for aggregators with element-wise
+// transforms (PreOp/PostOp), the transform is applied to each input element.
+// For identity aggregators, the input is copied directly to the output.
 template <typename AGG>
 inline void ApplyNoopEmptyAxesElementwise(OpKernelContext* ctx) {
   const Tensor* X = ctx->Input<Tensor>(0);
@@ -932,6 +936,7 @@ inline void ApplyNoopEmptyAxesElementwise(OpKernelContext* ctx) {
 
     for (int64_t i = 0; i < n; ++i) {
       AGG agg(1, x[i]);
+      agg.update0(x[i]);
       agg.update(x[i]);
       y[i] = agg.get_value();
     }
