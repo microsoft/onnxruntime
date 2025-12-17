@@ -3,11 +3,10 @@
 
 #pragma once
 
-#include "core/providers/webgpu/webgpu_external_header.h"
-
 #include <memory>
 #include <utility>
 
+#include "core/providers/webgpu/webgpu_external_header.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -57,11 +56,8 @@ class ComputeContextBase {
     return op_kernel_.Node().Name();
   }
 
-  inline const onnxruntime::Node& GetNode() const {
-    return op_kernel_.Node();
-  }
-
-  Status CreateUnmappedGPUTensor(AllocatorPtr alloc, MLDataType data_type, const TensorShape& shape, std::unique_ptr<Tensor>& tensor) const;
+  Status CreateUnmappedGPUTensor(AllocatorPtr alloc, MLDataType data_type, const TensorShape& shape,
+                                 std::unique_ptr<Tensor>& tensor) const;
 
   //
   // Get the operator type.
