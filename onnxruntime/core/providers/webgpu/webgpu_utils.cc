@@ -35,9 +35,8 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       enable_split_k_ = true;
 
       // Below thresholds are only verified on the above Intel GPUs without any regressions. The
-      // proper value of `max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_` may be
-      // reduced when we support a larger `dim_inner` because larger `dim_inner` will bring more
-      // atomic calls for each output value.
+      // proper value of `max_dim_inner_with_rate` may be reduced for a larger `dim_inner` because
+      // larger `dim_inner` will add more atomic calls for each output value.
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
