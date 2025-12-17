@@ -381,8 +381,18 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
 
         // Check bias quantization type
         if (bias_info.quant_param.IsPerTensor()) {
-          float bias_scale = bias_info.quant_param.Get().scaleOffsetEncoding.scale;
-          int32_t bias_offset = bias_info.quant_param.Get().scaleOffsetEncoding.offset;
+          float bias_scale = 0.0f;
+          int32_t bias_offset = 0;
+          const auto& bias_quant_params = bias_info.quant_param.Get();
+          if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+            bias_scale = bias_quant_params.scaleOffsetEncoding.scale;
+            bias_offset = bias_quant_params.scaleOffsetEncoding.offset;
+          } else if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET) {
+            bias_scale = bias_quant_params.bwScaleOffsetEncoding.scale;
+            bias_offset = bias_quant_params.bwScaleOffsetEncoding.offset;
+          } else {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported bias quantization encoding for per-tensor quantization.");
+          }
 
           // Check if bias_offset = 0 AND bias_scale = (weights_scale[0] * activation_scale)
           if (bias_offset == 0 && utils::CheckBiasScaleMatch(bias_scale, weights_scales[0], activation_scale, 1e-5f)) {
