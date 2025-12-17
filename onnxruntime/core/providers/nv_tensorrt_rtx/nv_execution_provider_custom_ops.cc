@@ -36,22 +36,22 @@ static PathString GetEPLibraryDirectory() {
   HMODULE hModule = NULL;
   // Get handle to the DLL executing this code
   if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                          GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                           reinterpret_cast<LPCWSTR>(&GetEPLibraryDirectory),
                           &hModule)) {
-      return PathString(L"");
+    return PathString(L"");
   }
 
   wchar_t buffer[MAX_PATH];
   DWORD len = GetModuleFileNameW(hModule, buffer, MAX_PATH);
   if (len == 0 || len >= MAX_PATH) {
-      return PathString(L"");
+    return PathString(L"");
   }
 
   std::wstring path(buffer);
   size_t lastSlash = path.find_last_of(L"\\/");
   if (lastSlash != std::wstring::npos) {
-      return PathString(path.substr(0, lastSlash + 1));
+    return PathString(path.substr(0, lastSlash + 1));
   }
   return PathString(path);
 #else
