@@ -765,7 +765,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
     # --rocm_version and --rocm_home are deprecated. See https://github.com/microsoft/onnxruntime/issues/26801.
     migx_group.add_argument("--rocm_version", help="ROCm stack version. This option is deprecated and has no effect.")
-    migx_group.add_argument("--rocm_home", help="Path to ROCm installation directory. This option is deprecated and has no effect.")
+    migx_group.add_argument(
+        "--rocm_home", help="Path to ROCm installation directory. This option is deprecated and has no effect."
+    )
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")
