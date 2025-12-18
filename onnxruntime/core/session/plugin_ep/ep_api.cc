@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/common/semver.h"
+#include "core/framework/allocator.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
 #include "core/framework/op_kernel_info.h"
@@ -21,7 +22,6 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
-#include "core/session/allocator_adapters.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"

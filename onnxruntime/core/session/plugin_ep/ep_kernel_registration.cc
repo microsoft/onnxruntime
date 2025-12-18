@@ -5,8 +5,8 @@
 
 #include <algorithm>
 #include <memory>
-#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/kernel_registry.h"
