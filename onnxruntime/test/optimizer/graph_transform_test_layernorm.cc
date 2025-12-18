@@ -78,7 +78,7 @@ TEST_F(GraphTransformationTests, LayerNormFusionTest) {
 }
 
 TEST_F(GraphTransformationTests, LayerNormFusionTestWithoutScaleBias) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_without_bias_scale.onnx";
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_without_scale_bias.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
