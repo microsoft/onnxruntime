@@ -158,6 +158,9 @@ struct GroupQueryAttentionData {
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
 
+  const T* k_scale = nullptr;
+  const T* v_scale = nullptr;
+
   // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;

@@ -98,7 +98,7 @@ Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const
 
 template <typename T>
 Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_num_heads, int head_size,
-                 int& past_sequence_length) {
+                 int& past_sequence_length, int kv_cache_bit_width) {
   const auto& past_key_dims = past_key->Shape().GetDims();
   const auto& past_value_dims = past_value->Shape().GetDims();
 
@@ -141,14 +141,26 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
   // We assume all sequence in past kv are right-padded to max or past sequence length
   past_sequence_length = static_cast<int>(past_key_dims[2]);
 
-  if (past_key_dims[3] != head_size) {
+  // For packed int4/int2 quantization, the last dimension is packed
+  int64_t expected_head_size = head_size;
+  if (kv_cache_bit_width == 4) {
+    expected_head_size = (head_size + 1) / 2;  // Two 4-bit values per byte
+  } else if (kv_cache_bit_width == 2) {
+    expected_head_size = (head_size + 3) / 4;  // Four 2-bit values per byte
+  }
+
+  if (past_key_dims[3] != expected_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' dimension 3 should be same as head_size, got ",
+                           "Input 'past_key' dimension 3 should be same as head_size",
+                           (kv_cache_bit_width > 0 ? " (packed for quantization)" : ""),
+                           ", expected ", expected_head_size, ", got ",
                            past_key_dims[3]);
   }
-  if (past_value_dims[3] != head_size) {
+  if (past_value_dims[3] != expected_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
+                           "Input 'past_value' dimension 3 should be same as head_size",
+                           (kv_cache_bit_width > 0 ? " (packed for quantization)" : ""),
+                           ", expected ", expected_head_size, ", got ",
                            past_value_dims[3]);
   }
   return Status::OK();
@@ -203,11 +215,12 @@ Status CheckInputs(const T* query,
                    const T* seqlens_k,
                    const T* total_seqlen,
                    float scale,
-                   float softcap) {
+                   float softcap,
+                   int kv_cache_bit_width = 0) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
-  // no packing for q/k/v:
+  // When kv cache has quantization, the last dimension might be H/2 (int4) or H/4 (int2).
   //     query            (Q)       : (B, S, D) or (B, S, (D_q + 2 D_kv))
   //     key              (K)       : (B, S, D_kv) or nullptr
   //     value            (V)       : (B, S, D_kv) or nullptr
@@ -239,7 +252,7 @@ Status CheckInputs(const T* query,
   // Check past-present KV
   int32_t past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
-    ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, past_sequence_length));
+    ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, past_sequence_length, kv_cache_bit_width));
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
@@ -329,12 +342,14 @@ Status CheckInputs(const T* query,
                    const T* total_seqlen,
                    float scale,
                    float softcap,
+                   int kv_cache_bit_width,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters,
+                     num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap, kv_cache_bit_width);
 }
 
 template <typename T = Tensor>
