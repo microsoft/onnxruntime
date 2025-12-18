@@ -13,7 +13,7 @@ using namespace onnxruntime::test;
 namespace onnxruntime {
 namespace test {
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_DML)
 static std::vector<float> GetExpectedResult(const std::vector<float>& input_data,
                                             const std::vector<float>& bias_data,
                                             const std::vector<float>& skip_data) {
@@ -38,10 +38,9 @@ static void RunSkipBiasGpuTest(const std::vector<float>& input_data,
                                bool use_float16 = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
 
-  if (!enable_cuda && !enable_rocm && !enable_dml) {
+  if (!enable_cuda && !enable_dml) {
     return;
   }
 
@@ -63,9 +62,7 @@ static void RunSkipBiasGpuTest(const std::vector<float>& input_data,
   if (enable_cuda) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
   }
-  if (enable_rocm) {
-    execution_providers.push_back(DefaultRocmExecutionProvider());
-  }
+
   if (enable_dml) {
     execution_providers.push_back(DefaultDmlExecutionProvider());
   }

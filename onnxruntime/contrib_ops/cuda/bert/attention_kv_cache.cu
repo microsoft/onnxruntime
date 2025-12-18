@@ -250,8 +250,6 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
   return CUDA_CALL(cudaGetLastError());
 }
 
-#ifndef USE_ROCM  // exclude the following from hipify since they are not used in ROCM EP
-
 // ----------------------------------------------------------------------------------
 // Below kernels are for past and present sharing buffer
 // ----------------------------------------------------------------------------------
@@ -397,7 +395,6 @@ template Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                                     const BFloat16* bias,
                                                     const BFloat16* qkv_buffer,
                                                     BFloat16* present);
-#endif
 
 // Kernel to append new and past kv in either BSNH or BNSH format
 // Adapted from ConcatTensorToTensor kernel in attention_kv_cache.cu file

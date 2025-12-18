@@ -272,8 +272,6 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=qnn-ep")
     if args.use_rknpu:
         vcpkg_install_options.append("--x-feature=rknpu-ep")
-    if args.use_rocm:
-        vcpkg_install_options.append("--x-feature=rocm-ep")
     if args.use_tensorrt:
         vcpkg_install_options.append("--x-feature=tensorrt-ep")
     if args.use_vitisai:
@@ -347,7 +345,6 @@ def generate_build_tree(
     build_dir,
     cuda_home,
     cudnn_home,
-    rocm_home,
     nccl_home,
     tensorrt_home,
     tensorrt_rtx_home,
@@ -375,7 +372,7 @@ def generate_build_tree(
     # enable/disable float 8 types
     disable_float8_types = args.android or ("float8" in types_to_disable)
     # enable/disable float 4 type
-    disable_float4_types = args.android or args.use_rocm or ("float4" in types_to_disable)
+    disable_float4_types = args.android or ("float4" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     if is_windows():
@@ -1492,20 +1489,6 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
         raise BuildError("use_dml and minimal_build may not both be set")
 
 
-def setup_rocm_build(args):
-    rocm_home = None
-    if args.use_rocm:
-        print(f"rocm_home = {args.rocm_home}")
-        rocm_home = args.rocm_home or None
-        rocm_home_not_valid = rocm_home and not os.path.exists(rocm_home)
-        if rocm_home_not_valid:
-            raise BuildError(
-                "rocm_home paths must be specified and valid.",
-                f"rocm_home='{rocm_home}' valid={rocm_home_not_valid}.",
-            )
-    return rocm_home or ""
-
-
 def run_android_tests(args, source_dir, build_dir, config, cwd):
     if args.android_abi != "x86_64":
         log.info(f"--android_abi ({args.android_abi}) is not x86_64, skipping running of Android tests on emulator.")
@@ -1597,19 +1580,31 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         else:
             run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
-        # run shared_lib_test if necessary
+        # run shared library tests if applicable
         if args.build_shared_lib:
-            adb_push("libonnxruntime.so", device_dir, cwd=cwd)
-            adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
-            adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
-            adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
-            adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
-            adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
-            run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
-            run_adb_shell(
-                f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
-            )
+            shared_library_test_program_names = [
+                "onnxruntime_autoep_test",
+                "onnxruntime_customopregistration_test",
+                "onnxruntime_shared_lib_test",
+            ]
+
+            shared_libraries = [
+                "libcustom_op_get_const_input_test_library.so",
+                "libcustom_op_library.so",
+                "libexample_plugin_ep_virt_gpu.so",
+                "libexample_plugin_ep.so",
+                "libexample_plugin_ep_kernel_registry.so",
+                "libonnxruntime_runtime_path_test_shared_library.so",
+                "libonnxruntime.so",
+            ]
+
+            for file_to_copy in shared_library_test_program_names + shared_libraries:
+                adb_push(file_to_copy, device_dir, cwd=cwd)
+
+            # run test programs
+            for test_program_name in shared_library_test_program_names:
+                adb_shell(f"chmod +x {device_dir}/{test_program_name}")
+                run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/{test_program_name}")
 
         all_android_tests_passed = True
 
@@ -1749,12 +1744,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            if (
-                not args.skip_pip_install
-                and args.enable_transformers_tool_test
-                and not args.disable_contrib_ops
-                and not args.use_rocm
-            ):
+            if not args.skip_pip_install and args.enable_transformers_tool_test and not args.disable_contrib_ops:
                 # PyTorch is required for transformers tests, and optional for some python tests.
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
@@ -1832,7 +1822,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess(
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
                     )
-                    if args.enable_transformers_tool_test:
+
+                    # onnx package does not support python 3.14 yet so skip the transformers tests for python 3.14.
+                    # we can remove this check when onnx package supports python 3.14.
+                    if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (
+                        3,
+                        14,
+                    ):
                         import google.protobuf  # noqa: PLC0415
                         import numpy  # noqa: PLC0415
 
@@ -1929,9 +1925,7 @@ def build_python_wheel(
     use_cuda,
     cuda_home,
     cuda_version,
-    use_rocm,
     use_migraphx,
-    rocm_version,
     use_dnnl,
     use_tensorrt,
     use_openvino,
@@ -1939,6 +1933,7 @@ def build_python_wheel(
     use_acl,
     use_armnn,
     use_dml,
+    use_webgpu,
     use_cann,
     use_azure,
     use_qnn,
@@ -1976,12 +1971,6 @@ def build_python_wheel(
             cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
             if cuda_version:
                 args.append(f"--cuda_version={cuda_version}")
-        elif use_rocm:
-            args.append("--use_rocm")
-            if rocm_version:
-                args.append(f"--rocm_version={rocm_version}")
-            if use_migraphx:
-                args.append("--use_migraphx")
         elif use_migraphx:
             args.append("--use_migraphx")
         elif use_openvino:
@@ -1996,6 +1985,8 @@ def build_python_wheel(
             args.append("--use_armnn")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
+        elif use_webgpu:
+            args.append("--wheel_name_suffix=webgpu")
         elif use_cann:
             args.append("--use_cann")
         elif use_qnn:
@@ -2019,7 +2010,6 @@ def build_nuget_package(
     build_dir,
     configs,
     use_cuda,
-    use_rocm,
     use_openvino,
     use_tensorrt,
     use_dnnl,
@@ -2074,8 +2064,6 @@ def build_nuget_package(
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu"
     elif use_dml:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML"
-    elif use_rocm:
-        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
     elif use_qnn:
         if use_qnn != "shared_lib":
             raise BuildError("Currently NuGet packages with QNN require QNN EP to be built as a shared library.")
@@ -2427,9 +2415,6 @@ def main():
     # if using migraphx, setup migraphx paths
     migraphx_home = setup_migraphx_vars(args)
 
-    # if using rocm, setup rocm paths
-    rocm_home = setup_rocm_build(args)
-
     # if using cann, setup cann paths
     cann_home = setup_cann_vars(args)
 
@@ -2552,16 +2537,12 @@ def main():
                 cwd=SCRIPT_DIR,
             )
 
-        if args.use_rocm and args.rocm_version is None:
-            args.rocm_version = ""
-
         generate_build_tree(
             cmake_path,
             source_dir,
             build_dir,
             cuda_home,
             cudnn_home,
-            rocm_home,
             nccl_home,
             tensorrt_home,
             tensorrt_rtx_home,
@@ -2622,9 +2603,7 @@ def main():
                 args.use_cuda,
                 cuda_home,
                 args.cuda_version,
-                args.use_rocm,
                 args.use_migraphx,
-                args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,
                 args.use_openvino,
@@ -2632,6 +2611,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
+                args.use_webgpu,
                 args.use_cann,
                 args.use_azure,
                 args.use_qnn,
@@ -2651,7 +2631,6 @@ def main():
                 build_dir,
                 configs,
                 args.use_cuda,
-                args.use_rocm,
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,

@@ -5807,12 +5807,6 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_GpuOnly) {
   tester.TestNoFusionOccurs();
 }
 
-TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Rocm) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
-  BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kRocmExecutionProvider);
-  tester.TestFusionOccurs(1, true);
-}
-
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Cuda) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
@@ -6515,7 +6509,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
       });
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
   std::shared_ptr<Model> p_model;

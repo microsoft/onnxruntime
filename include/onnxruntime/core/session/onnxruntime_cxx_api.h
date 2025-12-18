@@ -644,6 +644,9 @@ ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelRegistry, GetEpApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
@@ -1441,6 +1444,12 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_VitisAI
   SessionOptionsImpl& AppendExecutionProvider_VitisAI(const std::unordered_map<std::string, std::string>& provider_options = {});
+
+  ///< Wraps OrtApi::AddFreeDimensionOverride
+  SessionOptionsImpl& AddFreeDimensionOverride(const char* dim_denotation, int64_t dim_value);
+
+  ///< Wraps OrtApi::AddFreeDimensionOverrideByName
+  SessionOptionsImpl& AddFreeDimensionOverrideByName(const char* dim_name, int64_t dim_value);
 };
 }  // namespace detail
 
@@ -2768,6 +2777,8 @@ struct KernelInfoImpl : Base<T> {
 
   std::string GetNodeName() const;
   Logger GetLogger() const;
+
+  KeyValuePairs GetConfigEntries() const;
 };
 
 }  // namespace detail
@@ -3283,6 +3294,90 @@ struct Model : detail::ModelImpl<OrtModel> {
   //< Wraps GetModelEditorApi().CreateModel()
   explicit Model(const std::vector<DomainOpsetPair>& opsets);
 #endif
+};
+
+namespace detail {
+template <typename T>
+struct ConstKernelDefImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::KernelDef_GetOperatorType
+  const char* GetOperatorType() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetDomain
+  const char* GetDomain() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetSinceVersion
+  std::pair<int, int> GetSinceVersion() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetExecutionProvider
+  const char* GetExecutionProvider() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetInputMemType
+  OrtMemType GetInputMemType(size_t input_index) const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetOutputMemType
+  OrtMemType GetOutputMemType(size_t output_index) const;
+};
+}  // namespace detail
+
+using ConstKernelDef = detail::ConstKernelDefImpl<detail::Unowned<const OrtKernelDef>>;
+
+struct KernelDef : detail::ConstKernelDefImpl<OrtKernelDef> {
+  using Base = detail::ConstKernelDefImpl<OrtKernelDef>;
+  using Base::Base;
+
+  explicit KernelDef(std::nullptr_t) {}
+  explicit KernelDef(OrtKernelDef* p) : detail::ConstKernelDefImpl<OrtKernelDef>{p} {}
+
+  ConstKernelDef GetConst() const { return ConstKernelDef{this->p_}; }
+};
+
+/** \brief Builder for OrtKernelDef.
+ *
+ * Used by plugin EPs to build a kernel definition.
+ */
+struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
+  KernelDefBuilder();                           ///< Wraps OrtEpApi::CreateKernelDefBuilder
+  explicit KernelDefBuilder(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used
+  explicit KernelDefBuilder(OrtKernelDefBuilder* ort_kernel_def_builder);
+
+  KernelDefBuilder& SetOperatorType(const char* op_type);
+  KernelDefBuilder& SetDomain(const char* domain);
+  KernelDefBuilder& SetSinceVersion(int since_version_start, int since_version_end);
+  KernelDefBuilder& SetExecutionProvider(const char* ep_name);
+  KernelDefBuilder& SetInputMemType(size_t input_index, OrtMemType mem_type);
+  KernelDefBuilder& SetOutputMemType(size_t output_index, OrtMemType mem_type);
+  KernelDefBuilder& AddTypeConstraint(const char* arg_name, const OrtDataType* data_type);
+  KernelDefBuilder& AddTypeConstraint(const char* arg_name, const std::vector<const OrtDataType*>& data_types);
+  KernelDefBuilder& AddInputOutputAlias(int input_index, int output_index);
+  KernelDefBuilder& AddInputOutputAliases(const std::vector<int>& input_indices,
+                                          const std::vector<int>& output_indices);
+  KernelDefBuilder& AddInputOutputMutableAlias(int input_index, int output_index);
+  KernelDefBuilder& AddInputOutputMutableAliases(const std::vector<int>& input_indices,
+                                                 const std::vector<int>& output_indices);
+
+  KernelDef Build();
+};
+
+/** \brief Registry for kernels supported by an EP.
+ *
+ * Used by plugin EPs to register definitions for supported kernels.
+ */
+struct KernelRegistry : detail::Base<OrtKernelRegistry> {
+  ///< Wrapper around OrtEpApi::CreateKernelRegistry
+  KernelRegistry();
+
+  ///< Create an empty object, must be assigned a valid one to be used
+  explicit KernelRegistry(std::nullptr_t) {}
+
+  ///< Take ownership of a pointer created with the C API.
+  explicit KernelRegistry(OrtKernelRegistry* ort_kernel_registry);
+
+  ///< Wraps KernelRegistry_AddKernel
+  Status AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,
+                   void* kernel_create_func_state);
 };
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

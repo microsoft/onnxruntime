@@ -397,6 +397,16 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
+    def set_ep_dynamic_options(self, options: dict[str, str]):
+        """
+        Set dynamic options for execution providers.
+
+        :param options: Dictionary of key-value pairs where both keys and values are strings.
+                        These options will be passed to the execution providers to modify
+                        their runtime behavior.
+        """
+        self._sess.set_ep_dynamic_options(options)
+
     def get_tuning_results(self):
         return self._sess.get_tuning_results()
 
@@ -535,16 +545,6 @@ class InferenceSession(Session):
                 )
             ):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
-        # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
-        elif "MIGraphXExecutionProvider" in available_providers:
-            if providers and any(
-                provider == "ROCMExecutionProvider"
-                or (isinstance(provider, tuple) and provider[0] == "ROCMExecutionProvider")
-                for provider in providers
-            ):
-                self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
             else:
                 self._fallback_providers = ["CPUExecutionProvider"]
         else:

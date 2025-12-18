@@ -191,8 +191,9 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   bool has_negative = std::any_of(tensor_data, tensor_data + size, [](int64_t item) { return item < 0; });
   bool has_positive = std::any_of(tensor_data, tensor_data + size, [](int64_t item) { return item > 0; });
 
-  // Zero padding value gives 3110 error on QNN.
-  if (!has_positive && !has_negative) {
+  // Zero padding value gives 3110 error on QNN on NPU.
+  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  if (is_npu_backend && !has_positive && !has_negative) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got QNN invalid zero only padding value.");
   }
 
@@ -236,7 +237,7 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   qnn_model_wrapper.AddParamWrapper(std::move(mode_param));
 
   QnnParamWrapper pad_amount_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_PAD_AMOUNT,
-                                   std::move(pad_amount_dim), std::move(pad_amount));
+                                   std::move(pad_amount_dim), std::vector<uint32_t>(pad_amount));
   param_tensor_names.push_back(pad_amount_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(pad_amount_param));
 
@@ -245,24 +246,26 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
     ORT_RETURN_IF_ERROR(ProcessConstantValue(qnn_model_wrapper, param_tensor_names, node_unit, inputs[2]));
   }  // constant_value
 
-  std::vector<uint32_t> pad_output_shape;
-  if (has_negative) {
+  if (!has_negative) {
+    // Non-negative pads maps directly onto QNN pad.
+    ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                       std::move(input_names),
+                                       std::move(param_tensor_names),
+                                       logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+  } else {
+    // If the pads contain negative values, we will need to use a StridedSlice, possibly preceded by a Pad.
+    //   mixed pad values        => Pad + StridedSlice
+    //   non-positive pad values => StridedSlice
+
+    std::vector<uint32_t> pad_output_shape;
     for (uint32_t i = 0; i < input_shape.size(); ++i) {
       pad_output_shape.push_back(input_shape[i] + pad_amount[2 * i] + pad_amount[2 * i + 1]);
     }
-  }
 
-  std::string pad_output_name = utils::GetUniqueName(node_unit, "_Pad_output");
-  // Step 1. Add pad if has_positive
-  if (has_positive) {
-    // Only positive.
-    if (!has_negative) {
-      ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                         std::move(input_names),
-                                         std::move(param_tensor_names),
-                                         logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
-      // Mixed sign pad value.
-    } else {
+    std::string pad_output_name = utils::GetUniqueName(node_unit, "_Pad_output");
+
+    if (has_positive) {
+      // Step 1. Add Pad to handle any positive values
       TensorInfo input_info = {};
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
 
@@ -274,19 +277,18 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                   std::vector<uint32_t>(pad_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(pad_output)),
                         "Failed to add Pad output tensor.");
+
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(pad_name,
                                                         QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                         GetQnnOpType(node_unit.OpType()),
-                                                        std::move(input_names),
+                                                        std::vector<std::string>(input_names),
                                                         {pad_output_name},
                                                         std::move(param_tensor_names),
                                                         do_op_validation),
                         "Failed to add Pad node.");
     }
-  }
 
-  // Step 2. Add Slice if has_negative
-  if (has_negative) {
+    // Step 2. Add Slice to handle the negative values
     TensorInfo output_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
 
@@ -302,7 +304,7 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                 output_info.quant_param.Copy(),
                                 std::vector<uint32_t>(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(org_output)),
-                      "Failed to add Pad output tensor.");
+                      "Failed to add StridedSlice output tensor.");
 
     // Create Slice param
     const size_t input_rank = input_shape.size();
@@ -340,7 +342,7 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                                       {org_output_name},
                                                       {slice_param_tensor_name},
                                                       do_op_validation),
-                      "Failed to add Pad node.");
+                      "Failed to add StridedSlice node.");
   }
 
   return Status::OK();
