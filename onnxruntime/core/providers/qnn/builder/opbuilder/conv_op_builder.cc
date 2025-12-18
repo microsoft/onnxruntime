@@ -436,22 +436,50 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
           // Handle per-channel bias
           const auto& bias_quant_params = bias_info.quant_param.Get();
 
-          if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
-            // Safety checks for per-channel quantization parameters
-            ORT_RETURN_IF_NOT(bias_quant_params.axisScaleOffsetEncoding.scaleOffset != nullptr,
-                              "Invalid bias quantization parameters: scaleOffset is null");
-            ORT_RETURN_IF_NOT(bias_quant_params.axisScaleOffsetEncoding.numScaleOffsets > 0,
-                              "Invalid bias quantization parameters: numScaleOffsets is zero");
+          if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET ||
+              bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
+            // Extract scales and offsets based on encoding type
+            std::vector<float> current_scales;
+            std::vector<int32_t> current_offsets;
+            int32_t quant_axis = 0;
+            size_t num_channels = 0;
+
+            if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+              // Safety checks for AXIS_SCALE_OFFSET encoding
+              ORT_RETURN_IF_NOT(bias_quant_params.axisScaleOffsetEncoding.scaleOffset != nullptr,
+                                "Invalid bias quantization parameters: scaleOffset is null");
+              ORT_RETURN_IF_NOT(bias_quant_params.axisScaleOffsetEncoding.numScaleOffsets > 0,
+                                "Invalid bias quantization parameters: numScaleOffsets is zero");
+
+              num_channels = bias_quant_params.axisScaleOffsetEncoding.numScaleOffsets;
+              quant_axis = bias_quant_params.axisScaleOffsetEncoding.axis;
+              for (size_t i = 0; i < num_channels; ++i) {
+                current_scales.push_back(bias_quant_params.axisScaleOffsetEncoding.scaleOffset[i].scale);
+                current_offsets.push_back(bias_quant_params.axisScaleOffsetEncoding.scaleOffset[i].offset);
+              }
+            } else {  // QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET
+              // Safety checks for BW_AXIS_SCALE_OFFSET encoding
+              ORT_RETURN_IF_NOT(bias_quant_params.bwAxisScaleOffsetEncoding.scales != nullptr,
+                                "Invalid bias quantization parameters: scales is null");
+              ORT_RETURN_IF_NOT(bias_quant_params.bwAxisScaleOffsetEncoding.offsets != nullptr,
+                                "Invalid bias quantization parameters: offsets is null");
+              ORT_RETURN_IF_NOT(bias_quant_params.bwAxisScaleOffsetEncoding.numElements > 0,
+                                "Invalid bias quantization parameters: numElements is zero");
+
+              num_channels = bias_quant_params.bwAxisScaleOffsetEncoding.numElements;
+              quant_axis = bias_quant_params.bwAxisScaleOffsetEncoding.axis;
+              for (size_t i = 0; i < num_channels; ++i) {
+                current_scales.push_back(bias_quant_params.bwAxisScaleOffsetEncoding.scales[i]);
+                current_offsets.push_back(bias_quant_params.bwAxisScaleOffsetEncoding.offsets[i]);
+              }
+            }
 
             // Check if all offsets are 0 and scales match expected values
             bool all_offsets_zero = true;
             bool all_scales_match = true;
 
-            for (size_t i = 0; i < bias_quant_params.axisScaleOffsetEncoding.numScaleOffsets; ++i) {
-              float current_scale = bias_quant_params.axisScaleOffsetEncoding.scaleOffset[i].scale;
-              int32_t current_offset = bias_quant_params.axisScaleOffsetEncoding.scaleOffset[i].offset;
-
-              if (current_offset != 0) {
+            for (size_t i = 0; i < num_channels; ++i) {
+              if (current_offsets[i] != 0) {
                 all_offsets_zero = false;
               }
 
@@ -459,7 +487,7 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
               // Use the corresponding weight scale if available, otherwise use the first one
               float weight_scale = (i < weights_scales.size()) ? weights_scales[i] : weights_scales[0];
 
-              if (!utils::CheckBiasScaleMatch(current_scale, weight_scale, activation_scale, 1e-5f)) {
+              if (!utils::CheckBiasScaleMatch(current_scales[i], weight_scale, activation_scale, 1e-5f)) {
                 all_scales_match = false;
               }
             }
@@ -469,13 +497,7 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
             } else {
               // Need to requantize per-channel bias
               LOGS(logger, VERBOSE) << "Requantizing per-channel bias '" << bias_input.node_arg.Name()
-                                    << "' with " << bias_quant_params.axisScaleOffsetEncoding.numScaleOffsets << " channels";
-              std::vector<float> current_scales;
-              std::vector<int32_t> current_offsets;
-              for (size_t i = 0; i < bias_quant_params.axisScaleOffsetEncoding.numScaleOffsets; ++i) {
-                current_scales.push_back(bias_quant_params.axisScaleOffsetEncoding.scaleOffset[i].scale);
-                current_offsets.push_back(bias_quant_params.axisScaleOffsetEncoding.scaleOffset[i].offset);
-              }
+                                    << "' with " << num_channels << " channels";
 
               // Get current bias data and requantize
               std::vector<uint8_t> original_bias_data;
@@ -489,12 +511,11 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
                   original_bias_data, bias_info.shape, current_scales, current_offsets,
                   weights_scales, activation_scale, bias_info.qnn_data_type,
                   requantized_bias_data, new_scales, new_offsets,
-                  bias_quant_params.axisScaleOffsetEncoding.axis));
+                  quant_axis));
 
               // Create new tensor wrapper with requantized data
               std::string bias_name = bias_input.node_arg.Name();
-              QnnQuantParamsWrapper new_quant_params(new_scales, new_offsets,
-                                                     bias_quant_params.axisScaleOffsetEncoding.axis, false);
+              QnnQuantParamsWrapper new_quant_params(new_scales, new_offsets, quant_axis, false);
               QnnTensorWrapper bias_tensorwrapper(bias_name, QNN_TENSOR_TYPE_STATIC, bias_info.qnn_data_type,
                                                   std::move(new_quant_params), std::vector<uint32_t>(bias_info.shape),
                                                   std::move(requantized_bias_data));
