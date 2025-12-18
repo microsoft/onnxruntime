@@ -87,7 +87,8 @@ def get_package_dir() -> Path:
 
 
 def get_tools_dir() -> Path:
-    tools_dir = Path(os.getenv("ORT_BUILD_TOOLS_PATH", REPO_ROOT / "build" / "Tools"))
+    tools_name = "Tools" if is_host_windows() else "tools"
+    tools_dir = Path(os.getenv("ORT_BUILD_TOOLS_PATH", REPO_ROOT / "build" / tools_name))
     tools_dir.mkdir(parents=True, exist_ok=True)
     return tools_dir
 

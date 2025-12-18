@@ -221,7 +221,7 @@ class OrtWheelModelTestTask(OrtWheelTestTask):
             build_root / self.__config / "dist",
             build_root / self.__config / self.__config / "dist",
         ]
-        found_wheels = sorted(
+        found_wheels: list[Path] = sorted(
             functools.reduce(operator.iadd, [list(d.glob(filename_glob)) for d in dist_dirs], []),
             key=lambda f: f.stat().st_mtime,
             reverse=True,

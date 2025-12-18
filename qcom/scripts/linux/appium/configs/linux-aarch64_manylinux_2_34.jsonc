@@ -1,0 +1,33 @@
+// Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+// SPDX-License-Identifier: MIT
+
+{
+    // [REQUIRED] The target platform under test; corresponds to a directory under $REPO_ROOT/build/
+    "build_target": "linux-aarch64_manylinux_2_34",
+
+    // The build configuration to test.
+    // Default: Release
+    // "build_config": "Release",
+
+    // On-device working directory.
+    // Default: /data/local/tmp
+    "device_home": "/root/tmp",
+
+    // How to connect to the device.
+    //  * adb://            --> adb -d
+    //  * adb://serial@host --> adb -H host -s serial
+    //  * ssh://user@host[:port]/[?key=val[&key=val...]]
+    //    * Example: ssh://root@192.168.0.115:22/?StrictHostKeychecking=no&UserKnownHostsFile=/dev/null
+    // Default: adb://
+    "device_url": "ssh://user@your_device_host"
+
+    // Where the test archive is extracted on the host device.
+    // In local tests, this should be left unset so that the test harness can specify a temporary directory.
+    // Default: os.environ.get("QDC_TEST_ROOT", "/qdc/appium")
+    // "qdc_host_path": "/qdc/appium",
+
+    // Host directory containing model tests.
+    // Sometimes it makes sense to set this in order to avoid re-uploading model tests.
+    // Default: os.environ.get("MODEL_TEST_ROOT", f"{qdc_host_path}/model_tests")
+    // "model_test_path": "/qdc/appium/model_tests"
+}

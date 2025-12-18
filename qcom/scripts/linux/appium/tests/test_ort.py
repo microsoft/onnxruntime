@@ -1,22 +1,14 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
+import tempfile
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
 import pytest
-from adb_utils import Adb
 from ctest_plan import CTestPlan
-from qdc_helpers import (
-    ORT_DEVICE_BUILD_ROOT,
-    ORT_DEVICE_PATH,
-    ORT_HOST_BUILD_ROOT,
-    ORT_TEST_RESULTS_DEVICE_LOG,
-    QNN_ADSP_LIBRARY_PATH,
-    QNN_LD_LIBRARY_PATH,
-    TestBase,
-)
+from qdc_helpers import TestBase
 
 
 class ModelTestDef(NamedTuple):
@@ -27,34 +19,36 @@ class ModelTestDef(NamedTuple):
     extra_args: Iterable[str] = []
 
 
+CONFIG = TestBase.config()
+
 CTEST_PLAN = CTestPlan(
-    Path(ORT_HOST_BUILD_ROOT) / "CTestTestfile.cmake",
-    str(PurePosixPath(ORT_DEVICE_BUILD_ROOT)),
+    Path(CONFIG.host_build_root) / "CTestTestfile.cmake",
+    str(PurePosixPath(CONFIG.device_build_root)),
 )
 
 MODEL_TEST_DEFINITIONS = [
     ModelTestDef(
         "node",
         "cpu",
-        Path(ORT_DEVICE_PATH) / "cmake" / "external" / "onnx" / "onnx" / "backend" / "test" / "data" / "node",
+        Path(CONFIG.device_path) / "cmake" / "external" / "onnx" / "onnx" / "backend" / "test" / "data" / "node",
     ),
     ModelTestDef(
         "float32",
         "cpu",
-        Path(ORT_DEVICE_PATH) / "model_tests" / "onnx_models" / "testdata" / "float32",
-        Path(ORT_DEVICE_PATH) / "model_tests" / "onnx_models",
+        Path(CONFIG.device_path) / "model_tests" / "onnx_models" / "testdata" / "float32",
+        Path(CONFIG.device_path) / "model_tests" / "onnx_models",
     ),
     ModelTestDef(
         "qdq",
         "htp",
-        Path(ORT_DEVICE_PATH) / "model_tests" / "onnx_models" / "testdata" / "qdq",
-        Path(ORT_DEVICE_PATH) / "model_tests" / "onnx_models",
+        Path(CONFIG.device_path) / "model_tests" / "onnx_models" / "testdata" / "qdq",
+        Path(CONFIG.device_path) / "model_tests" / "onnx_models",
     ),
     ModelTestDef(
         "qdq-with-context-cache",
         "htp",
-        Path(ORT_DEVICE_PATH) / "model_tests" / "onnx_models" / "testdata" / "qdq-with-context-cache",
-        Path(ORT_DEVICE_PATH) / "model_tests" / "onnx_models",
+        Path(CONFIG.device_path) / "model_tests" / "onnx_models" / "testdata" / "qdq-with-context-cache",
+        Path(CONFIG.device_path) / "model_tests" / "onnx_models",
         ["-f"],
     ),
 ]
@@ -71,11 +65,11 @@ class TestOrt(TestBase):
 
     @pytest.mark.parametrize(["test_cmd"], [[tp] for tp in CTEST_PLAN.plan], ids=CTEST_PLAN.names)
     def test_onnxruntime_test_suite(self, test_cmd) -> None:
-        Adb().shell([self.__get_test_cmd(test_cmd)])
+        self.__assert_passes(self.__get_test_cmd(test_cmd))
 
     @pytest.mark.parametrize("test_def", MODEL_TEST_DEFINITIONS, ids=MODEL_TEST_IDS)
     def test_onnx_models(self, test_def: ModelTestDef) -> None:
-        runner_exe = Path(ORT_DEVICE_BUILD_ROOT) / "onnx_test_runner"
+        runner_exe = Path(CONFIG.device_build_root) / "onnx_test_runner"
 
         # fmt: off
         test_cmd = [
@@ -88,18 +82,33 @@ class TestOrt(TestBase):
         ]
         # fmt: on
 
-        Adb().shell([self.__get_test_cmd(test_cmd, test_def.working_dir)])
+        self.__assert_passes(self.__get_test_cmd(test_cmd, test_def.working_dir))
 
-    @staticmethod
-    def __get_test_cmd(test_cmd: list[str], working_dir: Path | None = None) -> str:
+    def __assert_passes(self, test_cmd: str) -> None:
+        self.device.shell([test_cmd])
+        with tempfile.TemporaryDirectory(prefix="TestRc-") as tmpdir:
+            rc_path = Path(tmpdir) / "rc.txt"
+            self.device.pull(self.__rc_device_path, rc_path)
+            rc = rc_path.read_text().splitlines()
+            assert len(rc) == 1
+            assert rc[0] == "0", f"Test command returned non-zero value {rc}."
+
+    def __get_test_cmd(
+        self,
+        test_cmd: list[str],
+        working_dir: Path | None = None,
+    ) -> str:
         if working_dir is None:
-            working_dir = Path(ORT_DEVICE_BUILD_ROOT)
+            working_dir = Path(CONFIG.device_build_root)
         test_str = " ".join(test_cmd)
         return (
-            f"set -euo pipefail && "
             f"cd {working_dir} && "
-            f"echo -=-=-=-=-=-=-=-=-=-=- >> {ORT_TEST_RESULTS_DEVICE_LOG} && "
-            f"echo Running test: {test_str} >> {ORT_TEST_RESULTS_DEVICE_LOG} && "
-            f"env ADSP_LIBRARY_PATH={QNN_ADSP_LIBRARY_PATH} LD_LIBRARY_PATH={QNN_LD_LIBRARY_PATH} "
-            f"{test_str} 2>&1 | tee -a {ORT_TEST_RESULTS_DEVICE_LOG}"
+            f"echo -=-=-=-=-=-=-=-=-=-=- >> {CONFIG.test_results_device_log} && "
+            f"echo Running test: {test_str} >> {CONFIG.test_results_device_log} && "
+            f"(env ADSP_LIBRARY_PATH={CONFIG.adsp_library_path} LD_LIBRARY_PATH={CONFIG.ld_library_path} "
+            f"{test_str}; echo $? > {self.__rc_device_path}) 2>&1 | tee -a {CONFIG.test_results_device_log}"
         )
+
+    @property
+    def __rc_device_path(self) -> Path:
+        return Path(CONFIG.device_results_root) / "rc.txt"

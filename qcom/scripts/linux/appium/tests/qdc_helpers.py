@@ -1,92 +1,55 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
-import os
 from pathlib import Path
 
-from adb_utils import Adb
-
-ORT_BUILD_CONFIG = "Release"
-
-# Where to find the build's executables relative to the test archive root.
-ORT_BUILD_ROOT_RELPATH = f"build/android-aarch64/{ORT_BUILD_CONFIG}"
-
-# this is where our zip file is extracted on the QDC host.
-QDC_HOST_PATH = os.environ.get("QDC_TEST_ROOT", "/qdc/appium")
-
-# Where to find the build's executables on the host
-ORT_HOST_BUILD_ROOT = f"{QDC_HOST_PATH}/{ORT_BUILD_ROOT_RELPATH}"
-
-# directory containing model test suites
-MODEL_TEST_PATH = os.environ.get("MODEL_TEST_ROOT", f"{QDC_HOST_PATH}/model_tests")
-
-# this is where we will copy our files on the Android device.
-ORT_DEVICE_PATH = "/data/local/tmp/onnxruntime"
-
-# Where to find the build's executables on the device
-ORT_DEVICE_BUILD_ROOT = f"{ORT_DEVICE_PATH}/{ORT_BUILD_ROOT_RELPATH}"
-
-# Glob matching test result files on the device
-ORT_TEST_RESULTS_DEVICE_GLOB = f"{ORT_DEVICE_BUILD_ROOT}/onnxruntime_*.results.*"
-
-# Path to the on-device test log; this should match the glob in ORT_TEST_RESULTS_DEVICE_GLOB
-ORT_TEST_RESULTS_DEVICE_LOG = f"{ORT_DEVICE_BUILD_ROOT}/onnxruntime_test.results.txt"
-
-# all files in this folder will be uploaded back to QDC.
-QDC_LOG_PATH = "/data/local/tmp/QDC_logs"
-
-QNN_ADSP_LIBRARY_PATH = "\\;".join(
-    f"{ORT_DEVICE_PATH}/lib/hexagon-v{arch}/unsigned" for arch in [66, 68, 73, 75, 79, 81]
-)
-QNN_LD_LIBRARY_PATH = f"{ORT_DEVICE_BUILD_ROOT}:{ORT_DEVICE_PATH}/lib/aarch64-android"
+from device import DeviceBase, device_from_url
+from ort_test_config import OrtTestConfig, default_test_config
 
 
 class TestBase:
+    @staticmethod
+    def config() -> OrtTestConfig:
+        return default_test_config()
+
+    @property
+    def device(self) -> DeviceBase:
+        return device_from_url(self.config().device_url)
+
     def clean_device(self):
-        adb = Adb()
-
         # Clean-up device. QDC doesn't do any clean-up.
-        for path in [ORT_DEVICE_PATH, QDC_LOG_PATH]:
-            adb.shell(["rm", "-rf", path])
-            adb.shell(["mkdir", "-p", path])
-
-    def prepare_device(self):
-        adb = Adb()
-
-        # disable SE Linux; this enables tombstone to capture symbols.
-        adb.sudo(["setenforce", "0"])
+        for path in [self.config().device_path, self.config().qdc_log_path]:
+            self.device.shell(["rm", "-rf", path])
+            self.device.shell(["mkdir", "-p", path])
 
     def prepare_ort_tests(self):
         self.clean_device()
-        self.prepare_device()
 
-        adb = Adb()
-
-        # Push binaries from QDC_HOST_PATH to /data/local/tmp
-        for item in Path(QDC_HOST_PATH).iterdir():
-            adb.push(item, Path(ORT_DEVICE_PATH))
+        # Push binaries from qdc_host_path to /data/local/tmp
+        for item in Path(self.config().qdc_host_path).iterdir():
+            self.device.push(item, Path(self.config().device_path))
 
         # Push test models
-        adb.shell(["mkdir", "-p", f"{ORT_DEVICE_PATH}/model_tests"])
-        for item in Path(MODEL_TEST_PATH).iterdir():
+        self.device.shell(["mkdir", "-p", f"{self.config().device_path}/model_tests"])
+        for item in Path(self.config().model_test_path).iterdir():
             # We're playing games with .resolve() and .name because adb push doesn't follow symlinks.
-            adb.push(item.resolve(), Path(ORT_DEVICE_PATH) / "model_tests" / item.name)
+            self.device.push(item.resolve(), Path(self.config().device_path) / "model_tests" / item.name)
 
         # Builds sometimes come from Windows, where executable bits are not set.
-        # fmt: off
-        adb.shell(
-            [
-                "find", f"{ORT_DEVICE_PATH}/lib",
-                "-type", "f",
-                "-exec", "chmod", "+x", "{}",
-                "\\;",
-            ],
-        )
-        # fmt: on
-        adb.shell([f"sh -c 'chmod +x {ORT_DEVICE_BUILD_ROOT}/*'"])
+        if (Path(self.config().host_build_root) / "lib").exists():
+            # fmt: off
+            self.device.shell(
+                [
+                    "find", f"{self.config().device_path}/lib",
+                    "-type", "f",
+                    "-exec", "chmod", "+x", "{}",
+                    "\\;",
+                ],
+            )
+            # fmt: on
+        self.device.shell([f"sh -c 'chmod +x {self.config().device_build_root}/*'"])
 
     def copy_logs(self):
-        adb = Adb()
-        adb.shell(
-            [f"sh -c 'cp {ORT_TEST_RESULTS_DEVICE_GLOB} {QDC_LOG_PATH}'"],
+        self.device.shell(
+            [f"sh -c 'cp {self.config().test_results_device_glob} {self.config().qdc_log_path}'"],
         )

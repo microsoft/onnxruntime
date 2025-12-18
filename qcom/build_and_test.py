@@ -26,12 +26,13 @@ from ep_build.plan import (
 )
 from ep_build.task import (
     CompositeTask,
+    ConvertArchiveTask,
     ExtractArchiveTask,
     ListTasksTask,
     NoOpTask,
-    PyTestTask,
 )
 from ep_build.tasks.build import (
+    AdbTestsTask,
     BuildEpDockerTask,
     BuildEpLinuxTask,
     BuildEpWindowsTask,
@@ -75,6 +76,11 @@ Environment variables
 
   ORT_BUILD_DOCKER_CCACHE_ROOT
     If specified, Docker builds will use this host path for storing ccache caches.
+
+  ORT_TEST_CONFIG_PATH
+    If specified, use this test configuration jsonc instead of the default when running
+    "local" device tests, such as test_ort_local_android_aarch64.
+    See qcom/scripts/linux/appium/configs for examples.
 
   ORT_BUILD_TOOLS_PATH
     If specified, use this directory for build-managed tools instead of build/tools.
@@ -689,32 +695,37 @@ class TaskLibrary:
         @task
         @depends(["archive_ort_android_aarch64"])
         def test_ort_local_android_aarch64(self, plan: Plan) -> str:
-            env = dict(os.environ)
-            test_root = REPO_ROOT / "build" / "qdc_test_root"
-            env["QDC_TEST_ROOT"] = str(test_root)
-            env["MODEL_TEST_ROOT"] = str(REPO_ROOT / "build" / "android-aarch64" / "model_tests")
-
-            # This is a pretty slow way to do this, but it's easy to implement
-            # and essentially free to maintain. If you find yourself using this
-            # often enough that your life would be better if we didn't roundtrip
-            # through a zip file, please open a Jira and we'll invest more here.
             return plan.add_step(
-                CompositeTask(
-                    group_name=None,
-                    tasks=[
-                        ExtractArchiveTask(
-                            "Extracting ONNX Runtime for Android",
-                            REPO_ROOT / "build" / "onnxruntime-tests-android-aarch64.zip",
-                            test_root,
-                        ),
-                        PyTestTask(
-                            "Testing ONNX Runtime for Android with a local device",
-                            self.__venv_path,
-                            ["tests"],
-                            env=env,
-                            cwd=REPO_ROOT / "qcom" / "scripts" / "linux" / "appium",
-                        ),
-                    ],
+                AdbTestsTask(
+                    "Testing ONNX Runtime on directly connected Android device", self.__venv_path, "android", "aarch64"
+                )
+            )
+
+    if is_host_linux() or is_host_mac():
+
+        @task
+        @depends(["archive_ort_linux_aarch64_manylinux_2_34"])
+        def test_ort_local_linux_aarch64_manylinux_2_34(self, plan: Plan) -> str:
+            return plan.add_step(
+                AdbTestsTask(
+                    "Testing ONNX Runtime for Ubuntu on directly connected device",
+                    self.__venv_path,
+                    "linux",
+                    "aarch64_manylinux_2_34",
+                )
+            )
+
+    if (is_host_linux() and is_host_x86_64()) or is_host_mac():
+
+        @task
+        @depends(["archive_ort_linux_aarch64_oe_gcc11_2"])
+        def test_ort_local_linux_aarch64_oe_gcc11_2(self, plan: Plan) -> str:
+            return plan.add_step(
+                AdbTestsTask(
+                    "Testing ONNX Runtime on directly connected Qualcomm Linux device",
+                    self.__venv_path,
+                    "linux",
+                    "aarch64_oe_gcc11_2",
                 )
             )
 
@@ -730,6 +741,32 @@ class TaskLibrary:
                     ["android"],
                     extra_args=[
                         "--append-android-package=onnx_models:model_tests/onnx_models",
+                    ],
+                )
+            )
+
+    if (is_host_linux() and is_host_x86_64()) or is_host_mac():
+
+        @task
+        @depends(["archive_ort_linux_aarch64_oe_gcc11_2"])
+        def test_ort_qdc_linux_aarch64_oe_gcc11_2(self, plan: Plan) -> str:
+            return plan.add_step(
+                CompositeTask(
+                    None,
+                    [
+                        ConvertArchiveTask(
+                            "Converting test archive to .zip",
+                            REPO_ROOT / "build" / "onnxruntime-tests-linux-aarch64_oe_gcc11_2.tar.bz2",
+                            REPO_ROOT / "build" / "onnxruntime-tests-linux-aarch64_oe_gcc11_2.zip",
+                        ),
+                        QdcTestsTask(
+                            "Testing ONNX Runtime for Android in QDC",
+                            self.__venv_path,
+                            ["qualcomm_linux"],
+                            extra_args=[
+                                "--append-qli-package=onnx_models:model_tests/onnx_models",
+                            ],
+                        ),
                     ],
                 )
             )

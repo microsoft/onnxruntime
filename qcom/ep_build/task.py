@@ -49,6 +49,47 @@ class Task(ABC):
             end_group()
 
 
+class CopyFileTask(Task):
+    def __init__(
+        self,
+        group_name: str | None,
+        src_path: Path,
+        dst_path: Path,
+    ) -> None:
+        super().__init__(group_name)
+        self.__src_path = src_path
+        self.__dst_path = dst_path
+
+    def does_work(self) -> bool:
+        return True
+
+    def run_task(self) -> None:
+        logging.debug(f"Copying {self.__src_path} to {self.__dst_path}.")
+        shutil.copyfile(self.__src_path, self.__dst_path)
+
+
+class CreateArchiveTask(Task):
+    def __init__(
+        self,
+        group_name: str | None,
+        content_root: Path,
+        archive_path: Path,
+    ) -> None:
+        super().__init__(group_name)
+        self.__content_root = content_root
+        self.__archive_path = archive_path
+
+    def does_work(self) -> bool:
+        return True
+
+    def run_task(self) -> None:
+        logging.debug(f"Creating archive {self.__archive_path} from {self.__content_root}.")
+        if self.__archive_path.suffix == ".zip":
+            shutil.make_archive(str(self.__archive_path.with_suffix("")), "zip", self.__content_root)
+        else:
+            raise NotImplementedError(f"Unsupported archive type: {self.__archive_path}.")
+
+
 class ExtractArchiveTask(Task):
     def __init__(
         self,
@@ -338,3 +379,42 @@ class RunInTempDirectoryTask(Task):
         with tempfile.TemporaryDirectory(prefix=self.__tmpdir_prefix) as tmpdir:
             task = self.__task_factory(Path(tmpdir).resolve())
             return task.run()
+
+
+class ConvertArchiveTask(RunInTempDirectoryTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        old_archive: Path,
+        new_archive: Path,
+    ) -> None:
+        self.__old_archive = old_archive
+        self.__new_archive = new_archive
+        super().__init__(
+            group_name,
+            self.__convert,
+            "ConvertArchive-",
+        )
+
+    def __convert(self, tmpdir: Path) -> Task:
+        return ConditionalTask(
+            None,
+            lambda: self.__new_archive.exists()
+            and self.__new_archive.stat().st_mtime > self.__old_archive.stat().st_mtime,
+            PrintMessageTask(f"{self.__new_archive} is newer than {self.__old_archive}."),
+            CompositeTask(
+                None,
+                [
+                    ExtractArchiveTask(
+                        None,
+                        self.__old_archive,
+                        tmpdir,
+                    ),
+                    CreateArchiveTask(
+                        None,
+                        tmpdir,
+                        self.__new_archive,
+                    ),
+                ],
+            ),
+        )

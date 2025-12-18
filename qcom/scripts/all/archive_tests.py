@@ -26,7 +26,7 @@ _ORT_REJECT_PATTERNS = [
     r".*/CMakeCache.txt$",
     r".*/build.ninja$",
     r".*/compile_commands.json$",
-    r".*/_deps/.*",
+    r".*/_deps/(?!onnx-src/onnx/backend/test/data/pytorch-(converted|operator)/).*",
     r".*/CMakeFiles/.*",
     r".*/Google\.Protobuf\.Tools.*/.*",
     r".*/Microsoft\.AI\.DirectML.*/.*",
@@ -75,13 +75,6 @@ def archive_android(target_platform: str, config: str, qairt_sdk_root: Path) -> 
         for filename in build_dir.glob(f"{config}/**/*"):
             if _should_archive(filename, reject=_ORT_REJECT_RE):
                 arcname = filename.relative_to(REPO_ROOT)
-                archive.write(filename, arcname)
-
-        qdc_test_root = QCOM_ROOT / "scripts" / "linux" / "appium"
-        logging.debug(f"Adding QDC test framework from {qdc_test_root}.")
-        for filename in qdc_test_root.glob("**/*"):
-            if _should_archive(filename, reject=_ALWAYS_REJECT_RE):
-                arcname = filename.relative_to(qdc_test_root)
                 archive.write(filename, arcname)
 
         logging.debug(f"Adding QNN libraries from {qairt_sdk_root}.")

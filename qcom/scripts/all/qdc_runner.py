@@ -56,12 +56,11 @@ from qdc_public_api_client.models.post_artifacts_uuid_continueupload_body import
 from qdc_public_api_client.models.test_framework import TestFramework
 from qdc_public_api_client.types import File, Response, Unset
 
-ORT_APPIUM_ARCHIVE = (
-    Path(__file__).parent.parent.parent.parent / "build" / "onnxruntime-tests-android-aarch64.zip"
-).absolute()
-ORT_TEST_WIN_ARM64 = (
-    Path(__file__).parent.parent.parent.parent / "build" / "onnxruntime-tests-windows-arm64.zip"
-).absolute()
+REPO_ROOT = Path(__file__).parent.parent.parent.parent.absolute()
+
+ORT_ANDROID_ARCHIVE = REPO_ROOT / "build" / "onnxruntime-tests-android-aarch64.zip"
+ORT_QLI_ARCHIVE = REPO_ROOT / "build" / "onnxruntime-tests-linux-aarch64_oe_gcc11_2.zip"
+ORT_TEST_WIN_ARM64 = REPO_ROOT / "build" / "onnxruntime-tests-windows-arm64.zip"
 
 
 #
@@ -71,7 +70,8 @@ ORT_TEST_WIN_ARM64 = (
 
 class Platform(Enum):
     ANDROID = 1
-    WINDOWS = 2
+    QUALCOMM_LINUX = 2
+    WINDOWS = 3
 
 
 class TestDevice(NamedTuple):
@@ -93,6 +93,9 @@ class TestConfig(NamedTuple):
 
 # fmt: off
 QDC_TESTS = [
+    TestConfig("QLI Device", Platform.QUALCOMM_LINUX, [
+        TestDevice("3695434", "Kodiak QCS6490"),
+    ]),
     TestConfig("Mobile Device", Platform.ANDROID, [
         TestDevice("3625030", "Lanai SM8650"),
         TestDevice("3700521", "Pakala SM8750"),
@@ -453,7 +456,7 @@ class QdcClient:
 
 
 class QdcRunner:
-    _JOB_TIMEOUT_MINUTES = 15
+    _JOB_TIMEOUT_MINUTES = 30
 
     class QdcJobConfig(NamedTuple):
         upload_uuids: list[str]
@@ -469,8 +472,10 @@ class QdcRunner:
         api_url: str,
         enable_platforms: list[Platform],
         override_android_id: str,
+        override_qli_id: str,
         override_windows_id: str,
         android_archive: Path,
+        qli_archive: Path,
         windows_archive: Path,
     ):
         logging.info("Initializing QDC test runner for project.")
@@ -479,14 +484,21 @@ class QdcRunner:
         self._log_dir = log_dir
 
         enable_android = len(enable_platforms) == 0 or Platform.ANDROID in enable_platforms
+        enable_qli = len(enable_platforms) == 0 or Platform.QUALCOMM_LINUX in enable_platforms
         enable_windows = len(enable_platforms) == 0 or Platform.WINDOWS in enable_platforms
-        have_override = override_android_id or override_windows_id
+        have_override = override_android_id or override_qli_id or override_windows_id
 
         self._job_config = {}
 
         if (not have_override or override_android_id) and enable_android:
             apk_test_pkg_uuid = self._upload_artifact(android_archive, ArtifactType.TESTSCRIPT)
             self._job_config[Platform.ANDROID] = QdcRunner.QdcJobConfig([apk_test_pkg_uuid], TestFramework.APPIUM, None)
+
+        if (not have_override or override_qli_id) and enable_qli:
+            qli_test_uuid = self._upload_artifact(qli_archive, ArtifactType.TESTSCRIPT)
+            self._job_config[Platform.QUALCOMM_LINUX] = QdcRunner.QdcJobConfig(
+                [qli_test_uuid], TestFramework.APPIUM, None
+            )
 
         if (not have_override or override_windows_id) and enable_windows:
             windows_test_uuid = self._upload_artifact(windows_archive, ArtifactType.TESTSCRIPT)
@@ -504,6 +516,17 @@ class QdcRunner:
                         "Override Android",
                         Platform.ANDROID,
                         [TestDevice(override_android_id, override_android_id)],
+                    )
+                ],
+            )
+        if override_qli_id and enable_qli:
+            self._schedule_tests(
+                test_runs,
+                [
+                    TestConfig(
+                        "Override Qualcomm Linux",
+                        Platform.QUALCOMM_LINUX,
+                        [TestDevice(override_qli_id, override_qli_id)],
                     )
                 ],
             )
@@ -733,10 +756,12 @@ class QdcRunner:
         elif state in [JobState.RUNNING, JobState.SETUP]:
             return RunStatus.RUNNING
         elif state == JobState.COMPLETED and result == JobResult.SUCCESSFUL:
+            logging.info("Job succeeded.")
             return self._finish_run(job_id, platform, RunStatus.SUCCESS)
         elif state == JobState.CANCELED:
             return RunStatus.ABORTED
 
+        logging.warning(f"Job failed with status {state}.")
         return self._finish_run(job_id, platform, RunStatus.FAILED)
 
 
@@ -831,6 +856,12 @@ class RunnerCli:
             required=False,
         )
         parser.add_argument(
+            "--qdc-qli-id",
+            action="store",
+            help="Run a QDC test using the specified QLI device device ID.",
+            required=False,
+        )
+        parser.add_argument(
             "--qdc-windows-id",
             action="store",
             help="Run a QDC test using the specified Windows device device ID.",
@@ -842,6 +873,14 @@ class RunnerCli:
             type=str,
             action="store",
             help="Append the contents of this package to the Android test archive in the given subdirectory.",
+            required=False,
+        )
+        parser.add_argument(
+            "--append-qli-package",
+            metavar="PACKAGE:SUBDIR",
+            type=str,
+            action="store",
+            help="Append the contents of this package to the QLI test archive in the given subdirectory.",
             required=False,
         )
         parser.add_argument(
@@ -865,9 +904,11 @@ class RunnerCli:
         self.enable_platforms: list[Platform] = args.enable_platforms
         self.qdc_api_url: str = args.qdc_api_url
         self.qdc_android_id: str = args.qdc_android_id
+        self.qdc_qli_id: str = args.qdc_qli_id
         self.qdc_windows_id: str = args.qdc_windows_id
 
         self.append_android_package: str = args.append_android_package
+        self.append_qli_package: str = args.append_qli_package
         self.append_windows_package: str = args.append_windows_package
 
         logging.info(f"Initialized runner. Test name prefix={self.test_name}")
@@ -875,14 +916,23 @@ class RunnerCli:
     def run(self) -> bool:
         test_runs = TestRuns()
 
-        android_archive = ORT_APPIUM_ARCHIVE
+        android_archive = ORT_ANDROID_ARCHIVE
+        qli_archive = ORT_QLI_ARCHIVE
         windows_archive = ORT_TEST_WIN_ARM64
 
-        with tempfile.TemporaryDirectory(prefix="QdcRunner") as tmpdir:
-            if self.append_android_package is not None:
-                android_archive = self.__append_package(android_archive, Path(tmpdir), self.append_android_package)
-            if self.append_windows_package is not None:
-                windows_archive = self.__append_package(windows_archive, Path(tmpdir), self.append_windows_package)
+        with tempfile.TemporaryDirectory(prefix="QdcRunner-") as tmpdir:
+            if android_archive.exists():
+                android_archive = self.__append_package(
+                    android_archive, Path(tmpdir), self.append_android_package, Platform.ANDROID
+                )
+            if qli_archive.exists():
+                qli_archive = self.__append_package(
+                    qli_archive, Path(tmpdir), self.append_qli_package, Platform.QUALCOMM_LINUX
+                )
+            if windows_archive.exists():
+                windows_archive = self.__append_package(
+                    windows_archive, Path(tmpdir), self.append_windows_package, None
+                )
 
             with TemporarySignalHandler(lambda sig, frame: test_runs.abort()):
                 QdcRunner(
@@ -893,8 +943,10 @@ class RunnerCli:
                     self.qdc_api_url,
                     self.enable_platforms,
                     self.qdc_android_id,
+                    self.qdc_qli_id,
                     self.qdc_windows_id,
                     android_archive,
+                    qli_archive,
                     windows_archive,
                 )
                 logging.info(f"Initialized runner. Test name prefix={self.test_name}")
@@ -915,8 +967,35 @@ class RunnerCli:
         return True
 
     @classmethod
+    def __add_appium(cls, archive_path: Path, platform: Platform) -> None:
+        logging.info(f"Adding appium to {archive_path}.")
+        cls.__add_directory(archive_path, REPO_ROOT / "qcom" / "scripts" / "linux" / "appium" / "tests", Path("tests"))
+        cls.__add_file(
+            archive_path, REPO_ROOT / "qcom" / "scripts" / "linux" / "appium" / "pytest.ini", Path("pytest.ini")
+        )
+        cls.__add_file(
+            archive_path,
+            REPO_ROOT / "qcom" / "scripts" / "linux" / "appium" / "requirements.txt",
+            Path("requirements.txt"),
+        )
+
+        if platform == Platform.ANDROID:
+            config_jsonc = "android-aarch64.jsonc"
+        elif platform == Platform.QUALCOMM_LINUX:
+            config_jsonc = "linux-aarch64_oe_gcc11_2.jsonc"
+        else:
+            raise ValueError(f"Unknown platform {platform}.")
+        cls.__add_file(
+            archive_path,
+            REPO_ROOT / "qcom" / "scripts" / "linux" / "appium" / "configs" / config_jsonc,
+            Path("test_config.jsonc"),
+        )
+
+    @classmethod
     def __add_directory(cls, archive_path: Path, addendum_root: Path, prefix: Path) -> None:
-        """Add a directory to an archive."""
+        """Add a file or directory directory to an archive."""
+        if not addendum_root.exists():
+            raise ValueError(f"{addendum_root} does not exist.")
         for filename in addendum_root.glob("**/*"):
             file_to_archive = filename
             if filename.is_symlink():
@@ -924,20 +1003,35 @@ class RunnerCli:
                 if filename.is_dir():
                     cls.__add_directory(archive_path, filename, prefix / filename.name)
             else:
-                with zipfile.ZipFile(archive_path, mode="a") as archive:
-                    arcname = prefix / file_to_archive.relative_to(addendum_root)
-                    archive.write(file_to_archive, arcname)
+                cls.__add_file(archive_path, file_to_archive, prefix / file_to_archive.relative_to(addendum_root))
 
     @classmethod
-    def __append_package(cls, orig_archive_path: Path, new_archive_dir: Path, package_and_subdir: str) -> Path:
-        """Add the contents of a package into the QDC payload archive."""
-        package, subdir = package_and_subdir.split(":")
-        logging.info(f"Adding contents of package {package} into payload archive's {subdir} directory.")
-        pm = PackageManager(package)
-        pm.install()
+    def __add_file(cls, archive_path: Path, file_to_archive: Path, arcname: Path) -> None:
+        with zipfile.ZipFile(archive_path, mode="a") as archive:
+            archive.write(file_to_archive, arcname)
+
+    @classmethod
+    def __append_package(
+        cls,
+        orig_archive_path: Path,
+        new_archive_dir: Path,
+        package_and_subdir: str | None,
+        append_appium: Platform | None,
+    ) -> Path:
+        """Add the contents of a package and/or directory into the QDC payload archive."""
         new_archive_path = new_archive_dir / orig_archive_path.name
         shutil.copyfile(orig_archive_path, new_archive_path)
-        cls.__add_directory(new_archive_path, pm.get_content_dir(), Path(subdir))
+
+        if package_and_subdir is not None:
+            package, subdir = package_and_subdir.split(":")
+            logging.info(f"Adding contents of package {package} into payload archive's {subdir} directory.")
+            pm = PackageManager(package)
+            pm.install()
+            cls.__add_directory(new_archive_path, pm.get_content_dir(), Path(subdir))
+
+        if append_appium is not None:
+            cls.__add_appium(new_archive_path, append_appium)
+
         return new_archive_path
 
 

@@ -1,13 +1,24 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
+import logging
 import os
+import shutil
 from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Literal
 
 from ..github import is_host_github_runner
-from ..task import BashScriptsWithVenvTask, CompositeTask, RemovePathsTask, RunExecutablesWithVenvTask
+from ..task import (
+    BashScriptsWithVenvTask,
+    CompositeTask,
+    CopyFileTask,
+    ExtractArchiveTask,
+    PyTestTask,
+    RemovePathsTask,
+    RunExecutablesWithVenvTask,
+    RunInTempDirectoryTask,
+)
 from ..typing import BuildConfigT, TargetArchLinuxT, TargetArchWindowsT, TargetPyVersionT
 from ..util import REPO_ROOT, git_head_sha
 from .docker import DOCKER_REPO_ROOT, MANYLINUX_2_34_AARCH64_TAG, DockerBuildAndTestTask
@@ -125,12 +136,87 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         super().__init__(group_name, [cmd], env=ort_build_env_vars())
 
 
+class AdbTestsTask(RunInTempDirectoryTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        venv: Path | None,
+        platform: Literal["android", "linux"],
+        target_arch: Literal["aarch64", "aarch64_manylinux_2_34", "aarch64_oe_gcc11_2"],
+    ) -> None:
+        self.__venv = venv
+        self.__platform = platform
+        self.__target_arch = target_arch
+        super().__init__(group_name, self.make_test_task, "AdbTests-")
+
+    # This is a pretty slow way to do this, but it's easy to implement
+    # and essentially free to maintain. If you find yourself using this
+    # often enough that your life would be better if we didn't roundtrip
+    # through a zip file, please open a Jira and we'll invest more here.
+    def make_test_task(self, tmpdir: Path) -> CompositeTask:
+        # Local import to avoid circular dependency
+        from ..tools import get_onnx_models_root  # noqa: PLC0415
+
+        env = dict(os.environ)
+        env["QDC_TEST_ROOT"] = str(tmpdir)
+
+        # The QDC test harness assumes that we have ONNX model tests in a directory
+        # called <mumble>/model_tests/onnx_models and that neither is a symlink.
+        onnx_models_package_content = get_onnx_models_root(self.__venv)
+        model_test_root = tmpdir / "model_tests"
+        model_test_root.mkdir(parents=True)
+        onnx_models_root = model_test_root / "onnx_models"
+        logging.debug(f"Copying ONNX models to {onnx_models_root}")
+        shutil.copytree(onnx_models_package_content, onnx_models_root)
+        env["MODEL_TEST_ROOT"] = str(model_test_root)
+
+        test_archive_ext = "zip" if self.__platform == "android" else "tar.bz2"
+
+        if "ORT_TEST_CONFIG_PATH" in os.environ:
+            test_config_src = Path(os.environ["ORT_TEST_CONFIG_PATH"])
+        else:
+            test_config_src = (
+                REPO_ROOT
+                / "qcom"
+                / "scripts"
+                / "linux"
+                / "appium"
+                / "configs"
+                / f"{self.__platform}-{self.__target_arch}.jsonc"
+            )
+
+        return CompositeTask(
+            group_name=None,
+            tasks=[
+                CopyFileTask(
+                    "Copying test config file",
+                    test_config_src,
+                    tmpdir / "test_config.jsonc",
+                ),
+                ExtractArchiveTask(
+                    "Extracting ONNX Runtime test package",
+                    REPO_ROOT
+                    / "build"
+                    / f"onnxruntime-tests-{self.__platform}-{self.__target_arch}.{test_archive_ext}",
+                    tmpdir,
+                ),
+                PyTestTask(
+                    "Testing ONNX Runtime with a local device",
+                    self.__venv,
+                    ["tests"],
+                    env=env,
+                    cwd=REPO_ROOT / "qcom" / "scripts" / "linux" / "appium",
+                ),
+            ],
+        )
+
+
 class QdcTestsTask(RunExecutablesWithVenvTask):
     def __init__(
         self,
         group_name: str | None,
         venv: Path | None,
-        platforms: Collection[Literal["android", "windows"]],
+        platforms: Collection[Literal["android", "qualcomm_linux", "windows"]],
         extra_args: Iterable[str] | None = None,
     ) -> None:
         if "QDC_API_TOKEN" not in os.environ:
