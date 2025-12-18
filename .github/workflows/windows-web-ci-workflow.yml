@@ -177,7 +177,7 @@ jobs:
       # this step is added to help investigate the shader validation failure which is hard to reproduce
       - name: Upload WebGPU shader validation log on failure
         if: ${{ failure() && inputs.build_config == 'Debug' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: webgpu-shader-validation-logs
           path: ${{ runner.temp }}\web\test\07\chrome_debug.log
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload NPM packages
         if: ${{ inputs.build_config == 'Release' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.package_name }}
           path: ${{ github.workspace }}\artifacts_npm
