@@ -38,7 +38,7 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
 }
 
 // Add support for more devices.
-bool IsDeviceSupported(ComputeContext& context) {
+bool IsDeviceSupported(const ComputeContextBase& context) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
 
   if (adapter_info.vendor == std::string_view("intel")) {
@@ -186,9 +186,9 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   return context.RunProgram(im2col_mm_program);
 }
 
-bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
+bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
-                                 const ActivationKind activation_kind,
+                                 const bool is_fused,
                                  const TensorShape weight_shape,
                                  const AutoPadType auto_pad,
                                  const uint32_t group) {
@@ -200,7 +200,7 @@ bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
   // TODO: Support fuse
   // TODO: Support auto pad
   // TODO: Support group conv
-  if (!is_channels_last || activation_kind != ActivationKind::None || auto_pad != AutoPadType::NOTSET || group != 1) {
+  if (!is_channels_last || is_fused || auto_pad != AutoPadType::NOTSET || group != 1) {
     return false;
   }
 

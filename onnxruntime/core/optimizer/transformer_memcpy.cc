@@ -250,8 +250,11 @@ static const IExecutionProvider* FindProviderByType(ProviderTypeToProviderMap pr
 
 bool TransformerMemcpyImpl::IsNodeCompatibleWithProvider(const onnxruntime::Node& node) const {
   const auto& node_provider_type = node.GetExecutionProviderType();
+  ORT_ENFORCE(!node_provider_type.empty(),
+              "Provider type for ", node.OpType(), " node with name '", node.Name(), "' is not set.");
   const auto* node_provider = FindProviderByType(providers_by_type_, node_provider_type);
-  ORT_ENFORCE(node_provider != nullptr, "Unable to get provider associated with provider type ", node_provider_type);
+  ORT_ENFORCE(node_provider != nullptr,
+              "Unable to get provider associated with provider type '", node_provider_type, "'.");
 
   // Same provider?
   if (node_provider->Type() == provider_.Type()) {

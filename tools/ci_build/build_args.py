@@ -359,7 +359,7 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.11", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.21", help="Specify version of emsdk.")
     parser.add_argument(
         "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
     )
@@ -763,6 +763,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group = parser.add_argument_group("MIGraphX Execution Provider")
     migx_group.add_argument("--use_migraphx", action="store_true", help="Enable MIGraphX EP.")
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
+    # --rocm_version and --rocm_home are deprecated. See https://github.com/microsoft/onnxruntime/issues/26801.
+    migx_group.add_argument("--rocm_version", help="ROCm stack version. This option is deprecated and has no effect.")
+    migx_group.add_argument(
+        "--rocm_home", help="Path to ROCm installation directory. This option is deprecated and has no effect."
+    )
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")
