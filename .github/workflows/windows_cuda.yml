@@ -166,7 +166,7 @@ jobs:
           submodules: 'none'
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: build-artifacts
           path: ${{ runner.temp }}\build

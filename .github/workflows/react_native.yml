@@ -107,7 +107,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Download Android AAR artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/android-full-aar
@@ -229,7 +229,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download iOS pod artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
