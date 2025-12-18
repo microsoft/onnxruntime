@@ -890,11 +890,6 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
 }
 
 TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
@@ -902,7 +897,10 @@ TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
                                   T(1),
                                   {4, 0},
                                   {},
-                                  "reflect");
+                                  "reflect",
+                                  OpTester::ExpectResult::kExpectSuccess,
+                                  "",
+                                  {kDmlExecutionProvider});  // DML: Unskip when fixed #41968513
 
   RunAllOpsetAllDomainPadTests<T>({0, 2, 1},  // 3D
                                   {},
@@ -912,7 +910,8 @@ TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
                                   {},
                                   "reflect",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}", {kTensorrtExecutionProvider});
+                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}",
+                                  {kDmlExecutionProvider, kTensorrtExecutionProvider});  // DML: Unskip when fixed #41968513
 }
 
 TEST(PadOpTest, BoolType) {
@@ -1087,6 +1086,18 @@ TEST(PadOpTest, ConstantPadNegativeAxes) {
                          0.0f, 1.0f, 1.0f, 0.0f,
                          0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
+// Gh issue: https://github.com/microsoft/onnxruntime/issues/11828
+TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
+  using T = float;
+  RunAllOpsetAllDomainPadTests<T>({4},
+                                  {T(1), T(2), T(3), T(4)},
+                                  {-3, 3},
+                                  T(0),
+                                  {4},
+                                  {4, 0, 0, 0},
+                                  "reflect");
 }
 
 }  // namespace test

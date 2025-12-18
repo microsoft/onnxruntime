@@ -347,11 +347,11 @@ void PadBase::FlattenInnerShape(gsl::span<const int64_t> input_dims, gsl::span<c
                                 gsl::span<const int64_t> slices, TensorShapeVector& reshaped_dims) {
   const size_t dims_count = input_dims.size();
   size_t inner_axis = dims_count - 1;
-  size_t inner_size = 1;
+  SafeInt<size_t> inner_size = 1;
 
   // Find all inner most dimensions that can be flattened.
   do {
-    inner_size *= static_cast<size_t>(input_dims[inner_axis]);
+    inner_size *= input_dims[inner_axis];
 
     if (inner_axis == 0)
       break;
@@ -378,8 +378,8 @@ void PadBase::ReshapePads(gsl::span<const int64_t> src_pad, size_t src_dim_count
             reshaped_pad.begin() + new_dim_count);
 
   // Flatten inner axis.
-  reshaped_pad[inner_axis] = src_pad[inner_axis] * inner_no_pad_size;
-  reshaped_pad[inner_axis + new_dim_count] = src_pad[inner_axis + src_dim_count] * inner_no_pad_size;
+  reshaped_pad[inner_axis] = SafeInt<int64_t>(src_pad[inner_axis]) * inner_no_pad_size;
+  reshaped_pad[inner_axis + new_dim_count] = SafeInt<int64_t>(src_pad[inner_axis + src_dim_count]) * inner_no_pad_size;
 }
 
 // special handling for edge case where the input has one or more dims with value of 0
@@ -468,11 +468,11 @@ static Status PadImpl(OpKernelContext* ctx,
   PadBase::FlattenInnerShape(output_dims, pads, slices, reshaped_input_dims);
 
   // Reshape padding
-  size_t new_dims_count = reshaped_input_dims.size();
-  size_t inner_axis = new_dims_count - 1;
-  size_t inner_no_pad_size = onnxruntime::narrow<size_t>(output_dims[inner_axis] > 0
-                                                             ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
-                                                             : 0);
+  const size_t new_dims_count = reshaped_input_dims.size();
+  const size_t inner_axis = new_dims_count - 1;
+  const size_t inner_no_pad_size = onnxruntime::narrow<size_t>(output_dims[inner_axis] > 0
+                                                                   ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
+                                                                   : 0);
   PadsVector reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
   PadBase::ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
   PadBase::ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);
@@ -486,13 +486,14 @@ static Status PadImpl(OpKernelContext* ctx,
   input_extents.reserve(new_dims_count);
   for (size_t i = 0; i < new_dims_count; i++) {
     input_starts.push_back(-1 * reshaped_slice[i]);
-    input_extents.push_back(reshaped_input_dims[i] + reshaped_slice[i] + reshaped_slice[i + new_dims_count]);
-    reshaped_output_dims[i] += reshaped_pad[i] + reshaped_pad[i + new_dims_count] +
+    auto extent = SafeInt<int64_t>(reshaped_input_dims[i]) + reshaped_slice[i] + reshaped_slice[i + new_dims_count];
+    input_extents.push_back(extent);
+    reshaped_output_dims[i] += SafeInt<int64_t>(reshaped_pad[i]) + reshaped_pad[i + new_dims_count] +
                                reshaped_slice[i] + reshaped_slice[i + new_dims_count];
   }
 
   for (size_t i = 0; i < data_rank; i++) {
-    output_dims[i] += pads[i] + pads[i + data_rank] + slices[i] + slices[i + data_rank];
+    output_dims[i] += SafeInt<int64_t>(pads[i]) + pads[i + data_rank] + slices[i] + slices[i + data_rank];
   }
 
   // special case an input with one or more dim values of 0. edge case that is easier to handle
@@ -510,11 +511,11 @@ static Status PadImpl(OpKernelContext* ctx,
   auto* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
 
   TensorPitches output_pitches(reshaped_output_dims);
-  size_t alignSkip = 0;  // Amount to skip to align to where the next input tensor data needs to be written
+  SafeInt<size_t> align_skip = 0;  // Amount to skip to align to where the next input tensor data needs to be written
 
   // Initial skip, sum up the begin padding on each axis
   for (size_t i = 0; i < new_dims_count; i++)
-    alignSkip += SafeInt<size_t>(reshaped_pad[i]) * output_pitches[i];
+    align_skip += SafeInt<size_t>(reshaped_pad[i]) * output_pitches[i];
 
   ExtentAxisCounters input_counters(input_extents);
 
@@ -524,28 +525,28 @@ static Status PadImpl(OpKernelContext* ctx,
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
       // after every pass through the inner loop it gets set to the next continuous pad size.
       while (input_counters) {
-        output += alignSkip;
+        output += align_skip;
         {
-          T* axisStart = output;
+          T* axis_start = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
-          int64_t prePad = reshaped_pad[inner_axis];
-          int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axisStart - prePad, value, onnxruntime::narrow<size_t>(prePad));
-          PadAxisConstant(output, value, onnxruntime::narrow<size_t>(postPad));
-          output += postPad;
-          alignSkip = onnxruntime::narrow<size_t>(prePad);
+          const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
+          const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
+          PadAxisConstant(axis_start - pre_pad, value, pre_pad);
+          PadAxisConstant(output, value, post_pad);
+          output += post_pad;
+          align_skip = pre_pad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
-          T* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
-          int64_t prePad = reshaped_pad[input_counters.Axis()];
-          int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxisConstant(axisStart - prePad * inner_pitch, value, SafeInt<std::ptrdiff_t>(prePad) * inner_pitch);
-          PadAxisConstant(output, value, SafeInt<ptrdiff_t>(postPad) * inner_pitch);
-          output += inner_pitch * postPad;
-          alignSkip += inner_pitch * SafeInt<size_t>(prePad);
+          T* axis_start = output - inner_pitch * input_extents[input_counters.Axis()];
+          const int64_t pre_pad = reshaped_pad[input_counters.Axis()];
+          const int64_t post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
+          PadAxisConstant(axis_start - pre_pad * inner_pitch, value, SafeInt<std::ptrdiff_t>(pre_pad) * inner_pitch);
+          PadAxisConstant(output, value, SafeInt<ptrdiff_t>(post_pad) * inner_pitch);
+          output += inner_pitch * post_pad;
+          align_skip += inner_pitch * SafeInt<size_t>(pre_pad);
         }
       }
       break;
@@ -555,7 +556,7 @@ static Status PadImpl(OpKernelContext* ctx,
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
       // after every pass through the inner loop it gets set to the next continuous pad size.
       while (input_counters) {
-        output += alignSkip;
+        output += align_skip;
         {
           T* axisStart = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
@@ -572,7 +573,7 @@ static Status PadImpl(OpKernelContext* ctx,
             PadAxis(output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size, onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
           }
           output += postPad;
-          alignSkip = onnxruntime::narrow<size_t>(prePad);
+          align_skip = onnxruntime::narrow<size_t>(prePad);
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
@@ -583,7 +584,7 @@ static Status PadImpl(OpKernelContext* ctx,
           PadAxis(axisStart - prePad * inner_pitch, axisStart, 1, -inner_pitch, inner_pitch, onnxruntime::narrow<size_t>(prePad));
           PadAxis(output, output - inner_pitch, 1, -inner_pitch, inner_pitch, onnxruntime::narrow<size_t>(postPad));
           output += inner_pitch * postPad;
-          alignSkip += inner_pitch * SafeInt<size_t>(prePad);
+          align_skip += inner_pitch * SafeInt<size_t>(prePad);
         }
       }
       break;
@@ -594,7 +595,7 @@ static Status PadImpl(OpKernelContext* ctx,
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
       // after every pass through the inner loop it gets set to the next continuous pad size.
       while (input_counters) {
-        output += alignSkip;
+        output += align_skip;
         {
           T* axisStart = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
@@ -644,7 +645,7 @@ static Status PadImpl(OpKernelContext* ctx,
             }
           }
           output += postPad;
-          alignSkip = onnxruntime::narrow<size_t>(prePad);
+          align_skip = onnxruntime::narrow<size_t>(prePad);
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
@@ -684,7 +685,7 @@ static Status PadImpl(OpKernelContext* ctx,
                 onnxruntime::narrow<size_t>(postPad));
           }
           output += inner_pitch * postPad;
-          alignSkip += inner_pitch * SafeInt<size_t>(prePad);
+          align_skip += inner_pitch * SafeInt<size_t>(prePad);
         }
       }
       break;
