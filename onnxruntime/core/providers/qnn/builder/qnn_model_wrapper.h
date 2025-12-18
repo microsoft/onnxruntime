@@ -238,7 +238,7 @@ class QnnModelWrapper {
 
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                std::vector<uint8_t>& unpacked_tensor,
-                               const bool unpack4bitTo8bit = true) const;
+                               const bool unpack_4_bit_to_8_bit = true) const;
 
   QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 
