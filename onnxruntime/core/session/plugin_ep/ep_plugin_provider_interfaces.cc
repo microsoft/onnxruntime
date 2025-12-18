@@ -670,6 +670,12 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
       ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
     }
 
+    auto ort_allocator = OrtAllocatorUniquePtr(
+        ort_allocator_ptr,
+        [this](OrtAllocator* allocator) {
+          ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
+        });
+
     if (ort_allocator_ptr->Info(ort_allocator_ptr)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
       ORT_THROW(
           "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
@@ -677,11 +683,6 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
           "EP library should be opaque to ORT");
     }
 
-    auto ort_allocator = OrtAllocatorUniquePtr(
-        ort_allocator_ptr,
-        [this](OrtAllocator* allocator) {
-          ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
-        });
     allocators.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator)));
   }
 
