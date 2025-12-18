@@ -7,7 +7,6 @@
 #include "onnxruntime_c_api.h"
 #include "ep.h"
 
-
 // Plugin EPs can provide two types of custom ops:
 //
 // 1. A full OrtCustomOp with a concrete kernel implementation
