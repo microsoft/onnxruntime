@@ -100,6 +100,21 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "var<workgroup> tileK: array<key_value_t, " << tile_size_ * tile_size_ << ">;\n"
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
 
+  if (has_attention_bias_) {
+    shader.AdditionalImplementation() << "fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32) -> output_value_t {\n"
+                                      << "  // Handle broadcasting: if dimension size is 1, use index 0\n"
+                                      << "  let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);\n"
+                                      << "  let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);\n"
+                                      << "  // Calculate flat offset with broadcasting applied\n"
+                                      << "  // attention_bias shape: [attn_bias_dim0, attn_bias_dim1, sequence_length, total_sequence_length]\n"
+                                      << "  let offset = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.M * uniforms.N +\n"
+                                      << "               bias_head_idx * uniforms.M * uniforms.N +\n"
+                                      << "               q_idx * uniforms.N +\n"
+                                      << "               k_idx;\n"
+                                      << "  return attention_bias[offset];\n"
+                                      << "}\n";
+  }
+
   shader.MainFunctionBody() << "// x holds the N and y holds the M\n"
                             << "let m = u32(workgroup_idx / uniforms.num_total_seq_length_tile) % uniforms.num_seq_length_tile  * TILE_SIZE;\n"
                             << "let n = (workgroup_idx % uniforms.num_total_seq_length_tile) * TILE_SIZE;\n"
@@ -158,6 +173,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "if (m + local_id.y < uniforms.M && n + local_id.x < total_sequence_length) {\n"
                             << "  let headOffset = batch_head_idx * uniforms.M * uniforms.N;\n"
                             << "  let outputIdx = headOffset + (m + local_id.y) * uniforms.N + n + local_id.x;\n"
+                            << "  let head_idx = batch_head_idx % uniforms.num_heads;\n"
                             << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
 
   // Add causal masking for unidirectional attention
@@ -172,7 +188,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
   if (has_attention_bias_) {
-    shader.MainFunctionBody() << " + attention_bias[outputIdx]";
+    shader.MainFunctionBody() << " + loadAttentionBias(batch_idx, head_idx, m + local_id.y, n + local_id.x)";
   }
   shader.MainFunctionBody() << ";\n"
                             << "}\n";
@@ -214,6 +230,16 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const uint32_t vectorized_head_size = (parameters.head_size_ + components - 1) / components;
   const uint32_t num_total_seq_length_tile = (total_sequence_length + tile_size - 1) / tile_size;
   const uint32_t num_seq_length_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
+
+  // Get attention bias dimensions for broadcasting
+  uint32_t attn_bias_dim0 = 1;
+  uint32_t attn_bias_dim1 = 1;
+  if (has_attention_bias) {
+    const auto& bias_shape = attention_bias->Shape();
+    attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
+    attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
+  }
+
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_length_tile * num_total_seq_length_tile)
       .SetWorkgroupSize(tile_size, tile_size)
       .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_unidirectional_)
@@ -229,7 +255,9 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                             {static_cast<uint32_t>(parameters.n_reps)},
                             {static_cast<uint32_t>(parameters.is_first_prompt_ ? 1 : 0)},
                             {num_total_seq_length_tile},
-                            {num_seq_length_tile}})
+                            {num_seq_length_tile},
+                            {attn_bias_dim0},
+                            {attn_bias_dim1}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
   return context.RunProgram(program);

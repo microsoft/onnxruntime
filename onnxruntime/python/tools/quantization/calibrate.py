@@ -353,6 +353,14 @@ class MinMaxCalibrater(CalibraterBase):
                     return opset_import.version
             raise RuntimeError(f"Model does not contain a version for '{op_type}'.")
 
+        def insert_nodes(tensor_name, new_nodes):
+            index = next(
+                (i for i, x in enumerate(self.model.graph.node) if tensor_name in x.input), len(self.model.graph.node)
+            )
+            for node in new_nodes:
+                self.model.graph.node.insert(index, node)
+                index += 1
+
         def add_reduce_min_max(tensor_name, reduce_op_name):
             # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
             # To make the code simple, we always let keepdims to be 1.
@@ -396,7 +404,7 @@ class MinMaxCalibrater(CalibraterBase):
                     reduce_node.input.append(reduce_axes_name)
                     self.model.graph.initializer.append(reduce_axes)
 
-            self.model.graph.node.extend([reduce_node, reshape_node])
+            insert_nodes(tensor_name, [reduce_node, reshape_node])
             self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, onnx_type, [None]))
 
         for tensor in tensors:
