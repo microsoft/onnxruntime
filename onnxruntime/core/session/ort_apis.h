@@ -755,4 +755,53 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
 
 ORT_API_STATUS_IMPL(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
 
+// External Resource Importer APIs
+ORT_API_STATUS_IMPL(CreateExternalResourceImporterForDevice, _In_ const OrtEpDevice* ep_device,
+                    _Outptr_result_maybenull_ OrtExternalResourceImporter** out_importer);
+
+ORT_API(void, ReleaseExternalResourceImporter, _Frees_ptr_opt_ OrtExternalResourceImporter* importer);
+
+ORT_API_STATUS_IMPL(ExternalResourceImporter_CanImportMemory, _In_ const OrtExternalResourceImporter* importer,
+                    _In_ OrtExternalMemoryHandleType handle_type,
+                    _Out_ bool* out_supported);
+
+ORT_API_STATUS_IMPL(ExternalResourceImporter_ImportMemory, _In_ OrtExternalResourceImporter* importer,
+                    _In_ const OrtExternalMemoryDescriptor* desc,
+                    _Outptr_ OrtExternalMemoryHandle** out_handle);
+
+ORT_API(void, ReleaseExternalMemoryHandle, _Frees_ptr_opt_ OrtExternalMemoryHandle* handle);
+
+ORT_API_STATUS_IMPL(ExternalResourceImporter_CreateTensorFromMemory, _In_ OrtExternalResourceImporter* importer,
+                    _In_ const OrtExternalMemoryHandle* mem_handle,
+                    _In_ const OrtExternalTensorDescriptor* tensor_desc,
+                    _In_opt_ const OrtMemoryInfo* tensor_location,
+                    _Outptr_ OrtValue** out_tensor);
+
+ORT_API_STATUS_IMPL(ExternalResourceImporter_CanImportSemaphore, _In_ const OrtExternalResourceImporter* importer,
+                    _In_ OrtExternalSemaphoreType type,
+                    _Out_ bool* out_supported);
+
+ORT_API_STATUS_IMPL(ExternalResourceImporter_ImportSemaphore, _In_ OrtExternalResourceImporter* importer,
+                    _In_ const OrtExternalSemaphoreDescriptor* desc,
+                    _Outptr_ OrtExternalSemaphoreHandle** out_handle);
+
+ORT_API(void, ReleaseExternalSemaphoreHandle, _Frees_ptr_opt_ OrtExternalSemaphoreHandle* handle);
+
+ORT_API_STATUS_IMPL(ExternalResourceImporter_WaitSemaphore, _In_ OrtExternalResourceImporter* importer,
+                    _In_ OrtExternalSemaphoreHandle* semaphore_handle,
+                    _In_ OrtSyncStream* stream,
+                    _In_ uint64_t value);
+
+ORT_API_STATUS_IMPL(ExternalResourceImporter_SignalSemaphore, _In_ OrtExternalResourceImporter* importer,
+                    _In_ OrtExternalSemaphoreHandle* semaphore_handle,
+                    _In_ OrtSyncStream* stream,
+                    _In_ uint64_t value);
+
+ORT_API_STATUS_IMPL(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
+                    _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
+                    _In_ size_t num_outputs);
+
+ORT_API_STATUS_IMPL(RunOptions_SetSyncStream, _Inout_ OrtRunOptions* run_options,
+                    _In_opt_ OrtSyncStream* stream);
+
 }  // namespace OrtApis

@@ -24,6 +24,10 @@ ORT_RUNTIME_CLASS(DataTransferImpl);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 
+ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
+ORT_RUNTIME_CLASS(ExternalMemoryHandleImpl);
+ORT_RUNTIME_CLASS(ExternalSemaphoreHandleImpl);
+
 // Opaque types for kernel-based EPs
 ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(KernelDefBuilder);
@@ -188,6 +192,170 @@ struct OrtSyncStreamImpl {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(OnSessionRunEnd, _In_ OrtSyncStreamImpl* this_ptr);
+};
+
+/** \brief Struct that an EP implements for external resource import (memory + semaphore import).
+ *
+ * This capability object provides methods for importing external GPU memory and semaphores
+ * for zero-copy import. EPs that support D3D12, CUDA, HIP, or Vulkan external resource APIs
+ * can implement this interface.
+ *
+ * \since Version 1.24.
+ */
+struct OrtExternalResourceImporterImpl {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
+
+  // Memory operations (stream-independent)
+
+  /** \brief Check if the implementation can import external memory of the given handle type.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle_type The type of external memory handle to check.
+   * \return True if the handle type is supported.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(bool, CanImportMemory,
+            _In_ const OrtExternalResourceImporterImpl* this_ptr,
+            _In_ OrtExternalMemoryHandleType handle_type);
+
+  /** \brief Import external memory.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] desc Descriptor containing the external memory handle and properties.
+   * \param[out] out_handle Output parameter set to the created OrtExternalMemoryHandleImpl.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(ImportMemory,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ const OrtExternalMemoryDescriptor* desc,
+                  _Outptr_ OrtExternalMemoryHandleImpl** out_handle);
+
+  /** \brief Release an imported external memory handle.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle The OrtExternalMemoryHandleImpl to release.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, ReleaseMemory,
+            _In_ OrtExternalResourceImporterImpl* this_ptr,
+            _In_ OrtExternalMemoryHandleImpl* handle);
+
+  /** \brief Create a tensor backed by imported external memory.
+   *
+   * The created tensor is a view over the imported memory and does not copy data.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] mem_handle The imported external memory handle.
+   * \param[in] tensor_desc Descriptor specifying tensor element type, shape, and optional offset.
+   * \param[out] out_tensor Output parameter set to the created OrtValue containing the tensor.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateTensorFromMemory,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ const OrtExternalMemoryHandleImpl* mem_handle,
+                  _In_ const OrtExternalTensorDescriptor* tensor_desc,
+                  _Outptr_ OrtValue** out_tensor);
+
+  // Semaphore operations (require stream)
+
+  /** \brief Check if the implementation can import external semaphores of the given type.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] type The type of external semaphore to check.
+   * \return True if the semaphore type is supported.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(bool, CanImportSemaphore,
+            _In_ const OrtExternalResourceImporterImpl* this_ptr,
+            _In_ OrtExternalSemaphoreType type);
+
+  /** \brief Import an external semaphore.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] desc Descriptor containing the external semaphore handle and type.
+   * \param[out] out_handle Output parameter set to the created OrtExternalSemaphoreHandleImpl.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(ImportSemaphore,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ const OrtExternalSemaphoreDescriptor* desc,
+                  _Outptr_ OrtExternalSemaphoreHandleImpl** out_handle);
+
+  /** \brief Release an imported external semaphore handle.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle The OrtExternalSemaphoreHandleImpl to release.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, ReleaseSemaphore,
+            _In_ OrtExternalResourceImporterImpl* this_ptr,
+            _In_ OrtExternalSemaphoreHandleImpl* handle);
+
+  /** \brief Wait on an external semaphore on the EP's stream.
+   *
+   * Inserts a wait operation into the EP's stream that blocks until the semaphore
+   * reaches the specified value.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle The imported external semaphore.
+   * \param[in] stream The OrtSyncStream to wait on.
+   * \param[in] value The fence/semaphore value to wait for.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(WaitSemaphore,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ OrtExternalSemaphoreHandleImpl* handle,
+                  _In_ OrtSyncStream* stream,
+                  _In_ uint64_t value);
+
+  /** \brief Signal an external semaphore from the EP's stream.
+   *
+   * Inserts a signal operation into the EP's stream that sets the semaphore
+   * to the specified value when reached.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle The imported external semaphore.
+   * \param[in] stream The OrtSyncStream to signal from.
+   * \param[in] value The fence/semaphore value to signal.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SignalSemaphore,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ OrtExternalSemaphoreHandleImpl* handle,
+                  _In_ OrtSyncStream* stream,
+                  _In_ uint64_t value);
+
+  // Release the capability object itself
+
+  /** \brief Release the OrtExternalResourceImporterImpl instance.
+   *
+   * This is called by ORT when the OrtExternalResourceImporterImpl instance is no longer needed.
+   * The implementation should release any resources held by the instance.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, Release, _In_ OrtExternalResourceImporterImpl* this_ptr);
 };
 
 struct OrtNodeFusionOptions;
@@ -1413,6 +1581,32 @@ struct OrtEpFactory {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
+
+  /** \brief Create an OrtExternalResourceImporterImpl for external resource import.
+   *
+   * This is used to create an external resource importer that enables zero-copy import of
+   * external GPU memory (e.g., D3D12 shared resources) and synchronization primitives
+   * (e.g., D3D12 timeline fences).
+   *
+   * EPs that support external resource import (via CUDA, HIP, Vulkan, or D3D12 APIs) can
+   * implement this to allow applications to share GPU resources without copies.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] memory_device The OrtMemoryDevice to create the external resource importer for.
+   * \param[out] out_importer The created OrtExternalResourceImporterImpl instance.
+   *                          Set to nullptr if external resource import is not supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional.
+   *       An EP factory should only implement this if it supports external resource import.
+   *       If not implemented or not supported, return ORT_NOT_IMPLEMENTED or set out_importer to nullptr.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateExternalResourceImporterForDevice, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtMemoryDevice* memory_device,
+                  _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** out_importer);
 };
 
 #ifdef __cplusplus

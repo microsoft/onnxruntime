@@ -994,6 +994,11 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
   return *this;
 }
 
+inline RunOptions& RunOptions::SetSyncStream(OrtSyncStream* stream) {
+  ThrowOnError(GetApi().RunOptions_SetSyncStream(p_, stream));
+  return *this;
+}
+
 inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
   ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
 }
@@ -1658,6 +1663,19 @@ inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() co
                                                       num_inputs));
   }
   return input_devices;
+}
+
+template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForOutputs() const {
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstEpDevice> output_devices;
+  if (num_outputs > 0) {
+    output_devices.resize(num_outputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtEpDevice**>(output_devices.data()),
+                                                       num_outputs));
+  }
+  return output_devices;
 }
 
 template <typename T>

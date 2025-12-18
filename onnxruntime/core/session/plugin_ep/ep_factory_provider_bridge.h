@@ -65,6 +65,16 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
     return ep_factory_.CreateSyncStreamForDevice(&ep_factory_, device, stream_options, stream);
   }
 
+  OrtStatus* CreateExternalResourceImporterForDevice(
+      const OrtMemoryDevice* device,
+      OrtExternalResourceImporterImpl** importer) noexcept override {
+    if (ep_factory_.CreateExternalResourceImporterForDevice == nullptr) {
+      *importer = nullptr;
+      return nullptr;
+    }
+    return ep_factory_.CreateExternalResourceImporterForDevice(&ep_factory_, device, importer);
+  }
+
   OrtEpFactory& ep_factory_;
   ProviderLibrary& provider_library_;
   std::optional<std::filesystem::path> library_path_;

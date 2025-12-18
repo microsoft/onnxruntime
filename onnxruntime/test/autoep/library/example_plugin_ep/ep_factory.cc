@@ -37,6 +37,8 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
+  CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
+
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
   default_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU",
@@ -305,6 +307,36 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
     auto sync_stream = std::make_unique<StreamImpl>(factory, /*OrtEp**/ nullptr, stream_options);
     *stream = sync_stream.release();
   }
+
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDeviceImpl(
+    OrtEpFactory* this_ptr,
+    const OrtMemoryDevice* memory_device,
+    OrtExternalResourceImporterImpl** out_importer) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  if (out_importer == nullptr) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "out_importer cannot be nullptr");
+  }
+
+  *out_importer = nullptr;
+
+  // For the example EP, we support external resource import on the default (GPU-simulated) device memory
+  if (factory.ep_api.MemoryDevice_GetMemoryType(memory_device) != OrtDeviceMemoryType_DEFAULT) {
+    return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                        "External resource import only supported for DEFAULT device memory");
+  }
+
+  // Get the device ID from the memory device
+  auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
+
+  // Create the external resource importer
+  auto importer = std::make_unique<ExampleExternalResourceImporter>(device_id, factory);
+  *out_importer = importer.release();
 
   return nullptr;
 }
