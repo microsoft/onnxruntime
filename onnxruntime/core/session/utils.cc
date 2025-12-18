@@ -513,6 +513,7 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
     OrtEpFactory* ep_factory = ep_device->ep_factory;
     if (ep_factory &&
         ep_factory->ort_version_supported >= 24 &&
+        ep_factory->GetNumCustomOpDomains != nullptr &&
         ep_factory->CreateCustomOpDomains != nullptr) {
       auto is_already_in_domains =
           [&](const std::string& domain_name, const std::vector<OrtCustomOpDomain*>& domains) {
