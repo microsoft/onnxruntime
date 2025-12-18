@@ -65,23 +65,43 @@ Status RangeProgram::GenerateShaderCode(ShaderHelper& sh) const {
   return Status();
 }
 
-#define WEBGPU_RANGE_KERNEL(TYPE)                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
-      Range,                                                        \
-      kOnnxDomain,                                                  \
-      11,                                                           \
-      TYPE,                                                         \
-      kWebGpuExecutionProvider,                                     \
-      KernelDefBuilder()                                            \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()) \
-          .InputMemoryType(OrtMemTypeCPU, 0)                        \
-          .InputMemoryType(OrtMemTypeCPU, 1)                        \
-          .InputMemoryType(OrtMemTypeCPU, 2),                       \
-      Range<TYPE>);
+// Explicit template instantiations (needed for linking)
+template class Range<float>;
+template class Range<int32_t>;
+template class Range<int64_t>;
 
-WEBGPU_RANGE_KERNEL(float)
-WEBGPU_RANGE_KERNEL(int32_t)
-WEBGPU_RANGE_KERNEL(int64_t)
+void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_graph_capture) {
+  // Helper lambda to create kernel
+  auto create_range_kernel_info = [](auto type_tag) {
+    using T = decltype(type_tag);
+    KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+      out = std::make_unique<Range<T>>(info);
+      return Status::OK();
+    };
+
+    return KernelCreateInfo(
+        KernelDefBuilder()
+            .SetName("Range")
+            .SetDomain(kOnnxDomain)
+            .SinceVersion(11)
+            .Provider(kWebGpuExecutionProvider)
+            .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())
+            .InputMemoryType(OrtMemTypeCPU, 0)
+            .InputMemoryType(OrtMemTypeCPU, 1)
+            .InputMemoryType(OrtMemTypeCPU, 2)
+            .Build(),
+        kernel_create_fn);
+  };
+
+  // Always register float and int32_t
+  ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(float{})));
+  ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(int32_t{})));
+
+  // Register int64_t only if graph capture is enabled
+  if (enable_graph_capture) {
+    ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(int64_t{})));
+  }
+}
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/kernel_registry.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
@@ -30,6 +31,9 @@ class RangeProgram : public Program<RangeProgram> {
  private:
   int32_t data_type_{0};
 };
+
+// Register Range kernels with conditional int64 support based on graph capture
+void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_graph_capture);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
