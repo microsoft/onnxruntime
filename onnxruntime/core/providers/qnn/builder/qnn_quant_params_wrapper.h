@@ -72,7 +72,7 @@ class QnnQuantParamsWrapper {
            (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION);
   }
 
-  bool isBlockQuantized() const {
+  bool IsBlockQuantized() const {
     return params_.encodingDefinition == QNN_DEFINITION_DEFINED &&
            (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCK);
   }

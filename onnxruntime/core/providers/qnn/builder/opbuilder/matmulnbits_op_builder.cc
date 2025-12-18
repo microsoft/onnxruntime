@@ -78,18 +78,20 @@ class MatMulNBitsOpBuilder : public BaseOpBuilder {
 void MatMulNBitsOpBuilder::DQQToSignedFixedPoint4(std::vector<uint8_t>& quant_data,
                                                   int64_t num_blocks,
                                                   int64_t block_size) const {
-  for (int32_t block_idx = 0; block_idx < gsl::narrow_cast<int32_t>(num_blocks); ++block_idx) {
+  for (int64_t block_idx = 0; block_idx < num_blocks; ++block_idx) {
     uint32_t zero_point = 8;
-    for (int32_t val_idx = 0; val_idx < (gsl::narrow_cast<int32_t>(block_size) / 2); ++val_idx) {
-      SafeInt<int32_t> safe_index = block_idx;
-      safe_index *= (gsl::narrow_cast<int32_t>(block_size) / 2);
+    for (int64_t val_idx = 0; val_idx < (block_size / 2); ++val_idx) {
+      SafeInt<int64_t> safe_index = block_idx;
+      safe_index *= (block_size / 2);
       safe_index += val_idx;
 
-      int32_t index = static_cast<int32_t>(safe_index);
+      size_t index = gsl::narrow_cast<size_t>(safe_index);
       uint8_t quant_value_4x2 = quant_data[index];
 
-      int8_t quant_upper_value = gsl::narrow_cast<int8_t>(((quant_value_4x2 >> 4) & 0xF) - zero_point);
-      int8_t quant_lower_value = gsl::narrow_cast<int8_t>(((quant_value_4x2 >> 0) & 0xF) - zero_point);
+      int8_t quant_upper_value =
+          gsl::narrow_cast<int8_t>(((quant_value_4x2 >> 4) & 0xF) - zero_point);
+      int8_t quant_lower_value =
+          gsl::narrow_cast<int8_t>(((quant_value_4x2 >> 0) & 0xF) - zero_point);
 
       quant_data[index] = ((quant_upper_value & 0xF) << 4) | (quant_lower_value & 0xF);
     }
@@ -126,7 +128,9 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     const NodeUnitIODef& input_tensor = inputs[0];
     TensorInfo input_info{};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_tensor, input_info));
-    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input_tensor.quant_param.has_value(), input_tensor.node_arg.TypeAsProto(), input_datatype));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input_tensor.quant_param.has_value(),
+                                              input_tensor.node_arg.TypeAsProto(),
+                                              input_datatype));
     ORT_RETURN_IF(input_datatype != QNN_DATATYPE_FLOAT_32, "Unsupported Input datatype");
   }
 
@@ -137,8 +141,14 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_tensor, input_info));
 
     const std::vector<uint32_t> input_shape = input_info.shape;
-    const int64_t total_elements = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<uint32_t>());
-    ORT_RETURN_IF_NOT(((total_elements * 2) == (N * K)), "Invalid B dimensions. Qnn Gpu Only Supports MatMulNBits with bits == 4 in packed format");
+    SafeInt<int64_t> safe_total_elements = std::accumulate(input_shape.begin(),
+                                                           input_shape.end(),
+                                                           SafeInt<int64_t>{1},
+                                                           std::multiplies<>());
+    const int64_t total_elements = static_cast<int64_t>(safe_total_elements);
+    ORT_RETURN_IF_NOT(((total_elements * 2) == (N * K)),
+                      "Invalid B dimensions. Qnn Gpu Only Supports MatMulNBits with bits == 4 "
+                      "in packed format");
   }
 
   // 3. scales : scales only float32 datatype
@@ -146,7 +156,9 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     const NodeUnitIODef& input_tensor = inputs[2];
     TensorInfo input_info{};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_tensor, input_info));
-    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input_tensor.quant_param.has_value(), input_tensor.node_arg.TypeAsProto(), input_datatype));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input_tensor.quant_param.has_value(),
+                                              input_tensor.node_arg.TypeAsProto(),
+                                              input_datatype));
     ORT_RETURN_IF(input_datatype != QNN_DATATYPE_FLOAT_32, "Unsupported Input datatype");
   }
 
@@ -155,15 +167,19 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     const NodeUnitIODef& input_tensor = inputs[3];
     TensorInfo input_info{};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_tensor, input_info));
-    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input_tensor.quant_param.has_value(), input_tensor.node_arg.TypeAsProto(), datatype));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(input_tensor.quant_param.has_value(),
+                                              input_tensor.node_arg.TypeAsProto(),
+                                              datatype));
     ORT_RETURN_IF((datatype != QNN_DATATYPE_UINT_8), "Invalid zero point datatype.");
 
     std::vector<uint8_t> per_block_uint8_offset;
     const auto& zero_points_tensor_name = input_tensor.node_arg.Name();
     const auto& zero_points_tensor_proto = qnn_model_wrapper.GetConstantTensor(zero_points_tensor_name);
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*zero_points_tensor_proto, per_block_uint8_offset));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*zero_points_tensor_proto,
+                                                                per_block_uint8_offset));
 
-    ORT_RETURN_IF_NOT((per_block_uint8_offset.size() * 2) == (num_blocks * sizeof(uint8_t)), "Only packed uint4 into uint8 offset supported by op builder");
+    ORT_RETURN_IF_NOT((per_block_uint8_offset.size() * 2) == (num_blocks * sizeof(uint8_t)),
+                      "Only packed uint4 into uint8 offset supported by op builder");
     const uint8_t expected_offset_value = 0b10001000;
     for (int32_t i = 0; i < gsl::narrow_cast<int32_t>(num_blocks / 2); i++) {
       ORT_RETURN_IF_NOT(per_block_uint8_offset[i] == expected_offset_value, "Unsupported zero point value");
@@ -212,8 +228,11 @@ Status MatMulNBitsOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input_tensor, input_info));
 
       QnnTensorWrapper input_tensor_wrapper;
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_info, input_tensor_name, input_tensor_wrapper));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor_wrapper)), "Failed to add tensor.");
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_info,
+                                                              input_tensor_name,
+                                                              input_tensor_wrapper));
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor_wrapper)),
+                        "Failed to add tensor.");
     }
     input_names.push_back(input_tensor_name);
   }
@@ -233,15 +252,20 @@ Status MatMulNBitsOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       std::vector<uint8_t> quant_data;
       Qnn_TensorType_t weight_tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
       const auto& weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*weight_tensor_proto, quant_data, false));
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*weight_tensor_proto,
+                                                                  quant_data,
+                                                                  false));
 
       // 2.2 Quantization Scales
       std::vector<uint8_t> per_block_uint8_scale;
       const auto& scale_tensor_proto = qnn_model_wrapper.GetConstantTensor(scales_tensor.node_arg.Name());
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*scale_tensor_proto, per_block_uint8_scale));
-      ORT_RETURN_IF_NOT(per_block_uint8_scale.size() == (num_blocks * sizeof(float)), "Scale Initializer Invalid Size");
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*scale_tensor_proto,
+                                                                  per_block_uint8_scale));
+      ORT_RETURN_IF_NOT(per_block_uint8_scale.size() == (num_blocks * sizeof(float)),
+                        "Scale Initializer Invalid Size");
       float* per_block_float_scale_ptr = reinterpret_cast<float*>(per_block_uint8_scale.data());
-      const std::vector<float> per_block_float_scale(per_block_float_scale_ptr, per_block_float_scale_ptr + num_blocks);
+      const std::vector<float> per_block_float_scale(per_block_float_scale_ptr,
+                                                     per_block_float_scale_ptr + num_blocks);
 
       // 2.3 Quantization Offsets : QNN Support only symmetric quantization with default value of 0
       std::vector<int32_t> per_block_int32_offset(num_blocks, 0);
@@ -250,21 +274,20 @@ Status MatMulNBitsOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       DQQToSignedFixedPoint4(quant_data, num_blocks, block_size);
 
       // 2.5 Create Quantization Parameter and create Weight Tensor
-      QnnQuantParamsWrapper quantize_param = QnnQuantParamsWrapper(
-          per_block_float_scale,
-          per_block_int32_offset,
-          block_sizes,
-          QNN_DATATYPE_SFIXED_POINT_4);
+      QnnQuantParamsWrapper quantize_param = QnnQuantParamsWrapper(per_block_float_scale,
+                                                                   per_block_int32_offset,
+                                                                   block_sizes,
+                                                                   QNN_DATATYPE_SFIXED_POINT_4);
 
       std::vector<uint32_t> weight_shape = {static_cast<uint32_t>(N), static_cast<uint32_t>(K)};
-      QnnTensorWrapper weight_tensor_wrapper(
-          weight_tensor_name,
-          weight_tensor_type,
-          QNN_DATATYPE_SFIXED_POINT_4,
-          std::move(quantize_param),
-          std::move(weight_shape),
-          std::move(quant_data));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor_wrapper)), "Failed to add tensor.");
+      QnnTensorWrapper weight_tensor_wrapper(weight_tensor_name,
+                                             weight_tensor_type,
+                                             QNN_DATATYPE_SFIXED_POINT_4,
+                                             std::move(quantize_param),
+                                             std::move(weight_shape),
+                                             std::move(quant_data));
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor_wrapper)),
+                        "Failed to add tensor.");
     }
     input_names.push_back(weight_tensor_name);
   }
@@ -294,7 +317,8 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
   } else {
     QnnTensorWrapper output_tensor_wrapper;
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(output_tensor, output_tensor_wrapper));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor_wrapper)), "Failed to add output");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor_wrapper)),
+                      "Failed to add output");
   }
 
   // 2. Add Output for Pre Reshape(FullyConnected)
@@ -302,19 +326,19 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
   TensorInfo output_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(output_tensor, output_info));
   std::vector<uint32_t> pre_reshape_shape(2);
-  pre_reshape_shape[0] = std::accumulate(output_info.shape.begin(), output_info.shape.end(), 1u, std::multiplies<uint32_t>()) / static_cast<uint32_t>(N);
-  pre_reshape_shape[1] = static_cast<uint32_t>(N);
-  if (qnn_model_wrapper.IsQnnTensorWrapperExist(pre_reshape_name)) {
-    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << pre_reshape_name;
-  } else {
-    QnnTensorWrapper output_tensor_wrapper(
-        pre_reshape_name,
-        QNN_TENSOR_TYPE_NATIVE,
-        output_info.qnn_data_type,
-        output_info.quant_param.Copy(),
-        std::vector<uint32_t>(pre_reshape_shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor_wrapper)), "Failed to add tensor.");
-  }
+  pre_reshape_shape[0] = static_cast<uint32_t>(std::accumulate(output_info.shape.begin(),
+                                                               output_info.shape.end(),
+                                                               SafeInt<uint32_t>{1},
+                                                               std::multiplies<>()) /
+                                               N);
+  pre_reshape_shape[1] = gsl::narrow_cast<uint32_t>(N);
+  QnnTensorWrapper output_tensor_wrapper(pre_reshape_name,
+                                         QNN_TENSOR_TYPE_NATIVE,
+                                         output_info.qnn_data_type,
+                                         output_info.quant_param.Copy(),
+                                         std::vector<uint32_t>(pre_reshape_shape));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor_wrapper)),
+                    "Failed to add tensor.");
 
   // 3. Add FullyConnected Op
   const std::string fully_connected_node_name = utils::GetUniqueName(node_unit, QNN_OP_FULLY_CONNECTED);
@@ -329,16 +353,15 @@ Status MatMulNBitsOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
 
   // 4. Add Reshape Op
   const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_tensor_name);
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(
-      pre_reshape_name,
-      output_tensor_name,
-      pre_reshape_shape,
-      output_info.shape,
-      output_info.qnn_data_type,
-      output_info.quant_param,
-      do_op_validation,
-      false,
-      is_graph_output));
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(pre_reshape_name,
+                                                       output_tensor_name,
+                                                       pre_reshape_shape,
+                                                       output_info.shape,
+                                                       output_info.qnn_data_type,
+                                                       output_info.quant_param,
+                                                       do_op_validation,
+                                                       false,
+                                                       is_graph_output));
 
   return Status::OK();
 }

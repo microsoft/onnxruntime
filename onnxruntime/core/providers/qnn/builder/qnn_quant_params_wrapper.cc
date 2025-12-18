@@ -20,7 +20,7 @@ QnnQuantParamsWrapper::QnnQuantParamsWrapper(const QnnQuantParamsWrapper& other)
   size_t num_scaleoffsets = 0;
   if (other.IsLPBQ()) {
     num_scaleoffsets = other.per_channel_scales_size_;
-  } else if (other.isBlockQuantized()) {
+  } else if (other.IsBlockQuantized()) {
     block_encoding_tensor_rank_ = other.block_encoding_tensor_rank_;
     num_scaleoffsets = other.num_blocks_;
   }
@@ -33,7 +33,7 @@ QnnQuantParamsWrapper& QnnQuantParamsWrapper::operator=(const QnnQuantParamsWrap
     size_t num_scaleoffsets = 0;
     if (other.IsLPBQ()) {
       num_scaleoffsets = other.per_channel_scales_size_;
-    } else if (other.isBlockQuantized()) {
+    } else if (other.IsBlockQuantized()) {
       block_encoding_tensor_rank_ = other.block_encoding_tensor_rank_;
       num_scaleoffsets = other.num_blocks_;
     }
