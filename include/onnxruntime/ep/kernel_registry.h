@@ -48,8 +48,8 @@ struct KernelRegistry {
     registry_.AddKernel(create_info.kernel_def, [](void* kernel_create_func_state, const OrtKernelInfo* info, OrtKernelImpl** out) -> OrtStatus* {
                               FuncManager func_mgr; // not used
                               std::unique_ptr<OpKernel> kernel;
-                              KernelCreatePtrFn* create_func = reinterpret_cast<KernelCreatePtrFn*>(kernel_create_func_state);
-                              Status status = (*create_func)(func_mgr, OpKernelInfo(info), kernel);
+                              KernelCreatePtrFn create_func = reinterpret_cast<KernelCreatePtrFn>(kernel_create_func_state);
+                              Status status = create_func(func_mgr, OpKernelInfo(info), kernel);
                               if (!status.IsOK()) {
                                 return Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
                               }
