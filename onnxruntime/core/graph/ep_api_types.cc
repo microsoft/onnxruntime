@@ -381,10 +381,12 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
   if (ep_node == nullptr) {
     producer_info.node = nullptr;
     producer_info.output_index = 0;
+#if !defined(ORT_MINIMAL_BUILD)
     const auto& logger = graph_->GetGraphViewer().GetGraph().GetLogger();
     LOGS(logger, WARNING) << "Unable to get producer node for OrtValueInfo '"
                           << name_
                           << "' that is not owned by an OrtGraph.";
+#endif  // !defined(ORT_MINIMAL_BUILD)
     return Status::OK();
   }
 
