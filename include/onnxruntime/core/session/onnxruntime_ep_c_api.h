@@ -936,7 +936,8 @@ struct OrtEp {
    * \param[in] count The number of OrtGraph instances to compile.
    * \param[out] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's
    *                                computation function. The implementer allocates the OrtNodeComputeInfo instances.
-   *                                ORT calls ReleaseNodeComputeInfos() to release multiple instances in a batch.
+   *                                ORT will call OrtEp::ReleaseNodeComputeInfos to release them when they are no
+   *                                longer needed.
    * \param[out] ep_context_nodes Output array of `count` OrtNode instances, each representing an EPContext
    *                              node for a compiled OrtGraph. The execution provider must use
    *                              OrtModelEditorApi::CreateNode to create the OrtNode instances. ONNX Runtime takes
