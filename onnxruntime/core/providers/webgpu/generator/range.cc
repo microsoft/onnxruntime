@@ -7,54 +7,14 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status Range::ComputeInternal(ComputeContext& context) const {
-  const auto* start_tensor = context.Input<Tensor>(0);
-  const auto* limit_tensor = context.Input<Tensor>(1);
-  const auto* delta_tensor = context.Input<Tensor>(2);
+template <typename T>
+Status Range<T>::ComputeInternal(ComputeContext& context) const {
+  T start = context.Input<Tensor>(0)->Data<T>()[0];
+  T limit = context.Input<Tensor>(1)->Data<T>()[0];
+  T delta = context.Input<Tensor>(2)->Data<T>()[0];
 
-  auto data_type = start_tensor->GetElementType();
-
-  int64_t n = 0;
-  uint32_t start_bits = 0;
-  uint32_t delta_bits = 0;
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    float start = start_tensor->Data<float>()[0];
-    float limit = limit_tensor->Data<float>()[0];
-    float delta = delta_tensor->Data<float>()[0];
-    GSL_SUPPRESS(io.2)
-    n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
-    start_bits = *reinterpret_cast<const uint32_t*>(&start);
-    delta_bits = *reinterpret_cast<const uint32_t*>(&delta);
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    int32_t start = start_tensor->Data<int32_t>()[0];
-    int32_t limit = limit_tensor->Data<int32_t>()[0];
-    int32_t delta = delta_tensor->Data<int32_t>()[0];
-    GSL_SUPPRESS(io.2)
-    n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
-    start_bits = *reinterpret_cast<const uint32_t*>(&start);
-    delta_bits = *reinterpret_cast<const uint32_t*>(&delta);
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    int64_t start = start_tensor->Data<int64_t>()[0];
-    int64_t limit = limit_tensor->Data<int64_t>()[0];
-    int64_t delta = delta_tensor->Data<int64_t>()[0];
-    GSL_SUPPRESS(io.2)
-    n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
-    int32_t start_i32 = static_cast<int32_t>(start);
-    int32_t delta_i32 = static_cast<int32_t>(delta);
-    start_bits = *reinterpret_cast<const uint32_t*>(&start_i32);
-    delta_bits = *reinterpret_cast<const uint32_t*>(&delta_i32);
-  }
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
+  GSL_SUPPRESS(io.2)  // Ignore warning about potential overflow in (limit - start)
+  int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
   if (n <= 0) {
     n = 0;
   }
@@ -64,15 +24,23 @@ Status Range::ComputeInternal(ComputeContext& context) const {
   }
 
   uint32_t output_size = onnxruntime::narrow<uint32_t>(n);
-  RangeProgram program{data_type};
+  RangeProgram program{output_tensor->GetElementType()};
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
 
   program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Type})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           output_size,
-          start_bits,
-          delta_bits,
+          *reinterpret_cast<uint32_t*>(&start),
+          *reinterpret_cast<uint32_t*>(&delta),
       });
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
   return context.RunProgram(program);
 }
@@ -97,48 +65,23 @@ Status RangeProgram::GenerateShaderCode(ShaderHelper& sh) const {
   return Status();
 }
 
-namespace {
-const std::vector<MLDataType>& RangeOpTypeConstraints(bool enable_graph_capture) {
-  // Base types that are always supported
-  static std::vector<MLDataType> base_types{
-      DataTypeImpl::GetTensorType<float>(),
-      DataTypeImpl::GetTensorType<int32_t>()};
+#define WEBGPU_RANGE_KERNEL(TYPE)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                    \
+      Range,                                                        \
+      kOnnxDomain,                                                  \
+      11,                                                           \
+      TYPE,                                                         \
+      kWebGpuExecutionProvider,                                     \
+      KernelDefBuilder()                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()) \
+          .InputMemoryType(OrtMemTypeCPU, 0)                        \
+          .InputMemoryType(OrtMemTypeCPU, 1)                        \
+          .InputMemoryType(OrtMemTypeCPU, 2),                       \
+      Range<TYPE>);
 
-  if (enable_graph_capture) {
-    printf("Range: Returning types_with_int64\n");
-    static std::vector<MLDataType> types_with_int64 = []() {
-      auto types = base_types;
-      types.push_back(DataTypeImpl::GetTensorType<int64_t>());
-      return types;
-    }();
-    return types_with_int64;
-  } else {
-    return base_types;
-  }
-}
-}  // namespace
-
-KernelCreateInfo CreateRangeKernelInfo(bool enable_graph_capture) {
-  const auto& type_constraints = RangeOpTypeConstraints(enable_graph_capture);
-
-  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Range>(info);
-    return Status::OK();
-  };
-
-  return {
-      KernelDefBuilder()
-          .SetName("Range")
-          .SetDomain(kOnnxDomain)
-          .SinceVersion(11)
-          .Provider(kWebGpuExecutionProvider)
-          .TypeConstraint("T", type_constraints)
-          .InputMemoryType(OrtMemTypeCPU, 0)
-          .InputMemoryType(OrtMemTypeCPU, 1)
-          .InputMemoryType(OrtMemTypeCPU, 2)
-          .Build(),
-      kernel_create_fn};
-}
+WEBGPU_RANGE_KERNEL(float)
+WEBGPU_RANGE_KERNEL(int32_t)
+WEBGPU_RANGE_KERNEL(int64_t)
 
 }  // namespace webgpu
 }  // namespace onnxruntime

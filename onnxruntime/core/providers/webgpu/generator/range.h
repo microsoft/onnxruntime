@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include "core/framework/kernel_registry.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-class Range final : public WebGpuKernel {
+template <typename T>
+class Range : public WebGpuKernel {
  public:
   explicit Range(const OpKernelInfo& info) : WebGpuKernel(info) {}
 
@@ -30,9 +30,6 @@ class RangeProgram : public Program<RangeProgram> {
  private:
   int32_t data_type_{0};
 };
-
-// Create Range kernel info with appropriate type constraints based on graph capture support
-KernelCreateInfo CreateRangeKernelInfo(bool enable_graph_capture);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
