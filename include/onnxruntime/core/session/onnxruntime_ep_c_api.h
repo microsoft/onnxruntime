@@ -960,8 +960,8 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(SharedPrePackedWeightCache_StoreWeightData,
                   _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
-                  _In_ void** buffer_data_ptrs, _In_ size_t* buffer_data_sizes, _In_ size_t num_buffers,
-                  _In_ OrtAllocator* deleter);
+                  _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
+                  _In_ size_t num_buffers, _In_ OrtAllocator* deleter);
 };
 
 /**
