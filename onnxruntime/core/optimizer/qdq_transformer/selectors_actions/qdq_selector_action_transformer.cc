@@ -163,8 +163,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // Operators without DML QLinear kernel support (CPU only).
   // DML EP does not have QLinearLeakyRelu or QLinearSoftmax kernels.
   // See https://github.com/microsoft/onnxruntime/issues/26531
-  std::vector<const char*> cpu_only_providers = {kCpuExecutionProvider};
-  std::unique_ptr<NodeSelector> cpu_selector = std::make_unique<QDQ::UnarySelector>(cpu_only_providers);
+  std::vector<const char*> cpu_only_provider = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> cpu_selector = std::make_unique<QDQ::UnarySelector>(cpu_only_provider);
   qdq_selector_action_registry.RegisterSelectorAndAction(cpu_action_name,
                                                          {{"LeakyRelu", {}},
                                                           {"Softmax", {}}},
