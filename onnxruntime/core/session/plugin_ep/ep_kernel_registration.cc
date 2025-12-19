@@ -21,7 +21,7 @@ namespace onnxruntime {
 /// </summary>
 class PluginEpOpKernel final : public OpKernel {
  private:
-  // Prevents calling constructor directly without having to make it private (required by make_unique_ptr).
+  // Prevents calling constructor directly without having to make it private (required by std::make_unique).
   struct PrivateTag {};
 
   // Stores a mapping between a IAllocator* and the OrtAllocator* that wraps it.
