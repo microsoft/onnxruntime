@@ -928,7 +928,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                          dawn_proc_table = config.dawn_proc_table
 #endif
   ]() {
-  // Step.1 - setup dawn proc table (only for non-WASM build)
+  // Setup dawn proc table (only for non-WASM build)
 
 #if !defined(__wasm__)
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
@@ -946,7 +946,12 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 #endif
 
-    // Step.2 - Create wgpu::Instance
+  });
+
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (default_instance_ == nullptr) {
+    // Create wgpu::Instance
     wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.requiredFeatures = required_instance_features;
@@ -954,7 +959,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     default_instance_ = wgpu::CreateInstance(&instance_desc);
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
-  });
+  }
 
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
@@ -967,8 +972,6 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     ORT_ENFORCE(instance != nullptr && device != nullptr,
                 "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
   }
-
-  std::lock_guard<std::mutex> lock(mutex_);
 
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
