@@ -4,6 +4,7 @@
 #include "contrib_ops/webgpu/bert/attention.h"
 
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/webgpu/bert/flash_attention.h"
 #include "contrib_ops/webgpu/bert/multihead_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -99,6 +100,21 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "var<workgroup> tileK: array<key_value_t, " << tile_size_ * tile_size_ << ">;\n"
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
 
+  if (has_attention_bias_) {
+    shader.AdditionalImplementation() << "fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32) -> output_value_t {\n"
+                                      << "  // Handle broadcasting: if dimension size is 1, use index 0\n"
+                                      << "  let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);\n"
+                                      << "  let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);\n"
+                                      << "  // Calculate flat offset with broadcasting applied\n"
+                                      << "  // attention_bias shape: [attn_bias_dim0, attn_bias_dim1, sequence_length, total_sequence_length]\n"
+                                      << "  let offset = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.M * uniforms.N +\n"
+                                      << "               bias_head_idx * uniforms.M * uniforms.N +\n"
+                                      << "               q_idx * uniforms.N +\n"
+                                      << "               k_idx;\n"
+                                      << "  return attention_bias[offset];\n"
+                                      << "}\n";
+  }
+
   shader.MainFunctionBody() << "// x holds the N and y holds the M\n"
                             << "let m = u32(workgroup_idx / uniforms.num_total_seq_length_tile) % uniforms.num_seq_length_tile  * TILE_SIZE;\n"
                             << "let n = (workgroup_idx % uniforms.num_total_seq_length_tile) * TILE_SIZE;\n"
@@ -157,6 +173,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "if (m + local_id.y < uniforms.M && n + local_id.x < total_sequence_length) {\n"
                             << "  let headOffset = batch_head_idx * uniforms.M * uniforms.N;\n"
                             << "  let outputIdx = headOffset + (m + local_id.y) * uniforms.N + n + local_id.x;\n"
+                            << "  let head_idx = batch_head_idx % uniforms.num_heads;\n"
                             << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
 
   // Add causal masking for unidirectional attention
@@ -165,13 +182,13 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  let query_pos = m + local_id.y + past_sequence_length;\n"
                               << "  let key_pos = n + local_id.x;\n"
                               << "  if (key_pos > query_pos) {\n"
-                              << "    sum = -3.40282e+38; // Set to very negative value for masking\n"
+                              << "    sum = -3.4028234663852886e+38; // Set to very negative value for masking\n"
                               << "  }\n";
   }
 
   shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
   if (has_attention_bias_) {
-    shader.MainFunctionBody() << " + attention_bias[outputIdx]";
+    shader.MainFunctionBody() << " + loadAttentionBias(batch_idx, head_idx, m + local_id.y, n + local_id.x)";
   }
   shader.MainFunctionBody() << ";\n"
                             << "}\n";
@@ -213,6 +230,16 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const uint32_t vectorized_head_size = (parameters.head_size_ + components - 1) / components;
   const uint32_t num_total_seq_length_tile = (total_sequence_length + tile_size - 1) / tile_size;
   const uint32_t num_seq_length_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
+
+  // Get attention bias dimensions for broadcasting
+  uint32_t attn_bias_dim0 = 1;
+  uint32_t attn_bias_dim1 = 1;
+  if (has_attention_bias) {
+    const auto& bias_shape = attention_bias->Shape();
+    attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
+    attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
+  }
+
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_length_tile * num_total_seq_length_tile)
       .SetWorkgroupSize(tile_size, tile_size)
       .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_unidirectional_)
@@ -228,7 +255,9 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                             {static_cast<uint32_t>(parameters.n_reps)},
                             {static_cast<uint32_t>(parameters.is_first_prompt_ ? 1 : 0)},
                             {num_total_seq_length_tile},
-                            {num_seq_length_tile}})
+                            {num_seq_length_tile},
+                            {attn_bias_dim0},
+                            {attn_bias_dim1}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
   return context.RunProgram(program);
@@ -272,7 +301,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let effective_seq_length = seq_causal_length;\n";
   }
   shader.MainFunctionBody()
-      << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
+      << "var thread_max_vector = f32_val_t(-3.4028234663852886e+38f);\n"
       << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
       << "  let actual_pos = local_offset + i + start_offset;\n"
       << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
@@ -284,12 +313,12 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (has_head_sink_) {
     // Handle head sink
-    shader.MainFunctionBody() << "let sink_value: f32 = head_sink[head_idx];\n"
+    shader.MainFunctionBody() << "let sink_value: f32 = f32(head_sink[head_idx]);\n"
                               << "var max_value = sink_value;\n";
   } else if (use_smooth_softmax_) {
     shader.MainFunctionBody() << "var max_value: f32 = 0.0;\n";
   } else {
-    shader.MainFunctionBody() << "var max_value = f32(-3.402823e+38f);\n";
+    shader.MainFunctionBody() << "var max_value = f32(-3.4028234663852886e+38f);\n";
   }
 
   shader.MainFunctionBody() << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
@@ -520,8 +549,11 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
-                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* head_sink,
-                      const Tensor* seqlen_k, int local_window_size) {
+                      Tensor* output_qk, WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context,
+                      const Tensor* head_sink, const Tensor* seqlen_k, int local_window_size) {
+  if (context.IsGraphCaptureEnabled()) {
+    ORT_NOT_IMPLEMENTED("Graph capture not implemented for non flash attention path");
+  }
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
   const int total_sequence_length =
@@ -533,6 +565,11 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   Tensor probs = context.CreateGPUTensor(Q->DataType(), probs_shape);
   ORT_RETURN_IF_ERROR(ComputeAttentionProbs(context, output_count, Q, K, past_key, attention_bias, &probs, present_key,
                                             parameters, past_sequence_length, total_sequence_length, seqlen_k));
+
+  if (output_qk != nullptr) {
+    // Copy the attention scores (scaled Q*K^T) to output_qk
+    ORT_RETURN_IF_ERROR(context.CopyTensor(probs, *output_qk));
+  }
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
                                             parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_, parameters.use_smooth_softmax_, head_sink, local_window_size));
@@ -728,9 +765,22 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   // Compute Q, K, V from input, weights, and bias
   ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias, &Q, &K, &V));
 
+  // Check if we can use flash attention
+  // For Attention operator, we need to create present_key and present_value tensors for flash attention
+  // even though they are not exposed as outputs
+  TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+                                      parameters.total_sequence_length_, parameters.head_size_});
+  Tensor present_key = context.CreateGPUTensor(input->DataType(), present_kv_shape);
+  Tensor present_value = context.CreateGPUTensor(input->DataType(), present_kv_shape);
+
+  if (CanApplyFlashAttention(nullptr, &present_key, &present_value, parameters, context)) {
+    return ApplyFlashAttention(&Q, &K, &V, attention_bias, output, nullptr, &present_key, nullptr, &present_value,
+                               parameters, context, nullptr);
+  }
+
   // Apply the actual attention computation
   return ApplyAttention(&Q, &K, &V, attention_bias, nullptr, nullptr, output, /* present_key */ nullptr,
-                        /* present_value */ nullptr, parameters, context, nullptr, nullptr, -1);
+                        /* present_value */ nullptr, /* output_qk */ nullptr, parameters, context, nullptr, nullptr, -1);
 }
 
 }  // namespace webgpu

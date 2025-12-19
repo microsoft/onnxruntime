@@ -37,11 +37,7 @@ struct DispatchSoftmaxDropoutGradImpl {
 
 }  // namespace
 
-#ifdef USE_ROCM
-#define SOFTMAX_DROPOUT_GRAD_TYPES float, MLFloat16
-#else
 #define SOFTMAX_DROPOUT_GRAD_TYPES float, MLFloat16, double
-#endif
 
 ONNX_OPERATOR_KERNEL_EX(SoftmaxDropoutGrad, kMSDomain, 1, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())

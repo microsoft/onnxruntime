@@ -24,7 +24,7 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "layer_norm_impl.h"
-#include "core/providers/cpu/nn/layer_norm_helper.h"
+#include "core/providers/cpu/nn/layer_norm_macro.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -436,10 +436,6 @@ void HostApplyLayerNorm(
     parallel_rows *= 2;
   }
   dim3 threads(warp_size, threads_y, 1);
-#ifdef __HIP_PLATFORM_HCC__
-  // Optimization for ROCm MI100
-  threads.y = 1;
-#endif
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;

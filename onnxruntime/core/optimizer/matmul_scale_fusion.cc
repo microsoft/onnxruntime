@@ -198,7 +198,6 @@ bool IsMatMulInputTypeSupported(const Node& node) {
   // if no matching key is present, any data type is allowed
   static const InlinedHashMap<std::string_view, InlinedVector<std::string_view, 4>> k_supported_data_types{
       {kCudaExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
-      {kRocmExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
       {kCpuExecutionProvider, {"tensor(float)"}},
   };
 

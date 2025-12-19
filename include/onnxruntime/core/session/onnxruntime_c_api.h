@@ -3937,6 +3937,7 @@ struct OrtApi {
    *      -# "69"
    *      -# "73"
    *      -# "75"
+   *      -# "81"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
    *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
    *      Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
@@ -3963,6 +3964,9 @@ struct OrtApi {
    *     where op_type is the name of the operation, op_package_path is the path to the op package shared library,
    *     interface is the symbol name to register the op life cycle functions, and target is the backend type. For more
    *     details, refer to: https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/op_packages.html
+   *     [Advanced] "skip_qnn_version_check": Set to "1" to allow a different version of QNN to be used than what was compiled
+   *     into ONNX Runtime. Differences in operator support, accuracy, performance, and QNN's ABI may lead to crashes, inaccurate
+   *     results, and poor performance. Use with caution and test thoroughly.
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
@@ -6587,6 +6591,23 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /** \brief Get all config entries from ::OrtKernelInfo.
+   *
+   * Gets all configuration entries from the ::OrtKernelInfo object as key-value pairs.
+   * Config entries are set on the ::OrtSessionOptions and are accessible in custom operator kernels.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to access all session configuration entries
+   * during kernel construction.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out A pointer to a newly created OrtKeyValuePairs instance containing all config entries.
+   *                 Note: the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
 };
 
 /*

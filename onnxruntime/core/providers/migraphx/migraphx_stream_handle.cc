@@ -12,7 +12,7 @@
 namespace onnxruntime {
 
 enum MIGraphXResource {
-  hip_stream_t = rocm_resource_offset
+  hip_stream_t = migraphx_resource_offset
 };
 
 struct MIGraphXNotification : synchronize::Notification {

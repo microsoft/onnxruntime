@@ -342,6 +342,14 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     RunTest<AType>(opts);
   }
 #endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
+#if defined(USE_WEBGPU)
+  {
+    // WebGPU does support bias but no g_idx
+    TestOptions opts = base_opts;
+    opts.has_bias = true;
+    RunTest<AType>(opts);
+  }
+#endif
 }
 
 #if !defined(USE_OPENVINO)
@@ -494,7 +502,7 @@ TEST(MatMulNBits, LegacyShape_4b) {
 #endif
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU)
 
 namespace {
 // Legacy test function.
@@ -530,10 +538,6 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     execution_providers.push_back(DefaultCudaExecutionProvider());
     RunTest<MLFloat16>(opts, std::move(execution_providers));
 #endif
-#ifdef USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
-    RunTest<MLFloat16>(opts, std::move(execution_providers));
-#endif
 #ifdef USE_DML
     execution_providers.push_back(DefaultDmlExecutionProvider());
     RunTest<MLFloat16>(opts, std::move(execution_providers));
@@ -543,12 +547,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     RunTest<MLFloat16>(opts, std::move(execution_providers));
 #endif
   } else {
-#ifdef USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif
 #ifdef USE_WEBGPU
     ConfigOptions config_options{};
-    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kSmallStorageBufferBindingSizeForTesting, "1").IsOK());
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728").IsOK());
     execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
 #endif
     RunTest<float>(opts, std::move(execution_providers));
@@ -729,7 +730,7 @@ TEST(MatMulNBits, BFloat16_Int4_NoZeroPoint) {
 }
 #endif
 
-#endif  // defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#endif  // defined(USE_CUDA) || defined(USE_DML)
 }  // namespace test
 }  // namespace onnxruntime
 

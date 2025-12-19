@@ -32,6 +32,11 @@
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
 
+// Ensure that we have a recent enough version of QNN
+static_assert(QNN_API_VERSION_MAJOR > 2 ||
+                  (QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR >= 29),
+              "Minimum required QAIRT SDK version is 2.39.0");
+
 namespace onnxruntime {
 namespace qnn {
 
@@ -231,6 +236,12 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
   ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == *interface_providers || 0 == num_providers),
                 "Failed to get QNN providers.");
 
+  if (skip_qnn_version_check_) {
+    // When skipping version check, use the first available provider.
+    *interface_provider = interface_providers[0];
+    return Status::OK();
+  }
+
   bool found_valid_interface{false};
   for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
     Qnn_Version_t interface_version = GetQnnInterfaceApiVersion(interface_providers[pIdx]);
@@ -282,6 +293,25 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
 }
 
 Status QnnBackendManager::LoadBackend() {
+#if defined(__aarch64__) && defined(__linux__)
+  // QNN requires ADSP_LIBRARY_PATH to be set in order to find skel libs on Linux
+  static std::once_flag set_adsp_path_once;
+
+  std::call_once(set_adsp_path_once, []() {
+    constexpr std::string_view kAdspLibraryPathEnvVar{"ADSP_LIBRARY_PATH"};
+    const char* existing_path = getenv(kAdspLibraryPathEnvVar.data());
+    if (existing_path != nullptr) {
+      LOGS_DEFAULT(WARNING) << "Using existing ADSP_LIBRARY_PATH setting of " << existing_path
+                            << ", which may cause the HTP backend to fail.";
+      return;
+    }
+
+    std::filesystem::path qnn_lib_path(GetDefaultEnv().GetRuntimePath());
+    LOGS_DEFAULT(INFO) << "Setting " << kAdspLibraryPathEnvVar << " = " << qnn_lib_path;
+    setenv(kAdspLibraryPathEnvVar.data(), qnn_lib_path.c_str(), 1);
+  });
+#endif
+
   QnnInterface_t* backend_interface_provider{nullptr};
   auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
                                     QnnInterface_t>(backend_path_.c_str(),
@@ -1383,6 +1413,7 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
   // choose performance mode
   switch (htp_performance_mode) {
     case HtpPerformanceMode::kHtpBurst:
+    case HtpPerformanceMode::kHtpSustainedHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMinLatency;
       dcvs_v3.dcvsEnable = kDcvsDisable;
@@ -1395,7 +1426,6 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       break;
-    case HtpPerformanceMode::kHtpSustainedHighPerformance:
     case HtpPerformanceMode::kHtpHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepLowLatency;
@@ -1542,6 +1572,61 @@ Status QnnBackendManager::SetRpcPowerConfigs(uint32_t htp_power_config_client_id
   }
 
   return Status::OK();
+}
+
+Status QnnBackendManager::SetPerThreadHtpPowerConfigs(const std::thread::id& thread_id, bool pre_run) {
+  PerThreadHtpPowerConfigs_t htp_power_configs;
+  if (!GetPerThreadHtpPowerConfigMapping(thread_id, htp_power_configs)) {
+    return Status::OK();
+  }
+
+  auto htp_power_config_id = htp_power_configs.power_config_id;
+  if (pre_run) {
+    if (htp_power_configs.pre_run_perf_mode.has_value()) {
+      ORT_RETURN_IF_ERROR(SetHtpPowerConfig(htp_power_config_id, *htp_power_configs.pre_run_perf_mode));
+    }
+
+    if (htp_power_configs.rpc_configs.has_value()) {
+      ORT_RETURN_IF_ERROR(SetRpcPowerConfigs(htp_power_config_id,
+                                             htp_power_configs.rpc_configs->rpc_control_latency,
+                                             htp_power_configs.rpc_configs->rpc_polling_time));
+    }
+  } else if (htp_power_configs.post_run_perf_mode.has_value()) {
+    ORT_RETURN_IF_ERROR(SetHtpPowerConfig(htp_power_config_id, *htp_power_configs.post_run_perf_mode));
+  }
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::AddPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                                            const PerThreadHtpPowerConfigs_t& htp_power_configs) {
+  std::lock_guard<std::mutex> lock(per_thread_power_configs_mutex_);
+
+  auto res = per_thread_power_configs_.find(thread_id);
+  ORT_RETURN_IF(res != per_thread_power_configs_.end(), "Trying to set HtpPowerConfigs for thread id ", thread_id,
+                " but one already exists!");
+
+  per_thread_power_configs_.emplace(thread_id, std::move(htp_power_configs));
+
+  return Status::OK();
+}
+
+bool QnnBackendManager::GetPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                                          PerThreadHtpPowerConfigs_t& htp_power_configs) {
+  std::lock_guard<std::mutex> lock(per_thread_power_configs_mutex_);
+
+  auto it = per_thread_power_configs_.find(thread_id);
+  if (it == per_thread_power_configs_.end()) {
+    return false;
+  }
+
+  htp_power_configs = it->second;
+  return true;
+}
+
+void QnnBackendManager::RemovePerThreadHtpPowerConfigMapping(const std::thread::id& thread_id) {
+  std::lock_guard<std::mutex> lock(per_thread_power_configs_mutex_);
+  per_thread_power_configs_.erase(thread_id);
 }
 
 Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) {

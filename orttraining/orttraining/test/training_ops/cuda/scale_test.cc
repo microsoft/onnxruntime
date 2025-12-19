@@ -134,7 +134,7 @@ TEST(CudaKernelTest, ScaleHalfInt64ScaleDown) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(CudaKernelTest, ScaleBFloat16BFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -152,8 +152,6 @@ TEST(CudaKernelTest, ScaleBFloat16BFloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -175,8 +173,6 @@ TEST(CudaKernelTest, ScaleFloatBFloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }

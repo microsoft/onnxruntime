@@ -1,0 +1,19 @@
+diff --git a/src/arm/windows/init.c b/src/arm/windows/init.c
+index 5c0a5f3..a07fbe4 100644
+--- a/src/arm/windows/init.c
++++ b/src/arm/windows/init.c
+@@ -249,6 +249,14 @@ static void set_cpuinfo_isa_fields(void) {
+ 	// guarantee that, but it holds in practice.
+ 	cpuinfo_isa.rdm = dotprod;
+ 
++	// PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE may not be available in older
++	// Windows versions. If fp16arith was not detected with
++	// IsProcessorFeaturePresent(PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE), fall
++	// back to using the value of dotprod.
++	if (!cpuinfo_isa.fp16arith) {
++		cpuinfo_isa.fp16arith = dotprod;
++	}
++
+ 	/* Windows API reports all or nothing for cryptographic instructions. */
+ 	const bool crypto = IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE) != 0;
+ 	cpuinfo_isa.aes = crypto;

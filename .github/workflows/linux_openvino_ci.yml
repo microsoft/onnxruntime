@@ -39,6 +39,7 @@ jobs:
 
       run_tests: true
       upload_build_output: false
+      job_identifier: build_test_openvino
 
     # Secrets: Pass the necessary GitHub token
     secrets:

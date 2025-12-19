@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <gsl/span>
+#include <algorithm>
 #include <functional>
 #include <optional>
 #include <string>
@@ -12,12 +14,12 @@
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
 
-#define RETURN_IF_ERROR(fn)    \
-  do {                         \
-    OrtStatus* _status = (fn); \
-    if (_status != nullptr) {  \
-      return _status;          \
-    }                          \
+#define RETURN_IF_ERROR(fn)     \
+  do {                          \
+    Ort::Status _status{(fn)};  \
+    if (!_status.IsOK()) {      \
+      return _status.release(); \
+    }                           \
   } while (0)
 
 #define RETURN_IF(cond, ort_api, msg)                    \
@@ -39,6 +41,13 @@
     }                                                    \
   } while (false)
 
+// Ignores an OrtStatus* while taking ownership of it so that it does not get leaked.
+#define IGNORE_ORTSTATUS(status_expr)   \
+  do {                                  \
+    OrtStatus* _status = (status_expr); \
+    Ort::Status _ignored{_status};      \
+  } while (false)
+
 #ifdef _WIN32
 #define EP_WSTR(x) L##x
 #define EP_FILE_INTERNAL(x) EP_WSTR(x)
@@ -47,11 +56,12 @@
 #define EP_FILE __FILE__
 #endif
 
-#define LOG(level, ...)                                                                                             \
-  do {                                                                                                              \
-    std::ostringstream ss;                                                                                          \
-    ss << __VA_ARGS__;                                                                                              \
-    api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), EP_FILE, __LINE__, __FUNCTION__); \
+#define LOG(level, ...)                                                                            \
+  do {                                                                                             \
+    std::ostringstream ss;                                                                         \
+    ss << __VA_ARGS__;                                                                             \
+    IGNORE_ORTSTATUS(api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), \
+                                            EP_FILE, __LINE__, __FUNCTION__));                     \
   } while (false)
 
 #define RETURN_ERROR(code, ...)                       \
@@ -70,32 +80,6 @@ struct ApiPtrs {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
   const OrtModelEditorApi& model_editor_api;
-};
-
-using AllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
-
-// Helper to release Ort one or more objects obtained from the public C API at the end of their scope.
-template <typename T>
-struct DeferOrtRelease {
-  DeferOrtRelease(T** object_ptr, std::function<void(T*)> release_func)
-      : objects_(object_ptr), count_(1), release_func_(release_func) {}
-
-  DeferOrtRelease(T** objects, size_t count, std::function<void(T*)> release_func)
-      : objects_(objects), count_(count), release_func_(release_func) {}
-
-  ~DeferOrtRelease() {
-    if (objects_ != nullptr && count_ > 0) {
-      for (size_t i = 0; i < count_; ++i) {
-        if (objects_[i] != nullptr) {
-          release_func_(objects_[i]);
-          objects_[i] = nullptr;
-        }
-      }
-    }
-  }
-  T** objects_ = nullptr;
-  size_t count_ = 0;
-  std::function<void(T*)> release_func_ = nullptr;
 };
 
 struct FloatInitializer {
@@ -146,4 +130,51 @@ inline std::optional<std::vector<int64_t>> GetTensorShape(Ort::ConstValueInfo va
 
   const auto type_shape = type_info.GetTensorTypeAndShapeInfo();
   return type_shape.GetShape();
+}
+
+// Check if two shapes are static (no dynamic dimensions) and equal.
+inline bool AreShapesStaticAndEqual(gsl::span<const int64_t> shape0, gsl::span<const int64_t> shape1) {
+  const auto is_static_shape = [](gsl::span<const int64_t> shape) -> bool {
+    return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim >= 0; });
+  };
+
+  if (!is_static_shape(shape0) || !is_static_shape(shape1)) {
+    return false;  // a shape has dynamic dimensions
+  }
+
+  return shape0 == shape1;
+}
+
+template <typename T>
+inline ONNXTensorElementDataType GetTensorElemDataType() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+}
+
+template <>
+inline ONNXTensorElementDataType GetTensorElemDataType<float>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+}
+
+template <>
+inline ONNXTensorElementDataType GetTensorElemDataType<int64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+}
+
+template <typename T>
+inline OrtStatus* GetKernelInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                                             /*out*/ gsl::span<const T>& data,
+                                             /*out*/ std::vector<int64_t>& shape) {
+  Ort::ConstValue input = kernel_context.GetInput(index);
+  auto type_shape = input.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = type_shape.GetElementType();
+  RETURN_IF(elem_type != GetTensorElemDataType<T>(), Ort::GetApi(),
+            "EP expected kernel input of tensor type");
+
+  const T* float_data = input.GetTensorData<T>();
+  size_t num_elems = type_shape.GetElementCount();
+  data = gsl::span<const T>(float_data, num_elems);
+  shape = type_shape.GetShape();
+
+  return nullptr;
 }

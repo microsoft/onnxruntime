@@ -76,7 +76,6 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
   auto input_dims = input_shape.GetDims();
   auto output_dimensions{input_shape.AsShapeVector()};
 
-#ifndef USE_ROCM
   if (split_sizes.size() == 3 && ((axis + 1) == gsl::narrow_cast<int64_t>(input_shape.NumDimensions()))) {
     // we use (axis + 1) == num_dimensions to check if we are splitting on inner most axis.
     // only when split on inner axis and output size is 3, we can use Split3Inner.
@@ -101,7 +100,6 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
                        output2->MutableDataRaw(),
                        input_dims);
   }
-#endif
 
   CudaAsyncBuffer<void*> output_ptr(this, num_outputs);
   gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();

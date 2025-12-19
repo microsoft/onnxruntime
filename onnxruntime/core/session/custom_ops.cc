@@ -49,7 +49,9 @@ static constexpr uint32_t min_ort_version_with_compute_v2_support = 16;
 static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT8_TYPES) && !defined(DISABLE_FLOAT4_TYPES)
+#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv11()
+#elif !defined(DISABLE_FLOAT8_TYPES)
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv10()
 #else
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
@@ -751,6 +753,21 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAllocator, _In_ const OrtKernelInfo* i
     }
     auto p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
     *out = p.release();
+    return nullptr;
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out) {
+  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+    const auto& config_options_map = op_info->GetConfigOptions().GetConfigOptionsMap();
+
+    auto kvps = std::make_unique<OrtKeyValuePairs>();
+    for (const auto& kv : config_options_map) {
+      kvps->Add(kv.first.c_str(), kv.second.c_str());
+    }
+
+    *out = kvps.release();
     return nullptr;
   });
 }

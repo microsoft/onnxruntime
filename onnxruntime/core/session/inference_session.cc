@@ -162,7 +162,6 @@ static bool AreAllComputeNodesAssignedToCudaOrJsOrDmlEpWebGpuEp(const Graph& gra
     // Empty node provider means CPU EP
     if (!node_provider.empty() &&
         !(node_provider == kCudaExecutionProvider ||
-          node_provider == kRocmExecutionProvider ||
           node_provider == kJsExecutionProvider ||
           node_provider == kWebGpuExecutionProvider ||
           node_provider == kDmlExecutionProvider) &&
@@ -1320,6 +1319,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                                   *session_logger_));
   }
 
+  // We choose to convert initializers into OrtValues before partitioning here so plug-in EPs could
+  // take advantage of the initializers being in OrtValue format and not to deal with protobuf.
+  //
+  // The initializers data is transferred to an OrtValue. The original TensorProto is replaced
+  // with a TensorProto that has the same data type, shape and name. However, its external data
+  // is used in a non-standard way. The location is set to a string constant utils::kTensorProtoMemoryAddressTag,
+  // The file offset is set to the address of the OrtValue's data buffer,  and the length is set to the size of the
+  // OrtValue's data buffer. Because this external location is non-standard, onnx code can not handle it. For this reason,
+  // we do not convert them at the graph constructor because Node::ToProto() reconstructs Graph instances for subgraphs
+  // and we do not want to have initializers converted at shape inference time, as Resolve() is called from EPs when
+  // op_types are not assigned yet.
+  //
+  // If any transformations are applied later, they would not introduce any in-memory initializers,
+  // type and shape inference would run only on any newly added nodes and any new initializers
+  // will be converted at session finalization time.
+  //
+  // The conversion is performed using the following steps (within ConvertInitializersIntoOrtValues())
+  //   constexpr const bool use_tensor_buffer_true = true;
+  //   auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
+  //                                                        use_tensor_buffer_true);
+  //   ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto_to_add, ort_value));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ConvertInitializersIntoOrtValues());
+
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
                                    Graph& graph, bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
     bool modified = false;
@@ -2269,7 +2291,7 @@ common::Status InferenceSession::Initialize() {
                                "Session initialization canceled due to user request.");
       }
 
-      // Currently graph capture is only considered by CUDA EP, TRT EP, ROCM EP and JS EP.
+      // Currently graph capture is only considered by CUDA EP, TRT EP and JS EP.
       //
       // Check for CUDA EP:
       // If the CUDA EP is part of the providers list for this session AND
@@ -2289,16 +2311,9 @@ common::Status InferenceSession::Initialize() {
       // All the "compute" graph nodes have been assigned to the JS EP,
       // Then the JS EP is cached for triggering a ReplayGraph() in Run().
       //
-      // Check for ROCM EP:
-      // If the ROCM EP is part of the providers list for this session AND
-      // The ROCM EP is configured to do a graph capture AND
-      // All the "compute" graph nodes have been assigned to the ROCM EP,
-      // Then the ROCM EP is cached for triggering a ReplayGraph() in Run().
-      //
       std::vector<const char*> graph_support_ep_list = {
           onnxruntime::kTensorrtExecutionProvider,
           onnxruntime::kCudaExecutionProvider,
-          onnxruntime::kRocmExecutionProvider,
           onnxruntime::kJsExecutionProvider,
           onnxruntime::kWebGpuExecutionProvider,
           onnxruntime::kDmlExecutionProvider};
@@ -2321,7 +2336,6 @@ common::Status InferenceSession::Initialize() {
           }
 
           if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
-              strcmp(target_ep->Type().c_str(), onnxruntime::kRocmExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kWebGpuExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kDmlExecutionProvider) == 0) {
@@ -2512,6 +2526,12 @@ common::Status InferenceSession::Initialize() {
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
+      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
+    });
+  }
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ex.Category(), ex.Code(), MakeString("Exception during initialization: ", ex.what()));
       LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     });
   }
@@ -2943,6 +2963,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
                                  << cached_execution_provider_for_graph_replay_.Type()
                                  << " CUDA Graph for this model with tag: " << run_options.run_tag
                                  << " with graph annotation id: " << graph_annotation_id;
+    // log evaluation start to trace logging provider
+    env.GetTelemetryProvider().LogEvaluationStart(session_id_);
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id));
   } else {
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
@@ -3134,7 +3156,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
   // so that users just need one session run to capture the graph.
   // N is defined in min_num_runs_before_cuda_graph_capture_ for CUDA EP,
-  // N is defined in min_num_runs_before_hip_graph_capture_ for ROCM EP,
   // and the value could be different for other EP.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
@@ -3642,7 +3663,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<BFCArena*>(alloc.get())->Shrink();
+    auto status = static_cast<IArena*>(alloc.get())->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()

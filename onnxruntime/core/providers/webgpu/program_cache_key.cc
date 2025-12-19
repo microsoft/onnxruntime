@@ -17,8 +17,12 @@ namespace webgpu {
 
 namespace {
 // append the info of an input or output to the cachekey
-void AppendTensorInfo(std::ostream& ss, const TensorShape& tensor_shape, ProgramVariableDataType var_type, ProgramTensorMetadataDependency dependency,
-                      bool& first, uint32_t segments = 1) {
+void AppendTensorInfo(std::ostream& ss,
+                      const TensorShape& tensor_shape,
+                      ProgramVariableDataType var_type,
+                      ProgramTensorMetadataDependency dependency,
+                      bool& first,
+                      uint32_t segments) {
   if (first) {
     first = false;
   } else {
@@ -34,7 +38,9 @@ void AppendTensorInfo(std::ostream& ss, const TensorShape& tensor_shape, Program
     ss << ';';
   }
 
-  ss D("Segs=") << segments << ';';
+  if (segments != 1) {
+    ss D("Segs=") << segments << ';';
+  }
 
   if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
     ss D("Dims=") << tensor_shape.ToString();
@@ -44,7 +50,10 @@ void AppendTensorInfo(std::ostream& ss, const TensorShape& tensor_shape, Program
 }
 }  // namespace
 
-std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_dispatch) {
+std::string CalculateProgramCacheKey(const ProgramBase& program,
+                                     std::span<uint32_t> inputs_segments,
+                                     std::span<uint32_t> outputs_segments,
+                                     bool is_1d_dispatch) {
   SS(ss, kStringInitialSizeCacheKey);
 
   // final key format:
@@ -56,7 +65,7 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
   // <UNIFORMS>          = <UNIFORMS_INFO_0>|<UNIFORMS_INFO_1>|...
   // <UNIFORMS_INFO_i>   = <UNIFORM_LENGTH>
   // <INPUTS_INFO>       = <INPUTS_INFO_0>|<INPUTS_INFO_1>|...
-  // <INPUTS_INFO_i>     = <TENSOR_ELEMENT_TYPE_OR_EMPTY>;<TENSOR_SHAPE_OR_RANK_OR_EMPTY>
+  // <INPUTS_INFO_i>     = <TENSOR_ELEMENT_TYPE_OR_EMPTY>;<TENSOR_SEGMENTS_OR_EMPTY>;<TENSOR_SHAPE_OR_RANK_OR_EMPTY>
   ss << program.Name();
 
   // append custom cache hint if any
@@ -98,19 +107,26 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
 
   ss << ":" D("Inputs=");
   first = true;
-  for (const auto& input : program.Inputs()) {
-    AppendTensorInfo(ss, input.use_override_shape ? input.override_shape : input.tensor->Shape(), input.var_type, input.dependency, first, input.segments);
+  for (size_t i = 0; i < program.Inputs().size(); i++) {
+    const auto& input = program.Inputs()[i];
+    AppendTensorInfo(ss,
+                     input.use_override_shape ? input.override_shape : input.tensor->Shape(),
+                     input.var_type,
+                     input.dependency,
+                     first,
+                     inputs_segments[i]);
   }
 
   ss << ":" D("Outputs=");
   first = true;
-  for (const auto& output : program.Outputs()) {
+  for (size_t i = 0; i < program.Outputs().size(); i++) {
+    const auto& output = program.Outputs()[i];
     AppendTensorInfo(ss,
                      output.use_override_shape ? output.override_shape : output.tensor->Shape(),
                      output.var_type,
                      output.dependency,
                      first,
-                     output.segments);
+                     outputs_segments[i]);
   }
 
   if (!program.Indices().empty()) {

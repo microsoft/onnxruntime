@@ -102,7 +102,12 @@ static constexpr bool HAS_COLLECTIVE_OPS = false;
 
 void CreateQuantPybindModule(py::module& m);
 
+// Check if we are building with GIL disabled (Free-threaded)
+#ifdef Py_GIL_DISABLED
+PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()) {
+#else
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
+#endif
   auto st = CreateInferencePybindStateModule(m);
   if (!st.IsOK())
     throw pybind11::import_error(st.ErrorMessage());
