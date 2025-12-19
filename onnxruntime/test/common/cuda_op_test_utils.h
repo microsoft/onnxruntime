@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace test {
 
 // CUDA architecture of the current device like 100 * major + 10 * minor.
-// Please call this function after CUDA EP or NV TensorRT RTX EP is enabled.
+// Please call this function after CUDA EP is enabled.
 int GetCudaArchitecture();
 
 inline bool HasCudaEnvironment(int min_cuda_architecture) {
