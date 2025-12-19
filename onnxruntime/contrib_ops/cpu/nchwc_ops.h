@@ -7,6 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/cpu/nn/pool.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/fused_activation.h"
 
 namespace onnxruntime {
@@ -43,6 +44,10 @@ class NchwcConv final : public OpKernel {
  public:
   NchwcConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+#if defined(__aarch64__) && defined(__linux__)
+    auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
+    use_fastmath_mode_ = (config_ops == "1") && MlasBf16AccelerationSupported();
+#endif
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -51,6 +56,9 @@ class NchwcConv final : public OpKernel {
   ConvAttributes conv_attrs_;
 
   MLAS_ACTIVATION activation_;
+#if defined(__aarch64__) && defined(__linux__)
+  bool use_fastmath_mode_{false};
+#endif
 };
 
 class NchwcPoolBase : public PoolBase {
