@@ -20,8 +20,11 @@ profiling::Profiler::~Profiler() {}
 #endif
 
 ::onnxruntime::TimePoint profiling::Profiler::Start() {
+  return Start(std::chrono::high_resolution_clock::now());
+}
+
+::onnxruntime::TimePoint profiling::Profiler::Start(const TimePoint& start_time) {
   ORT_ENFORCE(enabled_);
-  auto start_time = std::chrono::high_resolution_clock::now();
   auto ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
   for (const auto& ep_profiler : ep_profilers_) {
     ep_profiler->Start(ts);
@@ -75,8 +78,17 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      const std::string& event_name,
                                      const TimePoint& start_time,
                                      const std::initializer_list<std::pair<std::string, std::string>>& event_args,
+                                     bool sync_gpu) {
+  EndTimeAndRecordEvent(category, event_name, start_time, std::chrono::high_resolution_clock::now(), event_args, sync_gpu);
+}
+
+void Profiler::EndTimeAndRecordEvent(EventCategory category,
+                                     const std::string& event_name,
+                                     const TimePoint& start_time,
+                                     const TimePoint& end_time,
+                                     const std::initializer_list<std::pair<std::string, std::string>>& event_args,
                                      bool /*sync_gpu*/) {
-  long long dur = TimeDiffMicroSeconds(start_time);
+  long long dur = TimeDiffMicroSeconds(start_time, end_time);
   long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
 
   EventRecord event(category, logging::GetProcessId(),

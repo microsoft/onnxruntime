@@ -27,6 +27,7 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/program.h"
@@ -611,7 +612,7 @@ void WebGpuContext::StartProfiling() {
   }
 }
 
-void WebGpuContext::CollectProfilingData(profiling::Events& events) {
+void WebGpuContext::CollectProfilingData(const std::vector<WebGpuProfiler*>& profilers) {
   if (!pending_queries_.empty()) {
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
@@ -660,7 +661,16 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                      static_cast<int64_t>(std::round(start_time / 1000.0)),
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
-        events.emplace_back(std::move(event));
+
+        // Distribute the event to all WebGPU EP profilers.
+        // To minimize copies, we copy the event to all but the last profiler,
+        // and move it to the last one.
+        // Typically, there is only one WebGPU EP profiler. When both session-level and run-level
+        // profiling are enabled, there are two profilers.
+        for (size_t p = 0; p < profilers.size() - 1; ++p) {
+          profilers[p]->Events().emplace_back(event);
+        }
+        profilers.back()->Events().emplace_back(std::move(event));
       }
 
       query_read_buffer.Unmap();
@@ -674,12 +684,21 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
 }
 
 void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, profiling::Events& cached_events) {
+  // Note:
+  // With run-level profiling enabled for the WebGPU EP, EndProfiling may be called
+  // while another thread is executing an inference (e.g., t1 finishes and
+  // ends profiling while t2 is running).
+  //
+  // This concurrent scenario is expected and does not affect the correctness of
+  // profiling data, but it means we can no longer enforce the assumption that no
+  // active inference is ongoing at this point.
+
   // This function is called when no active inference is ongoing.
-  ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
+  // ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
   if (query_type_ != TimestampQueryType::None) {
     // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
-    ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
+    // ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
 
     events.insert(events.end(),
                   std::make_move_iterator(cached_events.begin()),

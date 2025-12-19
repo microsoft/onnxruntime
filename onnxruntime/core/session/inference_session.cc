@@ -9,7 +9,9 @@
 #include <list>
 #include <string>
 #include <thread>
+#include <atomic>
 #include <queue>
+#include <iomanip>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
@@ -118,6 +120,8 @@ template <typename T>
 inline std::basic_string<T> GetCurrentTimeString() {
   auto now = std::chrono::system_clock::now();
   auto in_time_t = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
   std::tm local_tm;  // NOLINT
 
 #ifdef _WIN32
@@ -128,7 +132,10 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
   T time_str[32];
   OrtStrftime<T>(time_str, sizeof(time_str), GetDateFormatString<T>(), &local_tm);
-  return std::basic_string<T>(time_str);
+
+  std::basic_stringstream<T> ss;
+  ss << time_str << T('_') << std::setfill(T('0')) << std::setw(3) << ms.count();
+  return ss.str();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -868,6 +875,8 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
   p_exec_provider->SetLogger(session_logger_);
+  // For session-level profiling, we pass a default RunOptions (or nullptr logic if updated further, currently passing default)
+  // Since session-level profiler init shouldn't attach to a run-specific pointer, implementations should handle empty options gracefully.
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
   return execution_providers_.Add(provider_type, p_exec_provider);
 }
@@ -2925,9 +2934,29 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  std::optional<profiling::Profiler> run_profiler;
+  if (run_options.enable_profiling) {
+    run_profiler.emplace();
+    run_profiler->Initialize(session_logger_);
+    std::basic_ostringstream<ORTCHAR_T> oss;
+    oss << ToPathString(run_options.profile_file_prefix) << "_" << GetCurrentTimeString<ORTCHAR_T>() << ".json";
+    run_profiler->StartProfiling(oss.str());
+
+    for (auto& ep : execution_providers_) {
+      auto p = ep->GetRunProfiler();
+      if (p) {
+        run_profiler->AddEpProfilers(std::move(p));
+      }
+    }
+  }
+
   TimePoint tp = std::chrono::high_resolution_clock::now();
+
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Start();
+    session_profiler_.Start(tp);
+  }
+  if (run_options.enable_profiling) {
+    run_profiler->Start(tp);
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -3059,7 +3088,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
                                      device_stream_collection_holder,
 #endif
-                                     run_logger);
+                                     run_logger,
+                                     run_options.enable_profiling ? &*run_profiler : nullptr);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3135,8 +3165,14 @@ Status InferenceSession::Run(const RunOptions& run_options,
   env.GetTelemetryProvider().LogEvaluationStop(session_id_);
 
   // send out profiling events (optional)
-  if (session_profiler_.IsEnabled()) {
-    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+  if (session_profiler_.IsEnabled() || run_options.enable_profiling) {
+    auto now = std::chrono::high_resolution_clock::now();
+    if (session_profiler_.IsEnabled()) {
+      session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp, now);
+    }
+    if (run_options.enable_profiling) {
+      run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp, now);
+    }
   }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
@@ -3161,7 +3197,14 @@ Status InferenceSession::Run(const RunOptions& run_options,
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
-    ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+    // Disable run-level profiling for internal runs used for memory allocation or graph capture
+    RunOptions recursive_run_options{run_options};
+    recursive_run_options.enable_profiling = false;
+    ORT_RETURN_IF_ERROR(Run(recursive_run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+  }
+
+  if (run_options.enable_profiling) {
+    run_profiler->EndProfiling();
   }
 
   // Log runtime error telemetry if the return value is not OK

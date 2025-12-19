@@ -24,6 +24,7 @@ namespace webgpu {
 class WebGpuContext;
 class ComputeContextBase;
 class ProgramBase;
+class WebGpuProfiler;
 
 // Definition for CapturedCommandInfo in the webgpu namespace
 struct CapturedCommandInfo {
@@ -196,7 +197,7 @@ class WebGpuContext final {
   }
 
   void StartProfiling();
-  void CollectProfilingData(profiling::Events& events);
+  void CollectProfilingData(const std::vector<WebGpuProfiler*>& profilers);
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
   //
@@ -339,6 +340,10 @@ class WebGpuContext final {
 
   // External vector to store captured commands, owned by EP
   std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 };
 
 }  // namespace webgpu
