@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_NV)
 #include "cuda_runtime_api.h"
 #endif
 
@@ -13,7 +13,7 @@ int GetCudaArchitecture() {
   // Usually, we test on a single GPU or multiple GPUs of same architecture, so it's fine to cache the result.
   static int cuda_arch = -1;
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_NV)
   if (cuda_arch == -1) {
     int current_device_id = 0;
     cudaGetDevice(&current_device_id);
