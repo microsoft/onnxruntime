@@ -595,17 +595,22 @@ static Status PadImpl(OpKernelContext* ctx,
         output += align_skip;
         {
           T* axis_start = output;
-          output = input.CopyInnermostAxisSolitaryInnerStep(output);
+          // Compute the actual number of data elements to copy on the innermost axis (after cropping).
+          const size_t inner_extent = onnxruntime::narrow<size_t>(input_extents[inner_axis]);
+
+          // Copy innermost block. IMPORTANT: do not rely on the returned 'output' to be end-of-the extent.
+          ORT_IGNORE_RETURN_VALUE(input.CopyInnermostAxisSolitaryInnerStep(output));
 
           const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
           const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
           if (pre_pad > 0) {
+            /// Pre - pad(innermost) retro - fill remains valid(write before row_start).
             PadAxisConstant(sink, axis_start - static_cast<size_t>(pre_pad), value, pre_pad);
           }
           if (post_pad > 0) {
-            PadAxisConstant(sink, output, value, post_pad);
+            PadAxisConstant(sink, axis_start + inner_extent, value, post_pad);
           }
-          output += post_pad;
+          output = axis_start + inner_extent + static_cast<size_t>(post_pad);
           align_skip = pre_pad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
