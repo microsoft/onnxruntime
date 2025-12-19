@@ -69,6 +69,20 @@ endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
+message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+
+# Query Py_GIL_DISABLED (PEP 703)
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -c
+          "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED') or '0')"
+  RESULT_VARIABLE _py_result
+  OUTPUT_VARIABLE _py_gil_disabled
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if (_py_result EQUAL 0 AND _py_gil_disabled STREQUAL "1")
+  message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
+endif()
+
 if(MSVC)
   # The following source file is only needed for the EPs that use delayloading. Namely, DML and WebGPU.
   target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
