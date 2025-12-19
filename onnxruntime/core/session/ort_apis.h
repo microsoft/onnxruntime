@@ -801,7 +801,4 @@ ORT_API_STATUS_IMPL(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session
                     _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                     _In_ size_t num_outputs);
 
-ORT_API_STATUS_IMPL(RunOptions_SetSyncStream, _Inout_ OrtRunOptions* run_options,
-                    _In_opt_ OrtSyncStream* stream);
-
 }  // namespace OrtApis

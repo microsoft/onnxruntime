@@ -994,11 +994,6 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
   return *this;
 }
 
-inline RunOptions& RunOptions::SetSyncStream(OrtSyncStream* stream) {
-  ThrowOnError(GetApi().RunOptions_SetSyncStream(p_, stream));
-  return *this;
-}
-
 inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
   ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
 }

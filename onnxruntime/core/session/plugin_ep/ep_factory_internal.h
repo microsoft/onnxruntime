@@ -91,9 +91,9 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->SetEnvironmentOptions(options);
   }
 
-  OrtStatus* CreateExternalResourceImporterForDevice(_In_ const OrtMemoryDevice* device,
+  OrtStatus* CreateExternalResourceImporterForDevice(_In_ const OrtEpDevice* ep_device,
                                                      _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
-    return impl_->CreateExternalResourceImporterForDevice(device, importer);
+    return impl_->CreateExternalResourceImporterForDevice(ep_device, importer);
   }
 
   // Function ORT calls to release an EP instance.

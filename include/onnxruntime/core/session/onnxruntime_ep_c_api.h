@@ -25,8 +25,66 @@ ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 
 ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
-ORT_RUNTIME_CLASS(ExternalMemoryHandleImpl);
-ORT_RUNTIME_CLASS(ExternalSemaphoreHandleImpl);
+
+/** \brief Base struct for imported external memory handles.
+ *
+ * EPs derive from this struct to add EP-specific fields (e.g., CUdeviceptr for CUDA).
+ * EP is responsible for creating and releasing instances of the derived type.
+ *
+ * Example derived type for CUDA EP:
+ * \code
+ * struct MyCudaExternalMemoryHandle : OrtExternalMemoryHandle {
+ *   CUexternalMemory ext_memory;
+ *   CUdeviceptr mapped_ptr;
+ *   bool is_dedicated;
+ * };
+ * \endcode
+ *
+ * \since Version 1.24.
+ */
+#define ORT_EXTERNAL_MEMORY_HANDLE_VERSION 1
+struct OrtExternalMemoryHandle {
+  uint32_t version;                         ///< Must be ORT_EXTERNAL_MEMORY_HANDLE_VERSION
+  const OrtEpDevice* ep_device;             ///< EP device that created this handle
+  OrtExternalMemoryHandleType handle_type;  ///< Original handle type for tracking
+  size_t size_bytes;                        ///< Size of the imported memory
+  size_t offset_bytes;                      ///< Offset into the imported memory
+
+  /** \brief Release callback for this handle. EP sets this to its release function.
+   *
+   * ORT calls this when ReleaseExternalMemoryHandle is invoked. The EP's callback
+   * should cast the handle to its derived type and delete it.
+   */
+  void(ORT_API_CALL* Release)(_In_ OrtExternalMemoryHandle* handle);
+};
+
+/** \brief Base struct for imported external semaphore handles.
+ *
+ * EPs derive from this struct to add EP-specific fields (e.g., CUexternalSemaphore for CUDA).
+ * EP is responsible for creating and releasing instances of the derived type.
+ *
+ * Example derived type for CUDA EP:
+ * \code
+ * struct MyCudaExternalSemaphoreHandle : OrtExternalSemaphoreHandle {
+ *   CUexternalSemaphore ext_semaphore;
+ * };
+ * \endcode
+ *
+ * \since Version 1.24.
+ */
+#define ORT_EXTERNAL_SEMAPHORE_HANDLE_VERSION 1
+struct OrtExternalSemaphoreHandle {
+  uint32_t version;               ///< Must be ORT_EXTERNAL_SEMAPHORE_HANDLE_VERSION
+  const OrtEpDevice* ep_device;   ///< EP device that created this handle
+  OrtExternalSemaphoreType type;  ///< Original semaphore type
+
+  /** \brief Release callback for this handle. EP sets this to its release function.
+   *
+   * ORT calls this when ReleaseExternalSemaphoreHandle is invoked. The EP's callback
+   * should cast the handle to its derived type and delete it.
+   */
+  void(ORT_API_CALL* Release)(_In_ OrtExternalSemaphoreHandle* handle);
+};
 
 // Opaque types for kernel-based EPs
 ORT_RUNTIME_CLASS(KernelRegistry);
@@ -221,9 +279,12 @@ struct OrtExternalResourceImporterImpl {
 
   /** \brief Import external memory.
    *
+   * The EP creates a derived type of OrtExternalMemoryHandle and returns a pointer to the base.
+   * EP is responsible for the lifetime of the handle (release via ReleaseMemory).
+   *
    * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
    * \param[in] desc Descriptor containing the external memory handle and properties.
-   * \param[out] out_handle Output parameter set to the created OrtExternalMemoryHandleImpl.
+   * \param[out] out_handle Output parameter set to the created OrtExternalMemoryHandle (EP's derived type).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -232,25 +293,27 @@ struct OrtExternalResourceImporterImpl {
   ORT_API2_STATUS(ImportMemory,
                   _In_ OrtExternalResourceImporterImpl* this_ptr,
                   _In_ const OrtExternalMemoryDescriptor* desc,
-                  _Outptr_ OrtExternalMemoryHandleImpl** out_handle);
+                  _Outptr_ OrtExternalMemoryHandle** out_handle);
 
   /** \brief Release an imported external memory handle.
    *
+   * The EP deletes its derived type instance.
+   *
    * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
-   * \param[in] handle The OrtExternalMemoryHandleImpl to release.
+   * \param[in] handle The OrtExternalMemoryHandle to release (EP casts to its derived type).
    *
    * \since Version 1.24.
    */
   ORT_API_T(void, ReleaseMemory,
             _In_ OrtExternalResourceImporterImpl* this_ptr,
-            _In_ OrtExternalMemoryHandleImpl* handle);
+            _In_ OrtExternalMemoryHandle* handle);
 
   /** \brief Create a tensor backed by imported external memory.
    *
    * The created tensor is a view over the imported memory and does not copy data.
    *
    * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
-   * \param[in] mem_handle The imported external memory handle.
+   * \param[in] mem_handle The imported external memory handle (EP casts to its derived type).
    * \param[in] tensor_desc Descriptor specifying tensor element type, shape, and optional offset.
    * \param[out] out_tensor Output parameter set to the created OrtValue containing the tensor.
    *
@@ -260,7 +323,7 @@ struct OrtExternalResourceImporterImpl {
    */
   ORT_API2_STATUS(CreateTensorFromMemory,
                   _In_ OrtExternalResourceImporterImpl* this_ptr,
-                  _In_ const OrtExternalMemoryHandleImpl* mem_handle,
+                  _In_ const OrtExternalMemoryHandle* mem_handle,
                   _In_ const OrtExternalTensorDescriptor* tensor_desc,
                   _Outptr_ OrtValue** out_tensor);
 
@@ -280,9 +343,12 @@ struct OrtExternalResourceImporterImpl {
 
   /** \brief Import an external semaphore.
    *
+   * The EP creates a derived type of OrtExternalSemaphoreHandle and returns a pointer to the base.
+   * EP is responsible for the lifetime of the handle (release via ReleaseSemaphore).
+   *
    * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
    * \param[in] desc Descriptor containing the external semaphore handle and type.
-   * \param[out] out_handle Output parameter set to the created OrtExternalSemaphoreHandleImpl.
+   * \param[out] out_handle Output parameter set to the created OrtExternalSemaphoreHandle (EP's derived type).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -291,18 +357,20 @@ struct OrtExternalResourceImporterImpl {
   ORT_API2_STATUS(ImportSemaphore,
                   _In_ OrtExternalResourceImporterImpl* this_ptr,
                   _In_ const OrtExternalSemaphoreDescriptor* desc,
-                  _Outptr_ OrtExternalSemaphoreHandleImpl** out_handle);
+                  _Outptr_ OrtExternalSemaphoreHandle** out_handle);
 
   /** \brief Release an imported external semaphore handle.
    *
+   * The EP deletes its derived type instance.
+   *
    * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
-   * \param[in] handle The OrtExternalSemaphoreHandleImpl to release.
+   * \param[in] handle The OrtExternalSemaphoreHandle to release (EP casts to its derived type).
    *
    * \since Version 1.24.
    */
   ORT_API_T(void, ReleaseSemaphore,
             _In_ OrtExternalResourceImporterImpl* this_ptr,
-            _In_ OrtExternalSemaphoreHandleImpl* handle);
+            _In_ OrtExternalSemaphoreHandle* handle);
 
   /** \brief Wait on an external semaphore on the EP's stream.
    *
@@ -310,7 +378,7 @@ struct OrtExternalResourceImporterImpl {
    * reaches the specified value.
    *
    * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
-   * \param[in] handle The imported external semaphore.
+   * \param[in] handle The imported external semaphore (EP casts to its derived type).
    * \param[in] stream The OrtSyncStream to wait on.
    * \param[in] value The fence/semaphore value to wait for.
    *
@@ -320,7 +388,7 @@ struct OrtExternalResourceImporterImpl {
    */
   ORT_API2_STATUS(WaitSemaphore,
                   _In_ OrtExternalResourceImporterImpl* this_ptr,
-                  _In_ OrtExternalSemaphoreHandleImpl* handle,
+                  _In_ OrtExternalSemaphoreHandle* handle,
                   _In_ OrtSyncStream* stream,
                   _In_ uint64_t value);
 
@@ -330,7 +398,7 @@ struct OrtExternalResourceImporterImpl {
    * to the specified value when reached.
    *
    * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
-   * \param[in] handle The imported external semaphore.
+   * \param[in] handle The imported external semaphore (EP casts to its derived type).
    * \param[in] stream The OrtSyncStream to signal from.
    * \param[in] value The fence/semaphore value to signal.
    *
@@ -340,7 +408,7 @@ struct OrtExternalResourceImporterImpl {
    */
   ORT_API2_STATUS(SignalSemaphore,
                   _In_ OrtExternalResourceImporterImpl* this_ptr,
-                  _In_ OrtExternalSemaphoreHandleImpl* handle,
+                  _In_ OrtExternalSemaphoreHandle* handle,
                   _In_ OrtSyncStream* stream,
                   _In_ uint64_t value);
 
@@ -1592,7 +1660,7 @@ struct OrtEpFactory {
    * implement this to allow applications to share GPU resources without copies.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] memory_device The OrtMemoryDevice to create the external resource importer for.
+   * \param[in] ep_device The OrtEpDevice to create the external resource importer for.
    * \param[out] out_importer The created OrtExternalResourceImporterImpl instance.
    *                          Set to nullptr if external resource import is not supported.
    *
@@ -1605,7 +1673,7 @@ struct OrtEpFactory {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(CreateExternalResourceImporterForDevice, _In_ OrtEpFactory* this_ptr,
-                  _In_ const OrtMemoryDevice* memory_device,
+                  _In_ const OrtEpDevice* ep_device,
                   _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** out_importer);
 };
 

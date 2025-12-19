@@ -9,8 +9,8 @@
 #include <thread>
 #include <chrono>
 
-ExampleExternalResourceImporter::ExampleExternalResourceImporter(int device_id, const ApiPtrs& apis)
-    : OrtExternalResourceImporterImpl{}, device_id_{device_id}, apis_{apis} {
+ExampleExternalResourceImporter::ExampleExternalResourceImporter(const ApiPtrs& apis)
+    : OrtExternalResourceImporterImpl{}, apis_{apis} {
   ort_version_supported = ORT_API_VERSION;
 
   // Memory operations
@@ -43,7 +43,7 @@ bool ORT_API_CALL ExampleExternalResourceImporter::CanImportMemoryImpl(
 OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::ImportMemoryImpl(
     _In_ OrtExternalResourceImporterImpl* this_ptr,
     _In_ const OrtExternalMemoryDescriptor* desc,
-    _Outptr_ OrtExternalMemoryHandleImpl** out_handle) noexcept {
+    _Outptr_ OrtExternalMemoryHandle** out_handle) noexcept {
   auto& impl = *static_cast<ExampleExternalResourceImporter*>(this_ptr);
 
   if (desc == nullptr || out_handle == nullptr) {
@@ -86,26 +86,26 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::ImportMemoryImpl(
   handle->handle_type = desc->handle_type;
   handle->access_mode = desc->access_mode;
 
-  *out_handle = reinterpret_cast<OrtExternalMemoryHandleImpl*>(handle);
+  *out_handle = handle;
   return nullptr;
 }
 
 /*static*/
 void ORT_API_CALL ExampleExternalResourceImporter::ReleaseMemoryImpl(
     _In_ OrtExternalResourceImporterImpl* /*this_ptr*/,
-    _In_ OrtExternalMemoryHandleImpl* handle) noexcept {
+    _In_ OrtExternalMemoryHandle* handle) noexcept {
   if (handle == nullptr) {
     return;
   }
 
-  auto* mem_handle = reinterpret_cast<ExampleExternalMemoryHandle*>(handle);
+  auto* mem_handle = static_cast<ExampleExternalMemoryHandle*>(handle);
   delete mem_handle;  // destructor frees simulated_ptr
 }
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::CreateTensorFromMemoryImpl(
     _In_ OrtExternalResourceImporterImpl* this_ptr,
-    _In_ const OrtExternalMemoryHandleImpl* mem_handle,
+    _In_ const OrtExternalMemoryHandle* mem_handle,
     _In_ const OrtExternalTensorDescriptor* tensor_desc,
     _Outptr_ OrtValue** out_tensor) noexcept {
   auto& impl = *static_cast<ExampleExternalResourceImporter*>(this_ptr);
@@ -116,7 +116,7 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::CreateTensorFromMemoryI
 
   *out_tensor = nullptr;
 
-  auto* handle = reinterpret_cast<const ExampleExternalMemoryHandle*>(mem_handle);
+  auto* handle = static_cast<const ExampleExternalMemoryHandle*>(mem_handle);
 
   // Calculate the data pointer with tensor offset
   void* data_ptr = static_cast<char*>(handle->simulated_ptr) + tensor_desc->offset_bytes;
@@ -164,7 +164,7 @@ bool ORT_API_CALL ExampleExternalResourceImporter::CanImportSemaphoreImpl(
 OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::ImportSemaphoreImpl(
     _In_ OrtExternalResourceImporterImpl* this_ptr,
     _In_ const OrtExternalSemaphoreDescriptor* desc,
-    _Outptr_ OrtExternalSemaphoreHandleImpl** out_handle) noexcept {
+    _Outptr_ OrtExternalSemaphoreHandle** out_handle) noexcept {
   auto& impl = *static_cast<ExampleExternalResourceImporter*>(this_ptr);
 
   if (desc == nullptr || out_handle == nullptr) {
@@ -192,26 +192,26 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::ImportSemaphoreImpl(
   handle->type = desc->type;
   handle->value.store(0);
 
-  *out_handle = reinterpret_cast<OrtExternalSemaphoreHandleImpl*>(handle);
+  *out_handle = handle;
   return nullptr;
 }
 
 /*static*/
 void ORT_API_CALL ExampleExternalResourceImporter::ReleaseSemaphoreImpl(
     _In_ OrtExternalResourceImporterImpl* /*this_ptr*/,
-    _In_ OrtExternalSemaphoreHandleImpl* handle) noexcept {
+    _In_ OrtExternalSemaphoreHandle* handle) noexcept {
   if (handle == nullptr) {
     return;
   }
 
-  auto* sem_handle = reinterpret_cast<ExampleExternalSemaphoreHandle*>(handle);
+  auto* sem_handle = static_cast<ExampleExternalSemaphoreHandle*>(handle);
   delete sem_handle;
 }
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::WaitSemaphoreImpl(
     _In_ OrtExternalResourceImporterImpl* this_ptr,
-    _In_ OrtExternalSemaphoreHandleImpl* handle,
+    _In_ OrtExternalSemaphoreHandle* handle,
     _In_ OrtSyncStream* stream,
     _In_ uint64_t value) noexcept {
   auto& impl = *static_cast<ExampleExternalResourceImporter*>(this_ptr);
@@ -223,7 +223,7 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::WaitSemaphoreImpl(
   // stream can be nullptr for synchronous wait
   (void)stream;
 
-  auto* sem_handle = reinterpret_cast<ExampleExternalSemaphoreHandle*>(handle);
+  auto* sem_handle = static_cast<ExampleExternalSemaphoreHandle*>(handle);
 
   // In a real implementation, you would:
   // 1. Queue a wait operation on the GPU stream (e.g., cuWaitExternalSemaphoresAsync)
@@ -248,7 +248,7 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::WaitSemaphoreImpl(
 /*static*/
 OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::SignalSemaphoreImpl(
     _In_ OrtExternalResourceImporterImpl* this_ptr,
-    _In_ OrtExternalSemaphoreHandleImpl* handle,
+    _In_ OrtExternalSemaphoreHandle* handle,
     _In_ OrtSyncStream* stream,
     _In_ uint64_t value) noexcept {
   auto& impl = *static_cast<ExampleExternalResourceImporter*>(this_ptr);
@@ -260,7 +260,7 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::SignalSemaphoreImpl(
   // stream can be nullptr for synchronous signal
   (void)stream;
 
-  auto* sem_handle = reinterpret_cast<ExampleExternalSemaphoreHandle*>(handle);
+  auto* sem_handle = static_cast<ExampleExternalSemaphoreHandle*>(handle);
 
   // In a real implementation, you would:
   // 1. Queue a signal operation on the GPU stream (e.g., cuSignalExternalSemaphoresAsync)
