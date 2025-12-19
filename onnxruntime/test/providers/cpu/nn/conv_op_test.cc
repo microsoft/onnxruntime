@@ -536,7 +536,6 @@ TEST(ConvTest, Conv2D_AutoPad2) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
-
 TEST(ConvTest, Conv2D_AutoPad3) {
   ConvOpAndTestAttributes attrs = {
       "SAME_UPPER",           // auto_pad
