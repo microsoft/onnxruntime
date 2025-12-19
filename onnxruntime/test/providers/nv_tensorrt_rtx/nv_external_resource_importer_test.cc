@@ -755,7 +755,7 @@ TEST_F(ExternalResourceImporterTest, FullInferenceWithExternalMemory) {
   status = ort_api_->ExternalResourceImporter_WaitSemaphore(importer, sem_handle, ort_stream, upload_complete_value);
   ASSERT_EQ(status, nullptr) << "WaitSemaphore should succeed";
 
-  // Setup ORT session with user_compute_stream (like the patch PR test)
+  // Setup ORT session with user_compute_stream
   Ort::SessionOptions session_options;
   session_options.SetExecutionMode(ORT_SEQUENTIAL);
   session_options.DisableMemPattern();
@@ -787,10 +787,9 @@ TEST_F(ExternalResourceImporterTest, FullInferenceWithExternalMemory) {
   io_binding.BindOutput(output_name.get(), Ort::Value(output_tensor));
   io_binding.SynchronizeInputs();
 
-  // Run inference with synchronization disabled (we handle it manually)
-  Ort::RunOptions run_options;
-  run_options.AddConfigEntry("disable_synchronize_execution_providers", "1");
-  session.Run(run_options, io_binding);
+  // Run inference. ORT synchronizes the stream before returning, so GPU work is complete
+  // when we signal the semaphore below.
+  session.Run(Ort::RunOptions{}, io_binding);
 
   // Signal from CUDA that inference is complete
   uint64_t inference_complete_value = 2;
