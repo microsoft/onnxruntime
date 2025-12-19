@@ -203,14 +203,16 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
       ORT_ENFORCE(node, "Mismatch between Graph and IndexedSubGraph. Node not found: ", node_idx);
       const ONNX_NAMESPACE::TensorProto* tensor = nullptr;
       for (const auto* node_input : node->InputDefs()) {
-        if (graph.GetInitializedTensor(node_input->Name(), tensor)) {
+        tensor = graph.GetConstantInitializer(node_input->Name(), true);
+        if (tensor) {
           filtered_initializers_.insert({node_input->Name(), tensor});
         }
       }
 
       // The implicit inputs for subgraphs (if any)
       for (const auto* node_input : node->ImplicitInputDefs()) {
-        if (graph.GetInitializedTensor(node_input->Name(), tensor)) {
+        tensor = graph.GetConstantInitializer(node_input->Name(), true);
+        if (tensor) {
           filtered_initializers_.insert({node_input->Name(), tensor});
         }
       }
