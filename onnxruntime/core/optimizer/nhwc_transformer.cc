@@ -2,7 +2,10 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <cstdint>
 #include <deque>
+#include <vector>
+#include "core/graph/constants.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -20,6 +23,72 @@ using namespace nhwc_map_internal;
 namespace onnxruntime {
 
 using namespace layout_transformation;
+
+#ifdef USE_KLEIDIAI
+bool KleidiFp32NhwcFilter(const onnx_transpose_optimization::api::GraphRef& graph,
+                          onnx_transpose_optimization::api::NodeRef& node) {
+  auto& base_node = NodeFromApiNode(node);
+
+  ORT_UNUSED_PARAMETER(graph);
+  if (base_node.InputDefs().size() < 2) {
+    return false;
+  }
+
+  const auto* input_shape = base_node.InputDefs()[0]->Shape();
+  if (input_shape == nullptr || input_shape->dim_size() != 4) {
+    return false;
+  }
+
+  const auto& batch_dim = input_shape->dim(0);
+  if (!utils::HasDimValue(batch_dim) || batch_dim.dim_value() != 1) {
+    return false;
+  }
+
+  const auto pads_attr = node.GetAttributeInts("pads");
+  if (pads_attr.has_value()) {
+    const auto& pads = pads_attr.value();
+    if (pads.size() != 4 || pads[0] != pads[2] || pads[1] != pads[3]) {
+      return false;
+    }
+  }
+
+  const auto inputs = node.Inputs();
+  if (inputs.size() > 3 && !inputs[3].empty()) {
+    return false;
+  }
+
+  const auto* weight_shape = base_node.InputDefs()[1]->Shape();
+  if (weight_shape == nullptr || weight_shape->dim_size() != 4) {
+    return false;
+  }
+
+  const auto& filter_dim = weight_shape->dim(0);
+  const auto& kernel_h_dim = weight_shape->dim(2);
+  const auto& kernel_w_dim = weight_shape->dim(3);
+
+  if (!utils::HasDimValue(filter_dim) || filter_dim.dim_value() <= 1 ||
+      !utils::HasDimValue(kernel_h_dim) || kernel_h_dim.dim_value() < 3 ||
+      !utils::HasDimValue(kernel_w_dim) || kernel_w_dim.dim_value() < 3) {
+    return false;
+  }
+
+  const auto dilations_opt = node.GetAttributeInts("dilations");
+  if (dilations_opt.has_value()) {
+    const auto& dilations = dilations_opt.value();
+    if ((dilations.size() >= 1 && dilations[0] != 1) ||
+        (dilations.size() >= 2 && dilations[1] != 1)) {
+      return false;
+    }
+  }
+
+  const auto group_opt = node.GetAttributeInt("group");
+  if (group_opt.has_value() && group_opt.value() != 1) {
+    return false;
+  }
+
+  return true;
+}
+#endif
 
 static inline const OpTransformInfo*
 NhwcConvLookup(
@@ -41,6 +110,13 @@ NhwcConvLookup(
   if (iter == conv_table.end()) {
     return nullptr;
   }
+
+  if (iter->second.filter_ != nullptr) {
+    if (!iter->second.filter_(graph, node)) {
+      return nullptr;
+    }
+  }
+
   return &(iter->second);
 }
 
@@ -108,14 +184,61 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
         nhwc_conv_fp16.version_, nhwc_conv_fp16.type_constraints_, logger, &kernel_create_info);
     if (status.IsOK() && kernel_create_info != nullptr) {
       kernel_create_info = nullptr;
+      const auto filter = [](const api::GraphRef&, api::NodeRef& node) {
+        const auto dilations_opt = node.GetAttributeInts("dilations");
+        if (dilations_opt.has_value()) {
+          const auto& dilations = dilations_opt.value();
+          if ((dilations.size() >= 1 && dilations[0] != 1) ||
+              (dilations.size() >= 2 && dilations[1] != 1)) {
+            return false;
+          }
+        }
+
+        const auto group_opt = node.GetAttributeInt("group");
+        if (group_opt.has_value() && group_opt.value() != 1) {
+          return false;
+        }
+
+        return true;
+      };
+
       conv_table_.emplace(
           OpIdInfo("Conv", kOnnxDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false});
+          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, filter});
       conv_table_.emplace(
           OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT16),
-          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false});
+          OpTransformInfo{nhwc_conv_fp16.op_type_, nhwc_conv_fp16.domain_, nhwc_conv_fp16.version_, false, filter});
     }
   }
+
+#ifdef USE_KLEIDIAI
+  // Klediai specific block for NhwcFusedConvolutions
+  {
+    // F32 Conv -> F32 NHWC Conv
+    OpKernelRegistryId nhwc_conv_fp32{
+        "NhwcFusedConv", kMSDomain, 1, {{"T", {DataTypeImpl::GetTensorType<float>()}}}};
+
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, nhwc_conv_fp32.op_type_, nhwc_conv_fp32.domain_,
+        nhwc_conv_fp32.version_, nhwc_conv_fp32.type_constraints_, logger, &kernel_create_info);
+
+    if (status.IsOK() && kernel_create_info != nullptr) {
+      kernel_create_info = nullptr;
+
+      const auto filter = [](const api::GraphRef& graph, api::NodeRef& node) {
+        return KleidiFp32NhwcFilter(graph, node);
+      };
+
+      conv_table_.emplace(
+          OpIdInfo("Conv", kOnnxDomain, api::DataType::FLOAT),
+          OpTransformInfo{nhwc_conv_fp32.op_type_, nhwc_conv_fp32.domain_, nhwc_conv_fp32.version_, false, filter});
+      conv_table_.emplace(
+          OpIdInfo("FusedConv", kMSDomain, api::DataType::FLOAT),
+          OpTransformInfo{nhwc_conv_fp32.op_type_, nhwc_conv_fp32.domain_, nhwc_conv_fp32.version_, false, filter});
+    }
+  }
+#endif
 
   {
     // fp16 MaxPool -> fp16 nhwc MaxPool
@@ -214,10 +337,39 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (transform->has_channels_last_attrib_) {
       node->SetAttributeInt("channels_last", 1);
     }
+
+    if (node->OpType() == "Conv" || node->OpType() == "FusedConv") {
+      const auto group_opt = node->GetAttributeInt("group");
+      if (group_opt.has_value() && group_opt.value() != 1) {
+        continue;
+      }
+
+      const auto dilations_opt = node->GetAttributeInts("dilations");
+      if (dilations_opt.has_value()) {
+        const auto& dilations = dilations_opt.value();
+        if ((dilations.size() >= 1 && dilations[0] != 1) ||
+            (dilations.size() >= 2 && dilations[1] != 1)) {
+          continue;
+        }
+      }
+    }
+
     size_t rank = shape->dim_size();
     std::vector<int64_t> input_perm = ChannelFirstToLastPerm(rank);
     std::vector<int64_t> output_perm = ChannelLastToFirstPerm(rank);
-    WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
+    const auto inputs = node->Inputs();
+    std::vector<const std::vector<int64_t>*> input_perms(inputs.size(), nullptr);
+    if (!inputs.empty()) {
+      input_perms[0] = &input_perm;
+    }
+    // Optional Sum (Z) input for FusedConv variants resides at index 3. When present,
+    // it must be converted to NHWC alongside the activation tensor.
+    const bool has_fused_sum_input = (node->Domain() == kMSDomain && node->OpType() == "FusedConv");
+    if (has_fused_sum_input && inputs.size() > 3 && !inputs[3].empty()) {
+      input_perms[3] = &input_perm;
+    }
+
+    WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
 
     // Replace the operator if needed
     if (node->Domain() != transform->domain_ ||

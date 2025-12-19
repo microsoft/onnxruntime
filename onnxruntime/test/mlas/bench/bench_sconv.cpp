@@ -110,6 +110,7 @@ void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
                   static_cast<size_t>(output_channels_per_group),
                   &activation,
                   &WorkingBufferSize,
+                  false,
                   0.0f,
                   nullptr);
 

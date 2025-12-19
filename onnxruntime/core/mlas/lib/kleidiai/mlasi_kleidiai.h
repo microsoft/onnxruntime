@@ -185,6 +185,7 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t FilterCount,
                 const MLAS_ACTIVATION* Activation,
                 size_t* WorkingBufferSize,
+                bool ChannelsLast,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
 

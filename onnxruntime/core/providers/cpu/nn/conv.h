@@ -25,7 +25,7 @@ class Conv : public OpKernel {
 template <>
 class Conv<float> : public OpKernel {
  public:
-  Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
+  Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info), channels_last_(info.GetKernelDef().OpName() == "NhwcFusedConv") {
     activation_.ActivationKind = MlasIdentityActivation;
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
@@ -38,6 +38,7 @@ class Conv<float> : public OpKernel {
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
   ConvAttributes conv_attrs_;
+  bool channels_last_{false};
 };
 
 }  // namespace onnxruntime
