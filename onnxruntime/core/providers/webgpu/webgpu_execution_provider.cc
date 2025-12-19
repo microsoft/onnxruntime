@@ -958,18 +958,12 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
 }
 
 std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
-  auto profiler = std::make_unique<WebGpuProfiler>(context_);
-  profiler_ = profiler.get();
-  return profiler;
+  return std::make_unique<WebGpuProfiler>(context_);
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     context_.PushErrorScope();
-  }
-
-  if (profiler_->Enabled()) {
-    context_.StartProfiling();
   }
 
   if (IsGraphCaptureEnabled()) {
@@ -1003,8 +997,8 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
   }
 
-  if (profiler_->Enabled()) {
-    context_.CollectProfilingData(profiler_->Events());
+  if (context_.IsProfilingEnabled()) {
+    context_.CollectProfilingData();
   }
 
   context_.OnRunEnd();

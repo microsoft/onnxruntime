@@ -91,7 +91,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   int context_id_;
   webgpu::WebGpuContext& context_;
-  webgpu::WebGpuProfiler* profiler_ = nullptr;
   DataLayout preferred_data_layout_;
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;

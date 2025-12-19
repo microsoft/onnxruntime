@@ -27,6 +27,7 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/program.h"
@@ -620,7 +621,7 @@ void WebGpuContext::StartProfiling() {
   }
 }
 
-void WebGpuContext::CollectProfilingData(profiling::Events& events) {
+void WebGpuContext::CollectProfilingData() {
   if (!pending_queries_.empty()) {
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
@@ -669,7 +670,10 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                      static_cast<int64_t>(std::round(start_time / 1000.0)),
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
-        events.emplace_back(std::move(event));
+
+        for (auto* profiler : profilers_) {
+          profiler->Events().emplace_back(event);
+        }
       }
 
       query_read_buffer.Unmap();
@@ -679,25 +683,40 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
     pending_queries_.clear();
   }
 
-  is_profiling_ = false;
+  if (profilers_.empty()) {
+    is_profiling_ = false;
+  }
 }
 
-void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, profiling::Events& cached_events) {
+void WebGpuContext::EndProfiling() {
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
   if (query_type_ != TimestampQueryType::None) {
     // No pending kernels or queries should be present at this point. They should have been collected in CollectProfilingData.
     ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
-
-    events.insert(events.end(),
-                  std::make_move_iterator(cached_events.begin()),
-                  std::make_move_iterator(cached_events.end()));
-
-    cached_events.clear();
   } else {
     LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
   }
+}
+
+void WebGpuContext::RegisterProfiler(WebGpuProfiler* profiler) {
+  profilers_.insert(profiler);
+  if (!profilers_.empty()) {
+    StartProfiling();
+  }
+}
+
+void WebGpuContext::UnregisterProfiler(WebGpuProfiler* profiler) {
+  profilers_.erase(profiler);
+  if (profilers_.empty()) {
+    is_profiling_ = false;
+    EndProfiling();
+  }
+}
+
+bool WebGpuContext::IsProfilingEnabled() const {
+  return !profilers_.empty();
 }
 
 void WebGpuContext::PushErrorScope() { device_.PushErrorScope(wgpu::ErrorFilter::Validation); }

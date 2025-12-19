@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <queue>
+#include <iomanip>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
@@ -2930,6 +2931,21 @@ Status InferenceSession::Run(const RunOptions& run_options,
     tp = session_profiler_.Start();
   }
 
+  profiling::Profiler run_profiler;
+  if (run_options.enable_profiling) {
+    run_profiler.Initialize(session_logger_);
+    std::basic_ostringstream<ORTCHAR_T> oss;
+    oss << session_options_.profile_file_prefix << "_" << GetCurrentTimeString<ORTCHAR_T>() << ".json";
+    run_profiler.StartProfiling(oss.str());
+
+    for (auto& ep : execution_providers_) {
+      auto p = ep->GetProfiler();
+      if (p) {
+        run_profiler.AddEpProfilers(std::move(p));
+      }
+    }
+  }
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
   ortrun_activity.SetRelatedActivity(session_activity);
@@ -3059,7 +3075,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
                                      device_stream_collection_holder,
 #endif
-                                     run_logger);
+                                     run_logger,
+                                     run_options.enable_profiling ? &run_profiler : nullptr);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3162,6 +3179,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+  }
+
+  if (run_options.enable_profiling) {
+    run_profiler.EndProfiling();
   }
 
   // Log runtime error telemetry if the return value is not OK
