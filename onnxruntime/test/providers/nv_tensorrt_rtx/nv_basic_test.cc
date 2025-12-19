@@ -32,6 +32,7 @@ static bool IsBlackwellOrAbove() {
 
   // Check if CUDA is available
   if (cuda_arch == -1) {
+    std::cout << "WARNING: CUDA is not available or failed to initialize" << std::endl;
     return false;
   }
 
