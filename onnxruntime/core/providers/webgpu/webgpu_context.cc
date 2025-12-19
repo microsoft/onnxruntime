@@ -945,7 +945,6 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     dawnProcSetProcs(dawn_procs);
 #endif
 #endif
-
   });
 
   std::lock_guard<std::mutex> lock(mutex_);
