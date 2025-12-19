@@ -170,6 +170,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          std::move(action));
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+  qdq_selector_action_registry.RegisterAction("1DQ_CPU",
+                                              std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain));
 #endif
 }
 
