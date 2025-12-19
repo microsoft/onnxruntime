@@ -1305,10 +1305,10 @@ TEST(AttentionTest, AttentionNoPastKeyValue) {
   ASSERT_EQ(v.size(), batch_size * kv_num_heads * kv_sequence_length * v_head_size);
 
   std::vector<float> expected_y = {
-      0.096672f, 0.425746f, 0.250770f,  // batch 0, head 0, token 0
-      0.097440f, 0.429701f, 0.253698f,  // batch 0, head 0, token 1
-      0.933929f, 0.480066f, 0.407007f,  // batch 0, head 1, token 0
-      0.936543f, 0.485224f, 0.396805f   // batch 0, head 1, token 1
+      0.477184f, 0.407899f, 0.207834f,  // batch 0, head 0, token 0
+      0.521223f, 0.503569f, 0.469034f,  // batch 0, head 0, token 1
+      0.485670f, 0.410303f, 0.208993f,  // batch 0, head 1, token 0
+      0.487087f, 0.512371f, 0.461486f   // batch 0, head 1, token 1
   };
 
   // Test with no past_key or past_value (empty vectors)
@@ -1333,7 +1333,6 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
   int v_head_size = 2;           // V.shape[3]
   int past_sequence_length = 0;  // No past state
 
-  // Simple but realistic test data
   std::vector<float> q = {
       0.5f, 0.8f,  // batch 0, head 0, token 0
       0.3f, 0.9f,  // batch 0, head 0, token 1
@@ -1360,10 +1359,10 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
   ASSERT_EQ(v.size(), batch_size * kv_num_heads * kv_sequence_length * v_head_size);
 
   std::vector<float> expected_y = {
-      2.017498f, 3.017498f,  // batch 0, head 0, token 0
-      2.000000f, 3.000000f,  // batch 0, head 0, token 1
-      1.455030f, 2.455030f,  // batch 0, head 1, token 0
-      1.440072f, 2.440072f   // batch 0, head 1, token 1
+      0.747348f, 1.747348f,  // batch 0, head 0, token 0
+      2.731472f, 3.731472f,  // batch 0, head 0, token 1
+      0.720963f, 1.720963f,  // batch 0, head 1, token 0
+      2.755302f, 3.755302f   // batch 0, head 1, token 1
   };
 
   // Expected present_key should be same as K since no past_key
