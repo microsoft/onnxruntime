@@ -173,16 +173,21 @@ class SessionScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
         ,
-        dump_context_{
-            session_state_.GetGraphExecutionCounter(), 0}
+        dump_context_{session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
     // 分别启动两个 Profiler 的计时
-    if (session_state_.Profiler().IsEnabled()) {
-      session_start_ = session_state_.Profiler().Start();
-    }
-    if (run_profiler_ && run_profiler_->IsEnabled()) {
-      run_profiler_start_ = run_profiler_->Start();
+    bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
+
+    if (session_profiling_enabled || run_profiling_enabled) {
+      auto now = std::chrono::high_resolution_clock::now();
+      if (session_profiling_enabled) {
+        session_start_ = session_state_.Profiler().Start(now);
+      }
+      if (run_profiling_enabled) {
+        run_profiler_start_ = run_profiler_->Start(now);
+      }
     }
 
     auto& logger = session_state_.Logger();
@@ -230,11 +235,17 @@ class SessionScope {
 #endif
 
     // 分别记录 Session 级别的结束事件
-    if (session_state_.Profiler().IsEnabled()) {
-      session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
-    }
-    if (run_profiler_ && run_profiler_->IsEnabled()) {
-      run_profiler_->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", run_profiler_start_);
+    bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
+
+    if (session_profiling_enabled || run_profiling_enabled) {
+      auto now = std::chrono::high_resolution_clock::now();
+      if (session_profiling_enabled) {
+        session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_, now);
+      }
+      if (run_profiling_enabled) {
+        run_profiler_->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", run_profiler_start_, now);
+      }
     }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -265,7 +276,7 @@ class SessionScope {
   const SessionState& session_state_;
   profiling::Profiler* run_profiler_;
   TimePoint session_start_;
-  TimePoint run_profiler_start_; // 新增：记录 Run Profiler 的开始时间
+  TimePoint run_profiler_start_;  // 新增：记录 Run Profiler 的开始时间
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
 #endif
@@ -360,12 +371,12 @@ class KernelScope {
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
 
-      // 分别记录开始时间
+      auto now = std::chrono::high_resolution_clock::now();
       if (session_profiling_enabled) {
-        kernel_begin_time_ = session_state_.Profiler().Start();
+        kernel_begin_time_ = session_state_.Profiler().Start(now);
       }
       if (run_profiling_enabled) {
-        run_kernel_begin_time_ = session_scope_.run_profiler_->Start();
+        run_kernel_begin_time_ = session_scope_.run_profiler_->Start(now);
       }
 
       CalculateTotalInputSizes(&kernel_context, &kernel_,
@@ -403,18 +414,21 @@ class KernelScope {
       };
 
       // 分别记录结束事件
+      auto now = std::chrono::high_resolution_clock::now();
       if (session_profiling_enabled) {
         session_state_.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                       node_name_ + "_kernel_time",
-                                       kernel_begin_time_,
-                                       event_args);
+                                                        node_name_ + "_kernel_time",
+                                                        kernel_begin_time_,
+                                                        now,
+                                                        event_args);
       }
 
       if (run_profiling_enabled) {
         session_scope_.run_profiler_->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                       node_name_ + "_kernel_time",
-                                       run_kernel_begin_time_,
-                                       event_args);
+                                                            node_name_ + "_kernel_time",
+                                                            run_kernel_begin_time_,
+                                                            now,
+                                                            event_args);
       }
     }
 
@@ -450,7 +464,7 @@ class KernelScope {
   std::string input_type_shape_;
 
   TimePoint kernel_begin_time_;
-  TimePoint run_kernel_begin_time_; // 新增：记录 Run Profiler 的 Kernel 开始时间
+  TimePoint run_kernel_begin_time_;  // 新增：记录 Run Profiler 的 Kernel 开始时间
 
 #ifdef CONCURRENCY_VISUALIZER
   diagnostic::span span_;
