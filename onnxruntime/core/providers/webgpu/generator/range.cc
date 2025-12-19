@@ -70,7 +70,7 @@ template class Range<float>;
 template class Range<int32_t>;
 template class Range<int64_t>;
 
-void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_graph_capture) {
+void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_int64) {
   // Helper lambda to create kernel
   auto create_range_kernel_info = [](auto type_tag) {
     using T = decltype(type_tag);
@@ -97,8 +97,8 @@ void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_graph_cap
   ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(float{})));
   ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(int32_t{})));
 
-  // Register int64_t only if graph capture is enabled
-  if (enable_graph_capture) {
+  // Register int64_t only if int64 support is enabled
+  if (enable_int64) {
     ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(int64_t{})));
   }
 }

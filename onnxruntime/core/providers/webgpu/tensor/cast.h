@@ -40,9 +40,9 @@ class Cast final : public WebGpuKernel {
   int32_t to_;
 };
 
-// Create Cast kernel info with appropriate type constraints based on graph capture support
+// Create Cast kernel info with appropriate type constraints based on int64 support
 template <int StartVersion, int EndVersion = StartVersion>
-KernelCreateInfo CreateCastKernelInfo(bool enable_graph_capture);
+KernelCreateInfo CreateCastKernelInfo(bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

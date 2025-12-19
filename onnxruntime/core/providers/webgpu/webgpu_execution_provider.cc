@@ -419,7 +419,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterND);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterND);
 
-std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = false) {
+std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = false, bool register_int64_ops = false) {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -766,16 +766,17 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
     }
   }
 
-  // Register Cast kernels with conditional int64 support based on graph capture
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<6, 8>(enable_graph_capture)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<9, 12>(enable_graph_capture)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<13, 18>(enable_graph_capture)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<19, 20>(enable_graph_capture)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<21, 22>(enable_graph_capture)));
-  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23>(enable_graph_capture)));
+  // Register Cast kernels with conditional int64 support based on graph capture or register_int64_ops
+  bool enable_int64 = enable_graph_capture || register_int64_ops;
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<6, 8>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<9, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<13, 18>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<19, 20>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<21, 22>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23>(enable_int64)));
 
-  // Register Range kernels with conditional int64 support based on graph capture
-  RegisterRangeKernels(*kernel_registry, enable_graph_capture);
+  // Register Range kernels with conditional int64 support based on graph capture or register_int64_ops
+  RegisterRangeKernels(*kernel_registry, enable_int64);
 
 #ifndef DISABLE_CONTRIB_OPS
   Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
@@ -797,7 +798,8 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       context_{context},
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
-      enable_graph_capture_{config.enable_graph_capture} {
+      enable_graph_capture_{config.enable_graph_capture},
+      register_int64_ops_{config.register_int64_ops} {
   // If graph capture is enabled, create a dedicated buffer manager for graph mode
   if (enable_graph_capture_) {
     // Create buffer manager for graph capture mode with appropriate cache modes
@@ -910,11 +912,18 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 }
 
 std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() const {
-  if (enable_graph_capture_) {
-    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(true);
+  // Cache all 4 combinations to preserve exact flag values for potential future use
+  if (enable_graph_capture_ && register_int64_ops_) {
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(true, true);
     return registry;
-  } else {
-    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(false);
+  } else if (enable_graph_capture_ && !register_int64_ops_) {
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(true, false);
+    return registry;
+  } else if (!enable_graph_capture_ && register_int64_ops_) {
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(false, true);
+    return registry;
+  } else {  // !enable_graph_capture_ && !register_int64_ops_
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(false, false);
     return registry;
   }
 }

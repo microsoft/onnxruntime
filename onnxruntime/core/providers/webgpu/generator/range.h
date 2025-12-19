@@ -32,8 +32,8 @@ class RangeProgram : public Program<RangeProgram> {
   int32_t data_type_{0};
 };
 
-// Register Range kernels with conditional int64 support based on graph capture
-void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_graph_capture);
+// Register Range kernels with conditional int64 support
+void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
