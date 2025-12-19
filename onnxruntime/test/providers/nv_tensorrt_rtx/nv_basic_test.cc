@@ -465,7 +465,7 @@ TEST(NvExecutionProviderTest, DataTransfer) {
 
 TEST(NvExecutionProviderTest, FP8CustomOpModel) {
   if (!IsBlackwellOrAbove()) {
-    GTEST_SKIP() << "[NvExecutionProviderTest.FP8CustomOpModel] Test requires SM 12.0+ GPU (Blackwell or newer, e.g., RTX 5090)";
+    GTEST_SKIP() << "Test requires SM 12.0+ GPU (Blackwell+)";
   }
 
   PathString model_name = ORT_TSTR("nv_execution_provider_fp8_quantize_dequantize_test.onnx");
@@ -536,7 +536,7 @@ TEST(NvExecutionProviderTest, FP8CustomOpModel) {
 
 TEST(NvExecutionProviderTest, FP4CustomOpModel) {
   if (!IsBlackwellOrAbove()) {
-    GTEST_SKIP() << "[NvExecutionProviderTest.FP4CustomOpModel] Test requires SM 12.0+ GPU (Blackwell or newer, e.g., RTX 5090)";
+    GTEST_SKIP() << "Test requires SM 12.0+ GPU (Blackwell+)";
   }
 
   PathString model_name = ORT_TSTR("nv_execution_provider_fp4_dynamic_quantize_test.onnx");
