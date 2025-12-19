@@ -382,6 +382,28 @@ void PadBase::ReshapePads(gsl::span<const int64_t> src_pad, size_t src_dim_count
   reshaped_pad[inner_axis + new_dim_count] = SafeInt<int64_t>(src_pad[inner_axis + src_dim_count]) * inner_no_pad_size;
 }
 
+template <typename T>
+struct OutputSink {
+  void operator()(T* output, T value) const {
+#ifdef _DEBUG
+    if (output < beg || output >= end) {
+      throw std::out_of_range("Pad OutputSink: Output pointer is out of range");
+    }
+#endif
+    *output = value;
+  }
+
+#ifdef _DEBUG
+  OutputSink(T* output, T* output_end)
+      : beg(output), end(output_end) {}
+
+  T* beg;
+  T* end;
+#else
+  OutputSink(T* /* output */, T* /* output_end */) {}
+#endif
+};
+
 // special handling for edge case where the input has one or more dims with value of 0
 template <typename T>
 static Status PadInputWithDimValueOfZero(OpKernelContext* ctx,
@@ -406,11 +428,11 @@ static Status PadInputWithDimValueOfZero(OpKernelContext* ctx,
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
 template <typename T>
-static void PadAxis(T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_pitch,
+static void PadAxis(OutputSink<T>& sink, T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_pitch,
                     size_t block_size, size_t block_count) {
   for (size_t block_index = 0; block_index < block_count; block_index++) {
     for (size_t i = 0; i < block_size; i++) {
-      *output++ = *input;
+      sink(output++, *input);
       input += input_delta;
     }
     input += input_pitch;
@@ -420,27 +442,27 @@ static void PadAxis(T* output, T* input, ptrdiff_t input_delta, ptrdiff_t input_
 // These are optimizations of PadAxis. The inner loop is removed since the innermost axis has a blockSize of 1,
 // and inputPitch and inputDelta are just a single value added each iteration.
 template <typename T>
-static void PadInnermostAxis(T* output, T* input, ptrdiff_t input_delta, size_t block_count) {
+static void PadInnermostAxis(OutputSink<T>& sink, T* output, T* input, ptrdiff_t input_delta, size_t block_count) {
   for (size_t block_index = 0; block_index < block_count; block_index++) {
-    *output++ = *input;
+    sink(output++, *input);
     input += input_delta;
   }
 }
 
 // For constant padding, there is no input, just a size to write the constant to
 template <typename T>
-static void PadAxisConstant(T* output, T constant, size_t size) {
+static void PadAxisConstant(OutputSink<T>& sink, T* output, T constant, size_t size) {
   if (size == 1) {
-    *output = constant;
+    sink(output, constant);
   } else if (size == 2) {
-    *output = constant;
-    *(output + 1) = constant;
+    sink(output, constant);
+    sink(output + 1, constant);
   } else {
     // This would be faster with SSE instructions.
     // That would mean to have an implementation for each type (uint8, uint32, uint64).
     T* end = output + size;
     for (; output != end;)
-      *output++ = constant;
+      sink(output++, constant);
   }
 }
 
@@ -514,7 +536,11 @@ static Status PadImpl(OpKernelContext* ctx,
   // output_shape needs to keep original.
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
+
+  const SafeInt<size_t> total_output_elems(output_shape.Size());
   auto* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
+  auto* output_end = output + static_cast<size_t>(total_output_elems);
+  OutputSink<T> sink(output, output_end);
 
   // Early constant-fill: if any input extent is zero, no data to copy
   // only padding if any
@@ -526,10 +552,9 @@ static Status PadImpl(OpKernelContext* ctx,
     }
   }
 
-  const SafeInt<size_t> total_output_elems(output_shape.Size());
   if (no_data_to_copy) {
     if (mode == Mode::Constant) {
-      PadAxisConstant<T>(output, value, total_output_elems);
+      PadAxisConstant<T>(sink, output, value, total_output_elems);
       return Status::OK();
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -575,10 +600,10 @@ static Status PadImpl(OpKernelContext* ctx,
           const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
           const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
           if (pre_pad > 0) {
-            PadAxisConstant(axis_start - static_cast<size_t>(pre_pad), value, pre_pad);
+            PadAxisConstant(sink, axis_start - static_cast<size_t>(pre_pad), value, pre_pad);
           }
           if (post_pad > 0) {
-            PadAxisConstant(output, value, post_pad);
+            PadAxisConstant(sink, output, value, post_pad);
           }
           output += post_pad;
           align_skip = pre_pad;
@@ -590,10 +615,10 @@ static Status PadImpl(OpKernelContext* ctx,
           const SafeInt<size_t> pre_pad = reshaped_pad[input_counters.Axis()];
           const SafeInt<size_t> post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
           if (pre_pad > 0) {
-            PadAxisConstant(axis_start - static_cast<ptrdiff_t>(pre_pad * inner_pitch), value, pre_pad * inner_pitch);
+            PadAxisConstant(sink, axis_start - static_cast<ptrdiff_t>(pre_pad * inner_pitch), value, pre_pad * inner_pitch);
           }
           if (post_pad > 0) {
-            PadAxisConstant(output, value, post_pad * inner_pitch);
+            PadAxisConstant(sink, output, value, post_pad * inner_pitch);
           }
           output += inner_pitch * post_pad;
           align_skip += inner_pitch * pre_pad;
@@ -611,24 +636,24 @@ static Status PadImpl(OpKernelContext* ctx,
           T* axis_start = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
-          SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
-          SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
+          const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
+          const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
           if (inner_no_pad_size == 1) {
             if (pre_pad > 0) {
-              PadAxisConstant(axis_start - static_cast<size_t>(pre_pad), *axis_start, pre_pad);
+              PadAxisConstant(sink, axis_start - static_cast<size_t>(pre_pad), *axis_start, pre_pad);
             }
             if (post_pad > 0) {
-              PadAxisConstant(output, *(output - 1), post_pad);
+              PadAxisConstant(sink, output, *(output - 1), post_pad);
             }
           } else {
             // When inner_most axis(es) do not need pad, above PadAxisConstant() do not fit for Edge mode.
             // Also general loop below after handling first pad axis with non-pad axis works fine.
             if (pads[inner_axis] > 0) {
-              PadAxis(axis_start - static_cast<size_t>(pre_pad), axis_start, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size,
+              PadAxis(sink, axis_start - static_cast<size_t>(pre_pad), axis_start, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size,
                       onnxruntime::narrow<size_t>(pads[inner_axis]));
             }
             if (pads[inner_axis + data_rank] > 0) {
-              PadAxis(output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size,
+              PadAxis(sink, output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size,
                       onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             }
           }
@@ -642,11 +667,11 @@ static Status PadImpl(OpKernelContext* ctx,
           const SafeInt<size_t> pre_pad = reshaped_pad[input_counters.Axis()];
           const SafeInt<size_t> post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
           if (pre_pad > 0) {
-            PadAxis(axis_start - static_cast<size_t>(pre_pad) * inner_pitch, axis_start, 1, -inner_pitch, inner_pitch,
+            PadAxis(sink, axis_start - static_cast<size_t>(pre_pad) * inner_pitch, axis_start, 1, -inner_pitch, inner_pitch,
                     pre_pad);
           }
           if (post_pad > 0) {
-            PadAxis(output, output - inner_pitch, 1, -inner_pitch, inner_pitch, post_pad);
+            PadAxis(sink, output, output - inner_pitch, 1, -inner_pitch, inner_pitch, post_pad);
           }
           output += inner_pitch * post_pad;
           align_skip += inner_pitch * pre_pad;
@@ -670,94 +695,94 @@ static Status PadImpl(OpKernelContext* ctx,
           if (inner_no_pad_size == 1) {
             if (mode == Mode::Reflect) {
               if (pre_pad > 0) {
-                PadInnermostAxis(axis_start - static_cast<size_t>(pre_pad),
+                PadInnermostAxis(sink, axis_start - static_cast<size_t>(pre_pad),
                                  axis_start + static_cast<size_t>(pre_pad), -1 /* inputDelta */, pre_pad);
               }
               if (post_pad > 0) {
-                PadInnermostAxis(output, output - 2, -1 /* inputDelta */, post_pad);
+                PadInnermostAxis(sink, output, output - 2, -1 /* inputDelta */, post_pad);
               }
             } else {
               if (pre_pad > 0) {
-                PadInnermostAxis(axis_start - static_cast<size_t>(pre_pad),
+                PadInnermostAxis(sink, axis_start - static_cast<size_t>(pre_pad),
                                  output - static_cast<size_t>(pre_pad), 1 /* inputDelta */, pre_pad);
               }
               if (post_pad > 0) {
-                PadInnermostAxis(output, axis_start, 1 /* inputDelta */, post_pad);
+                PadInnermostAxis(sink, output, axis_start, 1 /* inputDelta */, post_pad);
               }
             }
           } else {
             // When inner_most axis(es) do not need pad, Above PadInnermostAxis() do not fit for Reflect mode.
             if (mode == Mode::Reflect) {
-              PadAxis(
-                  axis_start - static_cast<size_t>(pre_pad),
-                  axis_start + static_cast<size_t>(pre_pad),
-                  1,
-                  -ptrdiff_t(inner_no_pad_size * 2),
-                  inner_no_pad_size,
-                  onnxruntime::narrow<size_t>(pads[inner_axis]));
-              PadAxis(
-                  output,
-                  output - 2 * inner_no_pad_size,
-                  1,
-                  -ptrdiff_t(inner_no_pad_size * 2),
-                  inner_no_pad_size,
-                  onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+              PadAxis(sink,
+                      axis_start - static_cast<size_t>(pre_pad),
+                      axis_start + static_cast<size_t>(pre_pad),
+                      1,
+                      -ptrdiff_t(inner_no_pad_size * 2),
+                      inner_no_pad_size,
+                      onnxruntime::narrow<size_t>(pads[inner_axis]));
+              PadAxis(sink,
+                      output,
+                      output - 2 * inner_no_pad_size,
+                      1,
+                      -ptrdiff_t(inner_no_pad_size * 2),
+                      inner_no_pad_size,
+                      onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             } else {
-              PadAxis(
-                  axis_start - static_cast<size_t>(pre_pad),
-                  output - pads[inner_axis] * inner_no_pad_size,
-                  1,
-                  0,
-                  inner_no_pad_size,
-                  onnxruntime::narrow<size_t>(pads[inner_axis]));
-              PadAxis(
-                  output,
-                  axis_start,
-                  1,
-                  0,
-                  inner_no_pad_size,
-                  onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
+              PadAxis(sink,
+                      axis_start - static_cast<size_t>(pre_pad),
+                      output - pads[inner_axis] * inner_no_pad_size,
+                      1,
+                      0,
+                      inner_no_pad_size,
+                      onnxruntime::narrow<size_t>(pads[inner_axis]));
+              PadAxis(sink,
+                      output,
+                      axis_start,
+                      1,
+                      0,
+                      inner_no_pad_size,
+                      onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             }
           }
           output += post_pad;
-          align_skip = onnxruntime::narrow<size_t>(pre_pad);
+          align_skip = pre_pad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
           T* axis_start = output - inner_pitch * input_extents[input_counters.Axis()];
-          SafeInt<size_t> pre_pad = reshaped_pad[input_counters.Axis()];
-          SafeInt<size_t> post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
+          const SafeInt<size_t> pre_pad = reshaped_pad[input_counters.Axis()];
+          const SafeInt<size_t> post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
           if (mode == Mode::Reflect) {
-            PadAxis(
-                axis_start - static_cast<size_t>(pre_pad) * inner_pitch,
-                axis_start + static_cast<size_t>(pre_pad) * inner_pitch,
-                1,
-                -inner_pitch * 2,
-                inner_pitch,
-                pre_pad);
-            PadAxis(
-                output,
-                output - 2 * inner_pitch,
-                1,
-                -inner_pitch * 2,
-                inner_pitch,
-                post_pad);
+            PadAxis(sink,
+                    axis_start - static_cast<size_t>(pre_pad) * inner_pitch,
+                    axis_start + static_cast<size_t>(pre_pad) * inner_pitch,
+                    1,
+                    -inner_pitch * 2,
+                    inner_pitch,
+                    pre_pad);
+            PadAxis(sink,
+                    output,
+                    output - 2 * inner_pitch,
+                    1,
+                    -inner_pitch * 2,
+                    inner_pitch,
+                    post_pad);
           } else {
-            PadAxis(
-                axis_start - static_cast<size_t>(pre_pad) * inner_pitch,
-                output - static_cast<size_t>(pre_pad) * inner_pitch,
-                1,
-                0,
-                inner_pitch,
-                pre_pad);
-            PadAxis(
-                output,
-                axis_start,
-                1,
-                0,
-                inner_pitch,
-                post_pad);
+            PadAxis(sink,
+                    axis_start - static_cast<size_t>(pre_pad) * inner_pitch,
+                    output - static_cast<size_t>(pre_pad) * inner_pitch,
+                    1,
+                    0,
+                    inner_pitch,
+                    pre_pad);
+            PadAxis(sink,
+                    output,
+                    axis_start,
+                    1,
+                    0,
+                    inner_pitch,
+                    post_pad);
           }
           output += inner_pitch * post_pad;
           align_skip += inner_pitch * pre_pad;

@@ -1152,51 +1152,51 @@ TEST(PadOpTest, ConstantPadLargeNegativePadNoOutput) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-// TEST(PadOpTest, ConstantMode_MixedSigns_Small) {
-//   const std::vector<int64_t> input_shape{2, 6, 4};
-//   std::vector<float> input_data(2 * 6 * 4);
-//
-//   for (size_t i = 0; i < input_data.size(); ++i) {
-//     input_data[i] = static_cast<float>((i % 5) + 1);
-//   }
-//
-//   const std::vector<int64_t> pads{1, 3, -2, -1, 0, 1};
-//   const float cv = 9.0f;
-//   const std::vector<int64_t> expected_shape{2, 9, 3};
-//
-//   std::vector<float> expected_output = {
-//       // a0 = 0
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       3.f, 4.f, 9.f,
-//       2.f, 3.f, 9.f,
-//       1.f, 2.f, 9.f,
-//       5.f, 1.f, 9.f,
-//       4.f, 5.f, 9.f,
-//       3.f, 4.f, 9.f,
-//
-//       // a0 = 1 (cropped original, fully padded slice)
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f,
-//       9.f, 9.f, 9.f};
-//
-//   ASSERT_EQ(2U * 9U * 3U, expected_output.size());
-//
-//   OpTester test("Pad", 18);
-//   test.AddInput<float>("data", input_shape, input_data);
-//   test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
-//   test.AddInput<float>("constant_value", {}, {cv});
-//   test.AddOutput<float>("output", expected_shape, expected_output);
-//   test.AddAttribute("mode", "constant");
-//   test.Run();
-// }
+TEST(PadOpTest, ConstantMode_MixedSigns_Small) {
+  const std::vector<int64_t> input_shape{2, 6, 4};
+  std::vector<float> input_data(2 * 6 * 4);
+
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = static_cast<float>((i % 5) + 1);
+  }
+
+  const std::vector<int64_t> pads{1, 3, -2, -1, 0, 1};
+  const float cv = 9.0f;
+  const std::vector<int64_t> expected_shape{2, 9, 3};
+
+  std::vector<float> expected_output = {
+      // a0 = 0
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      3.f, 4.f, 9.f,
+      2.f, 3.f, 9.f,
+      1.f, 2.f, 9.f,
+      5.f, 1.f, 9.f,
+      4.f, 5.f, 9.f,
+      3.f, 4.f, 9.f,
+
+      // a0 = 1 (cropped original, fully padded slice)
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f,
+      9.f, 9.f, 9.f};
+
+  ASSERT_EQ(2U * 9U * 3U, expected_output.size());
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<float>("constant_value", {}, {cv});
+  test.AddOutput<float>("output", expected_shape, expected_output);
+  test.AddAttribute("mode", "constant");
+  test.Run();
+}
 
 // Gh issue: https://github.com/microsoft/onnxruntime/issues/11828
 // TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
