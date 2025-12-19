@@ -457,7 +457,7 @@ static Status PadImpl(OpKernelContext* ctx,
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   const auto& orig_input_shape = input_tensor.Shape();
   auto output_dims(orig_input_shape.AsShapeVector());
-  size_t data_rank = output_dims.size();
+  const size_t data_rank = output_dims.size();
 
   // make copy of raw_pads as it may be mutated below
   ORT_ENFORCE(data_rank > 0, "Input tensor has no dimensions");
@@ -465,14 +465,18 @@ static Status PadImpl(OpKernelContext* ctx,
 
   // Reshape input dims
   TensorShapeVector reshaped_input_dims;
-  PadBase::FlattenInnerShape(output_dims, pads, slices, reshaped_input_dims);
+  if (PadBase::ShouldFlattenInnerShape(output_dims, pads, slices)) {
+    PadBase::FlattenInnerShape(output_dims, pads, slices, reshaped_input_dims);
+  } else {
+    reshaped_input_dims = output_dims;
+  }
 
   // Reshape padding
   const size_t new_dims_count = reshaped_input_dims.size();
   const size_t inner_axis = new_dims_count - 1;
-  const size_t inner_no_pad_size = onnxruntime::narrow<size_t>(output_dims[inner_axis] > 0
-                                                                   ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
-                                                                   : 0);
+  const int64_t inner_no_pad_size = output_dims[inner_axis] > 0
+                                        ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
+                                        : 0;
   PadsVector reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
   PadBase::ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
   PadBase::ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);
@@ -481,17 +485,22 @@ static Status PadImpl(OpKernelContext* ctx,
   TensorShapeVector input_starts;
   TensorShapeVector input_extents;
 
-  // Calculate output dimensions, and handle any negative padding
+  // Calculate reshaped output dimensions, and handle any negative padding
   input_starts.reserve(new_dims_count);
   input_extents.reserve(new_dims_count);
   for (size_t i = 0; i < new_dims_count; i++) {
+    // Starts for every dimension. If slice is negative, we need to start further in, handled by the SliceIterator
     input_starts.push_back(-1 * reshaped_slice[i]);
-    auto extent = SafeInt<int64_t>(reshaped_input_dims[i]) + reshaped_slice[i] + reshaped_slice[i + new_dims_count];
+    // Do not allow negative extents
+    int64_t extent = std::max<int64_t>(SafeInt<int64_t>(reshaped_input_dims[i]) +
+                                           reshaped_slice[i] + reshaped_slice[i + new_dims_count],
+                                       0U);
     input_extents.push_back(extent);
     reshaped_output_dims[i] += SafeInt<int64_t>(reshaped_pad[i]) + reshaped_pad[i + new_dims_count] +
                                reshaped_slice[i] + reshaped_slice[i + new_dims_count];
   }
 
+  // Compute true output dimensions
   for (size_t i = 0; i < data_rank; i++) {
     output_dims[i] += SafeInt<int64_t>(pads[i]) + pads[i + data_rank] + slices[i] + slices[i + data_rank];
   }
@@ -502,20 +511,53 @@ static Status PadImpl(OpKernelContext* ctx,
     return PadInputWithDimValueOfZero(ctx, mode, orig_input_shape, output_dims, value);
   }
 
-  TensorShape input_shape(reshaped_input_dims);
-  SliceIterator<T> input(input_tensor, input_shape, input_starts, input_extents, {});
-
-  // output_shape need to keep original.
+  // output_shape needs to keep original.
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
   auto* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
 
-  TensorPitches output_pitches(reshaped_output_dims);
-  SafeInt<size_t> align_skip = 0;  // Amount to skip to align to where the next input tensor data needs to be written
+  // Early constant-fill: if any input extent is zero, no data to copy
+  // only padding if any
+  bool no_data_to_copy = false;
+  for (size_t i = 0; i < input_extents.size(); ++i) {
+    if (input_extents[i] == 0) {
+      no_data_to_copy = true;
+      break;
+    }
+  }
 
-  // Initial skip, sum up the begin padding on each axis
-  for (size_t i = 0; i < new_dims_count; i++)
-    align_skip += SafeInt<size_t>(reshaped_pad[i]) * output_pitches[i];
+  const SafeInt<size_t> total_output_elems(output_shape.Size());
+  if (no_data_to_copy) {
+    if (mode == Mode::Constant) {
+      PadAxisConstant<T>(output, value, total_output_elems);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Pad: invalid mode: ", static_cast<int>(mode), " with zero effective input extent");
+  }
+
+  TensorPitches output_pitches(reshaped_output_dims);
+  // Initial skip, sum up the start padding on each axis
+  SafeInt<size_t> align_skip = 0;
+  for (size_t i = 0; i < new_dims_count; i++) {
+    const auto inc = SafeInt<int64_t>(reshaped_pad[i]) * output_pitches[i];
+    align_skip += inc;
+  }
+
+  // Validate coverage: pre + copy + post == total
+  SafeInt<size_t> copy_elems = 1;
+  for (size_t i = 0, lim = input_extents.size(); i < lim; ++i) {
+    // All extents are positive here due to the no_data_to_copy check above
+    copy_elems *= input_extents[i];
+  }
+
+  const size_t prepad_elems = align_skip;
+  const size_t postpad_elems = SafeInt<size_t>(total_output_elems) - prepad_elems - copy_elems;
+  ORT_RETURN_IF_ERROR(PadBase::ValidateTotalElementsCoverage(
+      total_output_elems, prepad_elems, copy_elems, postpad_elems));
+
+  TensorShape input_shape(reshaped_input_dims);
+  SliceIterator<T> input(input_tensor, input_shape, input_starts, input_extents, {});
 
   ExtentAxisCounters input_counters(input_extents);
 
@@ -532,7 +574,7 @@ static Status PadImpl(OpKernelContext* ctx,
 
           const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
           const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axis_start - pre_pad, value, pre_pad);
+          PadAxisConstant(axis_start - *pre_pad.Ptr(), value, pre_pad);
           PadAxisConstant(output, value, post_pad);
           output += post_pad;
           align_skip = pre_pad;
