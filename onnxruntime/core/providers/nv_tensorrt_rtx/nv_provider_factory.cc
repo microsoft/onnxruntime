@@ -638,10 +638,10 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments to ImportMemory");
     }
 
-    // Validate descriptor version
-    if (desc->version != ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION) {
+    // Validate descriptor version - check minimum supported version for forward compatibility
+    if (desc->version < ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION) {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "Invalid OrtExternalMemoryDescriptor version");
+                                       "OrtExternalMemoryDescriptor version too old");
     }
 
     *out_handle = nullptr;
@@ -658,8 +658,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
                                        "offset_bytes exceeds size_bytes in OrtExternalMemoryDescriptor");
     }
 
-    // Set CUDA device
-    CUresult cu_result = cuCtxSetCurrent(nullptr);  // Reset context
+    // Set CUDA device for this EP. The imported external memory handle is associated with
+    // the device where it was imported and remains valid regardless of subsequent cudaSetDevice
+    // calls. Multi-GPU scenarios with different sessions/EPs work correctly because each
+    // importer is bound to its EP's device via ep_device_->device_memory_info.
+    (void)cuCtxSetCurrent(nullptr);  // Reset context
     CUDA_RETURN_IF_ERROR(cudaSetDevice(impl.DeviceId()));
 
     // Map ORT handle type to CUDA handle type
@@ -675,7 +678,8 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
         is_dedicated = false;  // D3D12 heaps are not dedicated
         break;
       default:
-        return impl.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "Unknown external memory handle type");
+        // Should not reach here - CanImportMemory already validated handle type
+        return impl.ort_api.CreateStatus(ORT_EP_FAIL, "Unexpected external memory handle type");
     }
 
     // Setup external memory handle descriptor
@@ -687,13 +691,13 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
 
     // Import the external memory
     CUexternalMemory ext_memory = nullptr;
-    cu_result = cuImportExternalMemory(&ext_memory, &ext_mem_desc);
+    CUresult cu_result = cuImportExternalMemory(&ext_memory, &ext_mem_desc);
     if (cu_result != CUDA_SUCCESS) {
       const char* error_str = nullptr;
       cuGetErrorString(cu_result, &error_str);
       std::string error_msg = "cuImportExternalMemory failed: ";
       error_msg += error_str ? error_str : "unknown error";
-      return impl.ort_api.CreateStatus(ORT_FAIL, error_msg.c_str());
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
     }
 
     // Map the external memory to get a device pointer
@@ -710,15 +714,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       cuGetErrorString(cu_result, &error_str);
       std::string error_msg = "cuExternalMemoryGetMappedBuffer failed: ";
       error_msg += error_str ? error_str : "unknown error";
-      return impl.ort_api.CreateStatus(ORT_FAIL, error_msg.c_str());
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
     }
 
     // Create and return the derived handle (cast to base pointer)
-    auto* handle = new (std::nothrow) NvTrtRtxExternalMemoryHandle();
-    if (handle == nullptr) {
-      cuDestroyExternalMemory(ext_memory);
-      return impl.ort_api.CreateStatus(ORT_FAIL, "Failed to allocate external memory handle");
-    }
+    auto handle = std::make_unique<NvTrtRtxExternalMemoryHandle>();
 
     handle->ep_device = impl.ep_device_;
     handle->handle_type = desc->handle_type;
@@ -728,7 +728,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     handle->mapped_ptr = mapped_ptr;
     handle->is_dedicated = is_dedicated;
 
-    *out_handle = handle;
+    *out_handle = handle.release();
     return nullptr;
   }
 
@@ -765,10 +765,10 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments to CreateTensorFromMemory");
     }
 
-    // Validate descriptor version
-    if (tensor_desc->version != ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION) {
+    // Validate descriptor version - check minimum supported version for forward compatibility
+    if (tensor_desc->version < ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION) {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "Invalid OrtExternalTensorDescriptor version");
+                                       "OrtExternalTensorDescriptor version too old");
     }
 
     *out_tensor = nullptr;
@@ -822,10 +822,10 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments to ImportSemaphore");
     }
 
-    // Validate descriptor version
-    if (desc->version != ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION) {
+    // Validate descriptor version - check minimum supported version for forward compatibility
+    if (desc->version < ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION) {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "Invalid OrtExternalSemaphoreDescriptor version");
+                                       "OrtExternalSemaphoreDescriptor version too old");
     }
 
     *out_handle = nullptr;
@@ -836,7 +836,8 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
                                        "Unsupported external semaphore type for CUDA import");
     }
 
-    // Set CUDA device
+    // Set CUDA device for this EP. Imported semaphore handles remain valid regardless of
+    // subsequent cudaSetDevice calls.
     CUDA_RETURN_IF_ERROR(cudaSetDevice(impl.DeviceId()));
 
     // Setup external semaphore handle descriptor for D3D12 fence
@@ -853,15 +854,11 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       cuGetErrorString(cu_result, &error_str);
       std::string error_msg = "cuImportExternalSemaphore failed: ";
       error_msg += error_str ? error_str : "unknown error";
-      return impl.ort_api.CreateStatus(ORT_FAIL, error_msg.c_str());
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
     }
 
     // Create and return the derived handle (cast to base pointer)
-    auto* handle = new (std::nothrow) NvTrtRtxExternalSemaphoreHandle();
-    if (handle == nullptr) {
-      cuDestroyExternalSemaphore(ext_semaphore);
-      return impl.ort_api.CreateStatus(ORT_FAIL, "Failed to allocate external semaphore handle");
-    }
+    auto handle = std::make_unique<NvTrtRtxExternalSemaphoreHandle>();
 
     // Populate base struct fields
     handle->ep_device = impl.ep_device_;
@@ -870,7 +867,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // Populate derived fields
     handle->ext_semaphore = ext_semaphore;
 
-    *out_handle = handle;  // Return base pointer
+    *out_handle = handle.release();  // Return base pointer
     return nullptr;
   }
 
@@ -925,7 +922,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       cuGetErrorString(cu_result, &error_str);
       std::string error_msg = "cuWaitExternalSemaphoresAsync failed: ";
       error_msg += error_str ? error_str : "unknown error";
-      return impl.ort_api.CreateStatus(ORT_FAIL, error_msg.c_str());
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
     }
 
     return nullptr;
@@ -964,7 +961,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       cuGetErrorString(cu_result, &error_str);
       std::string error_msg = "cuSignalExternalSemaphoresAsync failed: ";
       error_msg += error_str ? error_str : "unknown error";
-      return impl.ort_api.CreateStatus(ORT_FAIL, error_msg.c_str());
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
     }
 
     return nullptr;
