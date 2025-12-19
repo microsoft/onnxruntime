@@ -574,8 +574,12 @@ static Status PadImpl(OpKernelContext* ctx,
 
           const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
           const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axis_start - *pre_pad.Ptr(), value, pre_pad);
-          PadAxisConstant(output, value, post_pad);
+          if (pre_pad > 0) {
+            PadAxisConstant(axis_start - static_cast<size_t>(pre_pad), value, pre_pad);
+          }
+          if (post_pad > 0) {
+            PadAxisConstant(output, value, post_pad);
+          }
           output += post_pad;
           align_skip = pre_pad;
         }
@@ -583,12 +587,16 @@ static Status PadImpl(OpKernelContext* ctx,
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
           T* axis_start = output - inner_pitch * input_extents[input_counters.Axis()];
-          const int64_t pre_pad = reshaped_pad[input_counters.Axis()];
-          const int64_t post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxisConstant(axis_start - pre_pad * inner_pitch, value, SafeInt<std::ptrdiff_t>(pre_pad) * inner_pitch);
-          PadAxisConstant(output, value, SafeInt<ptrdiff_t>(post_pad) * inner_pitch);
+          const SafeInt<size_t> pre_pad = reshaped_pad[input_counters.Axis()];
+          const SafeInt<size_t> post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
+          if (pre_pad > 0) {
+            PadAxisConstant(axis_start - static_cast<ptrdiff_t>(pre_pad * inner_pitch), value, pre_pad * inner_pitch);
+          }
+          if (post_pad > 0) {
+            PadAxisConstant(output, value, post_pad * inner_pitch);
+          }
           output += inner_pitch * post_pad;
-          align_skip += inner_pitch * SafeInt<size_t>(pre_pad);
+          align_skip += inner_pitch * pre_pad;
         }
       }
       break;
