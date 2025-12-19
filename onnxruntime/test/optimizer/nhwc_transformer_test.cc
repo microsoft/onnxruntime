@@ -224,6 +224,28 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
                     TransformerLevel::Level3);
 }
 
+TEST(NhwcTransformerTests, ConvDepthwiseFloat) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(8));
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
+}
+
 TEST(NhwcTransformerTests, ConvAveragePool) {
   DNNL_GTEST_SKIP();
 

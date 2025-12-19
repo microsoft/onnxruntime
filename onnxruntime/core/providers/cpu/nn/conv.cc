@@ -15,6 +15,8 @@
  */
 /* Modifications Copyright (c) Microsoft. */
 
+#include <vector>
+
 #include "core/providers/cpu/nn/conv.h"
 
 #include "core/common/narrow.h"
@@ -23,6 +25,44 @@
 
 namespace onnxruntime {
 using ConvPadVector = ConvAttributes::ConvPadVector;
+
+namespace {
+
+template <typename T>
+void ConvertNHWCToNCHW(const T* src, T* dst,
+                       int64_t n, int64_t c, int64_t h, int64_t w) {
+  const int64_t hw = (SafeInt<int64_t>(h) * w);
+  for (int64_t n_idx = 0; n_idx < n; ++n_idx) {
+    const int64_t n_src_offset = n_idx * hw * c;
+    const int64_t n_dst_offset = n_idx * c * hw;
+    for (int64_t c_idx = 0; c_idx < c; ++c_idx) {
+      const T* src_ptr = src + n_src_offset + c_idx;
+      T* dst_ptr = dst + n_dst_offset + c_idx * hw;
+      for (int64_t hw_idx = 0; hw_idx < hw; ++hw_idx) {
+        dst_ptr[hw_idx] = src_ptr[hw_idx * c];
+      }
+    }
+  }
+}
+
+template <typename T>
+void ConvertNCHWToNHWC(const T* src, T* dst,
+                       int64_t n, int64_t c, int64_t h, int64_t w) {
+  const int64_t hw = (SafeInt<int64_t>(h) * w);
+  for (int64_t n_idx = 0; n_idx < n; ++n_idx) {
+    const int64_t n_src_offset = n_idx * c * hw;
+    const int64_t n_dst_offset = n_idx * hw * c;
+    for (int64_t hw_idx = 0; hw_idx < hw; ++hw_idx) {
+      const T* src_ptr = src + n_src_offset + hw_idx;
+      T* dst_ptr = dst + n_dst_offset + hw_idx * c;
+      for (int64_t c_idx = 0; c_idx < c; ++c_idx) {
+        dst_ptr[c_idx] = src_ptr[c_idx * hw];
+      }
+    }
+  }
+}
+
+}  // namespace
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
@@ -160,11 +200,10 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
   const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
   const int64_t N = X->Shape()[0];
-  const int64_t C = X->Shape()[1];
+  const int64_t C = X->Shape()[channels_last_ ? 3 : 1];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last_));
 
-  // kernel_shape is an optional attribute and has to be inferred from W if not provided
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
@@ -182,12 +221,14 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   }
 
   TensorShapeVector Y_dims({N, M});
-  TensorShape input_shape = X->Shape().Slice(2);
+  TensorShape input_shape = channels_last_ ? X->Shape().Slice(1, 3) : X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  if (channels_last_) {
+    Y_dims = {Y_dims[0], Y_dims[2], Y_dims[3], Y_dims[1]};
+  }
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
-  TensorShape output_shape = Y->Shape().Slice(2);
+  TensorShape output_shape = channels_last_ ? TensorShape(Y_dims).Slice(1, 3) : Y->Shape().Slice(2);
 
-  // Bail out early if one of the dimensions is zero.
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
@@ -198,20 +239,39 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   auto Xdata = X->DataAsSpan<float>();
   const auto* Bdata = B != nullptr ? B->Data<float>() : nullptr;
   auto Ydata = Y->MutableDataAsSpan<float>();
-  // Check for the optional Conv/Sum fusion.
-  float Beta = 0.0f;
-  if (Sum != nullptr) {
-    const auto& sum_shape = Sum->Shape();
-    ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
-    // If the output was not allocated inplace with the sum tensor, then copy here.
-    auto sum_data = Sum->DataAsSpan<float>();
-    if (Ydata.data() != sum_data.data()) {
-      gsl::copy(sum_data, Ydata);
-    }
-    Beta = 1.0f;
-  }
   const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+
+  if (channels_last_) {
+    ORT_RETURN_IF_NOT(kernel_rank == 2, "NhwcFusedConv currently supports 2D kernels.");
+    ORT_RETURN_IF_NOT(dilations[0] == 1 && dilations[1] == 1, "NhwcFusedConv currently supports dilation == 1.");
+  }
+
+  const bool wants_channels_last = channels_last_;
+  const bool sum_present = Sum != nullptr;
+  const bool nhwc_fastpath =
+      wants_channels_last && kernel_rank == 2 && conv_attrs_.group == 1 &&
+      dilations[0] == 1 && dilations[1] == 1 && !sum_present;
+  const bool manual_sum = wants_channels_last && !nhwc_fastpath && sum_present;
+
+  std::vector<float> sum_manual_buffer;
+  const float* sum_manual_data = nullptr;
+
+  float Beta = 0.0f;
+  if (sum_present) {
+    const auto& sum_shape = Sum->Shape();
+    ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
+    if (manual_sum) {
+      sum_manual_buffer.assign(Sum->Data<float>(), Sum->Data<float>() + Y->Shape().Size());
+      sum_manual_data = sum_manual_buffer.data();
+    } else {
+      auto sum_span = Sum->DataAsSpan<float>();
+      if (Ydata.data() != sum_span.data()) {
+        gsl::copy(sum_span, Ydata);
+      }
+      Beta = 1.0f;
+    }
+  }
 
   if (kernel_rank >= 1 && kernel_rank <= 3) {
     MLAS_CONV_PARAMETERS Parameters;
@@ -230,20 +290,66 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     narrow<size_t>(M / conv_attrs_.group),
                     &activation_,
                     &WorkingBufferSize,
-                    Beta,
+                    nhwc_fastpath,
+                    nhwc_fastpath ? 0.0f : Beta,
                     thread_pool);
 
-    auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * SafeInt<size_t>(WorkingBufferSize))
-                                               : nullptr;
-    BufferUniquePtr working_buffer(working_data, BufferDeleter(std::move(alloc)));
+    float* working_data = nullptr;
+    BufferUniquePtr working_buffer;
+    if (WorkingBufferSize > 0) {
+      working_data = static_cast<float*>(alloc->Alloc(sizeof(float) * SafeInt<size_t>(WorkingBufferSize)));
+      working_buffer = BufferUniquePtr(working_data, BufferDeleter(alloc));
+    }
+
+    float* output_compute = Ydata.data();
+    BufferUniquePtr output_temp;
+    if (wants_channels_last && !nhwc_fastpath) {
+      const SafeInt<size_t> output_compute_size =
+          SafeInt<size_t>(Y->Shape()[0]) * SafeInt<size_t>(M) *
+          SafeInt<size_t>(output_shape[0]) * SafeInt<size_t>(output_shape[1]);
+      float* temp_output = static_cast<float*>(alloc->Alloc(sizeof(float) * output_compute_size));
+      output_temp = BufferUniquePtr(temp_output, BufferDeleter(alloc));
+      output_compute = temp_output;
+    }
+
+    const float* input_compute = Xdata.data();
+    BufferUniquePtr input_temp;
+    if (wants_channels_last && !nhwc_fastpath) {
+      ORT_RETURN_IF_NOT(X->Shape().NumDimensions() == 4, "Nhwc fallback expects 4D input.");
+      const auto& x_dims = X->Shape().GetDims();
+      const int64_t input_n = x_dims[0];
+      const int64_t input_h = x_dims[1];
+      const int64_t input_w = x_dims[2];
+      const int64_t input_c = x_dims[3];
+      const SafeInt<size_t> input_elements = SafeInt<size_t>(X->Shape().Size());
+      float* temp_input = static_cast<float*>(alloc->Alloc(sizeof(float) * input_elements));
+      input_temp = BufferUniquePtr(temp_input, BufferDeleter(alloc));
+      ConvertNHWCToNCHW(X->Data<float>(), temp_input,
+                        input_n, input_c, input_h, input_w);
+      input_compute = temp_input;
+    }
 
     MlasConv(&Parameters,
-             Xdata.data(),
+             input_compute,
              W->Data<float>(),
              Bdata,
-             static_cast<float*>(working_buffer.get()),
-             Ydata.data(),
+             working_data,
+             output_compute,
              thread_pool);
+
+    if (wants_channels_last && !nhwc_fastpath) {
+      const auto& y_dims = Y->Shape().GetDims();
+      ORT_RETURN_IF_NOT(y_dims.size() == 4, "Nhwc fallback expects 4D output.");
+      ConvertNCHWToNHWC(output_compute,
+                        Ydata.data(),
+                        y_dims[0], y_dims[3], y_dims[1], y_dims[2]);
+      if (manual_sum) {
+        auto y_span = gsl::make_span(Ydata.data(), Ydata.size());
+        for (size_t i = 0; i < y_span.size(); ++i) {
+          y_span[i] += sum_manual_data[i];
+        }
+      }
+    }
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
@@ -284,7 +390,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             thread_pool);
       }
 
-      MlasActivation(&activation_, Ydata.data(), Bdata, narrow<size_t>(M), narrow<size_t>(output_image_size), narrow<size_t>(output_image_size));
+      MlasActivation(&activation_, Ydata.data(), Bdata, narrow<size_t>(M),
+                     narrow<size_t>(output_image_size), narrow<size_t>(output_image_size));
 
       Xdata = Xdata.subspan(X_offset * conv_attrs_.group);
       Ydata = Ydata.subspan(Y_offset * conv_attrs_.group);

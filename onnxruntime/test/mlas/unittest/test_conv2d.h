@@ -57,6 +57,7 @@ class MlasConv2DTest : public MlasTestBase {
                     FilterCount,
                     &Activation,
                     &WorkingBufferSize,
+                    false,
                     0.0f,
                     threadpool_);
 

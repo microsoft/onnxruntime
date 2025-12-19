@@ -140,8 +140,11 @@ class FuseConvActivationAction : public ReplaceWithNew {
         return "FusedConv";
       }
     } else if (domain == kMSDomain) {
-      if (op_type == "NhwcConv") {
+      if (op_type == "NhwcConv" || op_type == "NhwcFusedConv") {
         return "NhwcFusedConv";
+      }
+      if (op_type == "FusedConv") {
+        return "FusedConv";
       }
     } else if (domain == kMSInternalNHWCDomain) {
       if (op_type == "Conv") {
