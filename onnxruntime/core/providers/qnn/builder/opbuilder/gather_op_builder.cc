@@ -160,7 +160,7 @@ static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
   }
 
   // Insert QNN Cast op to convert dynamic indices from int64 to int32.
-  auto& input_tensorwrapper = qnn_model_wrapper.GetQnnTensorWrapper(indices_tensor_name);
+  const auto& input_tensorwrapper = qnn_model_wrapper.GetQnnTensorWrapper(indices_tensor_name);
 
   std::string indices_casted_name{indices_tensor_name};
   // Check QNN Tensor data type.
