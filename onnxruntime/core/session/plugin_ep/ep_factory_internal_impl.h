@@ -89,7 +89,7 @@ class EpFactoryInternalImpl {
   }
 
   virtual OrtStatus* CreateExternalResourceImporterForDevice(
-      _In_ const OrtMemoryDevice* /*device*/,
+      _In_ const OrtEpDevice* /*ep_device*/,
       _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
     // Default implementation does not support external resource import
     *importer = nullptr;

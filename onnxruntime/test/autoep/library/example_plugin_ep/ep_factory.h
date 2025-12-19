@@ -70,7 +70,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   static OrtStatus* ORT_API_CALL CreateExternalResourceImporterForDeviceImpl(
       OrtEpFactory* this_ptr,
-      const OrtMemoryDevice* memory_device,
+      const OrtEpDevice* ep_device,
       OrtExternalResourceImporterImpl** out_importer) noexcept;
 
   const OrtLogger& default_logger_;        // default logger for the EP factory

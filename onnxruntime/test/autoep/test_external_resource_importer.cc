@@ -176,18 +176,21 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
   ASSERT_EQ(status, nullptr);
 
   size_t rank = 0;
-  Ort::GetApi().GetDimensionsCount(type_info, &rank);
+  status = Ort::GetApi().GetDimensionsCount(type_info, &rank);
+  ASSERT_EQ(status, nullptr);
   EXPECT_EQ(rank, 4u);
 
   std::vector<int64_t> actual_shape(rank);
-  Ort::GetApi().GetDimensions(type_info, actual_shape.data(), rank);
+  status = Ort::GetApi().GetDimensions(type_info, actual_shape.data(), rank);
+  ASSERT_EQ(status, nullptr);
   EXPECT_EQ(actual_shape[0], batch);
   EXPECT_EQ(actual_shape[1], channels);
   EXPECT_EQ(actual_shape[2], height);
   EXPECT_EQ(actual_shape[3], width);
 
   ONNXTensorElementDataType elem_type;
-  Ort::GetApi().GetTensorElementType(type_info, &elem_type);
+  status = Ort::GetApi().GetTensorElementType(type_info, &elem_type);
+  ASSERT_EQ(status, nullptr);
   EXPECT_EQ(elem_type, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
   Ort::GetApi().ReleaseTensorTypeAndShapeInfo(type_info);
@@ -380,44 +383,6 @@ TEST_F(ExternalResourceImporterTest, SessionGetEpDeviceForOutputs) {
       ASSERT_NE(ep_name, nullptr) << "EP device should have a name";
     }
   }
-}
-
-// Test: RunOptions_SetSyncStream
-TEST_F(ExternalResourceImporterTest, RunOptionsSetSyncStream) {
-  // Create run options
-  Ort::RunOptions run_options;
-
-  // Set sync stream to nullptr (which is valid - clears the stream)
-  OrtStatus* status = Ort::GetApi().RunOptions_SetSyncStream(run_options, nullptr);
-  ASSERT_EQ(status, nullptr) << "RunOptions_SetSyncStream with nullptr should succeed";
-
-  // Try to get a real sync stream from the EP device
-  OrtSyncStream* stream = nullptr;
-  status = Ort::GetApi().CreateSyncStreamForEpDevice(ep_device_, nullptr, &stream);
-  if (status != nullptr) {
-    std::string error = Ort::GetApi().GetErrorMessage(status);
-    Ort::GetApi().ReleaseStatus(status);
-    // Sync stream not supported - just test with nullptr
-    return;
-  }
-
-  // Set the sync stream on run options
-  status = Ort::GetApi().RunOptions_SetSyncStream(run_options, stream);
-  ASSERT_EQ(status, nullptr) << "RunOptions_SetSyncStream with stream should succeed";
-
-  // Clean up
-  Ort::GetApi().ReleaseSyncStream(stream);
-}
-
-// Test: RunOptions_SetSyncStream with Invalid Arguments
-TEST_F(ExternalResourceImporterTest, RunOptionsSetSyncStreamInvalidArgs) {
-  // Test with nullptr run_options
-  OrtStatus* status = Ort::GetApi().RunOptions_SetSyncStream(nullptr, nullptr);
-  ASSERT_NE(status, nullptr) << "RunOptions_SetSyncStream with nullptr run_options should fail";
-
-  OrtErrorCode error_code = Ort::GetApi().GetErrorCode(status);
-  EXPECT_EQ(error_code, ORT_INVALID_ARGUMENT);
-  Ort::GetApi().ReleaseStatus(status);
 }
 
 }  // namespace test

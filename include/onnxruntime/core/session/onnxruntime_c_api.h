@@ -6741,6 +6741,7 @@ struct OrtApi {
    * \param[in] importer The OrtExternalResourceImporter instance.
    * \param[in] desc Descriptor containing the external memory handle and properties.
    * \param[out] out_handle Output parameter set to the created OrtExternalMemoryHandle.
+   *                        The caller owns the returned handle and must call ReleaseExternalMemoryHandle to free it.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6769,6 +6770,7 @@ struct OrtApi {
    * \param[in] tensor_desc Descriptor specifying tensor element type, shape, and optional offset.
    * \param[in] tensor_location Optional OrtMemoryInfo for the tensor location. May be nullptr.
    * \param[out] out_tensor Output parameter set to the created OrtValue containing the tensor.
+   *                        The caller owns the returned tensor and must call ReleaseValue to free it.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6885,28 +6887,6 @@ struct OrtApi {
   ORT_API2_STATUS(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
                   _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                   _In_ size_t num_outputs);
-
-  /** \brief Associate an OrtSyncStream with run options.
-   *
-   * Associates an OrtSyncStream with OrtRunOptions for use with Run() or RunWithBinding().
-   * When a sync stream is set, the EP uses this stream for execution, enabling proper
-   * synchronization with imported external semaphores.
-   *
-   * This approach:
-   * - Works with both Run() and RunWithBinding() — no IOBinding requirement
-   * - Allows different Run calls to use different streams for concurrent inference
-   * - Integrates cleanly with the external semaphore wait/signal pattern
-   *
-   * \param[in] run_options The OrtRunOptions instance to modify.
-   * \param[in] stream The OrtSyncStream to associate with the run options. May be nullptr to clear.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.24
-   */
-  ORT_API2_STATUS(RunOptions_SetSyncStream,
-                  _Inout_ OrtRunOptions* run_options,
-                  _In_opt_ OrtSyncStream* stream);
 
   /// @}
 };

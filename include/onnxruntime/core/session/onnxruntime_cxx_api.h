@@ -1287,16 +1287,6 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    * \param adapter The LoraAdapter to be used as the active adapter
    */
   RunOptions& AddActiveLoraAdapter(const LoraAdapter& adapter);
-
-  /** \brief Associate a sync stream with the run options.
-   *
-   * When set, the EP uses this stream for execution, enabling proper
-   * synchronization with imported external semaphores.
-   *
-   * Wraps OrtApi::RunOptions_SetSyncStream
-   * \param stream The OrtSyncStream to associate with these run options. May be nullptr to clear.
-   */
-  RunOptions& SetSyncStream(OrtSyncStream* stream);
 };
 
 namespace detail {
