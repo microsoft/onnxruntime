@@ -292,12 +292,28 @@ class MatMulIntegerBase : public OpKernel {
     return can_use_dynamic_quant_mlas_;
   }
   /*
+    Helper to promote a 1D tensor to 2D, for Arm® KleidiAI™ dynamic qantization, if necessary. Returns false if the tensor rank is 0.
+  */
+  bool PromoteBShapeIfNeeded() {
+    if (b_shape_.NumDimensions() == 0) {
+      return false;  // rank-0 tensor is not supported
+    }
+
+    if (b_shape_.NumDimensions() == 1) {
+      TensorShapeVector expanded{1, b_shape_[0]};
+      b_shape_ = TensorShape(expanded);
+    }
+
+    return true;
+  }
+  /*
     Helper method to check the shape policy of the tensor B is passes for Arm® KleidiAI™ dynamic quantization.
-    The shape should be at least 2D and all the dimentions except the last two should be 1.
+    The shape should be at least 2D and all the dimentions except the last two should be 1. 1D tensor is promoted to 2D.
   */
   bool IsBShapeSupportedForDynamicQuant(const TensorShape& tensor_shape) {
+
     b_shape_ = tensor_shape;
-    if (b_shape_.NumDimensions() < 2) {
+    if (!PromoteBShapeIfNeeded()) {
       return false;
     }
 
@@ -306,6 +322,7 @@ class MatMulIntegerBase : public OpKernel {
         return false;
       }
     }
+    b_shape_ = tensor_shape;
     return true;
   }
   /*
