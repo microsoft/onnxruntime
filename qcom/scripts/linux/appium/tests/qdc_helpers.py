@@ -17,30 +17,32 @@ class TestBase:
         return device_from_url(self.config().device_url)
 
     def clean_device(self):
-        # Clean-up device. QDC doesn't do any clean-up.
-        for path in [self.config().device_path, self.config().qdc_log_path]:
+        # Clean-up device.
+        for path in [self.config().device_runtime_path, self.config().qdc_log_path]:
             self.device.shell(["rm", "-rf", path])
             self.device.shell(["mkdir", "-p", path])
+
+        if self.config().clean_onnx_model_tests:
+            self.device.shell(["rm", "-fr", self.config().device_onnx_model_test_path])
 
     def prepare_ort_tests(self):
         self.clean_device()
 
         # Push binaries from qdc_host_path to /data/local/tmp
         for item in Path(self.config().qdc_host_path).iterdir():
-            self.device.push(item, Path(self.config().device_path))
+            self.device.push(item, Path(self.config().device_runtime_path))
 
-        # Push test models
-        self.device.shell(["mkdir", "-p", f"{self.config().device_path}/model_tests"])
-        for item in Path(self.config().model_test_path).iterdir():
-            # We're playing games with .resolve() and .name because adb push doesn't follow symlinks.
-            self.device.push(item.resolve(), Path(self.config().device_path) / "model_tests" / item.name)
+        # Push ONNX test models
+        self.device.shell(["mkdir", "-p", f"{self.config().device_onnx_model_test_path}"])
+        for item in Path(self.config().host_onnx_model_test_path).iterdir():
+            self.device.push(item.resolve(), Path(self.config().device_onnx_model_test_path))
 
         # Builds sometimes come from Windows, where executable bits are not set.
         if (Path(self.config().host_build_root) / "lib").exists():
             # fmt: off
             self.device.shell(
                 [
-                    "find", f"{self.config().device_path}/lib",
+                    "find", f"{self.config().device_runtime_path}/lib",
                     "-type", "f",
                     "-exec", "chmod", "+x", "{}",
                     "\\;",

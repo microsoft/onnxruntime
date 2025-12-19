@@ -28,7 +28,7 @@ class AdbDevice(DeviceBase):
         return res.stdout.decode("utf-8")
 
     def push(self, local: Path, remote: Path) -> None:
-        self.__do("push", [str(local), str(remote)], check=True)
+        self.__do("push", ["--sync", str(local), str(remote)], check=True)
 
     def pull(self, remote: Path, local: Path) -> None:
         self.__do("pull", [str(remote), str(local)], check=True)

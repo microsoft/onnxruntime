@@ -1,9 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
-import logging
 import os
-import shutil
 from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Literal
@@ -12,12 +10,12 @@ from ..github import is_host_github_runner
 from ..task import (
     BashScriptsWithVenvTask,
     CompositeTask,
-    CopyFileTask,
     ExtractArchiveTask,
     PyTestTask,
     RemovePathsTask,
     RunExecutablesWithVenvTask,
     RunInTempDirectoryTask,
+    UpdateJsonFileTask,
 )
 from ..typing import BuildConfigT, TargetArchLinuxT, TargetArchWindowsT, TargetPyVersionT
 from ..util import REPO_ROOT, git_head_sha
@@ -157,19 +155,6 @@ class AdbTestsTask(RunInTempDirectoryTask):
         # Local import to avoid circular dependency
         from ..tools import get_onnx_models_root  # noqa: PLC0415
 
-        env = dict(os.environ)
-        env["QDC_TEST_ROOT"] = str(tmpdir)
-
-        # The QDC test harness assumes that we have ONNX model tests in a directory
-        # called <mumble>/model_tests/onnx_models and that neither is a symlink.
-        onnx_models_package_content = get_onnx_models_root(self.__venv)
-        model_test_root = tmpdir / "model_tests"
-        model_test_root.mkdir(parents=True)
-        onnx_models_root = model_test_root / "onnx_models"
-        logging.debug(f"Copying ONNX models to {onnx_models_root}")
-        shutil.copytree(onnx_models_package_content, onnx_models_root)
-        env["MODEL_TEST_ROOT"] = str(model_test_root)
-
         test_archive_ext = "zip" if self.__platform == "android" else "tar.bz2"
 
         if "ORT_TEST_CONFIG_PATH" in os.environ:
@@ -185,13 +170,21 @@ class AdbTestsTask(RunInTempDirectoryTask):
                 / f"{self.__platform}-{self.__target_arch}.jsonc"
             )
 
+        env = dict(os.environ)
+        env["ORT_TEST_CONFIG_PATH"] = str(tmpdir / "test_config.jsonc")
+
         return CompositeTask(
             group_name=None,
             tasks=[
-                CopyFileTask(
-                    "Copying test config file",
+                UpdateJsonFileTask(
+                    "Creating test config file",
+                    self.__venv,
                     test_config_src,
                     tmpdir / "test_config.jsonc",
+                    {
+                        "qdc_host_path": str(tmpdir),
+                        "host_onnx_model_test_path": str(get_onnx_models_root(self.__venv)),
+                    },
                 ),
                 ExtractArchiveTask(
                     "Extracting ONNX Runtime test package",

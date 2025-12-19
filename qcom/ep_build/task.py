@@ -300,6 +300,31 @@ class BashScriptsTask(BashScriptsWithVenvTask):
         super().__init__(group_name, None, scripts_and_args, env, cwd)
 
 
+class UpdateJsonFileTask(RunExecutablesWithVenvTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        venv: Path | None,
+        src_json_path: Path,
+        dst_json_path: Path,
+        updates: dict,
+    ) -> None:
+        # fmt: off
+        cmd = [
+            "python",
+            str(REPO_ROOT / "qcom" / "scripts" / "all" / "update_json.py"),
+            "--input", str(src_json_path),
+            "--output", str(dst_json_path),
+            *[f"{k}={v}" for k, v in updates.items()],
+        ]
+        # fmt: on
+        super().__init__(
+            group_name,
+            venv,
+            [cmd],
+        )
+
+
 class CompositeTask(Task):
     """
     A Task composed of a list of other Tasks.

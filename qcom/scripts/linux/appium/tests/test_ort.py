@@ -30,25 +30,33 @@ MODEL_TEST_DEFINITIONS = [
     ModelTestDef(
         "node",
         "cpu",
-        Path(CONFIG.device_path) / "cmake" / "external" / "onnx" / "onnx" / "backend" / "test" / "data" / "node",
+        Path(CONFIG.device_runtime_path)
+        / "cmake"
+        / "external"
+        / "onnx"
+        / "onnx"
+        / "backend"
+        / "test"
+        / "data"
+        / "node",
     ),
     ModelTestDef(
         "float32",
         "cpu",
-        Path(CONFIG.device_path) / "model_tests" / "onnx_models" / "testdata" / "float32",
-        Path(CONFIG.device_path) / "model_tests" / "onnx_models",
+        Path(CONFIG.device_onnx_model_test_path) / "testdata" / "float32",
+        Path(CONFIG.device_onnx_model_test_path),
     ),
     ModelTestDef(
         "qdq",
         "htp",
-        Path(CONFIG.device_path) / "model_tests" / "onnx_models" / "testdata" / "qdq",
-        Path(CONFIG.device_path) / "model_tests" / "onnx_models",
+        Path(CONFIG.device_onnx_model_test_path) / "testdata" / "qdq",
+        Path(CONFIG.device_onnx_model_test_path),
     ),
     ModelTestDef(
         "qdq-with-context-cache",
         "htp",
-        Path(CONFIG.device_path) / "model_tests" / "onnx_models" / "testdata" / "qdq-with-context-cache",
-        Path(CONFIG.device_path) / "model_tests" / "onnx_models",
+        Path(CONFIG.device_onnx_model_test_path) / "testdata" / "qdq-with-context-cache",
+        Path(CONFIG.device_onnx_model_test_path),
         ["-f"],
     ),
 ]
@@ -105,7 +113,7 @@ class TestOrt(TestBase):
             f"cd {working_dir} && "
             f"echo -=-=-=-=-=-=-=-=-=-=- >> {CONFIG.test_results_device_log} && "
             f"echo Running test: {test_str} >> {CONFIG.test_results_device_log} && "
-            f"(env ADSP_LIBRARY_PATH={CONFIG.adsp_library_path} LD_LIBRARY_PATH={CONFIG.ld_library_path} "
+            f"(env ADSP_LIBRARY_PATH={CONFIG.device_adsp_library_path} LD_LIBRARY_PATH={CONFIG.device_ld_library_path} "
             f"{test_str}; echo $? > {self.__rc_device_path}) 2>&1 | tee -a {CONFIG.test_results_device_log}"
         )
 

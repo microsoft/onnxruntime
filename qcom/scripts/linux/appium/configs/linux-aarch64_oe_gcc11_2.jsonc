@@ -3,7 +3,7 @@
 
 {
     // [REQUIRED] The target platform under test; corresponds to a directory under $REPO_ROOT/build/
-    "build_target": "linux-aarch64_oe_gcc11_2",
+    "build_target": "linux-aarch64_oe_gcc11_2"
 
     // The build configuration to test.
     // Default: Release
@@ -11,7 +11,7 @@
 
     // On-device working directory.
     // Default: /data/local/tmp
-    "device_home": "/root/tmp"
+    // "device_home": "/data/local/tmp"
 
     // How to connect to the device.
     //  * adb://            --> adb -d
@@ -23,11 +23,15 @@
 
     // Where the test archive is extracted on the host device.
     // In local tests, this should be left unset so that the test harness can specify a temporary directory.
-    // Default: os.environ.get("QDC_TEST_ROOT", "/qdc/appium")
+    // Default: "/qdc/appium"
     // "qdc_host_path": "/qdc/appium",
 
     // Host directory containing model tests.
     // Sometimes it makes sense to set this in order to avoid re-uploading model tests.
-    // Default: os.environ.get("MODEL_TEST_ROOT", f"{qdc_host_path}/model_tests")
-    // "model_test_path": "/qdc/appium/model_tests"
+    // Default: "/qdc/appium/model_tests/onnx_models"
+    // "host_onnx_model_test_path": "/qdc/appium/model_tests/onnx_models",
+
+    // If true, clean ONNX test models from the device at the start of the run.
+    // Default: false
+    // "clean_onnx_model_tests": false
 }
