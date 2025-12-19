@@ -12,17 +12,39 @@
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/prepacked_weights.h"
 
 /// <summary>
-/// Implementation of the public C API opaque type OrtSharedPrePackedWeightCache.
-/// This is eventually converted into an instance of onnxruntime::PrePackedWeights.
-/// The OrtAllocator* member allows ORT to verify that any shared weight data was actually allocated with
-/// the required allocator.
+/// Implementation of the public C API opaque type OrtSharedPrePackedWeightCache used by plugin EP kernels.
+/// This wraps and fills out an instance of onnxruntime::PrePackedWeights.
 /// </summary>
 struct OrtSharedPrePackedWeightCache {
-  onnxruntime::InlinedVector<onnxruntime::IAllocatorUniquePtr<void>> buffer_data_ptrs;
-  onnxruntime::InlinedVector<size_t> buffer_sizes;
-  OrtAllocator* allocator;
+  OrtSharedPrePackedWeightCache(onnxruntime::PrePackedWeights& container, onnxruntime::AllocatorPtr allocator);
+
+  /// <summary>
+  /// Add a buffer of data. The data is expected to be allocated with this->allocator_.
+  /// Refer to OrtKernelImpl::PrePackWeight and OrtEpApi::SharedPrePackedWeightCache_StoreWeightData.
+  /// </summary>
+  /// <param name="data"></param>
+  /// <param name="num_bytes"></param>
+  void AddBuffer(void* data, size_t num_bytes);
+
+  /// <summary>
+  /// Returns true if this instance has any weight buffer data.
+  /// </summary>
+  /// <returns></returns>
+  bool HasData() const noexcept;
+
+  /// <summary>
+  /// Releases all buffer data.
+  /// Used within OrtEpApi::SharedPrePackedWeightCache_StoreWeightData() if an error occurs and ORT wants to
+  /// release all data to allow caller to retain ownership of data.
+  /// </summary>
+  void ReleaseAllData() noexcept;
+
+ private:
+  onnxruntime::PrePackedWeights& container_;
+  onnxruntime::AllocatorPtr allocator_;
 };
 
 namespace onnxruntime {

@@ -381,7 +381,6 @@ struct OrtKernelImpl {
    *                             into multiple buffers (if desired) in the call to OrtKernelImpl::PrePack(). Each
    *                             buffer element in this array is provided in the same order defined by the kernel
    *                             implementation in the call to OrtKernelImpl::PrePack().
-   * \param[in] buffer_data_sizes An array of buffer byte sizes, one per element in `buffer_data_ptrs`.
    * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
    *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_sizes` arrays.
    * \param[in] input_index The input index of the tensor in this kernel. This index identifies the identity of
@@ -939,7 +938,8 @@ struct OrtEpApi {
   /** \brief Sets one or more data buffers that collectively hold the pre-packed data for a single shared weight.
    *
    * \note Used within the implementation of OrtKernelImpl::PrePackWeight() when the kernel wants to share pre-packed
-   *       weight data with other kernels.
+   *       weight data with other kernels. The buffer data MUST be allocated with the OrtAllocator provided to
+   *       OrtKernelImpl::PrePack.
    *
    * \note Ownership of weight data transfers to the OrtSharedPrePackedWeightCache instance on success.
    *       If this function returns an error status, the caller retains ownership of the weight data.
@@ -952,7 +952,6 @@ struct OrtEpApi {
    * \param[in] buffer_data_sizes An array of buffer byte sizes, one per element in `buffer_data_ptrs`.
    * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
    *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_sizes` arrays.
-   * \param[in] deleter The OrtAllocator that ORT should use to delete the buffer data.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -961,7 +960,7 @@ struct OrtEpApi {
   ORT_API2_STATUS(SharedPrePackedWeightCache_StoreWeightData,
                   _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
                   _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
-                  _In_ size_t num_buffers, _In_ OrtAllocator* deleter);
+                  _In_ size_t num_buffers);
 };
 
 /**

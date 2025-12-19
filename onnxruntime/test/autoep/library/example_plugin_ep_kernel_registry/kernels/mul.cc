@@ -128,22 +128,20 @@ OrtStatus* ORT_API_CALL Mul::PrePackWeightImpl(OrtKernelImpl* this_ptr, const Or
 
   RETURN_IF_ERROR(CopyTensor(*mul_kernel->data_transfer_impl_, original_weight, packed_weight.GetUnowned()));
 
-  const bool sharing_enabled = prepacked_weight_cache != nullptr;
+  const bool sharing_allowed = prepacked_weight_cache != nullptr;
 
-  if (sharing_enabled) {
+  if (sharing_allowed) {
     std::array<void*, 1> buffer_data_ptrs = {weight_info.owned_data.get()};
     std::array<size_t, 1> buffer_data_sizes = {weight_info.num_bytes};
 
     RETURN_IF_ERROR(Ort::GetEpApi().SharedPrePackedWeightCache_StoreWeightData(prepacked_weight_cache,
                                                                                buffer_data_ptrs.data(),
                                                                                buffer_data_sizes.data(),
-                                                                               buffer_data_ptrs.size(),
-                                                                               allocator));
+                                                                               buffer_data_ptrs.size()));
 
     // IMPORTANT: This kernel no longer owns the packed weight data.
     // weight_info.shared_data will be initialized in the call to SetSharedPrePackedWeightImpl.
     weight_info.owned_data.release();
-    weight_info.owned_data = nullptr;
   }
 
   mul_kernel->packed_weight_1_info_ = std::move(weight_info);

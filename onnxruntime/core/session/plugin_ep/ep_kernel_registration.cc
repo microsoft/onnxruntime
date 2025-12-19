@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -13,6 +14,29 @@
 #include "core/framework/tensor.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_api.h"
+
+//
+// OrtSharedPrePackedWeightCache
+//
+OrtSharedPrePackedWeightCache::OrtSharedPrePackedWeightCache(onnxruntime::PrePackedWeights& container,
+                                                             onnxruntime::AllocatorPtr allocator)
+    : container_(container), allocator_(std::move(allocator)) {}
+
+void OrtSharedPrePackedWeightCache::AddBuffer(void* data, size_t num_bytes) {
+  auto data_unique_ptr = onnxruntime::IAllocatorUniquePtr<void>(data, onnxruntime::BufferDeleter(allocator_));
+  container_.buffers_.push_back(std::move(data_unique_ptr));
+  container_.buffer_sizes_.push_back(num_bytes);
+}
+
+bool OrtSharedPrePackedWeightCache::HasData() const noexcept {
+  return !container_.buffers_.empty();
+}
+
+void OrtSharedPrePackedWeightCache::ReleaseAllData() noexcept {
+  for (onnxruntime::IAllocatorUniquePtr<void>& data_unique_ptr : container_.buffers_) {
+    data_unique_ptr.release();
+  }
+}
 
 namespace onnxruntime {
 
@@ -61,14 +85,6 @@ class PluginEpOpKernel final : public OpKernel {
       return Status::OK();
     }
 
-    // Only allow kernel to store/share pre-packed weights if the weight data will be stored in cpu-accessible memory.
-    // ORT requires that the data reside in cpu memory to be able to compute the hash of the weight's contents.
-    //
-    // If the allocator does not use CPU memory, we pass a NULL OrtSharedPrePackedWeightCache instance to the kernel to
-    // indicate that storing/sharing is not allowed and the kernel should manage the memory for the pre-packed weight.
-    bool allow_weight_sharing = alloc->Info().device.UsesCpuMemory() && prepacked_weights != nullptr;
-    OrtSharedPrePackedWeightCache shared_weight_cache = {};
-
     // Convert AllocatorPtr to an OrtAllocator* (that wraps the AllocatorPtr) and cache it.
     OrtAllocator* ort_allocator = GetPrePackOrtAllocator(alloc);
 
@@ -79,36 +95,26 @@ class PluginEpOpKernel final : public OpKernel {
     auto empty_tensor_deleter = [](void* /*data*/) -> void { /* do not delete Tensor (not owned) */ };
     const OrtValue ort_value(const_cast<Tensor*>(&tensor), DataTypeImpl::GetType<Tensor>(), empty_tensor_deleter);
 
+    // Only allow kernel to store/share pre-packed weights if the weight data will be stored in cpu-accessible memory.
+    // ORT requires that the data reside in cpu memory to be able to compute the hash of the weight's contents.
+    //
+    // If the allocator does not use CPU memory, we pass a NULL OrtSharedPrePackedWeightCache instance to the kernel to
+    // indicate that storing/sharing is not allowed and the kernel should manage the memory for the pre-packed weight.
+    std::optional<OrtSharedPrePackedWeightCache> shared_weight_cache;
+
+    if (prepacked_weights != nullptr && alloc->Info().device.UsesCpuMemory()) {
+      shared_weight_cache.emplace(OrtSharedPrePackedWeightCache(*prepacked_weights, alloc));
+    }
+
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
         kernel_impl_->PrePackWeight(kernel_impl_, &ort_value, input_idx,
-                                    ort_allocator, allow_weight_sharing ? &shared_weight_cache : nullptr,
+                                    ort_allocator,
+                                    shared_weight_cache.has_value() ? &shared_weight_cache.value() : nullptr,
                                     &is_packed)));
 
-    // If the following check fails, it indicates an error in ORT's implementation of the
-    // OrtEpApi::SharedPrePackedWeightCache_StoreWeightData() API function.
-    ORT_RETURN_IF(shared_weight_cache.buffer_data_ptrs.size() != shared_weight_cache.buffer_sizes.size(),
-                  "Number of shared weight buffer data pointers does not match the number of buffer sizes");
-
-    bool tried_to_share = !shared_weight_cache.buffer_data_ptrs.empty();
+    const bool tried_to_share = shared_weight_cache.has_value() && shared_weight_cache->HasData();
     ORT_RETURN_IF(tried_to_share && !is_packed, "OrtKernelImpl::PrePackWeight() tried to share packed weight data ",
                   "but did not set the `is_packed` output parameter to true.");
-
-    if (is_packed && allow_weight_sharing && tried_to_share) {
-      ORT_RETURN_IF(shared_weight_cache.allocator != ort_allocator,
-                    "OrtKernelImpl::PrePackWeight() did not allocate shared pre-packed weights with the ",
-                    "required OrtAllocator.");
-
-      // Fill out onnxruntime::PrePackedWeights from OrtSharedPrePackedWeightCache.
-      for (size_t i = 0; i < shared_weight_cache.buffer_data_ptrs.size(); i++) {
-        void* data_ptr = shared_weight_cache.buffer_data_ptrs[i].release();
-        size_t num_bytes = shared_weight_cache.buffer_sizes[i];
-
-        // Note: using the AllocatorPtr as the "deleter" (instead of the wrapping OrtAllocator cached by this kernel)
-        // because the AllocatorPtr lifetime likely exceeds the lifetime of the session and kernel instance.
-        prepacked_weights->buffers_.push_back(IAllocatorUniquePtr<void>(data_ptr, BufferDeleter(alloc)));
-        prepacked_weights->buffer_sizes_.push_back(num_bytes);
-      }
-    }
 
     return Status::OK();
   }

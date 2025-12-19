@@ -586,7 +586,7 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo*
 ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
                     _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
                     _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
-                    _In_ size_t num_buffers, _In_ OrtAllocator* deleter) {
+                    _In_ size_t num_buffers) {
   API_IMPL_BEGIN
   if (prepacked_weight_cache == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
@@ -605,51 +605,19 @@ ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify at least one weight data buffer");
   }
 
-  if (deleter == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "Must specify a valid non-null deleter (OrtAllocator) for a weight's data buffers");
-  }
-
-  // Note: caching of weight buffers is only supported for CPU-accessible data due to the need to generate a
-  // hash of the contents (see onnxruntime::PrePackedWeights::GetHash()).
-  const OrtMemoryInfo* mem_info = deleter->Info(deleter);
-  if (mem_info == nullptr || !mem_info->device.UsesCpuMemory()) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "Caching of weight buffers is only supported for CPU-accessible data");
-  }
-
   OrtStatus* status = nullptr;
 
   ORT_TRY {
-    prepacked_weight_cache->buffer_data_ptrs.reserve(num_buffers);
-    prepacked_weight_cache->buffer_sizes.reserve(num_buffers);
-
     for (size_t i = 0; i < num_buffers; i++) {
-      void* data = buffer_data_ptrs[i];
-      size_t num_bytes = buffer_data_sizes[i];
-      auto data_unique_ptr = onnxruntime::IAllocatorUniquePtr<void>(data,
-                                                                    [deleter](void* d) {
-                                                                      deleter->Free(deleter, d);
-                                                                    });
-
-      prepacked_weight_cache->buffer_data_ptrs.push_back(std::move(data_unique_ptr));
-      prepacked_weight_cache->buffer_sizes.push_back(num_bytes);
+      prepacked_weight_cache->AddBuffer(buffer_data_ptrs[i], buffer_data_sizes[i]);
     }
-
-    prepacked_weight_cache->allocator = deleter;
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       // This API function promises that ORT will take ownership of the data only if it returns successfully.
       // If any exception occurred while filling out `prepacked_weight_cache`, we try to release ownership so that
       // the caller retains ownership of all of the original data and can delete it.
-
-      for (onnxruntime::IAllocatorUniquePtr<void>& data_unique_ptr : prepacked_weight_cache->buffer_data_ptrs) {
-        if (data_unique_ptr) {
-          data_unique_ptr.release();
-        }
-      }
-
+      prepacked_weight_cache->ReleaseAllData();
       status = OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
     });
   }
