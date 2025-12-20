@@ -567,7 +567,9 @@ Return Value:
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
+    this->ConvNchwFloatKernel = MlasConvNchwBf16KernelNeon;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
+    this->ConvNchwcFloatKernel = MlasConvNchwcBf16KernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     // this->ConvDepthwiseFloatKernel = MlasConvDepthwiseBf16KernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
