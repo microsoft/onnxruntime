@@ -127,6 +127,7 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
   } else {
     LOGS_DEFAULT(WARNING) << "Htp performance mode not valid.";
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpInvalid;
   }
 }
 
@@ -1506,8 +1507,25 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
     if (key == kOrtEpDynamicOptionsWorkloadType) {
       if (value == "Default") {
         ORT_RETURN_IF_ERROR(qnn_backend_manager_->ResetContextPriority());
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    default_htp_performance_mode_));
       } else if (value == "Efficient") {
         ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetContextPriority(qnn::ContextPriority::LOW));
+      } else if (value == "Foreground") {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetContextPriority(qnn::ContextPriority::HIGH));
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    qnn::HtpPerformanceMode::kHtpSustainedHighPerformance));
+      } else if (value == "Background") {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetContextPriority(qnn::ContextPriority::LOW));
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    qnn::HtpPerformanceMode::kHtpExtremePowerSaver));
+        // "performance_mode:" is 17 char long
+      } else if (value.size() > 17 && value.substr(0,17) == "performance_mode:") {
+        auto performance_str = value.substr(17);
+        qnn::HtpPerformanceMode performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+        ParseHtpPerformanceMode(performance_str, performance_mode);
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
+                                                                    performance_mode));
       } else {
         LOGS_DEFAULT(ERROR) << "Invalid EP Workload Type: " << value;
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid EP Workload Type.");
