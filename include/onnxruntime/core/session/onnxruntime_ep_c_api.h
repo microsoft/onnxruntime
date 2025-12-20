@@ -204,14 +204,7 @@ typedef struct OrtNodeComputeInfo OrtNodeComputeInfo;
  * \since Version 1.23.
  */
 struct OrtNodeFusionOptions {
-  /** \brief The ONNX Runtime version the OrtNodeFusionOptions was compiled with.
-   *
-   * Implementation should set to ORT_API_VERSION.
-   * ORT will use this to ensure it does not use members that were not available when the EP library was compiled.
-   *
-   * \since Version 1.23.
-   */
-  uint32_t ort_version_supported;
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief If set to true, specify that the execution provider does not require ONNX Runtime to provide constant
    * initializers as inputs to the fused node during model inference. This is used when the execution
@@ -234,14 +227,7 @@ struct OrtNodeFusionOptions {
  * \since Version 1.23.
  */
 struct OrtNodeComputeInfo {
-  /** \brief The ONNX Runtime version the OrtNodeComputeInfo was compiled with.
-   *
-   * Implementation should set to ORT_API_VERSION.
-   * ORT will use this to ensure it does not call functions that were not available when the EP library was compiled.
-   *
-   * \since Version 1.23.
-   */
-  uint32_t ort_version_supported;
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Creates an opaque compute state object that is then passed to the Compute() function during inference.
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
@@ -879,14 +865,7 @@ typedef enum OrtEpDataLayout {
  * \since Version 1.22.
  */
 struct OrtEp {
-  /** \brief The ONNX Runtime version the execution provider was compiled with.
-   *
-   * Implementation must set this to ORT_API_VERSION.
-   * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
-   *
-   * \since Version 1.22.
-   */
-  uint32_t ort_version_supported;
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Get the execution provider name.
    *
@@ -1192,14 +1171,7 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
  * \since Version 1.22.
  */
 struct OrtEpFactory {
-  /** \brief The ONNX Runtime version the execution provider was compiled with.
-   *
-   * Implementation must set this to ORT_API_VERSION.
-   * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
-   *
-   * \since Version 1.22.
-   */
-  uint32_t ort_version_supported;
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Get the name of the execution provider that the factory creates.
    *
