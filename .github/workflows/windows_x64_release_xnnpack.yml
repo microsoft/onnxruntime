@@ -98,14 +98,14 @@ jobs:
         working-directory: ${{ github.workspace }}\\csharp
 
       - name: Publish OperatorKernels.md (Conditional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: OperatorKernels.md
           path: ${{ github.workspace }}/docs/OperatorKernels.md
 
       - name: Publish ContribOperators.md (Conditional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: ContribOperators.md

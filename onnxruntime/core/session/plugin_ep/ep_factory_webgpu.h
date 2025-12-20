@@ -29,6 +29,8 @@ class WebGpuEpFactory : public EpFactoryInternalImpl {
                                       const OrtSessionOptions* session_options,
                                       const OrtLogger* session_logger,
                                       std::unique_ptr<IExecutionProvider>* ep) noexcept override;
+
+  OrtStatus* CreateDataTransfer(_Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer) noexcept override;
 };
 }  // namespace onnxruntime
 

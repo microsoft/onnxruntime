@@ -306,6 +306,27 @@ Status TensorProtoWithExternalDataToTensorProto(
   return Status::OK();
 }
 
+Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
+                                const std::filesystem::path& location) {
+  // Reject absolute paths
+  ORT_RETURN_IF(location.is_absolute(),
+                "Absolute paths not allowed for external data location");
+  if (!base_dir.empty()) {
+    // Resolve and verify the path stays within model directory
+    auto base_canonical = std::filesystem::weakly_canonical(base_dir);
+    // If the symlink exists, it resolves to the target path;
+    // so if the symllink is outside the directory it would be caught here.
+    auto resolved = std::filesystem::weakly_canonical(base_dir / location);
+    // Check that resolved path starts with base directory
+    auto [base_end, resolved_it] = std::mismatch(
+        base_canonical.begin(), base_canonical.end(),
+        resolved.begin(), resolved.end());
+    ORT_RETURN_IF(base_end != base_canonical.end(),
+                  "External data path: ", location, " escapes model directory: ", base_dir);
+  }
+  return Status::OK();
+}
+
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            const std::filesystem::path& tensor_proto_dir,
                            std::basic_string<ORTCHAR_T>& external_file_path,
