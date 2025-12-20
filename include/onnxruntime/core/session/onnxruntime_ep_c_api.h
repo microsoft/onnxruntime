@@ -944,6 +944,8 @@ struct OrtEpApi {
    * \note Ownership of weight data transfers to the OrtSharedPrePackedWeightCache instance on success.
    *       If this function returns an error status, the caller retains ownership of the weight data.
    *
+   * \note Subsequent calls with the same OrtSharedPrePackedWeightCache instance release and replace the old data.
+   *
    * \param[in] this_ptr The OrtKernelImpl instance.
    * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
    *                             single shared weight. Note that sometimes a single weight may have multiple pre-packed

@@ -608,9 +608,7 @@ ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
   OrtStatus* status = nullptr;
 
   ORT_TRY {
-    for (size_t i = 0; i < num_buffers; i++) {
-      prepacked_weight_cache->AddBuffer(buffer_data_ptrs[i], buffer_data_sizes[i]);
-    }
+    prepacked_weight_cache->SetBuffers(buffer_data_ptrs, buffer_data_sizes, num_buffers);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {

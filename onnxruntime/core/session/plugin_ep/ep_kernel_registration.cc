@@ -22,10 +22,18 @@ OrtSharedPrePackedWeightCache::OrtSharedPrePackedWeightCache(onnxruntime::PrePac
                                                              onnxruntime::AllocatorPtr allocator)
     : container_(container), allocator_(std::move(allocator)) {}
 
-void OrtSharedPrePackedWeightCache::AddBuffer(void* data, size_t num_bytes) {
-  auto data_unique_ptr = onnxruntime::IAllocatorUniquePtr<void>(data, onnxruntime::BufferDeleter(allocator_));
-  container_.buffers_.push_back(std::move(data_unique_ptr));
-  container_.buffer_sizes_.push_back(num_bytes);
+void OrtSharedPrePackedWeightCache::SetBuffers(void** data_ptrs, size_t* data_sizes, size_t num_buffers) {
+  container_.buffers_.clear();
+  container_.buffer_sizes_.clear();
+
+  container_.buffers_.reserve(num_buffers);
+  container_.buffer_sizes_.reserve(num_buffers);
+
+  for (size_t i = 0; i < num_buffers; i++) {
+    auto data_unique_ptr = onnxruntime::IAllocatorUniquePtr<void>(data_ptrs[i], onnxruntime::BufferDeleter(allocator_));
+    container_.buffers_.push_back(std::move(data_unique_ptr));
+    container_.buffer_sizes_.push_back(data_sizes[i]);
+  }
 }
 
 bool OrtSharedPrePackedWeightCache::HasData() const noexcept {
@@ -103,6 +111,8 @@ class PluginEpOpKernel final : public OpKernel {
     std::optional<OrtSharedPrePackedWeightCache> shared_weight_cache;
 
     if (prepacked_weights != nullptr && alloc->Info().device.UsesCpuMemory()) {
+      ORT_RETURN_IF(!prepacked_weights->buffers_.empty() || !prepacked_weights->buffer_sizes_.empty(),
+                    "PluginEpOpKernel::PrePack() expected PrePackedWeights instance to be initially empty");
       shared_weight_cache.emplace(OrtSharedPrePackedWeightCache(*prepacked_weights, alloc));
     }
 

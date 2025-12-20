@@ -22,12 +22,13 @@ struct OrtSharedPrePackedWeightCache {
   OrtSharedPrePackedWeightCache(onnxruntime::PrePackedWeights& container, onnxruntime::AllocatorPtr allocator);
 
   /// <summary>
-  /// Add a buffer of data. The data is expected to be allocated with this->allocator_.
+  /// Sets data buffers for the shared weight. The data is expected to be allocated with this->allocator_.
   /// Refer to OrtKernelImpl::PrePackWeight and OrtEpApi::SharedPrePackedWeightCache_StoreWeightData.
   /// </summary>
-  /// <param name="data"></param>
-  /// <param name="num_bytes"></param>
-  void AddBuffer(void* data, size_t num_bytes);
+  /// <param name="data_ptrs"></param>
+  /// <param name="data_sizes"></param>
+  /// <param name="num_buffers"></param>
+  void SetBuffers(void** data_ptrs, size_t* data_sizes, size_t num_buffers);
 
   /// <summary>
   /// Returns true if this instance has any weight buffer data.
