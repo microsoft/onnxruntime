@@ -984,14 +984,13 @@ typedef enum OrtExternalMemoryAccessMode {
 
 /** \brief Descriptor for importing external memory.
  *
- * \note The version field must be set to ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION.
+ * \note The version field must be set to ORT_API_VERSION.
  *       This ensures forward compatibility as fields may be added in future versions.
  *
  * \since Version 1.24.
  */
-#define ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION 1
 typedef struct OrtExternalMemoryDescriptor {
-  uint32_t version;                        /**< Must be ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION */
+  uint32_t version;                        /**< Must be ORT_API_VERSION */
   OrtExternalMemoryHandleType handle_type; /**< Type of the external memory handle */
   void* native_handle;                     /**< Platform-specific handle (e.g., Windows HANDLE) */
   size_t size_bytes;                       /**< Total size in bytes of the external allocation */
@@ -1009,28 +1008,26 @@ typedef enum OrtExternalSemaphoreType {
 
 /** \brief Descriptor for importing external semaphores.
  *
- * \note The version field must be set to ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION.
+ * \note The version field must be set to ORT_API_VERSION.
  *       This ensures forward compatibility as fields may be added in future versions.
  *
  * \since Version 1.24.
  */
-#define ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION 1
 typedef struct OrtExternalSemaphoreDescriptor {
-  uint32_t version;              /**< Must be ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION */
+  uint32_t version;              /**< Must be ORT_API_VERSION */
   OrtExternalSemaphoreType type; /**< Type of the external semaphore */
   void* native_handle;           /**< Platform-specific handle (e.g., Windows HANDLE) */
 } OrtExternalSemaphoreDescriptor;
 
 /** \brief Descriptor for creating a tensor from imported external memory.
  *
- * \note The version field must be set to ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION.
+ * \note The version field must be set to ORT_API_VERSION.
  *       This ensures forward compatibility as fields may be added in future versions.
  *
  * \since Version 1.24.
  */
-#define ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION 1
 typedef struct OrtExternalTensorDescriptor {
-  uint32_t version;                       /**< Must be ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION */
+  uint32_t version;                       /**< Must be ORT_API_VERSION */
   ONNXTensorElementDataType element_type; /**< Data type of tensor elements */
   const int64_t* shape;                   /**< Array of dimension sizes */
   size_t rank;                            /**< Number of dimensions */

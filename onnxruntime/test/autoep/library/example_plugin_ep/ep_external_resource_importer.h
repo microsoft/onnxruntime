@@ -23,7 +23,7 @@ struct ExampleExternalMemoryHandle : OrtExternalMemoryHandle {
   ExampleExternalMemoryHandle()
       : simulated_ptr(nullptr), access_mode(ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE) {
     // Initialize base struct fields
-    version = ORT_EXTERNAL_MEMORY_HANDLE_VERSION;
+    version = ORT_API_VERSION;
     ep_device = nullptr;
     handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
     size_bytes = 0;
@@ -58,7 +58,7 @@ struct ExampleExternalSemaphoreHandle : OrtExternalSemaphoreHandle {
   ExampleExternalSemaphoreHandle()
       : value(0) {
     // Initialize base struct fields
-    version = ORT_EXTERNAL_SEMAPHORE_HANDLE_VERSION;
+    version = ORT_API_VERSION;
     ep_device = nullptr;
     type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
     Release = ReleaseCallback;
