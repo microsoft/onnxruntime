@@ -146,7 +146,7 @@ jobs:
 
       - name: Upload WASM artifacts
         if: ${{ inputs.skip_publish != true }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts/wasm
@@ -175,7 +175,7 @@ jobs:
 
       - name: Publish test results
         if: ${{ always() && inputs.build_config == 'Debug' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: test-results
           path: ${{ github.workspace }}/build/**/*.results.xml
