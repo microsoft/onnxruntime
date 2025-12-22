@@ -114,6 +114,18 @@ function Get-QairtSdkFilePath() {
     "$BuildDir\qairt-sdk-path-$Config.txt"
 }
 
+function Get-QairtSdkVersion() {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$QairtSdkRoot
+    )
+
+    (Select-String `
+        -Path (Join-Path $QairtSdkRoot "sdk.yaml") `
+        -Pattern "^version: (\d+\.\d+\.\d+)" `
+    ).Matches[0].Groups[1].Value
+}
+
 function Get-TargetPyVersionFilePath() {
     param (
         [Parameter(Mandatory = $true)]

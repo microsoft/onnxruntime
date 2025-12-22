@@ -8,6 +8,8 @@ import pytest
 from model_test import ModelTestCase, ModelTestDef, ModelTestSuite
 from model_zoo_test import get_xfails
 
+import onnxruntime
+
 SMOKE_TESTS = list(
     ModelTestSuite(
         Path(os.getenv("ORT_WHEEL_SMOKE_TEST_ROOT", "HopefullyBogusPath")),
@@ -28,3 +30,7 @@ def test_models(test_def: ModelTestDef) -> None:
     if test_def.model_root.name in xfails:
         pytest.xfail(xfails[test_def.model_root.name])
     ModelTestCase(test_def).run()
+
+
+def test_qnn_version() -> None:
+    assert onnxruntime.capi.build_and_package_info.qnn_version is not None

@@ -7,6 +7,7 @@
 import datetime
 import logging
 import platform
+import re
 import shlex
 import subprocess
 import sys
@@ -88,7 +89,12 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
-    qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
+    # This version may include a trailing timestamp. We just want x.y.z.
+    full_qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
+    if full_qnn_version is not None:
+        qnn_version_match = re.match(r"^\d+\.\d+.\d+", full_qnn_version)
+        if qnn_version_match is not None:
+            qnn_version = qnn_version_match.group(0)
 elif parse_arg_remove_boolean(sys.argv, "--use_webgpu"):
     package_name = "onnxruntime-webgpu"
 

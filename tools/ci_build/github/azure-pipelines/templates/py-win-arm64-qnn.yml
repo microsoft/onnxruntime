@@ -7,7 +7,7 @@ parameters:
 - name: PYTHON_VERSION
   type: string
   default: '3.11'
-  
+
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
@@ -118,7 +118,7 @@ jobs:
     displayName: 'Build wheel'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\setup.py'
-      arguments: 'bdist_wheel $(NightlyBuildOption) --wheel_name_suffix=qnn'
+      arguments: 'bdist_wheel $(NightlyBuildOption) --use_qnn --qnn_version=${{ parameters.QNN_SDK }}'
       workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
   - task: CopyFiles@2

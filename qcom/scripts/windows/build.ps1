@@ -74,6 +74,8 @@ else {
     $QairtSdkRoot = Resolve-Path -Path $QairtSdkRoot
 }
 
+$QairtSdkVersion = Get-QairtSdkVersion -QairtSdkRoot $QairtSdkRoot
+
 if ($Mode -eq "generate_sln") {
     $CMakeGenerator = "Visual Studio 17 2022"
     $BuildIsDirty = $true
@@ -190,7 +192,7 @@ switch ($Mode) {
 $CmakeBinDir = (Get-CMakeBinDir)
 $env:Path = "$CmakeBinDir;" + $env:Path
 
-if ($env:ORT_BUILD_PRUNE_PACKAGES -eq $null -or $env:ORT_BUILD_PRUNE_PACKAGES -eq 1) {
+if ($null -eq $env:ORT_BUILD_PRUNE_PACKAGES -or $env:ORT_BUILD_PRUNE_PACKAGES -eq 1) {
     Optimize-ToolsDir
 }
 
@@ -260,7 +262,11 @@ else {
                         Use-WorkingDir -Path $BuildOutputDir {
                             Assert-Success -ErrorMessage "Failed to build wheel" {
                                 python.exe (Join-Path $RepoRoot "setup.py") `
-                                    bdist_wheel --wheel_name_suffix=qnn_qcom_internal $PyNightlyArg
+                                    bdist_wheel `
+                                    --wheel_name_suffix=qcom_internal `
+                                    --use_qnn `
+                                    --qnn_version=$QairtSdkVersion `
+                                    $PyNightlyArg
                             }
                         }
                     }
