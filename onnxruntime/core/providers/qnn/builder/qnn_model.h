@@ -19,6 +19,7 @@ struct QnnTensorInfo {
   const QnnTensorWrapper* tensor_wrapper = nullptr;
   uint32_t tensor_byte_size = 0;
   size_t ort_index = 0;
+  std::vector<uint32_t> ori_dimensions_;
 };
 
 class QnnModel {
