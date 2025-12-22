@@ -882,7 +882,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvPointwiseFloatKernel;
-#if defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
         if (WorkBlock->UseBf16) {
             Kernel = GetMlasPlatform().ConvPointwiseBf16Kernel;
         }

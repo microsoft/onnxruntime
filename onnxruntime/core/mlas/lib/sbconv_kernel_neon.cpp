@@ -14,7 +14,7 @@ Abstract:
 
 --*/
 
-#if defined(MLAS_USE_ARM_NEON_NCHWC)
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
 
 #include "mlasi.h"
 #include "sconv.h"
