@@ -754,5 +754,7 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
                     _In_ size_t num_tensors);
 
 ORT_API_STATUS_IMPL(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
+ORT_API_STATUS_IMPL(KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetSinceVersion, _In_ const OrtKernelInfo* info, _Out_ int* since_version);
 
 }  // namespace OrtApis

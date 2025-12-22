@@ -2547,10 +2547,10 @@ inline void* KernelContext::GetGPUComputeStream() const {
   return out;
 }
 
-inline OrtAllocator* KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
+inline Ort::Allocator KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
   OrtAllocator* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetAllocator(ctx_, &memory_info, &out));
-  return out;
+  return Ort::Allocator{out};
 }
 
 inline Logger KernelContext::GetLogger() const {
@@ -2844,15 +2844,23 @@ inline KeyValuePairs KernelInfoImpl<T>::GetConfigEntries() const {
 
 template <typename T>
 inline std::string KernelInfoImpl<T>::GetOperatorType() const {
-  const char* op_type = nullptr;
-  Ort::ThrowOnError(GetEpApi().KernelInfo_GetOperatorType(this->p_, &op_type));
-  return std::string{op_type};
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorType(this->p_, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorType(this->p_, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
 }
 
 template <typename T>
 inline int KernelInfoImpl<T>::GetSinceVersion() const {
   int out = 0;
-  ThrowOnError(GetEpApi().KernelInfo_GetSinceVersion(this->p_, &out));
+  ThrowOnError(GetApi().KernelInfo_GetSinceVersion(this->p_, &out));
   return out;
 }
 

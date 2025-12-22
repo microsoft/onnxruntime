@@ -725,6 +725,33 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* i
   });
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_ char* out,
+                    _Inout_ size_t* size) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+
+    auto status = CopyStringToOutputArg(op_info->node().OpType(),
+                                        "Output buffer is not large enough for ::OrtKernelInfo's operator type",
+                                        out, size);
+
+    return onnxruntime::ToOrtStatus(status);
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetSinceVersion, _In_ const OrtKernelInfo* info, _Out_ int* since_version) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+
+    if (since_version == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Output parameter for ::OrtKernelInfo's since version is NULL");
+    }
+
+    *since_version = op_info->node().SinceVersion();
+    return nullptr;
+  });
+}
+
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* ep = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetExecutionProvider();

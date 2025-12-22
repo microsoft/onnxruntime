@@ -6608,6 +6608,39 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Get the graph node operator type from OrtKernelInfo.
+   *
+   * If `out` is nullptr, the value of `size` is set to the size of the operator type
+   * string (including null-terminator), and a success status is returned.
+   *
+   * If the `size` parameter is greater than or equal to the string's size,
+   * the value of `size` is set to the true size of the string (including null-terminator),
+   * the provided memory is filled with the string's contents, and a success status is returned.
+   *
+   * If the `size` parameter is less than the actual string's size and `out`
+   * is not nullptr, the value of `size` is set to the true size of the string
+   * and a failure status is returned.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the
+   *                 operator type.
+   * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
+
+  /** \brief Get the opset version in which the given node's operator type was first defined from OrtKernelInfo.
+   *
+   * \param[in] info The ::OrtKernelInfo instance.
+   * \param[out] since_version The opset version in which the node's operator type was first defined.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetSinceVersion, _In_ const OrtKernelInfo* info, _Out_ int* since_version);
 };
 
 /*
