@@ -4,18 +4,19 @@
 
 module includes kernel functions for generating LUT for T-MAC GEMM optimization strategy.
 */
+#include "qlutgemm.h"
+
+#include <cassert>
 #include <string>
 #include <thread>
 #include <unordered_map>
 
-#include "qlutgemm.h"
-
-#include <cassert>
-
 /** T-MAC GEMM kernel Config */
 static std::unordered_map<std::string, struct MlasTMACKernelParams> tmac_kernel_configs;
 
-const MlasTMACKernelParams& MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size) {
+const MlasTMACKernelParams&
+MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size)
+{
     std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size);
     if (tmac_kernel_configs.count(key)) {
         return tmac_kernel_configs[key];
@@ -24,7 +25,9 @@ const MlasTMACKernelParams& MlasGetLUTGemmKernelParams(size_t M, size_t N, size_
     }
 }
 
-void MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zp_point) {
+void
+MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zp_point)
+{
     std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size);
     if (tmac_kernel_configs.count(key)) {
         return;
@@ -46,11 +49,12 @@ void MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_
         params.act_group_size = 32;
     } else {
         // throw error
-        ORT_THROW("Unsupported activation group size: ", block_size);;
+        ORT_THROW("Unsupported activation group size: ", block_size);
+        ;
     }
     params.actk = params.act_group_size / params.g;
 
-    //search space
+    // search space
     std::vector<size_t> bms;
     if (nbits == 1 || nbits == 2 || nbits == 4) {
         bms = {256, 512, 1024, 2048, 320, 640, 1280};
@@ -66,11 +70,11 @@ void MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_
 
     float smallest_penalty = 1e9;
     params.bm = bms[0];
-    for (int bm: bms) {
-        if (M % (bm/nbits) != 0 || bm % nbits != 0) {
+    for (int bm : bms) {
+        if (M % (bm / nbits) != 0 || bm % nbits != 0) {
             continue;
         }
-        size_t num_tiles = M/ (bm/nbits);
+        size_t num_tiles = M / (bm / nbits);
         size_t num_groups = (num_tiles + threads - 1) / threads;
         float penalty = 0.1 * num_groups + (num_groups - 1.0 * num_tiles / threads) / num_groups;
         if (penalty < smallest_penalty) {
@@ -81,7 +85,7 @@ void MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_
 
     size_t largest_kfactor = 0;
     params.kfactor = kfactors[0];
-    for (size_t kfactor: kfactors) {
+    for (size_t kfactor : kfactors) {
         if ((kfactor < params.actk) || (kfactor * params.g > params.q_group_size)) {
             continue;
         }
@@ -92,16 +96,16 @@ void MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_
     }
 
     params.n_tiles_num = M * params.bits / params.bm;
-    params.has_scale = true; // TODO(vraspar): TMAC supports only scale for now
+    params.has_scale = true;  // TODO(vraspar): TMAC supports only scale for now
     params.has_zero_point = has_zp_point;
-    params.one_scale = false; //TODO(vraspar): support one scale case for bitnet
+    params.one_scale = false;  // TODO(vraspar): support one scale case for bitnet
 
     tmac_kernel_configs[key] = params;
     return;
 }
 
-
-size_t MlasLUTGemmPackQuantBDataSize(
+size_t
+MlasLUTGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
@@ -113,7 +117,6 @@ size_t MlasLUTGemmPackQuantBDataSize(
     const size_t PackedQuantBDataSize = (N * BlkBitWidth) * (K / tmac_params.g / tmac_params.ngroups_per_elem);
     return PackedQuantBDataSize;
 }
-
 
 void
 MlasLUTGemmPackQuantBData(
@@ -243,9 +246,7 @@ MlasLUTGemmPackQuantBData(
         }
     );
     delete[] buf;
-
 }
-
 
 size_t MLASCALL
 MlasLUTPackScalesAndZeroPointsSize(
@@ -263,8 +264,8 @@ MlasLUTPackScalesAndZeroPointsSize(
     }
 }
 
-
-void MlasLUTPackScalesAndZeroPoints(
+void
+MlasLUTPackScalesAndZeroPoints(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
@@ -281,8 +282,7 @@ void MlasLUTPackScalesAndZeroPoints(
     const size_t bm = tmac_params.bm;
     const size_t num_elem_per_byte = 8 / bits;
 
-
-    for (size_t im = 0; im < N ; im += 1) {
+    for (size_t im = 0; im < N; im += 1) {
         for (size_t ik = 0; ik < K; ik += BlkLen) {
             size_t idx = (im * K + ik) / BlkLen;
             float scale = QuantBScale[idx];
@@ -298,7 +298,7 @@ void MlasLUTPackScalesAndZeroPoints(
                 // This seems gptq quantization specific.
                 // We should either use different op than matmul_nbits or add attribute to matmul_nbits to indicate this.
                 zp = zp - (1 << (bits - 1)) - 1;  // make it signed
-                zp = zp * scale;              // store scale * zp
+                zp = zp * scale;                  // store scale * zp
             }
 
             // TODO(vraspar): fix when k < BlkLen and nb1 is 0
@@ -333,8 +333,8 @@ void MlasLUTPackScalesAndZeroPoints(
     }
 }
 
-
-bool MLASCALL MlasIsLUTGemmAvailable(
+bool MLASCALL
+MlasIsLUTGemmAvailable(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
@@ -379,14 +379,13 @@ bool MLASCALL MlasIsLUTGemmAvailable(
     return true;
 }
 
-
 size_t
-CalculateLUTBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams& tmac_params) {
+CalculateLUTBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams& tmac_params)
+{
     constexpr size_t kAllockAligment = 64;
     const size_t lut_scales_size = k / tmac_params.act_group_size;
 
-
-    size_t wsize = k * m * 4 * sizeof(int8_t);  // 4 bytes per k element for 2-bit LUT
+    size_t wsize = k * m * 4 * sizeof(int8_t);         // 4 bytes per k element for 2-bit LUT
     wsize += lut_scales_size * m * 2 * sizeof(float);  // scales + biases
 
     wsize = ((wsize - 1) / kAllockAligment + 1) * kAllockAligment;
@@ -395,24 +394,24 @@ CalculateLUTBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams&
     return wsize;
 }
 
-void MLASCALL MlasLUTGemm(
+void MLASCALL
+MlasLUTGemm(
     const void* A,
     size_t BlkLen,
-    const void* QuantBData,     // Quantized weights (B matrix)
-    const float* QuantBScale,   // scale(s) for quantized weights
+    const void* QuantBData,    // Quantized weights (B matrix)
+    const float* QuantBScale,  // scale(s) for quantized weights
     void* C,
     int K,
-    int M,                // batch size (number of rows in activation)
+    int M,  // batch size (number of rows in activation)
     int N,
     MLAS_THREADPOOL* threadpool
-) {
+)
+{
     // adapted from ggml_backend_tmac_mul_mat
     const auto* Dispatch = GetMlasPlatform().LUTGenKernel;
     if (!Dispatch || !Dispatch->GenerateLUT) {
         ORT_THROW("TMAC not supported in this configuration.");
     }
-
-
 
     /** TODO(vraspar): The biases_float and scales float values don't make sense
      * FP 16
@@ -444,9 +443,8 @@ void MLASCALL MlasLUTGemm(
     auto lut_buffer = std::make_unique<int8_t[]>(lut_buffer_size);
 
     int8_t* qlut = reinterpret_cast<int8_t*>(lut_buffer.get());
-    float* lut_scales = reinterpret_cast<float*>(qlut + K * M * 4);  // after lut
+    float* lut_scales = reinterpret_cast<float*>(qlut + K * M * 4);                  // after lut
     float* lut_biases = reinterpret_cast<float*>(lut_scales + lut_scales_size * M);  // after scales
-
 
     const auto* a_float = reinterpret_cast<const float*>(A);  // Activation data
 
@@ -485,7 +483,7 @@ void MLASCALL MlasLUTGemm(
     const size_t n_tiles_num = tmac_params.n_tiles_num;
     assert(N % n_tiles_num == 0);
 
-    const size_t bm = tmac_params.bm; // TODO: hardcoding for now
+    const size_t bm = tmac_params.bm;  // TODO: hardcoding for now
     const size_t bits = tmac_params.bits;
 
     // Pre-calculate sizes for offset calculations
@@ -494,21 +492,20 @@ void MLASCALL MlasLUTGemm(
 
     // TODO: fix the below 4
     // Matrix multiplication: Output[N×M] = QuantBData[N×K] × Weights[K×M]
-    const size_t OutputRows = N;    // Number of output features
-    const size_t OutputCols = M;    // Batch size
+    const size_t OutputRows = N;  // Number of output features
+    const size_t OutputCols = M;  // Batch size
 
     const size_t ChunkSize0 = N / n_tiles_num;
-    const size_t ChunkSize1 = tmac_params.chunk_n; // process one batch item at a time
+    const size_t ChunkSize1 = tmac_params.chunk_n;  // process one batch item at a time
 
-// In llama.cpp terminology (note the swap!):
-// ne0 = M (output features, called "n" in llama.cpp)
-// ne1 = N (batch size, called "m" in llama.cpp)
+    // In llama.cpp terminology (note the swap!):
+    // ne0 = M (output features, called "n" in llama.cpp)
+    // ne1 = N (batch size, called "m" in llama.cpp)
 
     // Calculate number of chunks in each dimension
     const size_t nchunk0 = (OutputRows + ChunkSize0 - 1) / ChunkSize0;  // Should equal NumTiles
     const size_t nchunk1 = (OutputCols + ChunkSize1 - 1) / ChunkSize1;
     const size_t total_chunks = nchunk0 * nchunk1;
-
 
     // TODO(vraspar): support one_scale case
     // Determine weight-scale layout. These should be provided by the caller or inferred from the packed weights.
@@ -526,7 +523,6 @@ void MLASCALL MlasLUTGemm(
         tmac_params.has_zero_point
     );
 
-
     // Per-tile scales size = total scales size divided evenly across tiles.
     // If one_scale is true we do not advance the scales pointer per tile, so set per tile size to 0
     size_t scales_size_per_tile = 0;
@@ -538,7 +534,6 @@ void MLASCALL MlasLUTGemm(
         fprintf(stderr, "Warning: scales_size_total=%zu is not divisible by n_tiles_num=%zu; using floor division.\n", scales_size_total, n_tiles_num);
     }
     scales_size_per_tile = scales_size_total / n_tiles_num;
-
 
     // Note: when one_scale == true, callers should pass a pointer to a single scale value (scales_offset=0 will be used)
 
@@ -581,16 +576,16 @@ void MLASCALL MlasLUTGemm(
                     // Note M and N are swapped in TMAC terminology
                     // TODO(vrapsar): fix this M and N swapp mess
                     Dispatch->ComputeGemm(
-                        packed_weights + w_offset,                      // Weight tile
-                        QuantBScale + scales_offset,                    // Weight scales for this tile
-                        qlut + qlut_offset,                             // LUT for this batch row
-                        lut_scales + lut_scales_offset,                 // LUT scales
-                        lut_biases + lut_scales_offset,                 // LUT biases
-                        act_output + dst_offset,     // Output location
-                        static_cast<int>(K),                            // K dimension
-                        static_cast<int>(N),                            // K dimension
+                        packed_weights + w_offset,       // Weight tile
+                        QuantBScale + scales_offset,     // Weight scales for this tile
+                        qlut + qlut_offset,              // LUT for this batch row
+                        lut_scales + lut_scales_offset,  // LUT scales
+                        lut_biases + lut_scales_offset,  // LUT biases
+                        act_output + dst_offset,         // Output location
+                        static_cast<int>(K),             // K dimension
+                        static_cast<int>(N),             // K dimension
                         static_cast<int>(1),
-                        BlkLen                                          // Weight quantization group size
+                        BlkLen  // Weight quantization group size
                     );
                 }
             }

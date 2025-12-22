@@ -49,7 +49,6 @@ typedef enum {
 template <typename T>
 MLAS_QNBIT_GEMM_COMPUTE_TYPE
 GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
-
   // For Fp32, only accuracy level 1 or 4 makes sense.
   // non-ARM CPU converts Fp16 to Fp32.
   // By converting Fp32 to Fp16, precision becomes worse. And due to the casting,
@@ -58,7 +57,6 @@ GetComputeType(size_t nbits, size_t block_size, int64_t accuracy_level_attr) {
       MlasIsQNBitGemmAvailable(nbits, block_size, SQNBIT_CompInt8)) {
     return SQNBIT_CompInt8;
   }
-
 
   return SQNBIT_CompFp32;
 }
@@ -214,7 +212,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   // Only create threadpool for operations that can benefit from it
   if (prefer_lut_gemm_ || compute_type_ == SQNBIT_CompInt8) {
     OrtThreadPoolParams tpo;
-    tpo.thread_pool_size = 4;  // Use default (typically number of cores)
+    tpo.thread_pool_size = 4;    // Use default (typically number of cores)
     tpo.allow_spinning = false;  // Don't spin during model load
     tpo.auto_set_affinity = false;
 
@@ -227,7 +225,6 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 
   if (input_idx == InputIndex::B) {
-
     const Tensor* scales = nullptr;
     OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
 
@@ -250,7 +247,6 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
                                   has_zp_input_, nullptr, threadpool_ptr);
-
     }
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
@@ -371,7 +367,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
       is_packed = false;
     }
 #endif  // MLAS_TARGET_AMD64_IX86
-  } 
+  }
 
   return Status::OK();
 }
@@ -382,7 +378,7 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
                                                   /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
-  if (input_idx == 1) { //TODO(vraspar): DO we need shared Prepacked buffer for TMAC, combine packing of weights + scales/ZP into one buffer ???
+  if (input_idx == 1) {  // TODO(vraspar): DO we need shared Prepacked buffer for TMAC, combine packing of weights + scales/ZP into one buffer ???
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
   }
@@ -390,7 +386,7 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
   return Status::OK();
 }
 
-template<typename T1>
+template <typename T1>
 Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
                                           const Tensor* scales,
                                           const Tensor* zero_points,
@@ -409,7 +405,7 @@ Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
   // TODO(vraspar): Should we batch it here?
-  //MlasInitLUTGemmKernelConfig(N, K, nbits_, block_size_, has_zp_input_);
+  // MlasInitLUTGemmKernelConfig(N, K, nbits_, block_size_, has_zp_input_);
   MlasLUTGemm(a_data, block_size_, packed_b_.get(), packed_scales_zp_.get(), y_data, K, M, N, thread_pool);
   return Status::OK();
 }

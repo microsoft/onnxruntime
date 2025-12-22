@@ -451,6 +451,7 @@ QNBitGemmPerGemmWorkspaceAlignment(
         }
     }
 }
+
 }  // namespace
 
 bool
@@ -594,15 +595,8 @@ GetMlasQNBitGemmDispatchNeon(
         d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
-    // d.Q2BitGemmPackQuantBDataSize = sqnbitgemm_neon::Q2BitGemmPackQuantBDataSize;
-    // d.SQ2BitGemmPackQuantBData = sqnbitgemm_neon::SQ2BitGemmPackQuantBData;
-
-    // d.Q2BitGemmPerGemmWorkspaceSize = sqnbitgemm_neon::Q2BitGemmPerGemmWorkspaceSize;
-
-    d.SQ2BitGemmKernel_CompInt8 = sqnbitgemm_neon::SQ2BitGemmKernel_CompInt8_avx2;
-    d.QuantizeARow_CompInt8 = sqnbitgemm_neon::QuantizeARow_CompInt8;
-    return d;
-}();
+        return d;
+    }();
 
     return MlasQNBitGemmDispatchNeon;
 }

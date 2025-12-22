@@ -44,14 +44,14 @@ Abstract:
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
 #include <intrin.h>
+#include <windows.h>
 #else
 #if defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
 #endif
 #if defined(__x86_64__) || defined(__i386__)
-#if !defined(signature_VORTEX_ebx) && !defined(signature_NEXGEN_ebx) && !defined(signature_AMD_ebx)//workaround for Bug 96238 - [i386] cpuid.h header needs include guards
+#if !defined(signature_VORTEX_ebx) && !defined(signature_NEXGEN_ebx) && !defined(signature_AMD_ebx)  // workaround for Bug 96238 - [i386] cpuid.h header needs include guards
 #include <cpuid.h>
 #endif
 #if defined(__GNUC__) && __GNUC__ >= 12
@@ -88,7 +88,7 @@ Abstract:
 #ifdef _WIN32
 #define MLAS_DECLSPEC_ALIGN(variable, alignment) DECLSPEC_ALIGN(alignment) variable
 #else
-#define MLAS_DECLSPEC_ALIGN(variable, alignment) variable __attribute__ ((aligned(alignment)))
+#define MLAS_DECLSPEC_ALIGN(variable, alignment) variable __attribute__((aligned(alignment)))
 #endif
 
 //
@@ -98,7 +98,7 @@ Abstract:
 #if defined(_MSC_VER)
 #define MLAS_FORCEINLINE __forceinline
 #else
-#define MLAS_FORCEINLINE __attribute__ ((always_inline)) inline
+#define MLAS_FORCEINLINE __attribute__((always_inline)) inline
 #endif
 
 //
@@ -110,7 +110,7 @@ Abstract:
 #if defined(_MSC_VER)
 #define MLAS_INTERNAL_DATA extern "C"
 #else
-#define MLAS_INTERNAL_DATA extern "C" __attribute ((visibility("hidden")))
+#define MLAS_INTERNAL_DATA extern "C" __attribute((visibility("hidden")))
 #endif
 
 //
@@ -122,7 +122,7 @@ Abstract:
 #ifdef MLAS_NO_EXCEPTION
 
 MLAS_FORCEINLINE void
-    MlasPrintFinalMessage(const std::string& msg)
+MlasPrintFinalMessage(const std::string& msg)
 {
 #if defined(__ANDROID__)
     __android_log_print(ANDROID_LOG_ERROR, "mlas", "%s", msg.c_str());
@@ -135,7 +135,6 @@ MLAS_FORCEINLINE void
     std::cerr << msg << std::endl;
 #endif
 }
-
 
 #define MLAS_THROW_EX(ex, what)     \
     do {                            \
@@ -160,9 +159,8 @@ MLAS_FORCEINLINE void
 //
 
 #if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
-#include "core/platform/threadpool.h"
-
 #include "core/common/cpuid_info.h"
+#include "core/platform/threadpool.h"
 using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
 
 #include "core/common/float16.h"
@@ -252,7 +250,7 @@ enum MlasUArch {
     cpuinfo_uarch_cortex_a78 = 0x00300378,
 };
 
-#endif // MLAS_TARGET_ARM64
+#endif  // MLAS_TARGET_ARM64
 
 //
 // Define MLAS_FP16
@@ -269,16 +267,20 @@ struct MLFloat16 {
     explicit MLFloat16(float ff) : val(MLAS_Float2Half(ff)) {}
     constexpr static MLFloat16 FromBits(uint16_t x) noexcept { return MLFloat16(x); }
 
-    MLFloat16 Abs() const noexcept {
+    MLFloat16 Abs() const noexcept
+    {
         return MLFloat16(static_cast<uint16_t>(val & ~kSignMask));
     }
-    bool IsNaN() const noexcept {
+    bool IsNaN() const noexcept
+    {
         return Abs().val > kPositiveInfinityBits;
     }
-    bool IsNegative() const noexcept {
+    bool IsNegative() const noexcept
+    {
         return static_cast<int16_t>(val) < 0;
     }
-    MLFloat16 Negate() const {
+    MLFloat16 Negate() const
+    {
         return MLFloat16(IsNaN() ? val : static_cast<uint16_t>(val ^ kSignMask));
     }
     static constexpr uint16_t kSignMask = 0x8000U;
@@ -307,31 +309,30 @@ operator!=(const MLFloat16& left, const MLFloat16& right)
     return left.val != right.val;
 }
 
-}
+}  // namespace onnxruntime
 
 #endif  // BUILD_MLAS_NO_ONNXRUNTIME
 
 static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 
-
 //
 // Define the maximum number of threads supported by this implementation.
 //
 
-#define MLAS_MAXIMUM_THREAD_COUNT                   16
+#define MLAS_MAXIMUM_THREAD_COUNT 16
 
 //
 // Define the default strides to step through slices of the input matrices.
 //
 
-#define MLAS_HGEMM_STRIDEN                          128
-#define MLAS_HGEMM_STRIDEK                          128
-#define MLAS_SGEMM_STRIDEN                          128
-#define MLAS_SGEMM_STRIDEK                          128
-#define MLAS_SGEMM_PACKED_STRIDEN                   128
-#define MLAS_SGEMM_PACKED_STRIDEK                   256
-#define MLAS_DGEMM_STRIDEN                          64
-#define MLAS_DGEMM_STRIDEK                          128
+#define MLAS_HGEMM_STRIDEN 128
+#define MLAS_HGEMM_STRIDEK 128
+#define MLAS_SGEMM_STRIDEN 128
+#define MLAS_SGEMM_STRIDEK 128
+#define MLAS_SGEMM_PACKED_STRIDEN 128
+#define MLAS_SGEMM_PACKED_STRIDEK 256
+#define MLAS_DGEMM_STRIDEN 64
+#define MLAS_DGEMM_STRIDEK 128
 
 //
 // Define the alignment for segmenting a GEMM operation across multiple
@@ -342,10 +343,10 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // the effort at this time.
 //
 
-#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             32
-#define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
-#define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
-#define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
+#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN 32
+#define MLAS_SGEMM_STRIDEN_THREAD_ALIGN 16
+#define MLAS_DGEMM_STRIDEN_THREAD_ALIGN 8
+#define MLAS_QGEMM_STRIDEN_THREAD_ALIGN 16
 
 //
 // Define the prototypes of the platform optimized routines.
@@ -354,9 +355,7 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || \
     defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_S390X)
 
-typedef
-size_t
-(MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
+typedef size_t(MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
     const float* A,
     const float* B,
     float* C,
@@ -367,11 +366,9 @@ size_t
     size_t ldc,
     float alpha,
     bool ZeroMode
-    );
+);
 
-typedef
-size_t
-(MLASCALL MLAS_GEMM_DOUBLE_KERNEL)(
+typedef size_t(MLASCALL MLAS_GEMM_DOUBLE_KERNEL)(
     const double* A,
     const double* B,
     double* C,
@@ -382,12 +379,10 @@ size_t
     size_t ldc,
     double alpha,
     bool ZeroMode
-    );
+);
 
 #ifdef FORCE_GENERIC_ALGORITHMS
-typedef
-size_t
-(MLASCALL MLAS_GEMM_FLOAT_KERNEL_GENERIC)(
+typedef size_t(MLASCALL MLAS_GEMM_FLOAT_KERNEL_GENERIC)(
     const float* A,
     const float* B,
     float* C,
@@ -397,7 +392,7 @@ size_t
     size_t lda,
     size_t ldc,
     float alpha
-    );
+);
 #endif
 
 #else
@@ -416,9 +411,7 @@ typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
 );
 #endif
 
-typedef
-size_t
-(MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
+typedef size_t(MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
     const float* A,
     const float* B,
     float* C,
@@ -428,11 +421,9 @@ size_t
     size_t lda,
     size_t ldc,
     float alpha
-    );
+);
 
-typedef
-size_t
-(MLASCALL MLAS_GEMM_DOUBLE_KERNEL)(
+typedef size_t(MLASCALL MLAS_GEMM_DOUBLE_KERNEL)(
     const double* A,
     const double* B,
     double* C,
@@ -442,13 +433,11 @@ size_t
     size_t lda,
     size_t ldc,
     double alpha
-    );
+);
 
 #endif
 
-typedef
-void
-(MLASCALL MLAS_GEMV_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_GEMV_FLOAT_KERNEL)(
     const float* A,
     const float* B,
     float* C,
@@ -456,11 +445,9 @@ void
     size_t CountN,
     size_t ldb,
     bool ZeroMode
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_SGEMM_KERNEL_M1_ROUTINE)(
+typedef void(MLASCALL MLAS_SGEMM_KERNEL_M1_ROUTINE)(
     const float* A,
     const float* B,
     float* C,
@@ -468,19 +455,15 @@ void
     size_t CountN,
     size_t ldb,
     float beta
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE)(
+typedef void(MLASCALL MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE)(
     float* D,
     const float* B,
     size_t ldb
-    );
+);
 
-typedef
-size_t
-(MLASCALL MLAS_GEMM_U8S8_KERNEL)(
+typedef size_t(MLASCALL MLAS_GEMM_U8S8_KERNEL)(
     const uint8_t* A,
     const uint8_t* B,
     int32_t* C,
@@ -492,22 +475,18 @@ size_t
     const int32_t* ColumnSumVector,
     const int32_t* ZeroPointB,
     bool ZeroMode
-    );
+);
 
-typedef
-size_t
-(MLASCALL MLAS_GEMV_U8S8_KERNEL)(
+typedef size_t(MLASCALL MLAS_GEMV_U8S8_KERNEL)(
     const uint8_t* A,
     const uint8_t* B,
     int32_t* C,
     size_t CountK,
     size_t CountN,
     size_t ldb
-    );
+);
 
-typedef
-size_t
-(MLASCALL MLAS_GEMM_U8U8_KERNEL)(
+typedef size_t(MLASCALL MLAS_GEMM_U8U8_KERNEL)(
     const int16_t* A,
     const uint8_t* B,
     int32_t* C,
@@ -519,11 +498,9 @@ size_t
     const int32_t* ColumnSumVector,
     const int32_t* ZeroPointB,
     bool ZeroMode
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_CONV_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_CONV_FLOAT_KERNEL)(
     const float* Input,
     const float* Filter,
     float* Output,
@@ -543,11 +520,9 @@ void
     size_t OutputCountRightPad,
     const float* Bias,
     unsigned KernelFlags
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_CONV_DEPTHWISE_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_CONV_DEPTHWISE_FLOAT_KERNEL)(
     const float* Input,
     const float* Filter,
     float* Output,
@@ -564,11 +539,9 @@ void
     size_t OutputCountRightPad,
     const float* Bias,
     unsigned KernelFlags
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_CONV_POINTWISE_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_CONV_POINTWISE_FLOAT_KERNEL)(
     const float* Input,
     const float* Filter,
     float* Output,
@@ -581,11 +554,9 @@ void
     size_t OutputCount,
     const float* Bias,
     unsigned KernelFlags
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_POOL_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_POOL_FLOAT_KERNEL)(
     const float* Input,
     float* Output,
     size_t StrideWidth,
@@ -600,60 +571,47 @@ void
     size_t OutputCountLeftPad,
     size_t OutputCount,
     size_t OutputCountRightPad
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_COMPUTE_UNARY_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_COMPUTE_UNARY_FLOAT_KERNEL)(
     const float* Input,
     float* Output,
     size_t N
-    );
+);
 
-typedef
-float
-(MLASCALL MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL)(
+typedef float(MLASCALL MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL)(
     const float* Input,
     float* Output,
     size_t N,
     const float* NegativeMaximum
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL)(
     float* Output,
     size_t N,
     const float* Parameters
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL)(
     const float* Input,
     float* Output,
     size_t N,
     const float* Parameters
-    );
+);
 
-typedef
-float
-(MLASCALL MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL)(
+typedef float(MLASCALL MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL)(
     const float* Input,
     size_t N
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL)(
+typedef void(MLASCALL MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL)(
     const float* Input,
     float* Min,
     float* Max,
     size_t N
-    );
+);
 
-typedef
-void(MLASCALL MLAS_CAST_F16_TO_F32_KERNEL)(
+typedef void(MLASCALL MLAS_CAST_F16_TO_F32_KERNEL)(
     const unsigned short* Source,
     float* Destination,
     size_t Count
@@ -665,9 +623,7 @@ typedef void(MLASCALL MLAS_CAST_F32_TO_F16_KERNEL)(
     size_t Count
 );
 
-typedef
-void
-(MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
+typedef void(MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
     const int8_t* InputA,
     float ScaleA,
     int32_t ZeroPointA,
@@ -679,11 +635,9 @@ void
     int8_t* OutputC,
     size_t N,
     bool IsScalarB
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_QLINEAR_BINARY_OP_U8_KERNEL)(
+typedef void(MLASCALL MLAS_QLINEAR_BINARY_OP_U8_KERNEL)(
     const uint8_t* InputA,
     float ScaleA,
     int32_t ZeroPointA,
@@ -695,88 +649,75 @@ void
     uint8_t* OutputC,
     size_t N,
     bool IsScalarB
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_QUANTIZE_LINEAR_U8_KERNEL)(
+typedef void(MLASCALL MLAS_QUANTIZE_LINEAR_U8_KERNEL)(
     const float* Input,
     uint8_t* Output,
     size_t N,
     float Scale,
     uint8_t ZeroPoint
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_QUANTIZE_LINEAR_S8_KERNEL)(
+typedef void(MLASCALL MLAS_QUANTIZE_LINEAR_S8_KERNEL)(
     const float* Input,
     int8_t* Output,
     size_t N,
     float Scale,
     int8_t ZeroPoint
-    );
+);
 
-typedef
-void
-(MLASCALL MLAS_QUANTIZE_LINEAR_U16_KERNEL)(
+typedef void(MLASCALL MLAS_QUANTIZE_LINEAR_U16_KERNEL)(
     const float* Input,
     uint16_t* Output,
     size_t N,
     float Scale,
-    uint16_t ZeroPoint);
+    uint16_t ZeroPoint
+);
 
-typedef
-void
-(MLASCALL MLAS_QUANTIZE_LINEAR_S16_KERNEL)(
+typedef void(MLASCALL MLAS_QUANTIZE_LINEAR_S16_KERNEL)(
     const float* Input,
     int16_t* Output,
     size_t N,
     float Scale,
-    int16_t ZeroPoint);
+    int16_t ZeroPoint
+);
 
-typedef
-void
-(MLASCALL MLAS_QUANTIZE_LINEAR_U4_KERNEL)(
+typedef void(MLASCALL MLAS_QUANTIZE_LINEAR_U4_KERNEL)(
     const float* Input,
     uint8_t* Output,
     size_t N,
     float Scale,
-    int8_t ZeroPoint);
+    int8_t ZeroPoint
+);
 
-typedef
-void
-(MLASCALL MLAS_QUANTIZE_LINEAR_S4_KERNEL)(
+typedef void(MLASCALL MLAS_QUANTIZE_LINEAR_S4_KERNEL)(
     const float* Input,
     uint8_t* Output,
     size_t N,
     float Scale,
-    int8_t ZeroPoint);
+    int8_t ZeroPoint
+);
 
-typedef
-void
-(MLASCALL MLAS_DEQUANTIZE_LINEAR_U8_KERNEL)(
+typedef void(MLASCALL MLAS_DEQUANTIZE_LINEAR_U8_KERNEL)(
     const uint8_t* Input,
     float* Output,
     size_t N,
     float Scale,
-    uint8_t ZeroPoint);
+    uint8_t ZeroPoint
+);
 
-typedef
-void
-(MLASCALL MLAS_DEQUANTIZE_LINEAR_S8_KERNEL)(
+typedef void(MLASCALL MLAS_DEQUANTIZE_LINEAR_S8_KERNEL)(
     const int8_t* Input,
     float* Output,
     size_t N,
     float Scale,
-    int8_t ZeroPoint);
+    int8_t ZeroPoint
+);
 
-template<typename InputType, typename FilterType>
-struct MLAS_QUANT_KERNEL
-{
-    typedef
-    void
-    (MLASCALL DepthwiseKernel)(
+template <typename InputType, typename FilterType>
+struct MLAS_QUANT_KERNEL {
+    typedef void(MLASCALL DepthwiseKernel)(
         const InputType* const* Input,
         InputType InputZeroPoint,
         const FilterType* Filter,
@@ -785,11 +726,9 @@ struct MLAS_QUANT_KERNEL
         size_t Channels,
         size_t OutputCount,
         size_t KernelSize
-        );
+    );
 };
-typedef
-void
-(MLASCALL MLAS_CONV_FLOAT_FN)(
+typedef void(MLASCALL MLAS_CONV_FLOAT_FN)(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,
@@ -797,10 +736,8 @@ void
     float* WorkingBuffer,
     float* Output,
     MLAS_THREADPOOL* ThreadPool
-    );
-typedef
-bool
-(MLASCALL MLAS_CONV_FLOAT_OVERRIDE)(
+);
+typedef bool(MLASCALL MLAS_CONV_FLOAT_OVERRIDE)(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,
@@ -808,11 +745,9 @@ bool
     float* WorkingBuffer,
     float* Output,
     MLAS_THREADPOOL* ThreadPool
-    );
+);
 // TODO: Investigate if overridden typedefs can be removed
-typedef
-void
-(MLASCALL MLAS_CONV_PREPARE_FLOAT_FN)(
+typedef void(MLASCALL MLAS_CONV_PREPARE_FLOAT_FN)(
     MLAS_CONV_PARAMETERS* Parameters,
     size_t Dimensions,
     size_t BatchCount,
@@ -829,10 +764,8 @@ void
     size_t* WorkingBufferSize,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
-    );
-typedef
-bool
-(MLASCALL MLAS_CONV_PREPARE_FLOAT_OVERRIDE)(
+);
+typedef bool(MLASCALL MLAS_CONV_PREPARE_FLOAT_OVERRIDE)(
     MLAS_CONV_PARAMETERS* Parameters,
     size_t Dimensions,
     size_t BatchCount,
@@ -849,9 +782,9 @@ bool
     size_t* WorkingBufferSize,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
-    );
+);
 
-typedef void (MLASCALL MLAS_GEMM_BATCH)(
+typedef void(MLASCALL MLAS_GEMM_BATCH)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -859,9 +792,10 @@ typedef void (MLASCALL MLAS_GEMM_BATCH)(
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool);
+    MLAS_THREADPOOL* ThreadPool
+);
 
-typedef bool (MLASCALL MLAS_GEMM_BATCH_OVERRIDE)(
+typedef bool(MLASCALL MLAS_GEMM_BATCH_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -869,227 +803,232 @@ typedef bool (MLASCALL MLAS_GEMM_BATCH_OVERRIDE)(
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool);
+    MLAS_THREADPOOL* ThreadPool
+);
 
-typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE)(
+typedef size_t(MLASCALL MLAS_GEMM_PACK_B_SIZE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
-    size_t K);
+    size_t K
+);
 
-typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
+typedef size_t(MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
-    size_t K);
+    size_t K
+);
 
-typedef void (MLASCALL MLAS_GEMM_PACK_B)(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t N,
-    size_t K,
-    const float* B,
-    size_t ldb,
-    void* PackedB);
-
-typedef bool (MLASCALL MLAS_GEMM_PACK_B_OVERRIDE)(
+typedef void(MLASCALL MLAS_GEMM_PACK_B)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB);
+    void* PackedB
+);
+
+typedef bool(MLASCALL MLAS_GEMM_PACK_B_OVERRIDE)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+);
 
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelSse;
-    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx;
+MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelSse;
+MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx;
 #ifdef FORCE_GENERIC_ALGORITHMS
-    MLAS_GEMM_FLOAT_KERNEL_GENERIC MlasSgemmKernelZero;
-    MLAS_GEMM_FLOAT_KERNEL_GENERIC MlasSgemmKernelAdd;
+MLAS_GEMM_FLOAT_KERNEL_GENERIC MlasSgemmKernelZero;
+MLAS_GEMM_FLOAT_KERNEL_GENERIC MlasSgemmKernelAdd;
 #endif
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelFma3;
-    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx512F;
-    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelSse;
-    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelAvx;
-    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelFma3;
-    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelAvx512F;
+MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelFma3;
+MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx512F;
+MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelSse;
+MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelAvx;
+MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelFma3;
+MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelAvx512F;
 #endif
 #elif defined(MLAS_TARGET_POWER)
-    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
-    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
-    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
-    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelPOWER10;
-    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelVSX;
-    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelVSX;
+MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
+MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
+MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
+MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelPOWER10;
+MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelVSX;
+MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelVSX;
 #elif defined(MLAS_TARGET_S390X)
-    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
-    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZVECTOR;
-    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
-    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelZVECTOR;
-    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelZVECTOR;
+MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
+MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZVECTOR;
+MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
+MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelZVECTOR;
+MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelZVECTOR;
 #elif defined(MLAS_TARGET_LARCH64)
-    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelLSX;
-    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelLasx;
-    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelLSX;
-    MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelLasx;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelLSX;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelLSX;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelLSX;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelLSX;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelLasx;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelLasx;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelLasx;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelLasx;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelLSX;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelLSX;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelLSX;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelLasx;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelLasx;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelLasx;
-    MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4LSX;
-    MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Lasx;
-    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelLasx;
-    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelLasx;
-    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
+MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelLSX;
+MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelLasx;
+MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelLSX;
+MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelLasx;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelLSX;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelLSX;
+MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelLSX;
+MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelLSX;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelLasx;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelLasx;
+MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelLasx;
+MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelLasx;
+MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelLSX;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelLSX;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelLSX;
+MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelLasx;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelLasx;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelLasx;
+MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4LSX;
+MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Lasx;
+MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelLasx;
+MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelLasx;
+MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
 #else
-    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
-    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
+MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
+MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
 #if defined(__aarch64__) && defined(__linux__)
-    MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
-    MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
+MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
+MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
 #endif
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelNeon;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelNeon;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
+MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
+MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
+MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelNeon;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelNeon;
 #endif
-    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
-    MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
+MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
+MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx;
-    MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx;
+MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx;
+MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx;
 #elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM)
-    MLAS_GEMV_FLOAT_KERNEL MlasGemvFloatKernel;
+MLAS_GEMV_FLOAT_KERNEL MlasGemvFloatKernel;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Sse;
-    MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
+MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Sse;
+MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
-    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx2;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Core;
-    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Core;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
-    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvxVnni;
-    MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvxVnni;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmU8U8KernelAvx2Vnni;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmS8S8KernelAvx2Vnni;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmS8U8KernelAvx2Vnni;
-    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
-    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
+MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
+MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx2;
+MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Core;
+MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Core;
+MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
+MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
+MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvxVnni;
+MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvxVnni;
+MLAS_GEMM_U8S8_KERNEL MlasGemmU8U8KernelAvx2Vnni;
+MLAS_GEMM_U8S8_KERNEL MlasGemmS8S8KernelAvx2Vnni;
+MLAS_GEMM_U8S8_KERNEL MlasGemmS8U8KernelAvx2Vnni;
+MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
+MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelSse;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelSse;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelSse;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelSse;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelFma3;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelFma3;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelFma3;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelFma3;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx512F;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx512F;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx512F;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512F;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx512F;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelSse;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx512F;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelSse;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx512F;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelSse;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelSse;
+MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelSse;
+MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelSse;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx;
+MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx;
+MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelFma3;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelFma3;
+MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelFma3;
+MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelFma3;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx512F;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx512F;
+MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx512F;
+MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512F;
+MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
+MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
+MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx512F;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelSse;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx512F;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelSse;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx512F;
 #else
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernel;
-    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernel;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernel;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernel;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernel;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernel;
-    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernel;
+MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernel;
+MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernel;
+MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernel;
+MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernel;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernel;
+MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
 #endif
 
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32Kernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernel;
-    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32Kernel;
-    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32Kernel;
-    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
-    MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8Kernel;
-    MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
-    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8Kernel;
-    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8Kernel;
-    MLAS_QUANTIZE_LINEAR_S16_KERNEL MlasQuantizeLinearS16Kernel;
-    MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
-    MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
-    MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernel;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32Kernel;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernel;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernel;
+MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32Kernel;
+MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32Kernel;
+MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
+MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8Kernel;
+MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
+MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8Kernel;
+MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8Kernel;
+MLAS_QUANTIZE_LINEAR_S16_KERNEL MlasQuantizeLinearS16Kernel;
+MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
+MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
+MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
-    MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeLogisticF32KernelFma3;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeTanhF32KernelFma3;
-    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelFma3;
-    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelAvx512F;
-    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelAvx;
-    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelAvx;
-    MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8KernelAvx2;
-    MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
-    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
-    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
+MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
+MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeLogisticF32KernelFma3;
+MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeTanhF32KernelFma3;
+MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelFma3;
+MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelAvx512F;
+MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelAvx;
+MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelAvx;
+MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8KernelAvx2;
+MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
+MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
+MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
 #endif
 
-    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
-    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
+MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
+MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
-    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx512F;
-    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelAvx;
+MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
+MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx512F;
+MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelAvx;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelSse;
-    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelAvx;
-    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelAvx2;
-    MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelAvx2;
+MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelSse;
+MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelAvx;
+MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelAvx2;
+MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelAvx2;
 #endif
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelNeon;
-    MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelNeon;
+MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelNeon;
+MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelNeon;
 #endif
 }
 
@@ -1108,17 +1047,17 @@ extern "C" {
 // value.
 //
 
-#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     64
+#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT 64
 
 //
 // Define the target number of per-thread multiplies before using another
 // thread to perform additional work.
 //
 
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
-#define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
-#define MLAS_QGEMM_THREAD_COMPLEXITY                65536
-#define MLAS_HGEMM_THREAD_COMPLEXITY                65536
+#define MLAS_SGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
+#define MLAS_DGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
+#define MLAS_QGEMM_THREAD_COMPLEXITY 65536
+#define MLAS_HGEMM_THREAD_COMPLEXITY 65536
 
 #if defined(__aarch64__) && defined(__linux__)
 #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
@@ -1143,7 +1082,7 @@ MlasSgemmOperation(
     float beta,
     float* C,
     size_t ldc
-    );
+);
 
 //
 // Quantized integer matrix/matrix dispatch structure.
@@ -1175,7 +1114,8 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchZVECTOR;
 
 #if defined(MLAS_TARGET_WASM_RELAXED_SIMD)
-extern bool HasUSDot();
+extern bool
+HasUSDot();
 #endif
 
 //
@@ -1267,40 +1207,40 @@ extern const MLAS_ELTWISE_DISPATCH MlasEltwiseDispatchNeon;
 // Quantized depthwise convolution kernels.
 //
 
-template<typename InputType, typename FilterType>
+template <typename InputType, typename FilterType>
 void
-MLASCALL
-MlasConvDepthwiseKernel(
-    const InputType* const* Input,
-    InputType InputZeroPoint,
-    const FilterType* Filter,
-    FilterType FilterZeroPoint,
-    int32_t* Output,
-    size_t Channels,
-    size_t OutputCount,
-    size_t KernelSize
+    MLASCALL
+    MlasConvDepthwiseKernel(
+        const InputType* const* Input,
+        InputType InputZeroPoint,
+        const FilterType* Filter,
+        FilterType FilterZeroPoint,
+        int32_t* Output,
+        size_t Channels,
+        size_t OutputCount,
+        size_t KernelSize
     );
 
 template <typename InputType, typename FilterType>
 void
-MLASCALL
-MlasConvDepthwiseKernelAvx2(
-    const InputType* const* Input,
-    InputType InputZeroPoint,
-    const FilterType* Filter,
-    FilterType FilterZeroPoint,
-    int32_t* Output,
-    size_t Channels,
-    size_t OutputCount,
-    size_t KernelSize
+    MLASCALL
+    MlasConvDepthwiseKernelAvx2(
+        const InputType* const* Input,
+        InputType InputZeroPoint,
+        const FilterType* Filter,
+        FilterType FilterZeroPoint,
+        int32_t* Output,
+        size_t Channels,
+        size_t OutputCount,
+        size_t KernelSize
     );
 
 //
 // Define the kernel flags for conv sym
 //
 
-#define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
-#define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
+#define MLAS_CONV_SYM_FLAG_INPUT_DIRECT 0x00000001
+#define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE 0x00000002
 
 //
 // Define the post-processing parameters for conv sym: bias and re-quant params
@@ -1318,11 +1258,11 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
 // Environment information class.
 //
 
-enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big = 3 };
-
+enum MlasCoreType { mlas_core_unknown = 0,
+                    mlas_core_little = 2,
+                    mlas_core_big = 3 };
 
 struct MLAS_PLATFORM {
-
     MLAS_PLATFORM(void);
 
     // TODO: move to cpuinfo
@@ -1386,7 +1326,7 @@ struct MLAS_PLATFORM {
     MLAS_QUANT_KERNEL<int8_t, int8_t>::DepthwiseKernel* ConvDepthwiseS8S8Kernel;
     MLAS_QUANT_KERNEL<int8_t, uint8_t>::DepthwiseKernel* ConvDepthwiseS8U8Kernel;
 
-#if defined(MLAS_TARGET_POWER) ||  defined(MLAS_TARGET_S390X)
+#if defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
@@ -1458,8 +1398,9 @@ struct MLAS_PLATFORM {
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
 };
 
-inline
-MLAS_PLATFORM& GetMlasPlatform(){
+inline MLAS_PLATFORM&
+GetMlasPlatform()
+{
     static MLAS_PLATFORM MlasPlatform;
     return MlasPlatform;
 }
@@ -1468,12 +1409,10 @@ MLAS_PLATFORM& GetMlasPlatform(){
 // Threading support.
 //
 
-typedef
-void
-(MLAS_THREADED_ROUTINE)(
+typedef void(MLAS_THREADED_ROUTINE)(
     void* Context,
     ptrdiff_t Index
-    );
+);
 
 void
 MlasExecuteThreaded(
@@ -1481,10 +1420,9 @@ MlasExecuteThreaded(
     void* Context,
     ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
-    );
+);
 
-constexpr
-size_t
+constexpr size_t
 MlasDivRoundup(size_t up, size_t down)
 {
     return (up + down - 1) / down;
@@ -1502,8 +1440,7 @@ MlasTrySimpleParallel(
     MLAS_THREADPOOL* ThreadPool,
     const std::ptrdiff_t Iterations,
     const std::function<void(std::ptrdiff_t tid)>& Work
-    );
-
+);
 
 /**
  * @brief Distribute many iterations of work over a thread pool if supported.
@@ -1515,17 +1452,15 @@ MlasTrySimpleParallel(
  */
 void
 MlasTryBatchParallel(
-	MLAS_THREADPOOL * ThreadPool,
-	const std::ptrdiff_t Iterations,
-	const std::function<void(std::ptrdiff_t tid)>& Work
-    );
+    MLAS_THREADPOOL* ThreadPool,
+    const std::ptrdiff_t Iterations,
+    const std::function<void(std::ptrdiff_t tid)>& Work
+);
 
-
-inline
-ptrdiff_t
+inline ptrdiff_t
 MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
-    )
+)
 {
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
@@ -1535,15 +1470,14 @@ MlasGetMaximumThreadCount(
 #endif
 }
 
-inline
-void
+inline void
 MlasPartitionWork(
     ptrdiff_t ThreadId,
     ptrdiff_t ThreadCount,
     size_t TotalWork,
     size_t* WorkIndex,
     size_t* WorkRemaining
-    )
+)
 {
     const size_t WorkPerThread = TotalWork / ThreadCount;
     const size_t WorkPerThreadExtra = TotalWork % ThreadCount;
@@ -1563,23 +1497,23 @@ MlasPartitionWork(
 // point numbers to integers.
 //
 
-#define MLAS_ROUNDING_BIAS_MAGIC                    12582912.f
-#define MLAS_ROUNDING_BIAS_MAGIC_BITS               0x4B400000
+#define MLAS_ROUNDING_BIAS_MAGIC 12582912.f
+#define MLAS_ROUNDING_BIAS_MAGIC_BITS 0x4B400000
 
 //
 // Helpers to cast a floating point type to and from an integer bit format.
 //
 #if defined(_MSC_VER) && !defined(__clang__)
-  #pragma warning(push)
-  // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
-  #pragma warning(disable:26497)
+#pragma warning(push)
+// VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
+#pragma warning(disable : 26497)
 #endif
 
 MLAS_FORCEINLINE
 uint32_t
 MlasBitsOfFp32(
     float FloatValue
-    )
+)
 {
     union {
         uint32_t IntegerValue;
@@ -1593,7 +1527,7 @@ MLAS_FORCEINLINE
 float
 MlasFp32FromBits(
     uint32_t IntegerValue
-    )
+)
 {
     union {
         uint32_t IntegerValue;
@@ -1609,17 +1543,16 @@ MlasFp32FromBits(
 #if defined(MLAS_TARGET_WASM_SCALAR)
 
 void
-MLASCALL
-MlasConvDepthwiseFloat_CHW(
-    const MLAS_CONV_PARAMETERS* Parameters,
-    const float* Input,
-    const float* Filter,
-    float* Output,
-    const float* Zeros
+    MLASCALL
+    MlasConvDepthwiseFloat_CHW(
+        const MLAS_CONV_PARAMETERS* Parameters,
+        const float* Input,
+        const float* Filter,
+        float* Output,
+        const float* Zeros
     );
 
 #endif
-
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
@@ -1691,8 +1624,8 @@ typedef v128_t MLAS_INT32X4;
 typedef __m128 MLAS_FLOAT32X4;
 typedef __m128i MLAS_INT32X4;
 #else
-typedef float MLAS_FLOAT32X4 __attribute__ ((vector_size(16)));
-typedef int32_t MLAS_INT32X4 __attribute__ ((vector_size(16)));
+typedef float MLAS_FLOAT32X4 __attribute__((vector_size(16)));
+typedef int32_t MLAS_INT32X4 __attribute__((vector_size(16)));
 #endif
 
 MLAS_FORCEINLINE
@@ -1725,7 +1658,7 @@ MlasCastToInt32x4(MLAS_FLOAT32X4 Vector)
 #elif defined(MLAS_LSX_INTRINSICS)
     return __lsx_vftint_w_s(Vector);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
-    return (MLAS_INT32X4)__builtin_convertvector((__f32x4)Vector, __i32x4);
+    return (MLAS_INT32X4) __builtin_convertvector((__f32x4)Vector, __i32x4);
 #else
     return MLAS_INT32X4{int32_t(Vector[0]), int32_t(Vector[1]), int32_t(Vector[2]), int32_t(Vector[3])};
 #endif
@@ -1807,7 +1740,7 @@ MlasStoreInt32x4(int32_t* Buffer, MLAS_INT32X4 Vector)
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     wasm_v128_store(Buffer, Vector);
 #elif defined(MLAS_LSX_INTRINSICS)
-    __lsx_vst(Vector, (MLAS_INT32X4 *)Buffer, 0);
+    __lsx_vst(Vector, (MLAS_INT32X4*)Buffer, 0);
 #else
     *((MLAS_INT32X4*)Buffer) = Vector;
 #endif
@@ -1926,10 +1859,10 @@ MlasBlendInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2, MLAS_INT32X4 Select
     return MlasOrInt32x4(MlasAndInt32x4(Vector2, Selection), MlasAndNotInt32x4(Selection, Vector1));
 }
 
-template<unsigned ShiftCount>
+template <unsigned ShiftCount>
 MLAS_FORCEINLINE
-MLAS_INT32X4
-MlasShiftLeftInt32x4(MLAS_INT32X4 Vector)
+    MLAS_INT32X4
+    MlasShiftLeftInt32x4(MLAS_INT32X4 Vector)
 {
 #if defined(MLAS_NEON_INTRINSICS)
     return vshlq_n_s32(Vector, ShiftCount);
@@ -2078,7 +2011,7 @@ MlasLoadFloat32x4(const float* Buffer)
     return wasm_v128_load(Buffer);
 #elif defined(MLAS_LSX_INTRINSICS)
     // return MlasReinterpretAsFloat32x4(__lsx_vld((const MLAS_INT32X4 *)Buffer, 0));
-    return (MLAS_FLOAT32X4)__lsx_vld((const MLAS_INT32X4 *)Buffer, 0);
+    return (MLAS_FLOAT32X4)__lsx_vld((const MLAS_INT32X4*)Buffer, 0);
 #else
     return *((MLAS_FLOAT32X4*)Buffer);
 #endif
@@ -2129,9 +2062,8 @@ MlasStoreAlignedFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 #endif
 }
 
-template<unsigned Lane>
-MLAS_FORCEINLINE
-void
+template <unsigned Lane>
+MLAS_FORCEINLINE void
 MlasStoreLaneFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
 #if defined(MLAS_NEON_INTRINSICS)
@@ -2168,9 +2100,8 @@ MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 #endif
 }
 
-template<unsigned Lane>
-MLAS_FORCEINLINE
-float
+template <unsigned Lane>
+MLAS_FORCEINLINE float
 MlasExtractLaneFloat32x4(MLAS_FLOAT32X4 Vector)
 {
 #if defined(MLAS_NEON_INTRINSICS)
@@ -2188,26 +2119,24 @@ MlasExtractLaneFloat32x4(MLAS_FLOAT32X4 Vector)
 
 #if defined(MLAS_SSE2_INTRINSICS)
 
-template<>
-MLAS_FORCEINLINE
-void
+template <>
+MLAS_FORCEINLINE void
 MlasStoreLaneFloat32x4<0>(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
     _mm_store_ss(Buffer, Vector);
 }
 
-template<>
-MLAS_FORCEINLINE
-float
+template <>
+MLAS_FORCEINLINE float
 MlasExtractLaneFloat32x4<0>(MLAS_FLOAT32X4 Vector)
 {
     return _mm_cvtss_f32(Vector);
 }
 
-template<unsigned Index0, unsigned Index1, unsigned Index2, unsigned Index3>
+template <unsigned Index0, unsigned Index1, unsigned Index2, unsigned Index3>
 MLAS_FORCEINLINE
-MLAS_FLOAT32X4
-MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector)
+    MLAS_FLOAT32X4
+    MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector)
 {
     return _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(Index3, Index2, Index1, Index0));
 }
@@ -2216,27 +2145,27 @@ MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector)
 
 #if !defined(MLAS_SSE2_INTRINSICS) && !defined(_MSC_VER)
 
-template<unsigned Index0, unsigned Index1, unsigned Index2, unsigned Index3>
+template <unsigned Index0, unsigned Index1, unsigned Index2, unsigned Index3>
 MLAS_FORCEINLINE
-MLAS_FLOAT32X4
-MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+    MLAS_FLOAT32X4
+    MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_i32x4_shuffle(Vector1, Vector2, Index0, Index1, Index2, Index3);
 #elif defined(__clang__)
     return __builtin_shufflevector(Vector1, Vector2, Index0, Index1, Index2, Index3);
 #elif defined(MLAS_LSX_INTRINSICS)
-    typedef int32_t GEN_INT32X4 __attribute__ ((vector_size(16)));
+    typedef int32_t GEN_INT32X4 __attribute__((vector_size(16)));
     return __builtin_shuffle(Vector1, Vector2, GEN_INT32X4{Index0, Index1, Index2, Index3});
 #else
     return __builtin_shuffle(Vector1, Vector2, MLAS_INT32X4{Index0, Index1, Index2, Index3});
 #endif
 }
 
-template<unsigned Index0, unsigned Index1, unsigned Index2, unsigned Index3>
+template <unsigned Index0, unsigned Index1, unsigned Index2, unsigned Index3>
 MLAS_FORCEINLINE
-MLAS_FLOAT32X4
-MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector)
+    MLAS_FLOAT32X4
+    MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector)
 {
     return MlasShuffleFloat32x4<Index0, Index1, Index2, Index3>(Vector, Vector);
 }
@@ -2648,9 +2577,8 @@ typedef __m128d MLAS_FLOAT64X2;
 #ifndef MLAS_FLOAT64X2_UNSUPPORTED
 
 #if defined(MLAS_VSX_INTRINSICS) || defined(MLAS_ZVECTOR_INTRINSICS)
-template<unsigned Lane>
-MLAS_FORCEINLINE
-double
+template <unsigned Lane>
+MLAS_FORCEINLINE double
 MlasExtractLaneFloat64x2(MLAS_FLOAT64X2 Vector)
 {
     return Vector[Lane];
@@ -2664,14 +2592,13 @@ MlasMultiplyAddFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2, MLAS_FL
 
 MLAS_FORCEINLINE
 MLAS_FLOAT64X2
-MlasBroadcastFloat64x2(const double *Value)
+MlasBroadcastFloat64x2(const double* Value)
 {
     return MLAS_FLOAT64X2{*Value, *Value};
 }
 #elif defined(MLAS_LSX_INTRINSICS)
-template<unsigned Lane>
-MLAS_FORCEINLINE
-double
+template <unsigned Lane>
+MLAS_FORCEINLINE double
 MlasExtractLaneFloat64x2(MLAS_FLOAT64X2 Vector)
 {
     return Vector[Lane];
@@ -2685,7 +2612,7 @@ MlasMultiplyAddFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2, MLAS_FL
 
 MLAS_FORCEINLINE
 MLAS_FLOAT64X2
-MlasBroadcastFloat64x2(const double *Value)
+MlasBroadcastFloat64x2(const double* Value)
 {
     return MLAS_FLOAT64X2{*Value, *Value};
 }
@@ -2727,7 +2654,7 @@ MlasLoadFloat64x2(const double* Buffer)
 #elif defined(MLAS_ZVECTOR_INTRINSICS)
     return vec_xl(0, Buffer);
 #elif defined(MLAS_LSX_INTRINSICS)
-    return MLAS_FLOAT64X2(__lsx_vld((const MLAS_INT32X4 *)Buffer, 0));
+    return MLAS_FLOAT64X2(__lsx_vld((const MLAS_INT32X4*)Buffer, 0));
 #endif
 }
 
@@ -2796,21 +2723,18 @@ MlasReadTimeStampCounter(void)
 #if defined(MLAS_TARGET_AMD64)
     uint32_t eax, edx;
 
-    __asm__ __volatile__
-    (
+    __asm__ __volatile__(
         "rdtsc"
-        : "=a" (eax), "=d" (edx)
+        : "=a"(eax), "=d"(edx)
     );
 
     return ((uint64_t)edx << 32) | eax;
 #elif defined(MLAS_TARGET_LARCH64)
     uint64_t time_cnt, id;
 
-    __asm__ __volatile__
-    (
+    __asm__ __volatile__(
         "rdtime.d %0, %1\n\t"
-        : "=r" (time_cnt), "=r" (id)
-	::
+        : "=r"(time_cnt), "=r"(id)::
     );
 
     return time_cnt;
@@ -2823,7 +2747,6 @@ MlasReadTimeStampCounter(void)
 //
 // Aligned buffer for GEMM packing, etc.
 //
-
 
 constexpr size_t ThreadedBufAlignment = 64;
 extern thread_local size_t ThreadedBufSize;
@@ -2841,7 +2764,6 @@ UpAlignSize(size_t size)
     return size * ThreadedBufAlignment;
 }
 
-
 MLAS_FORCEINLINE
 void
 MlasThreadedBufAlloc(size_t size)
@@ -2849,12 +2771,14 @@ MlasThreadedBufAlloc(size_t size)
     if (size > ThreadedBufSize) {
 #ifdef _MSC_VER
         ThreadedBufHolder.reset(
-            reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment)));
+            reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment))
+        );
 #elif (__STDC_VERSION__ >= 201112L) && !defined(__APPLE__)
         ThreadedBufHolder.reset(
-            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size)));
+            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size))
+        );
 #else
-	// aligned_alloc unavailable macos 10.14 or earlier
+        // aligned_alloc unavailable macos 10.14 or earlier
         void* ptr;
         int err = posix_memalign(&ptr, ThreadedBufAlignment, size);
         if (err != 0) {
@@ -2871,43 +2795,41 @@ MlasThreadedBufAlloc(size_t size)
 // Utilities for INT4 quantization.
 //
 
-template<bool Signed>
+template <bool Signed>
 struct Int4Traits;
 
-template<>
+template <>
 struct Int4Traits<true> {
     using UnpackedType = int8_t;
     static constexpr int8_t Min = -8;
     static constexpr int8_t Max = 7;
 };
 
-template<>
+template <>
 struct Int4Traits<false> {
     using UnpackedType = uint8_t;
     static constexpr int8_t Min = 0;
     static constexpr int8_t Max = 15;
 };
 
-template<typename UnpackedType>
-MLAS_FORCEINLINE
-void
+template <typename UnpackedType>
+MLAS_FORCEINLINE void
 MlasSetInt4Element(uint8_t* Output, size_t ElemIndex, UnpackedType Value)
 {
     static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
 
-    const size_t OutputIndex = ElemIndex >> 1;  // which byte
-    const size_t NibbleIndex = ElemIndex & 0x1; // which 4-bit elem in the byte
-    const uint8_t Shift = static_cast<uint8_t>(NibbleIndex << 2); // Either 0 or 4
+    const size_t OutputIndex = ElemIndex >> 1;                     // which byte
+    const size_t NibbleIndex = ElemIndex & 0x1;                    // which 4-bit elem in the byte
+    const uint8_t Shift = static_cast<uint8_t>(NibbleIndex << 2);  // Either 0 or 4
     const uint8_t Mask = static_cast<uint8_t>(0xF0 >> Shift);
     uint8_t* Dst = &Output[OutputIndex];
 
-    *Dst &= Mask; // Clear 4-bit lane
-    *Dst |= static_cast<uint8_t>((Value & 0xF) << Shift); // Set 4-bit lane
+    *Dst &= Mask;                                          // Clear 4-bit lane
+    *Dst |= static_cast<uint8_t>((Value & 0xF) << Shift);  // Set 4-bit lane
 }
 
-template<typename UnpackedType>
-MLAS_FORCEINLINE
-void
+template <typename UnpackedType>
+MLAS_FORCEINLINE void
 MlasPackInt4Elements(uint8_t* Output, UnpackedType ValueLow, UnpackedType ValueHigh)
 {
     static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);

@@ -6,7 +6,6 @@
 #include "mlas_qnbit.h"
 #include "mlasi.h"
 
-
 /**
  * @brief Parameters for TMAC kernel
  */
@@ -25,40 +24,36 @@ struct MlasTMACKernelParams {
     size_t chunk_n;
     size_t n_tiles_num;
 
-
-     bool has_scale;
-     bool has_zero_point;
-     bool one_scale;
-
-
+    bool has_scale;
+    bool has_zero_point;
+    bool one_scale;
 };
 
-const MlasTMACKernelParams& MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size);
+const MlasTMACKernelParams&
+MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size);
 
-typedef
-void(MLAS_QNBIT_GEMM_LUT_GEN)(
-	const float * b,
-	int8_t * qlut,
+typedef void(MLAS_QNBIT_GEMM_LUT_GEN)(
+    const float* b,
+    int8_t* qlut,
     float* lut_scales,
     float* lut_biases,
-	size_t M,
+    size_t M,
     size_t K,
-	size_t N,
+    size_t N,
     size_t act_group_size
 );
 
-typedef
-void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
-	const uint8_t* weights,
-	const float* scales,
+typedef void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
+    const uint8_t* weights,
+    const float* scales,
     const int8_t* LUT,
-	const float* LUT_Scales,
-	const float* LUT_Biases,
-	float* C,
-	int K,
-	int M,                // batch size (number of rows in activation)
-	int N,
-	size_t BlkLen
+    const float* LUT_Scales,
+    const float* LUT_Biases,
+    float* C,
+    int K,
+    int M,  // batch size (number of rows in activation)
+    int N,
+    size_t BlkLen
 );
 
 //
@@ -68,9 +63,8 @@ void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
 //   struct MLAS_QNBIT_LUT_GEMM_DISPATCH;
 // Keep it minimal for now; extend with function pointers as kernels are added.
 struct MLAS_QNBIT_LUT_GEMM_DISPATCH {
-	// Intentionally empty placeholder; add members as needed.
-	MLAS_QNBIT_GEMM_LUT_GEN* GenerateLUT = nullptr;
+    // Intentionally empty placeholder; add members as needed.
+    MLAS_QNBIT_GEMM_LUT_GEN* GenerateLUT = nullptr;
 
     MLAS_QNBIT_LUT_GEMM_COMPUTE* ComputeGemm = nullptr;
-
 };
