@@ -128,6 +128,15 @@ TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
                  ExpectedEPNodeAssignment::All);
 }
 
+TEST_F(QnnCPUBackendTests, Concat_EmptyInput) {
+  RunOpTestOnCPU("Concat",
+                 {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                  TestInputDef<float>({1, 0, 4, 4}, false, {})},
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                 13,
+                 ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
@@ -710,8 +719,19 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Abs_U16) {
                          true);        // Use com.microsoft domain for Q/DQ ops
 }
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=24, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): -12
+// qdq@QNN_EP val: -11.011764526367188 (err: 0.9882354736328125, err/output_range: 4.1176481246948242%)
+// qdq@CPU_EP val: -12.047059059143066 (err: 0.047059059143066406, err/output_range: 0.19607941806316376%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 3.9215683937072754%
 // Test accuracy of QDQ Ceil op.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Ceil) {
+#else
 TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
+#endif
   const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
   RunQDQOpTest<uint8_t>("Ceil",
                         {TestInputDef<float>({1, 2, 3}, false, input_data)},

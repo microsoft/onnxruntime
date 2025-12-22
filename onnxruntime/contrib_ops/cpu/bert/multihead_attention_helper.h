@@ -346,12 +346,11 @@ Status CheckInputs(const T* query,
   //
   //  The following inputs are not used in cross attention (so they are None for cross attention):
   //     past_key                   : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
-  //                                  For CUDA, past_present_share_buffer is always True. ROCm supports both.
+  //                                  For CUDA, past_present_share_buffer is always True.
   //     past_value                 : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
-  //                                  For CUDA, past_present_share_buffer is always True. ROCm supports both.
+  //                                  For CUDA, past_present_share_buffer is always True.
   //     past_sequence_length       : scalar (1) when past_present_share_buffer is True.
   //  CUDA version has extra inputs (beam_width, cache_indirection) that are not checked in the class.
-  //  For ROCm, see contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh for more details.
   // ---------------------------------------------------------------
   AttentionQkvFormat qkv_format = UNKNOWN;
 

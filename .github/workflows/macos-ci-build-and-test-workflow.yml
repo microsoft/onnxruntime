@@ -75,7 +75,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
           vcpkg-version: '2025.06.13'
@@ -93,7 +93,7 @@ jobs:
           xcode_version: ${{ env.xcode_version }}
           use_cache: true
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/

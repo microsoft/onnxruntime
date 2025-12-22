@@ -140,8 +140,12 @@ namespace {
 // Validate if the tensor element type matches the program variable data type
 Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType var_type, bool is_atomic = false) {
   if (is_atomic) {
-    // float32 is not a valid data type for atomic. However the data may be bitcast-ed to i32 and used to simulate atomic operation using  atomicCompareExchangeWeak.
-    ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 || var_type == ProgramVariableDataType::Uint32 || var_type == ProgramVariableDataType::Float32,
+    // float32, float32x4 and float16x4 are not valid data types for atomic. However the data may be bitcast-ed to i32 and used to simulate atomic operation using  atomicCompareExchangeWeak.
+    ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 ||
+                          var_type == ProgramVariableDataType::Uint32 ||
+                          var_type == ProgramVariableDataType::Float32 ||
+                          var_type == ProgramVariableDataType::Float16x4 ||
+                          var_type == ProgramVariableDataType::Float32x4,
                       "Unexpected program variable type ", int(var_type), " for atomic variable");
   }
 
@@ -472,7 +476,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
       }
       ss << ": array<";
       if (is_atomic) {
-        if (output->type_ == ProgramVariableDataType::Float32) {
+        if (output->type_ == ProgramVariableDataType::Float32 || output->type_ == ProgramVariableDataType::Float16x4 || output->type_ == ProgramVariableDataType::Float32x4) {
           ss << "atomic<i32>";  // emulate float atomic via i32
         } else if (output->type_ == ProgramVariableDataType::Uint32) {
           ss << "atomic<u32>";

@@ -3,7 +3,7 @@
 
 #include "ep.h"
 
-#include <gsl/gsl>
+#include <gsl/span>
 #include <array>
 #include <cassert>
 #include <memory>
@@ -65,12 +65,10 @@ EpVirtualGpu::EpVirtualGpu(EpFactoryVirtualGpu& factory, const EpVirtualGpu::Con
   Compile = CompileImpl;
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
 
-  auto status = ort_api_.Logger_LogMessage(&logger_,
-                                           OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                           ("EpVirtualGpu has been created with name " + name_).c_str(),
-                                           ORT_FILE, __LINE__, __FUNCTION__);
-  // ignore status for now
-  (void)status;
+  IGNORE_ORTSTATUS(ort_api_.Logger_LogMessage(&logger_,
+                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                              ("EpVirtualGpu has been created with name " + name_).c_str(),
+                                              ORT_FILE, __LINE__, __FUNCTION__));
 }
 
 EpVirtualGpu::~EpVirtualGpu() = default;

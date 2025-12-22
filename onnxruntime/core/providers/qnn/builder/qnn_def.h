@@ -71,6 +71,19 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpExtremePowerSaver,
 };
 
+typedef struct RpcPowerConfigs {
+  uint32_t rpc_control_latency = 0;
+  uint32_t rpc_polling_time = 0;
+} RpcPowerConfigs_t;
+
+typedef struct PerThreadHtpPowerConfigs {
+  std::optional<HtpPerformanceMode> pre_run_perf_mode;
+  std::optional<HtpPerformanceMode> post_run_perf_mode;
+  std::optional<RpcPowerConfigs_t> rpc_configs;
+
+  uint32_t power_config_id = 0;
+} PerThreadHtpPowerConfigs_t;
+
 enum class ContextPriority : uint8_t {
   LOW = 0,
   NORMAL,
@@ -95,6 +108,8 @@ enum class QnnBackendType : uint8_t {
   HTP_FP16,
   SERIALIZER,
 };
+
+bool IsIrBackend(QnnBackendType backend_type);
 
 bool IsCpuBackend(QnnBackendType backend_type);
 

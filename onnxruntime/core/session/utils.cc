@@ -404,6 +404,7 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
                                                          session)));
   }
 
+  Env::Default().GetTelemetryProvider().LogCompileModel(session->GetCurrentSessionId());
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(InitializeSession(session_options, *session)));
   return Status::OK();
 }

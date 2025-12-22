@@ -12,6 +12,7 @@
 #include <iterator>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 // Convert OrtStatus to Ort::Status and return
@@ -1503,6 +1504,18 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomOpsUsingFunct
   return *this;
 }
 
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddFreeDimensionOverride(const char* dim_denotation, int64_t dim_value) {
+  ThrowOnError(GetApi().AddFreeDimensionOverrideByName(this->p_, dim_denotation, dim_value));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddFreeDimensionOverrideByName(const char* dim_name, int64_t dim_value) {
+  ThrowOnError(GetApi().AddFreeDimensionOverrideByName(this->p_, dim_name, dim_value));
+  return *this;
+}
+
 /// Session
 template <typename T>
 inline size_t ConstSessionImpl<T>::GetInputCount() const {
@@ -2822,6 +2835,13 @@ inline Logger KernelInfoImpl<T>::GetLogger() const {
   return Logger{out};
 }
 
+template <typename T>
+inline KeyValuePairs KernelInfoImpl<T>::GetConfigEntries() const {
+  OrtKeyValuePairs* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelInfo_GetConfigEntries(this->p_, &out));
+  return KeyValuePairs{out};
+}
+
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
   Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_float(p, name, &out));
 }
@@ -3553,4 +3573,144 @@ inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
 }
 #endif
 
+namespace detail {
+template <typename T>
+inline const char* ConstKernelDefImpl<T>::GetOperatorType() const {
+  return GetEpApi().KernelDef_GetOperatorType(this->p_);
+}
+
+template <typename T>
+inline const char* ConstKernelDefImpl<T>::GetDomain() const {
+  return GetEpApi().KernelDef_GetDomain(this->p_);
+}
+
+template <typename T>
+inline std::pair<int, int> ConstKernelDefImpl<T>::GetSinceVersion() const {
+  int start = 0;
+  int end = 0;
+
+  ThrowOnError(GetEpApi().KernelDef_GetSinceVersion(this->p_, &start, &end));
+  return std::pair<int, int>(start, end);
+}
+
+template <typename T>
+inline const char* ConstKernelDefImpl<T>::GetExecutionProvider() const {
+  return GetEpApi().KernelDef_GetExecutionProvider(this->p_);
+}
+
+template <typename T>
+inline OrtMemType ConstKernelDefImpl<T>::GetInputMemType(size_t input_index) const {
+  OrtMemType mem_type{};
+  ThrowOnError(GetEpApi().KernelDef_GetInputMemType(this->p_, input_index, &mem_type));
+
+  return mem_type;
+}
+
+template <typename T>
+inline OrtMemType ConstKernelDefImpl<T>::GetOutputMemType(size_t output_index) const {
+  OrtMemType mem_type{};
+  ThrowOnError(GetEpApi().KernelDef_GetOutputMemType(this->p_, output_index, &mem_type));
+
+  return mem_type;
+}
+}  // namespace detail
+
+inline KernelDefBuilder::KernelDefBuilder() {
+  ThrowOnError(GetEpApi().CreateKernelDefBuilder(&p_));
+}
+
+inline KernelDefBuilder::KernelDefBuilder(OrtKernelDefBuilder* p) : detail::Base<OrtKernelDefBuilder>{p} {
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetOperatorType(const char* op_type) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetOperatorType(p_, op_type));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetDomain(const char* domain) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetDomain(p_, domain));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetSinceVersion(int since_version_start, int since_version_end) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetSinceVersion(p_, since_version_start, since_version_end));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetExecutionProvider(const char* ep_name) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetExecutionProvider(p_, ep_name));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetInputMemType(size_t input_index, OrtMemType mem_type) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetInputMemType(p_, input_index, mem_type));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::SetOutputMemType(size_t output_index, OrtMemType mem_type) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_SetOutputMemType(p_, output_index, mem_type));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_name,
+                                                             const OrtDataType* data_type) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, &data_type, 1));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddTypeConstraint(const char* arg_name,
+                                                             const std::vector<const OrtDataType*>& data_types) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddTypeConstraint(p_, arg_name, data_types.data(), data_types.size()));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAlias(int input_index, int output_index) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputAliases(p_, &input_index, &output_index, 1));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputAliases(const std::vector<int>& input_indices,
+                                                                 const std::vector<int>& output_indices) {
+  if (input_indices.size() != output_indices.size()) {
+    ORT_CXX_API_THROW("Expecting input and output indices to have the same element count", ORT_INVALID_ARGUMENT);
+  }
+
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputAliases(p_, input_indices.data(), output_indices.data(),
+                                                                 input_indices.size()));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputMutableAlias(int input_index, int output_index) {
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputMutableAliases(p_, &input_index, &output_index, 1));
+  return *this;
+}
+
+inline KernelDefBuilder& KernelDefBuilder::AddInputOutputMutableAliases(const std::vector<int>& input_indices,
+                                                                        const std::vector<int>& output_indices) {
+  if (input_indices.size() != output_indices.size()) {
+    ORT_CXX_API_THROW("Expecting input and output indices to have the same element count", ORT_INVALID_ARGUMENT);
+  }
+
+  ThrowOnError(GetEpApi().KernelDefBuilder_AddInputOutputMutableAliases(p_, input_indices.data(), output_indices.data(),
+                                                                        input_indices.size()));
+  return *this;
+}
+
+inline KernelDef KernelDefBuilder::Build() {
+  OrtKernelDef* kernel_def = nullptr;
+  ThrowOnError(GetEpApi().KernelDefBuilder_Build(p_, &kernel_def));
+  return KernelDef(kernel_def);
+}
+
+inline KernelRegistry::KernelRegistry() {
+  ThrowOnError(GetEpApi().CreateKernelRegistry(&p_));
+}
+
+inline KernelRegistry::KernelRegistry(OrtKernelRegistry* p) : detail::Base<OrtKernelRegistry>{p} {
+}
+
+inline Status KernelRegistry::AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,
+                                        void* kernel_create_func_state) {
+  return Status{GetEpApi().KernelRegistry_AddKernel(p_, kernel_def, kernel_create_func, kernel_create_func_state)};
+}
 }  // namespace Ort

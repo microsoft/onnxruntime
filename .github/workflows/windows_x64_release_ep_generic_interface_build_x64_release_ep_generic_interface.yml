@@ -13,12 +13,16 @@ concurrency:
 
 jobs:
   build_x64_release_ep_generic_interface:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "JobId=build_x64_release_ep_generic_interface-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
     timeout-minutes: 300
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -92,14 +96,14 @@ jobs:
         run: python tools\ValidateNativeDelegateAttributes.py
         working-directory: ${{ github.workspace }}\\csharp
       - name: Publish OperatorKernels.md (Conditional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: OperatorKernels.md
           path: ${{ github.workspace }}/docs/OperatorKernels.md
 
       - name: Publish ContribOperators.md (Conditional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: ContribOperators.md

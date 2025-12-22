@@ -5,6 +5,7 @@
 
 #include <map>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -63,6 +64,7 @@ struct RunConfig {
   bool set_denormal_as_zero{false};
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::unordered_map<std::string, std::string> session_config_entries;
+  std::unordered_map<std::string, std::string> run_config_entries;
   std::map<std::string, int64_t> free_dim_name_overrides;
   std::map<std::string, int64_t> free_dim_denotation_overrides;
   std::string intra_op_thread_affinities;
@@ -75,6 +77,11 @@ struct RunConfig {
   bool compile_ep_context{false};
   std::basic_string<ORTCHAR_T> compile_model_path;
   bool compile_binary_embed{false};
+  struct CudaMempoolArenaConfig {
+    std::string release_threshold;
+    std::string bytes_to_keep;
+  };
+  std::optional<CudaMempoolArenaConfig> cuda_mempool_arena_config;
 };
 
 struct PerformanceTestConfig {

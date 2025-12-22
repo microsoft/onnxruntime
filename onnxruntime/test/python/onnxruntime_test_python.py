@@ -542,47 +542,6 @@ class TestInferenceSession(unittest.TestCase):
                 print("run advanced_test")
                 run_advanced_test(cuda)
 
-        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
-
-            def run_rocm_options_test():
-                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["ROCMExecutionProvider"])
-                self.assertIn("ROCMExecutionProvider", sess.get_providers())
-                options = sess.get_provider_options()
-
-                def test_get_and_set_option_with_values(option_name, option_values):
-                    provider_options = sess.get_provider_options()
-                    self.assertIn("ROCMExecutionProvider", provider_options)
-                    rocm_options = options["ROCMExecutionProvider"]
-                    self.assertIn(option_name, rocm_options)
-                    for option_value in option_values:
-                        rocm_options[option_name] = option_value
-                        sess.set_providers(["ROCMExecutionProvider"], [rocm_options])
-                        new_provider_options = sess.get_provider_options()
-                        self.assertEqual(
-                            new_provider_options.get("ROCMExecutionProvider", {}).get(option_name),
-                            str(option_value),
-                        )
-
-                test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
-
-                test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
-
-                test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
-
-                test_get_and_set_option_with_values("enable_hip_graph", ["1", "0"])
-
-                # test for user_compute_stream
-                option = options["ROCMExecutionProvider"]
-                option["user_compute_stream"] = "1"
-                sess.set_providers(["ROCMExecutionProvider"], [option])
-                new_options = sess.get_provider_options()
-                new_option = new_options["ROCMExecutionProvider"]
-                self.assertEqual(new_option["user_compute_stream"], "1")
-                # set user_compute_stream will set has_user_compute_stream to 1 too
-                self.assertEqual(new_option["has_user_compute_stream"], "1")
-
-            run_rocm_options_test()
-
     def test_invalid_set_providers(self):
         with self.assertRaises(RuntimeError) as context:
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
@@ -674,9 +633,6 @@ class TestInferenceSession(unittest.TestCase):
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             do_test_get_and_set_tuning_results("CUDAExecutionProvider")
-
-        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
-            do_test_get_and_set_tuning_results("ROCMExecutionProvider")
 
     def test_run_model_with_optional_sequence_input(self):
         sess = onnxrt.InferenceSession(get_name("identity_opt.onnx"))
@@ -1799,11 +1755,6 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def test_register_custom_e_ps_library(self):
-        available_eps = C.get_available_providers()
-        # skip amd gpu build
-        if "ROCMExecutionProvider" in available_eps:
-            return
-
         if sys.platform.startswith("win"):
             shared_library = os.path.abspath("test_execution_provider.dll")
 

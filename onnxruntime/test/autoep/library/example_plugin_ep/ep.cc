@@ -160,12 +160,10 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
 
-  auto status = ort_api.Logger_LogMessage(&logger_,
-                                          OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                          ("ExampleEp has been created with name " + name_).c_str(),
-                                          ORT_FILE, __LINE__, __FUNCTION__);
-  // ignore status for now
-  (void)status;
+  IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
+                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                             ("ExampleEp has been created with name " + name_).c_str(),
+                                             ORT_FILE, __LINE__, __FUNCTION__));
 }
 
 ExampleEp::~ExampleEp() = default;
@@ -256,16 +254,9 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
             continue;  // unable to get input shape
           }
 
-          const auto is_static_shape = [](gsl::span<const int64_t> shape) -> bool {
-            return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim >= 0; });
-          };
-
-          if (!is_static_shape(*input_0_shape) || !is_static_shape(*input_1_shape)) {
-            continue;  // input shape has dynamic dimensions
-          }
-
-          if (*input_0_shape != *input_1_shape) {
-            continue;  // input shapes do not match (no broadcasting support for now)
+          // Don't support broadcasting and dynamic dimensions for now.
+          if (!AreShapesStaticAndEqual(*input_0_shape, *input_1_shape)) {
+            continue;
           }
         }
 

@@ -50,3 +50,6 @@ extends:
         parameters:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: '12.8'
+          cudnn_folder: ''
+          cmake_cuda_archs: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'

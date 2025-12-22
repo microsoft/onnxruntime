@@ -154,14 +154,6 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
     mem_info = GetCudaAllocator(ort_device.Id())->Info();
   }
 #endif
-#if USE_ROCM
-  else if (ort_device.Type() == OrtDevice::GPU) {
-    if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), ort_device.Id())) {
-      ORT_THROW("The provided device id doesn't match any available GPUs on the machine: ", ort_device.Id());
-    }
-    mem_info = GetRocmAllocator(ort_device.Id())->Info();
-  }
-#endif
 #if USE_MIGRAPHX
   else if (ort_device.Type() == OrtDevice::GPU) {
     mem_info = GetMIGraphXAllocator(ort_device.Id())->Info();
@@ -440,55 +432,6 @@ AllocatorPtr GetCannAllocator(OrtDevice::DeviceId id) {
 
 #endif
 
-#ifdef USE_ROCM
-void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_ROCM().rocmMemcpy_HostToDevice(dst, src, num_bytes);
-}
-
-void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_ROCM().rocmMemcpy_DeviceToHost(dst, src, num_bytes);
-}
-
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction(const OrtDevice& device) {
-  static std::unordered_map<OrtDevice, MemCpyFunc> map{
-      {OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, device.Id()}, RocmToCpuMemCpy},
-  };
-
-  return &map;
-}
-
-bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
-  int num_devices = GetProviderInfo_ROCM().hipGetDeviceCount();
-
-  if (0 == num_devices) {
-    LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
-    return false;
-  }
-
-  if (id < 0 || id >= num_devices) {
-    LOGS(logger, WARNING) << "rocm_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
-    return false;
-  }
-
-  return true;
-}
-
-AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
-  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
-  // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
-
-  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
-
-  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
-    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_ROCM().CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
-  }
-
-  return (*id_to_allocator_map)[id];
-}
-
-#endif
-
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   static std::map<MLDataType, int> type_map{
       {DataTypeImpl::GetType<bool>(), NPY_BOOL},
@@ -504,11 +447,17 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
       {DataTypeImpl::GetType<int64_t>(), NPY_LONGLONG},
       {DataTypeImpl::GetType<uint64_t>(), NPY_ULONGLONG},
       {DataTypeImpl::GetType<std::string>(), NPY_OBJECT},
+#if !defined(DISABLE_FLOAT4_TYPES)
+      {DataTypeImpl::GetType<Float4E2M1x2>(), NPY_UINT8},
+#endif
+#if !defined(DISABLE_FLOAT8_TYPES)
+      {DataTypeImpl::GetType<Float8E4M3FN>(), NPY_UINT8},
+#endif
   };
 
   const auto it = type_map.find(tensor_type);
   if (it == type_map.end()) {
-    throw std::runtime_error("No corresponding Numpy type for Tensor Type.");
+    throw std::runtime_error("No corresponding Numpy type for Tensor Type. " + std::string(DataTypeImpl::ToString(tensor_type)));
   } else {
     return it->second;
   }

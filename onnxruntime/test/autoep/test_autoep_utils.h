@@ -22,8 +22,9 @@ struct Utils {
     std::string ep_name;
   };
 
-  static const ExamplePluginInfo example_ep_info;           // example_plugin_ep.dll
-  static const ExamplePluginInfo example_ep_virt_gpu_info;  // example_plugin_ep_virt_gpu.dll
+  static const ExamplePluginInfo example_ep_info;                  // example_plugin_ep.dll
+  static const ExamplePluginInfo example_ep_virt_gpu_info;         // example_plugin_ep_virt_gpu.dll
+  static const ExamplePluginInfo example_ep_kernel_registry_info;  // example_plugin_ep_kernel_registry.dll
 
   // get the OrtEpDevice for an arbitrary EP from the environment
   static void GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*& ep_device);

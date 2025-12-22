@@ -13,12 +13,16 @@ concurrency:
 
 jobs:
   build_x64_debug:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-latest"]
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
+      "JobId=windows-x64-debug-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
     timeout-minutes: 300
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -76,7 +80,7 @@ jobs:
         run: |
           nuget restore ${{ github.workspace }}\packages.config -PackagesDirectory ${{ github.workspace }}\build\Debug -ConfigFile ${{ github.workspace }}\NuGet.config
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/
@@ -109,14 +113,14 @@ jobs:
 
     # Publish artifacts only on failure and if DocUpdateNeeded is true (example)
       - name: Publish OperatorKernels.md (Conditional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: failure() && env.DocUpdateNeeded == 'true' # Use env. for step-level vars
         with:
           name: OperatorKernels.md
           path: ${{ github.workspace }}/docs/OperatorKernels.md
 
       - name: Publish ContribOperators.md (Conditional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: ContribOperators.md

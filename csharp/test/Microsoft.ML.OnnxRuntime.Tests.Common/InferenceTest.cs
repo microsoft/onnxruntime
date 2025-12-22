@@ -164,10 +164,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_OpenVINO();
 #endif
 
-#if USE_ROCM
-                opt.AppendExecutionProvider_ROCm(0);
-#endif
-
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
 #endif
@@ -1764,33 +1760,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
-#if USE_ROCM
-        void TestROCMAllocatorInternal(InferenceSession session)
-        {
-            int device_id = 0;
-            using (var info_rocm = new OrtMemoryInfo(OrtMemoryInfo.allocatorHIP, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
-            {
-                Assert.Equal("Hip", info_rocm.Name);
-                Assert.Equal(device_id, info_rocm.Id);
-                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_rocm.GetAllocatorType());
-                Assert.Equal(OrtMemType.Default, info_rocm.GetMemoryType());
-
-                using (var allocator = new OrtAllocator(session, info_rocm))
-                {
-                    var alloc_info = allocator.Info;
-                    Assert.True(info_rocm.Equals(alloc_info));
-
-                    uint size = 1024;
-                    OrtMemoryAllocation chunk = allocator.Allocate(size);
-                    Assert.Equal(chunk.Size, size);
-                    Assert.True(chunk.Info.Equals(alloc_info));
-                    chunk.Dispose();
-                    alloc_info.Dispose();
-                }
-            }
-        }
-#endif
-
         [Fact(DisplayName = "TestAllocator")]
         private void TestAllocator()
         {
@@ -1801,21 +1770,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                 options.AppendExecutionProvider_CUDA(0);
 #endif
-
-#if USE_ROCM
-                options.AppendExecutionProvider_ROCm(0);
-#endif
-
                 using (var session = new InferenceSession(model, options))
                 {
                     TestCPUAllocatorInternal(session);
 #if USE_CUDA
                     TestCUDAAllocatorInternal(session);
 #endif
-#if USE_ROCM
-                    TestROCMAllocatorInternal(session);
-#endif
-
                 }
             }
         }
@@ -1936,15 +1896,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #elif USE_CUDA
             using (var option = (deviceId.HasValue) ?
                 SessionOptions.MakeSessionOptionWithCudaProvider(deviceId.Value) :
-                new SessionOptions())
-            {
-                if(!deviceId.HasValue)
-                {
-                    option.AppendExecutionProvider_CPU(1);
-                }
-#elif USE_ROCM
-            using (var option = (deviceId.HasValue) ?
-                SessionOptions.MakeSessionOptionWithRocmProvider(deviceId.Value) :
                 new SessionOptions())
             {
                 if(!deviceId.HasValue)

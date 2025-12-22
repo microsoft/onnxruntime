@@ -41,11 +41,7 @@ __global__ void BiasSoftmaxWarpForward(output_t* output, const input_t* input, c
   constexpr int next_power_of_two = 1 << log2_elements;
   constexpr int WARP_SIZE = next_power_of_two < GPU_WARP_SIZE ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
-#ifdef USE_ROCM
-  constexpr int WARP_BATCH = 1;
-#else
   constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
-#endif
 
   // each "WARP" (<=32) processes WARP_BATCH(one of {1,2}) batches
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
@@ -137,13 +133,8 @@ Status BiasSoftmaxImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* outpu
     int warp_size = std::min(next_power_of_two, GPU_WARP_SIZE_HOST);
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
-#ifdef USE_ROCM
-    int batches_per_warp = 1;
-    constexpr int threads_per_block = 256;
-#else
     int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
     constexpr int threads_per_block = 128;
-#endif
 
     int warps_per_block = (threads_per_block / warp_size);
     int batches_per_block = warps_per_block * batches_per_warp;
@@ -229,7 +220,7 @@ Status BiasSoftmaxImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* outpu
                                      const T* input_data, const T* bias_data, int element_count, int batch_count, \
                                      bool is_inner_broadcast, int bias_broadcast_size);
 
-// MIOpen doesn't support double so ROCm kernel doesn't have double support for now.
+// MIOpen doesn't support double for now.
 SPECIALIZED_BIAS_SOFTMAX_IMPL(float)
 SPECIALIZED_BIAS_SOFTMAX_IMPL(half)
 #ifdef USE_CUDA
