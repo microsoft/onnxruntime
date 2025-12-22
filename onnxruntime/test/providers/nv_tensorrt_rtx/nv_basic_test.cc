@@ -24,7 +24,7 @@ namespace onnxruntime {
 namespace test {
 
 // Helper function to check if GPU is Blackwell (SM 12.0+) or above
-// Logs GPU compute capability and returns true if requirement is met
+// Returns true if requirement is met
 // Returns false if CUDA is unavailable or GPU is below SM 12.0
 static bool IsBlackwellOrAbove() {
   constexpr int kBlackwellMinCapability = 1200;  // SM 12.0 = 12 * 100 + 0 * 10
@@ -32,14 +32,8 @@ static bool IsBlackwellOrAbove() {
 
   // Check if CUDA is available
   if (cuda_arch == -1) {
-    std::cout << "WARNING: CUDA is not available or failed to initialize" << std::endl;
     return false;
   }
-
-  // Log GPU compute capability
-  std::cout << "GPU Compute Capability: SM "
-            << cuda_arch / 100 << "." << (cuda_arch % 100) / 10
-            << " (value: " << cuda_arch << ")" << std::endl;
 
   return cuda_arch >= kBlackwellMinCapability;
 }
