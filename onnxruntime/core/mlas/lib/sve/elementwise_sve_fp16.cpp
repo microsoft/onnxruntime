@@ -29,16 +29,15 @@ struct MlasTanhConstants_fp16_scalar {
 constexpr MlasTanhConstants_fp16_scalar TanhConstantsFp16 = {
     -3.515625f,
     3.515625f,
-    5.960464477539063e-08f, 
+    5.960464477539063e-08f,
     1.4841556549072266e-05f,
-    0.000637054443359375f, 
+    0.000637054443359375f,
     0.004894256591796875f,
-    1.1920928955078125e-06f, 
+    1.1920928955078125e-06f,
     0.00011855363845825195f,
     0.0022678375244140625f,
-    0.004894256591796875f 
+    0.004894256591796875f
 };
-
 
 static inline MLAS_SVFLOAT16
 Tanh_Vector_SVE_fp16(MLAS_SVFLOAT16 x, MLAS_SVBOOL pg)
@@ -53,7 +52,7 @@ Tanh_Vector_SVE_fp16(MLAS_SVFLOAT16 x, MLAS_SVBOOL pg)
     MLAS_SVFLOAT16 g_beta_4_vec = MlasSveBroadcastfloat16(TanhConstantsFp16.beta_4);
     MLAS_SVFLOAT16 g_beta_2_vec = MlasSveBroadcastfloat16(TanhConstantsFp16.beta_2);
     MLAS_SVFLOAT16 g_beta_0_vec = MlasSveBroadcastfloat16(TanhConstantsFp16.beta_0);
-    
+
     x = MlasSveMinfloat16(pg, x, g_UpperRange_vec);
     x = MlasSveMaxfloat16(pg, x, g_LowerRange_vec);
 
@@ -73,7 +72,7 @@ Tanh_Vector_SVE_fp16(MLAS_SVFLOAT16 x, MLAS_SVBOOL pg)
 }
 
 void
-MlasTanhKernelFp16_SVE(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N)
+MlasSveTanhF16Kernel(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N)
 {
     size_t offset = 0;
     const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
@@ -125,7 +124,7 @@ exp_neg_rational_approx_f16(MLAS_SVBOOL pg, MLAS_SVFLOAT16 x)
 }
 
 void MLASCALL
-MlasSveErfKernelFp16(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
+MlasSveErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
 {
     const __fp16 p = 0.328f;
     const __fp16 a1 = 0.2505f;
@@ -186,7 +185,7 @@ MlasSveErfKernelFp16(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
 }
 
 void MLASCALL
-ComputeGeluFp16_SVE(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, int64_t count, const std::string& algo)
+MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, int64_t count, const std::string& algo)
 {
     const __fp16 r1 = 0.5f;
     const __fp16 r2 = 1.0f;
@@ -215,7 +214,7 @@ ComputeGeluFp16_SVE(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, 
             i += svcnth();
         }
 
-        MlasComputeTanh<MLAS_FP16>(reinterpret_cast<const MLAS_FP16*>(temp), reinterpret_cast<MLAS_FP16*>(temp), count);
+        MlasSveTanhF16Kernel(reinterpret_cast<const MLAS_FP16*>(temp), reinterpret_cast<MLAS_FP16*>(temp), count);
 
         int64_t j = 0;
         while (j < (count)) {
@@ -236,7 +235,7 @@ ComputeGeluFp16_SVE(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, 
             i += svcnth();
         }
 
-        MlasSveErfKernelFp16(reinterpret_cast<const _mlas_fp16_*>(temp), reinterpret_cast<_mlas_fp16_*>(temp), count);
+        MlasSveErfF16Kernel(reinterpret_cast<const _mlas_fp16_*>(temp), reinterpret_cast<_mlas_fp16_*>(temp), count);
 
         int64_t j = 0;
         while (j < (count)) {

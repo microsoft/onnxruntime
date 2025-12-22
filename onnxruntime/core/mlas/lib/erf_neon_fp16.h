@@ -21,4 +21,4 @@ Abstract:
 #include "softmax_kernel_neon.h"
 
 using _mlas_fp16_ = uint16_t;
-void MlasNeonErfKernelFp16(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N);
+void MlasNeonErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N);

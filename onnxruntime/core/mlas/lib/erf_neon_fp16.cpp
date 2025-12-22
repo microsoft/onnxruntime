@@ -67,7 +67,7 @@ exp_neg_rational_approx_f16(MLAS_FLOAT16X8 x)
 }
 
 void
-MlasNeonErfKernelFp16(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
+MlasNeonErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
 {
     const float16_t p = 0.328f;
     const float16_t a1 = 0.2505f;

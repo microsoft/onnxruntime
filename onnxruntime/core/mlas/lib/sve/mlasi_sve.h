@@ -39,11 +39,29 @@ using _mlas_fp16_ = uint16_t;
 
 void
 MLASCALL
-MlasSveErfKernelFp16(
-    const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N
-    );
-void MLASCALL MlasTanhKernelFp16_SVE(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N);
-void MLASCALL ComputeGeluFp16_SVE(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, int64_t count, const std::string& algo);
+MlasSveErfF16Kernel(
+    const _mlas_fp16_* Input,
+    _mlas_fp16_* Output,
+    size_t N
+);
+
+void 
+MLASCALL 
+MlasSveTanhF16Kernel(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+void 
+MLASCALL 
+MlasSveGeluF16Kernel(
+    const MLAS_FP16* input,
+    MLAS_FP16* output,
+    MLAS_FP16* temp,
+    int64_t count,
+    const std::string& algo
+);
 // function decarations
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32

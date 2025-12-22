@@ -22,6 +22,15 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
+
+#if defined(MLAS_NEON_INTRINSICS)
+#include "erf_neon_fp16.h"
+#endif
+
 //
 // Bundles the constants for use by kernels written in assembly.
 //
@@ -264,5 +273,45 @@ Return Value:
     GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
 #else
     MlasErfKernel(Input, Output, N);
+#endif
+}
+
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+    )
+{
+#if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
+
+#if defined(MLAS_USE_SVE)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        MlasSveErfF16Kernel(
+            reinterpret_cast<const _mlas_fp16_*>(Input),
+            reinterpret_cast<_mlas_fp16_*>(Output),
+            N
+        );
+        return;
+    }
+#endif
+
+#if defined(MLAS_NEON_INTRINSICS)
+    MlasNeonErfF16Kernel(
+        reinterpret_cast<const _mlas_fp16_*>(Input),
+        reinterpret_cast<_mlas_fp16_*>(Output),
+        N
+    );
+    return;
+#endif
+
+#else
+    std::vector<float> input_fp32(N);
+    std::vector<float> output_fp32(N);
+
+    MlasConvertHalfToFloatBuffer(Input, input_fp32.data(), N);
+    MlasComputeErf(input_fp32.data(), output_fp32.data(), N);
+    MlasConvertFloatToHalfBuffer(output_fp32.data(), Output, N);
 #endif
 }
