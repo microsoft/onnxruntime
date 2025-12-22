@@ -7,10 +7,10 @@ parameters:
     default: false
   - name: CudaVersion
     type: string
-    default: '12.8'
+    default: '12.9'
     values:
       - 13.0
-      - 12.8
+      - 12.9
   - name: CudnnFolder
     type: string
     default: '9.14.0.64_cuda13'
@@ -71,7 +71,7 @@ steps:
         if ("${{ parameters.CudaVersion }}" -eq "13.0") {
           $trtFolder = "TensorRT-$cuda13_trt_version.Windows.win10.cuda-13.0"
         }
-        elseif ("${{ parameters.CudaVersion }}" -eq "12.8") {
+        elseif ("${{ parameters.CudaVersion }}" -eq "12.9") {
           $trtFolder = "TensorRT-$cuda12_trt_version.Windows10.x86_64.cuda-12.9"
         }
 
