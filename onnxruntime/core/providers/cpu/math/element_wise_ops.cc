@@ -11,10 +11,6 @@
 #include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
 
-#if defined(MLAS_NEON_INTRINSICS)
-#include "core/mlas/lib/erf_neon_fp16.h"
-#endif
-
 #include <cmath>
 
 namespace onnxruntime {
@@ -2042,37 +2038,9 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
       [&](ptrdiff_t task_idx) {
         const auto start = task_idx * length_per_task;
         const int64_t count = std::min(length_per_task, elem_count - start);
-        const auto narrow_count = onnxruntime::narrow<std::ptrdiff_t>(count);
-
         const MLFloat16* p_input = input_data + start;
         MLFloat16* p_output = output_data + start;
-
-#if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-#if defined(MLAS_USE_SVE)
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-        MlasSveErfKernelFp16(
-            reinterpret_cast<const _mlas_fp16_*>(p_input),
-            reinterpret_cast<_mlas_fp16_*>(p_output),
-            narrow_count);
-        return;
-    }
-#endif
-#if defined(MLAS_NEON_INTRINSICS)
-    MlasNeonErfKernelFp16(
-        reinterpret_cast<const _mlas_fp16_*>(p_input),
-        reinterpret_cast<_mlas_fp16_*>(p_output),
-        narrow_count);
-    return;
-#endif 
-#else
-        // Fallback: convert half to float, compute erf, convert back
-        IAllocatorUniquePtr<float> input_fp32 = IAllocator::MakeUniquePtr<float>(alloc, narrow_count);
-        IAllocatorUniquePtr<float> output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, narrow_count);
-
-        MlasConvertHalfToFloatBuffer(p_input, input_fp32.get(), narrow_count);
-        MlasComputeErf(input_fp32.get(), output_fp32.get(), narrow_count);
-        MlasConvertFloatToHalfBuffer(output_fp32.get(), p_output, narrow_count);
-#endif
+        MlasComputeFP16Erf(p_input, p_output, count);
       },
       0);
 
