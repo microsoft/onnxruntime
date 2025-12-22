@@ -77,7 +77,6 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
   const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
   const auto& value = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  // Uniforms: hidden_size, kv_hidden_size, num_heads, head_size, v_head_size, sequence_length
   sh.MainFunctionBody()
     << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
     << "  let batch = packed_qkv_indices[0];\n"
@@ -88,7 +87,7 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
     << "    let head = d / uniforms.head_size;\n"
     << "    let h = d % uniforms.head_size;\n"
     << "    " << query.SetByIndices("vec4<u32>(batch, head, seq, h)", "input_data") << ";\n"
-    << "  } else if (d < (uniforms.hidden_size + uniforms.kv_hidden_size)) {\n"
+    << "  } else if (d < (uniforms.hidden_size + uniforms.hidden_size)) {\n"
     << "    let kd = d - uniforms.hidden_size;\n"
     << "    let head = kd / uniforms.head_size;\n"
     << "    let h = kd % uniforms.head_size;\n"
@@ -112,7 +111,6 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
       .AddOutputs({{query, ProgramTensorMetadataDependency::TypeAndRank}, {key, ProgramTensorMetadataDependency::TypeAndRank}, {val, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddUniformVariables({
         {static_cast<uint32_t>(params.hidden_size_)},
-        {static_cast<uint32_t>(params.kv_hidden_size_)},
         {static_cast<uint32_t>(params.head_size_)},
         {static_cast<uint32_t>(params.v_head_size_)},
       })
@@ -616,6 +614,61 @@ Attention::Attention(const OpKernelInfo& info)
       onnxruntime::contrib::AttentionBase(info, false) {
 }
 
+// QKV preparation program - computes packed QKV from input, weights, and bias
+class AttentionPreparePackedProgram final : public Program<AttentionPreparePackedProgram> {
+ public:
+  AttentionPreparePackedProgram() : Program{"AttentionPreparePacked"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    shader.AddInput("weight", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    shader.AddOutput("packed_qkv", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+
+    constexpr int TILE_SIZE = 12;
+
+    shader.AdditionalImplementation() << "const TILE_SIZE = " << TILE_SIZE << "u;\n"
+                                      << "var<workgroup> tileInput: array<input_value_t, " << TILE_SIZE * TILE_SIZE << ">;\n"
+                                      << "var<workgroup> tileWeight: array<input_value_t, " << TILE_SIZE * TILE_SIZE << ">;\n";
+
+    shader.MainFunctionBody()
+        << "let batch_idx = workgroup_id.z;\n"
+        << "let m = global_id.y;\n"
+        << "let n = global_id.x;\n"
+        << "let inputOffset = batch_idx * (uniforms.M * uniforms.K) + m * uniforms.K;\n"
+        << "var value = input_value_t(0);\n"
+        << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
+        << "  if (m < uniforms.M && w + local_id.x < uniforms.K) {\n"
+        << "    tileInput[TILE_SIZE * local_id.y + local_id.x] = input[inputOffset + w + local_id.x];\n"
+        << "  }\n"
+        << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
+        << "    let offset = n + (w + local_id.y) * uniforms.ldb;\n"
+        << "    tileWeight[TILE_SIZE * local_id.y + local_id.x] = weight[offset];\n"
+        << "  }\n"
+        << "  workgroupBarrier();\n"
+        << "  for (var k: u32 = 0u; k<TILE_SIZE && w+k < uniforms.K; k++) {\n"
+        << "    let inputTileOffset = TILE_SIZE * local_id.y + k;\n"
+        << "    let weightTileOffset = TILE_SIZE * k + local_id.x;\n"
+        << "    value += tileInput[inputTileOffset] * tileWeight[weightTileOffset];\n"
+        << "  }\n"
+        << "  workgroupBarrier();\n"
+        << "}\n"
+        << "value += bias[n];\n"
+        << "let offset = batch_idx * uniforms.M * uniforms.N;\n"
+        << "if (m < uniforms.M && n < uniforms.N) {\n"
+        << "  let outputIdx = offset + m * uniforms.N + n;\n"
+        << "  packed_qkv[outputIdx] = value;\n"
+        << "}\n";
+
+    return Status::OK();
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"M", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"ldb", ProgramUniformVariableDataType::Uint32});
+};
+
 // QKV preparation program - computes Q, K, V from input, weights, and bias
 class AttentionPrepareProgram final : public Program<AttentionPrepareProgram> {
  public:
@@ -715,6 +768,82 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   return SplitPackedQKV(context, parameters, &packed_qkv, q, k, v);
 }
 
+Status PrepareQKVVersion2(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
+                          const Tensor* input, const Tensor* weights, const Tensor* bias,
+                          Tensor* q, Tensor* k, Tensor* v) {
+  // Use AttentionPreparePackedProgram to compute packed QKV output
+  // Then use SplitPackedQKV to split into Q, K, V in BNSH format
+  // Returns Q, K, V in BNSH format for comparison with PrepareQKV
+
+  // Create packed QKV tensor with shape [batch_size, sequence_length, hidden_size + hidden_size + v_hidden_size]
+  const int64_t packed_qkv_size = parameters.hidden_size_ + parameters.hidden_size_ + parameters.v_hidden_size_;
+  TensorShapeVector packed_qkv_shape({parameters.batch_size_, parameters.sequence_length_, packed_qkv_size});
+  Tensor packed_qkv = context.CreateGPUTensor(input->DataType(), TensorShape(packed_qkv_shape));
+
+  // Use custom program to compute packed QKV
+  AttentionPreparePackedProgram program;
+  const int M = static_cast<int>(parameters.sequence_length_);
+  const int K = static_cast<int>(input->Shape().GetDims()[2]);  // input hidden size
+  const int N = static_cast<int>(packed_qkv_size);
+  const int ldb = N;  // leading dimension of weight (assumed transposed)
+
+  constexpr int TILE_SIZE = 12;
+  const int num_workgroups_x = (N + TILE_SIZE - 1) / TILE_SIZE;
+  const int num_workgroups_y = (M + TILE_SIZE - 1) / TILE_SIZE;
+  const int num_workgroups_z = parameters.batch_size_;
+
+  program
+      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
+                  {weights, ProgramTensorMetadataDependency::TypeAndRank},
+                  {bias, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddOutput({&packed_qkv, ProgramTensorMetadataDependency::TypeAndRank})
+      .SetDispatchGroupSize(num_workgroups_x, num_workgroups_y, num_workgroups_z)
+      .SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1)
+      .AddUniformVariables({
+          {static_cast<uint32_t>(M)},
+          {static_cast<uint32_t>(K)},
+          {static_cast<uint32_t>(N)},
+          {static_cast<uint32_t>(ldb)},
+      });
+
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+  // Split the packed QKV into Q, K, V in BNSH format
+  return SplitPackedQKV(context, parameters, &packed_qkv, q, k, v);
+}
+
+Status PrepareQKVVersion3(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
+                  const Tensor* input, const Tensor* weights, const Tensor* bias,
+                  Tensor* q, Tensor* k, Tensor* v) {
+  constexpr int TILE_SIZE = 12;
+  const int M = parameters.sequence_length_;
+  const int K = parameters.input_hidden_size_;
+  const int N = parameters.head_size_;
+
+  const uint32_t dispatch_x = (parameters.head_size_ + TILE_SIZE - 1) / TILE_SIZE;
+  const uint32_t dispatch_y = (parameters.sequence_length_ + TILE_SIZE - 1) / TILE_SIZE;
+  const uint32_t dispatch_z = parameters.batch_size_ * parameters.num_heads_;
+
+  AttentionPrepareProgram program{};
+  program.AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
+                     {weights, ProgramTensorMetadataDependency::TypeAndRank},
+                     {bias, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddOutputs({{q, ProgramTensorMetadataDependency::TypeAndRank},
+                   {k, ProgramTensorMetadataDependency::TypeAndRank},
+                   {v, ProgramTensorMetadataDependency::TypeAndRank}})
+      .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
+      .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
+      .AddUniformVariables({{static_cast<uint32_t>(M)},
+                            {static_cast<uint32_t>(K)},
+                            {static_cast<uint32_t>(N)},
+                            {static_cast<uint32_t>(parameters.num_heads_)},
+                            {static_cast<uint32_t>(parameters.head_size_)},
+                            {static_cast<uint32_t>(parameters.hidden_size_)},
+                            {static_cast<uint32_t>(parameters.hidden_size_ + parameters.hidden_size_ + parameters.v_hidden_size_)}});
+
+  return context.RunProgram(program);
+}
+
 Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* input = context.Input(0);
   const Tensor* weights = context.Input(1);
@@ -776,9 +905,6 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
 
   // Compute Q, K, V from input, weights, and bias (returns BNSH format)
   ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias, &Q, &K, &V));
-
-  // Update parameters for Q_K_V_BSNH format
-  parameters.qkv_format_ = Q_K_V_BSNH;
 
   // Check if we can use flash attention
   // For Attention operator, we need to create present_key and present_value tensors for flash attention
