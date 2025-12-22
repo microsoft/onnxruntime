@@ -17,7 +17,7 @@
 // Usage of alignas causes some internal padding in places.
 #pragma warning(disable : 4324)
 // C4702: unreachable code
-#pragma warning(diable : 4702)
+#pragma warning(disable : 4702)
 #endif  // _MSC_VER
 
 #include <absl/container/flat_hash_set.h>
