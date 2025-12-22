@@ -2,7 +2,7 @@
 # Please overwrite BASEIMAGE, TRT_VERSION and other arguments with
 # --docker-build-args ' --build-arg BASEIMAGE=other_base_image --build-arg TRT_VERSION=other_trt_version etc...'
 # for other cuda version and TRT version
-ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubi8
+ARG BASEIMAGE=nvidia/cuda:12.9.1-cudnn-devel-ubi8
 
 FROM $BASEIMAGE
 ARG TRT_VERSION=10.14.1.48-1.cuda12.9
