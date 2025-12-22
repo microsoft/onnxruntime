@@ -298,7 +298,9 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   // Im2ColMatMul path uses a different transpose (OIHW -> OHWI) and reads
   // kernel directly from context.Input(1), ignoring prepacked weights.
   // Skip prepacking when this path will be used at runtime.
-  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, is_fused, kernel_shape, conv_attrs_.auto_pad, onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
+  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_.activation_kind_ != ActivationKind::None,
+                                  kernel_shape, conv_attrs_.auto_pad,
+                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
     return Status::OK();
   }
 
