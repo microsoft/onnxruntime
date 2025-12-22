@@ -42,9 +42,8 @@ ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
  *
  * \since Version 1.24.
  */
-#define ORT_EXTERNAL_MEMORY_HANDLE_VERSION 1
 struct OrtExternalMemoryHandle {
-  uint32_t version;                         ///< Must be ORT_EXTERNAL_MEMORY_HANDLE_VERSION
+  uint32_t version;                         ///< Must be ORT_API_VERSION
   const OrtEpDevice* ep_device;             ///< EP device that created this handle
   OrtExternalMemoryHandleType handle_type;  ///< Original handle type for tracking
   size_t size_bytes;                        ///< Size of the imported memory
@@ -72,9 +71,8 @@ struct OrtExternalMemoryHandle {
  *
  * \since Version 1.24.
  */
-#define ORT_EXTERNAL_SEMAPHORE_HANDLE_VERSION 1
 struct OrtExternalSemaphoreHandle {
-  uint32_t version;               ///< Must be ORT_EXTERNAL_SEMAPHORE_HANDLE_VERSION
+  uint32_t version;               ///< Must be ORT_API_VERSION
   const OrtEpDevice* ep_device;   ///< EP device that created this handle
   OrtExternalSemaphoreType type;  ///< Original semaphore type
 

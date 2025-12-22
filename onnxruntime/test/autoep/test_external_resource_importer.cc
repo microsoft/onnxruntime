@@ -108,7 +108,7 @@ TEST_F(ExternalResourceImporterTest, ImportMemory) {
   void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x12345678));  // Simulated handle
 
   OrtExternalMemoryDescriptor mem_desc = {};
-  mem_desc.version = ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION;
+  mem_desc.version = ORT_API_VERSION;
   mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
   mem_desc.native_handle = dummy_handle;
   mem_desc.size_bytes = buffer_size;
@@ -145,7 +145,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
   void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x12345678));
 
   OrtExternalMemoryDescriptor mem_desc = {};
-  mem_desc.version = ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION;
+  mem_desc.version = ORT_API_VERSION;
   mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
   mem_desc.native_handle = dummy_handle;
   mem_desc.size_bytes = buffer_size;
@@ -158,7 +158,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
 
   // Create tensor from imported memory
   OrtExternalTensorDescriptor tensor_desc = {};
-  tensor_desc.version = ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION;
+  tensor_desc.version = ORT_API_VERSION;
   tensor_desc.element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   tensor_desc.shape = shape;
   tensor_desc.rank = 4;
@@ -214,7 +214,7 @@ TEST_F(ExternalResourceImporterTest, ImportSemaphore) {
   void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0xABCDEF00));
 
   OrtExternalSemaphoreDescriptor sem_desc = {};
-  sem_desc.version = ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION;
+  sem_desc.version = ORT_API_VERSION;
   sem_desc.type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
   sem_desc.native_handle = dummy_handle;
 
@@ -247,7 +247,7 @@ TEST_F(ExternalResourceImporterTest, WaitAndSignalSemaphore) {
   void* dummy_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0xABCDEF00));
 
   OrtExternalSemaphoreDescriptor sem_desc = {};
-  sem_desc.version = ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION;
+  sem_desc.version = ORT_API_VERSION;
   sem_desc.type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
   sem_desc.native_handle = dummy_handle;
 
@@ -292,7 +292,7 @@ TEST_F(ExternalResourceImporterTest, MultipleMemoryImports) {
   // Import multiple memory regions
   for (int i = 0; i < kNumBuffers; ++i) {
     OrtExternalMemoryDescriptor mem_desc = {};
-    mem_desc.version = ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION;
+    mem_desc.version = ORT_API_VERSION;
     mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
     mem_desc.native_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x10000000 + i * 0x1000));
     mem_desc.size_bytes = (i + 1) * 1024;
@@ -328,7 +328,7 @@ TEST_F(ExternalResourceImporterTest, AccessModeVariations) {
 
   for (auto access_mode : access_modes) {
     OrtExternalMemoryDescriptor mem_desc = {};
-    mem_desc.version = ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION;
+    mem_desc.version = ORT_API_VERSION;
     mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
     mem_desc.native_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x12345678));
     mem_desc.size_bytes = 4096;
