@@ -537,7 +537,7 @@ struct NvTrtRtxExternalMemoryHandle : OrtExternalMemoryHandle {
   NvTrtRtxExternalMemoryHandle()
       : ext_memory(nullptr), mapped_ptr(0), is_dedicated(true) {
     // Initialize base struct fields
-    version = ORT_EXTERNAL_MEMORY_HANDLE_VERSION;
+    version = ORT_API_VERSION;
     ep_device = nullptr;
     handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
     size_bytes = 0;
@@ -569,7 +569,7 @@ struct NvTrtRtxExternalSemaphoreHandle : OrtExternalSemaphoreHandle {
   NvTrtRtxExternalSemaphoreHandle()
       : ext_semaphore(nullptr) {
     // Initialize base struct fields
-    version = ORT_EXTERNAL_SEMAPHORE_HANDLE_VERSION;
+    version = ORT_API_VERSION;
     ep_device = nullptr;
     type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
     Release = ReleaseCallback;
@@ -639,7 +639,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     }
 
     // Validate descriptor version - check minimum supported version for forward compatibility
-    if (desc->version < ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION) {
+    if (desc->version < ORT_API_VERSION) {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                        "OrtExternalMemoryDescriptor version too old");
     }
@@ -766,7 +766,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     }
 
     // Validate descriptor version - check minimum supported version for forward compatibility
-    if (tensor_desc->version < ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION) {
+    if (tensor_desc->version < ORT_API_VERSION) {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                        "OrtExternalTensorDescriptor version too old");
     }
@@ -823,7 +823,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     }
 
     // Validate descriptor version - check minimum supported version for forward compatibility
-    if (desc->version < ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION) {
+    if (desc->version < ORT_API_VERSION) {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                        "OrtExternalSemaphoreDescriptor version too old");
     }

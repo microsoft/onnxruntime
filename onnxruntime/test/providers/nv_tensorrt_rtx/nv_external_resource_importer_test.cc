@@ -354,7 +354,7 @@ TEST_F(ExternalResourceImporterTest, ImportD3D12SharedResource) {
 
   // Import the memory
   OrtExternalMemoryDescriptor mem_desc = {};
-  mem_desc.version = ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION;
+  mem_desc.version = ORT_API_VERSION;
   mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
   mem_desc.native_handle = shared_handle;
   mem_desc.size_bytes = buffer_size;
@@ -408,7 +408,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromImportedMemory) {
 
   // Import the memory
   OrtExternalMemoryDescriptor mem_desc = {};
-  mem_desc.version = ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION;
+  mem_desc.version = ORT_API_VERSION;
   mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
   mem_desc.native_handle = shared_handle;
   mem_desc.size_bytes = buffer_size;
@@ -421,7 +421,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromImportedMemory) {
 
   // Create tensor from imported memory
   OrtExternalTensorDescriptor tensor_desc = {};
-  tensor_desc.version = ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION;
+  tensor_desc.version = ORT_API_VERSION;
   tensor_desc.element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   tensor_desc.shape = shape;
   tensor_desc.rank = 4;
@@ -505,7 +505,7 @@ TEST_F(ExternalResourceImporterTest, ImportD3D12Fence) {
 
   // Import the semaphore
   OrtExternalSemaphoreDescriptor sem_desc = {};
-  sem_desc.version = ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION;
+  sem_desc.version = ORT_API_VERSION;
   sem_desc.type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
   sem_desc.native_handle = shared_handle;
 
@@ -555,7 +555,7 @@ TEST_F(ExternalResourceImporterTest, WaitAndSignalSemaphore) {
 
   // Import semaphore
   OrtExternalSemaphoreDescriptor sem_desc = {};
-  sem_desc.version = ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION;
+  sem_desc.version = ORT_API_VERSION;
   sem_desc.type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
   sem_desc.native_handle = shared_handle;
 
@@ -664,7 +664,7 @@ TEST_F(ExternalResourceImporterTest, FullInferenceWithExternalMemory) {
 
   // Import memory into CUDA
   OrtExternalMemoryDescriptor input_mem_desc = {};
-  input_mem_desc.version = ORT_EXTERNAL_MEMORY_DESCRIPTOR_VERSION;
+  input_mem_desc.version = ORT_API_VERSION;
   input_mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
   input_mem_desc.native_handle = input_handle;
   input_mem_desc.size_bytes = buffer_size;
@@ -682,7 +682,7 @@ TEST_F(ExternalResourceImporterTest, FullInferenceWithExternalMemory) {
 
   // Create ORT tensors from imported memory
   OrtExternalTensorDescriptor tensor_desc = {};
-  tensor_desc.version = ORT_EXTERNAL_TENSOR_DESCRIPTOR_VERSION;
+  tensor_desc.version = ORT_API_VERSION;
   tensor_desc.element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   tensor_desc.shape = shape;
   tensor_desc.rank = 4;
@@ -715,7 +715,7 @@ TEST_F(ExternalResourceImporterTest, FullInferenceWithExternalMemory) {
   d3d12_device_->CreateSharedHandle(sync_fence.Get(), nullptr, GENERIC_ALL, nullptr, &fence_handle);
 
   OrtExternalSemaphoreDescriptor sem_desc = {};
-  sem_desc.version = ORT_EXTERNAL_SEMAPHORE_DESCRIPTOR_VERSION;
+  sem_desc.version = ORT_API_VERSION;
   sem_desc.type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
   sem_desc.native_handle = fence_handle;
 
