@@ -641,72 +641,29 @@ static Status PadImpl(OpKernelContext* ctx,
           T* axis_start = output;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
-          // Edge is invalid if there is no data to duplicate on this axis.
-          // however, input extents have been validated to be non-zero above.
-          const size_t inner_extent = onnxruntime::narrow<size_t>(input_extents[inner_axis]);
-
-          const SafeInt<size_t> inner_pitch = output_pitches[inner_axis];
-          // Row bounds in linear element space:
-          // axis_start points to the beginning of the copied row (returned above as 'output' after alignSkip).
-          T* axis_end = axis_start + inner_extent * inner_no_pad_size;  // one-past-last element of copied data
-
-          const T* first_elem = axis_start;
-          const T* last_elem = axis_end - 1;
+          const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
+          const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
           if (inner_no_pad_size == 1) {
-            const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
-            const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
             if (pre_pad > 0) {
-              PadAxisConstant(sink, axis_start - narrow<ptrdiff_t>(pre_pad), *first_elem, pre_pad);
-              align_skip = align_skip + inner_pitch * pre_pad;
+              PadAxisConstant(sink, axis_start - static_cast<size_t>(pre_pad), *axis_start, pre_pad);
             }
             if (post_pad > 0) {
-              PadAxisConstant(sink, axis_end, *last_elem, post_pad);
+              PadAxisConstant(sink, output, *(output - 1), post_pad);
             }
           } else {
             // When inner_most axis(es) do not need pad, above PadAxisConstant() do not fit for Edge mode.
             // Also general loop below after handling first pad axis with non-pad axis works fine.
-
-            // Source blocks inside the copied region
-            T* first_block_src = axis_start;                                      // first block
-            T* last_block_src = axis_end - narrow<ptrdiff_t>(inner_no_pad_size);  // last block
-
-            const SafeInt<size_t> pre_pad = pads[inner_axis];
-            const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
-            const SafeInt<size_t> block_size = inner_no_pad_size;
-
-            // PadAxis writes 'block_size' elements per block, and after each block sets input += input_pitch.
-            // Using input_delta=1 to walk within the block, input_pitch=-(inner_no_pad_size)
-            // to reset input to the block start.
-            if (pre_pad > 0) {
-              T* dst_pre = first_block_src - static_cast<size_t>(pre_pad * block_size);
-              PadAxis(sink, dst_pre,
-                      first_block_src,
-                      1,                             /*input_delta=*/
-                      -ptrdiff_t(inner_no_pad_size), /* input_pitch */
-                      block_size,
-                      pre_pad);
-
-              // Roll align_skip forward so the outer loop's `output += align_skip` won't skip these rows again.
-              align_skip = SafeInt<size_t>(align_skip) + inner_pitch * pre_pad;
+            if (pads[inner_axis] > 0) {
+              PadAxis(sink, axis_start - static_cast<size_t>(pre_pad), axis_start, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size,
+                      onnxruntime::narrow<size_t>(pads[inner_axis]));
             }
-
-            if (post_pad > 0) {
-              // 2) POST-PAD: duplicate the last block forwards after row_end
-              T* dst_post = axis_end;  // start immediately after the copied data
-              PadAxis(sink,
-                      dst_post,
-                      last_block_src,
-                      1,                             /*input_delta=*/
-                      -ptrdiff_t(inner_no_pad_size), /* input_pitch */
-                      block_size,
-                      post_pad);
-
-              // Advance the linear write cursor past the post-pad area
-              output = dst_post + narrow<ptrdiff_t>(post_pad * inner_no_pad_size);
-            } else {
-              output = axis_end;
+            if (pads[inner_axis + data_rank] > 0) {
+              PadAxis(sink, output, output - inner_no_pad_size, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size,
+                      onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             }
           }
+          output += post_pad;
+          align_skip = pre_pad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
