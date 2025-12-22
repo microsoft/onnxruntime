@@ -638,7 +638,9 @@ static Status PadImpl(OpKernelContext* ctx,
       while (input_counters) {
         output += align_skip;
         {
+          const SafeInt<size_t> inner_extent = input_extents[inner_axis];
           T* axis_start = output;
+          T* axis_end = axis_start + onnxruntime::narrow<ptrdiff_t>(inner_extent);
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
@@ -662,7 +664,7 @@ static Status PadImpl(OpKernelContext* ctx,
                       onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             }
           }
-          output += post_pad;
+          output = axis_end + static_cast<size_t>(post_pad);
           align_skip = pre_pad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)

@@ -1280,6 +1280,142 @@ TEST(PadOpTest, ConstantMode_MixedSigns_Small) {
   test.Run();
 }
 
+TEST(PadOpTest, ConstantMode_InnermostCropThenPostPad) {
+  const std::vector<int64_t> input_shape{2, 3, 5};
+
+  std::vector<float> input_data(2 * 3 * 5);
+  std::iota(input_data.begin(), input_data.end(), 1.0f);
+
+  const std::vector<int64_t> pads{1, 3, -2, -1, 0, 1};
+  const float cv = 9.0f;
+  const std::vector<int64_t> expected_shape{2, 6, 4};
+
+  const std::vector<float> expected_output{
+      // depth 0
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+
+      // depth 1
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      9.0F, 9.0F, 9.0F, 9.0F,
+      3.0F, 4.0F, 5.0F, 9.0F,
+      8.0F, 9.0F, 10.0F, 9.0F,
+      13.0F, 14.0F, 15.0F, 9.0F};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<float>("constant_value", {}, {cv});
+  test.AddOutput<float>("output", expected_shape, expected_output);
+  test.AddAttribute("mode", "constant");
+  test.Run();
+}
+
+TEST(PadOpTest, EdgeMode_ZeroExtentFails) {
+  std::vector<int64_t> input_shape = {4};
+  // Generate input as above
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> pads = {-4, 3};
+
+  const std::vector<int64_t> expected_shape{3};
+  const std::vector<float> expected_data = {1.f, 2.f, 3.f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "edge");
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(PadOpTest, EdgeMode_ExtentOne_Valid) {
+  const std::vector<int64_t> input_shape{4};
+  const std::vector<float> input_data{1.f, 1.f, 1.f, 1.f};
+  const std::vector<int64_t> pads{-3, 3};
+  const std::vector<int64_t> expected_shape{4};
+  const std::vector<float> expected_output{1.f, 1.f, 1.f, 1.f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddOutput<float>("output", expected_shape, expected_output);
+  test.AddAttribute("mode", "edge");
+  test.Run();
+}
+
+// TEST(PadOpTest, EdgeMode_FlattenedInnermostAxis) {
+//   // This covers the else branch of inner_no_pad_size != 1
+//   const std::vector<int64_t> input_shape{2, 3, 2, 4};
+//   std::vector<float> input_data(2 * 3 * 2 * 4);
+//   std::iota(input_data.begin(), input_data.end(), 1.f);
+//
+//   const std::vector<float> expected_shape{2, 3, 8};
+
+TEST(PadOpTest, EdgeMode_FlattenedInnermostAxis) {
+  // Shape chosen to force FlattenInnerShape():
+  // innermost dims {2,4} -> flattened to 8
+  const std::vector<int64_t> input_shape = {2, 3, 2, 4};
+
+  std::vector<float> input_data(2 * 3 * 2 * 4);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = static_cast<float>(i);
+  }
+
+  // ONNX pad order: [b0,b1,b2,b3,e0,e1,e2,e3]
+  // The below shape will cause flattening the last two input dims to 8
+  const std::vector<int64_t> pads = {
+      0, 0, 0, 0,  // begin
+      0, 0, 0, 1   // end pad only on last original axis
+  };
+
+  // Expected shape:
+  // flattened axis grows from 8 -> 12
+  const std::vector<int64_t> expected_shape = {2, 3, 2, 5};
+
+  std::vector<float> expected_output = {
+      // [0][0][0]
+      0.f, 1.f, 2.f, 3.f, 3.f,
+      // [0][0][1]
+      4.f, 5.f, 6.f, 7.f, 7.f,
+
+      // [0][1][0]
+      8.f, 9.f, 10.f, 11.f, 11.f,
+      // [0][1][1]
+      12.f, 13.f, 14.f, 15.f, 15.f,
+
+      // [0][2][0]
+      16.f, 17.f, 18.f, 19.f, 19.f,
+      // [0][2][1]
+      20.f, 21.f, 22.f, 23.f, 23.f,
+
+      // [1][0][0]
+      24.f, 25.f, 26.f, 27.f, 27.f,
+      // [1][0][1]
+      28.f, 29.f, 30.f, 31.f, 31.f,
+
+      // [1][1][0]
+      32.f, 33.f, 34.f, 35.f, 35.f,
+      // [1][1][1]
+      36.f, 37.f, 38.f, 39.f, 39.f,
+
+      // [1][2][0]
+      40.f, 41.f, 42.f, 43.f, 43.f,
+      // [1][2][1]
+      44.f, 45.f, 46.f, 47.f, 47.f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddOutput<float>("output", expected_shape, expected_output);
+  test.AddAttribute("mode", "edge");
+  test.Run();
+}
+
 // Gh issue: https://github.com/microsoft/onnxruntime/issues/11828
 // TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
 //  using T = float;
