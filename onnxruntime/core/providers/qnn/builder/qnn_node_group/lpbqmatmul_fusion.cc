@@ -16,9 +16,9 @@ namespace onnxruntime {
 namespace qnn {
 
 static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
-                                    const NodeUnit* scale_dql_node_unit,
+                                    const NodeUnit& scale_dql_node_unit,
                                     const NodeUnit* w_ql_node_unit,
-                                    const NodeUnit* matmul_node_unit,
+                                    const NodeUnit& matmul_node_unit,
                                     const logging::Logger& logger,
                                     bool validate);
 
@@ -98,9 +98,9 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedMatMulFusion::TryFusion(
   }
 
   if (Status status = CreateOrValidateOnQnn(qnn_model_wrapper,
-                                            p_scale_dql_node_unit,
+                                            *p_scale_dql_node_unit,
                                             p_w_ql_node_unit,
-                                            &matmul_node_unit,
+                                            matmul_node_unit,
                                             logger,
                                             true);
       !status.IsOK()) {
@@ -118,27 +118,23 @@ LowPowerBlockQuantizedMatMulFusion::LowPowerBlockQuantizedMatMulFusion(const Nod
     : node_units_{Scale_DQL_node_unit,
                   W_QL_node_unit,
                   MatMul_node_unit} {
+  // Populate filtered_node_units_ immediately
+  for (size_t i = 0; i < node_units_.size(); ++i) {
+    if (node_units_[i] != nullptr) {
+      filtered_node_units_.push_back(node_units_[i]);
+    }
+  }
 }
 
 Status LowPowerBlockQuantizedMatMulFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  return CreateOrValidateOnQnn(qmw, node_units_[0], node_units_[1], node_units_[2], logger, true);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], node_units_[1], *node_units_[2], logger, true);
 }
 
 Status LowPowerBlockQuantizedMatMulFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  return CreateOrValidateOnQnn(qmw, node_units_[0], node_units_[1], node_units_[2], logger, false);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], node_units_[1], *node_units_[2], logger, false);
 }
 
 gsl::span<const NodeUnit* const> LowPowerBlockQuantizedMatMulFusion::GetNodeUnits() const {
-  if (!filtered_node_units_initialized_) {
-    // Add only non-nullptr node units
-    for (size_t i = 0; i < node_units_.size(); ++i) {
-      if (node_units_[i] != nullptr) {
-        filtered_node_units_.push_back(node_units_[i]);
-      }
-    }
-    filtered_node_units_initialized_ = true;
-  }
-
   return gsl::make_span(filtered_node_units_);
 }
 
@@ -249,30 +245,30 @@ Status TwoDimensionTranspose(std::vector<uint8_t>& data,
 
 // Process LPBQWeight for ONNX MatMul that can be translated to either a QNN MatMul.
 Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
-                         const NodeUnit* scale_dql_node_unit,
+                         const NodeUnit& scale_dql_node_unit,
                          const NodeUnit* w_ql_node_unit,
-                         const NodeUnit* matmul_node_unit,
+                         const NodeUnit& matmul_node_unit,
                          std::vector<std::string>& input_names,
                          const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(logger);
-  const NodeUnitIODef& mm_input_1_def = matmul_node_unit->Inputs()[1];
+  const NodeUnitIODef& mm_input_1_def = matmul_node_unit.Inputs()[1];
 
   // get per_channel_float_scale value from Quant param of input[0] of DequantizeLinear
   std::vector<float> per_channel_float_scale;
-  const NodeUnitIODef& per_channel_float_def = scale_dql_node_unit->Inputs()[0];
+  const NodeUnitIODef& per_channel_float_def = scale_dql_node_unit.Inputs()[0];
   const std::optional<NodeUnitIODef::QuantParam>& scale_dql_quant_param = per_channel_float_def.quant_param;
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackScales(scale_dql_quant_param->scale.Name(), per_channel_float_scale));
 
   // get per_block_int_scale value from input[0] of DequantizeLinear
   std::vector<uint8_t> per_block_int_scale;
-  const NodeUnitIODef& per_block_int_def = scale_dql_node_unit->Inputs()[0];
+  const NodeUnitIODef& per_block_int_def = scale_dql_node_unit.Inputs()[0];
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackScales<uint8_t>(per_block_int_def.node_arg.Name(), per_block_int_scale));
   std::vector<int32_t> weight_offset(per_channel_float_scale.size(), 0);
   std::vector<uint32_t> block_scales_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(per_block_int_def.node_arg, block_scales_shape), "Failed to get block_scales shape");
 
   // Read axis of channels in per-block-int-scales data
-  NodeAttrHelper scales_node_helper(scale_dql_node_unit->GetNode());
+  NodeAttrHelper scales_node_helper(scale_dql_node_unit.GetNode());
   auto block_scales_axis = scales_node_helper.Get("axis", static_cast<int64_t>(0));
 
   // Transpose per-block-int-scales to keep channels at index-0 (QNN LPBQ format requires shape [axis_size][blocks-per-axis])
@@ -295,7 +291,7 @@ Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
   std::string weight_tensor_name;
   QnnTensorWrapper weight_tensor;
 
-  if (w_ql_node_unit) {
+  if (w_ql_node_unit != nullptr) {
     const NodeUnitIODef* w_ql_input_1_def_ptr = &w_ql_node_unit->Inputs()[0];
     ORT_RETURN_IF_NOT(w_ql_input_1_def_ptr, "Failed to get Weight input");
     weight_tensor_name = w_ql_input_1_def_ptr->node_arg.Name();
@@ -358,16 +354,16 @@ Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
     // Get DequantizeLinear node on Weight in MatMul node unit
     const Node* p_w_dql_node = nullptr;
 
-    for (auto node : matmul_node_unit->GetAllNodesInGroup()) {
+    for (auto node : matmul_node_unit.GetAllNodesInGroup()) {
       for (auto node_input : node->InputDefs()) {
         if (node_input->Name() == weight_tensor_name) {
           p_w_dql_node = node;
           break;
         }
+      }
 
-        if (p_w_dql_node != nullptr) {
-          break;
-        }
+      if (p_w_dql_node != nullptr) {
+        break;
       }
     }
     ORT_RETURN_IF_NOT((p_w_dql_node != nullptr), "Failed to get Dequantize node on Weight");
@@ -416,22 +412,22 @@ Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
 }  // namespace
 
 Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
-                             const NodeUnit* scale_dql_node_unit,
+                             const NodeUnit& scale_dql_node_unit,
                              const NodeUnit* w_ql_node_unit,
-                             const NodeUnit* matmul_node_unit,
+                             const NodeUnit& matmul_node_unit,
                              const logging::Logger& logger,
                              bool validate) {
-  ORT_RETURN_IF_NOT((scale_dql_node_unit && scale_dql_node_unit->OpType() == "DequantizeLinear") &&
+  ORT_RETURN_IF_NOT((scale_dql_node_unit.OpType() == "DequantizeLinear") &&
                         (!w_ql_node_unit || w_ql_node_unit->OpType() == "QuantizeLinear") &&
-                        (matmul_node_unit && matmul_node_unit->OpType() == "MatMul"),
+                        (matmul_node_unit.OpType() == "MatMul"),
                     "Invalid Matmul LPBQ pattern identified");
 
-  const auto& node_name = utils::GetUniqueName(*matmul_node_unit);
+  const auto& node_name = utils::GetUniqueName(matmul_node_unit);
 
   std::vector<std::string> input_names;
 
   // prepare input tensor
-  const NodeUnitIODef& input_def = matmul_node_unit->Inputs()[0];
+  const NodeUnitIODef& input_def = matmul_node_unit.Inputs()[0];
   const std::string& input_tensor_name = input_def.node_arg.Name();
   ORT_RETURN_IF_ERROR(ProcessInput0(qnn_model_wrapper, input_def, input_tensor_name, input_names,
                                     logger, validate));
@@ -441,7 +437,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                         matmul_node_unit, input_names, logger));
 
   // Prepare Output
-  const NodeUnitIODef& output_def = matmul_node_unit->Outputs()[0];
+  const NodeUnitIODef& output_def = matmul_node_unit.Outputs()[0];
   const std::string& op_output_name = output_def.node_arg.Name();
   QnnTensorWrapper output_tensor;
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(output_def, output_tensor));
