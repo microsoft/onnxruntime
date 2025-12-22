@@ -2236,3 +2236,32 @@ MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
 );
+
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+/**
+ * @brief Function to override the packing mechanism decision if kleidi ai is included
+ * @param enable     enable kleidiai packing (allow or disallow depending on true/false)
+ * @return
+*/
+void
+MLASCALL
+MlasGemmBatchPackUseKleidi(bool enable);
+#endif
+
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+void
+MLASCALL 
+MlasComputeFP16Gelu(
+    const MLAS_FP16* input,
+    MLAS_FP16* output,
+    MLAS_FP16* temp,
+    int64_t count,
+    const std::string& algo
+);

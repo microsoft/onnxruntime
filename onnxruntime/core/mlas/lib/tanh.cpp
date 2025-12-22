@@ -197,7 +197,7 @@ MlasComputeTanh<MLAS_FP16>(
 ) {
 #if defined(MLAS_USE_SVE)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-        MlasTanhKernelFp16_SVE(Input, Output, N);
+        MlasSveTanhF16Kernel(Input, Output, N);
         return;
     }
 #endif
