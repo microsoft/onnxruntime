@@ -1221,7 +1221,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
    * The implementation uses CUDA Driver APIs (cuImportExternalMemory, cuImportExternalSemaphore).
    *
    * @param this_ptr The OrtEpFactory instance.
-   * @param ep_device The OrtEpDevice to create the importer for (must have "device_id" in ep_options).
+   * @param ep_device The OrtEpDevice to create the importer for.
    * @param out_importer Output parameter set to the created OrtExternalResourceImporterImpl.
    * @return nullptr on success, OrtStatus with error on failure.
    */
@@ -1240,7 +1240,6 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
 #if defined(_WIN32)
     // Create the external resource importer
-    // The importer gets the CUDA device ID from ep_device->ep_options["device_id"]
     auto importer = std::make_unique<NvTrtRtxExternalResourceImporterImpl>(ep_device, factory.ort_api);
     *out_importer = importer.release();
 
