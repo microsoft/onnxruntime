@@ -1183,6 +1183,29 @@ TEST(PadOpTest, ConstantFill_F32_RemovesAllDataOnAxis) {
   test.Run();
 }
 
+// GH Issue: https://github.com/microsoft/onnxruntime/issues/13332
+TEST(PadOpTest, ConstantPadDefaultValueMixedPads_GH_13332) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+
+  const std::vector<int64_t> input_shape{1, 1, 4, 4};
+  const std::vector<float> input_data{
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+
+  const std::vector<int64_t> pads{0, 0, 4, 1, 0, 0, -4, -1};
+  const std::vector<int64_t> output_shape{1, 1, 4, 4};
+  const std::vector<float> expected_output(16, 0.0f);
+
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.Run();
+}
+
+// Internally reported
 TEST(PadOpTest, ConstantPadLargeNegativePadNoOutput) {
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
