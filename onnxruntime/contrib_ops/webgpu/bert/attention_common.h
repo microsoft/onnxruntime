@@ -123,7 +123,7 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
                          int head_size, const Tensor* input_tensor, const Tensor* bias, int bias_offset, Tensor* output_tensor);
 
 Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params,
-                      const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val);
+                      const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val, int kv_hidden_size);
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
