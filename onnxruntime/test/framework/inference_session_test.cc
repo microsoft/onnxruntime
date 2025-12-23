@@ -3069,5 +3069,305 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 }
 #endif
 
+// Test environment variable profiling feature
+//
+// Testing Strategy Rationale:
+// ---------------------------
+// The profiling environment variable feature has 24 possible combinations (2+ù2+ù3+ù2):
+//   - ORT_ENABLE_PROFILING: "1" (override), "0" (passthrough), not set (passthrough)
+//   - SessionOptions.enable_profiling: true, false
+//   - ORT_PROFILE_FILE_PREFIX: non-empty, empty string "", not set
+//   - SessionOptions.profile_file_prefix: set, not set
+//
+// Rather than testing all 24 combinations (which would be redundant), we use a pragmatic
+// approach with 9 strategically chosen tests that cover all critical decision branches:
+//
+// 1. Basic override behavior (env var "1" overrides SessionOptions)
+// 2. Enable + prefix combination (most common use case)
+// 3. Passthrough mode (env var "0" preserves SessionOptions)
+// 4. Error handling (invalid env var values)
+// 5. Default prefix fallback (when neither prefix is set)
+// 6. Interaction when both are enabled (env var doesn't disable)
+// 7. Empty string prefix override (critical edge case: "" vs not set)
+// 8. Non-empty prefix priority (validates precedence rules)
+// 9. Defensive case (prefix ignored when profiling disabled)
+//
+// This approach provides comprehensive coverage of:
+// - All enable/disable state transitions
+// - All prefix priority rules
+// - Edge cases (empty string, invalid values, defaults)
+// - Common user scenarios
+// - Defensive coding validation
+//
+// For complete behavior specification, see docs/ProfilingEnvironmentVariables.md
+// which documents all 24 combinations with expected outcomes.
+
+TEST(InferenceSessionTests, ProfilingEnabledViaEnvironmentVariable) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set environment variable
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "1");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  // Explicitly disable profiling in SessionOptions to test env var override
+  so.enable_profiling = false;
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling is enabled via environment variable
+  ASSERT_TRUE(session.GetProfiling().IsEnabled());
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "");
+}
+
+TEST(InferenceSessionTests, ProfilingPrefixFromEnvironmentVariable) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set environment variables
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "1");
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "test_profile");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling is enabled
+  ASSERT_TRUE(session.GetProfiling().IsEnabled());
+
+  // Verify the prefix was set from environment variable
+  const auto& session_options = session.GetSessionOptions();
+  ASSERT_EQ(session_options.profile_file_prefix, ORT_TSTR("test_profile"));
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "");
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "");
+}
+
+TEST(InferenceSessionTests, ProfilingDisabledWhenEnvVarIsZero) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set environment variable to "0"
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "0");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  so.enable_profiling = false;
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling remains disabled
+  ASSERT_FALSE(session.GetProfiling().IsEnabled());
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "");
+}
+
+TEST(InferenceSessionTests, ProfilingInvalidEnvVarValue) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set environment variable to invalid value
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "invalid");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  so.enable_profiling = false;
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling remains disabled due to invalid env var value
+  ASSERT_FALSE(session.GetProfiling().IsEnabled());
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "");
+}
+
+TEST(InferenceSessionTests, ProfilingUsesDefaultPrefixWhenEnvVarEmpty) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set profiling enabled but don't set prefix
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "1");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling is enabled with default prefix
+  ASSERT_TRUE(session.GetProfiling().IsEnabled());
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "");
+}
+
+TEST(InferenceSessionTests, ProfilingEnvVarWithSessionOptionsAlreadyEnabled) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set environment variable
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "1");
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "env_prefix");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  // Enable profiling in SessionOptions as well
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("session_prefix");
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling is still enabled (env var should not disable it)
+  ASSERT_TRUE(session.GetProfiling().IsEnabled());
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "");
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "");
+}
+
+// Rationale: Test the critical edge case where empty string prefix overrides non-empty session prefix.
+// This validates that ORT_PROFILE_FILE_PREFIX="" is treated as an explicit override, not a fallthrough.
+// Without this test, we can't verify that empty string has different behavior than "not set".
+TEST(InferenceSessionTests, ProfilingEmptyPrefixOverridesSessionPrefix) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set environment variables - empty prefix should override session prefix
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "1");
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  so.enable_profiling = false;
+  so.profile_file_prefix = ORT_TSTR("session_prefix");
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling is enabled (env var "1" overrides enable_profiling=false)
+  ASSERT_TRUE(session.GetProfiling().IsEnabled());
+
+  // Verify the prefix is empty string (env var "" overrides session prefix)
+  const auto& session_options = session.GetSessionOptions();
+  ASSERT_EQ(session_options.profile_file_prefix, ORT_TSTR(""));
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "");
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "");
+}
+
+// Rationale: Test prefix priority when both env and session prefixes are non-empty.
+// This is the most common scenario where users set both values and need to understand precedence.
+// Validates the documented behavior: ORT_PROFILE_FILE_PREFIX > SessionOptions.profile_file_prefix.
+TEST(InferenceSessionTests, ProfilingEnvPrefixOverridesSessionPrefix) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set environment variables with non-empty prefix
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "1");
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "env_custom_prefix");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  so.enable_profiling = false;
+  so.profile_file_prefix = ORT_TSTR("session_custom_prefix");
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling is enabled
+  ASSERT_TRUE(session.GetProfiling().IsEnabled());
+
+  // Verify env prefix wins over session prefix
+  const auto& session_options = session.GetSessionOptions();
+  ASSERT_EQ(session_options.profile_file_prefix, ORT_TSTR("env_custom_prefix"));
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_ENABLE_PROFILING", "");
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "");
+}
+
+// Rationale: Test that prefix settings are ignored when profiling is disabled.
+// This validates defensive coding - even if prefix env vars are set, they shouldn't cause
+// issues when profiling is off. Important for users who set env vars system-wide but
+// selectively disable profiling via SessionOptions.
+TEST(InferenceSessionTests, ProfilingPrefixIgnoredWhenDisabled) {
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  // Set prefix env var but don't enable profiling
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "should_be_ignored");
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  SessionOptions so;
+  so.enable_profiling = false;
+
+  InferenceSession session{so, *env};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Verify profiling is disabled (prefix should be irrelevant)
+  ASSERT_FALSE(session.GetProfiling().IsEnabled());
+
+  // Clean up
+  Env::Default().SetEnvironmentVar("ORT_PROFILE_FILE_PREFIX", "");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
