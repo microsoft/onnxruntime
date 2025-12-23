@@ -58,10 +58,10 @@ struct WebGpuBufferCacheConfig {
     BufferCacheMode mode;
     std::string config_string;  // preserved for customized configuration, eg. bucket sizes
   };
-  ConfigEntry storage{BufferCacheMode::Bucket};
-  ConfigEntry uniform{BufferCacheMode::Simple};
-  ConfigEntry query_resolve{BufferCacheMode::Disabled};
-  ConfigEntry default_entry{BufferCacheMode::Disabled};
+  ConfigEntry storage{BufferCacheMode::Bucket, {}};
+  ConfigEntry uniform{BufferCacheMode::Simple, {}};
+  ConfigEntry query_resolve{BufferCacheMode::Disabled, {}};
+  ConfigEntry default_entry{BufferCacheMode::Disabled, {}};
 };
 
 /// <summary>
