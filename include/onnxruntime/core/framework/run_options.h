@@ -36,12 +36,13 @@ struct OrtRunOptions {
   bool only_execute_path_to_fetches = false;
 
   // Set to 'true' to enable profiling for this run.
-  // Profiling result will be written to the file specified by profiling_file_path.
+  // Profiling result will be written to the file with prefix specified by profile_file_prefix.
   bool enable_profiling = false;
 
-  // File path to write profiling result for this run.
+  // File prefix for profiling result for this run.
+  // The actual filename will be: <profile_file_prefix>_<timestamp>.json
   // Only used when enable_profiling is true.
-  std::string profiling_file_path = "onnxruntime_profile_";
+  std::string profile_file_prefix = "onnxruntime_profile";
 
 #ifdef ENABLE_TRAINING
   // Used by onnxruntime::training::TrainingSession. This class is now deprecated.

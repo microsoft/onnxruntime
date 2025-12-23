@@ -3,6 +3,8 @@
 
 #include "core/common/profiler_common.h"
 
+#include "core/common/logging/logging.h"
+
 #ifndef _MSC_VER
 #include <cxxabi.h>
 #endif
@@ -11,6 +13,10 @@
 
 namespace onnxruntime {
 namespace profiling {
+
+void EpProfiler::StartRunProfiling() {
+  LOGS_DEFAULT(WARNING) << "Run-level profiling is not implemented for this EP profiler, so GPU kernel events for this EP cannot be captured.";
+}
 
 static constexpr int kMaxSymbolSize = 1024;
 
