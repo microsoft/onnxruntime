@@ -1145,8 +1145,8 @@ TEST(PadOpTest, ConstantMode_MixedSigns_Small_F32) {
 
   OpTester test("Pad", 13);
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
-  test.AddInput<float>("constant_value", {}, {cv});
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddInput<float>("constant_value", {}, {cv}, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "constant");
   test.Run();
@@ -1177,8 +1177,8 @@ TEST(PadOpTest, ConstantFill_F32_RemovesAllDataOnAxis) {
       0.f, 0.f, 0.f, 0.f};
 
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {8}, {0, 0, -4, 0, 0, 0, 4, 0});
-  test.AddInput<float>("constant_value", {}, {0.0f});
+  test.AddInput<int64_t>("pads", {8}, {0, 0, -4, 0, 0, 0, 4, 0}, true);
+  test.AddInput<float>("constant_value", {}, {0.0f}, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.Run();
 }
@@ -1228,8 +1228,8 @@ TEST(PadOpTest, ConstantPadLargeNegativePadNoOutput) {
   std::vector<float> output_data;  // empty now
 
   test.AddInput<float>("data", input_shape, input_span);
-  test.AddInput<int64_t>("pads", pads_shape, pads);
-  test.AddInput<float>("value", {}, {100.f});
+  test.AddInput<int64_t>("pads", pads_shape, pads, true);
+  test.AddInput<float>("value", {}, {100.f}, true);
 
   // Omit Axis input
   test.AddOutput<float>("output", output_shape, output_data);
@@ -1273,8 +1273,8 @@ TEST(PadOpTest, ConstantMode_MixedSigns_Small) {
 
   OpTester test("Pad", 18);
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
-  test.AddInput<float>("constant_value", {}, {cv});
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddInput<float>("constant_value", {}, {cv}, true);
   test.AddOutput<float>("output", expected_shape, expected_output);
   test.AddAttribute("mode", "constant");
   test.Run();
@@ -1309,8 +1309,8 @@ TEST(PadOpTest, ConstantMode_InnermostCropThenPostPad) {
 
   OpTester test("Pad", 18);
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
-  test.AddInput<float>("constant_value", {}, {cv});
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddInput<float>("constant_value", {}, {cv}, true);
   test.AddOutput<float>("output", expected_shape, expected_output);
   test.AddAttribute("mode", "constant");
   test.Run();
@@ -1327,7 +1327,7 @@ TEST(PadOpTest, EdgeMode_ZeroExtentFails) {
 
   OpTester test("Pad", 18);
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "edge");
   test.Run(OpTester::ExpectResult::kExpectFailure);
@@ -1342,7 +1342,7 @@ TEST(PadOpTest, EdgeMode_ExtentOne_Valid) {
 
   OpTester test("Pad", 18);
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_output);
   test.AddAttribute("mode", "edge");
   test.Run();
@@ -1402,7 +1402,7 @@ TEST(PadOpTest, EdgeMode_FlattenedInnermostAxis) {
 
   OpTester test("Pad", 18);
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_output);
   test.AddAttribute("mode", "edge");
   test.Run();
@@ -1418,7 +1418,7 @@ TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
 
   OpTester test("Pad", 18);
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "reflect");
   test.Run(OpTester::ExpectResult::kExpectFailure,
@@ -1436,7 +1436,7 @@ TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
 
   OpTester test("Pad", 18);
   test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "wrap");
   test.Run();

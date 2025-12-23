@@ -94,7 +94,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   auto const& input_shape = input_tensor.Shape();
-  int32_t dimension_count = static_cast<int32_t>(input_shape.NumDimensions());
+  const size_t dimension_count = input_shape.NumDimensions();
 
   const PadsVector* p_pads = &pads_;
   const PadsVector* p_slices = &slices_;
@@ -134,15 +134,41 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_strides(input_pitches);
 
   auto output_dims(input_shape.AsShapeVector());
-  ORT_ENFORCE(static_cast<size_t>(dimension_count) * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(dimension_count * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
   TArray<int64_t> lower_pads(dimension_count);
   TArray<int64_t> upper_pads(dimension_count);
-  for (auto i = 0; i < dimension_count; i++) {
-    lower_pads[i] = (*p_pads)[i] + (*p_slices)[i];
-    upper_pads[i] = (*p_pads)[static_cast<int64_t>(i) + dimension_count] + (*p_slices)[static_cast<int64_t>(i) + dimension_count];
-    output_dims[i] += lower_pads[i] + upper_pads[i];
+  for (size_t i = 0; i < dimension_count; i++) {
+    lower_pads[i] = SafeInt<int64_t>((*p_pads)[i]) + (*p_slices)[i];
+    upper_pads[i] = SafeInt<int64_t>((*p_pads)[i + dimension_count]) + (*p_slices)[i + dimension_count];
+    output_dims[i] += SafeInt<int64_t>(lower_pads[i]) + upper_pads[i];
+  }
+
+  TensorShapeVector input_extents;
+  input_extents.reserve(dimension_count);
+  for (size_t i = 0; i < dimension_count; i++) {
+    int64_t extent = std::max<int64_t>(SafeInt<int64_t>(input_dims[i]) +
+                                           (*p_slices)[i] + (*p_slices)[i + dimension_count],
+                                       0U);
+    input_extents.push_back(extent);
+  }
+
+  // Special case for Reflect mode: ensure all extents >= 2 after slicing
+  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
+  // implies that this would be wrong as the start and end positions should be distinct
+  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
+  if (mode_ == Mode::Reflect) {
+    for (size_t i = 0; i < dimension_count; ++i) {
+      const int64_t extent = input_extents[i];  // length after slicing
+      const bool reflect_on_axis =
+          (*p_pads)[i] > 0 || (*p_pads)[i + dimension_count] > 0;
+      if (reflect_on_axis && extent < 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect requires axis length >= 2 after slicing. Input shape:",
+                               input_shape);
+      }
+    }
   }
 
   TensorShape output_shape(output_dims);
@@ -154,6 +180,28 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto& output_tensor = *ctx->Output(0, output_shape);
 
+  // Early constant-fill: if any input extent is zero, no data to copy
+  // only padding if any
+  bool no_data_to_copy = false;
+  for (size_t i = 0; i < input_extents.size(); ++i) {
+    if (input_extents[i] == 0) {
+      no_data_to_copy = true;
+      break;
+    }
+  }
+
+  if (no_data_to_copy) {
+    if (mode_ == Mode::Constant) {
+      cuda::Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(output_tensor.MutableDataRaw()),
+                        value,
+                        input_shape.Size());
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Pad: invalid mode: ", static_cast<int>(mode_), " with zero effective input extent");
+  }
+
+  // Case of all pads and slices being zero: just copy input to output
   if (std::all_of(p_pads->begin(), p_pads->end(), [](const int64_t v) { return v == 0; }) &&
       std::all_of(p_slices->begin(), p_slices->end(), [](const int64_t v) { return v == 0; }) &&
       output_shape.Size() > 0) {
@@ -164,7 +212,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  if (IsNCHWInputWithPaddingAlongHAndW(static_cast<size_t>(dimension_count), lower_pads, upper_pads)) {
+  if (IsNCHWInputWithPaddingAlongHAndW(dimension_count, lower_pads, upper_pads)) {
     // If we have entered here, it means the input can only be 4-D (NCHW), 3-D (CHW), or 2-D (HW)
 
     // NCHW input
