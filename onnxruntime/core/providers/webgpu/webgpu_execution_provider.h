@@ -84,6 +84,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
   webgpu::BufferManager& BufferManager() const;
+  AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
 
  private:
   bool IsGraphCaptureAllowed() const;
@@ -105,6 +106,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   // Store captured commands directly in the EP instead of in WebGpuContext
   std::vector<webgpu::CapturedCommandInfo> captured_commands_;
+
+  // Allocator for prepacked weights (uses buffers without mapping)
+  AllocatorPtr prepack_allocator_;
 };
 
 }  // namespace onnxruntime

@@ -56,9 +56,6 @@ class ComputeContextBase {
     return op_kernel_.Node().Name();
   }
 
-  Status CreateUnmappedGPUTensor(AllocatorPtr alloc, MLDataType data_type, const TensorShape& shape,
-                                 std::unique_ptr<Tensor>& tensor) const;
-
   //
   // Get the operator type.
   //
