@@ -100,7 +100,7 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
 Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params,
                       const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val, int kv_hidden_size) {
   // Output Q, K, V in BSD format
-  const int components = std::min(GetMaxComponents(params.hidden_size_), GetMaxComponents(kv_hidden_size));
+  const int components = std::min({GetMaxComponents(params.hidden_size_), GetMaxComponents(kv_hidden_size), GetMaxComponents(params.v_hidden_size_)});
   SplitPackedQKVProgram program;
   auto input_size = packedQKV->Shape().Size();
   const uint32_t vectorized_input_size = static_cast<uint32_t>(input_size / components);
