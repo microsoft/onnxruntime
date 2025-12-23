@@ -134,10 +134,10 @@ OrtStatus* ORT_API_CALL Mul::PrePackWeightImpl(OrtKernelImpl* this_ptr, const Or
     std::array<void*, 1> buffer_data_ptrs = {weight_info.owned_data.get()};
     std::array<size_t, 1> buffer_data_sizes = {weight_info.num_bytes};
 
-    RETURN_IF_ERROR(Ort::GetEpApi().SharedPrePackedWeightCache_StoreWeightData(prepacked_weight_cache,
-                                                                               buffer_data_ptrs.data(),
-                                                                               buffer_data_sizes.data(),
-                                                                               buffer_data_ptrs.size()));
+    Ort::UnownedSharedPrePackedWeightCache weight_cache(prepacked_weight_cache);
+    RETURN_IF_ERROR(weight_cache.StoreWeightData(buffer_data_ptrs.data(),
+                                                 buffer_data_sizes.data(),
+                                                 buffer_data_ptrs.size()));
 
     // IMPORTANT: This kernel no longer owns the packed weight data.
     // weight_info.shared_data will be initialized in the call to SetSharedPrePackedWeightImpl.

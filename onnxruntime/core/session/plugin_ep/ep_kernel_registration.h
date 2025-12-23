@@ -28,8 +28,8 @@ struct OrtSharedPrePackedWeightCache {
   OrtSharedPrePackedWeightCache(onnxruntime::PrePackedWeights& container, onnxruntime::AllocatorPtr allocator);
 
   /// <summary>
-  /// Sets data buffers for the shared weight. Ownership of the buffers is transferred to this class instance, which
-  /// will delete the buffers with `this->allocator_`.
+  /// Sets data buffers for the shared weight. Ownership of the buffers is transferred to this class's contained
+  /// PrePackedWeights instance, which will delete the buffers with `this->allocator_`.
   /// The buffer data is required to have been allocated with `this->allocator_`.
   /// Refer to OrtKernelImpl::PrePackWeight and OrtEpApi::SharedPrePackedWeightCache_StoreWeightData.
   /// </summary>
