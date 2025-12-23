@@ -77,7 +77,11 @@ struct WebGpuContextInitializationParams {
       static_cast<int>(WGPUBackendType_D3D12)
 #elif defined(DAWN_ENABLE_VULKAN)
       static_cast<int>(WGPUBackendType_Vulkan)
+#else
+      0
 #endif
+#else
+      0
 #endif
   };
   bool enable_pix_capture{false};

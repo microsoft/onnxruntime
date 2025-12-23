@@ -187,7 +187,7 @@ WebGpuContextInitializationParams ParseWebGpuContextInitializationParams(const C
       } else if (buffer_cache_mode_str == kBufferCacheMode_Bucket) {
         value = BufferCacheMode::Bucket;
       } else {
-        ORT_THROW("Invalid buffer cache mode: ", config_entry_str);
+        ORT_THROW("Invalid buffer cache mode: ", buffer_cache_mode_str);
       }
     }
   };
