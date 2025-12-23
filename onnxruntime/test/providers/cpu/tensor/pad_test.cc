@@ -1348,14 +1348,6 @@ TEST(PadOpTest, EdgeMode_ExtentOne_Valid) {
   test.Run();
 }
 
-// TEST(PadOpTest, EdgeMode_FlattenedInnermostAxis) {
-//   // This covers the else branch of inner_no_pad_size != 1
-//   const std::vector<int64_t> input_shape{2, 3, 2, 4};
-//   std::vector<float> input_data(2 * 3 * 2 * 4);
-//   std::iota(input_data.begin(), input_data.end(), 1.f);
-//
-//   const std::vector<float> expected_shape{2, 3, 8};
-
 TEST(PadOpTest, EdgeMode_FlattenedInnermostAxis) {
   // Shape chosen to force FlattenInnerShape():
   // innermost dims {2,4} -> flattened to 8
@@ -1417,16 +1409,38 @@ TEST(PadOpTest, EdgeMode_FlattenedInnermostAxis) {
 }
 
 // Gh issue: https://github.com/microsoft/onnxruntime/issues/11828
-// TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
-//  using T = float;
-//  RunAllOpsetAllDomainPadTests<T>({4},
-//                                  {T(1), T(2), T(3), T(4)},
-//                                  {-3, 3},
-//                                  T(0),
-//                                  {4},
-//                                  {4, 0, 0, 0},
-//                                  "reflect");
-//}
+TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
+  const std::vector<int64_t> input_shape = {4};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<int64_t> pads = {-3, 3};
+  const std::vector<int64_t> expected_shape{4};
+  const std::vector<float> expected_data = {2.f, 3.f, 4.f, 1.f};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "reflect");
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Pad reflect requires axis length >= 2 after slicing in reflect mode");
+}
+
+TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
+  const std::vector<int64_t> input_shape = {4};
+  const std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<int64_t> pads = {-3, 3};
+
+  const std::vector<int64_t> expected_shape{4};
+  // Post-slice core: [4]; wrap 3 -> [4, 4, 4, 4]
+  const std::vector<float> expected_data = {4, 4, 4, 4};
+
+  OpTester test("Pad", 18);
+  test.AddInput<float>("data", input_shape, input_data);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
+  test.AddOutput<float>("output", expected_shape, expected_data);
+  test.AddAttribute("mode", "wrap");
+  test.Run();
+}
 
 }  // namespace test
 }  // namespace onnxruntime
