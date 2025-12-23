@@ -3146,7 +3146,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   // End run-level profiling and write to file if enabled
   if (run_options.enable_profiling) {
-    session_profiler_.EndRunLevelProfiling(run_options.profiling_file_path);
+    std::ostringstream profile_ss;
+    profile_ss << run_options.profile_file_prefix << "_" << GetCurrentTimeString<char>() << ".json";
+    session_profiler_.EndRunLevelProfiling(profile_ss.str());
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
