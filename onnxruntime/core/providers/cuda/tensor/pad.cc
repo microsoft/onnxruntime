@@ -142,7 +142,13 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   for (size_t i = 0; i < dimension_count; i++) {
     lower_pads[i] = SafeInt<int64_t>((*p_pads)[i]) + (*p_slices)[i];
     upper_pads[i] = SafeInt<int64_t>((*p_pads)[i + dimension_count]) + (*p_slices)[i + dimension_count];
-    output_dims[i] += SafeInt<int64_t>(lower_pads[i]) + upper_pads[i];
+    output_dims[i] += std::max<int64_t>(0, SafeInt<int64_t>(lower_pads[i]) + upper_pads[i]);
+  }
+
+  TensorShape output_shape(output_dims);
+  if (output_shape.Size() == 0) {
+    // No elements to output
+    return Status::OK();
   }
 
   TensorShapeVector input_extents;
@@ -170,8 +176,6 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
     }
   }
-
-  TensorShape output_shape(output_dims);
 
   // special case when there is a dim value of 0 in the shape. behavior depends on mode
   if (input_shape.Size() == 0) {
