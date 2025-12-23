@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 #include <sstream>
+#include <iomanip>
+#include <limits>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
@@ -27,6 +29,8 @@
 #include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
+#define RAMA_TRACE 1
+
 // #define TRACE_EXECUTION
 
 // Define this symbol to create Concurrency Visualizer markers.
@@ -39,7 +43,7 @@
 using namespace Concurrency;
 #endif
 
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#if defined(ONNXRUNTIME_ENABLE_INSTRUMENT) || defined(RAMA_TRACE)
 #include <Windows.h>
 #include "core/platform/tracing.h"
 namespace {
@@ -177,6 +181,10 @@ class SessionScope {
             session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
+#ifdef RAMA_TRACE
+    trace_data_.reserve(50000);
+#endif
+
     if (session_state_.Profiler().IsEnabled()) {
       session_start_ = session_state.Profiler().Start();
     }
@@ -244,6 +252,59 @@ class SessionScope {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     dump_analysis_.PrintToStdOut(session_state_.GetGraphViewer().ModelPath().string());
 #endif
+
+#ifdef RAMA_TRACE
+    // Write accumulated trace data to file
+    if (!trace_data_.empty()) {
+      // Generate filename with timestamp
+      auto now = std::chrono::system_clock::now();
+      auto time_t_now = std::chrono::system_clock::to_time_t(now);
+      std::tm tm_now;
+      localtime_s(&tm_now, &time_t_now);
+      std::ostringstream filename_ss;
+      filename_ss << "ort_trace_"
+                  << std::setfill('0') << std::setw(4) << (tm_now.tm_year + 1900)
+                  << std::setw(2) << (tm_now.tm_mon + 1)
+                  << std::setw(2) << tm_now.tm_mday << "_"
+                  << std::setw(2) << tm_now.tm_hour
+                  << std::setw(2) << tm_now.tm_min
+                  << std::setw(2) << tm_now.tm_sec
+                  << ".csv";
+
+      std::ofstream trace_file(filename_ss.str());
+      trace_file << "op_name,time_us\n";
+      for (const auto& entry : trace_data_) {
+        trace_file << entry.first << "," << entry.second << "\n";
+      }
+
+      // Compute statistics (excluding If and Loop operators)
+      int64_t min_time = std::numeric_limits<int64_t>::max();
+      int64_t max_time = 0;
+      int64_t sum_time = 0;
+      size_t count = 0;
+
+      for (const auto& entry : trace_data_) {
+        if (entry.first != "If" && entry.first != "Loop") {
+          min_time = std::min(min_time, entry.second);
+          max_time = std::max(max_time, entry.second);
+          sum_time += entry.second;
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        double avg_time = static_cast<double>(sum_time) / count;
+        std::cerr << "\n=== Kernel Execution Statistics (excluding If/Loop) ===\n";
+        std::cerr << "Count: " << count << "\n";
+        std::cerr << "Min time: " << min_time << " us\n";
+        std::cerr << "Max time: " << max_time << " us\n";
+        std::cerr << "Avg time: " << std::fixed << std::setprecision(2) << avg_time << " us\n";
+        std::cerr << "Total time: " << sum_time << " us\n";
+        std::cerr << "Trace file: " << filename_ss.str() << "\n";
+        std::cerr << "========================================================\n\n";
+      }
+    }
+#endif
   }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -278,9 +339,16 @@ class SessionScope {
   utils::NodeDumpContext dump_context_;
   utils::NodeDumpAnalysis dump_analysis_;
 #endif
+
+#ifdef RAMA_TRACE
+  std::vector<std::pair<std::string, int64_t>> trace_data_;
+#endif
+
 };
 
 class KernelScope {
+  private:
+    LARGE_INTEGER kernel_start;
  public:
   KernelScope(SessionScope& session_scope,
               OpKernelContextInternal& kernel_context,
@@ -331,9 +399,8 @@ class KernelScope {
     }
 #endif
 
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-    LARGE_INTEGER kernel_start;
-    QueryPerformanceCounter(&kernel_start);
+#if defined(ONNXRUNTIME_ENABLE_INSTRUMENT) || defined(RAMA_TRACE)
+    QueryPerformanceCounter(&this->kernel_start);
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
@@ -385,17 +452,26 @@ class KernelScope {
                                      });
     }
 
+
+#if defined(ONNXRUNTIME_ENABLE_INSTRUMENT) || defined(RAMA_TRACE)
+  LARGE_INTEGER kernel_stop;
+  QueryPerformanceCounter(&kernel_stop);
+  LARGE_INTEGER elapsed;
+  elapsed.QuadPart = kernel_stop.QuadPart - this->kernel_start.QuadPart;
+  elapsed.QuadPart *= 1000000;
+  elapsed.QuadPart /= perf_freq.QuadPart;
+#endif
+
+#ifdef RAMA_TRACE
+  // Store trace data in memory for later output
+  session_scope_.trace_data_.emplace_back(kernel_.KernelDef().OpName(), elapsed.QuadPart);
+#endif
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-    LARGE_INTEGER kernel_stop;
-    QueryPerformanceCounter(&kernel_stop);
-    LARGE_INTEGER elapsed;
-    elapsed.QuadPart = kernel_stop.QuadPart - kernel_start.QuadPart;
-    elapsed.QuadPart *= 1000000;
-    elapsed.QuadPart /= perf_freq.QuadPart;
     // Log an event
     TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
                       "OpEnd",                    // Event Name that should uniquely identify your event.
-                      TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
+                      TraceLoggingValue(this->kernel_.KernelDef().OpName().c_str(), "op_name"),
                       TraceLoggingValue(elapsed.QuadPart, "time"));
 #endif
 
