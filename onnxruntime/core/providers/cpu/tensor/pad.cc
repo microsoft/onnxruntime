@@ -522,18 +522,6 @@ static Status PadImpl(OpKernelContext* ctx,
                                reshaped_slice[i] + reshaped_slice[i + new_dims_count];
   }
 
-  if (mode == Mode::Reflect) {
-    for (size_t i = 0; i < new_dims_count; ++i) {
-      const int64_t extent = input_extents[i];  // length after slicing
-      const bool reflect_on_axis =
-          (reshaped_pad[i] > 0) || (reshaped_pad[i + new_dims_count] > 0);
-      if (reflect_on_axis && extent < 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Pad reflect requires axis length >= 2 after slicing in reflect mode");
-      }
-    }
-  }
-
   // Compute true output dimensions
   for (size_t i = 0; i < data_rank; i++) {
     output_dims[i] += SafeInt<int64_t>(pads[i]) + pads[i + data_rank] + slices[i] + slices[i + data_rank];
@@ -543,6 +531,23 @@ static Status PadImpl(OpKernelContext* ctx,
   // separately than to complicate all the code for normal usage.
   if (orig_input_shape.Size() == 0) {
     return PadInputWithDimValueOfZero(ctx, mode, orig_input_shape, output_dims, value);
+  }
+
+  // Special case for Reflect mode: ensure all extents >= 2 after slicing
+  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
+  // implies that this would be wrong as the start and end positions should be distinct
+  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
+  if (mode == Mode::Reflect) {
+    for (size_t i = 0; i < new_dims_count; ++i) {
+      const int64_t extent = input_extents[i];  // length after slicing
+      const bool reflect_on_axis =
+          (reshaped_pad[i] > 0) || (reshaped_pad[i + new_dims_count] > 0);
+      if (reflect_on_axis && extent < 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect requires axis length >= 2 after slicing. Input shape:",
+                               orig_input_shape);
+      }
+    }
   }
 
   // output_shape needs to keep original.

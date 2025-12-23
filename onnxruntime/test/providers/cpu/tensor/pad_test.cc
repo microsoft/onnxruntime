@@ -1422,7 +1422,7 @@ TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "reflect");
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Pad reflect requires axis length >= 2 after slicing in reflect mode");
+           "Pad reflect requires axis length >= 2 after slicing");
 }
 
 TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
