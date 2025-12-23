@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "core/common/semver.h"
-#include "core/framework/allocator.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
 #include "core/framework/op_kernel_info.h"

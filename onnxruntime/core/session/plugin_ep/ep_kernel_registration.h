@@ -16,13 +16,21 @@
 
 /// <summary>
 /// Implementation of the public C API opaque type OrtSharedPrePackedWeightCache used by plugin EP kernels.
-/// This wraps and fills out an instance of onnxruntime::PrePackedWeights.
+/// This wraps and fills out an instance of onnxruntime::PrePackedWeights via the
+/// C API SharedPrePackedWeightCache_StoreWeightData.
 /// </summary>
 struct OrtSharedPrePackedWeightCache {
+  /// <summary>
+  /// Constructs an OrtSharedPrePackedWeightCache that will fill out the provided PrePackedWeights object.
+  /// </summary>
+  /// <param name="container">The PrePackedWeights container to fill out.</param>
+  /// <param name="allocator">The allocator that will be used to free buffers set by the call to SetBuffers().</param>
   OrtSharedPrePackedWeightCache(onnxruntime::PrePackedWeights& container, onnxruntime::AllocatorPtr allocator);
 
   /// <summary>
-  /// Sets data buffers for the shared weight. The data is expected to be allocated with this->allocator_.
+  /// Sets data buffers for the shared weight. Ownership of the buffers is transferred to this class instance, which
+  /// will delete the buffers with `this->allocator_`.
+  /// The buffer data is required to have been allocated with `this->allocator_`.
   /// Refer to OrtKernelImpl::PrePackWeight and OrtEpApi::SharedPrePackedWeightCache_StoreWeightData.
   /// </summary>
   /// <param name="data_ptrs"></param>

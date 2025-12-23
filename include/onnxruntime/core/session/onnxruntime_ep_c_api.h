@@ -365,24 +365,25 @@ struct OrtKernelImpl {
 
   /** \brief Optional function that receives data for a shared pre-packed weight from ORT.
    *
-   * This function is called after a prior call to OrtKernelImpl::PrePackWeight set `is_packed` to true and
-   * stored weight data (that the kernel wants to share) into the provided `OrtSharedPrePackedWeightCache` instance.
-   * If this function is called for an unexpected shared weight (as identified by `input_index`), the
-   * implementation should return an error OrtStatus with an error code of ORT_EP_FAIL.
+   * This function is called after a prior call to OrtKernelImpl::PrePackWeight for a specific `input_index` set
+   * `is_packed` to true and stored weight data (to share) into the provided OrtSharedPrePackedWeightCache instance.
    * Refer to the description of the "sharing-mode" in the documentation for OrtKernelImpl::PrePackWeight().
+   *
+   * \note ORT will not call this function for an `input_index` that a previous call to
+   *       OrtKernelImpl::PrePackWeight() did not elect to pre-pack and share. If this function receives an
+   *       unexpected `input_index`, the implementation should return an error OrtStatus with code ORT_EP_FAIL.
    *
    * \note This function is based on the internal OpKernel::UseSharedPrePackedBuffers() virtual function used
    *       within ORT.
    *
    * \param[in] this_ptr The OrtKernelImpl instance.
    * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
-   *                             single shared weight. Note that sometimes a single weight may have multiple pre-packed
-   *                             buffers and it is up to the kernel implementation to determine how to split the data
-   *                             into multiple buffers (if desired) in the call to OrtKernelImpl::PrePack(). Each
-   *                             buffer element in this array is provided in the same order defined by the kernel
-   *                             implementation in the call to OrtKernelImpl::PrePack().
+   *                             single shared weight. The buffers are provided in the same order and with the same
+   *                             contents (in a potentially different memory location) as the buffers
+   *                             passed into SharedPrePackedWeightCache_StoreWeightData() within the
+   *                             OrtKernelImpl::PrePackWeight() call for the same `input_index`.
    * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
-   *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_sizes` arrays.
+   *                        Specifies the number of elements in the `buffer_data_ptrs` array.
    * \param[in] input_index The input index of the tensor in this kernel. This index identifies the identity of
    *                        the weight.
    *

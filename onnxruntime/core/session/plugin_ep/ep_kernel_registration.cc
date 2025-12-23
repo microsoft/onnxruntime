@@ -44,6 +44,9 @@ void OrtSharedPrePackedWeightCache::ReleaseAllData() noexcept {
   for (onnxruntime::IAllocatorUniquePtr<void>& data_unique_ptr : container_.buffers_) {
     data_unique_ptr.release();
   }
+
+  container_.buffers_.clear();
+  container_.buffer_sizes_.clear();
 }
 
 namespace onnxruntime {
@@ -55,15 +58,6 @@ class PluginEpOpKernel final : public OpKernel {
  private:
   // Prevents calling constructor directly without having to make it private (required by std::make_unique).
   struct PrivateTag {};
-
-  // Stores a mapping between a IAllocator* and the OrtAllocator* that wraps it.
-  struct PrePackAllocatorMapping {
-    PrePackAllocatorMapping(IAllocator* i_alloc, std::unique_ptr<OrtAllocatorImplWrappingIAllocator> ort_alloc)
-        : i_allocator(i_alloc), ort_allocator(std::move(ort_alloc)) {}
-
-    IAllocator* i_allocator{};                                            // Original IAllocator passed to PrePack()
-    std::unique_ptr<OrtAllocatorImplWrappingIAllocator> ort_allocator{};  // Wrapper over IAllocator
-  };
 
  public:
   PluginEpOpKernel(const OpKernelInfo& info, PrivateTag) : OpKernel{info} {}  // must use ::Create()
@@ -119,7 +113,7 @@ class PluginEpOpKernel final : public OpKernel {
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
         kernel_impl_->PrePackWeight(kernel_impl_, &ort_value, input_idx,
                                     ort_allocator,
-                                    shared_weight_cache.has_value() ? &shared_weight_cache.value() : nullptr,
+                                    shared_weight_cache.has_value() ? &*shared_weight_cache : nullptr,
                                     &is_packed)));
 
     const bool tried_to_share = shared_weight_cache.has_value() && shared_weight_cache->HasData();
@@ -164,18 +158,17 @@ class PluginEpOpKernel final : public OpKernel {
     IAllocator* i_allocator = alloc.get();
 
     // Try to find an existing OrtAllocator* that wraps the given IAllocator*
-    for (auto& alloc_mapping : prepack_allocator_mappings_) {
-      if (alloc_mapping.i_allocator == i_allocator) {
-        return alloc_mapping.ort_allocator.get();
+    for (auto& ort_allocator_wrapper : prepack_ort_allocators_) {
+      if (ort_allocator_wrapper->GetWrappedIAllocator().get() == i_allocator) {
+        return ort_allocator_wrapper.get();
       }
     }
 
-    // Generate a new mapping from IAllocator* to OrtAllocator* and return the latter.
-    PrePackAllocatorMapping alloc_mapping(i_allocator,
-                                          std::make_unique<OrtAllocatorImplWrappingIAllocator>(std::move(alloc)));
-    prepack_allocator_mappings_.push_back(std::move(alloc_mapping));
+    // Create a new OrtAllocatorImplWrappingIAllocator
+    auto ort_allocator_wrapper = std::make_unique<OrtAllocatorImplWrappingIAllocator>(std::move(alloc));
 
-    return prepack_allocator_mappings_.back().ort_allocator.get();
+    prepack_ort_allocators_.push_back(std::move(ort_allocator_wrapper));
+    return prepack_ort_allocators_.back().get();
   }
 
   OrtKernelImpl* kernel_impl_ = nullptr;
@@ -184,7 +177,7 @@ class PluginEpOpKernel final : public OpKernel {
   // OrtAllocator instances alive because the plugin EP kernel implementation uses the OrtAllocators to allocate
   // and free packed weight data. Note: use a vector instead of an unordered_map because this will almost always
   // contain only one element and we want to limit the size of this class.
-  std::vector<PrePackAllocatorMapping> prepack_allocator_mappings_;
+  std::vector<std::unique_ptr<OrtAllocatorImplWrappingIAllocator>> prepack_ort_allocators_;
 };
 
 /*static*/
