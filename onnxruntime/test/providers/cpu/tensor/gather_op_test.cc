@@ -268,9 +268,10 @@ TYPED_TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
                          {1, 0,
                           2, 1});
   test.AddOutput<TypeParam>("output", {2, 2, 3},
-                            {TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f), TypeParam(0.0f),
-                             TypeParam(0.1f), TypeParam(0.2f), TypeParam(2.0f), TypeParam(2.1f),
-                             TypeParam(2.2f), TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f)});
+                            {TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f),
+                             TypeParam(0.0f), TypeParam(0.1f), TypeParam(0.2f),
+                             TypeParam(2.0f), TypeParam(2.1f), TypeParam(2.2f),
+                             TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f)});
   test.Run();
 }
 
