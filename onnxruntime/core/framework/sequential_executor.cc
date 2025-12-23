@@ -177,7 +177,8 @@ class SessionScope {
             session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
-    if (session_state_.Profiler().IsEnabled()) {
+    // Check both session-level and run-level profiling
+    if (session_state_.Profiler().IsEnabled() || session_state_.Profiler().IsRunLevelProfilingEnabled()) {
       session_start_ = session_state.Profiler().Start();
     }
 
@@ -225,7 +226,8 @@ class SessionScope {
     }
 #endif
 
-    if (session_state_.Profiler().IsEnabled()) {
+    // Check both session-level and run-level profiling
+    if (session_state_.Profiler().IsEnabled() || session_state_.Profiler().IsRunLevelProfilingEnabled()) {
       session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -344,7 +346,8 @@ class KernelScope {
     node_compute_range_.Begin();
 #endif
 
-    if (session_state_.Profiler().IsEnabled()) {
+    // Check both session-level and run-level profiling
+    if (session_state_.Profiler().IsEnabled() || session_state_.Profiler().IsRunLevelProfilingEnabled()) {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
@@ -363,7 +366,8 @@ class KernelScope {
     node_compute_range_.End();
 #endif
 
-    if (session_state_.Profiler().IsEnabled()) {
+    // Check both session-level and run-level profiling
+    if (session_state_.Profiler().IsEnabled() || session_state_.Profiler().IsRunLevelProfilingEnabled()) {
       auto& profiler = session_state_.Profiler();
       std::string output_type_shape_;
       CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
