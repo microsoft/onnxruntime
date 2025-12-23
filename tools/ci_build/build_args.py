@@ -174,6 +174,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
             "NMake Makefiles JOM",
             "Unix Makefiles",
             "Visual Studio 17 2022",
+            "Visual Studio 18 2026",
             "Xcode",
         ],
         default=None,  # Will be set later based on OS and WASM
