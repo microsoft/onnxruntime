@@ -59,7 +59,20 @@ class WindowsTelemetry : public Telemetry {
                           const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                           bool use_fp16, bool captureState) const override;
 
-  void LogCompileModel(uint32_t session_id) const override;
+  void LogCompileModelStart(uint32_t session_id,
+                            const std::string& input_source,
+                            const std::string& output_target,
+                            uint32_t flags,
+                            int graph_optimization_level,
+                            bool embed_ep_context,
+                            bool has_external_initializers_file,
+                            const std::vector<std::string>& execution_provider_ids) const override;
+
+  void LogCompileModelComplete(uint32_t session_id,
+                               bool success,
+                               uint32_t error_code,
+                               uint32_t error_category,
+                               const std::string& error_message) const override;
 
   void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                        const char* function, uint32_t line) const override;
