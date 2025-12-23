@@ -8,6 +8,7 @@
 #include "contrib_ops/webgpu/bert/multihead_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul.h"
 using namespace onnxruntime::webgpu;
 using namespace ::onnxruntime::common;
@@ -78,6 +79,7 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
   const auto& value = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
   sh.MainFunctionBody()
+      << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.input_size")
       << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
       << "  let batch = packed_qkv_indices[0];\n"
       << "  let seq = packed_qkv_indices[1];\n"
@@ -98,16 +100,19 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
 Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params,
                       const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val, int kv_hidden_size) {
   // Output Q, K, V in BSD format
+  const int components = std::min(GetMaxComponents(params.hidden_size_), GetMaxComponents(kv_hidden_size));
   SplitPackedQKVProgram program;
   auto input_size = packedQKV->Shape().Size();
+  const uint32_t vectorized_input_size = static_cast<uint32_t>(input_size / components);
   program
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutputs({{query, ProgramTensorMetadataDependency::TypeAndRank}, {key, ProgramTensorMetadataDependency::TypeAndRank}, {val, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
+      .AddOutputs({{query, ProgramTensorMetadataDependency::TypeAndRank, components}, {key, ProgramTensorMetadataDependency::TypeAndRank, components}, {val, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .AddUniformVariables({
-          {static_cast<uint32_t>(params.hidden_size_)},
-          {static_cast<uint32_t>(kv_hidden_size)},
+          {vectorized_input_size},
+          {static_cast<uint32_t>(params.hidden_size_ / components)},
+          {static_cast<uint32_t>(kv_hidden_size / components)},
       })
-      .SetDispatchGroupSize((input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+      .SetDispatchGroupSize((vectorized_input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
 

@@ -38,7 +38,8 @@ class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"hidden_size", ProgramUniformVariableDataType::Uint32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32},
+                                          {"hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
 };
 
