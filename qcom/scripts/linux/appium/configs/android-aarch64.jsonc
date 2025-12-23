@@ -31,7 +31,15 @@
     // Default: "/qdc/appium/model_tests/onnx_models"
     // "host_onnx_model_test_path": "/qdc/appium/model_tests/onnx_models",
 
+    // If true, remove previously uploaded builds during setup.
+    // Default: true
+    // "clean_build": true,
+
     // If true, clean ONNX test models from the device at the start of the run.
     // Default: false
-    // "clean_onnx_model_tests": false
+    // "clean_onnx_model_tests": false,
+
+    // Comma-separated list of ctest cases to skip
+    // Default: null
+    // "skip_ctests": null
 }

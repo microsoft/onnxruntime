@@ -25,6 +25,10 @@ class CTestPlan:
     def plan(self) -> list[list[str]]:
         return list(self.__tests.values())
 
+    @property
+    def tests(self) -> dict[str, list[str]]:
+        return dict(self.__tests)
+
     @staticmethod
     def __parse_build_directory(ctesttestfile_path: Path) -> str:
         build_dir_re = re.compile(r"^# Build directory: (.*)$")

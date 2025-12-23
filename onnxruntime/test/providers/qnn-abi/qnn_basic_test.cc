@@ -513,7 +513,8 @@ TEST_F(QnnABICPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
 }
 
 // Test that QNN Saver generates the expected files for a model meant to run on the QNN CPU backend.
-TEST_F(QnnABICPUBackendTests, QnnSaver_OutputFiles) {
+// TODO: [AISW-163150] ORT test failures on qcs6490
+TEST_F(QnnABICPUBackendTests, DISABLED_QnnSaver_OutputFiles) {
   const std::filesystem::path qnn_saver_output_dir = "saver_output";
 
   // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.

@@ -17,10 +17,12 @@ class TestBase:
         return device_from_url(self.config().device_url)
 
     def clean_device(self):
-        # Clean-up device.
-        for path in [self.config().device_runtime_path, self.config().qdc_log_path]:
-            self.device.shell(["rm", "-rf", path])
-            self.device.shell(["mkdir", "-p", path])
+        self.device.shell(["rm", "-rf", self.config().qdc_log_path])
+        self.device.shell(["mkdir", "-p", self.config().qdc_log_path])
+
+        if self.config().clean_build:
+            self.device.shell(["rm", "-rf", self.config().device_runtime_path])
+            self.device.shell(["mkdir", "-p", self.config().device_runtime_path])
 
         if self.config().clean_onnx_model_tests:
             self.device.shell(["rm", "-fr", self.config().device_onnx_model_test_path])

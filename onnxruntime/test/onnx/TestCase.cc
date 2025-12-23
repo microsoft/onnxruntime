@@ -1451,6 +1451,13 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "unknown version"});
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "unknown version"});
     broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "need nonpad_kv_seqlen "});
+#if defined(__linux__) && !defined(__ANDROID__)
+    // TODO: [AISW-163150] ORT test failures on qcs6490
+    broken_tests->insert({"strnormalizer_export_monday_casesensintive_lower", "en_US.UTF-8 is not a valid locale on QLI devices"});
+    broken_tests->insert({"strnormalizer_export_monday_casesensintive_nochangecase", "en_US.UTF-8 is not a valid locale on QLI devices"});
+    broken_tests->insert({"strnormalizer_export_monday_casesensintive_upper", "en_US.UTF-8 is not a valid locale on QLI devices"});
+    broken_tests->insert({"strnormalizer_export_monday_empty_output", "en_US.UTF-8 is not a valid locale on QLI devices"});
+#endif
   }
 
 #ifdef DISABLE_CONTRIB_OPS

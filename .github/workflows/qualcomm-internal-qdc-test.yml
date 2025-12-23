@@ -1,0 +1,74 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
+
+name: Qualcomm Internal Tests on QDC
+on:
+  workflow_call:
+    inputs:
+      target_os:
+        default: android
+        type: string
+      target_arch:
+        default: aarch64
+        type: string
+  workflow_dispatch:
+    inputs:
+      target_os:
+        description: "The OS for which to build: android or linux"
+        default: android
+        type: string
+      target_arch:
+        description: |
+          The architecture for which to build.
+          [Android] aarch64
+          [Linux] aarch64_oe_gcc11_2.
+        default: aarch64
+        type: string
+
+env:
+  # The QDC results folder is a bit odd
+  QDC_RESULTS_ARCH: "${{ (inputs.target_os == 'linux' && inputs.target_arch == 'aarch64_oe_gcc11_2') && 'qualcomm_linux' || 'android' }}"
+
+jobs:
+  test:
+    name: "test-${{inputs.target_os}}-${{inputs.target_arch}}-pynone"
+    runs-on: ["self-hosted", "Linux", "QDC"]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} pynone Tests
+          path: |
+            ${{ github.workspace }}/build
+
+      - name: Test ${{inputs.target_os}} ${{inputs.target_arch}} pynone
+        env:
+          QDC_API_TOKEN: ${{ secrets.QDC_API_TOKEN }}
+        # Use exec so that workflow cancel signals are sent directly to build_and_test.py, which will then
+        # forward them to qdc_runner.py and in-flight jobs can be aborted to preserve our QDC slots and
+        # not leak huge files on the runner.
+        run: >
+          exec python3 qcom/build_and_test.py
+          create_venv
+          test_ort_qdc_${{inputs.target_os}}_${{inputs.target_arch}} --only
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4.0.4
+        if: always() # always run even if the previous step fails
+        with:
+          check_name: ${{inputs.target_os}}-${{inputs.target_arch}}-pynone-test-results
+          report_paths: |
+            ${{ github.workspace }}/build/qdc-${{ env.QDC_RESULTS_ARCH }}/*.results.xml
+
+      - uses: actions/upload-artifact@v3
+        if: always() # always run even if the previous step fails
+        with:
+          name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} pynone Test Results
+          path: |
+            ${{ github.workspace }}/build/qdc--${{ env.QDC_RESULTS_ARCH }}/*.results.xml

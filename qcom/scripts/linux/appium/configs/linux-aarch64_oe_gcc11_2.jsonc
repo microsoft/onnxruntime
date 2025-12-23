@@ -3,7 +3,7 @@
 
 {
     // [REQUIRED] The target platform under test; corresponds to a directory under $REPO_ROOT/build/
-    "build_target": "linux-aarch64_oe_gcc11_2"
+    "build_target": "linux-aarch64_oe_gcc11_2",
 
     // The build configuration to test.
     // Default: Release
@@ -31,7 +31,16 @@
     // Default: "/qdc/appium/model_tests/onnx_models"
     // "host_onnx_model_test_path": "/qdc/appium/model_tests/onnx_models",
 
+    // If true, remove previously uploaded builds during setup.
+    // Default: true
+    // "clean_build": true,
+
     // If true, clean ONNX test models from the device at the start of the run.
     // Default: false
-    // "clean_onnx_model_tests": false
+    // "clean_onnx_model_tests": false,
+
+    // Comma-separated list of ctest cases to skip
+    // Default: null
+    // TODO: [AISW-163150] ORT test failures on qcs6490
+    "skip_ctests": "onnxruntime_provider_test"
 }

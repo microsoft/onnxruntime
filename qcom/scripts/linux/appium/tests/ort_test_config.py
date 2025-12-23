@@ -3,11 +3,12 @@
 
 import logging
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-import jsonc
+import jsonc  # type: ignore[import-untyped]
 
 DEFAULT_HOST_ROOT = "/qdc/appium"
 
@@ -29,8 +30,14 @@ class OrtTestConfig:
     # directory containing model test suites from ONNX.
     host_onnx_model_test_path = f"{qdc_host_path}/model_tests/onnx_models"
 
+    # If true, remove previously uploaded builds during setup.
+    clean_build: bool = True
+
     # If True, remove host_onnx_model_test_path during setup.
     clean_onnx_model_tests: bool = False
+
+    # A list of test executables run by ctest to skip.
+    _skip_ctests: list[str] | None = None
 
     @property
     def build_root_relpath(self) -> str:
@@ -87,6 +94,19 @@ class OrtTestConfig:
         return f"{self.device_home}/QDC_logs"
 
     @property
+    def skip_ctests(self) -> list[str]:
+        return [] if self._skip_ctests is None else self._skip_ctests
+
+    @skip_ctests.setter
+    def skip_ctests(self, value: Iterable[str] | str | None) -> None:
+        if isinstance(value, str):
+            value = value.split(",") if len(value) > 0 else []
+        if isinstance(value, Iterable):
+            self._skip_ctests = list(value)
+        else:
+            self._skip_ctests = []
+
+    @property
     def test_results_device_glob(self) -> str:
         """Glob matching test result files on the device."""
         return f"{self.device_results_root}/onnxruntime_*.results.*"
@@ -117,11 +137,13 @@ def default_test_config() -> OrtTestConfig:
 def _parse_test_config_obj(config_obj: dict) -> OrtTestConfig:
     props = [
         "build_config",
+        "clean_build",
         "clean_onnx_model_tests",
         "device_home",
         "device_url",
         "host_onnx_model_test_path",
         "qdc_host_path",
+        "skip_ctests",
     ]
 
     build_target = config_obj["build_target"]

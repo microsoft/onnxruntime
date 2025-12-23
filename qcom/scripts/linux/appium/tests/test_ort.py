@@ -71,8 +71,10 @@ class TestOrt(TestBase):
         yield self
         self.copy_logs()
 
-    @pytest.mark.parametrize(["test_cmd"], [[tp] for tp in CTEST_PLAN.plan], ids=CTEST_PLAN.names)
-    def test_onnxruntime_test_suite(self, test_cmd) -> None:
+    @pytest.mark.parametrize(["test_name", "test_cmd"], CTEST_PLAN.tests.items(), ids=CTEST_PLAN.names)
+    def test_onnxruntime_test_suite(self, test_name: str, test_cmd: list[str]) -> None:
+        if test_name in CONFIG.skip_ctests:
+            pytest.skip()
         self.__assert_passes(self.__get_test_cmd(test_cmd))
 
     @pytest.mark.parametrize("test_def", MODEL_TEST_DEFINITIONS, ids=MODEL_TEST_IDS)
