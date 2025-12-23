@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
 #include "core/session/plugin_ep/ep_factory_webgpu.h"
 
 #include "core/framework/error_code_helper.h"
