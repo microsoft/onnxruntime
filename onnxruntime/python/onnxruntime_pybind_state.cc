@@ -2361,6 +2361,10 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
                      R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def_readwrite("enable_profiling", &RunOptions::enable_profiling,
+                     R"pbdoc(Enable profiling for this run.)pbdoc")
+      .def_readwrite("profiling_file_path", &RunOptions::profiling_file_path,
+                     R"pbdoc(File path to write profiling result for this run.)pbdoc")
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {

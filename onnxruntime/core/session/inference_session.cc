@@ -2930,6 +2930,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
     tp = session_profiler_.Start();
   }
 
+  // Start run-level profiling if enabled
+  if (run_options.enable_profiling) {
+    session_profiler_.StartRunLevelProfiling();
+  }
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingActivity<telemetry_provider_handle> ortrun_activity;
   ortrun_activity.SetRelatedActivity(session_activity);
@@ -3138,6 +3143,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
   }
+
+  // End run-level profiling and write to file if enabled
+  if (run_options.enable_profiling) {
+    session_profiler_.EndRunLevelProfiling(run_options.profiling_file_path);
+  }
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
 #endif

@@ -20,7 +20,8 @@ profiling::Profiler::~Profiler() {}
 #endif
 
 ::onnxruntime::TimePoint profiling::Profiler::Start() {
-  ORT_ENFORCE(enabled_);
+  // Allow Start() when either session-level or run-level profiling is enabled
+  ORT_ENFORCE(enabled_ || run_level_state_.enabled);
   auto start_time = std::chrono::high_resolution_clock::now();
   auto ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
   for (const auto& ep_profiler : ep_profilers_) {
@@ -81,13 +82,15 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
 
   EventRecord event(category, logging::GetProcessId(),
                     logging::GetThreadId(), event_name, ts, dur, {event_args.begin(), event_args.end()});
+
+  // Session level profiling
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
-  } else {
+  } else if (enabled_) {
     // TODO: sync_gpu if needed.
     std::lock_guard<std::mutex> lock(mutex_);
     if (events_.size() < max_num_events_) {
-      events_.emplace_back(std::move(event));
+      events_.emplace_back(event);  // copy to session events
     } else {
       if (session_logger_ && !max_events_reached) {
         LOGS(*session_logger_, ERROR)
@@ -95,6 +98,15 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
         max_events_reached = true;
       }
     }
+  }
+
+  // Run level profiling (TLS, no lock needed)
+  if (run_level_state_.enabled) {
+    // Recalculate ts relative to run start time
+    long long run_ts = TimeDiffMicroSeconds(run_level_state_.start_time, start_time);
+    EventRecord run_event(category, logging::GetProcessId(),
+                          logging::GetThreadId(), event_name, run_ts, dur, {event_args.begin(), event_args.end()});
+    run_level_state_.events.emplace_back(std::move(run_event));
   }
 
   for (const auto& ep_profiler : ep_profilers_) {
@@ -155,6 +167,80 @@ std::string Profiler::EndProfiling() {
 #endif
   enabled_ = false;  // will not collect profile after writing.
   return profile_stream_file_;
+}
+
+thread_local Profiler::RunLevelState Profiler::run_level_state_;
+
+void Profiler::StartRunLevelProfiling() {
+  run_level_state_.enabled = true;
+  run_level_state_.events.clear();
+  run_level_state_.start_time = std::chrono::high_resolution_clock::now();
+
+  // Notify EP profilers about run-level profiling start
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->StartRunProfiling();
+  }
+}
+
+bool Profiler::IsRunLevelProfilingEnabled() const {
+  return run_level_state_.enabled;
+}
+
+std::string Profiler::EndRunLevelProfiling(const std::string& file_path) {
+  if (!run_level_state_.enabled) {
+    return std::string();
+  }
+
+  // Collect EP profiler events for this run
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->EndRunProfiling(run_level_state_.start_time, run_level_state_.events);
+  }
+
+  run_level_state_.enabled = false;
+
+  if (file_path.empty()) {
+    run_level_state_.events.clear();
+    return std::string();
+  }
+
+  // Write to file
+  std::ofstream out(file_path, std::ios::out | std::ios::trunc);
+  if (!out.is_open()) {
+    run_level_state_.events.clear();
+    return std::string();
+  }
+
+  out << "[\n";
+
+  for (size_t i = 0; i < run_level_state_.events.size(); ++i) {
+    auto& rec = run_level_state_.events[i];
+    out << R"({"cat" : ")" << event_category_names_[rec.cat] << "\",";
+    out << "\"pid\" :" << rec.pid << ",";
+    out << "\"tid\" :" << rec.tid << ",";
+    out << "\"dur\" :" << rec.dur << ",";
+    out << "\"ts\" :" << rec.ts << ",";
+    out << R"("ph" : "X",)";
+    out << R"("name" :")" << rec.name << "\",";
+    out << "\"args\" : {";
+    bool is_first_arg = true;
+    for (const auto& event_arg : rec.args) {
+      if (!is_first_arg) out << ",";
+      if (!event_arg.second.empty() && (event_arg.second[0] == '{' || event_arg.second[0] == '[')) {
+        out << "\"" << event_arg.first << "\" : " << event_arg.second;
+      } else {
+        out << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
+      }
+      is_first_arg = false;
+    }
+    out << "}";
+    out << (i == run_level_state_.events.size() - 1 ? "}\n" : "},\n");
+  }
+
+  out << "]\n";
+  out.close();
+
+  run_level_state_.events.clear();
+  return file_path;
 }
 
 }  // namespace profiling

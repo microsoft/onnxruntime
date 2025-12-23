@@ -35,6 +35,14 @@ struct OrtRunOptions {
   // So it is possible that only some of the nodes are executed.
   bool only_execute_path_to_fetches = false;
 
+  // Set to 'true' to enable profiling for this run.
+  // Profiling result will be written to the file specified by profiling_file_path.
+  bool enable_profiling = false;
+
+  // File path to write profiling result for this run.
+  // Only used when enable_profiling is true.
+  std::string profiling_file_path = "onnxruntime_profile_";
+
 #ifdef ENABLE_TRAINING
   // Used by onnxruntime::training::TrainingSession. This class is now deprecated.
   // Delete training_mode when TrainingSession is deleted.
