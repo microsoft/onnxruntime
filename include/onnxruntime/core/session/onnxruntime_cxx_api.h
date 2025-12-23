@@ -3391,7 +3391,19 @@ struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
 };
 }  // namespace detail
 
-/** \brief Wrapper around ::OrtSharedPrePackedWeightCache
+/** \brief Convenience C++ wrapper class around a ::OrtSharedPrePackedWeightCache instance owned by ORT.
+ *
+ * An `OrtSharedPrePackedWeightCache*` instance is passed as an argument to OrtKernelImpl::PrePackWeight.
+ * Example use:
+ *   OrtStatus* MyKernel::PrePackWeightImpl(OrtKernelImpl*, ..., OrtSharedPrePackedWeightCache* c_cache, ...) {
+ *     ...
+ *     if (cache != nullptr) {
+ *       Ort::UnownedSharedPrePackedWeightCache cpp_cache(c_cache);
+ *       Ort::Status status = cpp_cache.StoreWeightData(...);
+ *     }
+ *     ...
+ *   }
+ *
  * \remarks OrtSharedPrePackedWeightCache is always unowned, but mutable, for EpApi users.
  */
 using UnownedSharedPrePackedWeightCache =
