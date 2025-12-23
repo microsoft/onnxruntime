@@ -320,6 +320,9 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       // For values defined in an outer scope, just add the value info but not the initializer.
       if (is_from_outer_scope) {
         value_infos.emplace(value_name, ort_value_info);
+        if (is_constant_initializer) {
+          initializer_value_infos.emplace(value_name, &ort_value_info);
+        }
       } else if (is_optional_graph_input) {
         initializer_value_infos.emplace(value_name, ort_value_info);
       } else if (is_constant_initializer) {
@@ -493,7 +496,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
     // Check that OrtGraph is a top-level graph (no parent node).
     Ort::ConstGraph ort_graph{&graph};
     Ort::ConstNode parent_node = ort_graph.GetParentNode();
-    ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, "Cannot serialize nested OrtGraph into a ModelProto");
+    // ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, "Cannot serialize nested OrtGraph into a ModelProto");
 
     // Set model description.
     model_proto.set_doc_string("Serialized from OrtGraph");
