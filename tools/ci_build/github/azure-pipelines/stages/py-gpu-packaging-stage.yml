@@ -19,9 +19,9 @@ parameters:
 - name: cuda_version
   type: string
   displayName: 'CUDA version. Windows Only.'
-  default: '12.8'
+  default: '12.9'
   values:
-   - 12.8
+   - 12.9
    - 13.0
 
 - name: cudnn_folder
@@ -57,7 +57,7 @@ stages:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
             use_tensorrt: True
 
-    - ${{ if eq(parameters.cuda_version, '12.8') }}:
+    - ${{ if eq(parameters.cuda_version, '12.9') }}:
       - ${{ each python_version in parameters.PythonVersions }}:
         - template: py-win-gpu-stage.yml
           parameters:

@@ -11,12 +11,12 @@ if exist "%AGENT_TEMPDIRECTORY%\v13.0\" (
 )
 
 @REM --- Setup TensorRT for CUDA 13.0 ---
-set "TRT_13_0_PATH=%AGENT_TEMPDIRECTORY%\TensorRT-10.13.3.9.Windows.win10.cuda-13.0\lib"
+set "TRT_13_0_PATH=%AGENT_TEMPDIRECTORY%\TensorRT-10.14.1.48.Windows.win10.cuda-13.0\lib"
 if exist "%TRT_13_0_PATH%\" (
-    echo "Adding TensorRT 10.13.3.9 for CUDA 13.0 to PATH."
+    echo "Adding TensorRT 10.14.1.48 for CUDA 13.0 to PATH."
     set "PATH=%TRT_13_0_PATH%;%PATH%"
 ) else (
-    echo "Warning: TensorRT 10.13.3.9 directory not found at %TRT_13_0_PATH%"
+    echo "Warning: TensorRT 10.14.1.48 directory not found at %TRT_13_0_PATH%"
 )
 
 set GRADLE_OPTS=-Dorg.gradle.daemon=false

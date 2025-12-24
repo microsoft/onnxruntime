@@ -9,16 +9,16 @@ parameters:
     default: false
   - name: CudaVersion
     type: string
-    default: '12.8'
+    default: '12.9'
     values:
       - 13.0
-      - 12.8
+      - 12.9
   - name: win_trt_folder_cuda13
     type: string
-    default: 'TensorRT-10.13.3.9.Windows.win10.cuda-13.0'
+    default: 'TensorRT-10.14.1.48.Windows.win10.cuda-13.0'
   - name: win_trt_folder_cuda12
     type: string
-    default: 'TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8'
+    default: 'TensorRT-10.14.1.48.Windows.win10.cuda-12.9'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
@@ -27,7 +27,7 @@ steps:
         displayName: 'Download Primary CUDA SDK v${{ parameters.CudaVersion }}'
 
   - ${{ if eq(parameters.DownloadTRT, 'true') }}:
-      - ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      - ${{ if eq(parameters.CudaVersion, '12.9') }}:
         - powershell: |
             azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/local/${{ parameters.win_trt_folder_cuda12 }}" $(Agent.TempDirectory)
           displayName: 'Download ${{ parameters.win_trt_folder_cuda12 }}'
