@@ -90,7 +90,7 @@ class SessionState {
  public:
   SessionState(Graph& graph,
                const ExecutionProviders& execution_providers,
-               concurrency::ThreadPool* thread_pool,
+               std::function<concurrency::ThreadPool*()> thread_pool_fn,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
                const ExternalDataLoaderManager& external_data_loader_mgr,
@@ -294,7 +294,7 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
-  concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
+  std::function<concurrency::ThreadPool*()> GetThreadPoolFn() const noexcept { return thread_pool_fn_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
@@ -536,9 +536,9 @@ class SessionState {
 
   SubgraphSessionStateMap subgraph_session_states_;
 
-  // either threadpool could be nullptr
-  concurrency::ThreadPool* const thread_pool_{};
-  concurrency::ThreadPool* const inter_op_thread_pool_{};
+  // support lazy creation of threadpool by using a function that may create the threadpool on first call.
+  std::function<concurrency::ThreadPool*()> const thread_pool_fn_{};
+  concurrency::ThreadPool* const inter_op_thread_pool_{};  // nullptr unless parallel execution is enabled
 
   const DataTransferManager& data_transfer_mgr_;
 

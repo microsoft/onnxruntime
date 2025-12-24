@@ -56,7 +56,9 @@ TEST(MemcpyTest, copy1) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState s(model.MainGraph(), execution_providers, &tp, nullptr, dtm, edlm,
+  auto tp_fn = [&tp]() { return &tp; };
+
+  SessionState s(model.MainGraph(), execution_providers, tp_fn, nullptr, dtm, edlm,
                  DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));

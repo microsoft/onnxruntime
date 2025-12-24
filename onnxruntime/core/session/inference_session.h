@@ -687,6 +687,16 @@ class InferenceSession {
       if (external_intra_op_thread_pool_) {
         return external_intra_op_thread_pool_;
       } else {
+        {
+          // delayed creation of thread pool until first use if enabled
+          static std::once_flag once;
+          std::call_once(once, [&] {
+            if (!thread_pool_) {
+              create_threadpool_();
+            }
+          });
+        }
+
         return thread_pool_.get();
       }
     } else {
@@ -784,6 +794,8 @@ class InferenceSession {
                                             std::unique_ptr<logging::Logger>& new_run_logger);
 
   void InitLogger(logging::LoggingManager* logging_manager);
+
+  void CreateIntraOpThreadpool();
 
   static void TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger);
 
@@ -883,6 +895,7 @@ class InferenceSession {
   // Spinning is restarted on the next Run()
   bool force_spinning_stop_between_runs_ = false;
 
+  std::function<void()> create_threadpool_;  // used to delay creation of thread_pool_ until first use
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 

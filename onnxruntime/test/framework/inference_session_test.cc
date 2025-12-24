@@ -2559,7 +2559,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
 
   // make sure we're using the per session threadpools
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
-  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPoolFn()();
   auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
   auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
   auto intra_tp_from_env = env->GetIntraOpThreadPool();
@@ -2599,7 +2599,7 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
 
   // make sure we're using the global threadpools in both session and session state
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
-  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPoolFn()();
   auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
   auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
   auto intra_tp_from_env = env->GetIntraOpThreadPool();
@@ -2637,7 +2637,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
 
   // make sure we're using the per session threadpools
   auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
-  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPoolFn()();
   auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
   auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
   auto intra_tp_from_env = env->GetIntraOpThreadPool();

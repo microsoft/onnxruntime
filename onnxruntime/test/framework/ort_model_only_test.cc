@@ -656,5 +656,16 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBufferNoCopy) {
 
 #endif  // !defined(DISABLE_ML_OPS)
 
+TEST(TempTest, LoadModel) {
+  Status status;
+  auto model_uri = ORT_TSTR("C:\\Users\\scmckay\\Downloads\\msrcfs_3f3f7779-ab7b-4aaf-bee1-8d269e9bb65c\\submission\\msrcfs_crash-c8148101e825a8d2dc1a967a4c5742fe5547a8cd_80ABA15.onnx");
+
+  SessionOptions so;
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());  // optimizers run during initialization
+}
+
 }  // namespace test
 }  // namespace onnxruntime

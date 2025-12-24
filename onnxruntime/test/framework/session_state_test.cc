@@ -141,6 +141,8 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   OrtThreadPoolParams to;
   to.thread_pool_size = GetParam();
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  auto tp_fn = [&tp]() { return tp.get(); };
+
   ONNX_OPERATOR_SCHEMA(Variable)
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
@@ -163,7 +165,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState s(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
+  SessionState s(graph, execution_providers, tp_fn, nullptr, dtm, edlm,
                  DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -231,6 +233,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   OrtThreadPoolParams to;
   to.thread_pool_size = to.thread_pool_size;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  auto tp_fn = [&tp]() { return tp.get(); };
 
   std::basic_ostringstream<ORTCHAR_T> oss;
   oss << ORT_TSTR("testdata/optional_inputs_ir") << param.ir_version << ORT_TSTR(".onnx");
@@ -262,7 +265,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
+  SessionState session_state(graph, execution_providers, tp_fn, nullptr, dtm, edlm,
                              DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
@@ -442,7 +445,7 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
-  SessionState session_state(model->MainGraph(), execution_providers, tp.get(), nullptr, dtm, edlm,
+  SessionState session_state(model->MainGraph(), execution_providers, tp_fn, nullptr, dtm, edlm,
                              default_logger, profiler, sess_options);
 
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
@@ -719,6 +722,8 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
 
   OrtThreadPoolParams to;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  auto tp_fn = [&tp]() { return tp.get(); };
+
   ONNX_OPERATOR_SCHEMA(PrePackingTest)
       .SetDoc("Faking Node for PrePacking")
       .Input(0, "Input_0", "input 0", "tensor(float)")
@@ -756,7 +761,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
 
   SessionState session_state(model.MainGraph(),
                              execution_providers,
-                             tp.get(),
+                             tp_fn,
                              nullptr, /*inter_op_thread_pool*/
                              dtm,
                              edlm,
@@ -795,6 +800,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   profiling::Profiler profiler;
   KernelRegistryManager kernel_registry_manager;
   std::unique_ptr<concurrency::ThreadPool> tp;
+  std::function<concurrency::ThreadPool*(void)> tp_fn = [this]() { return tp.get(); };
 
   void SetUp() override {
     OrtThreadPoolParams to;
@@ -847,7 +853,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   PlaceAllNodesToCPUEP(model_1.MainGraph());
   SessionState session_state_1(model_1.MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -875,7 +881,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   PlaceAllNodesToCPUEP(model_2.MainGraph());
   SessionState session_state_2(model_2.MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -924,7 +930,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   PlaceAllNodesToCPUEP(model_1.MainGraph());
   SessionState session_state_1(model_1.MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -951,7 +957,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   PlaceAllNodesToCPUEP(model_2.MainGraph());
   SessionState session_state_2(model_2.MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -1001,7 +1007,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   PlaceAllNodesToCPUEP(model_1.MainGraph());
   SessionState session_state_1(model_1.MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -1033,7 +1039,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   PlaceAllNodesToCPUEP(model_2.MainGraph());
   SessionState session_state_2(model_2.MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -1089,7 +1095,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test4) {
   PlaceAllNodesToCPUEP(model_1.MainGraph());
   SessionState session_state_1(model_1.MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -1140,7 +1146,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test4) {
   PlaceAllNodesToCPUEP(model_2.MainGraph());
   SessionState session_state_2(model_2.MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -1223,7 +1229,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
     PlaceAllNodesToCPUEP(model_1.MainGraph());
     SessionState session_state_1(model_1.MainGraph(),
                                  execution_providers,
-                                 tp.get(),
+                                 tp_fn,
                                  nullptr, /*inter_op_thread_pool*/
                                  dtm,
                                  edlm,
@@ -1282,7 +1288,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
     PlaceAllNodesToCPUEP(model->MainGraph());
     SessionState session_state(model->MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -1319,7 +1325,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
     PlaceAllNodesToCPUEP(model->MainGraph());
     SessionState session_state(model->MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,
@@ -1352,7 +1358,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
     PlaceAllNodesToCPUEP(model->MainGraph());
     SessionState session_state(model->MainGraph(),
                                execution_providers,
-                               tp.get(),
+                               tp_fn,
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                edlm,

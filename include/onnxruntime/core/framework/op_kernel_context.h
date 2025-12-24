@@ -14,7 +14,8 @@ class OpKernelContext {
 
   OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                   _In_ Stream* stream,
-                  _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger);
+                  _In_ std::function<concurrency::ThreadPool*()> threadpool_fn,
+                  _In_ const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
 
@@ -171,7 +172,7 @@ class OpKernelContext {
   /**
   Returns the intra-op threadpool, if available.
   */
-  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
+  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_fn_(); }
 
   /**
   Returns whether deterministic computation is preferred.
@@ -214,7 +215,7 @@ class OpKernelContext {
 
   IExecutionFrame* const execution_frame_{};
   const OpKernel* const kernel_{};
-  concurrency::ThreadPool* const threadpool_{};
+  std::function<concurrency::ThreadPool*()> const threadpool_fn_{};
   const logging::Logger* const logger_{};
 
   // The argument starting index in ExecutionFrame.
