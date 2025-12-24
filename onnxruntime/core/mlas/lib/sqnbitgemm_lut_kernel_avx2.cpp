@@ -6,12 +6,16 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sqnbitgemm_kernel_avx2.cpp.h
+    sqnbitgemm_lut_kernel_avx2.cpp
 
 Abstract:
 
-    This module implements the float/quantized n-bit integer matrix
-    multiplication kernels for x64 avx2.
+    This module implements x64 AVX2 kernel functions for LUT-based quantized
+    n-bit integer matrix multiplication.
+
+    It provides optimized AVX2 implementations for lookup table generation,
+    GEMM computation, and related operations on quantized weight and activation
+    matrices.
 
 --*/
 
@@ -330,19 +334,22 @@ GenerateLUT_avx2(
     size_t act_group_size
 )
 {
+    (void)M;  // silence unused parameter warning
+    (void)N;  // silence unused parameter warning
     // TODO: handle bitnet here
-    const size_t kk_outer_max = K / act_group_size;
+    const int32_t kk_outer_max = static_cast<int32_t>(K / act_group_size);
+    const int32_t ags_div32 = static_cast<int32_t>(act_group_size / 32);
 
     for (int32_t kk_outer = 0; kk_outer < kk_outer_max; ++kk_outer) {
         // compute partial max - directly reset scale to 0.0
         lut_scales[kk_outer] = 0.0f;  // partial max reset
-        for (int32_t k_outer = 0; k_outer < act_group_size / 32; ++k_outer) {
+        for (int32_t k_outer = 0; k_outer < ags_div32; ++k_outer) {
             partial_max_g4_int8_k8(&lut_scales[kk_outer], &b[(kk_outer * act_group_size) + (k_outer * 32)]);
         }
     }
 
     for (int32_t k_outer_1 = 0; k_outer_1 < kk_outer_max; ++k_outer_1) {
-        lut_ctor_g4_int8_impl(act_group_size, (&(qlut[(k_outer_1 * act_group_size * 4)])), (&(b[(k_outer_1 * act_group_size)])), (&(lut_scales[k_outer_1])), (&(lut_biases[k_outer_1])));
+        lut_ctor_g4_int8_impl(static_cast<int32_t>(act_group_size), (&(qlut[(k_outer_1 * act_group_size * 4)])), (&(b[(k_outer_1 * act_group_size)])), (&(lut_scales[k_outer_1])), (&(lut_biases[k_outer_1])));
     }
 }
 
@@ -518,20 +525,20 @@ TMACComputeGemm_avx2(
     bool has_zero_point = tmac_params.has_zero_point;  // Whether weights have zero-points (interleaved with scales)
     bool one_scale = tmac_params.one_scale;            // Whether using single global scale for all weights
 
-    const int bits = tmac_params.bits;                          // 2-bit quantization
-    const int g = tmac_params.g;                                // Packing group size
-    const int ngroups_per_elem = tmac_params.ngroups_per_elem;  // 8 / g = 2
-    const int kfactor = tmac_params.kfactor;                    // K-dimension blocking factor
+    const int32_t bits = static_cast<int32_t>(tmac_params.bits);                          // 2-bit quantization
+    const int32_t g = static_cast<int32_t>(tmac_params.g);                                // Packing group size
+    const int32_t ngroups_per_elem = static_cast<int32_t>(tmac_params.ngroups_per_elem);  // 8 / g = 2
+    const int32_t kfactor = static_cast<int32_t>(tmac_params.kfactor);                    // K-dimension blocking factor
 
     const bool has_scale = tmac_params.has_scale;  // Always use weight scales
 
     // Parameters derived from inputs
-    const int q_group_size = tmac_params.q_group_size;      // Weight quant group size
-    const int act_group_size = tmac_params.act_group_size;  // Activation group size (same as weight)
-    const int actk = tmac_params.actk;                      // CRITICAL: = 16 for BlkLen=64, NOT BlkLen!
+    const int32_t q_group_size = static_cast<int32_t>(tmac_params.q_group_size);      // Weight quant group size
+    const int32_t act_group_size = static_cast<int32_t>(tmac_params.act_group_size);  // Activation group size (same as weight)
+    const int32_t actk = static_cast<int32_t>(tmac_params.actk);                      // CRITICAL: = 16 for BlkLen=64, NOT BlkLen!
 
-    const int bm = tmac_params.bm;
-    int m = bm / bits;
+    const int32_t bm = static_cast<int32_t>(tmac_params.bm);
+    int32_t m = bm / bits;
 
     // Validate configuration
     assert(bm % bits == 0);

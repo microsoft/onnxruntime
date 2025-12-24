@@ -1,3 +1,19 @@
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    sqnbitgemm_lut_kernel_avx2.h
+
+Abstract:
+
+    This module implements x64 AVX2 kernel functions for LUT-based n-bit
+    quantized integer matrix multiplication.
+--*/
+
 #pragma once
 #include "qnbitgemm.h"
 

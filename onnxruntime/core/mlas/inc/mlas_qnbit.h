@@ -32,7 +32,6 @@ typedef enum {
     BHQNBIT_CompBf16, /*!< input bf16, accumulator fp32 */
     SQNBIT_CompInt8,  /*!< input int8, accumulator int32, input fp32 */
     HQNBIT_CompInt8,  /*!< input int8, accumulator int32, input fp16 */
-    TMAC
 } MLAS_QNBIT_GEMM_COMPUTE_TYPE;
 
 /**

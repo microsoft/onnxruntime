@@ -1,12 +1,28 @@
 /*++
 
-// TODO: finish filling this out
+Copyright (c) Microsoft Corporation. All rights reserved.
 
-module includes kernel functions for generating LUT for T-MAC GEMM optimization strategy.
-*/
+Licensed under the MIT License.
+
+Module Name:
+
+    qlutgemm.cpp
+
+Abstract:
+
+    This module implements kernel functions for generating lookup tables (LUT)
+    and computing matrix multiplication for the T-MAC GEMM optimization strategy.
+
+    It provides functionality to pack quantized weight data, compute LUT scales
+    and biases, and perform efficient quantized GEMM operations using lookup
+    table based computation.
+
+--*/
 #include "qlutgemm.h"
 
 #include <cassert>
+#include <cstring>
+#include <memory>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -25,7 +41,7 @@ MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size)
     }
 }
 
-void
+void MLASCALL
 MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zp_point)
 {
     std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size);
@@ -66,9 +82,9 @@ MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
     std::vector<size_t> kfactors = {8, 16};
 
     // TODO(vraspar): add profile based policy
-    int threads = std::thread::hardware_concurrency();
+    size_t threads = static_cast<size_t>(std::thread::hardware_concurrency());
 
-    float smallest_penalty = 1e9;
+    float smallest_penalty = 1e9f;
     params.bm = bms[0];
     for (int bm : bms) {
         if (M % (bm / nbits) != 0 || bm % nbits != 0) {
@@ -76,7 +92,9 @@ MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
         }
         size_t num_tiles = M / (bm / nbits);
         size_t num_groups = (num_tiles + threads - 1) / threads;
-        float penalty = 0.1 * num_groups + (num_groups - 1.0 * num_tiles / threads) / num_groups;
+        float penalty = 0.1f * static_cast<float>(num_groups) +
+                        (static_cast<float>(num_groups) - 1.0f * static_cast<float>(num_tiles) / static_cast<float>(threads)) /
+                            static_cast<float>(num_groups);
         if (penalty < smallest_penalty) {
             smallest_penalty = penalty;
             params.bm = bm;
@@ -104,7 +122,7 @@ MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
     return;
 }
 
-size_t
+size_t MLASCALL
 MlasLUTGemmPackQuantBDataSize(
     size_t N,
     size_t K,
@@ -113,12 +131,13 @@ MlasLUTGemmPackQuantBDataSize(
     bool HasZeroPoint
 )
 {
+    ORT_UNUSED_PARAMETER(HasZeroPoint);
     const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth, BlkLen);
     const size_t PackedQuantBDataSize = (N * BlkBitWidth) * (K / tmac_params.g / tmac_params.ngroups_per_elem);
     return PackedQuantBDataSize;
 }
 
-void
+void MLASCALL
 MlasLUTGemmPackQuantBData(
     size_t N,
     size_t K,
@@ -142,12 +161,12 @@ MlasLUTGemmPackQuantBData(
     assert(BlkLen % g == 0);
     assert((BlkLen / g) % kfactor == 0);
 
-    const int mgroup = ngroups_per_elem * simd_n_in;  // 32
+    const size_t mgroup = ngroups_per_elem * simd_n_in;  // 32
     assert(bm % mgroup == 0);
     assert(bm % bits == 0);
 
-    uint8_t* buf = new uint8_t[N * bits * (K / g)];
-    memset(buf, 0, N * bits * (K / g));
+    std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * (K / g)]);
+    memset(buf.get(), 0, N * bits * (K / g));
 
     const size_t Iterations = N;  // we parallelize over N, TODO:: tune if needed
 
@@ -165,7 +184,7 @@ MlasLUTGemmPackQuantBData(
                 for (size_t ib = 0; ib < bits; ++ib) {
                     size_t new_ik = ik / g;
                     size_t shft_left = ik % g;
-                    buf[im * bits * K / g + ib * K / g + new_ik] += ((v >> ib) & 1) << shft_left;
+                    buf[im * bits * K / g + ib * K / g + new_ik] += static_cast<uint8_t>(((v >> ib) & 1) << shft_left);
                 }
             }
         }
@@ -245,7 +264,6 @@ MlasLUTGemmPackQuantBData(
             }
         }
     );
-    delete[] buf;
 }
 
 size_t MLASCALL
@@ -382,6 +400,7 @@ MlasIsLUTGemmAvailable(
 size_t
 CalculateLUTBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams& tmac_params)
 {
+    ORT_UNUSED_PARAMETER(n);
     constexpr size_t kAllockAligment = 64;
     const size_t lut_scales_size = k / tmac_params.act_group_size;
 
@@ -483,7 +502,6 @@ MlasLUTGemm(
     const size_t n_tiles_num = tmac_params.n_tiles_num;
     assert(N % n_tiles_num == 0);
 
-    const size_t bm = tmac_params.bm;  // TODO: hardcoding for now
     const size_t bits = tmac_params.bits;
 
     // Pre-calculate sizes for offset calculations
@@ -511,11 +529,6 @@ MlasLUTGemm(
     // Determine weight-scale layout. These should be provided by the caller or inferred from the packed weights.
     // For now we default to per-group symmetric quantization (no zero-point, not one-scale).
 
-    // Total number of scale (float) entries for the whole weight matrix:
-    // - if one_scale: single global scale (1)
-    // - otherwise: number of quantization groups = (M * K / BlkLen)
-    //   and if zero-points are present each group stores (scale, zero_point) -> *2
-    const size_t groups_total = static_cast<size_t>(M) * static_cast<size_t>(K) / BlkLen;
     const size_t scales_size_total = MlasLUTPackScalesAndZeroPointsSize(
         static_cast<size_t>(N),
         static_cast<size_t>(K),

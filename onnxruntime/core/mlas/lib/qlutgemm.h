@@ -1,5 +1,18 @@
-// TODO: fill out abstract for this file
-// Base off of qnbitgemm.h
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    qlutgemm.h
+
+Abstract:
+
+    This module includes kernel function prototypes and helper functions for
+    implementing LUT-based GEMM.
+--*/
 
 #pragma once
 

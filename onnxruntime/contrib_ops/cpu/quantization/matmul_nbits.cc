@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/quantization/matmul_nbits_impl.h"
 
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -42,7 +43,6 @@ typedef enum {
   Level2, /*!< input fp16, accumulator fp16 */
   Level3, /*!< input bf16, accumulator fp32 */
   Level4, /*!< input int8, accumulator int32 */
-  Level5, /*!< input uint8, use TMAC LUT approach  TODO: fix this comment*/
 } ACCURACY_LEVEL;
 
 // T: A data type.
@@ -121,7 +121,6 @@ class MatMulNBits final : public OpKernel {
                 "Only 2b, 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
-    prefer_lut_gemm_ = true;
     prefer_lut_gemm_ = prefer_lut_gemm_ && MlasIsLUTGemmAvailable(N_, K_, nbits_, block_size_);
   }
 
@@ -194,9 +193,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
-  // if (has_g_idx_ || has_unquantized_zero_point_)
-  // TODO: this part modified so i can test ek atmulnbits
-  if (has_g_idx_) {
+  if (has_g_idx_ || has_unquantized_zero_point_) {
     return Status::OK();
   }
 
@@ -405,7 +402,6 @@ Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
   // TODO(vraspar): Should we batch it here?
-  // MlasInitLUTGemmKernelConfig(N, K, nbits_, block_size_, has_zp_input_);
   MlasLUTGemm(a_data, block_size_, packed_b_.get(), packed_scales_zp_.get(), y_data, K, M, N, thread_pool);
   return Status::OK();
 }
@@ -429,7 +425,6 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
-
   const size_t lda = helper.Lda(false);
 
   IAllocatorUniquePtr<std::byte> workspace{};
