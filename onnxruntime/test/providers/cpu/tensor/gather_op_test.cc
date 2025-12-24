@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -25,17 +26,17 @@ TYPED_TEST(GatherOpTest, Gather_axis0) {
     OpTester test("Gather");
     test.AddAttribute<int64_t>("axis", 0LL);
     test.AddInput<TypeParam>("data", {2, 3, 4},
-                             {TypeParam(0.0f), TypeParam(0.1f), TypeParam(0.2f), TypeParam(0.3f),
-                              TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f), TypeParam(1.3f),
-                              TypeParam(2.0f), TypeParam(2.1f), TypeParam(2.2f), TypeParam(2.3f),
-                              TypeParam(10.0f), TypeParam(10.1f), TypeParam(10.2f), TypeParam(10.3f),
-                              TypeParam(11.0f), TypeParam(11.1f), TypeParam(11.2f), TypeParam(11.3f),
-                              TypeParam(12.0f), TypeParam(12.1f), TypeParam(12.2f), TypeParam(12.3f)});
+                             GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f, 0.3f,
+                                                       1.0f, 1.1f, 1.2f, 1.3f,
+                                                       2.0f, 2.1f, 2.2f, 2.3f,
+                                                       10.0f, 10.1f, 10.2f, 10.3f,
+                                                       11.0f, 11.1f, 11.2f, 11.3f,
+                                                       12.0f, 12.1f, 12.2f, 12.3f}));
     test.AddInput<int64_t>("indices", {1}, {1LL}, indices_is_initializer);
     test.AddOutput<TypeParam>("output", {1, 3, 4},
-                              {TypeParam(10.0f), TypeParam(10.1f), TypeParam(10.2f), TypeParam(10.3f),
-                               TypeParam(11.0f), TypeParam(11.1f), TypeParam(11.2f), TypeParam(11.3f),
-                               TypeParam(12.0f), TypeParam(12.1f), TypeParam(12.2f), TypeParam(12.3f)});
+                              GetTypedArray<TypeParam>({10.0f, 10.1f, 10.2f, 10.3f,
+                                                        11.0f, 11.1f, 11.2f, 11.3f,
+                                                        12.0f, 12.1f, 12.2f, 12.3f}));
     test.Run();
   };
 
@@ -49,17 +50,17 @@ TYPED_TEST(GatherOpTest, Gather_negative_axis) {
     OpTester test("Gather");
     test.AddAttribute<int64_t>("axis", -3LL);
     test.AddInput<TypeParam>("data", {2, 3, 4},
-                             {TypeParam(0.0f), TypeParam(0.1f), TypeParam(0.2f), TypeParam(0.3f),
-                              TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f), TypeParam(1.3f),
-                              TypeParam(2.0f), TypeParam(2.1f), TypeParam(2.2f), TypeParam(2.3f),
-                              TypeParam(10.0f), TypeParam(10.1f), TypeParam(10.2f), TypeParam(10.3f),
-                              TypeParam(11.0f), TypeParam(11.1f), TypeParam(11.2f), TypeParam(11.3f),
-                              TypeParam(12.0f), TypeParam(12.1f), TypeParam(12.2f), TypeParam(12.3f)});
+                             GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f, 0.3f,
+                                                       1.0f, 1.1f, 1.2f, 1.3f,
+                                                       2.0f, 2.1f, 2.2f, 2.3f,
+                                                       10.0f, 10.1f, 10.2f, 10.3f,
+                                                       11.0f, 11.1f, 11.2f, 11.3f,
+                                                       12.0f, 12.1f, 12.2f, 12.3f}));
     test.AddInput<int64_t>("indices", {1}, {1LL}, indices_is_initializer);
     test.AddOutput<TypeParam>("output", {1, 3, 4},
-                              {TypeParam(10.0f), TypeParam(10.1f), TypeParam(10.2f), TypeParam(10.3f),
-                               TypeParam(11.0f), TypeParam(11.1f), TypeParam(11.2f), TypeParam(11.3f),
-                               TypeParam(12.0f), TypeParam(12.1f), TypeParam(12.2f), TypeParam(12.3f)});
+                              GetTypedArray<TypeParam>({10.0f, 10.1f, 10.2f, 10.3f,
+                                                        11.0f, 11.1f, 11.2f, 11.3f,
+                                                        12.0f, 12.1f, 12.2f, 12.3f}));
     test.Run();
   };
 
@@ -219,17 +220,17 @@ TYPED_TEST(GatherOpTest, Gather_axis1_indices2d) {
     OpTester test("Gather");
     test.AddAttribute<int64_t>("axis", 1LL);
     test.AddInput<TypeParam>("data", {3, 3},
-                             {TypeParam(0.0f), TypeParam(0.1f), TypeParam(0.2f),
-                              TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f),
-                              TypeParam(2.0f), TypeParam(2.1f), TypeParam(2.2f)});
+                             GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f,
+                                                       1.0f, 1.1f, 1.2f,
+                                                       2.0f, 2.1f, 2.2f}));
     test.AddInput<int64_t>("indices", {2LL, 2LL},
                            {1LL, 0LL,
                             2LL, 1LL},
                            indices_is_initializer);
     test.AddOutput<TypeParam>("output", {3, 2, 2},
-                              {TypeParam(0.1f), TypeParam(0.0f), TypeParam(0.2f), TypeParam(0.1f),
-                               TypeParam(1.1f), TypeParam(1.0f), TypeParam(1.2f), TypeParam(1.1f),
-                               TypeParam(2.1f), TypeParam(2.0f), TypeParam(2.2f), TypeParam(2.1f)});
+                              GetTypedArray<TypeParam>({0.1f, 0.0f, 0.2f, 0.1f,
+                                                        1.1f, 1.0f, 1.2f, 1.1f,
+                                                        2.1f, 2.0f, 2.2f, 2.1f}));
     test.Run();
   };
 
@@ -243,17 +244,17 @@ TYPED_TEST(GatherOpTest, Gather_axis0_indicesInt32) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<TypeParam>("data", {2, 3, 4},
-                           {TypeParam(0.0f), TypeParam(0.1f), TypeParam(0.2f), TypeParam(0.3f),
-                            TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f), TypeParam(1.3f),
-                            TypeParam(2.0f), TypeParam(2.1f), TypeParam(2.2f), TypeParam(2.3f),
-                            TypeParam(10.0f), TypeParam(10.1f), TypeParam(10.2f), TypeParam(10.3f),
-                            TypeParam(11.0f), TypeParam(11.1f), TypeParam(11.2f), TypeParam(11.3f),
-                            TypeParam(12.0f), TypeParam(12.1f), TypeParam(12.2f), TypeParam(12.3f)});
+                           GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f, 0.3f,
+                                                     1.0f, 1.1f, 1.2f, 1.3f,
+                                                     2.0f, 2.1f, 2.2f, 2.3f,
+                                                     10.0f, 10.1f, 10.2f, 10.3f,
+                                                     11.0f, 11.1f, 11.2f, 11.3f,
+                                                     12.0f, 12.1f, 12.2f, 12.3f}));
   test.AddInput<int32_t>("indices", {1}, {1});
   test.AddOutput<TypeParam>("output", {1, 3, 4},
-                            {TypeParam(10.0f), TypeParam(10.1f), TypeParam(10.2f), TypeParam(10.3f),
-                             TypeParam(11.0f), TypeParam(11.1f), TypeParam(11.2f), TypeParam(11.3f),
-                             TypeParam(12.0f), TypeParam(12.1f), TypeParam(12.2f), TypeParam(12.3f)});
+                            GetTypedArray<TypeParam>({10.0f, 10.1f, 10.2f, 10.3f,
+                                                      11.0f, 11.1f, 11.2f, 11.3f,
+                                                      12.0f, 12.1f, 12.2f, 12.3f}));
   test.Run();
 }
 
@@ -261,17 +262,15 @@ TYPED_TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<TypeParam>("data", {3, 3},
-                           {TypeParam(0.0f), TypeParam(0.1f), TypeParam(0.2f),
-                            TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f),
-                            TypeParam(2.0f), TypeParam(2.1f), TypeParam(2.2f)});
+                           GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f,
+                                                     1.0f, 1.1f, 1.2f,
+                                                     2.0f, 2.1f, 2.2f}));
   test.AddInput<int32_t>("indices", {2, 2},
                          {1, 0,
                           2, 1});
   test.AddOutput<TypeParam>("output", {2, 2, 3},
-                            {TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f),
-                             TypeParam(0.0f), TypeParam(0.1f), TypeParam(0.2f),
-                             TypeParam(2.0f), TypeParam(2.1f), TypeParam(2.2f),
-                             TypeParam(1.0f), TypeParam(1.1f), TypeParam(1.2f)});
+                            GetTypedArray<TypeParam>({1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
+                                                      2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f}));
   test.Run();
 }
 
