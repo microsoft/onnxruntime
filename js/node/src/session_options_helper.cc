@@ -148,6 +148,82 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       OrtCUDAProviderOptionsV2* options;
       Ort::GetApi().CreateCUDAProviderOptions(&options);
       options->device_id = deviceId;
+      
+      // Parse additional CUDA options if provided
+      if (epValue.IsObject()) {
+        auto obj = epValue.As<Napi::Object>();
+        
+        // Helper lambda to get integer option
+        auto getIntOption = [&](const char* key, int& target) {
+          if (obj.Has(key)) {
+            auto val = obj.Get(key);
+            if (val.IsNumber()) {
+              target = val.As<Napi::Number>().Int32Value();
+            }
+          }
+        };
+        
+        // Helper lambda to get boolean option (converts to int)
+        auto getBoolOption = [&](const char* key, int& target) {
+          if (obj.Has(key)) {
+            auto val = obj.Get(key);
+            if (val.IsBoolean()) {
+              target = val.As<Napi::Boolean>().Value() ? 1 : 0;
+            }
+          }
+        };
+        
+        // Helper lambda to get size_t option
+        auto getSizeTOption = [&](const char* key, size_t& target) {
+          if (obj.Has(key)) {
+            auto val = obj.Get(key);
+            if (val.IsNumber()) {
+              target = static_cast<size_t>(val.As<Napi::Number>().Int64Value());
+            }
+          }
+        };
+        
+        getSizeTOption("gpuMemLimit", options->gpu_mem_limit);
+        getBoolOption("doCopyInDefaultStream", options->do_copy_in_default_stream);
+        getBoolOption("cudnnConvUseMaxWorkspace", options->cudnn_conv_use_max_workspace);
+        getBoolOption("enableCudaGraph", options->enable_cuda_graph);
+        getBoolOption("tunableOpEnable", options->tunable_op_enable);
+        getBoolOption("tunableOpTuningEnable", options->tunable_op_tuning_enable);
+        getIntOption("tunableOpMaxTuningDurationMs", options->tunable_op_max_tuning_duration_ms);
+        getBoolOption("enableSkipLayerNormStrictMode", options->enable_skip_layer_norm_strict_mode);
+        getBoolOption("preferNhwc", options->prefer_nhwc);
+        getBoolOption("useEpLevelUnifiedStream", options->use_ep_level_unified_stream);
+        getBoolOption("useTf32", options->use_tf32);
+        
+        // Handle arenaExtendStrategy enum
+        if (obj.Has("arenaExtendStrategy")) {
+          auto val = obj.Get("arenaExtendStrategy");
+          if (val.IsString()) {
+            auto strategy = val.As<Napi::String>().Utf8Value();
+            if (strategy == "kNextPowerOfTwo") {
+              options->arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+            } else if (strategy == "kSameAsRequested") {
+              options->arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
+            }
+          }
+        }
+        
+        // Handle cudnnConvAlgoSearch enum
+        if (obj.Has("cudnnConvAlgoSearch")) {
+          auto val = obj.Get("cudnnConvAlgoSearch");
+          if (val.IsString()) {
+            auto search = val.As<Napi::String>().Utf8Value();
+            if (search == "EXHAUSTIVE") {
+              options->cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
+            } else if (search == "HEURISTIC") {
+              options->cudnn_conv_algo_search = OrtCudnnConvAlgoSearchHeuristic;
+            } else if (search == "DEFAULT") {
+              options->cudnn_conv_algo_search = OrtCudnnConvAlgoSearchDefault;
+            }
+          }
+        }
+      }
+      
       sessionOptions.AppendExecutionProvider_CUDA_V2(*options);
       Ort::GetApi().ReleaseCUDAProviderOptions(options);
 #endif

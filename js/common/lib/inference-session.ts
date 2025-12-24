@@ -229,6 +229,32 @@ export declare namespace InferenceSession {
   export interface CudaExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'cuda';
     deviceId?: number;
+    /** GPU memory limit for CUDA (BFC Arena) */
+    gpuMemLimit?: number;
+    /** BFC Arena extension strategy */
+    arenaExtendStrategy?: 'kNextPowerOfTwo' | 'kSameAsRequested';
+    /** CUDNN convolution algorithm search */
+    cudnnConvAlgoSearch?: 'EXHAUSTIVE' | 'HEURISTIC' | 'DEFAULT';
+    /** Flag specifying if copying can use the default stream */
+    doCopyInDefaultStream?: boolean;
+    /** Flag specifying if maximum workspace can be used in CUDNN convolution algorithm search */
+    cudnnConvUseMaxWorkspace?: boolean;
+    /** Flag specifying if the CUDA graph is to be captured for the model */
+    enableCudaGraph?: boolean;
+    /** Flag specifying if TunableOp is enabled */
+    tunableOpEnable?: boolean;
+    /** Flag specifying if TunableOp tuning is enabled */
+    tunableOpTuningEnable?: boolean;
+    /** Max tuning duration time limit for TunableOp (milliseconds) */
+    tunableOpMaxTuningDurationMs?: number;
+    /** Flag specifying if SkipLayerNorm is in strict mode */
+    enableSkipLayerNormStrictMode?: boolean;
+    /** Make the CUDA EP NHWC preferred */
+    preferNhwc?: boolean;
+    /** Flag specifying if EP level unified stream is used */
+    useEpLevelUnifiedStream?: boolean;
+    /** Use TF32 */
+    useTf32?: boolean;
   }
   export interface DmlExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'dml';
