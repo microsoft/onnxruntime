@@ -1287,6 +1287,34 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
   return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static void RecordPartitionInfo(std::vector<std::unique_ptr<OrtEpAssignedSubgraph>>& partitioning_info,
+                                const Graph& graph,
+                                const ComputeCapability& capability,
+                                const std::string& ep_name) {
+  auto assigned_subgraph = std::make_unique<OrtEpAssignedSubgraph>();
+  assigned_subgraph->ep_name = ep_name;
+
+  gsl::span<NodeIndex> node_indices = capability.sub_graph->nodes;
+
+  for (NodeIndex node_index : node_indices) {
+    const Node* node = graph.GetNode(node_index);
+    if (node != nullptr) {
+      const std::string& op_type = node->OpType();
+
+      auto assigned_node = std::make_unique<OrtEpAssignedNode>();
+      assigned_node->name = node->Name();
+      assigned_node->op_type = op_type;
+
+      assigned_subgraph->nodes.push_back(assigned_node.get());
+      assigned_subgraph->nodes_storage.push_back(std::move(assigned_node));
+    }
+  }
+
+  partitioning_info.push_back(std::move(assigned_subgraph));
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. Ensure we inline as many functions as possible. We refer to it as Ahead Of Time (AOT) function inlining.
@@ -1301,12 +1329,24 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 8. Repeat steps 5 to 7 depending on the graph optimizations loop level.
   // 9. insert copy nodes (required transformer).
 
+  OnPartitionAssignmentFunction on_partition_assign_fn;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool record_ep_graph_partitioning =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphPartitioningInfo, "0") == "1";
+  if (record_ep_graph_partitioning) {
+    on_partition_assign_fn = [this](const Graph& graph, const ComputeCapability& assigned_subgraph,
+                                    const std::string& assigned_ep_type) {
+      RecordPartitionInfo(this->graph_partitioning_info_storage_, graph, assigned_subgraph, assigned_ep_type);
+    };
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
                                                                            execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                                                            session_logger_);
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry),
-                               check_load_cancellation_fn_);
+                               check_load_cancellation_fn_, on_partition_assign_fn);
 
   // Run Ahead Of time function inlining
   if (const bool disable_aot_function_inlining =
@@ -1447,6 +1487,14 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (record_ep_graph_partitioning) {
+    for (std::unique_ptr<OrtEpAssignedSubgraph>& ep_subgraph : graph_partitioning_info_storage_) {
+      graph_partitioning_info_.push_back(ep_subgraph.get());
+    }
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
   // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
