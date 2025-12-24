@@ -343,10 +343,10 @@ struct OrtKernelImpl {
    * \param[in] this_ptr The OrtKernelImpl instance.
    * \param[in] tensor The OrtValue instance representing the constant tensor (weight). Do not cache in the kernel.
    * \param[in] input_index The input index of the tensor in this kernel.
-   * \param[in] allocator Implementation must use this allocator for allocating the packed data in sharing and
-   *                      non-sharing modes. This will be an allocator set on the OrtEpDevice (read-only or default)
-   *                      or an allocator set for the session or ORT environment via APIs such as
-   *                      CreateAndRegisterAllocator, CreateAndRegisterAllocatorV2, or RegisterAllocator.
+   * \param[in] allocator Allocator for allocating the pre-packed data. Its use is required in sharing mode and
+   *                      recommended in the non-sharing mode. This will be an allocator set on the OrtEpDevice
+   *                      (read-only or default) or an allocator set for the session or ORT environment via APIs
+   *                      such as CreateAndRegisterAllocator, CreateAndRegisterAllocatorV2, or RegisterAllocator.
    *                      The allocator remains valid throughout the lifetime of the OrtKernelImpl instance.
    * \param[in] prepacked_weights_cache May be NULL. If not NULL, the kernel may choose to share a packed weight by
    *                                    first storing it in the OrtSharedPrePackedWeightCache instance and then

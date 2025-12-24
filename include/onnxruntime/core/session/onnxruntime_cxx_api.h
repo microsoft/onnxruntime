@@ -3397,7 +3397,7 @@ struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
  * Example use:
  *   OrtStatus* MyKernel::PrePackWeightImpl(OrtKernelImpl*, ..., OrtSharedPrePackedWeightCache* c_cache, ...) {
  *     ...
- *     if (cache != nullptr) {
+ *     if (c_cache != nullptr) {
  *       Ort::UnownedSharedPrePackedWeightCache cpp_cache(c_cache);
  *       Ort::Status status = cpp_cache.StoreWeightData(...);
  *     }
