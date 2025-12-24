@@ -22,7 +22,9 @@ Abstract:
 
 #include "mlasi.h"
 #include "softmax.h"
-
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
 //
 // Bundles the floating point constants for use by kernels written in assembly.
 //
@@ -193,6 +195,13 @@ MlasComputeTanh<MLAS_FP16>(
     MLAS_FP16* Output,
     size_t N
 ) {
+#if defined(MLAS_USE_SVE)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        MlasSveTanhF16Kernel(Input, Output, N);
+        return;
+    }
+#endif
+
     const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
     if (dispatch == nullptr || dispatch->Tanh_Fp16 == nullptr) {
         MLAS_THROW_EX(std::runtime_error, "Tanh_Fp16 is not supported.");
