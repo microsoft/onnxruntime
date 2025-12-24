@@ -38,6 +38,9 @@ const std::unordered_map<std::string, ExecutionMode> EXECUTION_MODE_NAME_TO_ID_M
                                                                                       {"parallel", ORT_PARALLEL}};
 
 void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sessionOptions) {
+  // Storage for string options to ensure they persist during the session options setup
+  std::vector<std::string> stringStorage;
+  
   for (uint32_t i = 0; i < epList.Length(); i++) {
     Napi::Value epValue = epList[i];
     std::string name;
@@ -153,6 +156,96 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       OrtTensorRTProviderOptionsV2* options;
       Ort::GetApi().CreateTensorRTProviderOptions(&options);
       options->device_id = deviceId;
+      
+      // Parse additional TensorRT options if provided
+      if (epValue.IsObject()) {
+        auto obj = epValue.As<Napi::Object>();
+        
+        // Helper lambda to get integer option
+        auto getIntOption = [&](const char* key, int& target) {
+          if (obj.Has(key)) {
+            auto val = obj.Get(key);
+            if (val.IsNumber()) {
+              target = val.As<Napi::Number>().Int32Value();
+            }
+          }
+        };
+        
+        // Helper lambda to get boolean option (converts to int)
+        auto getBoolOption = [&](const char* key, int& target) {
+          if (obj.Has(key)) {
+            auto val = obj.Get(key);
+            if (val.IsBoolean()) {
+              target = val.As<Napi::Boolean>().Value() ? 1 : 0;
+            }
+          }
+        };
+        
+        // Helper lambda to get string option
+        auto getStringOption = [&](const char* key, const char*& target) {
+          if (obj.Has(key)) {
+            auto val = obj.Get(key);
+            if (val.IsString()) {
+              stringStorage.push_back(val.As<Napi::String>().Utf8Value());
+              target = stringStorage.back().c_str();
+            }
+          }
+        };
+        
+        // Helper lambda to get size_t option
+        auto getSizeTOption = [&](const char* key, size_t& target) {
+          if (obj.Has(key)) {
+            auto val = obj.Get(key);
+            if (val.IsNumber()) {
+              target = static_cast<size_t>(val.As<Napi::Number>().Int64Value());
+            }
+          }
+        };
+        
+        getIntOption("trtMaxPartitionIterations", options->trt_max_partition_iterations);
+        getIntOption("trtMinSubgraphSize", options->trt_min_subgraph_size);
+        getSizeTOption("trtMaxWorkspaceSize", options->trt_max_workspace_size);
+        getBoolOption("trtFp16Enable", options->trt_fp16_enable);
+        getBoolOption("trtBf16Enable", options->trt_bf16_enable);
+        getBoolOption("trtInt8Enable", options->trt_int8_enable);
+        getStringOption("trtInt8CalibrationTableName", options->trt_int8_calibration_table_name);
+        getBoolOption("trtInt8UseNativeCalibrationTable", options->trt_int8_use_native_calibration_table);
+        getBoolOption("trtDlaEnable", options->trt_dla_enable);
+        getIntOption("trtDlaCore", options->trt_dla_core);
+        getBoolOption("trtDumpSubgraphs", options->trt_dump_subgraphs);
+        getBoolOption("trtEngineCacheEnable", options->trt_engine_cache_enable);
+        getStringOption("trtEngineCachePath", options->trt_engine_cache_path);
+        getBoolOption("trtEngineDecryptionEnable", options->trt_engine_decryption_enable);
+        getStringOption("trtEngineDecryptionLibPath", options->trt_engine_decryption_lib_path);
+        getBoolOption("trtForceSequentialEngineBuild", options->trt_force_sequential_engine_build);
+        getBoolOption("trtContextMemorySharingEnable", options->trt_context_memory_sharing_enable);
+        getBoolOption("trtLayerNormFp32Fallback", options->trt_layer_norm_fp32_fallback);
+        getBoolOption("trtTimingCacheEnable", options->trt_timing_cache_enable);
+        getStringOption("trtTimingCachePath", options->trt_timing_cache_path);
+        getBoolOption("trtForceTimingCache", options->trt_force_timing_cache);
+        getBoolOption("trtDetailedBuildLog", options->trt_detailed_build_log);
+        getBoolOption("trtBuildHeuristicsEnable", options->trt_build_heuristics_enable);
+        getBoolOption("trtSparsityEnable", options->trt_sparsity_enable);
+        getIntOption("trtBuilderOptimizationLevel", options->trt_builder_optimization_level);
+        getIntOption("trtAuxiliaryStreams", options->trt_auxiliary_streams);
+        getStringOption("trtTacticSources", options->trt_tactic_sources);
+        getStringOption("trtExtraPluginLibPaths", options->trt_extra_plugin_lib_paths);
+        getStringOption("trtProfileMinShapes", options->trt_profile_min_shapes);
+        getStringOption("trtProfileMaxShapes", options->trt_profile_max_shapes);
+        getStringOption("trtProfileOptShapes", options->trt_profile_opt_shapes);
+        getBoolOption("trtCudaGraphEnable", options->trt_cuda_graph_enable);
+        getStringOption("trtPreviewFeatures", options->trt_preview_features);
+        getBoolOption("trtDumpEpContextModel", options->trt_dump_ep_context_model);
+        getStringOption("trtEpContextFilePath", options->trt_ep_context_file_path);
+        getIntOption("trtEpContextEmbedMode", options->trt_ep_context_embed_mode);
+        getBoolOption("trtWeightStrippedEngineEnable", options->trt_weight_stripped_engine_enable);
+        getStringOption("trtOnnxModelFolderPath", options->trt_onnx_model_folder_path);
+        getStringOption("trtEngineCachePrefix", options->trt_engine_cache_prefix);
+        getBoolOption("trtEngineHwCompatible", options->trt_engine_hw_compatible);
+        getStringOption("trtOpTypesToExclude", options->trt_op_types_to_exclude);
+        getBoolOption("trtLoadUserInitializer", options->trt_load_user_initializer);
+      }
+      
       sessionOptions.AppendExecutionProvider_TensorRT_V2(*options);
       Ort::GetApi().ReleaseTensorRTProviderOptions(options);
 #endif
