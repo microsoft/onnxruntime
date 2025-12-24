@@ -94,11 +94,13 @@ static void RunOneTest(
                             sum_output_data);
     }
 
-    if (cpu_ep != nullptr) {
-      execution_providers.push_back(DefaultCpuExecutionProvider());
-    }
+    // Add WebGPU EP first so it gets tested before CPU EP
+    // (ConfigEps runs the first available EP for the operator)
     if (webgpu_ep != nullptr) {
       execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    }
+    if (cpu_ep != nullptr) {
+      execution_providers.push_back(DefaultCpuExecutionProvider());
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
