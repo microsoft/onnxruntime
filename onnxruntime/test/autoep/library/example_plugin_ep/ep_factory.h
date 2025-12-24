@@ -7,6 +7,7 @@
 
 #include "ep_arena.h"
 #include "ep_data_transfer.h"
+#include "ep_external_resource_importer.h"
 #include "../plugin_ep_utils.h"
 
 /// <summary>
@@ -66,6 +67,11 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                                const OrtMemoryDevice* memory_device,
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
+
+  static OrtStatus* ORT_API_CALL CreateExternalResourceImporterForDeviceImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpDevice* ep_device,
+      OrtExternalResourceImporterImpl** out_importer) noexcept;
 
   const OrtLogger& default_logger_;        // default logger for the EP factory
   const std::string ep_name_;              // EP name
