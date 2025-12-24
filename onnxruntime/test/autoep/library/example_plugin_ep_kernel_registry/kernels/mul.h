@@ -37,6 +37,7 @@ class Mul : public OrtKernelImpl {
                                                    /*out*/ bool* is_packed) noexcept;
   static OrtStatus* ORT_API_CALL SetSharedPrePackedWeightImpl(OrtKernelImpl* this_ptr,
                                                               const void* const* buffer_data_ptrs,
+                                                              const size_t* buffer_data_sizes,
                                                               size_t num_buffers, int input_index) noexcept;
 
  private:

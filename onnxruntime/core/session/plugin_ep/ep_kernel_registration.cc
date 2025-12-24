@@ -91,9 +91,9 @@ class PluginEpOpKernel final : public OpKernel {
     OrtAllocator* ort_allocator = GetPrePackOrtAllocator(alloc);
 
     // Create a non-owning OrtValue that wraps the const Tensor& with an empty deleter.
-    // This is passed to OrtKernelImpl::PrePackConstantTensor() as a const OrtValue*.
+    // This is passed to OrtKernelImpl::PrePackWeight() as a const OrtValue*.
     // The above reasons make the const_cast relatively "safe".
-    // Note: Documentation for OrtKernelImpl::PrePackConstantTensor disallows caching the OrtValue pointer.
+    // Note: Documentation for OrtKernelImpl::PrePackWeight disallows caching the OrtValue pointer.
     auto empty_tensor_deleter = [](void* /*data*/) -> void { /* do not delete Tensor (not owned) */ };
     const OrtValue ort_value(const_cast<Tensor*>(&tensor), DataTypeImpl::GetType<Tensor>(), empty_tensor_deleter);
 
@@ -123,8 +123,9 @@ class PluginEpOpKernel final : public OpKernel {
     return Status::OK();
   }
 
-  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& buffer_unique_ptrs,
-                                   int input_idx, /*out*/ bool& used_shared_buffers) override {
+  Status UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& buffer_unique_ptrs,
+                                      gsl::span<const size_t> buffer_sizes,
+                                      int input_idx, /*out*/ bool& used_shared_buffers) override {
     assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
 
     if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->SetSharedPrePackedWeight == nullptr) {
@@ -141,8 +142,8 @@ class PluginEpOpKernel final : public OpKernel {
                    [](const BufferUniquePtr& buff) -> const void* { return buff.get(); });
 
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-        kernel_impl_->SetSharedPrePackedWeight(kernel_impl_, buffer_data_ptrs.data(), buffer_data_ptrs.size(),
-                                               input_idx)));
+        kernel_impl_->SetSharedPrePackedWeight(kernel_impl_, buffer_data_ptrs.data(), buffer_sizes.data(),
+                                               buffer_data_ptrs.size(), input_idx)));
 
     used_shared_buffers = true;
     return Status::OK();

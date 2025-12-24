@@ -154,6 +154,7 @@ OrtStatus* ORT_API_CALL Mul::PrePackWeightImpl(OrtKernelImpl* this_ptr, const Or
 /*static*/
 OrtStatus* ORT_API_CALL Mul::SetSharedPrePackedWeightImpl(OrtKernelImpl* this_ptr,
                                                           const void* const* buffer_data_ptrs,
+                                                          const size_t* buffer_data_sizes,
                                                           size_t num_buffers, int input_index) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Mul* mul_kernel = static_cast<Mul*>(this_ptr);
@@ -169,6 +170,11 @@ OrtStatus* ORT_API_CALL Mul::SetSharedPrePackedWeightImpl(OrtKernelImpl* this_pt
   RETURN_IF(!mul_kernel->packed_weight_1_info_.has_value(), Ort::GetApi(),
             "ERROR! OrtKernelImpl::PrePackWeight should have "
             "initialized a valid PackedWeightInfo struct for use in SetSharedPrePackedWeight.");
+
+  // Check that the buffer size is what we expect.
+  RETURN_IF(buffer_data_sizes[0] != mul_kernel->packed_weight_1_info_->num_bytes, Ort::GetApi(),
+            "ExampleKernelEp received an unexpected buffer size in a call to OrtKernelImpl::SetSharedPrePackedWeight "
+            "for the Mul kernel.");
 
   mul_kernel->packed_weight_1_info_->shared_data = buffer_data_ptrs[0];
 
