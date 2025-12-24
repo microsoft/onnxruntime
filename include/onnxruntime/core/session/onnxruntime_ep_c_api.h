@@ -958,7 +958,7 @@ struct OrtEpApi {
    *                             into multiple buffers (if desired).
    * \param[in] buffer_data_sizes An array of buffer byte sizes, one per element in `buffer_data_ptrs`.
    * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
-   *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_sizes` arrays.
+   *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_data_sizes` arrays.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
