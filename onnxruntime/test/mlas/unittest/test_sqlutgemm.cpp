@@ -69,6 +69,9 @@ class MlasSQLutGemmTest : public MlasTestBase {
   void Test(size_t M, size_t N, size_t K, bool WithThreadpool, bool Symmetric) {
     MLAS_THREADPOOL* tp = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
+    // Clear config cache to ensure fresh config for each test case
+    MlasClearLUTGemmKernelConfig();
+
     const float* A = BufferA.GetBuffer(K * M);
     const float* B = BufferB.GetBuffer(N * K);
     float* C = BufferC.GetBuffer(N * M, true);
@@ -212,7 +215,7 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
   static size_t RegisterShortExecuteTests() {
     size_t count = 0;
     for (bool with_threadpool : {true}) {
-      for (bool symmetric : {true}) {
+      for (bool symmetric : {true, false}) {  // Test both symmetric and asymmetric
         for (size_t b = 256; b < 320; b += 32) {
           count += RegisterSingleTest(b, b, b, with_threadpool, symmetric);
         }

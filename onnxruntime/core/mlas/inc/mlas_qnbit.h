@@ -304,6 +304,9 @@ MlasInitLUTGemmKernelConfig(
     bool has_zp_point
 );
 
+void MLASCALL
+MlasClearLUTGemmKernelConfig();
+
 /**
  * @brief Executes TMAC compute
  *

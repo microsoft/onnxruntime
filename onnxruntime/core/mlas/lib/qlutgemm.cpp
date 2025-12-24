@@ -36,9 +36,14 @@ MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size)
     std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size);
     if (tmac_kernel_configs.count(key)) {
         return tmac_kernel_configs[key];
-    } else {
-        ORT_THROW("T-MAC kernel parameters not initialized for M=", M, ", N=", N, ", nbits=", nbits, ", block_size=", block_size);
     }
+    ORT_THROW("T-MAC kernel parameters not initialized for M=", M, ", N=", N, ", nbits=", nbits, ", block_size=", block_size);
+}
+
+void MLASCALL
+MlasClearLUTGemmKernelConfig()
+{
+    tmac_kernel_configs.clear();
 }
 
 void MLASCALL
@@ -86,7 +91,7 @@ MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
 
     float smallest_penalty = 1e9f;
     params.bm = bms[0];
-    for (int bm : bms) {
+    for (size_t bm : bms) {
         if (M % (bm / nbits) != 0 || bm % nbits != 0) {
             continue;
         }
@@ -300,23 +305,26 @@ MlasLUTPackScalesAndZeroPoints(
     const size_t bm = tmac_params.bm;
     const size_t num_elem_per_byte = 8 / bits;
 
+    // ZP array is column-major packed, with per-column alignment to byte boundary
+    const size_t row_blks = K / BlkLen;  // number of blocks per column
+    const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
+
     for (size_t im = 0; im < N; im += 1) {
         for (size_t ik = 0; ik < K; ik += BlkLen) {
-            size_t idx = (im * K + ik) / BlkLen;
+            size_t idx = (im * K + ik) / BlkLen;  // linear block index for scale (scale is NOT packed)
             float scale = QuantBScale[idx];
-            float zp;
+            float zp = 0.0f;
             if (HasZeroPoint) {
-                // zp are two bit packed
-                size_t elem_idx = idx % num_elem_per_byte;
-                // TODO(vraspar): logically correct but not readable
-                uint8_t v = QuantBZeroPoint[idx / num_elem_per_byte] >> (elem_idx * bits) & (1 << bits) - 1;
-                zp = static_cast<float>(v);
+                size_t blk_in_col = ik / BlkLen;  // block index within column
+                size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                size_t elem_idx = blk_in_col % num_elem_per_byte;
+                uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & ((1 << bits) - 1);
 
-                // Note: TMAC does this during model conversion. Since, we follow ORT format, we need to do it here.
-                // This seems gptq quantization specific.
-                // We should either use different op than matmul_nbits or add attribute to matmul_nbits to indicate this.
-                zp = zp - (1 << (bits - 1)) - 1;  // make it signed
-                zp = zp * scale;                  // store scale * zp
+                // The LUT kernel assumes weights are centered around the midpoint (2 for 2-bit).
+                // Thus, need to correct for the actual ZP relative to the midpoint.
+
+                int midpoint = 1 << (bits - 1);  // 2 for 2-bit
+                zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
             }
 
             // TODO(vraspar): fix when k < BlkLen and nb1 is 0
