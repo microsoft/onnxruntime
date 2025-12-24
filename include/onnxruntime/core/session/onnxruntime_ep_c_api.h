@@ -373,8 +373,7 @@ struct OrtKernelImpl {
    * Refer to the description of the "sharing-mode" in the documentation for OrtKernelImpl::PrePackWeight().
    *
    * \note ORT will not call this function for an `input_index` that a previous call to
-   *       OrtKernelImpl::PrePackWeight() did not elect to pre-pack and share. If this function receives an
-   *       unexpected `input_index`, the implementation should return an error OrtStatus with code ORT_EP_FAIL.
+   *       OrtKernelImpl::PrePackWeight() did not elect to pre-pack and share.
    *
    * \note This function is based on the internal OpKernel::UseSharedPrePackedBuffers() virtual function used
    *       within ORT.
