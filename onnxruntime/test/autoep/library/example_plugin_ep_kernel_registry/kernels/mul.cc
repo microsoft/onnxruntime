@@ -176,6 +176,8 @@ OrtStatus* ORT_API_CALL Mul::SetSharedPrePackedWeightImpl(OrtKernelImpl* this_pt
             "ExampleKernelEp received an unexpected buffer size in a call to OrtKernelImpl::SetSharedPrePackedWeight "
             "for the Mul kernel.");
 
+  // Update buffer data pointer because the shared memory could potentially originate from a different
+  // kernel instance.
   mul_kernel->packed_weight_1_info_->shared_data = buffer_data_ptrs[0];
 
   return nullptr;
