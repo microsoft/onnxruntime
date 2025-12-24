@@ -262,10 +262,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   // STEP.4 - start initialization.
 
   // Load the Dawn library and create the WebGPU instance.
-  auto& context = WebGpuContextFactory::CreateContext(context_creation_params);
-
-  // Create WebGPU device and initialize the context.
-  context.Initialize(context_init_params);
+  auto& context = WebGpuContextFactory::CreateContext(context_creation_params, context_init_params);
 
   // Create WebGPU EP factory.
   return std::make_shared<WebGpuProviderFactory>(context_creation_params.context_id, context, std::move(webgpu_ep_config));
@@ -345,10 +342,11 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       std::lock_guard<std::mutex> lock(impl.init_mutex_);
       if (impl.data_transfer_ == nullptr) {
         // Always create a new context with context_id 0
-        WebGpuContextParams params{};
-        params.context_creation_params.context_id = impl.context_id_;
-        auto& context = WebGpuContextFactory::CreateContext(params.context_creation_params);
-        context.Initialize(params.context_init_params);
+        if (impl.context_id_ != 0) {
+          return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Shared data transfer can only be created for the default device (0).");
+        }
+
+        auto& context = WebGpuContextFactory::DefaultContext();
 
         // Create the DataTransfer instance
         // Note: The DataTransfer holds a const reference to BufferManager. The BufferManager's lifecycle

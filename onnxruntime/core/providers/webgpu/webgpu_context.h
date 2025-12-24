@@ -87,13 +87,6 @@ struct WebGpuContextInitializationParams {
   bool enable_pix_capture{false};
 };
 
-// Helper struct that holds configuration parameters for creating a WebGPU context with default settings.
-// This is used during lazy initialization of the data transfer to create a context if one doesn't exist.
-struct WebGpuContextParams {
-  webgpu::WebGpuContextCreationParams context_creation_params;    // WebGPU context creation parameters
-  webgpu::WebGpuContextInitializationParams context_init_params;  // WebGPU context initialization parameters
-};
-
 class WebGpuContextFactory {
  public:
   struct WebGpuContextInfo {
@@ -101,12 +94,28 @@ class WebGpuContextFactory {
     int ref_count;
   };
 
-  static WebGpuContext& CreateContext(const WebGpuContextCreationParams& params);
+  /// <summary>
+  /// Create a new WebGPU context for the specified context ID if not present, or return the existing one. (ref-count based)
+  /// </summary>
+  static WebGpuContext& CreateContext(const WebGpuContextCreationParams& creation_params,
+                                      const WebGpuContextInitializationParams& init_params);
+
+  /// <summary>
+  /// Get the WebGPU context for the specified context ID. Throw if not present.
+  /// </summary>
   static WebGpuContext& GetContext(int context_id);
 
+  /// <summary>
+  /// Release the WebGPU context. (ref-count based)
+  /// </summary>
   static void ReleaseContext(int context_id);
 
   static void Cleanup();
+
+  /// <summary>
+  /// Return the default context. Create if not present.
+  /// </summary>
+  static WebGpuContext& DefaultContext();
 
  private:
   WebGpuContextFactory() {}
@@ -120,8 +129,6 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
-  void Initialize(const WebGpuContextInitializationParams& params);
-
   Status Wait(wgpu::Future f);
 
   const wgpu::Device& Device() const { return device_; }
@@ -239,6 +246,8 @@ class WebGpuContext final {
                 "max_storage_buffer_binding_size must be 0 or at least 128MB");
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
+
+  void Initialize(const WebGpuContextInitializationParams& params);
 
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                              const std::vector<WGPUBuffer>& bind_buffers,

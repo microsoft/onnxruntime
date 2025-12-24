@@ -918,14 +918,14 @@ std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
 wgpu::Instance WebGpuContextFactory::default_instance_;
 
-WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextCreationParams& params) {
-  const int context_id = params.context_id;
-  WGPUInstance instance = params.instance;
-  WGPUDevice device = params.device;
+WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextCreationParams& creation_params, const WebGpuContextInitializationParams& init_params) {
+  const int context_id = creation_params.context_id;
+  WGPUInstance instance = creation_params.instance;
+  WGPUDevice device = creation_params.device;
 
   std::call_once(init_default_flag_, [
 #if !defined(__wasm__)
-                                         dawn_proc_table = params.dawn_proc_table
+                                         dawn_proc_table = creation_params.dawn_proc_table
 #endif
   ]() {
   // Setup dawn proc table (only for non-WASM build)
@@ -977,9 +977,9 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextCreationPa
     GSL_SUPPRESS(r.11)
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
-                                                                    params.validation_mode,
-                                                                    params.preserve_device,
-                                                                    params.max_storage_buffer_binding_size));
+                                                                    creation_params.validation_mode,
+                                                                    creation_params.preserve_device,
+                                                                    creation_params.max_storage_buffer_binding_size));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
@@ -987,6 +987,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextCreationPa
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
   it->second.ref_count++;
+
+  // perform initialization
+  it->second.context->Initialize(init_params);
+
   return *it->second.context;
 }
 
@@ -1014,6 +1018,12 @@ void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
   contexts_.clear();
   default_instance_ = nullptr;
+}
+
+WebGpuContext& WebGpuContextFactory::DefaultContext() {
+  WebGpuContextCreationParams creation_params{};
+  WebGpuContextInitializationParams init_params{};
+  return WebGpuContextFactory::CreateContext(creation_params, init_params);
 }
 
 void CleanupWebGpuContexts() {
