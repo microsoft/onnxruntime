@@ -12,6 +12,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
 #include "core/framework/float4.h"
 
 namespace onnxruntime {
@@ -98,6 +99,13 @@ using AllIRv11 =
 #else
 using AllIRv11 = AllIRv10;
 #endif
+
+// Int2 types were introduced in ONNX 1.20 (IR version 13, opset 25)
+using AllIRv13 =
+    boost::mp11::mp_push_back<
+        AllIRv11,
+        UInt2x4,
+        Int2x4>;
 
 // TODO: This needs upgrade to some newer version ,buit it has been
 // at this version for a while and it needs changes at the use sites

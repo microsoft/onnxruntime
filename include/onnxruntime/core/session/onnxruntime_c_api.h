@@ -209,6 +209,9 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4,   // maps to a pair of packed int4 values (size == 1 byte)
   // Float4 types were introduced in ONNX 1.18. See https://onnx.ai/onnx/technical/float4.html
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1,  // maps to a pair of packed float4 values (size == 1 byte)
+  // Int2 types were introduced in ONNX 1.20. See https://onnx.ai/onnx/technical/int2.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,  // maps to a quad of packed uint2 values (size == 1 byte)
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to a quad of packed int2 values (size == 1 byte)
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
