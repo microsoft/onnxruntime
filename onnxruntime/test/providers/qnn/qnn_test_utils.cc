@@ -446,11 +446,11 @@ void QnnHTPBackendTests::SetUp() {
       LOGS(logger, WARNING) << "QueryQnnPlatformAttributesDirectly failed: " << query_status.ErrorMessage();
     } else {
       LOGS(logger, INFO) << "QNN platform attributes: "
-                            << "HTP arch: " << attrs.htp_arch
-                            << ", DLBC supported: " << attrs.dlbc_supported
-                            << ", VTCM size MB: " << attrs.vtcm_size_mb
-                            << ", SoC model: " << attrs.soc_model
-                            << ", SDK version: " << attrs.sdk_version;
+                         << "HTP arch: " << attrs.htp_arch
+                         << ", DLBC supported: " << attrs.dlbc_supported
+                         << ", VTCM size MB: " << attrs.vtcm_size_mb
+                         << ", SoC model: " << attrs.soc_model
+                         << ", SDK version: " << attrs.sdk_version;
       cached_platform_attrs_ = attrs;
     }
   }
@@ -693,7 +693,7 @@ Status QnnHTPBackendTests::QueryQnnPlatformAttributesDirectly(QnnHTPBackendTests
 
   // Use the first provider
   const QnnInterface_t* qnn_interface = interface_providers[0];
-  if (!qnn_interface){
+  if (!qnn_interface) {
     ORT_IGNORE_RETURN_VALUE(Env::Default().UnloadDynamicLibrary(qnn_lib_handle));
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QnnInterface_getProviders failed");
   }
