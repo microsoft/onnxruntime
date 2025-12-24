@@ -96,6 +96,15 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
+#define RAMA_TRACE 1
+
+#ifdef RAMA_TRACE
+// Forward declaration of FlushTraceData from sequential_executor.cc
+namespace onnxruntime {
+extern void FlushTraceData();
+}
+#endif
+
 namespace onnxruntime {
 namespace {
 template <typename T>
@@ -3140,6 +3149,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
+#endif
+
+#ifdef RAMA_TRACE
+  // Flush trace data after inference run completes
+  FlushTraceData();
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
