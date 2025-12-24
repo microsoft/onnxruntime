@@ -748,4 +748,35 @@ TEST(PluginExecutionProviderTest, KernelDefCxxApis) {
   }
 }
 
+TEST(PluginExecutionProviderTest, IsConcurrentRunSupported) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    ort_ep->IsConcurrentRunSupported = nullptr;
+    ASSERT_TRUE(ep->ConcurrentRunSupported());
+  }
+
+  {
+    auto concurrent_run_is_unsupported = [](OrtEp* /*this_ptr*/, bool* is_supported) noexcept -> ::OrtStatus* {
+      *is_supported = false;
+      return nullptr;
+    };
+
+    ort_ep->IsConcurrentRunSupported = concurrent_run_is_unsupported;
+    ASSERT_FALSE(ep->ConcurrentRunSupported());
+  }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+  {
+    auto failing_fn = [](OrtEp* this_ptr, bool* /*is_supported*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Concurrency? What's that?");
+    };
+
+    ort_ep->IsConcurrentRunSupported = failing_fn;
+    ASSERT_THROW(ep->ConcurrentRunSupported(), OnnxRuntimeException);
+  }
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+}
+
 }  // namespace onnxruntime::test
