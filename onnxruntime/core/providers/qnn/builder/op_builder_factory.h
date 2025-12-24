@@ -91,6 +91,8 @@ void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations
 
 void CreateLayerNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateRMSNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
