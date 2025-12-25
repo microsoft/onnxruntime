@@ -27,6 +27,7 @@
 #include "contrib_ops/cuda/bert/flash_attention/softmax.h"
 #include "contrib_ops/cuda/bert/flash_attention/mask.h"
 #include "contrib_ops/cuda/bert/flash_attention/rotary.h"
+#include "contrib_ops/cuda/bert/flash_attention/dequantize.h"
 
 namespace onnxruntime {
 namespace flash {
@@ -441,7 +442,8 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV, typename Params>
+template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV,
+          int K_QUANT_TYPE, int V_QUANT_TYPE, int KV_BIT_WIDTH, typename Params>
 inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, const int bidb, const int bidh,
                                                       const int m_block, const int n_split_idx,
                                                       const int num_n_splits) {
@@ -458,6 +460,16 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   constexpr int kBlockM = Kernel_traits::kBlockM;
   constexpr int kBlockN = Kernel_traits::kBlockN;
   constexpr int kHeadDim = Kernel_traits::kHeadDim;
+
+  Tensor sQ = make_tensor(make_smem_ptr(reinterpret_cast<Element*>(smem_)),
+                          typename Kernel_traits::SmemLayoutQ{});
+  // Careful we're using the same smem for sQ and sK | sV if Share_Q_K_smem;
+  Tensor sK = make_tensor(sQ.data() + size(sQ),
+                          typename Kernel_traits::SmemLayoutKV{});
+  Tensor sV = make_tensor(sK.data() + size(sK), typename Kernel_traits::SmemLayoutKV{});
+  Tensor sVt = make_tensor(sV.data(), typename Kernel_traits::SmemLayoutVtransposed{});
+  Tensor sVtNoSwizzle = make_tensor(sV.data(), typename Kernel_traits::SmemLayoutVtransposedNoSwizzle{});
+
   constexpr int kNWarps = Kernel_traits::kNWarps;
 
   using GmemTiledCopyO = std::conditional_t<
@@ -465,6 +477,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
       typename Kernel_traits::GmemTiledCopyO,
       typename Kernel_traits::GmemTiledCopyOaccum>;
   using ElementO = std::conditional_t<!Split, Element, ElementAccum>;
+  using QuantKV = typename cutlass::platform::conditional<KV_BIT_WIDTH == 8, int8_t, uint8_t>::type;
 
   const BlockInfo</*Varlen=*/!Is_even_MN> binfo(params, bidb);
   // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) { printf("Is_even_MN = %d, is_cumulativ = %d, seqlen_k_cache = %d, actual_seqlen_k = %d\n", Is_even_MN, params.is_seqlens_k_cumulative, binfo.seqlen_k_cache, binfo.actual_seqlen_k); }
@@ -549,30 +562,174 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
                           make_stride(params.q_row_stride, params.q_head_stride, _1{}));
   Tensor gQ = local_tile(mQ(_, bidh, _), Shape<Int<kBlockM>, Int<kHeadDim>>{},
                          make_coord(m_block, 0));  // (kBlockM, kHeadDim)
-  Tensor gK = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.k_ptr) + row_offset_k),
-                          Shape<Int<kBlockN>, Int<kHeadDim>>{},
-                          make_stride(params.k_row_stride, _1{}));
-  // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) { printf("k_ptr = %p, row_offset_k = %d, gK_ptr = %p\n", params.k_ptr, row_offset_k, gK.data()); }
-  Tensor gV = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.v_ptr) + row_offset_v),
-                          Shape<Int<kBlockN>, Int<kHeadDim>>{},
-                          make_stride(params.v_row_stride, _1{}));
-
-  Tensor sQ = make_tensor(make_smem_ptr(reinterpret_cast<Element*>(smem_)),
-                          typename Kernel_traits::SmemLayoutQ{});
-  Tensor sK = make_tensor(sQ.data() + size(sQ), typename Kernel_traits::SmemLayoutKV{});
-  Tensor sV = make_tensor(sK.data() + size(sK), typename Kernel_traits::SmemLayoutKV{});
-  Tensor sVt = make_tensor(sV.data(), typename Kernel_traits::SmemLayoutVtransposed{});
-  Tensor sVtNoSwizzle = make_tensor(sV.data(), typename Kernel_traits::SmemLayoutVtransposedNoSwizzle{});
-
   typename Kernel_traits::GmemTiledCopyQKV gmem_tiled_copy_QKV;
   auto gmem_thr_copy_QKV = gmem_tiled_copy_QKV.get_thread_slice(tidx);
 
   Tensor tQgQ = gmem_thr_copy_QKV.partition_S(gQ);
   Tensor tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
+
+  //
+  // STANDARD PATH (Always defined, used when K_QUANT_TYPE == 0)
+  //
+  Tensor gK = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.k_ptr) + row_offset_k),
+                          Shape<Int<kBlockN>, Int<kHeadDim>>{},
+                          make_stride(params.k_row_stride, _1{}));
+  Tensor gV = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.v_ptr) + row_offset_v),
+                          Shape<Int<kBlockN>, Int<kHeadDim>>{},
+                          make_stride(params.v_row_stride, _1{}));
+
   Tensor tKgK = gmem_thr_copy_QKV.partition_S(gK);  // (KCPY, KCPY_N, KCPY_K)
   Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
   Tensor tVgV = gmem_thr_copy_QKV.partition_S(gV);  // (VCPY, VCPY_N, VCPY_K)
   Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
+
+  Tensor cKV = make_identity_tensor(make_shape(size<0>(sK), size<1>(sK)));  // (BLK_N,BLK_K) -> (blk_n,blk_k)
+  Tensor tKVcKV = gmem_thr_copy_QKV.partition_S(cKV);                       // (BCPY,BCPY_N,BCPY_K) -> (blk_n,blk_k)
+
+  // Allocate predicate tensors for k
+  Tensor tKVpKV = make_tensor<bool>(make_shape(size<2>(tKsK)));
+
+  // Set predicates for k bounds
+  if (!Is_even_K) {
+#pragma unroll
+    for (int k = 0; k < size(tKVpKV); ++k) {
+      tKVpKV(k) = get<1>(tKVcKV(0, 0, k)) < params.d;
+    }
+  }
+
+  int n_block = n_block_max - 1;
+
+  //
+  // QUANTIZED PATH DEFINITIONS
+  //
+  // Initialize as View Tensors with nullptr to establish type
+  // For 4-bit, we use a "Duplicate Layout" to map 128 logical columns to 64 physical bytes.
+  // logical (m, n) -> physical (m, n/2). Inner stride 0 ensures we read the same byte twice.
+  auto gK_quant = [&] {
+    if constexpr (KV_BIT_WIDTH == 4) {
+      // For 4-bit, each byte stores TWO values (low/high nibbles).
+      // The layout (BlockN, HeadDim/2, 2) with stride (row_stride, 1, 0) creates a "duplicate",
+      // where stride=0 means we read the same byte twice.
+      // group_modes<1,3> flattens this to (BlockN, HeadDim).
+      auto layout_raw = make_layout(Shape<Int<kBlockN>, Int<kHeadDim / 2>, Int<2>>{},
+                                    make_stride(params.k_row_stride, _1{}, Int<0>{}));
+      auto t_raw = make_tensor(make_gmem_ptr(reinterpret_cast<QuantKV*>(params.k_ptr) + row_offset_k),
+                               layout_raw);
+      return group_modes<1, 3>(t_raw);
+    } else {
+      return make_tensor(make_gmem_ptr(reinterpret_cast<QuantKV*>(params.k_ptr) + row_offset_k),
+                         Shape<Int<kBlockN>, Int<kHeadDim>>{},
+                         make_stride(params.k_row_stride, _1{}));
+    }
+  }();
+  auto gV_quant = [&] {
+    if constexpr (KV_BIT_WIDTH == 4) {
+      auto layout_raw = make_layout(Shape<Int<kBlockN>, Int<kHeadDim / 2>, Int<2>>{},
+                                    make_stride(params.v_row_stride, _1{}, Int<0>{}));
+      auto t_raw = make_tensor(make_gmem_ptr(reinterpret_cast<QuantKV*>(params.v_ptr) + row_offset_v),
+                               layout_raw);
+      return group_modes<1, 3>(t_raw);
+    } else {
+      return make_tensor(make_gmem_ptr(reinterpret_cast<QuantKV*>(params.v_ptr) + row_offset_v),
+                         Shape<Int<kBlockN>, Int<kHeadDim>>{},
+                         make_stride(params.v_row_stride, _1{}));
+    }
+  }();
+
+  // Define TiledCopy for quantization to match load size with element count.
+  // For 8-bit, 16 elements = 128 bits.
+  // For 4-bit, we want 32 logical elements (duplicates) = 16 physical bytes = 128 bits.
+  using QuantValLayout = std::conditional_t<
+      KV_BIT_WIDTH == 4,
+      Layout<Shape<_1, _32>>,
+      Layout<Shape<_1, _16>>>;
+  using Gmem_copy_struct_quant = DefaultCopy;
+
+  static constexpr int SafeBitWidth = (KV_BIT_WIDTH == 0) ? 16 : KV_BIT_WIDTH;
+
+  // Fix for 4-bit quantization where tiling (256 elements) exceeds head dim (128)
+  // Standard GmemLayoutAtom has 8 threads per row. For 4-bit (32 elems/thread), that's 256 elems.
+  // We want 128 elems, so we need 4 threads per row.
+  using GmemLayoutAtomDequant = std::conditional_t<
+      KV_BIT_WIDTH == 4,
+      Layout<Shape<Int<Kernel_traits::kNThreads / 4>, Int<4>>, Stride<Int<4>, _1>>,
+      typename Kernel_traits::GmemLayoutAtom>;
+
+  auto gmem_tiled_copy_QKV_quant = make_tiled_copy(
+      Copy_Atom<Gmem_copy_struct_quant, QuantKV>{},
+      GmemLayoutAtomDequant{},  // Use the custom layout
+      QuantValLayout{});
+
+  auto gmem_thr_copy_QKV_quant = gmem_tiled_copy_QKV_quant.get_thread_slice(tidx);
+
+  auto tKgK_quant = gmem_thr_copy_QKV_quant.partition_S(gK_quant);
+  auto tVgV_quant = gmem_thr_copy_QKV_quant.partition_S(gV_quant);
+
+  // Define TiledCopy for dequantization (to match the unpacked size in SMEM)
+  using DequantValLayout = Layout<Shape<_1, Int<128 / SafeBitWidth>>>;
+
+  auto smem_tiled_copy_dequant = make_tiled_copy(
+      Copy_Atom<DefaultCopy, Element>{},
+      GmemLayoutAtomDequant{},
+      DequantValLayout{});
+  auto smem_thr_copy_dequant = smem_tiled_copy_dequant.get_thread_slice(tidx);
+
+  Tensor tKsK_dequant = smem_thr_copy_dequant.partition_D(sK);
+  Tensor tVsV_dequant = smem_thr_copy_dequant.partition_D(sV);
+
+  // We need cKV to define tKVcKV_dequant for predicates
+
+  Tensor tKVcKV_dequant = smem_thr_copy_dequant.partition_D(cKV);
+
+  // We loop over K tiles based on gmem_src (tKgK_quant) in dequantize.h
+  // So we must ensure tKVpKV_dequant is sized to match tKgK_quant.
+  constexpr int R_Src = decltype(tKgK_quant)::layout_type::rank;
+  constexpr int num_k_tiles = (R_Src >= 3) ? size<2>(tKgK_quant) : 1;
+
+  auto tKVpKV_dequant = make_tensor<int8_t>(make_shape(Int<num_k_tiles>{}));
+
+  if (!Is_even_K) {
+#pragma unroll
+    for (int k = 0; k < num_k_tiles; ++k) {
+      if constexpr (rank(tKVcKV_dequant) == 3) {
+        int k_coord_idx = (k < size<2>(tKVcKV_dequant)) ? k : 0;
+        tKVpKV_dequant(k) = get<1>(tKVcKV_dequant(0, 0, k_coord_idx)) < params.d;
+      } else {
+        tKVpKV_dequant(k) = get<1>(tKVcKV_dequant(0, 0)) < params.d;
+      }
+    }
+  }
+
+  if constexpr (K_QUANT_TYPE != 0) {
+    // Dequantize K
+    flash::copy_and_dequantize<Is_even_MN, Is_even_K, K_QUANT_TYPE, KV_BIT_WIDTH>(
+        gmem_tiled_copy_QKV_quant, tKgK_quant, tKsK_dequant, tKVcKV_dequant, tKVpKV_dequant,
+        binfo.actual_seqlen_k - n_block * kBlockN,
+        reinterpret_cast<const Element*>(params.k_scale_ptr),
+        params.d, bidh / params.h_h_k_ratio);
+
+    // Dequantize V
+    if constexpr (V_QUANT_TYPE != 0) {
+      flash::copy_and_dequantize<Is_even_MN, Is_even_K, V_QUANT_TYPE, KV_BIT_WIDTH>(
+          gmem_tiled_copy_QKV_quant, tVgV_quant, tVsV_dequant, tKVcKV_dequant, tKVpKV_dequant,
+          binfo.actual_seqlen_k - n_block * kBlockN,
+          reinterpret_cast<const Element*>(params.v_scale_ptr),
+          params.d, bidh / params.h_h_k_ratio);
+    } else {
+      flash::copy</*Is_even_MN=*/true, Is_even_K, /*Clear_OOB_MN=*/false, /*Clear_OOB_K=*/false>(
+          gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV,
+          binfo.actual_seqlen_k - n_block * kBlockN);
+    }
+  } else {
+    // Standard non-quantized path
+    flash::copy<Is_even_MN, Is_even_K, /*Clear_OOB_MN=*/false, /*Clear_OOB_K=*/false>(
+        gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV,
+        binfo.actual_seqlen_k - n_block * kBlockN);
+
+    flash::copy</*Is_even_MN=*/true, Is_even_K, /*Clear_OOB_MN=*/false, /*Clear_OOB_K=*/false>(
+        gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV,
+        binfo.actual_seqlen_k - n_block * kBlockN);
+  }
 
   typename Kernel_traits::TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_thread_slice(tidx);
@@ -581,10 +738,6 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   Tensor tOrVt = thr_mma.partition_fragment_B(sVtNoSwizzle);  // (MMA, MMA_K,MMA_N)
 
   Tensor acc_o = partition_fragment_C(tiled_mma, Shape<Int<kBlockM>, Int<kHeadDim>>{});  // MMA, MMA_M, MMA_K
-
-  //
-  // Copy Atom retiling
-  //
 
   auto smem_tiled_copy_Q = make_tiled_copy_A(typename Kernel_traits::SmemCopyAtom{}, tiled_mma);
   auto smem_thr_copy_Q = smem_tiled_copy_Q.get_thread_slice(tidx);
@@ -602,21 +755,14 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   // PREDICATES
   //
 
-  // // Allocate predicate tensors for m and n
-  // Tensor tQpQ = make_tensor<bool>(make_shape(size<1>(tQsQ), size<2>(tQsQ)), Stride<_1,_0>{});
-  // Tensor tKVpKV = make_tensor<bool>(make_shape(size<1>(tKsK), size<2>(tKsK)), Stride<_1,_0>{});
-
-  // Construct identity layout for sQ and sK
-  Tensor cQ = make_identity_tensor(make_shape(size<0>(sQ), size<1>(sQ)));   // (BLK_M,BLK_K) -> (blk_m,blk_k)
-  Tensor cKV = make_identity_tensor(make_shape(size<0>(sK), size<1>(sK)));  // (BLK_N,BLK_K) -> (blk_n,blk_k)
+  // Construct identity layout for sQ
+  Tensor cQ = make_identity_tensor(make_shape(size<0>(sQ), size<1>(sQ)));  // (BLK_M,BLK_K) -> (blk_m,blk_k)
 
   // Repeat the partitioning with identity layouts
-  Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);     // (ACPY,ACPY_M,ACPY_K) -> (blk_m,blk_k)
-  Tensor tKVcKV = gmem_thr_copy_QKV.partition_S(cKV);  // (BCPY,BCPY_N,BCPY_K) -> (blk_n,blk_k)
+  Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);  // (ACPY,ACPY_M,ACPY_K) -> (blk_m,blk_k)
 
   // Allocate predicate tensors for k
   Tensor tQpQ = make_tensor<bool>(make_shape(size<2>(tQsQ)));
-  Tensor tKVpKV = make_tensor<bool>(make_shape(size<2>(tKsK)));
 
   // Set predicates for k bounds
   if (!Is_even_K) {
@@ -624,13 +770,8 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     for (int k = 0; k < size(tQpQ); ++k) {
       tQpQ(k) = get<1>(tQcQ(0, 0, k)) < params.d;
     }
-#pragma unroll
-    for (int k = 0; k < size(tKVpKV); ++k) {
-      tKVpKV(k) = get<1>(tKVcKV(0, 0, k)) < params.d;
-    }
   }
 
-  // Prologue
   // Copy from Knew to K, optionally apply rotary embedding.
   typename Kernel_traits::GmemTiledCopyRotcossin gmem_tiled_copy_rotary;
   auto gmem_thr_copy_rotary = gmem_tiled_copy_rotary.get_thread_slice(tidx);
@@ -762,10 +903,16 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     }
   }
 
-  int n_block = n_block_max - 1;
-  // We don't need to clear the sK smem tiles since we'll mask out the scores anyway.
-  flash::copy<Is_even_MN, Is_even_K>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV,
-                                     binfo.actual_seqlen_k - n_block * kBlockN);
+  if constexpr (K_QUANT_TYPE != 0) {
+    flash::copy_and_dequantize<Is_even_MN, Is_even_K, K_QUANT_TYPE, KV_BIT_WIDTH>(
+        gmem_tiled_copy_QKV_quant, tKgK_quant, tKsK_dequant, tKVcKV_dequant, tKVpKV_dequant,
+        binfo.actual_seqlen_k - n_block * kBlockN,
+        reinterpret_cast<const Element*>(params.k_scale_ptr),
+        params.d, bidh / params.h_h_k_ratio);
+  } else {
+    flash::copy<Is_even_MN, Is_even_K>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV,
+                                       binfo.actual_seqlen_k - n_block * kBlockN);
+  }
   cute::cp_async_fence();
 
   // flash::cp_async_wait<0>();
@@ -793,7 +940,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
                                       ? 1
                                       : ((Is_even_MN && Is_causal) ? cute::ceil_div(kBlockM, kBlockN) : cute::ceil_div(kBlockM, kBlockN) + 1);
 #pragma unroll
-  for (int masking_step = 0; masking_step < n_masking_steps; ++masking_step, --n_block) {
+  for (int masking_step = 0; masking_step < n_masking_steps && n_block >= n_block_min; ++masking_step, --n_block) {
     Tensor acc_s = partition_fragment_C(tiled_mma, Shape<Int<kBlockM>, Int<kBlockN>>{});  // (MMA=4, MMA_M, MMA_N)
     clear(acc_s);
     flash::cp_async_wait<0>();
@@ -803,18 +950,42 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     if (masking_step > 0) {
       if (block_table == nullptr) {
         tVgV.data() = tVgV.data() + (-int(kBlockN * params.v_row_stride));
+        if constexpr (V_QUANT_TYPE != 0) {
+          tVgV_quant.data() = tVgV_quant.data() + (-int(kBlockN * params.v_row_stride));
+        }
       } else {
         const int block_table_idx_cur = (n_block + 1) * kBlockN / params.page_block_size;
         const int block_table_offset_cur = (n_block + 1) * kBlockN - block_table_idx_cur * params.page_block_size;
         const int block_table_idx_next = n_block * kBlockN / params.page_block_size;
         const int block_table_offset_next = n_block * kBlockN - block_table_idx_next * params.page_block_size;
-        tVgV.data() = tVgV.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.v_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.v_row_stride;
+
+        const int offset_diff = block_table_offset_next - block_table_offset_cur;
+        tVgV.data() = tVgV.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.v_batch_stride + offset_diff * params.v_row_stride;
+
+        if constexpr (V_QUANT_TYPE != 0) {
+          tVgV_quant.data() = tVgV_quant.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.v_batch_stride + offset_diff * params.v_row_stride;
+        }
       }
-      flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV);
+
+      if constexpr (V_QUANT_TYPE != 0) {
+        flash::copy_and_dequantize<Is_even_MN, Is_even_K, V_QUANT_TYPE, KV_BIT_WIDTH>(
+            gmem_tiled_copy_QKV_quant, tVgV_quant, tVsV_dequant, tKVcKV_dequant, tKVpKV_dequant,
+            binfo.actual_seqlen_k - n_block * kBlockN, reinterpret_cast<const Element*>(params.v_scale_ptr),
+            params.d, bidh / params.h_h_k_ratio);
+      } else {
+        flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV);
+      }
     } else {
-      // Clear the smem tiles to account for predicated off loads
-      flash::copy<Is_even_MN, Is_even_K, /*Clear_OOB_MN=*/true>(
-          gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV, binfo.actual_seqlen_k - n_block * kBlockN);
+      if constexpr (V_QUANT_TYPE != 0) {
+        flash::copy_and_dequantize<Is_even_MN, Is_even_K, V_QUANT_TYPE, KV_BIT_WIDTH>(
+            gmem_tiled_copy_QKV_quant, tVgV_quant, tVsV_dequant, tKVcKV_dequant, tKVpKV_dequant,
+            binfo.actual_seqlen_k - n_block * kBlockN,
+            reinterpret_cast<const Element*>(params.v_scale_ptr),
+            params.d, bidh / params.h_h_k_ratio);
+      } else {
+        flash::copy<Is_even_MN, Is_even_K, /*Clear_OOB_MN=*/true>(
+            gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV, binfo.actual_seqlen_k - n_block * kBlockN);
+      }
     }
     cute::cp_async_fence();
 
@@ -838,14 +1009,30 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
       // Advance gK
       if (block_table == nullptr) {
         tKgK.data() = tKgK.data() + (-int(kBlockN * params.k_row_stride));
+        if constexpr (K_QUANT_TYPE != 0) {
+          tKgK_quant.data() = tKgK_quant.data() + (-int(kBlockN * params.k_row_stride));
+        }
       } else {
         const int block_table_idx_cur = n_block * kBlockN / params.page_block_size;
         const int block_table_offset_cur = n_block * kBlockN - block_table_idx_cur * params.page_block_size;
         const int block_table_idx_next = (n_block - 1) * kBlockN / params.page_block_size;
         const int block_table_offset_next = (n_block - 1) * kBlockN - block_table_idx_next * params.page_block_size;
-        tKgK.data() = tKgK.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.k_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.k_row_stride;
+        const int offset_diff = block_table_offset_next - block_table_offset_cur;
+        tKgK.data() = tKgK.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.k_batch_stride + offset_diff * params.k_row_stride;
+        if constexpr (K_QUANT_TYPE != 0) {
+          tKgK_quant.data() = tKgK_quant.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.k_batch_stride + offset_diff * params.k_row_stride;
+        }
       }
-      flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV);
+
+      if constexpr (K_QUANT_TYPE != 0) {
+        flash::copy_and_dequantize<Is_even_MN, Is_even_K, K_QUANT_TYPE, KV_BIT_WIDTH>(
+            gmem_tiled_copy_QKV_quant, tKgK_quant, tKsK_dequant, tKVcKV_dequant, tKVpKV_dequant,
+            binfo.actual_seqlen_k - n_block * kBlockN,
+            reinterpret_cast<const Element*>(params.k_scale_ptr),
+            params.d, bidh / params.h_h_k_ratio);
+      } else {
+        flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV);
+      }
       // This cp_async_fence needs to be in the if block, otherwise the synchronization
       // isn't right and we get race conditions.
       cute::cp_async_fence();
@@ -881,14 +1068,31 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     // Advance gV
     if (block_table == nullptr) {
       tVgV.data() = tVgV.data() + (-int(kBlockN * params.v_row_stride));
+      if constexpr (V_QUANT_TYPE != 0) {
+        tVgV_quant.data() = tVgV_quant.data() + (-int(kBlockN * params.v_row_stride));
+      }
     } else {
       const int block_table_idx_cur = (n_block + 1) * kBlockN / params.page_block_size;
       const int block_table_offset_cur = (n_block + 1) * kBlockN - block_table_idx_cur * params.page_block_size;
       const int block_table_idx_next = n_block * kBlockN / params.page_block_size;
       const int block_table_offset_next = n_block * kBlockN - block_table_idx_next * params.page_block_size;
-      tVgV.data() = tVgV.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.v_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.v_row_stride;
+
+      const int offset_diff = block_table_offset_next - block_table_offset_cur;
+      if constexpr (V_QUANT_TYPE != 0) {
+        tVgV_quant.data() = tVgV_quant.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.v_batch_stride + offset_diff * params.v_row_stride;
+      } else {
+        tVgV.data() = tVgV.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.v_batch_stride + offset_diff * params.v_row_stride;
+      }
     }
-    flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV);
+
+    if constexpr (V_QUANT_TYPE != 0) {
+      flash::copy_and_dequantize<Is_even_MN, Is_even_K, V_QUANT_TYPE, KV_BIT_WIDTH>(
+          gmem_tiled_copy_QKV_quant, tVgV_quant, tVsV_dequant, tKVcKV_dequant, tKVpKV_dequant,
+          binfo.actual_seqlen_k - n_block * kBlockN, reinterpret_cast<const Element*>(params.v_scale_ptr),
+          params.d, bidh / params.h_h_k_ratio);
+    } else {
+      flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV, tKVpKV);
+    }
     cute::cp_async_fence();
 
     flash::gemm(
@@ -903,15 +1107,33 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     if (n_block > n_block_min) {
       // Advance gK
       if (block_table == nullptr) {
-        tKgK.data() = tKgK.data() + (-int(kBlockN * params.k_row_stride));
+        if constexpr (K_QUANT_TYPE != 0) {
+          tKgK_quant.data() = tKgK_quant.data() + (-int(kBlockN * params.k_row_stride));
+        } else {
+          tKgK.data() = tKgK.data() + (-int(kBlockN * params.k_row_stride));
+        }
       } else {
         const int block_table_idx_cur = n_block * kBlockN / params.page_block_size;
         const int block_table_offset_cur = n_block * kBlockN - block_table_idx_cur * params.page_block_size;
         const int block_table_idx_next = (n_block - 1) * kBlockN / params.page_block_size;
         const int block_table_offset_next = (n_block - 1) * kBlockN - block_table_idx_next * params.page_block_size;
-        tKgK.data() = tKgK.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.k_batch_stride + (block_table_offset_next - block_table_offset_cur) * params.k_row_stride;
+        const int offset_diff = block_table_offset_next - block_table_offset_cur;
+
+        if constexpr (K_QUANT_TYPE != 0) {
+          tKgK_quant.data() = tKgK_quant.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.k_batch_stride + offset_diff * params.k_row_stride;
+        } else {
+          tKgK.data() = tKgK.data() + (block_table[block_table_idx_next] - block_table[block_table_idx_cur]) * params.k_batch_stride + offset_diff * params.k_row_stride;
+        }
       }
-      flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV);
+      if constexpr (K_QUANT_TYPE != 0) {
+        flash::copy_and_dequantize<Is_even_MN, Is_even_K, K_QUANT_TYPE, KV_BIT_WIDTH>(
+            gmem_tiled_copy_QKV_quant, tKgK_quant, tKsK_dequant, tKVcKV_dequant, tKVpKV_dequant,
+            binfo.actual_seqlen_k,
+            reinterpret_cast<const Element*>(params.k_scale_ptr),
+            params.d, bidh / params.h_h_k_ratio);
+      } else {
+        flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV);
+      }
       // This cp_async_fence needs to be in the if block, otherwise the synchronization
       // isn't right and we get race conditions.
       cute::cp_async_fence();
@@ -1030,7 +1252,8 @@ inline __device__ void compute_attn(const Params& params) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV, typename Params>
+template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV,
+          int K_QUANT_TYPE, int V_QUANT_TYPE, int KV_BIT_WIDTH, typename Params>
 inline __device__ void compute_attn_splitkv(const Params& params) {
   const int m_block = blockIdx.x;
   // The block index for the batch.
@@ -1039,7 +1262,8 @@ inline __device__ void compute_attn_splitkv(const Params& params) {
   const int bidh = Split ? blockIdx.z - bidb * params.h : blockIdx.z;
   const int n_split_idx = Split ? blockIdx.y : 0;
   const int num_n_splits = Split ? gridDim.y : 1;
-  flash::compute_attn_1rowblock_splitkv<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Is_softcap, Split, Append_KV>(params, bidb, bidh, m_block, n_split_idx, num_n_splits);
+  flash::compute_attn_1rowblock_splitkv<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Is_softcap, Split, Append_KV,
+                                        K_QUANT_TYPE, V_QUANT_TYPE, KV_BIT_WIDTH>(params, bidb, bidh, m_block, n_split_idx, num_n_splits);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

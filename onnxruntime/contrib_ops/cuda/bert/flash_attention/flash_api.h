@@ -121,7 +121,12 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        bool is_rotary_interleaved = false,
                        bool is_packed_qkv = false,
                        int max_num_blocks_per_seq = 0,
-                       int page_block_size = 1);
+                       int page_block_size = 1,
+                       void* k_scale = nullptr,
+                       void* v_scale = nullptr,
+                       int k_quant_type = 0,
+                       int v_quant_type = 0,
+                       int kv_cache_bit_width = 0);
 
 size_t get_softmax_lse_size(size_t max_seqlen_q, size_t batch_size, size_t num_heads);
 size_t get_softmax_lse_size(size_t token_count, size_t num_heads);
@@ -130,6 +135,8 @@ std::tuple<size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_
                                                                    size_t head_size, size_t num_SMs);
 
 bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k);
+
+bool is_supported_quantization(bool is_causal, size_t head_size, int k_quant_type, int v_quant_type, int kv_cache_bit_width);
 
 }  // namespace flash
 }  // namespace onnxruntime
