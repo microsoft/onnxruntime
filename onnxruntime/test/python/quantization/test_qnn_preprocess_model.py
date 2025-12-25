@@ -266,5 +266,56 @@ class TestQnnPreprocessModel(unittest.TestCase):
         self.assertIn("to be of rank >= 3", str(context.exception))
 
 
+class TestQNNPreprocessBase(unittest.TestCase):
+    """Test base class for QNN preprocess."""
+
+    __test__ = False
+
+    def setUp(self):
+        """Set up."""
+        self._model_path = Path("model.onnx")
+        self._preprocessed_model_path = Path("model_preprocessed.onnx")
+
+    def tearDown(self):
+        """Tear down."""
+        if self._model_path.exists():
+            self._model_path.unlink()
+        if self._preprocessed_model_path.exists():
+            self._preprocessed_model_path.unlink()
+
+
+class TestShapeNonZero(TestQNNPreprocessBase):
+    """Test ShapeNonZero preprocess."""
+
+    def test_basic(self):
+        """Test basic case."""
+
+        def build_model():
+            """Build model."""
+            input_ = onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 3, 4, 4])
+            output = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.INT64, None)
+
+            nonzero_node = onnx.helper.make_node("NonZero", ["input"], ["nonzero_output"])
+            transpose_node = onnx.helper.make_node("Transpose", ["nonzero_output"], ["output"], perm=[0, 1])
+
+            graph = onnx.helper.make_graph([nonzero_node, transpose_node], "model", inputs=[input_], outputs=[output])
+            model = onnx.helper.make_model(graph)
+            return onnx.shape_inference.infer_shapes(model)
+
+        onnx.save_model(build_model(), self._model_path)
+
+        modified = qnn_preprocess_model(self._model_path, self._preprocessed_model_path)
+        self.assertTrue(modified)
+
+        preprocessed_model = onnx.load(self._preprocessed_model_path)
+
+        def get_shape(vi):
+            """Get shape for value info."""
+            return [dim.dim_value for dim in vi.type.tensor_type.shape.dim]
+
+        self.assertEqual(get_shape(preprocessed_model.graph.value_info[0]), [4, 48])
+        self.assertEqual(get_shape(preprocessed_model.graph.output[0]), [4, 48])
+
+
 if __name__ == "__main__":
     unittest.main()
