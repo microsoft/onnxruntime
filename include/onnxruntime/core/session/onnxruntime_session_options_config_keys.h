@@ -415,3 +415,10 @@ static const char* const kOrtSessionOptionsFailOnSuboptimalCompiledModel =
 // "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver",
 // "sustained_high_performance". Default to "default".
 static const char* const kOrtEpDynamicOptionsQnnHtpPerformanceMode = "ep.dynamic.qnn_htp_performance_mode";
+
+// Enable QNN HTP batch multiplier
+//
+// Option values:
+// - "0": QNN htp batch multiplier is disabled. [DEFAULT]
+// - "1": QNN htp batch multiplier is enabaled.
+static const char* const kOrtSessionOptionsQnnHtpBatchMultiplier = "ep.qnn.enable_htp_batch_multiplier";
