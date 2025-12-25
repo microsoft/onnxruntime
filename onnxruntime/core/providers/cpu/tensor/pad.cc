@@ -505,11 +505,11 @@ static Status PadImpl(OpKernelContext* ctx,
 
   TensorShapeVector reshaped_output_dims = reshaped_input_dims;
   TensorShapeVector input_starts;
-  TensorShapeVector input_extents;
+  TensorShapeVector effective_input_extents;
 
   // Calculate reshaped output dimensions, and handle any negative padding
   input_starts.reserve(new_dims_count);
-  input_extents.reserve(new_dims_count);
+  effective_input_extents.reserve(new_dims_count);
   for (size_t i = 0; i < new_dims_count; i++) {
     // Starts for every dimension. If slice is negative, we need to start further in, handled by the SliceIterator
     input_starts.push_back(-1 * reshaped_slice[i]);
@@ -517,7 +517,7 @@ static Status PadImpl(OpKernelContext* ctx,
     int64_t extent = std::max<int64_t>(SafeInt<int64_t>(reshaped_input_dims[i]) +
                                            reshaped_slice[i] + reshaped_slice[i + new_dims_count],
                                        0U);
-    input_extents.push_back(extent);
+    effective_input_extents.push_back(extent);
     reshaped_output_dims[i] += SafeInt<int64_t>(reshaped_pad[i]) + reshaped_pad[i + new_dims_count] +
                                reshaped_slice[i] + reshaped_slice[i + new_dims_count];
   }
@@ -527,27 +527,11 @@ static Status PadImpl(OpKernelContext* ctx,
     output_dims[i] += SafeInt<int64_t>(pads[i]) + pads[i + data_rank] + slices[i] + slices[i + data_rank];
   }
 
-  // special case an input with one or more dim values of 0. edge case that is easier to handle
-  // separately than to complicate all the code for normal usage.
+  // If the input is empty, but output shape may not be, need padding only
+  // this is expected for constant mode only, otherwise the output is empty
+  // no error
   if (orig_input_shape.Size() == 0) {
     return PadInputWithDimValueOfZero(ctx, mode, orig_input_shape, output_dims, value);
-  }
-
-  // Special case for Reflect mode: ensure all extents >= 2 after slicing
-  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
-  // implies that this would be wrong as the start and end positions should be distinct
-  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
-  if (mode == Mode::Reflect) {
-    for (size_t i = 0; i < new_dims_count; ++i) {
-      const int64_t extent = input_extents[i];  // length after slicing
-      const bool reflect_on_axis =
-          (reshaped_pad[i] > 0) || (reshaped_pad[i + new_dims_count] > 0);
-      if (reflect_on_axis && extent < 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Pad reflect requires axis length >= 2 after slicing. Input shape:",
-                               orig_input_shape);
-      }
-    }
   }
 
   // output_shape needs to keep original.
@@ -559,23 +543,35 @@ static Status PadImpl(OpKernelContext* ctx,
   auto* output_end = output + static_cast<size_t>(total_output_elems);
   OutputSink<T> sink(output, output_end);
 
-  // Early constant-fill: if any input extent is zero, no data to copy
-  // only padding if any
-  bool no_data_to_copy = false;
-  for (size_t i = 0; i < input_extents.size(); ++i) {
-    if (input_extents[i] == 0) {
-      no_data_to_copy = true;
-      break;
-    }
-  }
+  // Early constant-fill: if any effective input extent is zero (input is not empty), no data to copy
+  // only padding if any for constant mode, for other modes it is an error
+  const bool no_effective_data_to_copy = std::any_of(effective_input_extents.begin(), effective_input_extents.end(),
+                                                     [](int64_t v) { return v == 0; });
 
-  if (no_data_to_copy) {
+  if (no_effective_data_to_copy) {
     if (mode == Mode::Constant) {
       PadAxisConstant<T>(sink, output, value, total_output_elems);
       return Status::OK();
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Pad: invalid mode: ", static_cast<int>(mode), " with zero effective input extent");
+  }
+
+  // Special case for Reflect mode: ensure all extents >= 2 after slicing
+  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
+  // implies that this would be wrong as the start and end positions should be distinct
+  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
+  if (mode == Mode::Reflect) {
+    for (size_t i = 0; i < new_dims_count; ++i) {
+      const int64_t extent = effective_input_extents[i];  // length after slicing
+      const bool reflect_on_axis =
+          (reshaped_pad[i] > 0) || (reshaped_pad[i + new_dims_count] > 0);
+      if (reflect_on_axis && extent < 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect requires axis length >= 2 after slicing. Input shape:",
+                               orig_input_shape);
+      }
+    }
   }
 
   TensorPitches output_pitches(reshaped_output_dims);
@@ -588,9 +584,9 @@ static Status PadImpl(OpKernelContext* ctx,
 
   // Validate coverage: pre + copy + post == total
   SafeInt<size_t> copy_elems = 1;
-  for (size_t i = 0, lim = input_extents.size(); i < lim; ++i) {
+  for (size_t i = 0, lim = effective_input_extents.size(); i < lim; ++i) {
     // All extents are positive here due to the no_data_to_copy check above
-    copy_elems *= input_extents[i];
+    copy_elems *= effective_input_extents[i];
   }
 
   const size_t prepad_elems = align_skip;
@@ -599,9 +595,9 @@ static Status PadImpl(OpKernelContext* ctx,
       total_output_elems, prepad_elems, copy_elems, postpad_elems));
 
   TensorShape input_shape(reshaped_input_dims);
-  SliceIterator<T> input(input_tensor, input_shape, input_starts, input_extents, {});
+  SliceIterator<T> input(input_tensor, input_shape, input_starts, effective_input_extents, {});
 
-  ExtentAxisCounters input_counters(input_extents);
+  ExtentAxisCounters input_counters(effective_input_extents);
 
   switch (mode) {
     case Mode::Constant:
@@ -613,7 +609,7 @@ static Status PadImpl(OpKernelContext* ctx,
         {
           T* axis_start = output;
           // Compute the actual number of data elements to copy on the innermost axis (after cropping).
-          const size_t inner_extent = onnxruntime::narrow<size_t>(input_extents[inner_axis]);
+          const size_t inner_extent = onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]);
 
           // Copy innermost block. IMPORTANT: do not rely on the returned 'output' to be end-of-the extent.
           ORT_IGNORE_RETURN_VALUE(input.CopyInnermostAxisSolitaryInnerStep(output));
@@ -633,7 +629,7 @@ static Status PadImpl(OpKernelContext* ctx,
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
-          T* axis_start = output - inner_pitch * input_extents[input_counters.Axis()];
+          T* axis_start = output - inner_pitch * effective_input_extents[input_counters.Axis()];
           const SafeInt<size_t> pre_pad = reshaped_pad[input_counters.Axis()];
           const SafeInt<size_t> post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
           if (pre_pad > 0) {
@@ -655,7 +651,7 @@ static Status PadImpl(OpKernelContext* ctx,
       while (input_counters) {
         output += align_skip;
         {
-          const SafeInt<size_t> inner_extent = input_extents[inner_axis];
+          const SafeInt<size_t> inner_extent = effective_input_extents[inner_axis];
           T* axis_start = output;
           T* axis_end = axis_start + onnxruntime::narrow<ptrdiff_t>(inner_extent);
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
@@ -687,7 +683,7 @@ static Status PadImpl(OpKernelContext* ctx,
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
-          T* axis_start = output - inner_pitch * input_extents[input_counters.Axis()];
+          T* axis_start = output - inner_pitch * effective_input_extents[input_counters.Axis()];
           const SafeInt<size_t> pre_pad = reshaped_pad[input_counters.Axis()];
           const SafeInt<size_t> post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
           if (pre_pad > 0) {
@@ -774,7 +770,7 @@ static Status PadImpl(OpKernelContext* ctx,
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
           ptrdiff_t inner_pitch = onnxruntime::narrow<std::ptrdiff_t>(output_pitches[input_counters.Axis()]);
-          T* axis_start = output - inner_pitch * input_extents[input_counters.Axis()];
+          T* axis_start = output - inner_pitch * effective_input_extents[input_counters.Axis()];
           const SafeInt<size_t> pre_pad = reshaped_pad[input_counters.Axis()];
           const SafeInt<size_t> post_pad = reshaped_pad[input_counters.Axis() + new_dims_count];
           if (mode == Mode::Reflect) {

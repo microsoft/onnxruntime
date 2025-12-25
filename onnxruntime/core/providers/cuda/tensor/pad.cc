@@ -145,13 +145,49 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     output_dims[i] += SafeInt<int64_t>(lower_pads[i]) + upper_pads[i];
   }
 
-  TensorShapeVector input_extents;
-  input_extents.reserve(dimension_count);
+  TensorShapeVector effective_input_extents;
+  effective_input_extents.reserve(dimension_count);
   for (size_t i = 0; i < dimension_count; i++) {
     int64_t extent = std::max<int64_t>(SafeInt<int64_t>(input_dims[i]) +
                                            (*p_slices)[i] + (*p_slices)[i + dimension_count],
                                        0U);
-    input_extents.push_back(extent);
+    effective_input_extents.push_back(extent);
+  }
+
+  TensorShape output_shape(output_dims);
+  auto& output_tensor = *ctx->Output(0, output_shape);
+
+  // If the input size is zero, but output shape is not, need padding only
+  // this is expected for constant mode only, otherwise the output is empty
+  // no error
+  if (input_shape.Size() == 0) {
+    ORT_RETURN_IF_ERROR(PadBase::HandleDimValueZero(mode_, input_shape, output_shape));
+    if (mode_ == Mode::Constant) {
+      CUDA_CALL_THROW(cudaMemsetAsync(output_tensor.MutableDataRaw(), value, output_tensor.SizeInBytes(),
+                                      Stream(ctx)));
+      cudaStreamSynchronize(Stream(ctx));
+    }
+    // No error for other modes (preserve CPU historical behavior),
+    // but no output should be expected either
+    return Status::OK();
+  }
+
+  // Early constant-fill: input is not empty as above
+  // However, if any effective input extent is zero, no data to copy
+  // only padding if any.
+  const bool no_effective_data_to_copy = std::any_of(effective_input_extents.begin(), effective_input_extents.end(),
+                                                     [](int64_t v) { return v == 0; });
+
+  if (no_effective_data_to_copy) {
+    if (mode_ == Mode::Constant) {
+      // Attempt to pad constant mode in case output is not empty
+      // all other modes are an error
+      CUDA_CALL_THROW(cudaMemsetAsync(output_tensor.MutableDataRaw(), value, output_tensor.SizeInBytes(),
+                                      Stream(ctx)));
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Pad: invalid mode: ", static_cast<int>(mode_), " with zero effective input extent");
   }
 
   // Special case for Reflect mode: ensure all extents >= 2 after slicing
@@ -160,7 +196,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
   if (mode_ == Mode::Reflect) {
     for (size_t i = 0; i < dimension_count; ++i) {
-      const int64_t extent = input_extents[i];  // length after slicing
+      const int64_t extent = effective_input_extents[i];  // length after slicing
       const bool reflect_on_axis =
           (*p_pads)[i] > 0 || (*p_pads)[i + dimension_count] > 0;
       if (reflect_on_axis && extent < 2) {
@@ -169,40 +205,6 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
                                input_shape);
       }
     }
-  }
-
-  TensorShape output_shape(output_dims);
-
-  // special case when there is a dim value of 0 in the shape. behavior depends on mode
-  if (input_shape.Size() == 0) {
-    ORT_RETURN_IF_ERROR(PadBase::HandleDimValueZero(mode_, input_shape, output_shape));
-  }
-
-  auto& output_tensor = *ctx->Output(0, output_shape);
-  if (output_shape.Size() == 0) {
-    // No elements to output
-    return Status::OK();
-  }
-
-  // Early constant-fill: if any input extent is zero, no data to copy
-  // only padding if any
-  bool no_data_to_copy = false;
-  for (size_t i = 0; i < input_extents.size(); ++i) {
-    if (input_extents[i] == 0) {
-      no_data_to_copy = true;
-      break;
-    }
-  }
-
-  if (no_data_to_copy) {
-    if (mode_ == Mode::Constant) {
-      cuda::Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(output_tensor.MutableDataRaw()),
-                        value,
-                        input_shape.Size());
-      return Status::OK();
-    }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Pad: invalid mode: ", static_cast<int>(mode_), " with zero effective input extent");
   }
 
   // Case of all pads and slices being zero: just copy input to output

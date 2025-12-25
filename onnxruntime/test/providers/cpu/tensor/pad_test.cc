@@ -67,7 +67,7 @@ static void RunAllOpsetAllDomainPadTests(
     bool value_is_initializer;
   };
   const std::vector<TestParams> all_test_params{
-      {false, false},
+      {true, false},
 #if (defined(USE_NNAPI) && defined(__ANDROID__)) || (defined(USE_COREML) && defined(__APPLE__))
       // only enable when building NNAPI EP on Android or building CoreML EP for Apple environment
       // test runs out of memory in QEMU aarch64 environment, so don't enable otherwise
@@ -1434,7 +1434,10 @@ TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
   // Post-slice core: [4]; wrap 3 -> [4, 4, 4, 4]
   const std::vector<float> expected_data = {4, 4, 4, 4};
 
-  OpTester test("Pad", 19);  // CUDA registers only up to 18 and does not impl wrap mode
+  // CUDA registers only up to 18 and does not impl wrap mode
+  // so we force version to 19 to automatically exclude EPs that do not
+  // implement wrap mode similar to the above tests.
+  OpTester test("Pad", 19);
   test.AddInput<float>("data", input_shape, input_data);
   test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
