@@ -417,8 +417,9 @@ class IExecutionProvider {
   }
 
   /**
-   * Returns a the underlying OrtEp instance if this IExecutionProvider wraps a plugin EP.
+   * Returns the underlying OrtEp instance if this IExecutionProvider wraps a plugin EP.
    * Otherwise, returns a nullptr (default implementation).
+   * This is used to retrieve the OrtEp instance from a OrtKernelInfo instance in a plugin EP's kernel implementation.
    */
   virtual const OrtEp* GetOrtEp() const {
     return nullptr;

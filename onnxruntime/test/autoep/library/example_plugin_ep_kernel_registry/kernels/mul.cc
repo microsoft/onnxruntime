@@ -16,7 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     Mul)
 
-Mul::Mul(const OrtKernelInfo* info, void* state, PrivateTag)
+Mul::Mul(Ort::ConstKernelInfo info, void* state, PrivateTag)
     : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
       info_{info},
       data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {

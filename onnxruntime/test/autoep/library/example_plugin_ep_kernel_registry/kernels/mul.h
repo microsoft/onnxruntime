@@ -26,7 +26,7 @@ class Mul : public OrtKernelImpl {
 
  public:
   static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Mul>& kernel) noexcept;
-  Mul(const OrtKernelInfo* info, void* state, PrivateTag);
+  Mul(Ort::ConstKernelInfo info, void* state, PrivateTag);
 
   // Static functions assigned to the OrtKernelImpl fields:
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
