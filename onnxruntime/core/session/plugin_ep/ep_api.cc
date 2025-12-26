@@ -582,6 +582,47 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo*
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
+                    _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
+                    _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
+                    _In_ size_t num_buffers) {
+  API_IMPL_BEGIN
+  if (prepacked_weight_cache == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a valid OrtPrePackedWeightsCache instance");
+  }
+
+  if (buffer_data_ptrs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of buffer data pointers");
+  }
+
+  if (buffer_data_sizes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of buffer data sizes");
+  }
+
+  if (num_buffers == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify at least one weight data buffer");
+  }
+
+  OrtStatus* status = nullptr;
+
+  ORT_TRY {
+    prepacked_weight_cache->SetBuffers(buffer_data_ptrs, buffer_data_sizes, num_buffers);
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      // This API function promises that ORT will take ownership of the data only if it returns successfully.
+      // If any exception occurred while filling out `prepacked_weight_cache`, we try to release ownership so that
+      // the caller retains ownership of all of the original data and can delete it.
+      prepacked_weight_cache->ReleaseAllData();
+      status = OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep) {
   API_IMPL_BEGIN
   if (ep == nullptr) {
@@ -663,6 +704,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDef_GetOutputMemType,
     &OrtExecutionProviderApi::GetTensorDataType,
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
+    &OrtExecutionProviderApi::SharedPrePackedWeightCache_StoreWeightData,
     &OrtExecutionProviderApi::KernelInfo_GetEp,
 };
 

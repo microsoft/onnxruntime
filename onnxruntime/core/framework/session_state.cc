@@ -421,16 +421,23 @@ void SessionState::CleanInitializedTensorsFromGraph() {
 static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
                                               const PrePackedWeights& prepacked_weights,
                                               const std::string& node_name) {
-  std::vector<BufferUniquePtr> shared_prepacked_buffers;
-  shared_prepacked_buffers.reserve(4);  // Unlikely to see more than 4 prepacked buffers per initializer
+  const size_t num_buffers = prepacked_weights.buffers_.size();
+  assert(prepacked_weights.buffer_sizes_.size() == num_buffers);
 
-  for (const auto& prepacked_buffer : prepacked_weights.buffers_) {
+  std::vector<BufferUniquePtr> shared_prepacked_buffers;
+  std::vector<size_t> shared_prepacked_buffer_sizes;
+  shared_prepacked_buffers.reserve(num_buffers);
+  shared_prepacked_buffer_sizes.reserve(num_buffers);
+
+  for (size_t i = 0; i < num_buffers; i++) {
     // BufferDeleter is nullptr because the kernel should not delete the shared buffer - it can only use it
-    shared_prepacked_buffers.emplace_back(prepacked_buffer.get(), BufferDeleter(nullptr));
+    shared_prepacked_buffers.emplace_back(prepacked_weights.buffers_[i].get(), BufferDeleter(nullptr));
+    shared_prepacked_buffer_sizes.push_back(prepacked_weights.buffer_sizes_[i]);
   }
 
   bool used_shared_buffers = false;
-  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers(shared_prepacked_buffers, input_idx, used_shared_buffers));
+  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers_V2(shared_prepacked_buffers, shared_prepacked_buffer_sizes,
+                                                          input_idx, used_shared_buffers));
 
   // BUG CHECK: Ensure that the kernel used the provided shared buffers
   // Mostly a debug check to ensure that the kernel has an overridden implementation of the
