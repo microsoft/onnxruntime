@@ -154,7 +154,8 @@ static OrtStatusPtr ExecuteIfKernelApiEnabled(const T& fn) {
 #else
 template <typename T>
 static OrtStatusPtr ExecuteIfKernelApiEnabled(const T&) {
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "OrtKernelContext API is not enabled in this build");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "APIs for OrtKernelContext and OrtKernelInfo are not enabled in this build");
 }
 #endif
 
