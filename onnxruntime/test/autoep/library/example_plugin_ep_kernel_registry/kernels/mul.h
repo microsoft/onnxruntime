@@ -41,7 +41,7 @@ class Mul : public OrtKernelImpl {
                                                               size_t num_buffers, int input_index) noexcept;
 
  private:
-  const OrtKernelInfo* info_;
+  Ort::ConstKernelInfo info_;
   OrtDataTransferImpl* data_transfer_impl_;  // Custom state passed from OrtEp
   std::optional<PackedWeightInfo> packed_weight_1_info_ = std::nullopt;
 };

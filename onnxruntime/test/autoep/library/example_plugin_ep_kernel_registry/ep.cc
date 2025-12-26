@@ -14,12 +14,13 @@
 #include "ep_factory.h"
 #include "../plugin_ep_utils.h"
 
-ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const OrtLogger& logger)
+ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const Config& config, const OrtLogger& logger)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       factory_{factory},
       ort_api_{factory.GetOrtApi()},
       ep_api_{factory.GetEpApi()},
       name_{factory.GetEpName()},
+      config_{config},
       logger_{logger} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
 

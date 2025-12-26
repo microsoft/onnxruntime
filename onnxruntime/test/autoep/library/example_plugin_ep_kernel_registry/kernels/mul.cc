@@ -5,6 +5,7 @@
 #include <sstream>
 #include "mul.h"
 #include "utils.h"
+#include "../ep.h"
 
 // Defines a kernel creation function for version 14 of Mul.
 ONNX_OPERATOR_KERNEL_EX(
@@ -34,7 +35,7 @@ OrtStatus* Mul::Create(const OrtKernelInfo* info, void* state,
                        /*out*/ std::unique_ptr<Mul>& result) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   // Note: can do basic validation or preprocessing via the OrtKernelInfo APIs.
-  result = std::make_unique<Mul>(info, state, PrivateTag{});
+  result = std::make_unique<Mul>(Ort::ConstKernelInfo(info), state, PrivateTag{});
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -48,7 +49,6 @@ void ORT_API_CALL Mul::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 OrtStatus* ORT_API_CALL Mul::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Mul* mul_kernel = static_cast<Mul*>(this_ptr);
-  static_cast<void>(mul_kernel->info_);  // NOTE: Unused in this example.
 
   Ort::KernelContext kernel_context(kernel_ctx);
 
@@ -128,9 +128,11 @@ OrtStatus* ORT_API_CALL Mul::PrePackWeightImpl(OrtKernelImpl* this_ptr, const Or
 
   RETURN_IF_ERROR(CopyTensor(*mul_kernel->data_transfer_impl_, original_weight, packed_weight.GetUnowned()));
 
-  const bool sharing_allowed = prepacked_weight_cache != nullptr;
+  const ExampleKernelEp* ep = static_cast<const ExampleKernelEp*>(mul_kernel->info_.GetEp());
+  const bool ep_sharing_enabled = ep->GetConfig().enable_prepack_weight_sharing;
+  const bool ort_sharing_allowed = prepacked_weight_cache != nullptr;
 
-  if (sharing_allowed) {
+  if (ort_sharing_allowed && ep_sharing_enabled) {
     std::array<void*, 1> buffer_data_ptrs = {weight_info.owned_data.get()};
     std::array<size_t, 1> buffer_data_sizes = {weight_info.num_bytes};
 
