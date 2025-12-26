@@ -167,7 +167,7 @@ dependencies {
 }
 
 processTestResources {
-	duplicatesStrategy(DuplicatesStrategy.INCLUDE) // allows duplicates in the test resources
+	duplicatesStrategy = DuplicatesStrategy.INCLUDE // allows duplicates in the test resources
 }
 
 test {
