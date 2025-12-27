@@ -135,6 +135,9 @@ OrtStatus* ORT_API_CALL Mul::PrePackWeightImpl(OrtKernelImpl* this_ptr, const Or
     std::array<size_t, 1> buffer_data_sizes = {weight_info.num_bytes};
 
     Ort::UnownedSharedPrePackedWeightCache weight_cache(prepacked_weight_cache);
+
+    // weight_cache takes ownership of the data. As the API documentation states, this requires that the
+    // weight data is allocated with the OrtAllocator provided as a parameter to OrtKernelImpl::PrePackWeight.
     RETURN_IF_ERROR(weight_cache.StoreWeightData(buffer_data_ptrs.data(),
                                                  buffer_data_sizes.data(),
                                                  buffer_data_ptrs.size()));
