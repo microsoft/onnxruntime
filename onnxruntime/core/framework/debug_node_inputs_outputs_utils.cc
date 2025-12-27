@@ -99,6 +99,7 @@ struct TensorMetadata {
   std::string producer;
   std::string consumer;
   std::string device_type;
+  std::string ep_type;
   size_t step;
 };
 
@@ -139,14 +140,14 @@ void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_option
   }
 }
 
-PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOptions& dump_options) {
+PathString MakeTensorFileName(const TensorMetadata& tensor_metadata, const NodeDumpOptions& dump_options) {
   auto make_valid_name = [](std::string name) {
     std::replace_if(
         name.begin(), name.end(), [](char c) { return !std::isalnum(c); }, '_');
     return name;
   };
 
-  return path_utils::MakePathString(make_valid_name(tensor_name), dump_options.file_suffix, ".tensorproto");
+  return path_utils::MakePathString(tensor_metadata.ep_type, "_", make_valid_name(tensor_metadata.name), dump_options.file_suffix, ".tensorproto");
 }
 
 void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const std::filesystem::path& file_path) {
@@ -375,7 +376,7 @@ void DumpCpuTensor(
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
-      const std::filesystem::path tensor_file = dump_options.output_dir / MakeTensorFileName(tensor_metadata.name, dump_options);
+      const std::filesystem::path tensor_file = dump_options.output_dir / MakeTensorFileName(tensor_metadata, dump_options);
       DumpTensorToFile(tensor, tensor_metadata.name, tensor_file);
       break;
     }
@@ -582,6 +583,7 @@ void DumpNodeInputs(
               tensor_metadata.name = input_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
+              tensor_metadata.ep_type = node.GetExecutionProviderType();
 
               TensorStatisticsData tensor_statistics;
               DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
@@ -678,6 +680,7 @@ void DumpNodeOutputs(
               tensor_metadata.name = output_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
+              tensor_metadata.ep_type = node.GetExecutionProviderType();
 
               TensorStatisticsData tensor_statistics;
               DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
