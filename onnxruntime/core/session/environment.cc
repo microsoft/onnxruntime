@@ -690,17 +690,17 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
     return ToStatusAndRelease(ort_status);
   }
 
+  auto ort_allocator = OrtAllocatorUniquePtr(allocator,
+                                             [&ep_device](OrtAllocator* allocator) {
+                                               ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
+                                             });
+
   if (allocator->Info(allocator)->alloc_type == OrtAllocatorType::OrtArenaAllocator) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "OrtEpFactory returned an allocator with OrtAllocatorType of OrtArenaAllocator. "
                            "This type is reserved for ONNX Runtime internal usage only, as any arena usage by the "
                            "EP library should be opaque to ORT");
   }
-
-  auto ort_allocator = OrtAllocatorUniquePtr(allocator,
-                                             [&ep_device](OrtAllocator* allocator) {
-                                               ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
-                                             });
 
   shared_ort_allocators_.insert(allocator);
 
