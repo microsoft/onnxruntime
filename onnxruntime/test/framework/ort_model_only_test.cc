@@ -17,6 +17,8 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 
+#include <filesystem>
+#include <iostream>
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
@@ -27,6 +29,28 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+namespace {
+std::filesystem::path ResolveTestPath(const std::filesystem::path& path) {
+  if (path.is_absolute() || path.empty()) {
+    return path;
+  }
+
+  std::filesystem::path workspace_candidate = std::filesystem::current_path() / path;
+  if (std::filesystem::exists(workspace_candidate)) {
+    return workspace_candidate;
+  }
+
+  static const std::filesystem::path kSourceTestRoot =
+      std::filesystem::path{ORT_TSTR(__FILE__)}.parent_path().parent_path();
+  std::filesystem::path source_candidate = kSourceTestRoot / path;
+  if (std::filesystem::exists(source_candidate)) {
+    return source_candidate;
+  }
+
+  return workspace_candidate;
+}
+}  // namespace
+
 struct OrtModelTestInfo {
   std::basic_string<ORTCHAR_T> model_filename;
   std::string logid;
@@ -59,17 +83,21 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 
   std::vector<char> model_data;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
+  std::filesystem::path model_path = ResolveTestPath(std::filesystem::path{test_info.model_filename});
+
+  std::cerr << "RunOrtModel cwd: " << std::filesystem::current_path() << " loading: " << model_path << std::endl;
+  const auto& model_path_str = model_path.native();
   if (test_info.run_use_buffer) {
     // Load the file into a buffer and use the buffer to create inference session
     size_t num_bytes = 0;
-    ASSERT_STATUS_OK(Env::Default().GetFileLength(test_info.model_filename.c_str(), num_bytes));
+    ASSERT_STATUS_OK(Env::Default().GetFileLength(model_path_str.c_str(), num_bytes));
     model_data.resize(num_bytes);
-    std::ifstream bytes_stream(test_info.model_filename, std::ifstream::in | std::ifstream::binary);
+    std::ifstream bytes_stream(model_path, std::ifstream::in | std::ifstream::binary);
     bytes_stream.read(model_data.data(), num_bytes);
     bytes_stream.close();
     ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(num_bytes)));
   } else {
-    ASSERT_STATUS_OK(session_object.Load(test_info.model_filename));  // infer type from filename
+    ASSERT_STATUS_OK(session_object.Load(model_path_str));  // infer type from filename
   }
 
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -145,7 +173,7 @@ static void CompareGraphAndSessionState(const InferenceSessionWrapper& session_o
 
   for (const auto& pair : i1) {
     auto iter = i2.find(pair.first);
-    ASSERT_NE(iter, i2.cend());
+    ASSERT_NE(iter, i2.cend()) << "Missing initializer " << pair.first;
 
     const OrtValue& left = pair.second;
     const OrtValue& right = iter->second;
@@ -213,9 +241,28 @@ static void CompareSessionMetadata(const InferenceSessionWrapper& session_object
 static void SaveAndCompareModels(const PathString& orig_file,
                                  const PathString& ort_file,
                                  TransformerLevel optimization_level = TransformerLevel::Level3) {
+  std::filesystem::path orig_path = ResolveTestPath(std::filesystem::path{orig_file});
+  std::filesystem::path ort_path = ResolveTestPath(std::filesystem::path{ort_file});
+  if (ort_path.has_parent_path()) {
+    std::filesystem::create_directories(ort_path.parent_path());
+  }
+
+  const bool orig_is_ort_format = orig_path.extension() == ORT_TSTR(".ort");
+  if (orig_is_ort_format) {
+    SessionOptions so;
+    so.session_logid = "SerializeToOrtFormat";
+    so.optimized_model_filepath = ort_path.native();
+    so.graph_optimization_level = optimization_level;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
+    InferenceSessionWrapper session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(orig_path.native()));
+    ASSERT_STATUS_OK(session_object.Initialize());
+    return;
+  }
+
   SessionOptions so;
   so.session_logid = "SerializeToOrtFormat";
-  so.optimized_model_filepath = ort_file;
+  so.optimized_model_filepath = ort_path.native();
   so.graph_optimization_level = optimization_level;
 
   // not strictly necessary - type should be inferred from the filename
@@ -223,7 +270,7 @@ static void SaveAndCompareModels(const PathString& orig_file,
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   // create .ort file during Initialize due to values in SessionOptions
-  ASSERT_STATUS_OK(session_object.Load(orig_file));
+  ASSERT_STATUS_OK(session_object.Load(orig_path.native()));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   SessionOptions so2;
@@ -234,7 +281,7 @@ static void SaveAndCompareModels(const PathString& orig_file,
 
   // load serialized version
   InferenceSessionWrapper session_object2{so2, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object2.Load(ort_file));
+  ASSERT_STATUS_OK(session_object2.Load(ort_path.native()));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
   CompareSessionMetadata(session_object, session_object2);

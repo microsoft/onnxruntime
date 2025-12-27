@@ -1146,6 +1146,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    bool ChannelsLast,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
     )
@@ -1204,7 +1205,7 @@ Return Value:
     if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
         GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
-        Activation, WorkingBufferSize, Beta, ThreadPool)){
+        Activation, WorkingBufferSize, ChannelsLast, Beta, ThreadPool)){
         return;
     }
     //
@@ -1215,6 +1216,7 @@ Return Value:
     Parameters->BatchCount = BatchCount;
     Parameters->GroupCount = GroupCount;
     Parameters->InputChannels = InputChannels;
+    Parameters->ChannelsLast = ChannelsLast;
     Parameters->FilterCount = FilterCount;
     Parameters->Beta = Beta;
 

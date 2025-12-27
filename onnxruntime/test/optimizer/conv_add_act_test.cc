@@ -30,9 +30,10 @@ void TestConvPath(const std::vector<int64_t>& input_shape, const std::vector<int
 
   auto check_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["com.microsoft.FusedConv"], 1);
+    const auto fused_count = op_to_count["com.microsoft.FusedConv"] + op_to_count["com.microsoft.NhwcFusedConv"];
+    EXPECT_EQ(fused_count, 1);
   };
-  InlinedHashSet<std::string> disabled_optimizers = {"NchwcTransformer"};
+  InlinedHashSet<std::string> disabled_optimizers = {"NchwcTransformer", "NhwcTransformer"};
   TransformerTester(build_test_case,
                     check_graph,
                     TransformerLevel::Default,

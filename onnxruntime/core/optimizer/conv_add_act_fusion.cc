@@ -211,7 +211,15 @@ class FuseConvAddActivationAction : public ReplaceWithNew {
 
  private:
   std::string OpType(const RuntimeState& runtimeState) const override {
-    return (runtimeState.selected_nodes.Target().OpType() == "Conv") ? "FusedConv" : "NhwcFusedConv";
+    const auto& target = runtimeState.selected_nodes.Target();
+    const auto* channels_last_attr = graph_utils::GetNodeAttribute(target, "channels_last");
+    const bool channels_last = channels_last_attr != nullptr && channels_last_attr->i() != 0;
+
+    if (target.OpType() == "Conv") {
+      return channels_last ? "NhwcFusedConv" : "FusedConv";
+    }
+
+    return "NhwcFusedConv";
   }
 
   std::string Domain(const RuntimeState&) const override { return kMSDomain; }

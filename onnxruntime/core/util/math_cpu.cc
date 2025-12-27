@@ -770,6 +770,7 @@ void Im2col<T, StorageOrder::NHWC>::operator()(
 template struct Im2col<int8_t, StorageOrder::NHWC>;
 template struct Im2col<uint8_t, StorageOrder::NHWC>;
 template struct Im2col<MLFloat16, StorageOrder::NHWC>;
+template struct Im2col<float, StorageOrder::NHWC>;
 
 template <>
 void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64_t channels, int64_t height,
