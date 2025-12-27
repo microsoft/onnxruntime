@@ -4,6 +4,7 @@
 #pragma once
 
 #include "boost/mp11.hpp"
+#include <gsl/gsl>
 
 // It is safe to include the below header even if SHARED_PROVIDER macro is enabled
 // as it doesn't include any pb headers.
@@ -26,7 +27,6 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-#include <gsl/gsl>
 namespace onnxruntime {
 class OpKernelContext;
 }
@@ -105,6 +105,7 @@ class OpKernel {
     return Status::OK();
   }
 
+  // Note: New implementations should override OpKernel::UseSharedPrePackedBuffers_V2 instead.
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
   //                                 int input_idx,
@@ -128,6 +129,27 @@ class OpKernel {
                                            /*out*/ bool& used_shared_buffers) {
     used_shared_buffers = false;
     return Status::OK();
+  }
+
+  /// <summary>
+  /// Version 2 of OpKernel::UseSharedPrePackedBuffers() that additionally accepts the buffer sizes as a parameter.
+  /// The default implementation of this function just calls directly to OpKernel::UseSharedPrePackedBuffers()
+  /// to avoid the need to update all existing kernel-based provider-bridge EPs.
+  ///
+  /// TODO: Consolidate UseSharedPrePackedBuffers and UseSharedPrePackedBuffers_V2 into a single function,
+  /// which will require updating kernel-based provider-bridge EPs (cpu, cuda, webgpu).
+  ///
+  /// </summary>
+  /// <param name="prepacked_buffers"></param>
+  /// <param name="prepacked_buffer_sizes"></param>
+  /// <param name="input_idx"></param>
+  /// <param name="used_shared_buffers"></param>
+  /// <returns></returns>
+  virtual Status UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                              int input_idx,
+                                              /*out*/ bool& used_shared_buffers) {
+    return UseSharedPrePackedBuffers(prepacked_buffers, input_idx, used_shared_buffers);
   }
 
   const OrtDevice GetDevice(OrtMemType mem_type) const;
