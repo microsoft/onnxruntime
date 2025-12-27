@@ -49,7 +49,7 @@
 	<meta property="og:type" content="website" />
 </svelte:head>
 <div class="selection:bg-info">
-	{#if !$page.url.pathname.startsWith('/blogs/')}
+	{#if !$page.url.pathname.startsWith('/blogs/') && !$page.url.pathname.startsWith('/models/')}
 		<Header />
 	{/if}
 	{#key data.pathname}
@@ -57,7 +57,7 @@
 			<slot />
 		</div>
 	{/key}
-	{#if !$page.url.pathname.startsWith('/blogs/')}
+	{#if !$page.url.pathname.startsWith('/blogs/') && !$page.url.pathname.startsWith('/models/')}
 		<Footer />
 	{/if}
 </div>

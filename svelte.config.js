@@ -1,8 +1,7 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/kit/vite';
 import { mdsvex } from 'mdsvex';
-import relativeImages from "mdsvex-relative-images";
-
+import relativeImages from 'mdsvex-relative-images';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -16,17 +15,29 @@ const config = {
 			layout: {
 				blogs: 'src/routes/blogs/post.svelte'
 			},
-			remarkPlugins: [relativeImages],
+			remarkPlugins: [relativeImages]
 		})
 	],
 
 	kit: {
-		// adapter-auto only supports some environments, see https://kit.svelte.dev/docs/adapter-auto for a list.
-		// If your environment is not supported or you settled on a specific environment, switch out the adapter.
-		// See https://kit.svelte.dev/docs/adapters for more information about adapters.
-		adapter: adapter(),
+		// Use adapter-static for GitHub Pages deployment
+		adapter: adapter({
+			// Output to build directory for GitHub Pages
+			pages: 'build',
+			assets: 'build',
+			fallback: undefined, // No SPA fallback needed - fully static
+			precompress: false,
+			strict: true // All routes must be prerenderable
+		}),
 		paths: {
 			base: process.env.NODE_ENV === 'production' ? '' : ''
+		},
+		prerender: {
+			// Handle missing IDs gracefully for static routes
+			handleMissingId: 'warn',
+			handleHttpError: 'warn',
+			// Crawl all static pages
+			crawl: true
 		}
 	}
 };
