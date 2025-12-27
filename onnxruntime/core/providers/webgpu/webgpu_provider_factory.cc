@@ -83,6 +83,8 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       false,
       // enable pix capture feature is diabled by default
       false,
+      // register int64 ops feature is disabled by default
+      false,
   };
 
   std::string preferred_layout_str;
@@ -109,6 +111,18 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
     }
   }
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
+
+  std::string register_int64_ops_str;
+  if (config_options.TryGetConfigEntry(kRegisterInt64Ops, register_int64_ops_str)) {
+    if (register_int64_ops_str == kRegisterInt64Ops_ON) {
+      webgpu_ep_config.register_int64_ops = true;
+    } else if (register_int64_ops_str == kRegisterInt64Ops_OFF) {
+      webgpu_ep_config.register_int64_ops = false;
+    } else {
+      ORT_THROW("Invalid register int64 ops: ", register_int64_ops_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP register int64 ops: " << webgpu_ep_config.register_int64_ops;
 
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.

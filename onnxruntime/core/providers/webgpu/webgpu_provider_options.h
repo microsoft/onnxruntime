@@ -11,6 +11,7 @@ namespace options {
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
+constexpr const char* kRegisterInt64Ops = "ep.webgpuexecutionprovider.registerInt64Ops";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
@@ -48,6 +49,9 @@ constexpr const char* kPreferredLayout_NHWC = "NHWC";
 
 constexpr const char* kEnableGraphCapture_ON = "1";
 constexpr const char* kEnableGraphCapture_OFF = "0";
+
+constexpr const char* kRegisterInt64Ops_ON = "1";
+constexpr const char* kRegisterInt64Ops_OFF = "0";
 
 constexpr const char* kEnablePIXCapture_ON = "1";
 constexpr const char* kEnablePIXCapture_OFF = "0";
