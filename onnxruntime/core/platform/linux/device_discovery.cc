@@ -155,8 +155,13 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
 
   for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
     OrtHardwareDevice gpu_device{};
-    ORT_RETURN_IF_ERROR(GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device));
-    gpu_devices.emplace_back(std::move(gpu_device));
+    Status status = GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device);
+    if (status.IsOK()) {
+      gpu_devices.emplace_back(std::move(gpu_device));
+    } else {
+      LOGS_DEFAULT(WARNING) << "Failed to get GPU device from sysfs path: " << status.ErrorMessage();
+      continue;
+    }
   }
 
   gpu_devices_out = std::move(gpu_devices);
