@@ -34,10 +34,21 @@ struct CapturedCommandInfo {
   WGPUBuffer indirect_buffer;  // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
 };
 
+struct WebGpuBufferCacheConfig {
+  struct ConfigEntry {
+    BufferCacheMode mode;
+    std::string config_string;  // preserved for customized configuration, eg. bucket sizes
+  };
+  ConfigEntry storage{BufferCacheMode::Bucket, {}};
+  ConfigEntry uniform{BufferCacheMode::Simple, {}};
+  ConfigEntry query_resolve{BufferCacheMode::Disabled, {}};
+  ConfigEntry default_entry{BufferCacheMode::Disabled, {}};
+};
+
 /// <summary>
-/// Represents the configuration parameters for creating a WebGpuContext.
+/// Represents the configuration options for creating a WebGpuContext.
 /// </summary>
-struct WebGpuContextCreationParams {
+struct WebGpuContextConfig {
   int context_id{0};
   WGPUInstance instance{nullptr};
   WGPUDevice device{nullptr};
@@ -51,23 +62,6 @@ struct WebGpuContextCreationParams {
   };
   bool preserve_device{false};
   uint64_t max_storage_buffer_binding_size{0};
-};
-
-struct WebGpuBufferCacheConfig {
-  struct ConfigEntry {
-    BufferCacheMode mode;
-    std::string config_string;  // preserved for customized configuration, eg. bucket sizes
-  };
-  ConfigEntry storage{BufferCacheMode::Bucket, {}};
-  ConfigEntry uniform{BufferCacheMode::Simple, {}};
-  ConfigEntry query_resolve{BufferCacheMode::Disabled, {}};
-  ConfigEntry default_entry{BufferCacheMode::Disabled, {}};
-};
-
-/// <summary>
-/// Represents the initialization parameters for a WebGpuContext.
-/// </summary>
-struct WebGpuContextInitializationParams {
   WebGpuBufferCacheConfig buffer_cache_config{};
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
   int backend_type{
@@ -97,8 +91,7 @@ class WebGpuContextFactory {
   /// <summary>
   /// Create a new WebGPU context for the specified context ID if not present, or return the existing one. (ref-count based)
   /// </summary>
-  static WebGpuContext& CreateContext(const WebGpuContextCreationParams& creation_params,
-                                      const WebGpuContextInitializationParams& init_params);
+  static WebGpuContext& CreateContext(const WebGpuContextConfig& config);
 
   /// <summary>
   /// Get the WebGPU context for the specified context ID. Throw if not present.
@@ -247,7 +240,7 @@ class WebGpuContext final {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
-  void Initialize(const WebGpuContextInitializationParams& params);
+  void Initialize(const WebGpuContextConfig& config);
 
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                              const std::vector<WGPUBuffer>& bind_buffers,

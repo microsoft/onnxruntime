@@ -87,13 +87,13 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   return webgpu_ep_config;
 }
 
-WebGpuContextCreationParams ParseWebGpuContextCreationParams(const ConfigOptions& config_options) {
-  WebGpuContextCreationParams context_creation_params{};
+WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options) {
+  WebGpuContextConfig config{};
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {
     ORT_ENFORCE(std::errc{} ==
-                std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(), context_creation_params.context_id).ec);
+                std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(), config.context_id).ec);
   }
 
   if (std::string webgpu_instance_str;
@@ -102,7 +102,7 @@ WebGpuContextCreationParams ParseWebGpuContextCreationParams(const ConfigOptions
     size_t webgpu_instance = 0;
     ORT_ENFORCE(std::errc{} ==
                 std::from_chars(webgpu_instance_str.data(), webgpu_instance_str.data() + webgpu_instance_str.size(), webgpu_instance).ec);
-    context_creation_params.instance = reinterpret_cast<WGPUInstance>(webgpu_instance);
+    config.instance = reinterpret_cast<WGPUInstance>(webgpu_instance);
   }
 
   if (std::string webgpu_device_str;
@@ -111,7 +111,7 @@ WebGpuContextCreationParams ParseWebGpuContextCreationParams(const ConfigOptions
     size_t webgpu_device = 0;
     ORT_ENFORCE(std::errc{} ==
                 std::from_chars(webgpu_device_str.data(), webgpu_device_str.data() + webgpu_device_str.size(), webgpu_device).ec);
-    context_creation_params.device = reinterpret_cast<WGPUDevice>(webgpu_device);
+    config.device = reinterpret_cast<WGPUDevice>(webgpu_device);
   }
 
   if (std::string dawn_proc_table_str;
@@ -119,19 +119,19 @@ WebGpuContextCreationParams ParseWebGpuContextCreationParams(const ConfigOptions
     size_t dawn_proc_table = 0;
     ORT_ENFORCE(std::errc{} ==
                 std::from_chars(dawn_proc_table_str.data(), dawn_proc_table_str.data() + dawn_proc_table_str.size(), dawn_proc_table).ec);
-    context_creation_params.dawn_proc_table = reinterpret_cast<const void*>(dawn_proc_table);
+    config.dawn_proc_table = reinterpret_cast<const void*>(dawn_proc_table);
   }
 
   if (std::string validation_mode_str;
       config_options.TryGetConfigEntry(kValidationMode, validation_mode_str)) {
     if (validation_mode_str == kValidationMode_Disabled) {
-      context_creation_params.validation_mode = ValidationMode::Disabled;
+      config.validation_mode = ValidationMode::Disabled;
     } else if (validation_mode_str == kValidationMode_wgpuOnly) {
-      context_creation_params.validation_mode = ValidationMode::WGPUOnly;
+      config.validation_mode = ValidationMode::WGPUOnly;
     } else if (validation_mode_str == kValidationMode_basic) {
-      context_creation_params.validation_mode = ValidationMode::Basic;
+      config.validation_mode = ValidationMode::Basic;
     } else if (validation_mode_str == kValidationMode_full) {
-      context_creation_params.validation_mode = ValidationMode::Full;
+      config.validation_mode = ValidationMode::Full;
     } else {
       ORT_THROW("Invalid validation mode: ", validation_mode_str);
     }
@@ -140,9 +140,9 @@ WebGpuContextCreationParams ParseWebGpuContextCreationParams(const ConfigOptions
   if (std::string preserve_device_str;
       config_options.TryGetConfigEntry(kPreserveDevice, preserve_device_str)) {
     if (preserve_device_str == kPreserveDevice_ON) {
-      context_creation_params.preserve_device = true;
+      config.preserve_device = true;
     } else if (preserve_device_str == kPreserveDevice_OFF) {
-      context_creation_params.preserve_device = false;
+      config.preserve_device = false;
     } else {
       ORT_THROW("Invalid preserve device: ", preserve_device_str);
     }
@@ -154,24 +154,18 @@ WebGpuContextCreationParams ParseWebGpuContextCreationParams(const ConfigOptions
         std::errc{} == std::from_chars(
                            max_storage_buffer_binding_size_str.data(),
                            max_storage_buffer_binding_size_str.data() + max_storage_buffer_binding_size_str.size(),
-                           context_creation_params.max_storage_buffer_binding_size)
+                           config.max_storage_buffer_binding_size)
                            .ec,
         "Invalid maxStorageBufferBindingSize value: ", max_storage_buffer_binding_size_str);
   }
 
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << context_creation_params.context_id;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUInstance: " << reinterpret_cast<size_t>(context_creation_params.instance);
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << reinterpret_cast<size_t>(context_creation_params.device);
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(context_creation_params.dawn_proc_table);
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << context_creation_params.validation_mode;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << context_creation_params.preserve_device;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << context_creation_params.max_storage_buffer_binding_size;
-
-  return context_creation_params;
-}
-
-WebGpuContextInitializationParams ParseWebGpuContextInitializationParams(const ConfigOptions& config_options) {
-  WebGpuContextInitializationParams context_init_params{};
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << config.context_id;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUInstance: " << reinterpret_cast<size_t>(config.instance);
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << reinterpret_cast<size_t>(config.device);
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(config.dawn_proc_table);
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << config.validation_mode;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;
 
   // buffer cache modes
   auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,
@@ -192,7 +186,7 @@ WebGpuContextInitializationParams ParseWebGpuContextInitializationParams(const C
     }
   };
 
-  WebGpuBufferCacheConfig& buffer_cache_config = context_init_params.buffer_cache_config;
+  WebGpuBufferCacheConfig& buffer_cache_config = config.buffer_cache_config;
   parse_buffer_cache_mode(kStorageBufferCacheMode, buffer_cache_config.storage.mode);
   parse_buffer_cache_mode(kUniformBufferCacheMode, buffer_cache_config.uniform.mode);
   parse_buffer_cache_mode(kQueryResolveBufferCacheMode, buffer_cache_config.query_resolve.mode);
@@ -202,9 +196,9 @@ WebGpuContextInitializationParams ParseWebGpuContextInitializationParams(const C
   if (std::string power_preference_str;
       config_options.TryGetConfigEntry(kPowerPreference, power_preference_str)) {
     if (power_preference_str == kPowerPreference_HighPerformance) {
-      context_init_params.power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);
+      config.power_preference = static_cast<int>(WGPUPowerPreference_HighPerformance);
     } else if (power_preference_str == kPowerPreference_LowPower) {
-      context_init_params.power_preference = static_cast<int>(WGPUPowerPreference_LowPower);
+      config.power_preference = static_cast<int>(WGPUPowerPreference_LowPower);
     } else {
       ORT_THROW("Invalid power preference: ", power_preference_str);
     }
@@ -214,9 +208,9 @@ WebGpuContextInitializationParams ParseWebGpuContextInitializationParams(const C
   if (std::string backend_type_str;
       config_options.TryGetConfigEntry(kDawnBackendType, backend_type_str)) {
     if (backend_type_str == kDawnBackendType_D3D12) {
-      context_init_params.backend_type = static_cast<int>(WGPUBackendType_D3D12);
+      config.backend_type = static_cast<int>(WGPUBackendType_D3D12);
     } else if (backend_type_str == kDawnBackendType_Vulkan) {
-      context_init_params.backend_type = static_cast<int>(WGPUBackendType_Vulkan);
+      config.backend_type = static_cast<int>(WGPUBackendType_Vulkan);
     } else {
       ORT_THROW("Invalid Dawn backend type: ", backend_type_str);
     }
@@ -227,45 +221,40 @@ WebGpuContextInitializationParams ParseWebGpuContextInitializationParams(const C
   if (std::string enable_pix_capture_str;
       config_options.TryGetConfigEntry(kEnablePIXCapture, enable_pix_capture_str)) {
     if (enable_pix_capture_str == kEnablePIXCapture_ON) {
-      context_init_params.enable_pix_capture = true;
+      config.enable_pix_capture = true;
     } else if (enable_pix_capture_str == kEnablePIXCapture_OFF) {
-      context_init_params.enable_pix_capture = false;
+      config.enable_pix_capture = false;
     } else {
       ORT_THROW("Invalid enable pix capture: ", enable_pix_capture_str);
     }
   }
 
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP storage buffer cache mode: " << context_init_params.buffer_cache_config.storage.mode;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP uniform buffer cache mode: " << context_init_params.buffer_cache_config.uniform.mode;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP query resolve buffer cache mode: " << context_init_params.buffer_cache_config.query_resolve.mode;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP default buffer cache mode: " << context_init_params.buffer_cache_config.default_entry.mode;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP storage buffer cache mode: " << config.buffer_cache_config.storage.mode;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP uniform buffer cache mode: " << config.buffer_cache_config.uniform.mode;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP query resolve buffer cache mode: " << config.buffer_cache_config.query_resolve.mode;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP default buffer cache mode: " << config.buffer_cache_config.default_entry.mode;
 
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP power preference: " << context_init_params.power_preference;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Dawn backend type: " << context_init_params.backend_type;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << context_init_params.enable_pix_capture;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP power preference: " << config.power_preference;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Dawn backend type: " << config.backend_type;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << config.enable_pix_capture;
 
-  return context_init_params;
+  return config;
 }
 
 }  // namespace
 
 std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
-  // STEP.1 - prepare WebGpuExecutionProviderConfig
+  // prepare WebGpuExecutionProviderConfig
   WebGpuExecutionProviderConfig webgpu_ep_config = ParseEpConfig(config_options);
 
-  // STEP.2 - prepare WebGpuContextCreationParams
-  WebGpuContextCreationParams context_creation_params = ParseWebGpuContextCreationParams(config_options);
-
-  // STEP.3 - prepare parameters for WebGPU context initialization.
-  WebGpuContextInitializationParams context_init_params = ParseWebGpuContextInitializationParams(config_options);
-
-  // STEP.4 - start initialization.
+  // prepare WebGpuContextConfig
+  WebGpuContextConfig config = ParseWebGpuContextConfig(config_options);
 
   // Load the Dawn library and create the WebGPU instance.
-  auto& context = WebGpuContextFactory::CreateContext(context_creation_params, context_init_params);
+  auto& context = WebGpuContextFactory::CreateContext(config);
 
   // Create WebGPU EP factory.
-  return std::make_shared<WebGpuProviderFactory>(context_creation_params.context_id, context, std::move(webgpu_ep_config));
+  return std::make_shared<WebGpuProviderFactory>(config.context_id, context, std::move(webgpu_ep_config));
 }
 
 // WebGPU DataTransfer implementation wrapper for the C API with lazy initialization
