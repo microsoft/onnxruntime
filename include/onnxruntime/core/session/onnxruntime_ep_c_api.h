@@ -368,8 +368,11 @@ struct OrtKernelImpl {
 
   /** \brief Optional function that receives data for a shared pre-packed weight from ORT.
    *
-   * This function is called after a prior call to OrtKernelImpl::PrePackWeight for a specific `input_index` set
-   * `is_packed` to true and stored weight data (to share) into the provided OrtSharedPrePackedWeightCache instance.
+   * ORT calls this function after calling OrtKernelImpl::PrePackWeight for a specific `input_index` if:
+   *   - OrtKernelImpl::PrePackWeight set the output parameter `is_packed` to true.
+   *   - OrtKernelImpl::PrePackWeight stored weight data to share into the provided OrtSharedPrePackedWeightCache
+   *     parameter (`prepacked_weight_cache`) via the API SharedPrePackedWeightCache_StoreWeightData.
+   *
    * Refer to the description of the "sharing-mode" in the documentation for OrtKernelImpl::PrePackWeight().
    *
    * \note ORT will not call this function for an `input_index` that a previous call to
