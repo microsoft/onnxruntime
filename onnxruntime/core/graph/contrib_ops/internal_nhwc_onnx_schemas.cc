@@ -163,6 +163,84 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearConvTranspose, 1);
 
+  // FormatTransform operator for OneDNN blocked format support
+  fn(std::move(::ONNX_NAMESPACE::OpSchema()
+                   .SetName("FormatTransform")
+                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)
+                   .SinceVersion(1)
+                   .SetDoc("Transform tensor between plain (NCHW) and OneDNN blocked formats (nChw4c, ABcd16a4b).")
+                   .Attr("src_format", "Source format: Plain, nChw4c, or ABcd16a4b",
+                         ONNX_NAMESPACE::AttributeProto::STRING)
+                   .Attr("dst_format", "Destination format: Plain, nChw4c, or ABcd16a4b",
+                         ONNX_NAMESPACE::AttributeProto::STRING)
+                   .Input(0, "X", "Input tensor", "T")
+                   .Output(0, "Y", "Output tensor with transformed layout", "T")
+                   .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                                   "Constrain input and output types to floating-point tensors.")
+                   .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                     if (!ONNX_NAMESPACE::hasInputShape(ctx, 0)) {
+                       return;
+                     }
+
+                     const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+                     if (input_shape.dim_size() != 4) {
+                       fail_shape_inference("FormatTransform requires 4D input tensor (NCHW)");
+                     }
+
+                     auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+                     output_shape->clear_dim();  // Clear any existing dimensions before writing
+
+                     // Get destination format attribute
+                     std::string dst_format;
+                     if (ctx.getAttribute("dst_format") != nullptr) {
+                       dst_format = ctx.getAttribute("dst_format")->s();
+                     }
+
+                     // Calculate output shape with padding if needed
+                     if (dst_format == "nChw4c") {
+                       // Pad channels (dimension 1) to multiple of 4
+                       *output_shape->add_dim() = input_shape.dim(0);
+
+                       if (input_shape.dim(1).has_dim_value()) {
+                         int64_t C = input_shape.dim(1).dim_value();
+                         int64_t padded_C = ((C + 3) / 4) * 4;
+                         output_shape->add_dim()->set_dim_value(padded_C);
+                       } else {
+                         // Dynamic channel dimension - can't compute padding statically
+                         output_shape->add_dim()->set_dim_param(input_shape.dim(1).dim_param());
+                       }
+
+                       *output_shape->add_dim() = input_shape.dim(2);
+                       *output_shape->add_dim() = input_shape.dim(3);
+                     } else if (dst_format == "ABcd16a4b") {
+                       // Pad N (dimension 0) to multiple of 16 and C (dimension 1) to multiple of 4
+                       if (input_shape.dim(0).has_dim_value()) {
+                         int64_t N = input_shape.dim(0).dim_value();
+                         int64_t padded_N = ((N + 15) / 16) * 16;
+                         output_shape->add_dim()->set_dim_value(padded_N);
+                       } else {
+                         output_shape->add_dim()->set_dim_param(input_shape.dim(0).dim_param());
+                       }
+
+                       if (input_shape.dim(1).has_dim_value()) {
+                         int64_t C = input_shape.dim(1).dim_value();
+                         int64_t padded_C = ((C + 3) / 4) * 4;
+                         output_shape->add_dim()->set_dim_value(padded_C);
+                       } else {
+                         output_shape->add_dim()->set_dim_param(input_shape.dim(1).dim_param());
+                       }
+
+                       *output_shape->add_dim() = input_shape.dim(2);
+                       *output_shape->add_dim() = input_shape.dim(3);
+                     } else {
+                       // Plain or other formats: no padding needed
+                       for (int i = 0; i < input_shape.dim_size(); ++i) {
+                         *output_shape->add_dim() = input_shape.dim(i);
+                       }
+                     }
+                   })));
+
   // not all schema are registered here. For part of layout insensitive ops
   // we will use onnx schema directly, for others, like fused-node/qdq-group
   // we may leverage internal schema or create on the fly.
