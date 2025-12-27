@@ -434,10 +434,12 @@ TEST(GatherOpTest, Gather_axis1_scalar_indices) {
 
 TEST(ShrunkenGatherOpTest, ShrunkenGather_PositiveAxis) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  // Add CUDA EP first so it gets tested before CPU EP
+  // (ConfigEps runs the first available EP for the operator)
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
@@ -455,10 +457,12 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_PositiveAxis) {
 
 TEST(ShrunkenGatherOpTest, ShrunkenGather_NegativeAxis) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  // Add CUDA EP first so it gets tested before CPU EP
+  // (ConfigEps runs the first available EP for the operator)
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", -1LL);
@@ -476,10 +480,12 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_NegativeAxis) {
 
 TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidIndicesRank) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  // Add CUDA EP first so it gets tested before CPU EP
+  // (ConfigEps runs the first available EP for the operator)
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
@@ -497,10 +503,12 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidIndicesRank) {
 
 TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidInputRank) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  // Add CUDA EP first so it gets tested before CPU EP
+  // (ConfigEps runs the first available EP for the operator)
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
