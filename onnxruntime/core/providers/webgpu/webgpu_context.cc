@@ -37,13 +37,13 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture) {
-  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
+void WebGpuContext::Initialize(const WebGpuContextInitializationParams& params) {
+  std::call_once(init_flag_, [this, &params]() {
     if (device_ == nullptr) {
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
-      req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
-      req_adapter_options.powerPreference = static_cast<wgpu::PowerPreference>(power_preference_);
+      req_adapter_options.backendType = static_cast<wgpu::BackendType>(params.backend_type);
+      req_adapter_options.powerPreference = static_cast<wgpu::PowerPreference>(params.power_preference);
 
 #if !defined(__wasm__)
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
@@ -134,9 +134,9 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                               buffer_cache_config.storage.mode,
-                                               buffer_cache_config.uniform.mode,
-                                               buffer_cache_config.query_resolve.mode);
+                                               params.buffer_cache_config.storage.mode,
+                                               params.buffer_cache_config.uniform.mode,
+                                               params.buffer_cache_config.query_resolve.mode);
 
     // create initializer buffer manager. cache is always disabled for initializer buffer manager
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -161,7 +161,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     } else {
       query_type_ = TimestampQueryType::None;
     }
-    if (enable_pix_capture) {
+    if (params.enable_pix_capture) {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
       // set pix frame generator
       pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
@@ -918,14 +918,14 @@ std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
 wgpu::Instance WebGpuContextFactory::default_instance_;
 
-WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
-  const int context_id = config.context_id;
-  WGPUInstance instance = config.instance;
-  WGPUDevice device = config.device;
+WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextCreationParams& creation_params, const WebGpuContextInitializationParams& init_params) {
+  const int context_id = creation_params.context_id;
+  WGPUInstance instance = creation_params.instance;
+  WGPUDevice device = creation_params.device;
 
   std::call_once(init_default_flag_, [
 #if !defined(__wasm__)
-                                         dawn_proc_table = config.dawn_proc_table
+                                         dawn_proc_table = creation_params.dawn_proc_table
 #endif
   ]() {
   // Setup dawn proc table (only for non-WASM build)
@@ -977,10 +977,9 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     GSL_SUPPRESS(r.11)
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
-                                                                    config.validation_mode,
-                                                                    config.preserve_device,
-                                                                    config.max_storage_buffer_binding_size,
-                                                                    config.power_preference));
+                                                                    creation_params.validation_mode,
+                                                                    creation_params.preserve_device,
+                                                                    creation_params.max_storage_buffer_binding_size));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
@@ -988,6 +987,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
   it->second.ref_count++;
+
+  // perform initialization
+  it->second.context->Initialize(init_params);
+
   return *it->second.context;
 }
 
@@ -1015,6 +1018,12 @@ void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
   contexts_.clear();
   default_instance_ = nullptr;
+}
+
+WebGpuContext& WebGpuContextFactory::DefaultContext() {
+  WebGpuContextCreationParams creation_params{};
+  WebGpuContextInitializationParams init_params{};
+  return WebGpuContextFactory::CreateContext(creation_params, init_params);
 }
 
 void CleanupWebGpuContexts() {
