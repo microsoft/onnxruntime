@@ -1254,6 +1254,20 @@ struct OrtEp {
    */
   ORT_API2_STATUS(GetKernelRegistry, _In_ OrtEp* this_ptr,
                   _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry);
+
+  /** \brief Gets whether the execution provider supports concurrent run calls made on the session.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] is_supported Whether concurrent runs are supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, ORT assumes that concurrent runs are supported.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(IsConcurrentRunSupported, _In_ OrtEp* this_ptr, _Outptr_ bool* is_supported);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
