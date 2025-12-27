@@ -29,19 +29,22 @@ final class MemorySegmentShim {
   private static final MethodHandle byteSize;
   private static final MethodHandle isNative;
   private static final MethodHandle set; // only used in tests
+  private static final Object floatLayout;
 
   static {
-    Class<?> segmentClass = null;
-    MethodHandle tmpOfAddress = null;
-    MethodHandle tmpReinterpret = null;
-    MethodHandle tmpAddress = null;
-    MethodHandle tmpByteSize = null;
-    MethodHandle tmpIsNative = null;
-    MethodHandle tmpSet = null;
+    Class<?> segmentClass;
+    MethodHandle tmpOfAddress;
+    MethodHandle tmpReinterpret;
+    MethodHandle tmpAddress;
+    MethodHandle tmpByteSize;
+    MethodHandle tmpIsNative;
+    MethodHandle tmpSet;
+    Object tmpLayout;
     MethodHandles.Lookup lookup = MethodHandles.lookup();
     try {
       segmentClass = Class.forName("java.lang.foreign.MemorySegment");
-      Class<?> valueLayoutClass = Class.forName("java.lang.foreign.ValueLayout$OfFloat");
+      Class<?> valueLayoutClass = Class.forName("java.lang.foreign.ValueLayout");
+      Class<?> floatValueLayoutClass = Class.forName("java.lang.foreign.ValueLayout$OfFloat");
       // Attempt to lookup the Java 22 memory segment methods.
       tmpOfAddress =
           lookup.findStatic(
@@ -57,9 +60,33 @@ final class MemorySegmentShim {
           lookup.findVirtual(
               segmentClass,
               "set",
-              MethodType.methodType(valueLayoutClass, long.class, float.class));
-    } catch (IllegalAccessException | NoSuchMethodException | ClassNotFoundException e) {
+              MethodType.methodType(void.class, floatValueLayoutClass, long.class, float.class));
+      tmpLayout =
+          lookup.findStaticGetter(valueLayoutClass, "JAVA_FLOAT", floatValueLayoutClass).invoke();
+    } catch (IllegalAccessException
+        | NoSuchMethodException
+        | ClassNotFoundException
+        | NoSuchFieldException e) {
       logger.fine("Running on Java 21 or earlier, MemorySegment not available");
+      segmentClass = null;
+      tmpOfAddress = null;
+      tmpReinterpret = null;
+      tmpAddress = null;
+      tmpByteSize = null;
+      tmpIsNative = null;
+      tmpSet = null;
+      tmpLayout = null;
+    } catch (Throwable e) {
+      logger.severe(
+          "Failed to load float value layout, while other Java 22 features were available.");
+      segmentClass = null;
+      tmpOfAddress = null;
+      tmpReinterpret = null;
+      tmpAddress = null;
+      tmpByteSize = null;
+      tmpIsNative = null;
+      tmpSet = null;
+      tmpLayout = null;
     }
     memorySegmentClass = segmentClass;
     ofAddress = tmpOfAddress;
@@ -68,6 +95,7 @@ final class MemorySegmentShim {
     byteSize = tmpByteSize;
     isNative = tmpIsNative;
     set = tmpSet;
+    floatLayout = tmpLayout;
   }
 
   // Only holds java.lang.foreign.MemorySegment instances
@@ -184,6 +212,27 @@ final class MemorySegmentShim {
       try {
         boolean ret = (boolean) isNative.invoke(segment);
         return ret;
+      } catch (Throwable e) {
+        throw new AssertionError("Should not reach here", e);
+      }
+    } else {
+      throw new UnsupportedOperationException("java.lang.foreign.MemorySegment is not available.");
+    }
+  }
+
+  /**
+   * Sets a float value on this memory segment at the specified index.
+   *
+   * <p>Only used in the tests, should not be used in user code as invoke is slower than
+   * invokeExact.
+   *
+   * @param idx The index to write to.
+   * @param value The value.
+   */
+  void set(long idx, float value) {
+    if (memorySegmentClass != null) {
+      try {
+        set.invoke(segment, floatLayout, idx, value);
       } catch (Throwable e) {
         throw new AssertionError("Should not reach here", e);
       }
