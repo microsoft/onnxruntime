@@ -137,10 +137,10 @@ public class MemorySegmentTest {
             e.getMessage().contains("This tensor is not representable in Java, it's too big"));
       }
 
-      Object refMemorySegment = bigTensor.getSegmentRef().get();
+      Object refMemorySegment = bigTensor.getMemorySegmentRef().get();
       Assertions.assertSame(segment.get(), refMemorySegment);
 
-      Object otherMemorySegment = bigTensor.getSegment();
+      Object otherMemorySegment = bigTensor.getMemorySegment();
       Assertions.assertEquals(segment.get(), otherMemorySegment);
     }
   }
@@ -172,10 +172,10 @@ public class MemorySegmentTest {
       float[][] reshaped = (float[][]) OrtUtil.reshape(fbArr, shape);
       Assertions.assertArrayEquals(arr, reshaped);
 
-      Object refMemorySegment = smallTensor.getSegmentRef().get();
+      Object refMemorySegment = smallTensor.getMemorySegmentRef().get();
       Assertions.assertSame(segment.get(), refMemorySegment);
 
-      Object otherMemorySegment = smallTensor.getSegment();
+      Object otherMemorySegment = smallTensor.getMemorySegment();
       Assertions.assertEquals(segment.get(), otherMemorySegment);
       Assertions.assertNotSame(segment.get(), otherMemorySegment);
     }

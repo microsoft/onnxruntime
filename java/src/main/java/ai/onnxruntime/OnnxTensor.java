@@ -104,17 +104,19 @@ public class OnnxTensor extends OnnxTensorLike {
   }
 
   /**
-   * Returns a reference to the segment which backs this {@code OnnxTensor}. If the tensor is not
-   * backed by a segment (i.e., it is backed by a buffer or memory allocated by ORT) this method
+   * Returns a reference to the {@code MemorySegment} which backs this {@code OnnxTensor}. If the tensor is not
+   * backed by a {@code MemorySegment} (i.e., it is backed by a buffer or memory allocated by ORT) this method
    * returns an empty {@link Optional}.
    *
    * <p>Changes to the segment elements will be reflected in the native {@code OrtValue}, this can
    * be used to repeatedly update a single tensor for multiple different inferences without
    * allocating new tensors, though the inputs <b>must</b> remain the same size and shape.
    *
+   * <p>{@code java.lang.foreign.MemorySegment}s are only supported on Java 22 or newer.
+   *
    * @return A reference to the segment.
    */
-  public Optional<Object> getSegmentRef() {
+  public Optional<Object> getMemorySegmentRef() {
     return Optional.ofNullable(segment);
   }
 
@@ -491,7 +493,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @return A MemorySegment wrapping the data.
    * @throws OrtException If the native code encountered an error.
    */
-  public Object getSegment() throws OrtException {
+  public Object getMemorySegment() throws OrtException {
     long[] info = getSegmentPointer(OnnxRuntime.ortApiHandle, nativeHandle);
     MemorySegmentShim shim = new MemorySegmentShim(info[0], info[1]);
     return shim.get();
@@ -785,12 +787,12 @@ public class OnnxTensor extends OnnxTensorLike {
   }
 
   /**
-   * Create an OnnxTensor backed by a Java 22 native MemorySegment.
+   * Create an OnnxTensor backed by a Java 22 native {@code MemorySegment}.
    *
    * <p>If called on Java 21 or older this method throws {@link UnsupportedOperationException}.
    *
    * @param env The current OrtEnvironment.
-   * @param data The tensor data in a {@code java.lang.foreign.MemorySegment}.
+   * @param data The tensor data in a native {@code java.lang.foreign.MemorySegment}.
    * @param shape The shape of tensor.
    * @param type The type to use for the byte buffer elements.
    * @return An OnnxTensor of the required shape.
