@@ -1,8 +1,8 @@
 variables:
-  cuda12_trt_version: '10.9.0.34'
-  cuda13_trt_version: '10.13.3.9'
+  cuda12_trt_version: '10.14.1.48'
+  cuda13_trt_version: '10.14.1.48'
   # As for Debian installation, replace '-1.' by '-1+' when assigning trt version below
   linux_trt_version_cuda13: ${{ variables.cuda13_trt_version }}-1.cuda13.0
-  linux_trt_version_cuda12: ${{ variables.cuda12_trt_version }}-1.cuda12.8
+  linux_trt_version_cuda12: ${{ variables.cuda12_trt_version }}-1.cuda12.9
   win_trt_folder_cuda13: TensorRT-${{ variables.cuda13_trt_version }}.Windows.win10.cuda-13.0
-  win_trt_folder_cuda12: TensorRT-${{ variables.cuda12_trt_version }}.Windows10.x86_64.cuda-12.8
+  win_trt_folder_cuda12: TensorRT-${{ variables.cuda12_trt_version }}.Windows.win10.cuda-12.9
