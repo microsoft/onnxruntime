@@ -625,6 +625,11 @@ ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
 
 ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep) {
   API_IMPL_BEGIN
+  if (info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtKernelInfo instance from which to obtain an OrtEp");
+  }
+
   if (ep == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "Must specify a non-null output parameter in which to store the OrtEp instance");
@@ -634,14 +639,14 @@ ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ c
   auto internal_ep = op_info->GetExecutionProvider();
 
   if (internal_ep == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+    return OrtApis::CreateStatus(ORT_FAIL,
                                  "OrtKernelInfo does not have a valid reference to an execution provider instance");
   }
 
   const OrtEp* ort_ep = internal_ep->GetOrtEp();
 
   if (ort_ep == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+    return OrtApis::CreateStatus(ORT_FAIL,
                                  "OrtKernelInfo is not associated with a plugin EP (OrtEp) instance.");
   }
 

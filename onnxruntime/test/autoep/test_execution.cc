@@ -279,9 +279,11 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   // Run model with squeeze, mul, and relu nodes.
   // No sharing of pre-packed weights.
   {
+    std::unordered_map<std::string, std::string> ep_options;
     Ort::SessionOptions session_options;
+
     session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP.
-    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, {});
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
     ASSERT_NO_FATAL_FAILURE(RunSqueezeMulReluModel(session_options));
   }
 
@@ -300,8 +302,10 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
   // No sharing of pre-packed weights.
   {
     Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+
     session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
-    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, {});
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
     ASSERT_NO_FATAL_FAILURE(RunAddMulAddModel(session_options));
   }
 

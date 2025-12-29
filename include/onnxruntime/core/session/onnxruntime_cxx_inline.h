@@ -2860,14 +2860,14 @@ inline std::string KernelInfoImpl<T>::GetOperatorType() const {
 template <typename T>
 inline int KernelInfoImpl<T>::GetSinceVersion() const {
   int out = 0;
-  ThrowOnError(GetApi().KernelInfo_GetSinceVersion(this->p_, &out));
+  Ort::ThrowOnError(GetApi().KernelInfo_GetSinceVersion(this->p_, &out));
   return out;
 }
 
 template <typename T>
 inline const OrtEp* KernelInfoImpl<T>::GetEp() const {
   const OrtEp* ep = nullptr;
-  ThrowOnError(GetEpApi().KernelInfo_GetEp(this->p_, &ep));
+  Ort::ThrowOnError(GetEpApi().KernelInfo_GetEp(this->p_, &ep));
   return ep;
 }
 
