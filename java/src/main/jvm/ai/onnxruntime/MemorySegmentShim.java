@@ -46,21 +46,42 @@ final class MemorySegmentShim {
       Class<?> valueLayoutClass = Class.forName("java.lang.foreign.ValueLayout");
       Class<?> floatValueLayoutClass = Class.forName("java.lang.foreign.ValueLayout$OfFloat");
       // Attempt to lookup the Java 22 memory segment methods.
+      // The trailing .asType calls are to adapt the method handles to operate on values of type
+      // Object as the compiled code in this class does not have access to the concrete
+      // MemorySegment class, so the invokeExact calls would throw without the casts.
+      // The argument lists are (return type, argument types...) for static methods and
+      // (return type, receiver type, argument types...) for instance methods.
       tmpOfAddress =
-          lookup.findStatic(
-              segmentClass, "ofAddress", MethodType.methodType(segmentClass, long.class));
+          lookup
+              .findStatic(
+                  segmentClass, "ofAddress", MethodType.methodType(segmentClass, long.class))
+              .asType(MethodType.methodType(Object.class, long.class));
       tmpReinterpret =
-          lookup.findVirtual(
-              segmentClass, "reinterpret", MethodType.methodType(segmentClass, long.class));
-      tmpAddress = lookup.findVirtual(segmentClass, "address", MethodType.methodType(long.class));
-      tmpByteSize = lookup.findVirtual(segmentClass, "byteSize", MethodType.methodType(long.class));
+          lookup
+              .findVirtual(
+                  segmentClass, "reinterpret", MethodType.methodType(segmentClass, long.class))
+              .asType(MethodType.methodType(Object.class, Object.class, long.class));
+      tmpAddress =
+          lookup
+              .findVirtual(segmentClass, "address", MethodType.methodType(long.class))
+              .asType(MethodType.methodType(long.class, Object.class));
+      tmpByteSize =
+          lookup
+              .findVirtual(segmentClass, "byteSize", MethodType.methodType(long.class))
+              .asType(MethodType.methodType(long.class, Object.class));
       tmpIsNative =
-          lookup.findVirtual(segmentClass, "isNative", MethodType.methodType(boolean.class));
+          lookup
+              .findVirtual(segmentClass, "isNative", MethodType.methodType(boolean.class))
+              .asType(MethodType.methodType(boolean.class, Object.class));
       tmpSet =
-          lookup.findVirtual(
-              segmentClass,
-              "set",
-              MethodType.methodType(void.class, floatValueLayoutClass, long.class, float.class));
+          lookup
+              .findVirtual(
+                  segmentClass,
+                  "set",
+                  MethodType.methodType(void.class, floatValueLayoutClass, long.class, float.class))
+              .asType(
+                  MethodType.methodType(
+                      void.class, Object.class, Object.class, long.class, float.class));
       tmpLayout =
           lookup.findStaticGetter(valueLayoutClass, "JAVA_FLOAT", floatValueLayoutClass).invoke();
     } catch (IllegalAccessException
@@ -138,8 +159,8 @@ final class MemorySegmentShim {
     if (memorySegmentClass != null) {
       if (address > 0 && byteSize >= 0) {
         try {
-          Object segment = ofAddress.invoke(address);
-          segment = reinterpret.invoke(segment, byteSize);
+          Object segment = ofAddress.invokeExact(address);
+          segment = reinterpret.invokeExact(segment, byteSize);
           this.segment = segment;
         } catch (Throwable e) {
           throw new AssertionError("Should not reach here", e);
@@ -173,7 +194,7 @@ final class MemorySegmentShim {
   long address() {
     if (memorySegmentClass != null) {
       try {
-        long ret = (long) address.invoke(segment);
+        long ret = (long) address.invokeExact(segment);
         return ret;
       } catch (Throwable e) {
         throw new AssertionError("Should not reach here", e);
@@ -191,7 +212,7 @@ final class MemorySegmentShim {
   long byteSize() {
     if (memorySegmentClass != null) {
       try {
-        long ret = (long) byteSize.invoke(segment);
+        long ret = (long) byteSize.invokeExact(segment);
         return ret;
       } catch (Throwable e) {
         throw new AssertionError("Should not reach here", e);
@@ -210,7 +231,7 @@ final class MemorySegmentShim {
   boolean isNative() {
     if (memorySegmentClass != null) {
       try {
-        boolean ret = (boolean) isNative.invoke(segment);
+        boolean ret = (boolean) isNative.invokeExact(segment);
         return ret;
       } catch (Throwable e) {
         throw new AssertionError("Should not reach here", e);
@@ -223,16 +244,13 @@ final class MemorySegmentShim {
   /**
    * Sets a float value on this memory segment at the specified index.
    *
-   * <p>Only used in the tests, should not be used in user code as invoke is slower than
-   * invokeExact.
-   *
    * @param idx The index to write to.
    * @param value The value.
    */
   void set(long idx, float value) {
     if (memorySegmentClass != null) {
       try {
-        set.invoke(segment, floatLayout, idx, value);
+        set.invokeExact(segment, floatLayout, idx, value);
       } catch (Throwable e) {
         throw new AssertionError("Should not reach here", e);
       }

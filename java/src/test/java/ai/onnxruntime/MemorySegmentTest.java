@@ -43,11 +43,18 @@ public class MemorySegmentTest {
         tmpArenaClass = Class.forName("java.lang.foreign.Arena");
         Class<?> segmentClass = Class.forName("java.lang.foreign.MemorySegment");
         tmpOfConfined =
-            lookup.findStatic(tmpArenaClass, "ofConfined", MethodType.methodType(tmpArenaClass));
+            lookup
+                .findStatic(tmpArenaClass, "ofConfined", MethodType.methodType(tmpArenaClass))
+                .asType(MethodType.methodType(Object.class));
         tmpAllocate =
-            lookup.findVirtual(
-                tmpArenaClass, "allocate", MethodType.methodType(segmentClass, long.class));
-        tmpClose = lookup.findVirtual(tmpArenaClass, "close", MethodType.methodType(void.class));
+            lookup
+                .findVirtual(
+                    tmpArenaClass, "allocate", MethodType.methodType(segmentClass, long.class))
+                .asType(MethodType.methodType(Object.class, Object.class, long.class));
+        tmpClose =
+            lookup
+                .findVirtual(tmpArenaClass, "close", MethodType.methodType(void.class))
+                .asType(MethodType.methodType(void.class, Object.class));
       } catch (IllegalAccessException | NoSuchMethodException | ClassNotFoundException e) {
         logger.info("Running on Java 21 or earlier, Arena not available");
         tmpArenaClass = null;
@@ -68,7 +75,7 @@ public class MemorySegmentTest {
     static ArenaShim ofConfined() {
       if (arenaClass != null) {
         try {
-          return new ArenaShim(ofConfined.invoke());
+          return new ArenaShim(ofConfined.invokeExact());
         } catch (Throwable e) {
           throw new AssertionError("Should not reach here", e);
         }
@@ -80,7 +87,7 @@ public class MemorySegmentTest {
     Object allocate(long size) {
       if (arenaClass != null) {
         try {
-          return allocate.invoke(arena, size);
+          return allocate.invokeExact(arena, size);
         } catch (Throwable e) {
           throw new AssertionError("Should not reach here", e);
         }
@@ -92,7 +99,7 @@ public class MemorySegmentTest {
     public void close() {
       if (arenaClass != null) {
         try {
-          close.invoke(arena);
+          close.invokeExact(arena);
         } catch (Throwable e) {
           throw new AssertionError("Should not reach here", e);
         }

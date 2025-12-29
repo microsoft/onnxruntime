@@ -104,9 +104,9 @@ public class OnnxTensor extends OnnxTensorLike {
   }
 
   /**
-   * Returns a reference to the {@code MemorySegment} which backs this {@code OnnxTensor}. If the tensor is not
-   * backed by a {@code MemorySegment} (i.e., it is backed by a buffer or memory allocated by ORT) this method
-   * returns an empty {@link Optional}.
+   * Returns a reference to the {@code MemorySegment} which backs this {@code OnnxTensor}. If the
+   * tensor is not backed by a {@code MemorySegment} (i.e., it is backed by a buffer or memory
+   * allocated by ORT) this method returns an empty {@link Optional}.
    *
    * <p>Changes to the segment elements will be reflected in the native {@code OrtValue}, this can
    * be used to repeatedly update a single tensor for multiple different inferences without
