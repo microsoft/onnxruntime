@@ -6,6 +6,7 @@
 #include "core/common/make_string.h"
 
 #ifdef _MSC_VER
+#pragma warning(push)
 // C4702: unreachable code
 #pragma warning(disable : 4702)
 #endif  // _MSC_VER
