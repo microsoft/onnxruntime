@@ -91,7 +91,7 @@ steps:
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/$(TrtFolderRuntime) $(Agent.TempDirectory)
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(TrtFolderRuntime)\lib"
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(TrtFolderRuntime)\libl$(Agent.TempDirectory)\$(TrtFolderRuntime)\bin"
       displayName: 'Append TensorRT Directory to PATH'
 
     - task: CmdLine@2
