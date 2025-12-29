@@ -74,7 +74,7 @@ void ORT_API_CALL BinaryOp::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 /*static*/
 OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  BinaryOp* mul_kernel = static_cast<BinaryOp*>(this_ptr);
+  BinaryOp* binary_op_kernel = static_cast<BinaryOp*>(this_ptr);
 
   Ort::KernelContext kernel_context(kernel_ctx);
 
@@ -88,8 +88,8 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
   gsl::span<const float> input1;
   std::vector<int64_t> shape1;
 
-  if (mul_kernel->packed_weight_1_info_.has_value()) {
-    const PackedWeightInfo& packed_weight_info = *mul_kernel->packed_weight_1_info_;
+  if (binary_op_kernel->packed_weight_1_info_.has_value()) {
+    const PackedWeightInfo& packed_weight_info = *binary_op_kernel->packed_weight_1_info_;
     shape1 = packed_weight_info.shape;
 
     size_t num_elems = 1;
@@ -112,7 +112,7 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
   Ort::UnownedValue output = kernel_context.GetOutput(0, shape0);
   float* output_data = output.GetTensorMutableData<float>();
 
-  switch (mul_kernel->op_type_) {
+  switch (binary_op_kernel->op_type_) {
     case OpType::Add:
       for (size_t i = 0; i < input0.size(); ++i) {
         output_data[i] = input0[i] + input1[i];
@@ -135,7 +135,7 @@ OrtStatus* ORT_API_CALL BinaryOp::PrePackWeightImpl(OrtKernelImpl* this_ptr, con
                                                     OrtSharedPrePackedWeightCache* prepacked_weight_cache,
                                                     /*out*/ bool* is_packed) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  BinaryOp* mul_kernel = static_cast<BinaryOp*>(this_ptr);
+  BinaryOp* binary_op_kernel = static_cast<BinaryOp*>(this_ptr);
 
   // This example BinaryOp kernel does not really need to pre-pack mul initializers, but we show it here as an example.
   // This implementation just copies original tensor without modification. An actual implementation would, for example,
@@ -162,9 +162,9 @@ OrtStatus* ORT_API_CALL BinaryOp::PrePackWeightImpl(OrtKernelImpl* this_ptr, con
                                                       weight_info.num_bytes, weight_info.shape.data(),
                                                       weight_info.shape.size(), weight_info.elem_type);
 
-  RETURN_IF_ERROR(CopyTensor(*mul_kernel->data_transfer_impl_, original_weight, packed_weight.GetUnowned()));
+  RETURN_IF_ERROR(CopyTensor(*binary_op_kernel->data_transfer_impl_, original_weight, packed_weight.GetUnowned()));
 
-  const ExampleKernelEp* ep = static_cast<const ExampleKernelEp*>(mul_kernel->info_.GetEp());
+  const ExampleKernelEp* ep = static_cast<const ExampleKernelEp*>(binary_op_kernel->info_.GetEp());
   const bool ep_sharing_enabled = ep->GetConfig().enable_prepack_weight_sharing;
   const bool ort_sharing_allowed = prepacked_weight_cache != nullptr;
 
@@ -185,7 +185,7 @@ OrtStatus* ORT_API_CALL BinaryOp::PrePackWeightImpl(OrtKernelImpl* this_ptr, con
     weight_info.owned_data.release();
   }
 
-  mul_kernel->packed_weight_1_info_ = std::move(weight_info);
+  binary_op_kernel->packed_weight_1_info_ = std::move(weight_info);
   *is_packed = true;
 
   return nullptr;
@@ -198,7 +198,7 @@ OrtStatus* ORT_API_CALL BinaryOp::SetSharedPrePackedWeightImpl(OrtKernelImpl* th
                                                                const size_t* buffer_data_sizes,
                                                                size_t num_buffers, int input_index) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  BinaryOp* mul_kernel = static_cast<BinaryOp*>(this_ptr);
+  BinaryOp* binary_op_kernel = static_cast<BinaryOp*>(this_ptr);
 
   if (input_index != 1) {
     std::ostringstream oss;
@@ -209,18 +209,18 @@ OrtStatus* ORT_API_CALL BinaryOp::SetSharedPrePackedWeightImpl(OrtKernelImpl* th
 
   RETURN_IF(num_buffers != 1, Ort::GetApi(),
             "Invalid number of pre-packed data buffers for BinaryOp kernel's 2nd input");
-  RETURN_IF(!mul_kernel->packed_weight_1_info_.has_value(), Ort::GetApi(),
+  RETURN_IF(!binary_op_kernel->packed_weight_1_info_.has_value(), Ort::GetApi(),
             "ERROR! OrtKernelImpl::PrePackWeight should have "
             "initialized a valid PackedWeightInfo struct for use in SetSharedPrePackedWeight.");
 
   // Check that the buffer size is what we expect.
-  RETURN_IF(buffer_data_sizes[0] != mul_kernel->packed_weight_1_info_->num_bytes, Ort::GetApi(),
+  RETURN_IF(buffer_data_sizes[0] != binary_op_kernel->packed_weight_1_info_->num_bytes, Ort::GetApi(),
             "ExampleKernelEp received an unexpected buffer size in a call to OrtKernelImpl::SetSharedPrePackedWeight "
             "for the BinaryOp kernel.");
 
   // Update buffer data pointer because the shared memory could potentially originate from a different
   // kernel instance.
-  mul_kernel->packed_weight_1_info_->shared_data = buffer_data_ptrs[0];
+  binary_op_kernel->packed_weight_1_info_->shared_data = buffer_data_ptrs[0];
 
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
