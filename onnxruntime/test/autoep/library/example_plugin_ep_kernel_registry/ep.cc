@@ -68,10 +68,10 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetCapabilityImpl(OrtEp* this_ptr, cons
 
       if (op_type == "Relu" || op_type == "Squeeze") {
         candidate_nodes.push_back(node);
-      } else if (op_type == "Mul") {
+      } else if (op_type == "Mul" || op_type == "Add") {
         std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
 
-        // Note: ONNX shape inference should ensure Mul has two inputs.
+        // Note: ONNX shape inference should ensure Mul/Add has two inputs.
         std::optional<std::vector<int64_t>> input_0_shape = GetTensorShape(inputs[0]);
         std::optional<std::vector<int64_t>> input_1_shape = GetTensorShape(inputs[1]);
 

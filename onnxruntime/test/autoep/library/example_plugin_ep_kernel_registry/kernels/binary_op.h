@@ -7,7 +7,11 @@
 #include "../../plugin_ep_utils.h"
 #include "../ep_allocator.h"
 
-class Mul : public OrtKernelImpl {
+/// <summary>
+/// An OrtKernelImpl class for binary element-wise operations.
+/// Only Add and Mul are supported currently.
+/// </summary>
+class BinaryOp : public OrtKernelImpl {
  private:
   struct PrivateTag {};
 
@@ -24,9 +28,15 @@ class Mul : public OrtKernelImpl {
     const void* shared_data{nullptr};  // not owned by this kernel.
   };
 
+  // Operator types supported by this class.
+  enum class OpType {
+    Add,
+    Mul,
+  };
+
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Mul>& kernel) noexcept;
-  Mul(Ort::ConstKernelInfo info, void* state, PrivateTag);
+  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<BinaryOp>& kernel) noexcept;
+  BinaryOp(Ort::ConstKernelInfo info, void* state, OpType op_type, PrivateTag);
 
   // Static functions assigned to the OrtKernelImpl fields:
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
@@ -43,5 +53,6 @@ class Mul : public OrtKernelImpl {
  private:
   Ort::ConstKernelInfo info_;
   OrtDataTransferImpl* data_transfer_impl_;  // Custom state passed from OrtEp
+  OpType op_type_;
   std::optional<PackedWeightInfo> packed_weight_1_info_ = std::nullopt;
 };
