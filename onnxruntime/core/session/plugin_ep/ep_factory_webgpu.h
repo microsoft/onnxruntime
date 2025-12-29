@@ -34,4 +34,4 @@ class WebGpuEpFactory : public EpFactoryInternalImpl {
 };
 }  // namespace onnxruntime
 
-#endif  // USE_WEBGPU
+#endif  // defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)

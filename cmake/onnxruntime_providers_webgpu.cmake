@@ -115,6 +115,13 @@
     endif()
 
     set_target_properties(onnxruntime_providers_webgpu PROPERTIES LINKER_LANGUAGE CXX)
+
+    if (onnxruntime_BUILD_CACHE)
+      message(FATAL_ERROR "WebGPU EP shared library build does not support build cache. Please disable build cache or use static library build.")
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      message(FATAL_ERROR "WebGPU EP shared library build is not supported on Emscripten. Please use static library build.")
+    endif()
   endif()
 
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)

@@ -73,4 +73,4 @@ OrtStatus* WebGpuEpFactory::CreateDataTransfer(_Outptr_result_maybenull_ OrtData
 
 }  // namespace onnxruntime
 
-#endif  // USE_WEBGPU
+#endif  // defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
