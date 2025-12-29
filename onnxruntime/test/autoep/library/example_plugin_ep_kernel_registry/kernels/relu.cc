@@ -19,19 +19,29 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddInputOutputMutableAlias(0, 0)),
     Relu)
 
-Relu::Relu(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(info, state) {}
+Relu::Relu(const OrtKernelInfo* info, void* /*state*/, PrivateTag)
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
+      info_{info} {
+  ort_version_supported = ORT_API_VERSION;
+  Compute = ComputeImpl;
+  Release = ReleaseImpl;
+}
 
 /*static*/
-OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) {
+OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
   kernel = std::make_unique<Relu>(info, state, PrivateTag{});
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
-OrtStatus* Relu::DoCompute(OrtKernelContext* kernel_ctx) {
+/*static*/
+OrtStatus* ORT_API_CALL Relu::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  Relu* relu_kernel = static_cast<Relu*>(this_ptr);
   Ort::KernelContext kernel_context(kernel_ctx);
-  static_cast<void>(this->state_);  // NOTE: Unused in this example.
-  static_cast<void>(this->info_);   // NOTE: Unused in this example.
+  static_cast<void>(relu_kernel->info_);  // NOTE: Unused in this example.
 
   gsl::span<const float> input0;
   std::vector<int64_t> shape0;
@@ -45,4 +55,10 @@ OrtStatus* Relu::DoCompute(OrtKernelContext* kernel_ctx) {
   }
 
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+/*static*/
+void ORT_API_CALL Relu::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
+  delete static_cast<Relu*>(this_ptr);
 }
