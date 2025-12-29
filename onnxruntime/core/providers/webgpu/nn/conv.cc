@@ -354,11 +354,9 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   }
   TensorShape transposed_kernel_shape(transposed_kernel_shape_vector);
 
-  ORT_ENFORCE(alloc != nullptr, "Allocator must be provided for WebGPU pre-pack.");
-
-  // Create the transposed kernel tensor using the WebGPU allocator.
-  // Both input tensor and output tensor are GPU tensors, ready for GPU operations.
-  ORT_RETURN_IF_ERROR(context.CreateUnmappedGPUTensor(alloc, tensor.DataType(), transposed_kernel_shape, transposed_kernel_));
+  // Create the transposed kernel tensor using the prepack allocator.
+  // This allocator creates GPU buffers without mapping, suitable for GPU-based operations.
+  transposed_kernel_ = std::make_unique<Tensor>(tensor.DataType(), transposed_kernel_shape, alloc);
 
   // Perform GPU-based transpose directly from the input GPU tensor
   ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, tensor, *transposed_kernel_));

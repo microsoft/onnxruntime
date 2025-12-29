@@ -297,8 +297,12 @@ try:
             else:
                 pass
 
+            # qnn links libc++ rather than libstdc++ for its x86_64 dependencies which we currently do not
+            # support for many_linux. This is not the case for other platforms.
+            qnn_run_audit = environ.get("AUDITWHEEL_ARCH", "x86_64") != "x86_64"
+
             _bdist_wheel.run(self)
-            if is_manylinux and not disable_auditwheel_repair and not is_openvino:
+            if is_manylinux and not disable_auditwheel_repair and not is_openvino and (not is_qnn or qnn_run_audit):
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)

@@ -1027,7 +1027,7 @@ def generate_build_tree(
         if not (
             args.build_shared_lib
             and is_windows()
-            and args.cmake_generator == "Visual Studio 17 2022"
+            and args.cmake_generator in ("Visual Studio 17 2022", "Visual Studio 18 2026")
             and args.use_full_protobuf
         ):
             raise BuildError("Fuzz test has only be tested with build shared libs option using MSVC on windows")
