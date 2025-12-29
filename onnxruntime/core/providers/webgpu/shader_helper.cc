@@ -482,6 +482,8 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
           ss << "atomic<u32>";
         } else if (output->type_ == ProgramVariableDataType::Int32) {
           ss << "atomic<i32>";
+        } else if (output->type_ == ProgramVariableDataType::Float16) {
+          ss << "atomic<u32>";  // emulate f16 atomic via u32 (storing as packed u16)
         } else {
           ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
         }
