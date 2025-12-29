@@ -55,6 +55,11 @@ class Profiler {
   TimePoint Start();
 
   /*
+  Start profiling with a specific start time.
+  */
+  TimePoint Start(const TimePoint& start_time);
+
+  /*
   Whether data collection and output from this profiler is enabled.
   */
   bool IsEnabled() const {
@@ -77,6 +82,13 @@ class Profiler {
   void EndTimeAndRecordEvent(EventCategory category,
                              const std::string& event_name,
                              const TimePoint& start_time,
+                             const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
+                             bool sync_gpu = false);
+
+  void EndTimeAndRecordEvent(EventCategory category,
+                             const std::string& event_name,
+                             const TimePoint& start_time,
+                             const TimePoint& end_time,
                              const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
                              bool sync_gpu = false);
 
