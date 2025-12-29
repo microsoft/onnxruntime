@@ -27,18 +27,9 @@ struct CapturedCommandInfo;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
-  WebGpuExecutionProviderConfig(DataLayout data_layout, bool enable_graph_capture, bool enable_pix_capture)
-      : data_layout{data_layout},
-        enable_graph_capture{enable_graph_capture},
-        enable_pix_capture{enable_pix_capture} {}
-  WebGpuExecutionProviderConfig(WebGpuExecutionProviderConfig&&) = default;
-  WebGpuExecutionProviderConfig& operator=(WebGpuExecutionProviderConfig&&) = default;
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(WebGpuExecutionProviderConfig);
-
-  DataLayout data_layout;
-  bool enable_graph_capture;
-  bool enable_pix_capture;
-  std::vector<std::string> force_cpu_node_names;
+  DataLayout data_layout{DataLayout::NHWC};  // preferred layout is NHWC by default
+  bool enable_graph_capture{false};          // graph capture feature is disabled by default
+  std::vector<std::string> force_cpu_node_names{};
 };
 
 class WebGpuExecutionProvider : public IExecutionProvider {
