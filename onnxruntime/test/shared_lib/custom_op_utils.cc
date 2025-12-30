@@ -48,10 +48,11 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator,
                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
 #endif
-  Ort::Allocator allocator = ctx.GetAllocator(mem_info);
-  void* allocated = allocator.Alloc(2);
+  OrtAllocator* allocator;
+  Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
+  void* allocated = allocator->Alloc(allocator, 2);
   EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
-  allocator.Free(allocated);
+  allocator->Free(allocator, allocated);
 
   // Do computation
 #ifdef USE_CUDA
