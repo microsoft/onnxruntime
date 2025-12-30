@@ -1386,6 +1386,7 @@ TEST(SessionStateTest, TestDelayedThreadPoolFetch) {
     OrtThreadPoolParams to;
     to.thread_pool_size = 4;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+
     return tp.get();
   };
 
@@ -1394,7 +1395,6 @@ TEST(SessionStateTest, TestDelayedThreadPoolFetch) {
 
   ExecutionProviders execution_providers;
   auto tmp_cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
-  auto* cpu_execution_provider = tmp_cpu_execution_provider.get();
   ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_cpu_execution_provider)));
 
   DataTransferManager dtm;
@@ -1410,6 +1410,8 @@ TEST(SessionStateTest, TestDelayedThreadPoolFetch) {
   ASSERT_EQ(tp, nullptr) << "Thread pool should not be created yet";
   auto* fetched_tp = s.GetThreadPool();
   ASSERT_EQ(tp.get(), fetched_tp) << "Fetched thread pool should match created one";
+  auto* fetched_tp_2 = s.GetThreadPool();
+  ASSERT_EQ(fetched_tp, fetched_tp_2) << "Fetched thread pool should not change.";
 }
 }  // namespace test
 }  // namespace onnxruntime
