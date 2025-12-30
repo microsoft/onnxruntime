@@ -221,6 +221,7 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\TensorRT-10.14.1.48.Windows.win10.cuda-12.9\lib"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\TensorRT-10.14.1.48.Windows.win10.cuda-12.9\bin"
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh
