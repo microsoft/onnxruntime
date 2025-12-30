@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cassert>
 #include <gsl/span>
 #include <sstream>
 #include "binary_op.h"
@@ -25,11 +26,10 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     BinaryOp)
 
-BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, BinaryOp::OpType op_type, PrivateTag)
+BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag)
     : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
       info_{info},
-      data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)},
-      op_type_{op_type} {
+      data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
   ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
@@ -48,20 +48,11 @@ OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state,
 
   // Note: can do basic validation or preprocessing via the OrtKernelInfo APIs.
   // Here, we check that this BinaryOp class is only instantiated for a Mul or Add operator.
-  std::string op_type_str = kernel_info.GetOperatorType();
-  BinaryOp::OpType op_type{};
+  std::string op_type = kernel_info.GetOperatorType();
+  RETURN_IF(op_type != "Add" && op_type != "Mul", Ort::GetApi(),
+            std::string("BinaryOp does not support kernel for operator type: " + op_type).c_str());
 
-  if (op_type_str == "Mul") {
-    op_type = BinaryOp::OpType::Mul;
-  } else if (op_type_str == "Add") {
-    op_type = BinaryOp::OpType::Add;
-  } else {
-    std::string err_msg = "BinaryOp does not support operator type: " + op_type_str;
-    Ort::Status status(err_msg.c_str(), ORT_EP_FAIL);
-    return status.release();
-  }
-
-  result = std::make_unique<BinaryOp>(kernel_info, state, op_type, PrivateTag{});
+  result = std::make_unique<BinaryOp>(kernel_info, state, PrivateTag{});
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -107,22 +98,21 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
   }
 
   // Equal input shapes is checked by GetCapability, but verify here.
-  RETURN_IF(shape0 != shape1, Ort::GetApi(), "BinaryOp kernel doesn't support broadcasting.");
+  RETURN_IF(shape0 != shape1, Ort::GetApi(), "BinaryOp kernels do not support broadcasting.");
 
   Ort::UnownedValue output = kernel_context.GetOutput(0, shape0);
   float* output_data = output.GetTensorMutableData<float>();
 
-  switch (binary_op_kernel->op_type_) {
-    case OpType::Add:
-      for (size_t i = 0; i < input0.size(); ++i) {
-        output_data[i] = input0[i] + input1[i];
-      }
-      break;
-    case OpType::Mul:
-      for (size_t i = 0; i < input0.size(); ++i) {
-        output_data[i] = input0[i] * input1[i];
-      }
-      break;
+  std::string op_type = binary_op_kernel->info_.GetOperatorType();
+  if (op_type == "Add") {
+    for (size_t i = 0; i < input0.size(); ++i) {
+      output_data[i] = input0[i] + input1[i];
+    }
+  } else {
+    assert(op_type == "Mul");  // Checked by BinaryOp::Create
+    for (size_t i = 0; i < input0.size(); ++i) {
+      output_data[i] = input0[i] * input1[i];
+    }
   }
 
   return nullptr;
