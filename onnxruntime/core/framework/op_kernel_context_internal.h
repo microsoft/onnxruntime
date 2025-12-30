@@ -23,7 +23,10 @@ class OpKernelContextInternal : public OpKernelContext {
                                    const logging::Logger& logger,
                                    const bool& terminate_flag,
                                    Stream* stream)
-      : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPoolFn(), logger),
+      : OpKernelContext(
+            &frame, &kernel, stream,
+            [&session_state]() { return session_state.GetThreadPool(); },
+            logger),
         session_state_(session_state),
         terminate_flag_(terminate_flag) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();

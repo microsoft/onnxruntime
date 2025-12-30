@@ -90,7 +90,7 @@ class SessionState {
  public:
   SessionState(Graph& graph,
                const ExecutionProviders& execution_providers,
-               std::function<concurrency::ThreadPool*()> thread_pool_fn,
+               concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
                const ExternalDataLoaderManager& external_data_loader_mgr,
@@ -99,7 +99,8 @@ class SessionState {
                const SessionOptions& sess_options,
                PrepackedWeightsContainer* prepacked_weights_container = nullptr,
                AllocatorMap* parent_allocators = nullptr,
-               AllocatorMap* parent_initializer_allocators = nullptr);
+               AllocatorMap* parent_initializer_allocators = nullptr,
+               const std::optional<std::function<concurrency::ThreadPool*()>> get_thread_pool_fn = std::nullopt);
 
   ~SessionState() {
   }
@@ -294,7 +295,14 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
-  const std::function<concurrency::ThreadPool*()>& GetThreadPoolFn() const noexcept { return thread_pool_fn_; }
+  concurrency::ThreadPool* GetThreadPool() const noexcept {
+    if (!thread_pool_ && get_thread_pool_fn_ != std::nullopt) {
+      thread_pool_ = (*get_thread_pool_fn_)();
+    }
+
+    return thread_pool_;
+  }
+
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
@@ -536,8 +544,11 @@ class SessionState {
 
   SubgraphSessionStateMap subgraph_session_states_;
 
-  // support lazy creation of threadpool by using a function that may create the threadpool on first call.
-  std::function<concurrency::ThreadPool*()> const thread_pool_fn_{};
+  // support lazy creation of the intra op threadpool by using a function that creates the threadpool on first call.
+  // multiple calls should be idempotent.
+  // thread_pool_ is set to the result of this on the first call to GetThreadPool, if it was not provided directly.
+  const std::optional<std::function<concurrency::ThreadPool*()>> get_thread_pool_fn_{};
+  mutable concurrency::ThreadPool* thread_pool_{};
   concurrency::ThreadPool* const inter_op_thread_pool_{};  // nullptr unless parallel execution is enabled
 
   const DataTransferManager& data_transfer_mgr_;

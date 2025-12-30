@@ -192,24 +192,6 @@ static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderTy
   return true;
 }
 
-static bool NodesAssignedToCpuEP(const Graph& graph) {
-  for (const auto& node : graph.Nodes()) {
-    if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
-      return true;
-    }
-
-    if (node.ContainsSubgraph()) {
-      for (auto subgraph : node.GetSubgraphs()) {
-        if (NodesAssignedToCpuEP(*subgraph)) {
-          return true;
-        }
-      }
-    }
-  }
-
-  return false;
-}
-
 static bool HasShapeSubgraphNodes(const Graph& graph) {
   bool has_shape_nodes = false;
   bool has_cpu_ep_nodes = false;
@@ -446,14 +428,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         // intra-op is setup later by delaying the call to CreateIntraOpThreadpool
         create_threadpool_ = [this]() { CreateIntraOpThreadpool(); };
       } else {
+        // create the threadpool upfront so it's available to optimizers if required.
         CreateIntraOpThreadpool();
         create_threadpool_ = nullptr;
       }
     }
 
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      // TODO: Check if more than one node in the model. Inter-op threadpool is needed if that is the case.
-
       if (!external_inter_op_thread_pool_) {
         bool allow_inter_op_spinning =
 #if !defined(ORT_CLIENT_PACKAGE_BUILD)
@@ -641,6 +622,8 @@ void InferenceSession::CreateIntraOpThreadpool() {
   }
 
   thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  // this simplifies other logic, as CreateThreadPool can return nullptr in some scenarios.
+  have_created_threadpool_ = true;
 }
 
 void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState,
@@ -2184,18 +2167,35 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
+    concurrency::ThreadPool* intra_op_threadpool = nullptr;
+    std::optional<std::function<concurrency::ThreadPool*()>> create_intra_op_threadpool_fn;
+
+    // if we have create_threadpool_ there is delayed threadpool creation that happens in GetIntraOpThreadPoolToUse.
+    // set a lambda to allow SessionState to delay creation until needed, typically in a CPU based kernel that calls
+    // OpKernelContext.GetOperatorThreadPool().
+    if (create_threadpool_ != nullptr) {
+      create_intra_op_threadpool_fn = [this]() -> concurrency::ThreadPool* {
+        return GetIntraOpThreadPoolToUse();
+      };
+    } else {
+      // no delay so we pass in the threadpool directly
+      intra_op_threadpool = GetIntraOpThreadPoolToUse();
+    }
+
     // now that we have all the execution providers, create the session state
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
-        [this]() { return GetIntraOpThreadPoolToUse(); },  // provide function but don't call it yet
+        intra_op_threadpool,
         GetInterOpThreadPoolToUse(),
         data_transfer_mgr_,
         external_data_loader_mgr_,
         *session_logger_,
         session_profiler_,
         session_options_,
-        prepacked_weights_container_);
+        prepacked_weights_container_,
+        nullptr, nullptr,
+        create_intra_op_threadpool_fn);
 
     bool use_env_allocators =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";

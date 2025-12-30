@@ -153,7 +153,6 @@ class PlannerTest : public ::testing::Test {
   std::vector<std::pair<onnxruntime::Node*, KernelDef&>> kernel_bindings_;
   ExecutionProviders execution_providers_;
   std::unique_ptr<concurrency::ThreadPool> tp_;
-  std::function<concurrency::ThreadPool*()> tp_fn_ = [this]() { return tp_.get(); };
   DataTransferManager dtm_;
   ExternalDataLoaderManager edlm_;
   profiling::Profiler profiler_;
@@ -194,7 +193,7 @@ class PlannerTest : public ::testing::Test {
     sess_options_->enable_mem_pattern = false;
     sess_options_->use_deterministic_compute = false;
     sess_options_->enable_mem_reuse = true;
-    state_.reset(new SessionState(graph_, execution_providers_, tp_fn_, nullptr, dtm_, edlm_,
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
   }
 
@@ -280,7 +279,7 @@ class PlannerTest : public ::testing::Test {
 
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {},
                   bool invoke_createPlan_explicityly = true) {
-    state_.reset(new SessionState(graph_, execution_providers_, tp_fn_, nullptr, dtm_, edlm_,
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 

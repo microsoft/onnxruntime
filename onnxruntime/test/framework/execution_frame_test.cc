@@ -36,8 +36,6 @@ std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
 class ExecutionFrameTest : public ::testing::Test {
  protected:
   concurrency::ThreadPool tp_;
-  std::function<concurrency::ThreadPool*()> tp_fn_ = [this]() { return &tp_; };
-
   ExecutionFrameTest() : tp_(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("ExecutionFrameTest"), 2, true) {
   }
 };
@@ -70,7 +68,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, tp_fn_, nullptr, dtm, edlm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
@@ -155,7 +153,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, tp_fn_, nullptr, dtm, edlm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
@@ -228,8 +226,13 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, tp_fn_, nullptr, dtm, edlm,
-                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  // test usage of a function to return the threadpool. this is used when threadpool creation is delayed until
+  // first use by an operator kernel. the Clip CPU kernel uses the threadpool.
+  std::function<concurrency::ThreadPool*()> tp_fn = [this]() { return &tp_; };
+
+  SessionState state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options, nullptr, nullptr, nullptr,
+                     tp_fn);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
@@ -301,7 +304,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, tp_fn_, nullptr, dtm, edlm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
@@ -412,7 +415,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   profiling::Profiler profiler;
   SessionOptions so;
 
-  SessionState state(graph, execution_providers, tp_fn_, nullptr, dtm, edlm, DefaultLoggingManager().DefaultLogger(),
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm, DefaultLoggingManager().DefaultLogger(),
                      profiler, so);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));

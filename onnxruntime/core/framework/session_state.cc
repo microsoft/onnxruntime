@@ -81,7 +81,7 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
 
 SessionState::SessionState(Graph& graph,
                            const ExecutionProviders& execution_providers,
-                           std::function<concurrency::ThreadPool*()> thread_pool_fn,
+                           concurrency::ThreadPool* thread_pool,
                            concurrency::ThreadPool* inter_op_thread_pool,
                            const DataTransferManager& data_transfer_mgr,
                            const ExternalDataLoaderManager& external_data_loader_mgr,
@@ -90,12 +90,14 @@ SessionState::SessionState(Graph& graph,
                            const SessionOptions& sess_options,
                            PrepackedWeightsContainer* prepacked_weights_container,
                            AllocatorMap* parent_allocators,
-                           AllocatorMap* parent_initializer_allocators)
+                           AllocatorMap* parent_initializer_allocators,
+                           std::optional<std::function<concurrency::ThreadPool*()>> get_thread_pool_fn)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
       profiler_(profiler),
-      thread_pool_fn_(thread_pool_fn),
+      get_thread_pool_fn_(get_thread_pool_fn),
+      thread_pool_(thread_pool),
       inter_op_thread_pool_(inter_op_thread_pool),
       data_transfer_mgr_(data_transfer_mgr),
       external_data_loader_mgr_(external_data_loader_mgr),
@@ -1192,9 +1194,10 @@ Status SessionState::CreateSubgraphSessionState() {
 
       auto subgraph_session_state =
           std::make_unique<SessionState>(*subgraph, execution_providers_,
-                                         thread_pool_fn_, inter_op_thread_pool_, data_transfer_mgr_,
+                                         thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
                                          external_data_loader_mgr_, logger_, profiler_, sess_options_,
-                                         prepacked_weights_container_, allocators_, initializer_allocators_);
+                                         prepacked_weights_container_, allocators_, initializer_allocators_,
+                                         get_thread_pool_fn_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);

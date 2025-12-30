@@ -347,7 +347,7 @@ class KernelScope {
     if (session_state_.Profiler().IsEnabled()) {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
-      concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPoolFn()());
+      concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
       kernel_begin_time_ = session_state_.Profiler().Start();
       CalculateTotalInputSizes(&kernel_context, &kernel_,
@@ -381,7 +381,7 @@ class KernelScope {
                                          {"input_type_shape", input_type_shape_},
                                          {"output_type_shape", output_type_shape_},
                                          {"thread_scheduling_stats",
-                                          concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPoolFn()())},
+                                          concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
                                      });
     }
 
