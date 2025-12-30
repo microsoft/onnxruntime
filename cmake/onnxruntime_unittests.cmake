@@ -1242,6 +1242,13 @@ block()
   # enable dynamic plugin EP usage
   target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
+
+  if (MSVC)
+    # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+    # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+    target_compile_options(onnxruntime_provider_test PRIVATE "/wd4702")
+  endif()
+
   # TODO fix shorten-64-to-32 warnings
   # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
   if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
