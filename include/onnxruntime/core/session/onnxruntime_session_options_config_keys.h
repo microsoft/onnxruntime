@@ -415,3 +415,11 @@ static const char* const kOrtSessionOptionsFailOnSuboptimalCompiledModel =
 // "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver",
 // "sustained_high_performance". Default to "default".
 static const char* const kOrtEpDynamicOptionsQnnHtpPerformanceMode = "ep.dynamic.qnn_htp_performance_mode";
+
+// Delay the creation of intra-op thread pool until first usage.
+// This attempts to avoid the overhead of creating a thread pool for a session that does not use an EP or any
+// custom operators that require CPU based intra-op parallelism.
+// Option values:
+// - "0": intra-op threadpool is created during inference session construction. [DEFAULT]
+// - "1": intra-op threadpool is created on first use by a operator kernel.
+static const char* const kOrtSessionOptionsDelayIntraOpThreadpoolCreate = "session.delay_intra_op_threadpool_create";

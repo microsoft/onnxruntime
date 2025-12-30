@@ -14,7 +14,7 @@ class OpKernelContext {
 
   OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                   _In_ Stream* stream,
-                  _In_ std::function<concurrency::ThreadPool*()> threadpool_fn,
+                  _In_ const std::function<concurrency::ThreadPool*()>& get_threadpool_fn,
                   _In_ const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
@@ -172,7 +172,9 @@ class OpKernelContext {
   /**
   Returns the intra-op threadpool, if available.
   */
-  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_fn_(); }
+  _Ret_maybenull_ concurrency::ThreadPool* GetOperatorThreadPool() const {
+    return (get_threadpool_fn_) ? get_threadpool_fn_() : nullptr;
+  }
 
   /**
   Returns whether deterministic computation is preferred.
@@ -188,6 +190,7 @@ class OpKernelContext {
   AllocatorPtr GetAllocator(const OrtDevice& device) const;
 
  protected:
+  // constructor used by custom ops API
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
   onnxruntime::NodeIndex GetNodeIndex() const;
@@ -215,7 +218,7 @@ class OpKernelContext {
 
   IExecutionFrame* const execution_frame_{};
   const OpKernel* const kernel_{};
-  std::function<concurrency::ThreadPool*()> const threadpool_fn_{};
+  const std::function<concurrency::ThreadPool*()> get_threadpool_fn_{};
   const logging::Logger* const logger_{};
 
   // The argument starting index in ExecutionFrame.

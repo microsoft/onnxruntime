@@ -294,7 +294,7 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
-  std::function<concurrency::ThreadPool*()> GetThreadPoolFn() const noexcept { return thread_pool_fn_; }
+  const std::function<concurrency::ThreadPool*()>& GetThreadPoolFn() const noexcept { return thread_pool_fn_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }

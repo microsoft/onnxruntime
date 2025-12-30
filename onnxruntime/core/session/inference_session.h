@@ -687,14 +687,13 @@ class InferenceSession {
       if (external_intra_op_thread_pool_) {
         return external_intra_op_thread_pool_;
       } else {
-        {
-          // delayed creation of thread pool until first use if enabled
-          static std::once_flag once;
-          std::call_once(once, [&] {
-            if (!thread_pool_) {
-              create_threadpool_();
-            }
-          });
+        // delayed creation of thread pool until first use if enabled
+        if (!thread_pool_ && create_threadpool_) {
+          std::lock_guard<std::mutex> lock(session_mutex_);
+          if (!thread_pool_) {
+            create_threadpool_();
+            assert(thread_pool_.get() != nullptr);
+          }
         }
 
         return thread_pool_.get();
@@ -895,7 +894,7 @@ class InferenceSession {
   // Spinning is restarted on the next Run()
   bool force_spinning_stop_between_runs_ = false;
 
-  std::function<void()> create_threadpool_;  // used to delay creation of thread_pool_ until first use
+  std::function<void()> create_threadpool_;  // used to optionally delay creation of thread_pool_ until first use
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
