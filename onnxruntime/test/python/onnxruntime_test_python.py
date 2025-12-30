@@ -1981,29 +1981,20 @@ class TestInferenceSession(unittest.TestCase):
         # Query session for information on each subgraph assigned to an EP.
         ep_subgraphs = session.get_provider_graph_partitioning_info()
 
-        # Check that the single subgraph was assigned to CPU EP
-        print(f"Subgraph EPs: {', '.join([s.ep_name for s in ep_subgraphs])}")
-        self.assertEqual(len(ep_subgraphs), 1)
-        self.assertEqual(ep_subgraphs[0].ep_name, "CPUExecutionProvider")
+        # Check that the all 3 nodes are assigned to CPU EP (each in its own subgraph)
+        self.assertEqual(len(ep_subgraphs), 3)
+        for ep_subgraph in ep_subgraphs:
+            self.assertEqual(ep_subgraph.ep_name, "CPUExecutionProvider")
+            self.assertEqual(len(ep_subgraph.get_nodes()), 1)
 
-        # Get count of operator types and a list of all node names (prefixed by op type).
-        op_type_counts: dict[str, int] = {}
-        node_op_and_names: list[str] = []
-
-        for ep_node in ep_subgraphs[0].get_nodes():
-            node_op_and_names.append(f"{ep_node.op_type}/{ep_node.name}")
-
-            if ep_node.op_type not in op_type_counts:
-                op_type_counts[ep_node.op_type] = 1
-            else:
-                op_type_counts[ep_node.op_type] += 1
+        # Serialize each node to an identifer (concatinates operator type and node name)
+        node_ids: list[str] = [f"{n.op_type}/{n.name}" for s in ep_subgraphs for n in s.get_nodes()]
 
         # Should have 1 Mul and 2 Adds.
-        self.assertEqual(op_type_counts.get("Mul", 0), 1)
-        self.assertEqual(op_type_counts.get("Add", 0), 2)
-        self.assertIn("Add/add_0", node_op_and_names)
-        self.assertIn("Add/add_1", node_op_and_names)
-        self.assertIn("Mul/mul_0", node_op_and_names)
+        self.assertEqual(len(node_ids), 3)
+        self.assertIn("Add/add_0", node_ids)
+        self.assertIn("Add/add_1", node_ids)
+        self.assertIn("Mul/mul_0", node_ids)
 
 
 if __name__ == "__main__":
