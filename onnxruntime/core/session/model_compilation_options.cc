@@ -293,5 +293,53 @@ Status ModelCompilationOptions::Check() const {
   return Status::OK();
 }
 
+std::string ModelCompilationOptions::GetInputSourceForTelemetry() const {
+  return InputModelComesFromFile() ? "file" : "buffer";
+}
+
+std::string ModelCompilationOptions::GetOutputTargetForTelemetry() const {
+  const epctx::ModelGenOptions& options = session_options_.value.ep_context_gen_options;
+
+  if (options.TryGetOutputModelPath() != nullptr) {
+    return "file";
+  }
+  if (options.TryGetOutputModelBuffer() != nullptr) {
+    return "buffer";
+  }
+  if (options.TryGetOutputModelWriteFunc() != nullptr) {
+    return "callback";
+  }
+
+  // Default: output path will be derived from input path
+  return "file";
+}
+
+uint32_t ModelCompilationOptions::GetFlagsForTelemetry() const {
+  const epctx::ModelGenOptions& options = session_options_.value.ep_context_gen_options;
+  uint32_t flags = OrtCompileApiFlags_NONE;
+
+  if (options.error_if_output_file_exists) {
+    flags |= OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
+  }
+  if (options.action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError) {
+    flags |= OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED;
+  }
+
+  return flags;
+}
+
+int ModelCompilationOptions::GetGraphOptimizationLevelForTelemetry() const {
+  return static_cast<int>(session_options_.value.graph_optimization_level);
+}
+
+bool ModelCompilationOptions::GetEmbedEpContextForTelemetry() const {
+  return session_options_.value.ep_context_gen_options.embed_ep_context_in_model;
+}
+
+bool ModelCompilationOptions::HasExternalInitializersFileForTelemetry() const {
+  return session_options_.value.ep_context_gen_options.TryGetExternalInitializerFileInfo() != nullptr ||
+         session_options_.value.ep_context_gen_options.TryGetInitializerHandler() != nullptr;
+}
+
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

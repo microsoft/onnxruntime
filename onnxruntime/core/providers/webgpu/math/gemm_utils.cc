@@ -54,9 +54,14 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
 
 void HandleMatMulWithSplitK(
     ShaderHelper& shader,
+    bool is_gemm,
     const ShaderVariableHelper& output,
     ProgramVariableDataType output_variable_type) {
-  shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
+  if (is_gemm) {
+    shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));";
+  } else {
+    shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
+  }
 
   // With Split-K, the final output will be the sum of the sub-outputs from multiple workgroups,
   // so we must add them with atomic built-in functions. Because currently WebGPU doesn't support
@@ -205,8 +210,10 @@ void MatMulWriteFnSource(ShaderHelper& shader,
     // still need to handle `bias` (and `is_channels_last` in the future) in
     // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
     ORT_ENFORCE(bias == nullptr, "Bias is not supported in MatMulProgram when Split-K is enabled.");
-    ORT_ENFORCE(is_channels_last, "Only channels-last is supported in MatMulProgram when Split-K is enabled.");
-    HandleMatMulWithSplitK(shader, output, output_variable_type);
+    if (!is_gemm) {
+      ORT_ENFORCE(is_channels_last, "Only channels-last is supported in MatMulProgram when Split-K is enabled in non-GEMM ops.");
+    }
+    HandleMatMulWithSplitK(shader, is_gemm, output, output_variable_type);
   } else if (is_gemm) {
     HandleMaybeHaveBiasForGEMM(shader, output, bias, c_components, output_components, c_is_scalar);
   } else {
