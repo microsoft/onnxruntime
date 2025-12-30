@@ -799,7 +799,8 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       context_{context},
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
-      enable_graph_capture_{config.enable_graph_capture} {
+      enable_graph_capture_{config.enable_graph_capture},
+      prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), false)} {
   // If graph capture is enabled, create a dedicated buffer manager for graph mode
   if (enable_graph_capture_) {
     // Create buffer manager for graph capture mode with appropriate cache modes
@@ -808,6 +809,15 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
         webgpu::BufferCacheMode::Graph,
         webgpu::BufferCacheMode::GraphSimple,
         webgpu::BufferCacheMode::Disabled);
+  }
+
+  if (config.enable_pix_capture) {
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+    // set pix frame generator
+    pix_frame_generator_ = context_.CreatePIXFrameGenerator();
+#else
+    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
   }
 }
 
@@ -1007,7 +1017,11 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     context_.CollectProfilingData(profiler_->Events());
   }
 
-  context_.OnRunEnd();
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  if (pix_frame_generator_) {
+    pix_frame_generator_->GeneratePIXFrame();
+  }
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();
