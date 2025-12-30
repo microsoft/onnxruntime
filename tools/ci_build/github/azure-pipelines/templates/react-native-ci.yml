@@ -86,7 +86,7 @@ stages:
         python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
           --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
           --staging-dir "$(Build.BinariesDirectory)/ios_pod" \
-          --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+          --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
       displayName: Build iOS package and assemble pods
 
     - task: 1ES.PublishPipelineArtifact@1
@@ -122,31 +122,42 @@ stages:
     - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
-        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c \
-        pod install
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
+        brew tap wix/brew
+        brew install applesimutils
+      displayName: Install applesimutils
+
+    - script: |
+        gem install securerandom -v 0.3.2 --user-install --force
+        gem install drb -v 2.0.6 --user-install --force
+        gem install zeitwerk -v 2.6.18 --user-install --force
+        gem install activesupport -v 6.0.6.1 --user-install --force
+        gem install ffi -v 1.15.5 --user-install --force
+        gem install cocoapods -v 1.11.3 --user-install --force
+      displayName: Install CocoaPods
+
+    - script: |
+        set -e -x
+        export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
+        export LANG=en_US.UTF-8
+        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios_pod/onnxruntime-c pod install --verbose
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
       displayName: Pod install for onnxruntime react native ios bridge library
 
-    # Run unit tests on iOS simulator
-    - task: Xcode@5
-      inputs:
-        actions: 'test'
-        configuration: 'Debug'
-        sdk: 'iphonesimulator'
-        xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/ios/OnnxruntimeModule.xcworkspace'
-        scheme: 'OnnxruntimeModuleTest'
-        packageApp: false
-        destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 15,OS=17.4'
-        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
-        xcprettyArgs: '--output build/reports/test-results.xml'
-        publishJUnitResults: true
-        testRunTitle: 'React Native iOS Instrumented Test Results'
-      displayName: Run React Native iOS Instrumented Tests
+    - script: |
+        xcrun simctl list runtimes
+        xcrun simctl list devices
+        detox build --configuration ios.sim_18_6.release
+        JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
+        detox test --record-logs all \
+                    --configuration ios.sim_18_6.release \
+                    --loglevel verbose \
+                    --take-screenshots failing
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: Build and Run Detox iOS e2e Tests
 
     - task: PublishTestResults@2
       inputs:
-        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
+        testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml'
         failTaskOnFailedTests: true
         testRunTitle: 'React Native iOS Instrumented Test results'
       condition: succeededOrFailed()
