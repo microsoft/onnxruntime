@@ -54,18 +54,18 @@ var<workgroup> scale_B : array<output_element_t, tile_size>;                    
     var<workgroup> zeroes : array<i32, tile_size>;
 #endif
 
-fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
+fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
 {
     let a_global = a_global_base + row;
     if (a_global >= uniforms.M)
     {
         return;
     }
-    tile_A[col][row] = a.getByOffset(a_global*uniforms.K16+kidx_v+col);
+    tile_A[col][row] = a.getByOffset(batch*uniforms.M*uniforms.K16+a_global*uniforms.K16+kidx_v+col);
     if (col == 0)
     {
         // kidx_v - covers 16 values of k
-        scale_A[row] = scales_a.getByOffset(a_global*(uniforms.K/128) + kidx_v/8);
+        scale_A[row] = scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8);
     }
 }
 
@@ -154,7 +154,11 @@ $MAIN {
 #endif
     // During the load phase we use all 256 threads to load 64 rows of A/B.
     // For each row we load tile_size_k_vec (2) vectorized elements, which are 32 elements of K.
-    let a_global_base = u32(workgroup_idx / uniforms.num_N_tile) * tile_size;
+    let batch = workgroup_idx / (uniforms.num_M_tile * uniforms.num_N_tile);
+    if (batch >= uniforms.batch_count) {
+        return;
+    }
+    let a_global_base = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * tile_size;
     let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
     let load_AorB = u32(local_idx/128);
     let load_row = u32((local_idx%128)/2);
@@ -199,7 +203,7 @@ $MAIN {
         // Load Phase: Populate shared memory for the workgroup.
         if (load_AorB == 0)
         {
-            loadSHMA(a_global_base, kidx_v, load_row, load_col);
+            loadSHMA(batch, a_global_base, kidx_v, load_row, load_col);
         }
         else
         {
@@ -380,7 +384,7 @@ $MAIN {
 
     let a_global = a_global_base + base_A + a_idx;
     let b_global = b_global_base + base_B;
-    let output_idx = ((a_global) * uniforms.N + b_global)/4;
+    let output_idx = (batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global)/4;
 #if has_bias
 #if has_weight_idx
     let b_bias_offset = uniforms.weight_idx * uniforms.N;

@@ -32,11 +32,13 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
                                                                   is_qualcomm_(is_qualcomm) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_count", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
       {"K8", ProgramUniformVariableDataType::Uint32},
       {"K16", ProgramUniformVariableDataType::Uint32},
+      {"num_M_tile", ProgramUniformVariableDataType::Uint32},
       {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
       {"weight_idx", ProgramUniformVariableDataType::Uint32});
@@ -64,6 +66,7 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
                                                                                  single_scale_weights_(single_scale_weights) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_count", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
@@ -86,6 +89,7 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                   const Tensor* zero_points, const Tensor* bias,
+                                  uint32_t batch_count,
                                   uint32_t M,
                                   uint32_t N,
                                   uint32_t K,
@@ -100,7 +104,6 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
 bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    uint64_t accuracy_level,
                                    uint32_t block_size,
-                                   uint32_t batch_count,
                                    uint32_t N,
                                    uint32_t K,
                                    uint32_t components_k);
