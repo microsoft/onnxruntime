@@ -2171,8 +2171,8 @@ common::Status InferenceSession::Initialize() {
     std::optional<std::function<concurrency::ThreadPool*()>> create_intra_op_threadpool_fn;
 
     // if we have create_threadpool_ there is delayed threadpool creation that happens in GetIntraOpThreadPoolToUse.
-    // set a lambda to allow SessionState to delay creation until needed, typically in a CPU based kernel that calls
-    // OpKernelContext.GetOperatorThreadPool().
+    // create a lambda to allow SessionState to delay creation until needed, which typically happens in a CPU based
+    // kernel that calls OpKernelContext.GetOperatorThreadPool().
     if (create_threadpool_ != nullptr) {
       create_intra_op_threadpool_fn = [this]() -> concurrency::ThreadPool* {
         return GetIntraOpThreadPoolToUse();

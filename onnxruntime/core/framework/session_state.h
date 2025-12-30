@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include <memory>
 #include <map>
-#include <unordered_map>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/flatbuffers.h"
@@ -296,9 +297,12 @@ class SessionState {
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
   concurrency::ThreadPool* GetThreadPool() const noexcept {
-    if (!thread_pool_ && get_thread_pool_fn_ != std::nullopt) {
-      thread_pool_ = (*get_thread_pool_fn_)();
-    }
+    // get_thread_pool_fn_ is allowed to return nullptr, so use `call_once` to enforce only calling it once.
+    std::call_once(got_thread_pool_flag_, [this] {
+      if (!thread_pool_ && get_thread_pool_fn_) {
+        thread_pool_ = (*get_thread_pool_fn_)();
+      }
+    });
 
     return thread_pool_;
   }
@@ -548,6 +552,7 @@ class SessionState {
   // multiple calls should be idempotent.
   // thread_pool_ is set to the result of this on the first call to GetThreadPool, if it was not provided directly.
   const std::optional<std::function<concurrency::ThreadPool*()>> get_thread_pool_fn_{};
+  mutable std::once_flag got_thread_pool_flag_;
   mutable concurrency::ThreadPool* thread_pool_{};
   concurrency::ThreadPool* const inter_op_thread_pool_{};  // nullptr unless parallel execution is enabled
 
