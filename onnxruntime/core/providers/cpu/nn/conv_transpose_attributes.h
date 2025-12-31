@@ -23,7 +23,8 @@
 namespace onnxruntime {
 
 struct ConvTransposeAttributes : public ConvAttributes {
-  explicit ConvTransposeAttributes(const OpKernelInfo& info)
+  template <typename KernelInfoType>
+  explicit ConvTransposeAttributes(const KernelInfoType& info)
       : ConvAttributes(info),
         output_padding(info.GetAttrsOrDefault("output_padding")),
         output_shape(info.GetAttrsOrDefault("output_shape")) {

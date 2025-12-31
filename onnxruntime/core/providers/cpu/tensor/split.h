@@ -22,8 +22,9 @@ class SplitBase {
                            std::vector<int64_t>& split_sizes) const;
 
  protected:
-  SplitBase(const OpKernelInfo& info, uint32_t opset) : opset_{opset} {
-    axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
+  template <typename KernelInfoType>
+  SplitBase(const KernelInfoType& info, uint32_t opset) : opset_{opset} {
+    axis_ = info.template GetAttrOrDefault<int64_t>("axis", 0);
 
     size_t num_inputs = info.GetInputCount();
     if (num_inputs == 1) {
@@ -36,7 +37,7 @@ class SplitBase {
     }
 
     if (opset_ >= 18) {
-      num_outputs_ = info.GetAttrOrDefault<int64_t>("num_outputs", -1);
+      num_outputs_ = info.template GetAttrOrDefault<int64_t>("num_outputs", -1);
       // the ONNX type/shape inferencing handles the check that num_outputs is > 0
       // ORT_ENFORCE(num_outputs_ != 0, "Invalid value in 'num_outputs' attribute of 0.");
 

@@ -11,11 +11,12 @@ namespace onnxruntime {
 template <bool allow_multi_axes>
 class ReduceKernelBase {
  protected:
-  ReduceKernelBase(const OpKernelInfo& info, optional<int64_t> keepdims_override = {}) {
+  template <typename KernelInfoType>
+  ReduceKernelBase(const KernelInfoType& info, optional<int64_t> keepdims_override = {}) {
     if (allow_multi_axes) {
-      axes_ = ToShapeVector(info.GetAttrsOrDefault<int64_t>("axes"));
+      axes_ = ToShapeVector(info.template GetAttrsOrDefault<int64_t>("axes"));
     } else {
-      auto v = info.GetAttrOrDefault<int64_t>("axis", 0);
+      auto v = info.template GetAttrOrDefault<int64_t>("axis", 0);
       axes_.push_back(v);
     }
     int64_t keepdims = 1;
@@ -25,9 +26,9 @@ class ReduceKernelBase {
       ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
     }
     keepdims_ = (keepdims == 1);
-    int64_t noop_with_empty_axes = info.GetAttrOrDefault<int64_t>("noop_with_empty_axes", 0);
+    int64_t noop_with_empty_axes = info.template GetAttrOrDefault<int64_t>("noop_with_empty_axes", 0);
     noop_with_empty_axes_ = (noop_with_empty_axes == 1);
-    int64_t select_last_index = info.GetAttrOrDefault<int64_t>("select_last_index", 0);
+    int64_t select_last_index = info.template GetAttrOrDefault<int64_t>("select_last_index", 0);
     select_last_index_ = (select_last_index != 0);
   }
 
