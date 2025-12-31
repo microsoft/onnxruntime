@@ -6,6 +6,10 @@
   endif()
 
   add_compile_definitions(USE_WEBGPU=1)
+  if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+    add_compile_definitions(BUILD_WEBGPU_EP_STATIC_LIB=1)
+  endif()
+
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
   endif()
@@ -20,20 +24,108 @@
   elseif (NOT onnxruntime_WGSL_TEMPLATE STREQUAL "static")
     message(FATAL_ERROR "Unsupported value for onnxruntime_WGSL_TEMPLATE: ${onnxruntime_WGSL_TEMPLATE}. Supported values are 'static' or 'dynamic'.")
   endif()
+
   file(GLOB_RECURSE onnxruntime_providers_webgpu_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.cc"
   )
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_webgpu_contrib_ops_cc_srcs})
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
 
-  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
-  onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
-  target_compile_features(onnxruntime_providers_webgpu PRIVATE cxx_std_20)
-  onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
-    onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+  if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+    #
+    # Build WebGPU EP as a static library
+    #
+
+    # For static library build, exclude the 'ep' folder
+    file(GLOB_RECURSE ep_files_to_exclude
+      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/*.cc"
+    )
+    list(REMOVE_ITEM onnxruntime_providers_webgpu_cc_srcs ${ep_files_to_exclude})
+
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
+      onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+  else()
+    #
+    # Build WebGPU EP as a shared library
+    #
+    if(WIN32)
+      # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+      list(APPEND onnxruntime_providers_webgpu_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/versioninfo.rc")
+    endif()
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
+
+    onnxruntime_add_shared_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
+        ${REPO_ROOT}/include/onnxruntime/core/session
+        onnxruntime_common
+        onnx
+        onnx_proto
+        flatbuffers::flatbuffers
+        Boost::mp11
+        safeint_interface)
+
+    target_link_libraries(onnxruntime_providers_webgpu PRIVATE
+        onnxruntime_optimizer
+        onnxruntime_providers
+        onnxruntime_lora
+        onnxruntime_framework
+        onnxruntime_graph
+        onnxruntime_util
+        ${ONNXRUNTIME_MLAS_LIBS}
+        onnxruntime_common
+        onnxruntime_flatbuffers
+        ${onnxruntime_EXTERNAL_LIBRARIES}
+    )
+
+    # Add ONNX compiler definitions
+    add_definitions("-DONNX_ML=1")
+    add_definitions("-DONNX_NAMESPACE=onnx")
+    add_definitions("-DONNX_USE_LITE_PROTO=1")
+
+    # Set preprocessor definitions used in onnxruntime_providers_webgpu.rc
+    if(WIN32)
+      set(WEBGPU_DLL_FILE_DESCRIPTION "ONNX Runtime WebGPU Provider")
+
+      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE FILE_DESC=\"${WEBGPU_DLL_FILE_DESCRIPTION}\")
+      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE FILE_NAME=\"onnxruntime_providers_webgpu.dll\")
+    endif()
+
+    # Set linker flags for function(s) exported by EP DLL
+    if(UNIX)
+      if (APPLE)
+        set_property(TARGET onnxruntime_providers_webgpu APPEND_STRING PROPERTY LINK_FLAGS
+                     "-Xlinker -dead_strip")
+      elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+        target_link_options(onnxruntime_providers_webgpu PRIVATE
+                            "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/version_script.lds"
+                            "LINKER:--gc-sections"
+                            "LINKER:-rpath=\$ORIGIN")
+        # TODO: -z noexecstack
+      endif()
+    elseif(WIN32)
+      set_property(TARGET onnxruntime_providers_webgpu APPEND_STRING PROPERTY LINK_FLAGS
+                   "-DEF:${ONNXRUNTIME_ROOT}/core/providers/webgpu/ep/symbols.def")
+    else()
+      message(FATAL_ERROR "onnxruntime_providers_webgpu unknown platform, need to specify shared library exports for it")
+    endif()
+
+    set_target_properties(onnxruntime_providers_webgpu PROPERTIES LINKER_LANGUAGE CXX)
+
+    if (onnxruntime_BUILD_CACHE)
+      message(FATAL_ERROR "WebGPU EP shared library build does not support build cache. Please disable build cache or use static library build.")
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      message(FATAL_ERROR "WebGPU EP shared library build is not supported on Emscripten. Please use static library build.")
+    endif()
+  endif()
+
+  set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # target "emdawnwebgpu_c" is created by Dawn, including "-fno-exceptions" in its compile options by default.
@@ -89,7 +181,7 @@
     set(onnxruntime_providers_webgpu_dll_deps)
 
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
-      target_link_libraries(onnxruntime_providers_webgpu dawn::webgpu_dawn)
+      target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::webgpu_dawn)
 
       if (WIN32)
         if (onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS)
@@ -116,9 +208,9 @@
       list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:dawn::webgpu_dawn>")
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)
-        target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_native)
+        target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_native)
       endif()
-      target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_proc)
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_proc)
     endif()
 
     if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
@@ -153,7 +245,8 @@
     endif()
   endif()
 
-  add_dependencies(onnxruntime_providers_webgpu ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_compile_features(onnxruntime_providers_webgpu PRIVATE cxx_std_20)
+  add_dependencies(onnxruntime_providers_webgpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   if (onnxruntime_WGSL_TEMPLATE)
     # Define the WGSL templates directory and output directory
@@ -239,7 +332,7 @@
       # Add the generated directory to include paths
       target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
     elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      target_link_libraries(onnxruntime_providers_webgpu duktape_static)
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE duktape_static)
       onnxruntime_add_include_to_target(onnxruntime_providers_webgpu duktape_static)
 
       # Define the path to the generated templates.js file
@@ -251,4 +344,10 @@
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)
   endif()
 
-  set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_webgpu EXPORT ${PROJECT_NAME}Targets
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
