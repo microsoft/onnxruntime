@@ -9,6 +9,7 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
 #include "test/common/random_generator.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
 
 #include <thread>
@@ -21,6 +22,21 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 
 namespace test {
+
+// Helper function to check if GPU is Blackwell (SM 12.0+) or above
+// Returns true if requirement is met
+// Returns false if CUDA is unavailable or GPU is below SM 12.0
+static bool IsBlackwellOrAbove() {
+  constexpr int kBlackwellMinCapability = 1200;  // SM 12.0 = 12 * 100 + 0 * 10
+  int cuda_arch = GetCudaArchitecture();
+
+  // Check if CUDA is available
+  if (cuda_arch == -1) {
+    return false;
+  }
+
+  return cuda_arch >= kBlackwellMinCapability;
+}
 
 TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
   PathString model_name = ORT_TSTR("nv_execution_provider_test.onnx");
@@ -442,6 +458,10 @@ TEST(NvExecutionProviderTest, DataTransfer) {
 }
 
 TEST(NvExecutionProviderTest, FP8CustomOpModel) {
+  if (!IsBlackwellOrAbove()) {
+    GTEST_SKIP() << "Test requires SM 12.0+ GPU (Blackwell+)";
+  }
+
   PathString model_name = ORT_TSTR("nv_execution_provider_fp8_quantize_dequantize_test.onnx");
   clearFileIfExists(model_name);
   std::string graph_name = "nv_execution_provider_fp8_quantize_dequantize_graph";
@@ -509,6 +529,10 @@ TEST(NvExecutionProviderTest, FP8CustomOpModel) {
 }
 
 TEST(NvExecutionProviderTest, FP4CustomOpModel) {
+  if (!IsBlackwellOrAbove()) {
+    GTEST_SKIP() << "Test requires SM 12.0+ GPU (Blackwell+)";
+  }
+
   PathString model_name = ORT_TSTR("nv_execution_provider_fp4_dynamic_quantize_test.onnx");
   clearFileIfExists(model_name);
   std::string graph_name = "nv_execution_provider_fp4_dynamic_quantize_graph";

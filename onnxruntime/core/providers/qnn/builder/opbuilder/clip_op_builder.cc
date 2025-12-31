@@ -30,7 +30,7 @@ class ClipOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Status ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
 };
 
 static Status ProcessClipMinMax(QnnModelWrapper& qnn_model_wrapper,
@@ -41,56 +41,112 @@ static Status ProcessClipMinMax(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
   assert(input_info.is_initializer);  // Checked by ExplicitOpCheck().
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, val_bytes));
-  switch (input_info.qnn_data_type) {
-    case QNN_DATATYPE_INT_8: {
-      float_value = static_cast<float>(*reinterpret_cast<int8_t*>(val_bytes.data()));
-      break;
+
+  // If the input is quantized, we need to dequantize it
+  if (input.quant_param.has_value()) {
+    ORT_RETURN_IF_NOT(input_info.quant_param.IsPerTensor(),
+                      "Clip's min/max must use per-tensor quantization");
+    const Qnn_QuantizeParams_t& quant_param = input_info.quant_param.Get();
+
+    switch (input_info.qnn_data_type) {
+      case QNN_DATATYPE_SFIXED_POINT_8: {
+        int8_t quantized_value = *reinterpret_cast<int8_t*>(val_bytes.data());
+        float_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                           quant_param.scaleOffsetEncoding.scale,
+                                                           static_cast<double>(quantized_value)));
+        break;
+      }
+      case QNN_DATATYPE_SFIXED_POINT_16: {
+        int16_t quantized_value = *reinterpret_cast<int16_t*>(val_bytes.data());
+        float_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                           quant_param.scaleOffsetEncoding.scale,
+                                                           static_cast<double>(quantized_value)));
+        break;
+      }
+      case QNN_DATATYPE_SFIXED_POINT_32: {
+        int32_t quantized_value = *reinterpret_cast<int32_t*>(val_bytes.data());
+        float_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                           quant_param.scaleOffsetEncoding.scale,
+                                                           static_cast<double>(quantized_value)));
+        break;
+      }
+      case QNN_DATATYPE_UFIXED_POINT_8: {
+        uint8_t quantized_value = *val_bytes.data();
+        float_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                           quant_param.scaleOffsetEncoding.scale,
+                                                           static_cast<double>(quantized_value)));
+        break;
+      }
+      case QNN_DATATYPE_UFIXED_POINT_16: {
+        uint16_t quantized_value = *reinterpret_cast<uint16_t*>(val_bytes.data());
+        float_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                           quant_param.scaleOffsetEncoding.scale,
+                                                           static_cast<double>(quantized_value)));
+        break;
+      }
+      case QNN_DATATYPE_UFIXED_POINT_32: {
+        uint32_t quantized_value = *reinterpret_cast<uint32_t*>(val_bytes.data());
+        float_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                           quant_param.scaleOffsetEncoding.scale,
+                                                           static_cast<double>(quantized_value)));
+        break;
+      }
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Quantized min/max input data type not supported.");
     }
-    case QNN_DATATYPE_INT_16: {
-      float_value = static_cast<float>(*reinterpret_cast<int16_t*>(val_bytes.data()));
-      break;
+  } else {
+    // Non-quantized input, just cast to float
+    switch (input_info.qnn_data_type) {
+      case QNN_DATATYPE_INT_8: {
+        float_value = static_cast<float>(*reinterpret_cast<int8_t*>(val_bytes.data()));
+        break;
+      }
+      case QNN_DATATYPE_INT_16: {
+        float_value = static_cast<float>(*reinterpret_cast<int16_t*>(val_bytes.data()));
+        break;
+      }
+      case QNN_DATATYPE_INT_32: {
+        float_value = static_cast<float>(*reinterpret_cast<int32_t*>(val_bytes.data()));
+        break;
+      }
+      case QNN_DATATYPE_INT_64: {
+        float_value = static_cast<float>(*reinterpret_cast<int64_t*>(val_bytes.data()));
+        break;
+      }
+      case QNN_DATATYPE_UINT_8: {
+        float_value = static_cast<float>(*val_bytes.data());
+        break;
+      }
+      case QNN_DATATYPE_UINT_16: {
+        float_value = static_cast<float>(*reinterpret_cast<uint16_t*>(val_bytes.data()));
+        break;
+      }
+      case QNN_DATATYPE_UINT_32: {
+        float_value = static_cast<float>(*reinterpret_cast<uint32_t*>(val_bytes.data()));
+        break;
+      }
+      case QNN_DATATYPE_UINT_64: {
+        float_value = static_cast<float>(*reinterpret_cast<uint64_t*>(val_bytes.data()));
+        break;
+      }
+      case QNN_DATATYPE_FLOAT_16: {
+        MLFloat16 fp16_value = *reinterpret_cast<const MLFloat16*>(val_bytes.data());
+        float_value = fp16_value.ToFloat();
+        break;
+      }
+      case QNN_DATATYPE_FLOAT_32: {
+        float_value = *reinterpret_cast<const float*>(val_bytes.data());
+        break;
+      }
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Non-quantized min/max input data type not supported.");
     }
-    case QNN_DATATYPE_INT_32: {
-      float_value = static_cast<float>(*reinterpret_cast<int32_t*>(val_bytes.data()));
-      break;
-    }
-    case QNN_DATATYPE_INT_64: {
-      float_value = static_cast<float>(*reinterpret_cast<int64_t*>(val_bytes.data()));
-      break;
-    }
-    case QNN_DATATYPE_UINT_8: {
-      float_value = static_cast<float>(*val_bytes.data());
-      break;
-    }
-    case QNN_DATATYPE_UINT_16: {
-      float_value = static_cast<float>(*reinterpret_cast<uint16_t*>(val_bytes.data()));
-      break;
-    }
-    case QNN_DATATYPE_UINT_32: {
-      float_value = static_cast<float>(*reinterpret_cast<uint32_t*>(val_bytes.data()));
-      break;
-    }
-    case QNN_DATATYPE_UINT_64: {
-      float_value = static_cast<float>(*reinterpret_cast<uint64_t*>(val_bytes.data()));
-      break;
-    }
-    case QNN_DATATYPE_FLOAT_16: {
-      MLFloat16 fp16_value = *reinterpret_cast<const MLFloat16*>(val_bytes.data());
-      float_value = fp16_value.ToFloat();
-      break;
-    }
-    case QNN_DATATYPE_FLOAT_32: {
-      float_value = *reinterpret_cast<const float*>(val_bytes.data());
-      break;
-    }
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "min/max input data type not supported.");
   }
 
   return Status::OK();
 }
 
-Status ClipOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
+Status ClipOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   if (node_unit.Inputs().size() > 1) {
     const auto& min_input_name = node_unit.Inputs()[1].node_arg.Name();
     if (!min_input_name.empty() && !qnn_model_wrapper.IsConstantInput(min_input_name)) {
@@ -112,7 +168,7 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
   if (do_op_validation) {
-    ORT_RETURN_IF_ERROR(ExplictOpCheck(qnn_model_wrapper, node_unit));
+    ORT_RETURN_IF_ERROR(ExplicitOpCheck(qnn_model_wrapper, node_unit));
   }
 
   return ProcessInput(qnn_model_wrapper, node_unit.Inputs()[0], logger, input_names);

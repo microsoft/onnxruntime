@@ -9,14 +9,19 @@
 
 namespace onnxruntime {
 
+// This value is used to mask out a value from the input as ``Softmax(-infinity, ...) = 0``.
+// If the mask is added, -infinity + x = -infinity.
+// inifinity is replaced by lowest() because softmax implemented in MLAS
+// is expected an input with only infinity values.
+// This change assumes that lowest() is sufficiently low enough to not impact the result.
 template <typename T>
-inline T negative_infinity() {
-  return -std::numeric_limits<T>::infinity();
+inline T mask_filter_value() {
+  return std::numeric_limits<T>::lowest();
 }
 
 template <>
-inline MLFloat16 negative_infinity() {
-  return MLFloat16(-std::numeric_limits<float>::infinity());
+inline MLFloat16 mask_filter_value() {
+  return MLFloat16::MinValue;
 }
 
 template <typename T>
