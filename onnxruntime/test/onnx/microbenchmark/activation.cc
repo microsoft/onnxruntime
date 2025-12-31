@@ -170,10 +170,11 @@ static void RunSingleNode(const std::string& op_name, const std::string& domain,
   tpo.auto_set_affinity = true;
   std::unique_ptr<concurrency::ThreadPool> tp(
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
+  auto get_threadpool_fn = [&tp]() { return tp.get(); };
   MyIExecutionFrame f(*k.a, feed_mlvalue_idxs, feeds, {}, fetch_mlvalue_idxs, fetches, *k.ort_value_idx_map,
                       node_index_info);
   for (auto _ : state) {
-    OpKernelContext c(&f, k.kernel.get(), /*stream*/ nullptr, tp.get(), *k.test_logger);
+    OpKernelContext c(&f, k.kernel.get(), /*stream*/ nullptr, get_threadpool_fn, *k.test_logger);
     Status st = k.kernel->Compute(&c);
     if (!st.IsOK())
       state.SkipWithError(st.ErrorMessage().c_str());
