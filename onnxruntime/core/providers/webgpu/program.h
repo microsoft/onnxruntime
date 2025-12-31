@@ -19,7 +19,6 @@
 #pragma warning(pop)
 #endif  // _MSC_VER
 
-
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"

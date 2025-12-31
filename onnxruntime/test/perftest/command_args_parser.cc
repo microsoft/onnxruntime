@@ -43,8 +43,6 @@
 #pragma warning(pop)
 #endif  // _MSC_VER
 
-
-
 static const onnxruntime::perftest::PerformanceTestConfig& DefaultPerformanceTestConfig() {
   static onnxruntime::perftest::PerformanceTestConfig default_config{};
   return default_config;
