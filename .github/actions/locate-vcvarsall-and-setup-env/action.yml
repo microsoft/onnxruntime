@@ -21,7 +21,7 @@ runs:
         cmake-version: '3.31.6'
         cmake-hash: '0f1584e8666cf4a65ec514bd02afe281caabf1d45d2c963f3151c41484f457386aa03273ab25776a670be02725354ce0b46f3a5121857416da37366342a833a0'
         add-cmake-to-path: 'true'
-        disable-terrapin: 'true'
+        disable-terrapin: 'false'
 
     - name: Verify vcpkg setup
       shell: pwsh # Use powershell to easily access env var
