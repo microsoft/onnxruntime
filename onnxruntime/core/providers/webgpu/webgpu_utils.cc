@@ -27,31 +27,31 @@ TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components
 
 SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
   if (adapter_info.vendor == std::string_view{"intel"}) {
-    if (adapter_info.architecture == std::string_view{"gen-12lp"}) {
+    // The thresholds are only verified on below Intel GPUs. The proper value of
+    // `max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_` may be reduced when we support a
+    // larger `dim_inner` because larger `dim_inner` will bring more atomic calls for each output
+    // value.
+    if (adapter_info.architecture == std::string_view{"gen-12lp"} ||
+        adapter_info.architecture == std::string_view{"xe-lpg"}) {
       enable_split_k_ = true;
 
-      // Below thresholds are only verified on Intel "gen-12lp" GPU without any regressions. The
-      // proper value of `max_dim_inner_with_rate` may be reduced for a larger `dim_inner` because
-      // larger `dim_inner` will add more atomic calls for each output value.
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
       configs_per_dim_inner_range_.emplace_back(768, 20.0f);
       configs_per_dim_inner_range_.emplace_back(1792, 13.0f);
       configs_per_dim_inner_range_.emplace_back(3072, 8.0f);
-    } else if (adapter_info.architecture == std::string_view{"xe-3lpg"} ||
-               adapter_info.architecture == std::string_view{"xe-2lpg"} ||
+    } else if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
                adapter_info.architecture == std::string_view{"xe-2hpg"} ||
-               adapter_info.architecture == std::string_view{"xe-lpg"} ||
                adapter_info.architecture == std::string_view{"gen-12hp"}) {
       enable_split_k_ = true;
 
-      // Below thresholds are only verified on the above Intel GPUs without any regressions.
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
+      configs_per_dim_inner_range_.emplace_back(768, 52.0f);
       configs_per_dim_inner_range_.emplace_back(2304, 35.0f);
-      configs_per_dim_inner_range_.emplace_back(3072, 24.0f);
+      configs_per_dim_inner_range_.emplace_back(3072, 21.5f);
     }
   }
 }
