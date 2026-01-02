@@ -2056,6 +2056,19 @@ MlasQDQQuantizeBlockwise<MLAS_FP16, 4>(
     MLAS_THREADPOOL* thread_pool
 );
 
+template bool
+MlasQDQQuantizeBlockwise<MLAS_FP16, 2>(
+    const MLAS_FP16* src,
+    MLAS_FP16* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
 template <typename Tin, int qbits, bool signed_quant>
 void
 MlasQDQTransposeBlockwiseQuantized(
