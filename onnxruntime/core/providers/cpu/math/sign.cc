@@ -51,7 +51,9 @@ namespace sign_internal {
 template <class T>
 struct CallSignImpl {
   void operator()(const Tensor* input, Tensor* output) const {
-    EigenMap<T>(*output) = EigenMap<T>(*input).array().cwiseSign();
+    EigenMap<T>(*output) = EigenMap<T>(*input).array().unaryExpr([=](auto x) -> T {
+      return (x > 0) - (x < 0);
+    });
   }
 };
 
