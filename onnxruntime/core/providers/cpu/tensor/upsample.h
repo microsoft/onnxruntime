@@ -125,10 +125,17 @@ void UpsampleBilinear(const int32_t batch_size,
               T X12 = Xdata[p.input_width_mul_y2[y] + p.in_x1[x]];
               T X22 = Xdata[p.input_width_mul_y2[y] + p.in_x2[x]];
 
-              Ydata[output_offset] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
-                                                    p.dx1[x] * p.dy2[y] * X21 +
-                                                    p.dx2[x] * p.dy1[y] * X12 +
-                                                    p.dx1[x] * p.dy1[y] * X22);
+              if constexpr (std::is_floating_point_v<T>) {
+                Ydata[output_offset] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
+                                                      p.dx1[x] * p.dy2[y] * X21 +
+                                                      p.dx2[x] * p.dy1[y] * X12 +
+                                                      p.dx1[x] * p.dy1[y] * X22);
+              } else {
+                Ydata[output_offset] = static_cast<T>(nearbyintf(p.dx2[x] * p.dy2[y] * X11 +
+                                                                 p.dx1[x] * p.dy2[y] * X21 +
+                                                                 p.dx2[x] * p.dy1[y] * X12 +
+                                                                 p.dx1[x] * p.dy1[y] * X22));
+              }
             }
           }
         });
