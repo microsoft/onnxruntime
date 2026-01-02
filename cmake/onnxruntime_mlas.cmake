@@ -284,6 +284,11 @@ function(setup_kleidiai)
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  if(ENABLE_KLEIDIAI_QMX_COEXIST)
+          target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
+          target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
+          list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai-qmx)
+  endif()
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 
   # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
@@ -297,6 +302,14 @@ function(setup_kleidiai)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+
+  if(MLAS_ENABLE_KLEIDIAI_QMX_COEXIST)
+    install(TARGETS kleidiai-qmx EXPORT ${PROJECT_NAME}Targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

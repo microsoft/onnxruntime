@@ -11,7 +11,11 @@
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.h"
 
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme2_dot.h"
+#if(ENABLE_QMX_KERNELS)
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa.h"
+#endif // ENABLE_QMX_KERNELS
 
 #include "mlasi_kleidiai.h"
 
@@ -108,14 +112,53 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
                             << " M="<< Shape.M << " K=" << Shape.K << " mr=" << mr << " kr=" << kr << " sr=" << sr << " m_idx_start=0");
         kai_run_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr, 0, DataParams->A,
                                            Shape.K*sizeof(float), lhs);
+        if (ArmKleidiAI::UseSME2)
+        {
+            KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa");
+            kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(
+                Shape.M, Shape.N, Shape.K, lhs, DataParams->PackedB,
+                DataParams->C,
+                Shape.N * sizeof(float),
+                sizeof(float),
+                -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+            );
+        }
+        else {
 
-        KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa");
-        kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(
-            Shape.M, Shape.N, Shape.K, lhs, DataParams->PackedB,
-            DataParams->C,
-            Shape.N * sizeof(float),
-            sizeof(float),
-            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-        );
+                #if(ENABLE_QMX_KERNELS)
+                    if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
+                    {
+                        KLEIDIAI_KERNEL_LOG("QGEMM: Using QMX Kernel");
+                        kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa(
+                            Shape.M, Shape.N, Shape.K, lhs, DataParams->PackedB,
+                            DataParams->C,
+                            Shape.N * sizeof(float),
+                            sizeof(float),
+                            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+                        );
+
+                    }
+                    else {
+                        KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa");
+                        kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa(
+                            Shape.M, Shape.N, Shape.K, lhs, DataParams->PackedB,
+                            DataParams->C,
+                            Shape.N * sizeof(float),
+                            sizeof(float),
+                            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+                        );
+                    }
+                #else
+                        KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa");
+                                kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(
+                                    Shape.M, Shape.N, Shape.K, lhs, DataParams->PackedB,
+                                    DataParams->C,
+                                    Shape.N * sizeof(float),
+                                    sizeof(float),
+                                    -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+                                );
+                #endif // ENABLE_QMX_KERNELS
+
+        }
     }
 }

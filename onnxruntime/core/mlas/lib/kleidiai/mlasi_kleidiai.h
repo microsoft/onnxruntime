@@ -53,6 +53,8 @@ namespace ArmKleidiAI {
 
 // By default we should try for SME2 first before falling back to SME.
 inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+inline const bool UseSME = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+inline const std::string_view vendor_name = MLAS_CPUIDINFO::GetCPUIDInfo().GetCPUVendor();
 
 // Buffer packing routines.
 //

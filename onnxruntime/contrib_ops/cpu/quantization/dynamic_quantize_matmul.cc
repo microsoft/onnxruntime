@@ -163,7 +163,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
   Status Compute(OpKernelContext* context) const override;
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override {
@@ -307,7 +307,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
  private:
   // Indicates when MlasDynamicQGemmBatch() can be used
   bool can_use_dynamic_quant_mlas_{false};
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
   // Indicates that the biases are a constant input and thus already quantized / packed
   bool dynamic_quant_mlas_bias_data_was_packed_{false};
 #endif
@@ -382,7 +382,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   }
   // Guard against KleidiAI functions being called in non kleidi builds
   // TODO: migrate to a suitable override function call for kleidi dynamic qgemm function calls
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
   else {
     MatMulComputeHelper helper;
     ORT_RETURN_IF_ERROR(helper.Compute(ctx->Input<Tensor>(IN_A)->Shape(),
