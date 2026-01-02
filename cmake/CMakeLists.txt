@@ -226,6 +226,13 @@ option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user de
 
 set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executable to build ONNX")
 
+# Enable retries on connection time out and TLS handshake failures for older CMake versions
+# This is implemented in latter versions of CMake, but is a nice-to-have when building
+# with older versions, since onnxruntime pulls in lots of dependencies!
+# 35 is in the default download_retry_codes from v3.28.5 onwards.
+# 28 is in the default download_retry_codes from v3.26.1 onwards
+set(download_retry_codes 7 6 8 15 28 35)
+
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
