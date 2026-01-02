@@ -37,7 +37,30 @@ the kernel is executed on CPU.
 		model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
 	)
 
-The list of available execution providers can be found here: `Execution Providers <https://onnxruntime.ai/docs/execution-providers>`_.
+Available execution providers:
+- `CPUExecutionProvider`
+- `CUDAExecutionProvider`
+- `TensorrtExecutionProvider`
+- `OpenVINOExecutionProvider`
+- `DmlExecutionProvider`
+- `QNNExecutionProvider`
+- `NnapiExecutionProvider`
+- `CoreMLExecutionProvider`
+- `XnnpackExecutionProvider`
+- `ROCMExecutionProvider`
+- `MIGraphXExecutionProvider`
+- `VitisAIExecutionProvider`
+- `AzureExecutionProvider`
+- `ACLExecutionProvider`
+- `ArmNNExecutionProvider`
+- `CANNExecutionProvider`
+- `TvmExecutionProvider`
+- `VSINPUExecutionProvider`
+- `JsExecutionProvider`
+- `RknpuExecutionProvider`
+- `WebNNExecutionProvider`
+
+For more information, see [Execution Providers](https://onnxruntime.ai/docs/execution-providers/).
 
 Since ONNX Runtime 1.10, you must explicitly specify the execution provider for your target.
 Running on CPU is the only time the API allows no explicit setting of the `provider` parameter.
