@@ -2547,10 +2547,10 @@ inline void* KernelContext::GetGPUComputeStream() const {
   return out;
 }
 
-inline OrtAllocator* KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
+inline Ort::Allocator KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
   OrtAllocator* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetAllocator(ctx_, &memory_info, &out));
-  return out;
+  return Ort::Allocator{out};
 }
 
 inline Logger KernelContext::GetLogger() const {
@@ -3713,4 +3713,13 @@ inline Status KernelRegistry::AddKernel(const OrtKernelDef* kernel_def, OrtKerne
                                         void* kernel_create_func_state) {
   return Status{GetEpApi().KernelRegistry_AddKernel(p_, kernel_def, kernel_create_func, kernel_create_func_state)};
 }
+
+namespace detail {
+template <typename T>
+inline Status SharedPrePackedWeightCacheImpl<T>::StoreWeightData(void** buffer_data_ptrs, size_t* buffer_sizes,
+                                                                 size_t num_buffers) {
+  return Status{GetEpApi().SharedPrePackedWeightCache_StoreWeightData(this->p_, buffer_data_ptrs, buffer_sizes,
+                                                                      num_buffers)};
+}
+}  // namespace detail
 }  // namespace Ort

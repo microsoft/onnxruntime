@@ -74,9 +74,9 @@ class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
   bool use_subgroup_;
 };
 
-bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
+bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
-                                 const ActivationKind activation_kind,
+                                 const bool is_fused,
                                  const TensorShape kernel_shape,
                                  const AutoPadType auto_pad,
                                  const uint32_t group);

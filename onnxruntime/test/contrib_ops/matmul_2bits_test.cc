@@ -197,10 +197,12 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if constexpr (std::is_same<T1, float>::value) {
-    execution_providers.emplace_back(DefaultCpuExecutionProvider());
 #ifdef USE_WEBGPU
-    execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    if (!opts.has_zero_point) {
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    }
 #endif
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
     test.ConfigEps(std::move(execution_providers));
     test.RunWithConfig();
   }

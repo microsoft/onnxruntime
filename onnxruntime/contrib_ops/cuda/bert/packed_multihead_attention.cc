@@ -183,6 +183,8 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   const Tensor* cumulative_sequence_length = context->Input<Tensor>(5);
   const Tensor* attention_bias = context->Input<Tensor>(6);
 
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
   PackedAttentionParameters parameters;
   parameters.use_tf32 = this->UseTF32();
   ORT_RETURN_IF_ERROR(CheckInputs(query->Shape(),
@@ -229,7 +231,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
     use_memory_efficient_attention =
         (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
         (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
-        has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
+        has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.v_head_size);
   }
 #endif
 
@@ -246,8 +248,6 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                      std::is_same<T, MLFloat16>::value,
                      std::is_same<T, BFloat16>::value);
   }
-
-  typedef typename ToCudaType<T>::MappedType CudaT;
 
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
@@ -269,7 +269,6 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                    no_qkv_workspace);
   auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
   PackedMultiHeadAttentionData<CudaT> data;
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = (key == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
