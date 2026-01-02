@@ -16,12 +16,6 @@
     </Link>
   </ItemDefinitionGroup>
 
-  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'ARM'">
-    <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Link>
-  </ItemDefinitionGroup>
-
   <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
    <Link>
       <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x64/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -37,7 +31,6 @@
   <PropertyGroup>
     <EnginePlatform Condition="'$(Platform)' == 'Win32'">x86</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' == 'ARM64'">arm64</EnginePlatform>
-    <EnginePlatform Condition="'$(Platform)' == 'ARM'">arm</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' != 'Win32' AND '$(Platform)' != 'ARM64'">$(Platform)</EnginePlatform>
   </PropertyGroup>
 
@@ -128,21 +121,6 @@
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime_providers_shared.dll"
           Condition="'$(PlatformTarget)' == 'ARM64' AND
                      Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime_providers_shared.dll')">
-      <Link>onnxruntime_providers_shared.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-
-    <!-- arm -->
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime.dll"
-          Condition="'$(PlatformTarget)' == 'ARM'">
-      <Link>onnxruntime.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime_providers_shared.dll"
-          Condition="'$(PlatformTarget)' == 'ARM' AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime_providers_shared.dll')">
       <Link>onnxruntime_providers_shared.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
