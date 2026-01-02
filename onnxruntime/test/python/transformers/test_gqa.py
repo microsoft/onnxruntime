@@ -1041,7 +1041,6 @@ def parity_check_gqa_past(
 
     # --- ONNX Runtime Path ---
 
-
     q_ort, new_k_ort, new_v_ort = q, new_k, new_v
     if config.packed:
         q_ort = torch.cat([q, new_k, new_v], dim=2)

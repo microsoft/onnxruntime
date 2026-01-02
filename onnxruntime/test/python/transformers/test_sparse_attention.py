@@ -520,8 +520,6 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
     else:
         float_type = TensorProto.FLOAT
 
-    cache_type = float_type
-
     # Build input list for the GQA node
     node_inputs = [
         "query",
