@@ -57,6 +57,8 @@ TEST_F(QnnHTPBackendTests, LeakyReluOpSet16) {
 
 // Test Leaky Relu where input is FP16 and alpha is FP32
 TEST_F(QnnHTPBackendTests, LeakyReluFP16OpSet16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
+
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";

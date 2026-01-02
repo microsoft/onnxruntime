@@ -5,9 +5,11 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include <cmath>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
 #include "core/common/float16.h"
@@ -19,6 +21,13 @@
 #include "test/util/include/test/test_environment.h"
 
 #include "gtest/gtest.h"
+
+// QNN SDK headers for platform attribute queries.
+#include "QNN/QnnDevice.h"
+#include "QNN/HTP/QnnHtpDevice.h"
+#include "QNN/QnnTypes.h"
+#include "QNN/QnnInterface.h"
+#include "QNN/QnnLog.h"
 
 namespace onnxruntime {
 namespace test {
@@ -1335,13 +1344,65 @@ enum class BackendSupport {
 // The test is skipped if HTP is unavailable (may occur on Windows ARM64).
 // TODO: Remove once HTP can be emulated on Windows ARM64.
 class QnnHTPBackendTests : public ::testing::Test {
+  // Platform capability attributes queried from QNN.
+  struct QnnPlatformAttributes {
+    QnnHtpDevice_Arch_t htp_arch{QNN_HTP_DEVICE_ARCH_NONE};
+    bool dlbc_supported{false};
+    uint32_t vtcm_size_mb{0};
+    uint32_t soc_model{QNN_SOC_MODEL_UNKNOWN};
+    std::string sdk_version;
+  };
+
  protected:
+  // Runs before each test
   void SetUp() override;
 
   // Some tests need the Ir backend, which is not always available.
   [[nodiscard]] BackendSupport IsIRBackendSupported() const;
 
-  static BackendSupport cached_htp_support_;  // Set by the first test using this fixture.
+ public:
+  // Returns true if platform attributes are available.
+  static bool HasPlatformAttributes() {
+    return cached_platform_attrs_.has_value();
+  }
+
+  // Cached platform attributes for HTP backend to avoid repeated queries.
+  static const QnnPlatformAttributes& GetPlatformAttributes() {
+    if (!cached_platform_attrs_.has_value()) {
+      ORT_THROW("QNN platform attributes are not available.");
+    }
+    return *cached_platform_attrs_;
+  }
+
+  // Returns true if the test should be skipped because HTP architecture is less than or equal to the provided arch.
+  // Example: if (QnnHTPBackendTests::ShouldSkipIfHTPArchIsLessThanOrEqualTo(QNN_HTP_DEVICE_ARCH_V68)) { GTEST_SKIP() << "..."; }
+  static bool ShouldSkipIfHtpArchIsLessThanOrEqualTo(QnnHtpDevice_Arch_t arch) {
+    return HasPlatformAttributes() && GetPlatformAttributes().htp_arch <= arch;
+  }
+
+  // Query QNN platform attributes by directly calling QNN APIs
+  Status QueryQnnPlatformAttributesDirectly(QnnPlatformAttributes& out, const onnxruntime::logging::Logger& logger);
+
+  // Returns true if the test should be skipped because HTP FP16 is not supported on this platform.
+  static bool ShouldSkipIfHtpFp16Unsupported() {
+#if defined(_WIN32)  // On Windows ARM64, FP16 is not supported if the HTP architecture is v68.
+    return ShouldSkipIfHtpArchIsLessThanOrEqualTo(QNN_HTP_DEVICE_ARCH_V68);
+#else
+    return false;
+#endif
+  }
+
+  // Returns true if the test should be skipped because AutoEP is not supported on this platform.
+  static bool ShouldSkipIfAutoEpNpuUnsupported() {
+#if defined(_WIN32)  // V68 device (Makena) on win-arm64 doesn't support NPU device discovery with dxcore.dll.
+    return ShouldSkipIfHtpArchIsLessThanOrEqualTo(QNN_HTP_DEVICE_ARCH_V68);
+#else
+    return false;
+#endif
+  }
+
+  static std::optional<QnnHTPBackendTests::QnnPlatformAttributes> cached_platform_attrs_;  // Set by the first test using this fixture.
+  static BackendSupport cached_htp_support_;                                               // Set by the first test using this fixture.
   static BackendSupport cached_ir_support_;
 };
 
@@ -1383,6 +1444,20 @@ class QnnIRBackendTests : public ::testing::Test {
  * \return True if "axes" is an input, or false if "axes" is an attribute.
  */
 bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version);
+
+#define QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED()                                  \
+  do {                                                                           \
+    if (QnnHTPBackendTests::ShouldSkipIfHtpFp16Unsupported()) {                  \
+      GTEST_SKIP() << "Test requires HTP FP16 support, which is not available."; \
+    }                                                                            \
+  } while (0)
+
+#define QNN_SKIP_TEST_IF_AUTOEP_NPU_UNSUPPORTED()                                                            \
+  do {                                                                                                       \
+    if (QnnHTPBackendTests::ShouldSkipIfAutoEpNpuUnsupported()) {                                            \
+      GTEST_SKIP() << "This platform lacks dxcore.dll NPU discovery capability required by auto-EP feature"; \
+    }                                                                                                        \
+  } while (0)
 
 }  // namespace test
 }  // namespace onnxruntime
