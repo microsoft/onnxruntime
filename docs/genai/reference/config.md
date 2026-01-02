@@ -567,6 +567,8 @@ Options passed to ONNX Runtime for model execution.
 
 Entries added to `OrtRunOptions` for a specific session run.
 
+The options in this section can be any ONNX Runtime run option.
+
 - **run_options**: *(array of [string, string] pairs)*  
   Key/value config entries applied to the run.
 
