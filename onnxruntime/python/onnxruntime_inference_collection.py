@@ -850,7 +850,7 @@ class IOBinding:
         self._numpy_obj_references[name] = arr_on_cpu
         self._iobinding.bind_input(name, arr_on_cpu)
 
-    def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
+    def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr, vendor_id: int = -1):
         """
         :param name: input name
         :param device_type: e.g. cpu, cuda, cann
@@ -858,14 +858,12 @@ class IOBinding:
         :param element_type: input element type. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16)
         :param shape: input shape
         :param buffer_ptr: memory pointer to input data
+        :param vendor_id: Optional PCI vendor id associated with the device
         """
+        device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
         self._iobinding.bind_input(
             name,
-            C.OrtDevice(
-                get_ort_device_type(device_type),
-                C.OrtDevice.default_memory(),
-                device_id,
-            ),
+            device,
             element_type,
             shape,
             buffer_ptr,
@@ -889,6 +887,7 @@ class IOBinding:
         element_type=None,
         shape=None,
         buffer_ptr=None,
+        vendor_id: int = -1,
     ):
         """
         :param name: output name
@@ -897,8 +896,10 @@ class IOBinding:
         :param element_type: output element type. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16)
         :param shape: output shape
         :param buffer_ptr: memory pointer to output data
+        :param vendor_id: Optional PCI vendor id associated with the device
         """
 
+        device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
         # Follow the `if` path when the user has not provided any pre-allocated buffer but still
         # would like to bind an output to a specific device (e.g. cuda).
         # Pre-allocating an output buffer may not be an option for the user as :
@@ -908,22 +909,14 @@ class IOBinding:
         if buffer_ptr is None:
             self._iobinding.bind_output(
                 name,
-                C.OrtDevice(
-                    get_ort_device_type(device_type),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                device,
             )
         else:
             if element_type is None or shape is None:
                 raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
             self._iobinding.bind_output(
                 name,
-                C.OrtDevice(
-                    get_ort_device_type(device_type),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                device,
                 element_type,
                 shape,
                 buffer_ptr,
