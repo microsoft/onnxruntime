@@ -43,11 +43,11 @@ Status PadOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       // Pad in the com.microsoft domain accepts 2-3 inputs (data, pads, value).
       ORT_RETURN_IF(inputs.size() < 2, "QNN Pad requires the pads input.");
     } else {
-      // Pad in the ONNX domain accept only 1 input (data) before opset 11.
+      // Pad in the ONNX domain accepts only 1 input (data) before opset 11.
       // For opset 11 and after, it accepts 2-4 inputs (data, pads, constant_value, axes), although QNN pad
       // does not support the axes input.
 
-      // Reject Pad opset 1, which differes slightly from Pad for 2 <= opset < 11.
+      // Reject Pad opset 1, which differs slightly from Pad for 2 <= opset < 11.
       // We could support it, but nodes below opset 7 should be rejected earlier by ORT, anyway.
       ORT_RETURN_IF(opset_version < 2, "Pad with opset < 2 is not supported");
 
@@ -59,7 +59,7 @@ Status PadOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
-    ORT_RETURN_IF(input_shape.size() > 5, "QNN Pad doesn't support more than 5 dimension");
+    ORT_RETURN_IF(input_shape.size() > 5, "QNN Pad doesn't support more than 5 dimensions");
 
     if (opset_version >= 11 || domain == kMSDomain) {
       auto& pads_input_name = inputs[1].node_arg.Name();

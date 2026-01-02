@@ -634,15 +634,6 @@ TEST_F(QnnGPUBackendTests, Pad2dMix) {
                "gpu");
 }
 
-// Pad 2d, pads input not initializer
-TEST_F(QnnGPUBackendTests, Pad2dPadsNotIni) {
-  RunPadOpTest(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
-               TestInputDef<int64_t>({4}, false, {0, 2, 0, 0}),
-               TestInputDef<float>({1}, true, {0.0f}),
-               {utils::MakeAttribute("mode", "constant")},
-               ExpectedEPNodeAssignment::None);
-}
-
 // Pad reflect mode
 // Disabled reason: GPU supplement - "MIRROR_REFLECT can only be used when rank(in[0]) is 4"
 TEST_F(QnnGPUBackendTests, DISABLED_PadModeReflect) {

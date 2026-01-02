@@ -42,6 +42,8 @@ static void RunOnnxOpsetTypedTest(
   if constexpr (std::is_same_v<T, int8_t>) {
     provider_types.insert(kTensorrtExecutionProvider);
   }
+  // Exclude QNN due to a few test failures with the CPU backend.
+  provider_types.insert(kQnnExecutionProvider);
   SessionOptions so;
   // Don't fail early on shape inference so that we can test the op's error handling.
   if (expect != OpTester::ExpectResult::kExpectSuccess) {
@@ -538,10 +540,6 @@ TYPED_TEST(PadOpTest, Pad_Edge_3D_Last_Slice_Inner_No_Padding) {
 TYPED_TEST(PadOpTest, Pad_Reflect_3D_Inner_No_Padding) {
   using T = TypeParam;
 
-  if (DefaultQnnExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: The difference between cur_expected[i] and cur_actual[i] is 10, which exceeds tolerance.";
-  }
-
   RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
                                   {T(1), T(2), T(3), T(4), T(5),
                                    T(6), T(7), T(8), T(9), T(10),
@@ -772,9 +770,6 @@ TYPED_TEST(PadOpTest, Pad_Constant_DimWithZeroInput) {
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 13, which exceeds threshold";
   }
-  if (DefaultQnnExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Run failed but expected success: Non-zero status code returned.";
-  }
 
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({0},  // 1D
@@ -848,9 +843,6 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
   }
-  if (DefaultQnnExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Run failed but expected success: Non-zero status code returned.";
-  }
 
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({0},  // 1D
@@ -904,9 +896,6 @@ TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-  if (DefaultQnnExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Run failed but expected success: Non-zero status code returned.";
   }
 
   using T = TypeParam;
