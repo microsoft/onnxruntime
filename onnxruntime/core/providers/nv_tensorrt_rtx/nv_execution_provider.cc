@@ -31,6 +31,7 @@
 #include <map>
 #include <memory>
 #include <filesystem>
+#include <thread>
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
 
