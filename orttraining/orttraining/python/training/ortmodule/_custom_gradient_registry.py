@@ -114,6 +114,17 @@ def diagonal_gradient():
         ),
     ]
 
+@register_gradient("org.pytorch.aten", "ATen", "resize", "")
+def resize_gradient():
+    return [
+        (
+            ("ATen", "org.pytorch.aten"),
+            ["GO(0)", "I(0)", "I(1)", "I(2)", "I(3)", "I(4)", "I(5)", "O(1)"],
+            ["GI(0)"],
+            {"operator": {"value": "resize_backward", "dtype": "string"}},
+        ),
+    ]
+
 
 @register_gradient("org.pytorch.aten", "ATen", "max_pool2d_with_indices", "")
 def max_pool2d_gradient():
