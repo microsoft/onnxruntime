@@ -19,7 +19,7 @@ std::vector<std::string> GetStackTrace() {
   void* array[kCallstackLimit];
   char** strings = nullptr;
 
-  int size = backtrace(array, kCallstackLimit);
+  size_t size = backtrace(array, kCallstackLimit);
   stack.reserve(size);
   strings = backtrace_symbols(array, size);
 
@@ -35,7 +35,7 @@ std::vector<std::string> GetStackTrace() {
 
   // hide GetStackTrace so the output starts with the 'real' location
   constexpr int start_frame = 1;
-  for (int i = start_frame; i < size; i++) {
+  for (size_t i = start_frame; i < size; i++) {
     stack.push_back(strings[i]);
   }
 
