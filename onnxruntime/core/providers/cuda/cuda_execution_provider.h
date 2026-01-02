@@ -116,7 +116,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateCudaAllocator(const CUDAAllocatorParams& cuda_allocator_params);
 
   static AllocatorPtr CreateCudaPinnedAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          const OrtArenaCfg* arena_cfg);
+                                                const OrtArenaCfg* arena_cfg);
 
   ITuningContext* GetTuningContext() const override;
 
