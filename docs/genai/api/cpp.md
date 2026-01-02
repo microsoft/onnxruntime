@@ -109,6 +109,86 @@ config->Overlay("{\"option\": \"value\"}");
 
 ---
 
+### AddModelData
+
+Adds in-memory model data that should be loaded with the configuration.
+
+```cpp
+config->AddModelData("model.onnx", model_bytes.data(), model_bytes.size());
+```
+
+---
+
+### RemoveModelData
+
+Removes previously added in-memory model data.
+
+```cpp
+config->RemoveModelData("model.onnx");
+```
+
+---
+
+### SetDecoderProviderOptionsHardwareDeviceType
+
+Specifies the hardware device type for decoder provider options.
+
+```cpp
+config->SetDecoderProviderOptionsHardwareDeviceType("CUDAExecutionProvider", "gpu");
+```
+
+---
+
+### SetDecoderProviderOptionsHardwareDeviceId
+
+Sets the hardware device ID for decoder provider options.
+
+```cpp
+config->SetDecoderProviderOptionsHardwareDeviceId("CUDAExecutionProvider", 0);
+```
+
+---
+
+### SetDecoderProviderOptionsHardwareVendorId
+
+Sets the hardware vendor ID for decoder provider options.
+
+```cpp
+config->SetDecoderProviderOptionsHardwareVendorId("CUDAExecutionProvider", 0);
+```
+
+---
+
+### ClearDecoderProviderOptionsHardwareDeviceType
+
+Clears any decoder provider hardware device type override.
+
+```cpp
+config->ClearDecoderProviderOptionsHardwareDeviceType("CUDAExecutionProvider");
+```
+
+---
+
+### ClearDecoderProviderOptionsHardwareDeviceId
+
+Clears any decoder provider hardware device ID override.
+
+```cpp
+config->ClearDecoderProviderOptionsHardwareDeviceId("CUDAExecutionProvider");
+```
+
+---
+
+### ClearDecoderProviderOptionsHardwareVendorId
+
+Clears any decoder provider hardware vendor ID override.
+
+```cpp
+config->ClearDecoderProviderOptionsHardwareVendorId("CUDAExecutionProvider");
+```
+
+---
+
 ## OgaRuntimeSettings
 
 ### Create
@@ -139,6 +219,48 @@ Creates a tokenizer for the given model.
 
 ```cpp
 auto tokenizer = OgaTokenizer::Create(*model);
+```
+
+---
+
+### UpdateOptions
+
+Updates tokenizer options using key/value pairs.
+
+```cpp
+const char* keys[] = {"padding_side"};
+const char* values[] = {"left"};
+tokenizer->UpdateOptions(keys, values, 1);
+```
+
+---
+
+### GetBosTokenId
+
+Gets the beginning-of-sequence token ID.
+
+```cpp
+int32_t bos_id = tokenizer->GetBosTokenId();
+```
+
+---
+
+### GetEosTokenIds
+
+Gets the configured end-of-sequence token IDs.
+
+```cpp
+auto eos_ids = tokenizer->GetEosTokenIds();
+```
+
+---
+
+### GetPadTokenId
+
+Gets the padding token ID.
+
+```cpp
+int32_t pad_id = tokenizer->GetPadTokenId();
 ```
 
 ---
@@ -213,6 +335,7 @@ Creates a tokenizer stream for incremental decoding.
 
 ```cpp
 auto stream = OgaTokenizerStream::Create(*tokenizer);
+auto stream_from_processor = OgaTokenizerStream::Create(*processor);
 ```
 
 ---
@@ -312,32 +435,22 @@ params->SetSearchOptionBool("do_sample", true);
 
 ---
 
-### SetModelInput
+### TryGraphCaptureWithMaxBatchSize
 
-Sets an additional model input.
-
-```cpp
-params->SetModelInput("input_name", *tensor);
-```
-
----
-
-### SetInputs
-
-Sets named tensors as inputs.
+Deprecated helper to request graph capture with a maximum batch size.
 
 ```cpp
-params->SetInputs(*named_tensors);
+params->TryGraphCaptureWithMaxBatchSize(4);
 ```
 
 ---
 
 ### SetGuidance
 
-Sets guidance data.
+Sets guidance data, optionally enabling forced-first tokens.
 
 ```cpp
-params->SetGuidance("type", "data");
+params->SetGuidance("type", "data", /*enable_ff_tokens*/ true);
 ```
 
 ---
@@ -350,6 +463,26 @@ Creates a generator from the given model and parameters.
 
 ```cpp
 auto generator = OgaGenerator::Create(*model, *params);
+```
+
+---
+
+### SetModelInput
+
+Sets an additional model input tensor.
+
+```cpp
+generator->SetModelInput("input_name", *tensor);
+```
+
+---
+
+### SetInputs
+
+Sets multiple named tensors as inputs in one call.
+
+```cpp
+generator->SetInputs(*named_tensors);
 ```
 
 ---
@@ -404,6 +537,16 @@ generator->GenerateNextToken();
 
 ---
 
+### GetNextTokens
+
+Retrieves the token IDs produced by the last generation step.
+
+```cpp
+auto next_tokens = generator->GetNextTokens();
+```
+
+---
+
 ### RewindTo
 
 Rewinds the sequence to a new length.
@@ -440,6 +583,16 @@ Returns a pointer to the sequence data at the given index.
 
 ```cpp
 const int32_t* data = generator->GetSequenceData(0);
+```
+
+---
+
+### GetInput
+
+Gets a named input tensor.
+
+```cpp
+auto input = generator->GetInput("input_name");
 ```
 
 ---
@@ -492,6 +645,10 @@ Creates a tensor from a buffer.
 
 ```cpp
 auto tensor = OgaTensor::Create(data, shape, shape_dims_count, element_type);
+
+// With typed data and shape vector (C++20 span overloads are used when available)
+std::vector<int64_t> shape_vec = {1, 3};
+auto typed_tensor = OgaTensor::Create<float>(float_data, shape_vec);
 ```
 
 ---
@@ -650,6 +807,112 @@ adapters->UnloadAdapter("adapter_name");
 
 ---
 
+## OgaRequest
+
+### Create
+
+Creates a request wrapper for incremental decoding.
+
+```cpp
+auto request = OgaRequest::Create(*params);
+```
+
+---
+
+### AddTokens
+
+Adds the initial token sequences to the request.
+
+```cpp
+request->AddTokens(*sequences);
+```
+
+---
+
+### IsDone
+
+Checks whether the request has finished generating.
+
+```cpp
+bool done = request->IsDone();
+```
+
+---
+
+### HasUnseenTokens
+
+Indicates whether the request has unseen tokens to consume.
+
+```cpp
+bool has_unseen = request->HasUnseenTokens();
+```
+
+---
+
+### GetUnseenToken
+
+Retrieves the next unseen token from the request.
+
+```cpp
+int32_t token = request->GetUnseenToken();
+```
+
+---
+
+### SetOpaqueData / GetOpaqueData
+
+Stores and retrieves arbitrary user data associated with the request.
+
+```cpp
+request->SetOpaqueData(user_ptr);
+void* data = request->GetOpaqueData();
+```
+
+---
+
+## OgaEngine
+
+### Create
+
+Creates an engine that manages multiple requests.
+
+```cpp
+auto engine = OgaEngine::Create(*model);
+```
+
+---
+
+### HasPendingRequests
+
+Checks if the engine has requests waiting to be processed.
+
+```cpp
+bool pending = engine->HasPendingRequests();
+```
+
+---
+
+### Add / Remove
+
+Adds or removes a request from the engine.
+
+```cpp
+engine->Add(*request);
+engine->Remove(*request);
+```
+
+---
+
+### Step
+
+Advances the engine one step and returns a request that has new tokens, if any.
+
+```cpp
+auto completed_request = engine->Step();
+```
+
+---
+
 ## OgaMultiModalProcessor
 
 ### Create
@@ -672,12 +935,34 @@ auto named_tensors = processor->ProcessImages("prompt", images.get());
 
 ---
 
+### ProcessImages (multiple prompts)
+
+Processes images with a batch of prompts.
+
+```cpp
+std::vector<const char*> prompts = {"first prompt", "second prompt"};
+auto named_tensors = processor->ProcessImages(prompts, images.get());
+```
+
+---
+
 ### ProcessAudios
 
 Processes audios and returns named tensors.
 
 ```cpp
-auto named_tensors = processor->ProcessAudios(audios.get());
+auto named_tensors = processor->ProcessAudios("prompt", audios.get());
+```
+
+---
+
+### ProcessAudios (multiple prompts)
+
+Processes audios with a batch of prompts.
+
+```cpp
+std::vector<const char*> prompts = {"first prompt", "second prompt"};
+auto named_tensors = processor->ProcessAudios(prompts, audios.get());
 ```
 
 ---
@@ -688,6 +973,17 @@ Processes both images and audios.
 
 ```cpp
 auto named_tensors = processor->ProcessImagesAndAudios("prompt", images.get(), audios.get());
+```
+
+---
+
+### ProcessImagesAndAudios (multiple prompts)
+
+Processes images and audios with a batch of prompts.
+
+```cpp
+std::vector<const char*> prompts = {"first prompt", "second prompt"};
+auto named_tensors = processor->ProcessImagesAndAudios(prompts, images.get(), audios.get());
 ```
 
 ---
@@ -732,6 +1028,18 @@ Sets a string logging option.
 
 ```cpp
 Oga::SetLogString("option_name", "value");
+```
+
+---
+
+### SetLogCallback
+
+Registers a callback for log messages.
+
+```cpp
+Oga::SetLogCallback([](const char* msg, size_t len) {
+	fwrite(msg, 1, len, stdout);
+});
 ```
 
 ---
