@@ -81,4 +81,9 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
 #endif
 }
 
+common::Status CPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& /*stream*/) const {
+  // For being called in IDataTransfer::CopyTensors with mixture of CPU and GPU tensors.
+  return this->CopyTensor(src, dst);
+}
+
 };  // namespace onnxruntime
