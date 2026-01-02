@@ -348,11 +348,11 @@ struct OrtKernelImpl {
    *                      the application for the session/environment (e.g., via CreateAndRegisterAllocator[V2]
    *                      or RegisterAllocator), or an allocator on the OrtEpDevice (read-only or default) otherwise.
    *                      The allocator remains valid throughout the lifetime of the OrtKernelImpl instance.
-   * \param[in] prepacked_weights_cache May be NULL. If not NULL, the kernel may choose to share a packed weight by
-   *                                    first storing it in the OrtSharedPrePackedWeightCache instance and then
-   *                                    receiving the actual shared weight data in the call to
-   *                                    OrtKernelImpl::SetSharedPrePackedWeight(). See the above description for
-   *                                    "sharing mode".
+   * \param[in] prepacked_weight_cache May be NULL. If not NULL, the kernel may choose to share a packed weight by
+   *                                   first storing it in the OrtSharedPrePackedWeightCache instance and then
+   *                                   receiving the actual shared weight data in the call to
+   *                                   OrtKernelImpl::SetSharedPrePackedWeight(). See the above description for
+   *                                   "sharing mode".
    * \param[out] is_packed Output parameter that the implementation sets to true if the kernel packed the tensor data.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
