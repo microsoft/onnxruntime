@@ -74,6 +74,7 @@ extern "C" void ortenv_setup() {
       log_level = static_cast<OrtLoggingLevel>(*log_level_override);
     }
 
+    log_level = ORT_LOGGING_LEVEL_VERBOSE;
     ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
 
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
