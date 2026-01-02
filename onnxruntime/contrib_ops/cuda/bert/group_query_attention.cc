@@ -59,7 +59,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
 
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
 
-  // Memory efficient attention supports float and float16. BFloat16 support added for SM80+.
+  // Memory efficient attention supports float and float16. BFloat16 support is added for SM80+ via cutlass kernels.
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 
   if (!disable_flash_attention_) {
@@ -157,7 +157,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> softmax_lse_accum_buffer;
   IAllocatorUniquePtr<void> out_accum_buffer;
 
-  // Allocate seqlens_k_buffer here so it is available for both paths
+  // Allocate seqlens_k_buffer here so it is available for both Flash Attention and Memory Efficient Attention paths.
+  // This buffer is used to store the effective sequence lengths (including past) for each batch entry.
   auto seqlens_k_buffer = GetScratchBuffer<void>(sizeof(int) * parameters.batch_size, context->GetComputeStream());
   data.seqlens_k_buff = reinterpret_cast<int*>(seqlens_k_buffer.get());
 

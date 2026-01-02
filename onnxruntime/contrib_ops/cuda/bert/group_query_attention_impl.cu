@@ -67,6 +67,7 @@ __global__ void repeat_seqlen(int32_t* seqlens_k, int32_t seqlen, int batch_size
   if (id < batch_size) seqlens_k[id] = seqlen;
 }
 
+// Kernel to calculate past sequence lengths from total sequence lengths
 __global__ void GetPastSeqLens(const int32_t* total_seqlens,
                                int32_t* past_seqlens, const int batch_size,
                                const int sequence_length) {

@@ -517,7 +517,9 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
       params.knew_row_stride = (num_heads * head_size) + (2 * num_heads_k * head_size);
       params.vnew_row_stride = (num_heads * head_size) + (2 * num_heads_k * head_size);
 
-      // Disable kernel append for packed GQA
+      // Disable internal kernel append for packed GQA.
+      // We handle the append logic externally via LaunchConcatNewToPastKV to support both contiguous and non-contiguous buffers
+      // and to avoid complexity dealing with packed QKV strides within the Flash Attention kernel.
       params.knew_ptr = nullptr;
       params.vnew_ptr = nullptr;
     } else {
@@ -555,13 +557,6 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     // V is at offset (num_heads + num_heads_k) * head_size
     char* q_base = static_cast<char*>(q);
     params.knew_ptr = static_cast<void*>(q_base + num_heads * head_size * sizeof(half));  // Assuming half/bf16 type size handled by stride?
-
-    // WAIT: flash_fwd_params uses void*, but strides are in elements.
-    // The kernel does `reinterpret_cast<Element*>(params.knew_ptr) + ...`
-    // So we must pass the pointer adjusted by ELEMENT count if we cast to Element* inside.
-    // However, we don't know the Element type here (it's void*).
-    // FORTUNATELY, we can just pass `q` and handle the offset via `head_idx` logic OR adjust the pointer bytes.
-    // Adjusting pointer bytes is safer given the kernel implementation.
 
     // We explicitly disable internal append for Packed QKV because of stride issues.
     // ORT handles append externally via LaunchConcatNewToPastKV.
@@ -616,8 +611,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     params.page_block_size = 1;
   }
 
-  // Force split kernel if quantization is active (k_quant_type != 0)
-  // because only the split kernel instantiation supports dequantization logic.
+  // Force split kernel if quantization is active (k_new != nullptr implies separate new KV buffer handling)
+  // or if using packed QKV (to ensure correct handling of strided inputs which might be better supported or isolated in split kernel logic).
   bool force_split = (k_new != nullptr) || is_packed_qkv;
 
   run_mha_fwd(params, stream, force_split);
