@@ -178,11 +178,7 @@ class MatMulNBits final : public OpKernel {
                         const MatMulComputeHelper& helper) const;
 
   Status ComputeBPackedLUT(const Tensor* a,
-                           const Tensor* scales,
-                           const Tensor* zero_points,
-                           const Tensor* bias,
                            Tensor* y,
-                           AllocatorPtr& allocator,
                            concurrency::ThreadPool* thread_pool,
                            const MatMulComputeHelper& helper) const;
 };
@@ -385,19 +381,11 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
 
 template <typename T1>
 Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
-                                          const Tensor* scales,
-                                          const Tensor* zero_points,
-                                          const Tensor* bias,
                                           Tensor* y,
-                                          AllocatorPtr& allocator,
                                           concurrency::ThreadPool* thread_pool,
                                           const MatMulComputeHelper& helper) const {
   const auto* a_data = a->Data<T1>();
-  const auto* scales_data = scales == nullptr ? nullptr : scales->Data<T1>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
   auto* y_data = y->MutableData<T1>();
-  const size_t batch_count = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
@@ -866,7 +854,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
                     // with B directly too.
     if (prefer_lut_gemm_) {
-      return ComputeBPackedLUT(a, scales, zero_points, bias, y, allocator, thread_pool, helper);
+      return ComputeBPackedLUT(a, y, thread_pool, helper);
     }
 
     if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
