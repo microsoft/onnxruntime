@@ -261,7 +261,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     use_memory_efficient_attention =
         (attention_bias == nullptr || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
         sizeof(T) == 2 &&  // only enable for fp16
-        has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
+        has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.v_head_size);
   }
 #endif
 
