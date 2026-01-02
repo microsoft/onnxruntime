@@ -157,7 +157,7 @@ class LlamaMSRotaryEmbedding(torch.nn.Module):
 
 # Triton-based implementation for CUDA
 def rotary_embedding_cuda(*args, **kwargs):
-    from rotary_flash import apply_rotary_emb
+    from rotary_flash import apply_rotary_emb  # noqa: PLC0415
 
     return apply_rotary_emb(*args, **kwargs)
 
