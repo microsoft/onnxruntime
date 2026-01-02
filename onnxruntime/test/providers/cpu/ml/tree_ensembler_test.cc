@@ -452,5 +452,34 @@ TEST(MLOpTest, TreeEnsembleIssue25400) {
   test.Run();
 }
 
+TEST(MLOpTest, TreeEnsembleSingleTargetLogistic) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  test.AddAttribute("post_transform", std::string("LOGISTIC"));
+  test.AddAttribute("n_targets", int64_t(1));
+
+  // Single tree with single leaf node
+  test.AddAttribute("nodes_treeids", std::vector<int64_t>{0});
+  test.AddAttribute("nodes_nodeids", std::vector<int64_t>{0});
+  test.AddAttribute("nodes_featureids", std::vector<int64_t>{0});
+  test.AddAttribute("nodes_modes", std::vector<std::string>{"LEAF"});
+  test.AddAttribute("nodes_values", std::vector<float>{0.0f});
+  test.AddAttribute("nodes_truenodeids", std::vector<int64_t>{0});
+  test.AddAttribute("nodes_falsenodeids", std::vector<int64_t>{0});
+
+  // Target/weight for the leaf
+  test.AddAttribute("target_treeids", std::vector<int64_t>{0});
+  test.AddAttribute("target_nodeids", std::vector<int64_t>{0});
+  test.AddAttribute("target_ids", std::vector<int64_t>{0});
+  test.AddAttribute("target_weights", std::vector<float>{10.0f});
+
+  test.AddInput<float>("X", {1, 1}, {1.0f});
+
+  // 1 / (1 + exp(-10.0)) = 0.9999546021312976
+  test.AddOutput<float>("Y", {1, 1}, {0.9999546f}, 1e-4f);
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -223,9 +223,18 @@ class TreeAggregator {
 
   void FinalizeScores1(OutputType* Z, ScoreValue<ThresholdType>& prediction, int64_t* /*Y*/) const {
     prediction.score = prediction.has_score ? (prediction.score + origin_) : origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT
-             ? static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)))
-             : static_cast<OutputType>(prediction.score);
+    switch (this->post_transform_) {
+      case POST_EVAL_TRANSFORM::PROBIT:
+        *Z = static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)));
+        break;
+      case POST_EVAL_TRANSFORM::LOGISTIC:
+        *Z = static_cast<OutputType>(ComputeLogistic(static_cast<float>(prediction.score)));
+        break;
+      case POST_EVAL_TRANSFORM::NONE:
+      default:
+        *Z = static_cast<OutputType>(prediction.score);
+        break;
+    }
   }
 
   // N outputs
@@ -278,9 +287,18 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
 
   void FinalizeScores1(OutputType* Z, ScoreValue<ThresholdType>& prediction, int64_t* /*Y*/) const {
     prediction.score += this->origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT
-             ? static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)))
-             : static_cast<OutputType>(prediction.score);
+    switch (this->post_transform_) {
+      case POST_EVAL_TRANSFORM::PROBIT:
+        *Z = static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)));
+        break;
+      case POST_EVAL_TRANSFORM::LOGISTIC:
+        *Z = static_cast<OutputType>(ComputeLogistic(static_cast<float>(prediction.score)));
+        break;
+      case POST_EVAL_TRANSFORM::NONE:
+      default:
+        *Z = static_cast<OutputType>(prediction.score);
+        break;
+    }
   }
 
   // N outputs
@@ -333,9 +351,18 @@ class TreeAggregatorAverage : public TreeAggregatorSum<InputType, ThresholdType,
   void FinalizeScores1(OutputType* Z, ScoreValue<ThresholdType>& prediction, int64_t* /*Y*/) const {
     prediction.score /= this->n_trees_;
     prediction.score += this->origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT
-             ? static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)))
-             : static_cast<OutputType>(prediction.score);
+    switch (this->post_transform_) {
+      case POST_EVAL_TRANSFORM::PROBIT:
+        *Z = static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)));
+        break;
+      case POST_EVAL_TRANSFORM::LOGISTIC:
+        *Z = static_cast<OutputType>(ComputeLogistic(static_cast<float>(prediction.score)));
+        break;
+      case POST_EVAL_TRANSFORM::NONE:
+      default:
+        *Z = static_cast<OutputType>(prediction.score);
+        break;
+    }
   }
 
   void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
