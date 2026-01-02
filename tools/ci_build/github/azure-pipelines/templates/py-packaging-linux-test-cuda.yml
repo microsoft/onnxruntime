@@ -18,9 +18,9 @@ parameters:
 
 - name: cuda_version
   type: string
-  default: '12.8'
+  default: '12.9'
   values:
-   - 12.8
+   - 12.9
    - 13.0
 
 # TODO: Ideally it should fetch information from the build that triggers it
@@ -47,7 +47,7 @@ jobs:
   - name: trt_version
     ${{ if eq(parameters.cuda_version, '13.0') }}:
       value: ${{ variables.linux_trt_version_cuda13 }}
-    ${{ if eq(parameters.cuda_version, '12.8') }}:
+    ${{ if eq(parameters.cuda_version, '12.9') }}:
       value: ${{ variables.linux_trt_version_cuda12 }}
   workspace:
     clean: all

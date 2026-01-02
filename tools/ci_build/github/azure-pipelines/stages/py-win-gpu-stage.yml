@@ -21,9 +21,9 @@ parameters:
 
 - name: CudaVersion
   type: string
-  default: '12.8'
+  default: '12.9'
   values:
-    - 12.8
+    - 12.9
     - 13.0
 
 - name: cmake_build_type
@@ -76,7 +76,7 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: win_trt_folder
-        ${{ if eq(parameters.CudaVersion, '12.8') }}:
+        ${{ if eq(parameters.CudaVersion, '12.9') }}:
           value: ${{ variables.win_trt_folder_cuda12 }}
         ${{ if eq(parameters.CudaVersion, '13.0') }}:
           value: ${{ variables.win_trt_folder_cuda13 }}

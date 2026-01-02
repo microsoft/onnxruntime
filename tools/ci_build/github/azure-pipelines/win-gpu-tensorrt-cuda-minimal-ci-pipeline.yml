@@ -31,20 +31,20 @@ parameters:
 - name: CudaVersion
   displayName: CUDA version
   type: string
-  default: '12.8'
+  default: '9'
   values:
-    - 12.8
+    - 12.9
     - 13.0
 
 variables:
   - template: templates/common-variables.yml
   - name: win_trt_folder
-    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    ${{ if eq(parameters.CudaVersion, '12.9') }}:
       value: ${{ variables.win_trt_folder_cuda12 }}
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: ${{ variables.win_trt_folder_cuda13 }}
   - name: setup_env_script
-    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    ${{ if eq(parameters.CudaVersion, '12.9') }}:
       value: 'setup_env_cuda12.bat'
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: 'setup_env_cuda13.bat'

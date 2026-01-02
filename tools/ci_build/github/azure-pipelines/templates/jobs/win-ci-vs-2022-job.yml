@@ -58,9 +58,9 @@ parameters:
 - name: CudaVersion
   displayName: CUDA version
   type: string
-  default: '12.8'
+  default: '12.9'
   values:
-    - 12.8
+    - 12.9
     - 13.0
 
 jobs:
