@@ -3071,7 +3071,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
 TEST(InferenceSessionTests, TestDelayedThreadPoolFetch) {
   SessionOptions so;
-  so.config_options.AddConfigEntry(kOrtSessionOptionsDelayIntraOpThreadpoolCreate, "1");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDelayIntraOpThreadpoolCreate, "1"));
 
   // The Clip implementation gets the threadpool from the inference session, so if things are wired up correctly
   // this will work. We don't have a direct way to check when the threadpool was created though.
