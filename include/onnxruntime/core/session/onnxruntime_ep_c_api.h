@@ -205,14 +205,7 @@ typedef struct OrtNodeComputeInfo OrtNodeComputeInfo;
  * \since Version 1.23.
  */
 struct OrtNodeFusionOptions {
-  /** \brief The ONNX Runtime version the OrtNodeFusionOptions was compiled with.
-   *
-   * Implementation should set to ORT_API_VERSION.
-   * ORT will use this to ensure it does not use members that were not available when the EP library was compiled.
-   *
-   * \since Version 1.23.
-   */
-  uint32_t ort_version_supported;
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief If set to true, specify that the execution provider does not require ONNX Runtime to provide constant
    * initializers as inputs to the fused node during model inference. This is used when the execution
@@ -235,14 +228,7 @@ struct OrtNodeFusionOptions {
  * \since Version 1.23.
  */
 struct OrtNodeComputeInfo {
-  /** \brief The ONNX Runtime version the OrtNodeComputeInfo was compiled with.
-   *
-   * Implementation should set to ORT_API_VERSION.
-   * ORT will use this to ensure it does not call functions that were not available when the EP library was compiled.
-   *
-   * \since Version 1.23.
-   */
-  uint32_t ort_version_supported;
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Creates an opaque compute state object that is then passed to the Compute() function during inference.
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
@@ -428,6 +414,12 @@ typedef OrtStatus*(ORT_API_CALL* OrtKernelCreateFunc)(_In_ void* kernel_create_f
  */
 struct OrtEpApi {
   /** \brief Create an OrtEpDevice for the EP and an OrtHardwareDevice.
+   *
+   * The created instance must be released with OrtEpApi::ReleaseEpDevice.
+   *
+   * \note When called from OrtEpFactory::GetSupportedDevices to populate the ep_devices output, ORT will take
+   *       ownership of the OrtEpDevice instances.
+   *
    * \param[in] ep_factory Execution provider factory that is creating the instance.
    * \param[in] hardware_device Hardware device that the EP can utilize.
    * \param[in] ep_metadata Optional OrtKeyValuePairs instance for execution provider metadata that may be used
@@ -436,7 +428,7 @@ struct OrtEpApi {
    * \param[in] ep_options  Optional OrtKeyValuePairs instance for execution provider options that will be added
    *                        to the Session configuration options if the execution provider is selected.
    *                        ep_device will copy this instance and the user should call ReleaseKeyValuePairs.
-   * \param ep_device OrtExecutionDevice that is created.
+   * \param ep_device OrtEpDevice that is created.
    *
    * \since Version 1.22.
    */
@@ -630,6 +622,8 @@ struct OrtEpApi {
 
   /** \brief Create an OrtHardwareDevice.
    *
+   * The created instance must be released with OrtEpApi::ReleaseHardwareDevice.
+   *
    * \note Called within OrtEpFactory::GetSupportedDevices to create a new hardware device (e.g., virtual).
    *
    * \param[in] type The hardware device type.
@@ -640,7 +634,6 @@ struct OrtEpApi {
    *                     applications via OrtApi::GetEpDevices().
    *                     Refer to onnxruntime_ep_device_ep_metadata_keys.h for common OrtHardwareDevice metadata keys.
    * \param[out] hardware_device Output parameter set to the new OrtHardwareDevice instance that is created.
-   *                             Must be release with ReleaseHardwareDevice().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -658,10 +651,11 @@ struct OrtEpApi {
   /** \brief Creates an empty kernel registry. A kernel registry contains kernel creation information for
    * every operator kernel supported by an EP.
    *
+   * The created instance must be released with OrtEpApi::ReleaseKernelRegistry.
+   *
    * \remarks Refer to OrtEp::GetKernelRegistry, which returns an EP's kernel registry to ORT.
    *
    * \param[out] kernel_registry Output parameter set to the new OrtKernelRegistry instance.
-   *                             Must be released with OrtEpApi::ReleaseKernelRegistry.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -690,8 +684,9 @@ struct OrtEpApi {
 
   /** \brief Creates a kernel definition builder used to create instances of OrtKernelDef.
    *
+   * The created instance must be released with OrtEpApi::ReleaseKernelDefBuilder.
+   *
    * \param[out] kernel_def_builder_out Output parameter set to the new OrtKernelDefBuilder instance.
-   *                                    Must be released with OrtEpApi::ReleaseKernelDefBuilder().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -834,6 +829,8 @@ struct OrtEpApi {
                   _In_ size_t num_io_indices);
 
   /** \brief Creates a OrtKernelDef instance from the given kernel definition builder.
+   *
+   * The created instance must be released with OrtEpApi::ReleaseKernelDef.
    *
    * \param[in] kernel_def_builder The OrtKernelDefBuilder instance.
    * \param[out] kernel_def_out The new OrtKernelDef instance.
@@ -993,14 +990,7 @@ typedef enum OrtEpDataLayout {
  * \since Version 1.22.
  */
 struct OrtEp {
-  /** \brief The ONNX Runtime version the execution provider was compiled with.
-   *
-   * Implementation should set to ORT_API_VERSION.
-   * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
-   *
-   * \since Version 1.22.
-   */
-  uint32_t ort_version_supported;
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Get the execution provider name.
    *
@@ -1014,9 +1004,6 @@ struct OrtEp {
   ORT_API_T(const char*, GetName, _In_ const OrtEp* this_ptr);
 
   /** \brief Get information about the nodes supported by the OrtEp instance.
-   *
-   * IMPORTANT: This is not the final version of this API function. This is currently experimental but will
-   * be stabilized by the ONNX Runtime 1.23 release.
    *
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graph The OrtGraph instance for which to populate node support. The OrtGraph could be a nested subgraph
@@ -1053,7 +1040,8 @@ struct OrtEp {
    * \param[in] count The number of OrtGraph instances to compile.
    * \param[out] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's
    *                                computation function. The implementer allocates the OrtNodeComputeInfo instances.
-   *                                ORT calls ReleaseNodeComputeInfos() to release multiple instances in a batch.
+   *                                ORT will call OrtEp::ReleaseNodeComputeInfos to release them when they are no
+   *                                longer needed.
    * \param[out] ep_context_nodes Output array of `count` OrtNode instances, each representing an EPContext
    *                              node for a compiled OrtGraph. The execution provider must use
    *                              OrtModelEditorApi::CreateNode to create the OrtNode instances. ONNX Runtime takes
@@ -1094,7 +1082,7 @@ struct OrtEp {
 
   /** \brief Get the EP's preferred data layout.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *       If not implemented, ORT will assume that this EP prefers the data layout `OrtEpDataLayout::NCHW`.
    *
    * \param[in] this_ptr The OrtEp instance.
@@ -1111,7 +1099,7 @@ struct OrtEp {
    *         If the EP prefers a non-default data layout (see `GetPreferredDataLayout()`), this function will be called
    *         during layout transformation with `target_data_layout` set to the EP's preferred data layout.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *       If an EP prefers a non-default data layout, it may implement this to customize the specific op data layout
    *       preferences at a finer granularity.
    *
@@ -1142,7 +1130,7 @@ struct OrtEp {
    * \param[in] option_values The dynamic option values.
    * \param[in] num_options The number of dynamic options.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *       An EP should only implement this if it needs to handle any dynamic options.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -1159,7 +1147,7 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] run_options The run options for this run.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1174,7 +1162,7 @@ struct OrtEp {
    * \param[in] sync_stream Whether any associated stream should be synchronized during this call.
    *                        Only applicable if there is such a stream.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1187,7 +1175,10 @@ struct OrtEp {
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    * Any allocator specific options should be read from the session options.
    *
-   * If nullptr OrtEpFactory::CreateAllocator will be used.
+   * ORT will call OrtEpFactory::ReleaseAllocator to release the instance when it is no longer needed.
+   *
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, OrtEpFactory::CreateAllocator will be used.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
@@ -1203,15 +1194,19 @@ struct OrtEp {
 
   /** \brief Create a synchronization stream for the given memory device for an OrtSession.
    *
-   * This is used to create a synchronization stream for the execution provider and is used to synchronize
+   * This is used to create a synchronization stream for the execution provider that will be used to synchronize
    * operations on the device during model execution.
    * Any stream specific options should be read from the session options.
    *
-   * If nullptr OrtEpFactory::CreateSyncStreamForDevice will be used.
+   * ORT will call OrtSyncStreamImpl::Release to release the instance when it is no longer needed.
+   *
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, OrtEpFactory::CreateSyncStreamForDevice will be used.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.
-   * \param[out] stream The created OrtSyncStreamImpl instance. nullptr if the execution provider is not stream aware.
+   * \param[out] stream The created OrtSyncStreamImpl instance. Set to nullptr if the execution provider is not stream
+   *                    aware.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -1219,13 +1214,13 @@ struct OrtEp {
    */
   ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEp* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
-                  _Outptr_ OrtSyncStreamImpl** stream);
+                  _Outptr_result_maybenull_ OrtSyncStreamImpl** stream);
 
   /** \brief Get a string with details about the EP stack used to produce a compiled model.
    *
    * This function gets a compatibility information string that contains details about the execution provider
-   * used to compile a given model. This string can later be used with ValidateCompiledModelCompatibilityInfo
-   * to determine if a compiled model is compatible with the EP.
+   * used to compile a given model. This string can later be used with
+   * OrtEpFactory::ValidateCompiledModelCompatibilityInfo to determine if a compiled model is compatible with the EP.
    *
    * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
    *
@@ -1248,7 +1243,8 @@ struct OrtEp {
    *                             the lifetime of the EP. Can be NULL if the EP doesn't use a kernel registry.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP compiles nodes.
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, ORT assumes the EP compiles nodes.
    *
    * \since Version 1.24.
    */
@@ -1259,6 +1255,9 @@ struct OrtEp {
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
  *
  * This must be available in a function called 'CreateEpFactories' in the execution provider library.
+ *
+ * ORT will call the function called 'ReleaseEpFactory' in the execution provider library to release each instance when
+ * it is no longer needed.
  *
  * \param[in] registered_name The name the execution library is registered with by RegisterExecutionProviderLibrary
  * \param[in] ort_api_base The OrtApiBase instance that is used by the factory to get the OrtApi instance for the
@@ -1297,14 +1296,7 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
  * \since Version 1.22.
  */
 struct OrtEpFactory {
-  /** \brief The ONNX Runtime version the execution provider was compiled with.
-   *
-   * Implementation should set to ORT_API_VERSION.
-   * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
-   *
-   * \since Version 1.22.
-   */
-  uint32_t ort_version_supported;
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Get the name of the execution provider that the factory creates.
    *
@@ -1392,7 +1384,7 @@ struct OrtEpFactory {
    */
   ORT_API_T(void, ReleaseEp, OrtEpFactory* this_ptr, struct OrtEp* ep);
 
-  /** \brief Get the vendor id who owns the execution provider that the factory creates.
+  /** \brief Get the vendor id of the vendor who owns the execution provider that the factory creates.
    *
    * This is typically the PCI vendor ID. See https://pcisig.com/membership/member-companies
    *
@@ -1447,6 +1439,8 @@ struct OrtEpFactory {
    * The factory that creates the EP is responsible for providing the allocators required by the EP.
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
+   * ORT will call OrtEpFactory::ReleaseAllocator to release the instance when it is no longer needed.
+   *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
    * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
@@ -1461,7 +1455,7 @@ struct OrtEpFactory {
                   _In_opt_ const OrtKeyValuePairs* allocator_options,
                   _Outptr_result_maybenull_ OrtAllocator** allocator);
 
-  /** \brief Release an OrtAllocator created by the factory.
+  /** \brief Release an OrtAllocator created by the OrtEpFactory::CreateAllocator or OrtEp::CreateAllocator.
    *
    * \since Version 1.23.
    */
@@ -1471,6 +1465,8 @@ struct OrtEpFactory {
    *
    * This is used to create an IDataTransfer implementation that can be used to copy data between devices
    * that the execution provider supports.
+   *
+   * ORT will call OrtDataTransferImpl::Release to release the instance when it is no longer needed.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[out] data_transfer The created OrtDataTransferImpl instance. Set to nullptr if not required.
@@ -1495,6 +1491,8 @@ struct OrtEpFactory {
    *
    * This is used to create a synchronization stream for the memory device that can be used for operations outside of
    * a session.
+   *
+   * ORT will call OrtSyncStreamImpl::Release to release the instance when it is no longer needed.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.
@@ -1530,7 +1528,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] options The configuration options.
    *
-   * \note Implementation of this function is optional.
+   * \note Implementation of this function is optional and it may be set to NULL.
    *       An EP factory should only implement this if it needs to handle any environment options.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
