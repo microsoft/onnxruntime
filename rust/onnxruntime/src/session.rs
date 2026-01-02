@@ -75,6 +75,8 @@ use crate::{download::AvailableOnnxModel, error::OrtDownloadError};
 pub struct SessionBuilder<'a> {
     env: &'a Environment,
     session_options_ptr: *mut sys::OrtSessionOptions,
+    cuda_options_ptr: *mut sys::OrtCUDAProviderOptionsV2,
+    tensorrt_options_ptr: *mut sys::OrtTensorRTProviderOptionsV2,
 
     allocator: AllocatorType,
     memory_type: MemType,
@@ -91,12 +93,27 @@ impl<'a> Drop for SessionBuilder<'a> {
                 self.env.env().api().ReleaseSessionOptions.unwrap()(self.session_options_ptr)
             };
         }
+        if !self.cuda_options_ptr.is_null() {
+            debug!("Dropping the cuda options.");
+            unsafe {
+                self.env.env().api().ReleaseCUDAProviderOptions.unwrap()(self.cuda_options_ptr)
+            };
+        }
+        if !self.tensorrt_options_ptr.is_null() {
+            debug!("Dropping the tensorrt options.");
+            unsafe {
+                self.env.env().api().ReleaseTensorRTProviderOptions.unwrap()(
+                    self.tensorrt_options_ptr,
+                )
+            };
+        }
     }
 }
 
 impl<'a> SessionBuilder<'a> {
     pub(crate) fn new(env: &'a Environment) -> Result<SessionBuilder<'a>> {
         let mut session_options_ptr: *mut sys::OrtSessionOptions = std::ptr::null_mut();
+
         let status =
             unsafe { env.env().api().CreateSessionOptions.unwrap()(&mut session_options_ptr) };
 
@@ -107,6 +124,8 @@ impl<'a> SessionBuilder<'a> {
         Ok(SessionBuilder {
             env,
             session_options_ptr,
+            cuda_options_ptr: std::ptr::null_mut(),
+            tensorrt_options_ptr: std::ptr::null_mut(),
             allocator: AllocatorType::Arena,
             memory_type: MemType::Default,
         })
@@ -126,6 +145,48 @@ impl<'a> SessionBuilder<'a> {
         };
         status_to_result(status).map_err(OrtError::SessionOptions)?;
         assert_null_pointer(status, "SessionStatus")?;
+        Ok(self)
+    }
+
+    pub fn with_cuda_backend(mut self) -> Result<SessionBuilder<'a>> {
+        let status_cuda = unsafe {
+            self.env.env().api().CreateCUDAProviderOptions.unwrap()(&mut self.cuda_options_ptr)
+        };
+        status_to_result(status_cuda).map_err(OrtError::SessionOptions)?;
+        assert_null_pointer(status_cuda, "CUDAProviderOptions")?;
+
+        let status = unsafe {
+            self.env
+                .env()
+                .api()
+                .SessionOptionsAppendExecutionProvider_CUDA_V2
+                .unwrap()(self.session_options_ptr, self.cuda_options_ptr)
+        };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
+        assert_null_pointer(status, "SessionStatus")?;
+
+        Ok(self)
+    }
+
+    pub fn with_tensorrt_backend(mut self) -> Result<SessionBuilder<'a>> {
+        let status_tensorrt = unsafe {
+            self.env.env().api().CreateTensorRTProviderOptions.unwrap()(
+                &mut self.tensorrt_options_ptr,
+            )
+        };
+        status_to_result(status_tensorrt).map_err(OrtError::SessionOptions)?;
+        assert_null_pointer(status_tensorrt, "TensorRTProviderOptions")?;
+
+        let status = unsafe {
+            self.env
+                .env()
+                .api()
+                .SessionOptionsAppendExecutionProvider_TensorRT_V2
+                .unwrap()(self.session_options_ptr, self.tensorrt_options_ptr)
+        };
+        status_to_result(status).map_err(OrtError::SessionOptions)?;
+        assert_null_pointer(status, "SessionStatus")?;
+
         Ok(self)
     }
 
