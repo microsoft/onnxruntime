@@ -7,6 +7,7 @@
 #include "loss_func/bert_loss.h"
 #include "loss_func/bert_loss_legacy.h"
 #include "loss_func/softmax_cross_entropy.h"
+#include "loss_func/binary_cross_entropy.h"
 
 namespace onnxruntime {
 namespace training {
@@ -61,6 +62,7 @@ void LossFunctionRegistry::RegisterNonOperatorLossFunctions() {
   REGISTER_NON_OPERATOR_LOSS_FUNCTION(SoftmaxCrossEntropy);
   REGISTER_NON_OPERATOR_LOSS_FUNCTION(SparseSoftmaxCrossEntropy);
   REGISTER_NON_OPERATOR_LOSS_FUNCTION(SoftmaxCrossEntropyLoss);
+  REGISTER_NON_OPERATOR_LOSS_FUNCTION(BinaryCrossEntropy);
 }
 }  // namespace training
 }  // namespace onnxruntime
