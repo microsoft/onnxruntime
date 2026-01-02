@@ -226,13 +226,8 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  // test usage of a function to return the threadpool. this is used when threadpool creation is delayed until
-  // first use by an operator kernel. the Clip CPU kernel uses the threadpool.
-  std::function<concurrency::ThreadPool*()> tp_fn = [this]() { return &tp_; };
-
-  SessionState state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
-                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options, nullptr, nullptr, nullptr,
-                     tp_fn);
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
+                     DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 

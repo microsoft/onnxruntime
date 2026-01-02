@@ -3069,5 +3069,62 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 }
 #endif
 
+TEST(InferenceSessionTests, TestDelayedThreadPoolFetch) {
+  SessionOptions so;
+  so.config_options.AddConfigEntry(kOrtSessionOptionsDelayIntraOpThreadpoolCreate, "1");
+
+  // The Clip implementation gets the threadpool from the inference session, so if things are wired up correctly
+  // this will work. We don't have a direct way to check when the threadpool was created though.
+  {
+    OpTester test("Clip", 12);
+
+    std::vector<int64_t> dims{3, 3};
+    test.AddInput<float>("X", dims,
+                         {11.0f, 4.4f, 432.3f,
+                          -1.3f, 3.5f, 64.0f,
+                          -5.4f, 9.3f, 82.4f});
+    test.AddOutput<float>("Y", dims,
+                          {11.0f, 4.4f, 432.3f,
+                           -1.3f, 3.5f, 64.0f,
+                           -5.4f, 9.3f, 82.4f});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(so, test::BaseTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+
+  // Now test with an operator that does not use the threadpool. Provide a custom thread create/join functions to
+  // validate that the threadopool is not created.
+  {
+    auto create_fn = [](void* options, OrtThreadWorkerFn work_loop, void* param) -> OrtCustomThreadHandle {
+      throw new std::runtime_error("Custom create thread function should not be called");
+    };
+
+    auto join_fn = [](OrtCustomThreadHandle handle) -> void {
+      throw new std::runtime_error("Custom join thread function should not be called");
+    };
+
+    so.custom_create_thread_fn = create_fn;
+    so.custom_join_thread_fn = join_fn;
+
+    OpTester test("ConstantOfShape", 9);
+
+    std::vector<int64_t> input_dims{2};
+    std::vector<int64_t> input{2, 6};
+    test.AddInput<int64_t>("input", input_dims, input);
+
+    std::vector<int64_t> output_dims(input);
+    std::vector<float> output;
+    output.resize(2 * 6);
+    std::fill_n(output.begin(), output.size(), 0.f);
+    test.AddOutput<float>("output", output_dims, output);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(so, test::BaseTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+    test.Run(so);
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
