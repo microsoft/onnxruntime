@@ -599,6 +599,20 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>);
 
+#define REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(T)                        \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                 \
+      QuantizeLinear,                                                       \
+      23,                                                                   \
+      23,                                                                   \
+      T,                                                                    \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),          \
+      QuantizeLinear<T>)
+
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T, start_version, end_version)    \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                 \
       QuantizeLinear,                                                       \
@@ -646,18 +660,18 @@ REGISTER_QUANTIZELINEAR(Float8E5M2)
 REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
 #endif
 
-// Opset 23 added support for float4e2m1.
-REGISTER_QUANTIZELINEAR_VERSIONED(int8_t, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(int16_t, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(uint16_t, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(Int4x2, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(UInt4x2, 23, 23)
+// Opset 23
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(int8_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(uint8_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(int16_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(uint16_t)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Int4x2)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(UInt4x2)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FN, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2, 23, 23)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 23, 23)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Float8E4M3FN)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Float8E4M3FNUZ)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Float8E5M2)
+REGISTER_QUANTIZELINEAR_VERSIONED_POST_22(Float8E5M2FNUZ)
 #endif
 
 // Opset 21 added 16-bit and 4-bit int support to Q ops.
