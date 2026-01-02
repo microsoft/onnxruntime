@@ -81,7 +81,7 @@ Below is an example `genai_config.json` for a decoder-only style model:
 
 ## Configuration structure
 
-The configuration file is structured as a JSON object with two main sections: `model` and `search`.  
+The configuration file is structured as a JSON object with `model`, `search`, and optional `engine` sections.  
 
 
 ---
@@ -98,6 +98,9 @@ Top-level configuration object.
 
 - **search**: *(object)*  
   Generation/search parameters.
+
+- **engine**: *(object, optional)*  
+  Batch scheduling configuration.
 
 ---
 
@@ -151,6 +154,15 @@ Describes the model architecture, files, and tokenization.
 - **decoder_start_token_id**: *(int, optional)*  
   The id of the decoder start token (for encoder-decoder models).
 
+- **image_token_id**: *(int, optional)*  
+  Token id used to delimit images in multi-modal models.
+
+- **video_token_id**: *(int, optional)*  
+  Token id used to delimit video content in multi-modal models.
+
+- **vision_start_token_id**: *(int, optional)*  
+  Token id used to mark the start of vision content in multi-modal models.
+
 - **vocab_size**: *(int)*  
   The size of the vocabulary.
 
@@ -176,11 +188,20 @@ Describes the model architecture, files, and tokenization.
 
 #### Model::Encoder
 
+- **session_options**: *(object, optional)*  
+  See [SessionOptions](#sessionoptions).
+
+- **run_options**: *(array of [string, string] pairs, optional)*  
+  Per-run configuration entries applied to the encoder session.
+
 - **filename**: *(string)*  
   Path to the encoder ONNX file.
 
 - **hidden_size**: *(int)*  
   Hidden size of the encoder.
+
+- **num_attention_heads**: *(int)*  
+  Number of attention heads.
 
 - **num_key_value_heads**: *(int)*  
   Number of key-value heads.
@@ -192,16 +213,26 @@ Describes the model architecture, files, and tokenization.
   Size of each attention head.
 
 - **inputs**: *(object)*  
-  - **input_features**: *(string)*  
-    Name of the input features tensor.
   - **input_ids**: *(string)*  
     Name of the input ids tensor.
+  - **embeddings**: *(string)*  
+    Name of the input embeddings tensor.
   - **attention_mask**: *(string)*  
     Name of the attention mask tensor.
+  - **position_ids**: *(string)*  
+    Name of the position ids tensor.
+  - **audio_features**: *(string)*  
+    Name of the audio features tensor.
 
 - **outputs**: *(object)*  
   - **encoder_outputs**: *(string)*  
     Name of the encoder outputs tensor.
+  - **hidden_states**: *(string)*  
+    Name of the encoder hidden states tensor.
+  - **cross_present_key_names**: *(string)*  
+    Name pattern for cross-attention present key tensors.
+  - **cross_present_value_names**: *(string)*  
+    Name pattern for cross-attention present value tensors.
 
 ---
 
@@ -209,6 +240,12 @@ Describes the model architecture, files, and tokenization.
 
 - **filename**: *(string)*  
   Path to the embedding ONNX file.
+
+- **session_options**: *(object, optional)*  
+  See [SessionOptions](#sessionoptions).
+
+- **run_options**: *(array of [string, string] pairs, optional)*  
+  Per-run configuration entries applied to the embedding session.
 
 - **inputs**: *(object)*  
   - **input_ids**: *(string)*  
@@ -229,17 +266,31 @@ Describes the model architecture, files, and tokenization.
 - **filename**: *(string)*  
   Path to the vision ONNX file.
 
+- **session_options**: *(object, optional)*  
+  See [SessionOptions](#sessionoptions).
+
+- **run_options**: *(array of [string, string] pairs, optional)*  
+  Per-run configuration entries applied to the vision session.
+
 - **config_filename**: *(string, optional)*  
-  Path to the vision processor config file.
+  Path to the vision processor config file. Defaults to `processor_config.json`.
 
 - **adapter_filename**: *(string, optional)*  
   Path to the vision adapter file.
+
+- **spatial_merge_size**: *(int, optional)*  
+  Patch merge size used by some models (for example, Qwen2.5-VL). Defaults to 2.
+
+- **tokens_per_second**: *(float, optional)*  
+  Tokens-per-second parameter used by some models. Defaults to 2.0.
 
 - **inputs**: *(object)*  
   - **pixel_values**: *(string)*  
     Name of the pixel values tensor.
   - **image_sizes**: *(string)*  
     Name of the image sizes tensor.
+  - **image_grid_thw**: *(string)*  
+    Name of the image grid tensor. Defaults to `image_sizes` when not provided.
   - **attention_mask**: *(string)*  
     Name of the image attention mask tensor.
 
@@ -247,12 +298,35 @@ Describes the model architecture, files, and tokenization.
   - **image_features**: *(string)*  
     Name of the image features output tensor.
 
+- **pipeline**: *(array, optional)*  
+  Ordered list of sub-models for vision pipelines (for example, patch embedding, attention, merge).
+  - **filename**: *(string)*  
+    Path to the ONNX file.
+  - **session_options**: *(object, optional)*  
+    Session options for this pipeline model.
+  - **run_options**: *(array of [string, string] pairs, optional)*  
+    Run options for this pipeline model.
+  - **model_id**: *(string)*  
+    Identifier used to link outputs to subsequent stages.
+  - **inputs**: *(array of string)*  
+    Graph input names.
+  - **outputs**: *(array of string)*  
+    Graph output names.
+  - **run_on_cpu**: *(bool, optional)*  
+    If true, forces CPU EP when multiple EPs are configured.
+
 ---
 
 #### Model::Speech
 
 - **filename**: *(string)*  
   Path to the speech ONNX file.
+
+- **session_options**: *(object, optional)*  
+  See [SessionOptions](#sessionoptions).
+
+- **run_options**: *(array of [string, string] pairs, optional)*  
+  Per-run configuration entries applied to the speech session.
 
 - **config_filename**: *(string, optional)*  
   Path to the speech processor config file.
@@ -284,6 +358,9 @@ Describes the model architecture, files, and tokenization.
 - **session_options**: *(object)*  
   See [SessionOptions](#sessionoptions).
 
+- **run_options**: *(array of [string, string] pairs, optional)*  
+  Per-run configuration entries applied to the decoder session.
+
 - **hidden_size**: *(int)*  
   Size of the hidden layers.
 
@@ -309,6 +386,10 @@ Describes the model architecture, files, and tokenization.
     "left" or "right".
   - **slide_key_value_cache**: *(bool)*  
     Whether to slide the key-value cache.
+  - **slide_inputs**: *(bool, optional)*  
+    Whether to slide the input prompt along with the cache.
+  - **layers**: *(array of int, optional)*  
+    Layer indices that use sliding window attention.
 
 - **inputs**: *(object)*  
   - **input_ids**: *(string)*  
@@ -329,20 +410,28 @@ Describes the model architecture, files, and tokenization.
     Name for cross-attention past key tensors.
   - **cross_past_value_names**: *(string, optional)*  
     Name for cross-attention past value tensors.
+  - **past_key_values_length**: *(string)*  
+    Name of the past key values length tensor.
   - **current_sequence_length**: *(string)*  
     Name of the current sequence length tensor.
   - **past_sequence_length**: *(string)*  
     Name of the past sequence length tensor.
-  - **past_key_values_length**: *(string)*  
-    Name of the past key values length tensor.
   - **total_sequence_length**: *(string)*  
     Name of the total sequence length tensor.
+  - **cache_indirection**: *(string)*  
+    Name of the cache indirection tensor.
   - **encoder_hidden_states**: *(string)*  
     Name of the encoder hidden states tensor.
   - **rnn_prev_states**: *(string, optional)*  
     Name of the previous RNN states tensor.
   - **encoder_attention_mask**: *(string, optional)*  
     Name of the encoder attention mask tensor.
+  - **cumulative_sequence_lengths**: *(string, optional)*  
+    Name of the cumulative sequence lengths tensor.
+  - **past_sequence_lengths**: *(string, optional)*  
+    Name of the past sequence lengths tensor.
+  - **block_table**: *(string, optional)*  
+    Name of the block table tensor.
 
 - **outputs**: *(object)*  
   - **logits**: *(string)*  
@@ -353,10 +442,8 @@ Describes the model architecture, files, and tokenization.
     Name pattern for present value tensors.
   - **present_names**: *(string, optional)*  
     Name for combined present key/value pairs.
-  - **cross_present_key_names**: *(string, optional)*  
-    Name for cross-attention present key tensors.
-  - **cross_present_value_names**: *(string, optional)*  
-    Name for cross-attention present value tensors.
+  - **output_cross_qk_names**: *(string, optional)*  
+    Name pattern for cross-attention QK outputs.
   - **rnn_states**: *(string, optional)*  
     Name of the RNN states output tensor.
 
@@ -376,6 +463,9 @@ Describes the model architecture, files, and tokenization.
 - **session_options**: *(object, optional)*  
   Session options for this pipeline model.
 
+- **run_options**: *(array of [string, string] pairs, optional)*  
+  Run options for this pipeline model.
+
 - **inputs**: *(array of string)*  
   List of input tensor names.
 
@@ -390,6 +480,9 @@ Describes the model architecture, files, and tokenization.
 
 - **run_on_token_gen**: *(bool)*  
   Whether to run this model during token generation.
+
+- **is_lm_head**: *(bool, optional)*  
+  True if this pipeline model is the language modeling head.
 
 - **reset_session_idx**: *(int)*  
   Index of the session to reset for memory management.
@@ -412,38 +505,20 @@ Options passed to ONNX Runtime for model execution.
 - **enable_mem_pattern**: *(bool, optional)*  
   Enable/disable memory pattern optimization.
 
-- **disable_cpu_ep_fallback**: *(bool, optional)*  
-  Disable fallback to CPU execution provider.
-
-- **disable_quant_qdq**: *(bool, optional)*  
-  Disable quantization QDQ.
-
-- **enable_quant_qdq_cleanup**: *(bool, optional)*  
-  Enable quantization QDQ cleanup.
-
-- **ep_context_enable**: *(bool, optional)*  
-  Enable execution provider context.
-
-- **ep_context_embed_mode**: *(string, optional)*  
-  Execution provider context embed mode.
-
-- **ep_context_file_path**: *(string, optional)*  
-  Path to execution provider context file.
-
 - **log_id**: *(string, optional)*  
   Prefix for logging.
 
 - **log_severity_level**: *(int, optional)*  
   Logging severity level.
 
+- **log_verbosity_level**: *(int, optional)*  
+  Logging verbosity level.
+
 - **enable_profiling**: *(string, optional)*  
   Enable profiling.
 
 - **custom_ops_library**: *(string, optional)*  
   Path to custom ops library.
-
-- **use_env_allocators**: *(bool)*  
-  Use environment allocators.
 
 - **config_entries**: *(array of [string, string] pairs)*  
   Additional config entries.
@@ -476,6 +551,26 @@ Options passed to ONNX Runtime for model execution.
 
 - **options**: *(array of [string, string] pairs)*  
   Provider-specific options.
+
+- **device_filtering_options**: *(object, optional)*  
+  Device filtering constraints for this provider.
+  - **hardware_device_type**: *(string, optional)*  
+    Hardware type to target (CPU, GPU, NPU).
+  - **hardware_device_id**: *(int, optional)*  
+    Hardware device id to target.
+  - **hardware_vendor_id**: *(int, optional)*  
+    Hardware vendor id to target.
+
+---
+
+### RunOptions
+
+Entries added to `OrtRunOptions` for a specific session run.
+
+The options in this section can be any ONNX Runtime run option.
+
+- **run_options**: *(array of [string, string] pairs)*  
+  Key/value config entries applied to the run.
 
 ---
 
@@ -530,6 +625,31 @@ Describes the generation/search parameters.
 
 - **random_seed**: *(int)*  
   Seed for the random number generator. -1 means use a random device.
+
+- **chunk_size**: *(int, optional)*  
+  Chunk size for prefill chunking during context processing. Enables chunking when set > 0.
+
+---
+
+### Engine
+
+Batching and scheduling settings for the runtime engine.
+
+- **dynamic_batching**: *(object, optional)*  
+  Dynamic batching configuration.
+  - **block_size**: *(int)*  
+    Total number of slots per block. Defaults to 256.
+  - **num_blocks**: *(int, optional)*  
+    Total number of blocks per layer.
+  - **gpu_utilization_factor**: *(float, optional)*  
+    Fraction of free GPU memory to use for key-value cache.
+  - **max_batch_size**: *(int)*  
+    Maximum batch size for dynamically batching requests. Defaults to 16.
+
+- **static_batching**: *(object, optional)*  
+  Static batching configuration.
+  - **max_batch_size**: *(int)*  
+    Maximum batch size for static batching. Defaults to 4.
 
 ---
 

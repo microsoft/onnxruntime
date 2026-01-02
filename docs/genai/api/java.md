@@ -35,7 +35,7 @@ import ai.onnxruntime.genai.*;
 
 ## Model class
 
-### Constructor
+### Constructor (model path)
 
 Initializes a new model from the given model path.
 
@@ -45,32 +45,22 @@ public Model(String modelPath) throws GenAIException
 
 ---
 
-### createGeneratorParams
+### Constructor (config)
 
-Creates a GeneratorParams instance for executing the model.
+Initializes a new model using a pre-built configuration.
 
 ```java
-public GeneratorParams createGeneratorParams() throws GenAIException
+public Model(Config config) throws GenAIException
 ```
 
 ---
 
-### createTokenizer
+### close
 
-Creates a Tokenizer instance for this model.
-
-```java
-public Tokenizer createTokenizer() throws GenAIException
-```
-
----
-
-### generate
-
-Generates output sequences using the provided generator parameters.
+Releases native resources owned by the model.
 
 ```java
-public Sequences generate(GeneratorParams generatorParams) throws GenAIException
+public void close()
 ```
 
 ---
@@ -92,7 +82,7 @@ public Config(String configPath) throws GenAIException
 Clears all providers from the configuration.
 
 ```java
-public void clearProviders() throws GenAIException
+public void clearProviders()
 ```
 
 ---
@@ -102,7 +92,7 @@ public void clearProviders() throws GenAIException
 Appends a provider to the configuration.
 
 ```java
-public void appendProvider(String provider) throws GenAIException
+public void appendProvider(String providerName)
 ```
 
 ---
@@ -112,17 +102,17 @@ public void appendProvider(String provider) throws GenAIException
 Sets a provider option in the configuration.
 
 ```java
-public void setProviderOption(String provider, String name, String value) throws GenAIException
+public void setProviderOption(String providerName, String optionKey, String optionValue)
 ```
 
 ---
 
-### overlay
+### close
 
-Overlays a JSON string onto the configuration.
+Releases native resources owned by the configuration.
 
 ```java
-public void overlay(String json) throws GenAIException
+public void close()
 ```
 
 ---
@@ -179,12 +169,84 @@ public String[] decodeBatch(Sequences sequences) throws GenAIException
 
 ---
 
+### getBosTokenId
+
+Gets the beginning-of-sentence token id.
+
+```java
+public int getBosTokenId() throws GenAIException
+```
+
+---
+
+### getPadTokenId
+
+Gets the padding token id.
+
+```java
+public int getPadTokenId() throws GenAIException
+```
+
+---
+
+### getEosTokenIds
+
+Gets the end-of-sentence token ids.
+
+```java
+public int[] getEosTokenIds() throws GenAIException
+```
+
+---
+
+### toTokenId
+
+Converts a string to its token id.
+
+```java
+public int toTokenId(String str) throws GenAIException
+```
+
+---
+
+### applyChatTemplate
+
+Applies a chat template to format messages and tools.
+
+```java
+public String applyChatTemplate(
+    String templateStr, String messages, String tools, boolean addGenerationPrompt)
+    throws GenAIException
+```
+
+---
+
+### updateOptions
+
+Updates tokenizer options via key/value pairs.
+
+```java
+public void updateOptions(java.util.Map<String, String> options) throws GenAIException
+```
+
+---
+
 ### createStream
 
 Creates a TokenizerStream object for streaming tokenization.
 
 ```java
 public TokenizerStream createStream() throws GenAIException
+```
+
+---
+
+### close
+
+Releases native resources owned by the tokenizer.
+
+```java
+public void close()
 ```
 
 ---
@@ -197,6 +259,16 @@ Decodes a single token in the stream and returns the generated string chunk.
 
 ```java
 public String decode(int token) throws GenAIException
+```
+
+---
+
+### close
+
+Releases native resources owned by the tokenizer stream.
+
+```java
+public void close()
 ```
 
 ---
@@ -233,22 +305,12 @@ public void setSearchOption(String optionName, boolean value) throws GenAIExcept
 
 ---
 
-### setInput (Sequences)
+### close
 
-Sets the prompt(s) for model execution using sequences.
-
-```java
-public void setInput(Sequences sequences) throws GenAIException
-```
-
----
-
-### setInput (int[])
-
-Sets the prompt(s) token ids for model execution.
+Releases native resources owned by the generator parameters.
 
 ```java
-public void setInput(int[] tokenIds, int sequenceLength, int batchSize) throws GenAIException
+public void close()
 ```
 
 ---
@@ -265,6 +327,16 @@ public Generator(Model model, GeneratorParams generatorParams) throws GenAIExcep
 
 ---
 
+### iterator
+
+Generates a token on each call to `next()` by calling `generateNextToken` internally.
+
+```java
+public java.util.Iterator<Integer> iterator()
+```
+
+---
+
 ### isDone
 
 Checks if the generation process is done.
@@ -275,19 +347,59 @@ public boolean isDone()
 
 ---
 
-### computeLogits
+### setModelInput
 
-Computes the logits for the next token in the sequence.
+Adds a tensor as a named model input.
 
 ```java
-public void computeLogits() throws GenAIException
+public void setModelInput(String name, Tensor tensor) throws GenAIException
+```
+
+---
+
+### setInputs
+
+Adds a batch of named tensors as model inputs.
+
+```java
+public void setInputs(NamedTensors namedTensors) throws GenAIException
+```
+
+---
+
+### appendTokens
+
+Appends token ids to the generator input.
+
+```java
+public void appendTokens(int[] inputIDs) throws GenAIException
+```
+
+---
+
+### appendTokenSequences
+
+Appends token sequences to the generator input.
+
+```java
+public void appendTokenSequences(Sequences sequences) throws GenAIException
+```
+
+---
+
+### rewindTo
+
+Rewinds the generator to a specific token length before continuing generation.
+
+```java
+public void rewindTo(long newLength) throws GenAIException
 ```
 
 ---
 
 ### generateNextToken
 
-Generates the next token in the sequence.
+Generates the next token in the sequence using cached logits/state.
 
 ```java
 public void generateNextToken() throws GenAIException
@@ -315,6 +427,46 @@ public int getLastTokenInSequence(long sequenceIndex) throws GenAIException
 
 ---
 
+### getInput
+
+Returns a copy of the named model input as a tensor.
+
+```java
+public Tensor getInput(String name) throws GenAIException
+```
+
+---
+
+### getOutput
+
+Returns a copy of the named model output as a tensor.
+
+```java
+public Tensor getOutput(String name) throws GenAIException
+```
+
+---
+
+### setActiveAdapter
+
+Activates a previously loaded adapter by name.
+
+```java
+public void setActiveAdapter(Adapters adapters, String adapterName) throws GenAIException
+```
+
+---
+
+### close
+
+Releases native resources owned by the generator.
+
+```java
+public void close()
+```
+
+---
+
 ## Sequences class
 
 ### numSequences
@@ -337,6 +489,16 @@ public int[] getSequence(long sequenceIndex)
 
 ---
 
+### close
+
+Releases native resources owned by the sequences.
+
+```java
+public void close()
+```
+
+---
+
 ## Tensor class
 
 ### Constructor
@@ -349,66 +511,257 @@ public Tensor(ByteBuffer data, long[] shape, ElementType elementType) throws Gen
 
 ---
 
-## Result class
+### getType
 
-### isSuccess
-
-Indicates if the operation was successful.
+Gets the tensor element type.
 
 ```java
-public boolean isSuccess()
+public Tensor.ElementType getType()
 ```
 
 ---
 
-### getError
+### getShape
 
-Gets the error message from a failed operation.
+Gets the tensor shape.
 
 ```java
-public String getError()
+public long[] getShape()
 ```
 
 ---
 
-## Utils class
+### close
 
-### setLogBool
-
-Sets a boolean logging option.
+Releases native resources owned by the tensor.
 
 ```java
-public static void setLogBool(String name, boolean value)
+public void close()
 ```
 
 ---
 
-### setLogString
+## Images class
 
-Sets a string logging option.
+### Constructor
+
+Loads images from the given path.
 
 ```java
-public static void setLogString(String name, String value)
+public Images(String imagePath) throws GenAIException
 ```
 
 ---
 
-### setCurrentGpuDeviceId
+### close
 
-Sets the current GPU device ID.
+Releases native resources owned by the images.
 
 ```java
-public static void setCurrentGpuDeviceId(int deviceId)
+public void close()
 ```
 
 ---
 
-### getCurrentGpuDeviceId
+## Audios class
 
-Gets the current GPU device ID.
+### Constructor
+
+Loads audio from the given path.
 
 ```java
-public static int getCurrentGpuDeviceId()
+public Audios(String audioPath) throws GenAIException
+```
+
+---
+
+### close
+
+Releases native resources owned by the audios.
+
+```java
+public void close()
+```
+
+---
+
+## MultiModalProcessor class
+
+### Constructor
+
+Creates a processor for a given model.
+
+```java
+public MultiModalProcessor(Model model) throws GenAIException
+```
+
+---
+
+### processImages (single prompt)
+
+Processes a text prompt and images into named tensors.
+
+```java
+public NamedTensors processImages(String prompt, Images images) throws GenAIException
+```
+
+---
+
+### processImages (batch prompts)
+
+Processes batch prompts and images into named tensors.
+
+```java
+public NamedTensors processImages(String[] prompts, Images images) throws GenAIException
+```
+
+---
+
+### processAudios (single prompt)
+
+Processes a text prompt and audios into named tensors.
+
+```java
+public NamedTensors processAudios(String prompt, Audios audios) throws GenAIException
+```
+
+---
+
+### processAudios (batch prompts)
+
+Processes batch prompts and audios into named tensors.
+
+```java
+public NamedTensors processAudios(String[] prompts, Audios audios) throws GenAIException
+```
+
+---
+
+### processImagesAndAudios (single prompt)
+
+Processes a text prompt with images and audios into named tensors.
+
+```java
+public NamedTensors processImagesAndAudios(String prompt, Images images, Audios audios)
+    throws GenAIException
+```
+
+---
+
+### processImagesAndAudios (batch prompts)
+
+Processes batch prompts with images and audios into named tensors.
+
+```java
+public NamedTensors processImagesAndAudios(String[] prompts, Images images, Audios audios)
+    throws GenAIException
+```
+
+---
+
+### decode
+
+Decodes a token sequence produced by the processor back to text.
+
+```java
+public String decode(int[] sequence) throws GenAIException
+```
+
+---
+
+### createStream
+
+Creates a TokenizerStream tied to this processor for streaming tokenization.
+
+```java
+public TokenizerStream createStream() throws GenAIException
+```
+
+---
+
+### close
+
+Releases native resources owned by the processor.
+
+```java
+public void close()
+```
+
+---
+
+## NamedTensors class
+
+### Constructor
+
+Wraps a native handle containing a named tensor collection.
+
+```java
+public NamedTensors(long handle)
+```
+
+---
+
+### close
+
+Releases native resources owned by the named tensors.
+
+```java
+public void close()
+```
+
+---
+
+## Adapters class
+
+### Constructor
+
+Creates an adapter container bound to a model.
+
+```java
+public Adapters(Model model) throws GenAIException
+```
+
+---
+
+### loadAdapter
+
+Loads an adapter from disk and registers it under a name.
+
+```java
+public void loadAdapter(String adapterFilePath, String adapterName) throws GenAIException
+```
+
+---
+
+### unloadAdapter
+
+Unloads a previously loaded adapter.
+
+```java
+public void unloadAdapter(String adapterName) throws GenAIException
+```
+
+---
+
+### close
+
+Releases native resources owned by the adapters container.
+
+```java
+public void close()
+```
+
+---
+
+## GenAIException class
+
+### Constructors
+
+Exceptions propagated from the native layer.
+
+```java
+GenAIException(String message)
+GenAIException(String message, Exception innerException)
 ```
 
 ---

@@ -89,6 +89,32 @@ onnxruntime_genai.Config(config_path: str) -> Config
   config.clear_providers()
   ```
 
+- `add_model_data(model_filename: str, data: bytes | buffer)`
+
+  ```python
+  with open("decoder.onnx", "rb") as f:
+      config.add_model_data("decoder.onnx", f.read())
+  ```
+
+- `remove_model_data(model_filename: str)`
+
+  ```python
+  config.remove_model_data("decoder.onnx")
+  ```
+
+- `overlay(config_path: str)`
+
+  ```python
+  config.overlay("config.overlay.json")
+  ```
+
+- `set_decoder_provider_options_hardware_device_type(device_type: int)`
+- `set_decoder_provider_options_hardware_device_id(device_id: int)`
+- `set_decoder_provider_options_hardware_vendor_id(vendor_id: int)`
+- `clear_decoder_provider_options_hardware_device_type()`
+- `clear_decoder_provider_options_hardware_device_id()`
+- `clear_decoder_provider_options_hardware_vendor_id()`
+
 ---
 
 ## GeneratorParams class
@@ -99,26 +125,12 @@ onnxruntime_genai.GeneratorParams(model: Model) -> GeneratorParams
 
 #### Methods
 
-- `set_inputs(named_tensors: NamedTensors)`
-
-  ```python
-  params = onnxruntime_genai.GeneratorParams(model)
-  named_tensors = onnxruntime_genai.NamedTensors()
-  params.set_inputs(named_tensors)
-  ```
-
-- `set_model_input(name: str, value: numpy.ndarray)`
-
-  ```python
-  import numpy as np
-  params.set_model_input("input_ids", np.array([1, 2, 3], dtype=np.int32))
-  ```
-
 - `try_graph_capture_with_max_batch_size(max_batch_size: int)`
 
   ```python
   params.try_graph_capture_with_max_batch_size(8)
   ```
+  _Deprecated: emits a warning and will be removed in a future release._
 
 - `set_search_options(**options)`
 
@@ -129,7 +141,7 @@ onnxruntime_genai.GeneratorParams(model: Model) -> GeneratorParams
 - `set_guidance(type: str, data: str)`
 
   ```python
-  params.set_guidance("prefix", "Once upon a time")
+  params.set_guidance("prefix", "Once upon a time", enable_ff_tokens=False)
   ```
 
 ---
@@ -149,10 +161,30 @@ onnxruntime_genai.Generator(model: Model, params: GeneratorParams) -> Generator
   done = generator.is_done()
   ```
 
+- `get_input(name: str) -> numpy.ndarray`
+
+  ```python
+  input_ids = generator.get_input("input_ids")
+  ```
+
 - `get_output(name: str) -> numpy.ndarray`
 
   ```python
   output = generator.get_output("output_ids")
+  ```
+
+- `set_inputs(named_tensors: NamedTensors)`
+
+  ```python
+  named = onnxruntime_genai.NamedTensors()
+  named["input_ids"] = np.array([1, 2, 3], dtype=np.int32)
+  generator.set_inputs(named)
+  ```
+
+- `set_model_input(name: str, value: numpy.ndarray)`
+
+  ```python
+  generator.set_model_input("input_ids", np.array([1, 2, 3], dtype=np.int32))
   ```
 
 - `append_tokens(tokens: numpy.ndarray[int32])`
@@ -221,6 +253,30 @@ onnxruntime_genai.Tokenizer(model: Model) -> Tokenizer
 
 #### Methods
 
+- `bos_token_id: int`
+
+  ```python
+  bos = tokenizer.bos_token_id
+  ```
+
+- `eos_token_ids: numpy.ndarray[int32]`
+
+  ```python
+  eos_ids = tokenizer.eos_token_ids
+  ```
+
+- `pad_token_id: int`
+
+  ```python
+  pad = tokenizer.pad_token_id
+  ```
+
+- `update_options(**options)`
+
+  ```python
+  tokenizer.update_options(space_replacement="▁")
+  ```
+
 - `encode(text: str) -> numpy.ndarray[int32]`
 
   ```python
@@ -240,10 +296,10 @@ onnxruntime_genai.Tokenizer(model: Model) -> Tokenizer
   text = tokenizer.decode(tokens)
   ```
 
-- `apply_chat_template(template_str: str, messages: str, tools: str = None, add_generation_prompt: bool = False) -> str`
+- `apply_chat_template(messages: str, template_str: str | None = None, tools: str | None = None, add_generation_prompt: bool = True) -> str`
 
   ```python
-  chat = tokenizer.apply_chat_template("{user}: {message}", messages="Hi!", add_generation_prompt=True)
+  chat = tokenizer.apply_chat_template(messages="Hi!", template_str="{user}: {message}", add_generation_prompt=True)
   ```
 
 - `encode_batch(texts: list[str]) -> onnxruntime_genai.Tensor`
@@ -385,6 +441,81 @@ onnxruntime_genai.Adapters(model: Model) -> Adapters
 
 ---
 
+## Request class
+
+```python
+onnxruntime_genai.Request(params: GeneratorParams) -> Request
+```
+
+#### Methods
+
+- `add_tokens(tokens: numpy.ndarray[int32])`
+
+  ```python
+  request.add_tokens(np.array([1, 2, 3], dtype=np.int32))
+  ```
+
+- `has_unseen_tokens() -> bool`
+
+  ```python
+  still_pending = request.has_unseen_tokens()
+  ```
+
+- `is_done() -> bool`
+
+  ```python
+  done = request.is_done()
+  ```
+
+- `get_unseen_token() -> int`
+
+  ```python
+  next_token = request.get_unseen_token()
+  ```
+
+- `set_opaque_data(data: object)` / `get_opaque_data() -> object | None`
+
+  ```python
+  request.set_opaque_data({"trace_id": "abc"})
+  opaque = request.get_opaque_data()
+  ```
+
+---
+
+## Engine class
+
+```python
+onnxruntime_genai.Engine(model: Model) -> Engine
+```
+
+#### Methods
+
+- `add_request(request: Request)`
+
+  ```python
+  engine.add_request(request)
+  ```
+
+- `step()`
+
+  ```python
+  engine.step()
+  ```
+
+- `remove_request(request: Request)`
+
+  ```python
+  engine.remove_request(request)
+  ```
+
+- `has_pending_requests() -> bool`
+
+  ```python
+  pending = engine.has_pending_requests()
+  ```
+
+---
+
 ## MultiModalProcessor class
 
 ```python
@@ -393,10 +524,11 @@ onnxruntime_genai.MultiModalProcessor(model: Model) -> MultiModalProcessor
 
 #### Methods
 
-- `__call__(prompt: str = None, images: Images = None, audios: Audios = None) -> onnxruntime_genai.Tensor`
+- `__call__(prompt: str | list[str] = None, images: Images = None, audios: Audios = None) -> onnxruntime_genai.Tensor`
 
   ```python
   result = processor(prompt="Describe this image", images=onnxruntime_genai.Images.open("image.png"))
+  batched = processor(["Describe first", "Describe second"], images=onnxruntime_genai.Images.open("image1.png", "image2.png"))
   ```
 
 - `create_stream() -> TokenizerStream`
@@ -451,6 +583,12 @@ with open("audio1.wav", "rb") as f:
   onnxruntime_genai.set_log_options(verbose=True)
   ```
 
+- `onnxruntime_genai.set_log_callback(callback: Callable[[str], None] | None)`
+
+  ```python
+  onnxruntime_genai.set_log_callback(lambda message: print("LOG:", message))
+  ```
+
 - `onnxruntime_genai.is_cuda_available() -> bool`
 
   ```python
@@ -497,4 +635,16 @@ with open("audio1.wav", "rb") as f:
 
   ```python
   print(onnxruntime_genai.get_current_gpu_device_id())
+  ```
+
+- `onnxruntime_genai.register_execution_provider_library(provider_name: str, path: str)`
+
+  ```python
+  onnxruntime_genai.register_execution_provider_library("MyEP", "/path/to/libMyEP.so")
+  ```
+
+- `onnxruntime_genai.unregister_execution_provider_library(provider_name: str)`
+
+  ```python
+  onnxruntime_genai.unregister_execution_provider_library("MyEP")
   ```
