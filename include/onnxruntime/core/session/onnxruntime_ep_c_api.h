@@ -954,7 +954,7 @@ struct OrtEpApi {
    *
    * \note Subsequent calls with the same OrtSharedPrePackedWeightCache instance release and replace the old data.
    *
-   * \param[in] this_ptr The OrtKernelImpl instance.
+   * \param[in] prepacked_weight_cache The OrtSharedPrePackedWeightCache instance.
    * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
    *                             single shared weight. Note that sometimes a single weight may have multiple pre-packed
    *                             buffers and it is up to the kernel implementation to determine how to split the data
