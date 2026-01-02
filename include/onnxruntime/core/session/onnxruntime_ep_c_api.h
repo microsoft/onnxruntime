@@ -868,8 +868,8 @@ struct OrtEpApi {
   /** \brief Gets the kernel's opset version range that is supported.
    *
    * \param[in] kernel_def The OrtKernelDef instance.
-   * \param[out] version_start Output parameter set to the starting opset version that is supported.
-   * \param[out] version_end Output parameter set to the ending opset version (inclusive) that is supported.
+   * \param[out] start_version Output parameter set to the starting opset version that is supported.
+   * \param[out] end_version Output parameter set to the ending opset version (inclusive) that is supported.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
