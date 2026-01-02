@@ -102,6 +102,7 @@ cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention ke
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" OFF)
+option(onnxruntime_QUICK_BUILD "Quick build mode for faster development (only builds hdim128 flash attention kernels)" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -788,6 +789,11 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_FPA_INTB_GEMM)
       message( STATUS "Enable FpA IntB Gemm for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
+    endif()
+
+    if (onnxruntime_QUICK_BUILD)
+      message( STATUS "Quick build mode: Flash attention limited to fp16 only")
+      list(APPEND ORT_PROVIDER_FLAGS -DQUICK_BUILD_FP16_ONLY=1)
     endif()
 endif()
 

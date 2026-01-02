@@ -70,12 +70,9 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
             // If head dim > 128, set IsEvenMNConst to false to reduce number of templates
             // If Is_local, set Is_causal to false
             auto kernel = &flash_fwd_kernel < Kernel_traits, Is_causal, Is_local && !Is_causal, Has_alibi, IsEvenMNConst && IsEvenKConst && !Is_local && Kernel_traits::kHeadDim <= 128, IsEvenKConst, Is_softcap, false > ;
-            // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenMNConst, true, ReturnSoftmaxConst>;
             if (smem_size >= 48 * 1024) {
               cudaFuncSetAttribute(
                   kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(smem_size));
-              // ORT_ENFORCE(cudaFuncSetAttribute(
-              //     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
             }
             // int ctas_per_sm;
             // cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
@@ -112,8 +109,6 @@ void run_flash_splitkv_fwd(Flash_fwd_params& params, cudaStream_t stream) {
                   auto kernel = &flash_fwd_splitkv_kernel < Kernel_traits, Is_causal, Is_Local_Const && !Is_causal, Has_alibi,
                   IsEvenMNConst && !Append_KV_Const && IsEvenKConst && !Is_Local_Const && Kernel_traits::kHeadDim <= 128,
                   IsEvenKConst, Is_softcap, SplitConst, Append_KV_Const >;
-                  // auto kernel = &flash_fwd_splitkv_kernel<Kernel_traits, Is_causal, false, true, Split, Append_KV_Const>;
-                  // auto kernel = &flash_fwd_splitkv_kernel<Kernel_traits, Is_causal, false, IsEvenKConst>;
                   if (smem_size >= 48 * 1024) {
                     cudaFuncSetAttribute(
                         kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(smem_size));

@@ -235,7 +235,22 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
                                                   int past_key_index = -1,
                                                   int use_max_past_present_buffer = -1,
                                                   int output_qk_index = -1) {
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  // Type inference for outputs
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);  // output
+
+  if (ctx.getNumOutputs() >= 3) {  // has present output
+    const auto* past_key_type = ctx.getInputType(past_key_index);
+    if (past_key_type != nullptr) {
+      // present_key and present_value have the same type as past_key/past_value.
+      // This allows them to be int8 or packed uint8 when quantization is enabled.
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);      // present_key
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index + 1, 2);  // present_value
+    } else {
+      // If no past state, present is the same type as query.
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+    }
+  }
 
   int64_t kv_sequence_length = -1;
   if (hasInputShape(ctx, 0)) {
@@ -280,12 +295,6 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
   }
 
   if (ctx.getNumOutputs() >= 3) {  // has present output
-    // copy the type from query to present key
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
-
-    // copy the type from query to present value
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
-
     int64_t total_sequence_length_value = 0;
     const auto* total_sequence_length_data = ctx.getInputData(6);
     if (total_sequence_length_data != nullptr) {
@@ -342,7 +351,15 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
       }
 
       if (output_qk_index >= 0) {
-        const bool did_supply_qk_buffer = ctx.hasOutput(output_qk_index);
+        // An output is considered "supplied" only if it's present AND has a meaningful type definition.
+        // An empty string placeholder for an optional output will not have a tensor type proto.
+        bool did_supply_qk_buffer = false;
+        if (ctx.hasOutput(output_qk_index)) {
+          // The output is considered "supplied" if it is present in the node.
+          // Note: TypeProto might not be fully populated yet during initial inference.
+          did_supply_qk_buffer = true;
+        }
+
         const int64_t qk_output_type = getAttribute(ctx, "qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT));
 
         if (qk_output_type == static_cast<int64_t>(QKOutputType::NO_OUTPUT) && did_supply_qk_buffer) {
@@ -1252,7 +1269,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          GroupQueryAttentionTypeAndShapeInference(ctx, 3, 3);
+          // The 'output_qk' is an optional output at index 3.
+          // Pass its index to the shape inference logic only if the node instance actually has more than 3 outputs.
+          // Otherwise, pass -1 to signal that the optional output is not present and validation should be skipped.
+          int qk_output_index = ctx.getNumOutputs() > 3 ? 3 : -1;
+          GroupQueryAttentionTypeAndShapeInference(ctx, 3, qk_output_index);
         }));
 
 constexpr const char* PagedAttention_ver1_doc = R"DOC(

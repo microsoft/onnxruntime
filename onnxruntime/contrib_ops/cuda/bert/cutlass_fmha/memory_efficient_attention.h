@@ -16,6 +16,7 @@ constexpr int kEfficientAttentionMaxHeadSize = 1024;
 struct MemoryEfficientAttentionParams {
   int32_t sm = 50;
   bool is_half = false;
+  bool is_bf16 = false;
   bool is_kv_bsnh = true;
   int32_t batch_size = 0;
   int32_t num_heads = 0;
@@ -51,7 +52,8 @@ struct MemoryEfficientAttentionParams {
 
 void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
 
-inline bool has_memory_efficient_attention(int32_t sm, bool is_half, int qk_head_size, int v_head_size) {
+inline bool has_memory_efficient_attention(int32_t sm, bool is_half, bool is_bf16, int qk_head_size, int v_head_size) {
+  if (is_bf16 && sm < 80) return false;
   return sm >= (is_half ? 53 : 50) &&
          (qk_head_size & 7) == 0 &&
          (v_head_size & 7) == 0 &&

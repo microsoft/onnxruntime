@@ -25,6 +25,16 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+# Quick build mode: Filter out non-hdim128 flash attention kernels for faster development iteration
+if(onnxruntime_QUICK_BUILD)
+  message(STATUS "Quick build mode enabled: Only building hdim128 fp16 flash attention kernels")
+  # Filter non-hdim128 kernels
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "flash_fwd.*hdim(32|64|96|160|192|224|256)")
+  # Filter all bfloat16 kernels (only keep fp16)
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "flash_fwd.*_bf16")
+endif()
+
+
 
 file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.h"
