@@ -34,7 +34,9 @@ namespace test {
 // forward-declaration for utility that uses public C APIs to check that an OrtGraph is equivalent
 // to a graph represented by the internal ORT GraphViewer class.
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
-static void Check_Graph_GetSubgraph(const OrtGraph& api_graph);
+static void CheckGetSubGraph(const OrtGraph& api_graph);
+static void CheckGetSubGraphForSpecificModel(const OrtGraph& api_graph);
+static void CheckGraphWithDFSTraversal(const GraphViewer& graph_viewer);
 
 //
 //  Tests
@@ -56,6 +58,23 @@ TEST(EpGraphTest, CheckModelWithSubgraphs) {
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+// Use public C APIs to check that the OrtGraph from a subset of nodes from another OrtGraph is correct.
+TEST(EpGraphTest, CheckModelWithGetGraphFromSubsetOfNodes) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGetSubGraphForSpecificModel(test_graph->GetOrtGraph());
+}
+
+// Use public C APIs to check that the OrtGraph for a model with subgraphs is correct.
+// Subgraph inside the control flow op first, then the op itself. Simialr to EP's GetCapability() bottom-up approach.
+TEST(EpGraphTest, CheckModelWithSubgraphsWithDFSTraversal) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/scan_1.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphWithDFSTraversal(test_graph->GetGraphViewer());
 }
 
 // Use public C APIs to check that the OrtGraph for bart_tiny.onnx is correct.
@@ -834,8 +853,8 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<Ort::
   }
 }
 
-// Checks the Graph_GetSubgraph C API
-static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
+// Checks the Graph_GetGraphView C API
+static void CheckGetSubGraph(const OrtGraph& api_graph) {
   Ort::ConstGraph ort_graph{&api_graph};
   // Get all the nodes
   std::vector<Ort::ConstNode> nodes = ort_graph.GetNodes();
@@ -865,6 +884,196 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   // Dump the graph for debugging
   // std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
   // model_proto->SerializeToOstream(&dump);
+}
+
+static void CheckSubGraphTopoSort(const OrtGraph& api_graph) {
+  /*
+   * topk_and_multiple_graph_outputs.onnx:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+
+  Ort::ConstGraph ort_graph{&api_graph};
+  auto nodes = ort_graph.GetNodes();
+
+  // Select three nodes from four nodes to create a OrtGraph
+  size_t num_selected_nodes = 3;
+  std::vector<Ort::ConstNode> selected_nodes(num_selected_nodes);
+
+  // The subgraph contains Less, Div and Mod ops.
+  selected_nodes[0] = nodes[1];
+  selected_nodes[1] = nodes[2];
+  selected_nodes[2] = nodes[3];
+
+  Ort::Graph sub_graph = ort_graph.GetGraphView(selected_nodes);
+
+  // When doing Kahns's Topo sort, it will try to get the producer node outside of the subgraph,
+  // i.e. auto producer_info = input.GetProducerNode().
+  // Here is to check that Topo sort's implementation will return nullptr for the outside node and won't hit assert.
+  std::vector<Ort::ConstNode> nodes_with_priority;
+  Ort::Status status(KahnsTopologicalSort(
+      *sub_graph,
+      [&](const OrtNode* node) {
+        size_t node_id = 0;
+        Ort::Status status(Ort::GetApi().Node_GetId(node, &node_id));
+        ORT_ENFORCE(status.IsOK());
+
+        nodes_with_priority.push_back(Ort::ConstNode(node));
+      },
+      PriorityNodeCompare()));
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+}
+
+// Checks the Graph_GetGraphView C API
+static void CheckGetSubGraphForSpecificModel(const OrtGraph& api_graph) {
+  /*
+   * topk_and_multiple_graph_outputs.onnx:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+
+  Ort::ConstGraph ort_graph{&api_graph};
+
+  // The node order returning from Graph_GetNumNodes() is using ORT's default topological sort.
+  // For this model, the node order in onnx GraphProto is not the same as the node order in "nodes",
+  // So here we sort OrtGraph with a custom Kahn's topological sorting algorithm.
+  // i.e.
+  // onnx GraphProto:     TopK, Less, Div, Mod
+  // Graph_GetNumNodes(): TopK, Mode, Div, Less
+  // priority-based sort: TopK, Less, Div, Mod
+  std::vector<Ort::ConstNode> nodes;
+  Ort::Status status(KahnsTopologicalSort(
+      api_graph,
+      [&](const OrtNode* node) {
+        size_t node_id = 0;
+        Ort::Status status(Ort::GetApi().Node_GetId(node, &node_id));
+        ORT_ENFORCE(status.IsOK());
+
+        nodes.push_back(Ort::ConstNode(node));
+      },
+      PriorityNodeCompare()));
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  // Select three nodes from four nodes to create a OrtGraph
+  size_t num_selected_nodes = 3;
+  std::vector<Ort::ConstNode> selected_nodes(num_selected_nodes);
+
+  for (size_t i = 0; i < num_selected_nodes; i++) {
+    selected_nodes[i] = nodes[i];
+  }
+
+  /*
+   * After calling Graph_GetGraphView(), the graph should be:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |---> "topk_indices"  (Note: This output will be consumbed by node not in this subgraph)
+   *                     |--- Less---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   */
+  Ort::Graph sub_graph = ort_graph.GetGraphView(selected_nodes);
+  const GraphViewer& sub_graph_viewer = EpGraph::ToInternal(sub_graph)->GetGraphViewer();
+
+  ASSERT_EQ(sub_graph.GetNodes().size(), 3);
+
+  ASSERT_EQ(sub_graph_viewer.GetInputs().size(), 1);
+  const auto* input = sub_graph_viewer.GetInputs()[0];
+  ASSERT_TRUE(input->Name() == "input");
+
+  ASSERT_EQ(sub_graph_viewer.GetOutputs().size(), 4);
+  const auto* output_1 = sub_graph_viewer.GetOutputs()[0];
+  ASSERT_TRUE(output_1->Name() == "scores");
+  const auto* output_2 = sub_graph_viewer.GetOutputs()[1];
+  ASSERT_TRUE(output_2->Name() == "topk_indices");
+  const auto* output_3 = sub_graph_viewer.GetOutputs()[2];
+  ASSERT_TRUE(output_3->Name() == "Less_output_0");
+  const auto* output_4 = sub_graph_viewer.GetOutputs()[3];
+  ASSERT_TRUE(output_4->Name() == "Div_17_output_0");
+
+  // Convert OrtGraph/GraphViewer to ModelProto and dump it to disk.
+  // If the GraphViewer associated with the OrtGraph somehow is incorrect, GraphViewerToProto() will throw.
+  std::unique_ptr<Model> model = std::make_unique<Model>(sub_graph_viewer.Name(), true, sub_graph_viewer.GetGraph().GetLogger());
+  auto model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
+  GraphViewerToProto(sub_graph_viewer, *model_proto->mutable_graph(), true, true, static_cast<ExecutionOrder>(1));
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  // Test the case where the subgraph equals to srouce graph
+  num_selected_nodes = 4;
+  selected_nodes.resize(num_selected_nodes);
+
+  for (size_t i = 0; i < num_selected_nodes; i++) {
+    selected_nodes[i] = nodes[i];
+  }
+
+  sub_graph = ort_graph.GetGraphView(selected_nodes);
+  const GraphViewer& new_sub_graph_viewer = EpGraph::ToInternal(sub_graph)->GetGraphViewer();
+
+  ASSERT_EQ(sub_graph.GetNodes().size(), 4);
+
+  ASSERT_EQ(new_sub_graph_viewer.GetInputs().size(), 1);
+  input = new_sub_graph_viewer.GetInputs()[0];
+  ASSERT_TRUE(input->Name() == "input");
+
+  ASSERT_EQ(new_sub_graph_viewer.GetOutputs().size(), 4);
+  output_1 = new_sub_graph_viewer.GetOutputs()[0];
+  ASSERT_TRUE(output_1->Name() == "scores");
+  output_2 = new_sub_graph_viewer.GetOutputs()[1];
+  ASSERT_TRUE(output_2->Name() == "Less_output_0");
+  output_3 = new_sub_graph_viewer.GetOutputs()[2];
+  ASSERT_TRUE(output_3->Name() == "Div_17_output_0");
+  output_4 = new_sub_graph_viewer.GetOutputs()[3];
+  ASSERT_TRUE(output_4->Name() == "labels");
+
+  // Convert OrtGraph/GraphViewer to ModelProto and dump it to disk.
+  // If the GraphViewer associated with the OrtGraph somehow is incorrect, GraphViewerToProto() will throw.
+  model = std::make_unique<Model>(new_sub_graph_viewer.Name(), true, new_sub_graph_viewer.GetGraph().GetLogger());
+  model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
+  GraphViewerToProto(new_sub_graph_viewer, *model_proto->mutable_graph(), true, true, static_cast<ExecutionOrder>(1));
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  // Dump the graph for debugging
+  // auto graph_name = ort_graph.GetName();
+  // std::string name = graph_name;
+  // name += "_half.onnx";
+  // std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
+  // model_proto->SerializeToOstream(&dump);
+
+  CheckSubGraphTopoSort(api_graph);
+}
+
+static void CheckGraphWithDFSTraversal(const GraphViewer& graph_viewer) {
+  std::vector<NodeIndex> node_indices = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
+  for (const auto& node_idx : node_indices) {
+    const Node* node = graph_viewer.GetNode(node_indices[node_idx]);
+
+    // Check node subgraphs
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> node_subgraphs_map =
+        node->GetAttributeNameToSubgraphMap();
+
+    if (!node_subgraphs_map.empty()) {
+      for (const auto& name_subgraph : node_subgraphs_map) {
+        auto subgraph_viewer = std::make_unique<GraphViewer>(*name_subgraph.second);
+        CheckGraphWithDFSTraversal(*subgraph_viewer);
+      }
+    }
+  }
+
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  ORT_ENFORCE(EpGraph::Create(graph_viewer, ep_graph, true).IsOK());
+
+  if (graph_viewer.ParentNode()) {
+    const OrtNode* parent_node = nullptr;
+    ORT_ENFORCE(ep_graph->GetParentNode(parent_node).IsOK());
+    ASSERT_NE(parent_node, nullptr);
+  }
 }
 
 // Checks that the contents of the original GraphViewer matches the contents of the OrtGraph.
@@ -1048,7 +1257,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   }
 
   // Check creating an OrtGraph from a subset of nodes in an OrtGraph
-  Check_Graph_GetSubgraph(api_graph);
+  CheckGetSubGraph(api_graph);
 }
 
 }  // namespace test
