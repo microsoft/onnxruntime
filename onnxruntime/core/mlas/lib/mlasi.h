@@ -201,6 +201,10 @@ class MLASCPUIDInfo
 
     bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
 
+    bool HasArm_SME() const { return has_arm_sme_; }
+
+    bool HasArm_SME2() const { return has_arm_sme2_; }
+
    private:
     MLASCPUIDInfo();
 
@@ -210,6 +214,8 @@ class MLASCPUIDInfo
     bool has_arm_sve_{false};
     bool has_arm_sve_i8mm_{false};
     bool has_arm_neon_bf16_{false};
+    bool has_arm_sme_{false};
+    bool has_arm_sme2_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
@@ -310,6 +316,32 @@ operator!=(const MLFloat16& left, const MLFloat16& right)
 }
 
 #endif  // BUILD_MLAS_NO_ONNXRUNTIME
+
+struct SMEInfo {
+    static const bool CanUseSME2;
+    static const bool CanUseSME;
+    static const bool IsSMEAvailable;
+};
+
+#if !defined(MLAS_TARGET_ARM64)
+// SME is only available on arm64 systems but the structure is available in places which can be accessed by all system types
+inline const bool SMEInfo::CanUseSME2 = false;
+inline const bool SMEInfo::CanUseSME  = false;
+inline const bool SMEInfo::IsSMEAvailable = false;
+
+#endif  // !MLAS_TARGET_ARM64
+
+#if defined(MLAS_TARGET_ARM64)
+
+// Boolean condition to determine if we can use SME2
+// By default we should try for SME2 first before falling back to SME.
+inline const bool SMEInfo::CanUseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+// Boolean condition to determine if we can use SME
+inline const bool SMEInfo::CanUseSME  = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+// Boolean condition to tell us if SME is enabled on this system
+inline const bool SMEInfo::IsSMEAvailable = SMEInfo::CanUseSME2 || SMEInfo::CanUseSME;
+
+#endif // MLAS_TARGET_ARM64
 
 static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 
