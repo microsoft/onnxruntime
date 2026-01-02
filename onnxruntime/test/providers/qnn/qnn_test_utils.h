@@ -515,6 +515,7 @@ class QNNTestEnvironment {
   bool dump_json() const { return dump_json_; }
   bool dump_dlc() const { return dump_dlc_; }
   bool verbose() const { return verbose_; }
+  bool skip_qnn_version_check() const { return skip_qnn_version_check_; }
 
   std::filesystem::path CreateTestcaseDirs() {
     std::string test_suite_name = ::testing::UnitTest::GetInstance()->current_test_info()->test_suite_name();
@@ -562,12 +563,18 @@ class QNNTestEnvironment {
       std::cout << "Verbose enabled via environment variable." << std::endl;
       verbose_ = true;
     }
+
+    if (IsEnvVarSet("QNN_SKIP_VERSION_CHECK")) {
+      std::cout << "[QNN only] Skip QNN version check via environment variable." << std::endl;
+      skip_qnn_version_check_ = true;
+    }
   }
 
   bool dump_onnx_ = false;
   bool dump_json_ = false;
   bool dump_dlc_ = false;
   bool verbose_ = false;
+  bool skip_qnn_version_check_ = false;
 };
 
 /**
@@ -694,6 +701,9 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   if (QNNTestEnvironment::GetInstance().dump_json()) {
     qnn_options["dump_json_qnn_graph"] = "1";
     qnn_options["json_qnn_graph_dir"] = output_dir.string();
+  }
+  if (QNNTestEnvironment::GetInstance().skip_qnn_version_check()) {
+    qnn_options["skip_qnn_version_check"] = "1";
   }
   std::vector<OrtValue> qnn_qdq_outputs;
   if (!qnn_ctx_model_path.empty()) {
@@ -928,6 +938,9 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
   if (QNNTestEnvironment::GetInstance().dump_json()) {
     qnn_options["dump_json_qnn_graph"] = "1";
     qnn_options["json_qnn_graph_dir"] = output_dir.string();
+  }
+  if (QNNTestEnvironment::GetInstance().skip_qnn_version_check()) {
+    qnn_options["skip_qnn_version_check"] = "1";
   }
   std::vector<OrtValue> qnn_f16_outputs;
   if (!qnn_ctx_model_path.empty()) {
