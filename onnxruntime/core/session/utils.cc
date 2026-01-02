@@ -9,6 +9,8 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/provider_options.h"
+#include "core/platform/env.h"
+#include "core/platform/telemetry.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -388,25 +390,56 @@ namespace onnxruntime {
 Status CompileModel(const Environment& env, const ModelCompilationOptions& model_compile_options) {
   ORT_RETURN_IF_ERROR(model_compile_options.Check());
 
+  const Telemetry& telemetry_provider = Env::Default().GetTelemetryProvider();
+
   std::unique_ptr<onnxruntime::InferenceSession> session;
   const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
 
+  Status status;
+
   if (model_compile_options.InputModelComesFromFile()) {
     const std::filesystem::path& input_model_path = model_compile_options.GetInputModelPath();
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
-                                                                         input_model_path.c_str(),
-                                                                         nullptr, 0, session)));
+    status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
+                                                              input_model_path.c_str(),
+                                                              nullptr, 0, session));
   } else {
-    ORT_RETURN_IF_ERROR(
-        ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
-                                                         model_compile_options.GetInputModelData(),
-                                                         model_compile_options.GetInputModelDataSize(),
-                                                         session)));
+    status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
+                                                              model_compile_options.GetInputModelData(),
+                                                              model_compile_options.GetInputModelDataSize(),
+                                                              session));
   }
 
-  Env::Default().GetTelemetryProvider().LogCompileModel(session->GetCurrentSessionId());
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(InitializeSession(session_options, *session)));
-  return Status::OK();
+  if (!status.IsOK()) {
+    telemetry_provider.LogCompileModelComplete(
+        0,  // No session ID available
+        false,
+        static_cast<uint32_t>(status.Code()),
+        static_cast<uint32_t>(status.Category()),
+        status.ErrorMessage());
+    return status;
+  }
+
+  // Log start event now that we have the session ID and can get registered EP types
+  telemetry_provider.LogCompileModelStart(
+      session->GetCurrentSessionId(),
+      model_compile_options.GetInputSourceForTelemetry(),
+      model_compile_options.GetOutputTargetForTelemetry(),
+      model_compile_options.GetFlagsForTelemetry(),
+      model_compile_options.GetGraphOptimizationLevelForTelemetry(),
+      model_compile_options.GetEmbedEpContextForTelemetry(),
+      model_compile_options.HasExternalInitializersFileForTelemetry(),
+      session->GetRegisteredProviderTypes());
+
+  status = ToStatusAndRelease(InitializeSession(session_options, *session));
+
+  telemetry_provider.LogCompileModelComplete(
+      session->GetCurrentSessionId(),
+      status.IsOK(),
+      status.IsOK() ? 0 : static_cast<uint32_t>(status.Code()),
+      status.IsOK() ? 0 : static_cast<uint32_t>(status.Category()),
+      status.IsOK() ? "" : status.ErrorMessage());
+
+  return status;
 }
 
 Status LoadPluginOrProviderBridge(const std::string& registration_name,

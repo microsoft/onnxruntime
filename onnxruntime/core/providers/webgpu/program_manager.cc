@@ -4,8 +4,6 @@
 #include <algorithm>
 
 #include "core/common/common.h"
-
-#include "core/common/common.h"
 #include "core/common/logging/logging.h"
 
 #include "core/providers/webgpu/program_manager.h"

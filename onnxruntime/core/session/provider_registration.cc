@@ -257,7 +257,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::WebGPU: {
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
       options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
 #else
       status = create_not_supported_status();
