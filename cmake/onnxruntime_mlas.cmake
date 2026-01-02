@@ -467,6 +467,8 @@ else()
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/sgemm_sve.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/sgemm_sve.cpp PROPERTIES COMPILE_FLAGS "-march=armv8.2-a+sve -O3 -ffast-math -funroll-loops")
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
