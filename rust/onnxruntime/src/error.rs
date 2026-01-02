@@ -118,6 +118,12 @@ pub enum OrtError {
     /// Error occurred when checking if ONNXRuntime tensor was properly initialized
     #[error("Failed to check if tensor")]
     IsTensorCheck,
+    /// Error occurred when creating CUDA provider options
+    #[error("Failed to create CUDA provider options: {0}")]
+    CudaProviderOptions(OrtApiError),
+    /// Error occurred when appending CUDA execution provider
+    #[error("Failed to append CUDA execution provider: {0}")]
+    AppendExecutionProviderCuda(OrtApiError),
 }
 
 /// Error used when dimensions of input (from model and from inference call)
