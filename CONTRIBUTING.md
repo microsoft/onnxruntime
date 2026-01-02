@@ -55,7 +55,7 @@ The html docs are generated from markdown using Jekyll and published using GitHu
 
 To update the docs, create a Pull Request against the [gh-pages](https://github.com/microsoft/onnxruntime/tree/gh-pages) branch of the [ONNX Runtime repo](https://github.com/microsoft/onnxruntime).
 
-To preview your changes, you can push to the gh-pages branch in your fork and this will publish a staged version of your changes to <github user name>.github.io/onnxruntime/docs.
+To preview your changes, you can push to the gh-pages branch in your fork and this will publish a staged version of your changes to _github user name_.github.io/onnxruntime/docs.
 
 Once your PR is approved and merged, your changes will be automatically published to https://onnxruntime.ai/docs.
 
