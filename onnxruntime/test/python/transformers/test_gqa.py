@@ -1040,12 +1040,7 @@ def parity_check_gqa_past(
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
 
     # --- ONNX Runtime Path ---
-    if ort_type == TensorProto.FLOAT16:
-        torch_type = torch.float16
-    elif ort_type == TensorProto.BFLOAT16:
-        torch_type = torch.bfloat16
-    else:
-        torch_type = torch.float32
+
 
     q_ort, new_k_ort, new_v_ort = q, new_k, new_v
     if config.packed:

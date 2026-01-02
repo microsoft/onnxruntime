@@ -650,7 +650,8 @@ def group_query_attention_reference(
         attn = attn.masked_fill((1 - mask).bool(), float("-inf"))
 
     if config.use_smooth_softmax:
-        attn = smooth_softmax_ref(attn)
+        head_sink = None
+        attn = smooth_softmax_ref(attn, head_sink)
     else:
         attn = attn.softmax(-1)
 
