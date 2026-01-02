@@ -98,7 +98,7 @@ __global__ void SkipLayerNormKernel(
 
   // Reduce sum of x and x^2, and the results are divided by ld.
   KeyValuePairSum pair_sum;
-  cub::KeyValuePair<T, T> thread_data(0, 0);
+  cub::KeyValuePair<T, T> thread_data(0.0f, 0.0f);
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
@@ -187,9 +187,18 @@ __global__ void SkipLayerNormKernelSmall(
 
 template <typename T, bool Simplified>
 void LaunchSkipLayerNormKernel(
-    cudaStream_t stream, T* output, T* sum_output,
-    const T* input, const T* skip, const T* bias, const T* gamma, const T* beta, float epsilon,
-    int ld, int row_count, int skip_size) {
+    [[maybe_unused]] cudaStream_t stream,
+    [[maybe_unused]] T* output,
+    [[maybe_unused]] T* sum_output,
+    [[maybe_unused]] const T* input,
+    [[maybe_unused]] const T* skip,
+    [[maybe_unused]] const T* bias,
+    [[maybe_unused]] const T* gamma,
+    [[maybe_unused]] const T* beta,
+    [[maybe_unused]] float epsilon,
+    [[maybe_unused]] int ld,
+    [[maybe_unused]] int row_count,
+    [[maybe_unused]] int skip_size) {
   const int next_size = NextSize(ld);
   const int grid_size = row_count;
   bool can_unroll_vec4 = CanVectorized(output, sum_output, input,
@@ -271,6 +280,7 @@ SKIPLAYERNORM_IMPL(half, true);
 SKIPLAYERNORM_IMPL(half, false);
 SKIPLAYERNORM_IMPL(nv_bfloat16, true);
 SKIPLAYERNORM_IMPL(nv_bfloat16, false);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
