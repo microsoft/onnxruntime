@@ -73,6 +73,8 @@ namespace qnnctxgen {
       "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
       "\t    Defaults to '1' (another EP (typically CPU EP) handles the graph I/O quantization and dequantization). \n"
       "\t    [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary.\n"
+      "\t    [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
+      "\t    '0' (disabled), '1' (enabled). Default: '0'. \n"
       "\t    [Example] -i \"vtcm_mb|8 htp_arch|73\" \n"
       "\n"
       "\t-h: help\n");
@@ -253,7 +255,7 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
               ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
             }
           } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" ||
-                     key == "enable_htp_spill_fill_buffer") {
+                     key == "enable_htp_spill_fill_buffer" || key == "extended_udma") {
             std::unordered_set<std::string> supported_options = {"0", "1"};
             if (supported_options.find(value) == supported_options.end()) {
               std::ostringstream str_stream;
@@ -266,7 +268,7 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
             ORT_THROW(
                 "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', 'vtcm_mb', "
                 "'htp_performance_mode', 'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', "
-                "'enable_htp_fp16_precision', 'offload_graph_io_quantization', 'enable_htp_spill_fill_buffer']");
+                "'enable_htp_fp16_precision', 'offload_graph_io_quantization', 'enable_htp_spill_fill_buffer', 'extended_udma']");
           }
 
           test_config.run_config.provider_options[key] = value;

@@ -162,7 +162,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
                       bool need_load_system_lib, bool share_ep_contexts,
                       bool enable_vtcm_backup_buffer_sharing,
-                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map,
+                      bool enable_htp_extended_udma_mode);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -262,7 +263,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ReleaseProfilehandle();
 
-  Status CreateContext(bool enable_htp_weight_sharing);
+  Status CreateContext(bool enable_htp_weight_sharing, bool enable_htp_extended_udma_mode);
 
   Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
                                                                         std::unique_ptr<std::vector<std::string>>>& context_bin_map);
