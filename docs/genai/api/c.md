@@ -22,80 +22,6 @@ This document describes the C API for ONNX Runtime GenAI. The API is not thread 
 
 ---
 
-## Global API
-
-### OgaShutdown
-
-Cleanly shutdown the genai library and its ONNX Runtime usage on process exit.
-
-```c
-OgaShutdown();
-```
-
----
-
-### OgaSetLogBool
-
-Control the logging behavior of the library by setting boolean logging options.
-
-```c
-OgaResult* result = OgaSetLogBool("option_name", true);
-```
-
----
-
-### OgaSetLogString
-
-Control the logging behavior of the library by setting string logging options. If the option name is `"filename"` and a valid file path is provided, logging will be directed to that file. An empty string will reset logging to the default destination (std::cerr).
-
-```c
-OgaResult* result = OgaSetLogString("filename", "/path/to/logfile.txt");
-```
-
----
-
-### OgaSetLogCallback
-
-Register a callback function to receive log messages from the library.
-
-```c
-void log_callback(const char* string, size_t length) {
-  // Handle log message
-}
-OgaResult* result = OgaSetLogCallback(log_callback);
-```
-
----
-
-### OgaResultGetError
-
-Gets the error message from an `OgaResult`.
-
-```c
-const char* error = OgaResultGetError(result);
-```
-
----
-
-### OgaDestroyResult
-
-Destroys an `OgaResult`.
-
-```c
-OgaDestroyResult(result);
-```
-
----
-
-### OgaDestroyString
-
-Destroys a string returned by the API.
-
-```c
-OgaDestroyString(str);
-```
-
----
 
 ## Model API
 
@@ -370,6 +296,50 @@ OgaDestroyTokenizer(tokenizer);
 
 ---
 
+### OgaCreateTokenizerStream
+
+Creates a tokenizer stream for incremental decoding. This allows decoding tokens one at a time.
+
+```c
+OgaTokenizerStream* stream = NULL;
+OgaResult* result = OgaCreateTokenizerStream(tokenizer, &stream);
+```
+
+---
+
+### OgaCreateTokenizerStreamFromProcessor
+
+Creates a tokenizer stream from a multi-modal processor for incremental decoding.
+
+```c
+OgaTokenizerStream* stream = NULL;
+OgaResult* result = OgaCreateTokenizerStreamFromProcessor(processor, &stream);
+```
+
+---
+
+### OgaDestroyTokenizerStream
+
+Destroys the tokenizer stream.
+
+```c
+OgaDestroyTokenizerStream(stream);
+```
+
+---
+
+### OgaTokenizerApplyChatTemplate
+
+Applies a chat template to input messages. The template can optionally include tools and generation prompt.
+
+```c
+const char* result_string = NULL;
+OgaResult* result = OgaTokenizerApplyChatTemplate(tokenizer, NULL, messages_json, tools_json, true, &result_string);
+OgaDestroyString(result_string);
+```
+
+---
+
 ### OgaUpdateTokenizerOptions
 
 Updates tokenizer options for the given tokenizer instance.
@@ -432,6 +402,18 @@ OgaResult* result = OgaTokenizerEncode(tokenizer, "Hello world", sequences);
 
 ---
 
+### OgaTokenizerDecode
+
+Decodes a sequence of tokens into a string. The output string must be freed with `OgaDestroyString`.
+
+```c
+const char* out_string = NULL;
+OgaResult* result = OgaTokenizerDecode(tokenizer, tokens, token_count, &out_string);
+OgaDestroyString(out_string);
+```
+
+---
+
 ### OgaTokenizerEncodeBatch
 
 Encodes a batch of strings and returns a single tensor output.
@@ -456,73 +438,6 @@ OgaDestroyStringArray(out_strings);
 
 ---
 
-### OgaTokenizerToTokenId
-
-Converts a string to its corresponding token ID.
-
-```c
-int32_t token_id = 0;
-OgaResult* result = OgaTokenizerToTokenId(tokenizer, "Hello", &token_id);
-```
-
----
-
-### OgaTokenizerDecode
-
-Decodes a sequence of tokens into a string. The output string must be freed with `OgaDestroyString`.
-
-```c
-const char* out_string = NULL;
-OgaResult* result = OgaTokenizerDecode(tokenizer, tokens, token_count, &out_string);
-OgaDestroyString(out_string);
-```
-
----
-
-### OgaTokenizerApplyChatTemplate
-
-Applies a chat template to input messages. The template can optionally include tools and generation prompt.
-
-```c
-const char* result_string = NULL;
-OgaResult* result = OgaTokenizerApplyChatTemplate(tokenizer, NULL, messages_json, tools_json, true, &result_string);
-OgaDestroyString(result_string);
-```
-
----
-
-### OgaCreateTokenizerStream
-
-Creates a tokenizer stream for incremental decoding. This allows decoding tokens one at a time.
-
-```c
-OgaTokenizerStream* stream = NULL;
-OgaResult* result = OgaCreateTokenizerStream(tokenizer, &stream);
-```
-
----
-
-### OgaCreateTokenizerStreamFromProcessor
-
-Creates a tokenizer stream from a multi-modal processor for incremental decoding.
-
-```c
-OgaTokenizerStream* stream = NULL;
-OgaResult* result = OgaCreateTokenizerStreamFromProcessor(processor, &stream);
-```
-
----
-
-### OgaDestroyTokenizerStream
-
-Destroys the tokenizer stream.
-
-```c
-OgaDestroyTokenizerStream(stream);
-```
-
----
-
 ### OgaTokenizerStreamDecode
 
 Decodes a single token in the stream. If a word is generated, it will be returned in `out`. The chunk is valid until the next call or when the stream is destroyed.
@@ -530,6 +445,18 @@ Decodes a single token in the stream. If a word is generated, it will be returne
 ```c
 const char* chunk = NULL;
 OgaResult* result = OgaTokenizerStreamDecode(stream, token, &chunk);
+```
+
+---
+
+
+### OgaTokenizerToTokenId
+
+Converts a string to its corresponding token ID.
+
+```c
+int32_t token_id = 0;
+OgaResult* result = OgaTokenizerToTokenId(tokenizer, "Hello", &token_id);
 ```
 
 ---
@@ -1290,72 +1217,6 @@ OgaDestroyString(out_string);
 
 ---
 
-## String Array API
-
-### OgaCreateStringArray
-
-Creates an empty string array.
-
-```c
-OgaStringArray* string_array = NULL;
-OgaResult* result = OgaCreateStringArray(&string_array);
-```
-
----
-
-### OgaCreateStringArrayFromStrings
-
-Creates a string array from an array of strings.
-
-```c
-const char* strs[] = {"string1", "string2", "string3"};
-OgaStringArray* string_array = NULL;
-OgaResult* result = OgaCreateStringArrayFromStrings(strs, 3, &string_array);
-```
-
----
-
-### OgaDestroyStringArray
-
-Destroys the string array.
-
-```c
-OgaDestroyStringArray(string_array);
-```
-
----
-
-### OgaStringArrayAddString
-
-Adds a string to the string array.
-
-```c
-OgaResult* result = OgaStringArrayAddString(string_array, "new_string");
-```
-
----
-
-### OgaStringArrayGetCount
-
-Gets the number of strings in the string array.
-
-```c
-size_t count = 0;
-OgaResult* result = OgaStringArrayGetCount(string_array, &count);
-```
-
----
-
-### OgaStringArrayGetString
-
-Gets a string from the string array at the given index.
-
-```c
-const char* str = NULL;
-OgaResult* result = OgaStringArrayGetString(string_array, 0, &str);
-```
-
----
 
 ## Engine and Request API
 
@@ -1548,6 +1409,148 @@ Unregisters an execution provider library from ONNX Runtime.
 
 ```c
 OgaUnregisterExecutionProviderLibrary("registration_name");
+```
+
+---
+
+## Global API and Utilities
+
+### OgaShutdown
+
+Cleanly shutdown the genai library and its ONNX Runtime usage on process exit.
+
+```c
+OgaShutdown();
+```
+
+---
+
+### OgaSetLogBool
+
+Control the logging behavior of the library by setting boolean logging options.
+
+```c
+OgaResult* result = OgaSetLogBool("option_name", true);
+```
+
+---
+
+### OgaSetLogString
+
+Control the logging behavior of the library by setting string logging options. If the option name is `"filename"` and a valid file path is provided, logging will be directed to that file. An empty string will reset logging to the default destination (std::cerr).
+
+```c
+OgaResult* result = OgaSetLogString("filename", "/path/to/logfile.txt");
+```
+
+---
+
+### OgaSetLogCallback
+
+Register a callback function to receive log messages from the library.
+
+```c
+void log_callback(const char* string, size_t length) {
+  // Handle log message
+}
+OgaResult* result = OgaSetLogCallback(log_callback);
+```
+
+---
+
+### OgaResultGetError
+
+Gets the error message from an `OgaResult`.
+
+```c
+const char* error = OgaResultGetError(result);
+```
+
+---
+
+### OgaDestroyResult
+
+Destroys an `OgaResult`.
+
+```c
+OgaDestroyResult(result);
+```
+
+---
+
+### OgaDestroyString
+
+Destroys a string returned by the API.
+
+```c
+OgaDestroyString(str);
+```
+
+---
+
+## String Array API
+
+### OgaCreateStringArray
+
+Creates an empty string array.
+
+```c
+OgaStringArray* string_array = NULL;
+OgaResult* result = OgaCreateStringArray(&string_array);
+```
+
+---
+
+### OgaCreateStringArrayFromStrings
+
+Creates a string array from an array of strings.
+
+```c
+const char* strs[] = {"string1", "string2", "string3"};
+OgaStringArray* string_array = NULL;
+OgaResult* result = OgaCreateStringArrayFromStrings(strs, 3, &string_array);
+```
+
+---
+
+### OgaDestroyStringArray
+
+Destroys the string array.
+
+```c
+OgaDestroyStringArray(string_array);
+```
+
+---
+
+### OgaStringArrayAddString
+
+Adds a string to the string array.
+
+```c
+OgaResult* result = OgaStringArrayAddString(string_array, "new_string");
+```
+
+---
+
+### OgaStringArrayGetCount
+
+Gets the number of strings in the string array.
+
+```c
+size_t count = 0;
+OgaResult* result = OgaStringArrayGetCount(string_array, &count);
+```
+
+---
+
+### OgaStringArrayGetString
+
+Gets a string from the string array at the given index.
+
+```c
+const char* str = NULL;
+OgaResult* result = OgaStringArrayGetString(string_array, 0, &str);
 ```
 
 ---
