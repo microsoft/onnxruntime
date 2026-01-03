@@ -46,6 +46,11 @@
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
         "^test_castlike_INT4_to*",  // ORT does not support ml_dtypes
+        "^test_castlike_INT2_to*",  // ORT does not support int2
+        "^test_castlike_UINT2_to*",  // ORT does not support uint2
+        "^test_cast_INT2_to*",  // ORT does not support int2
+        "^test_cast_UINT2_to*",  // ORT does not support uint2
+        "^test_convinteger_with_padding*",  // ORT does not support per-channel quantization for ConvInteger
         "^test_cast_e8m0_*",  // ORT does not support float8e8m0
         "^test_batchnorm_epsilon_training_mode",
         "^test_batchnorm_example_training_mode",
@@ -721,7 +726,10 @@
         "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
         "^test_center_crop_pad_crop_negative_axes_hwc_expanded*", // failed due to new types or shape infer with negative axis for CenterCropPad.
         "^test_reduce_max_empty_set",
-        "^test_reduce_min_empty_set"
+        "^test_reduce_min_empty_set",
+        "^test_matmul_1d_3d_cpu",
+        "^test_matmul_4d_1d_cpu",
+        "^test_matmul_1d_1d_cpu"
     ],
     "current_failing_tests_pure_DML": [
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",

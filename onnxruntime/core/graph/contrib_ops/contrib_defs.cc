@@ -559,6 +559,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Gelu, 1,
                                     {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+                                .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
                                 .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
                                   // gelu(x) = x * Phi(x) = x * 1/2(1+erf(x/sqrt(2)))
                                   auto* tp = ctx.getInputType(0);
@@ -614,6 +615,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+        .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
         .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema,
                                                    FunctionProto& functionProto) {
           auto* tp = ctx.getInputType(0);
@@ -2997,6 +2999,7 @@ void RegisterContribSchemas() {
             saved_inv_std_dev_shape->mutable_dim(static_cast<int>(d))->set_dim_value(1);
         }
       })
+      .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
             // LayerNormalization <axis, epsilon, stash_type> (X, Scale, B) => (Y, Mean?, InvStdDev?)

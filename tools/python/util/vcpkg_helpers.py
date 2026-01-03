@@ -9,7 +9,9 @@ from pathlib import Path
 
 
 # This is a way to add customizations to the official VCPKG ports.
-def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool) -> None:
+def add_port_configs(
+    f, has_exception: bool, is_emscripten: bool, enable_minimal_build: bool, use_full_protobuf: bool = False
+) -> None:
     """
     Add port-specific configurations to the triplet file.
 
@@ -18,6 +20,7 @@ def add_port_configs(f, has_exception: bool, is_emscripten: bool, enable_minimal
         has_exception (bool): Flag indicating if exceptions are enabled.
         is_emscripten (bool): Flag indicating if the target is Emscripten.
         enable_minimal_build (bool): Flag indicating if ONNX minimal build is enabled.
+        use_full_protobuf (bool): Flag indicating if full protobuf should be used (vs lite). Default is False.
     """
     f.write(
         r"""if(PORT MATCHES "benchmark")
@@ -89,8 +92,8 @@ endif()
     )"""
         )
 
-    if is_emscripten:
-        # Uses ONNX_USE_LITE_PROTO=ON for WebAssembly build.
+    # Uses ONNX_USE_LITE_PROTO=ON for WebAssembly build.
+    if not use_full_protobuf or is_emscripten:
         f.write(
             r"""
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
@@ -147,6 +150,7 @@ def generate_triplet_for_android(
     enable_minimal_build: bool,
     use_cpp_shared: bool,
     android_api_level: int,
+    use_full_protobuf: bool,
 ) -> None:
     """
     Generate triplet file for Android platform.
@@ -160,6 +164,7 @@ def generate_triplet_for_android(
         enable_minimal_build (bool): Flag indicating if ONNX minimal build is enabled.
         use_cpp_shared(bool): The type of C++ Runtime to use. If it is false, use "c++_static" which is the default for most CMake projects. Otherwise set the runtime to c++_shared.
         android_api_level(int): android_api_level
+        use_full_protobuf(bool): Flag indicating if full protobuf should be used (vs lite).
     """
     folder_name_parts = []
     if enable_asan:
@@ -267,15 +272,20 @@ def generate_triplet_for_android(
                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
             f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
             add_build_type(f, config)
-            add_port_configs(f, enable_exception, False, enable_minimal_build)  # Pass enable_minimal_build
+            add_port_configs(
+                f, enable_exception, False, enable_minimal_build, use_full_protobuf=use_full_protobuf
+            )  # Pass enable_minimal_build
 
 
-def generate_android_triplets(build_dir: str, configs: set[str], use_cpp_shared: bool, android_api_level: int) -> None:
+def generate_android_triplets(
+    build_dir: str, configs: set[str], use_cpp_shared: bool, android_api_level: int, use_full_protobuf: bool
+) -> None:
     """
     Generate triplet files for POSIX platforms (Linux, macOS, Android).
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
+        use_full_protobuf (bool): Flag indicating if full Protobuf is used.
     """
     target_abis = ["x64", "arm64", "arm-neon", "x86"]
     for enable_asan in [True, False]:
@@ -295,6 +305,7 @@ def generate_android_triplets(build_dir: str, configs: set[str], use_cpp_shared:
                             enable_minimal_build,
                             use_cpp_shared,
                             android_api_level,
+                            use_full_protobuf=use_full_protobuf,
                         )
 
 
@@ -310,6 +321,7 @@ def generate_triplet_for_posix_platform(
     crt_linkage: str,
     target_abi: str,
     osx_deployment_target: str,
+    use_full_protobuf: bool,
 ) -> None:
     """
     Generate triplet file for POSIX platforms (Linux, macOS).
@@ -325,6 +337,7 @@ def generate_triplet_for_posix_platform(
         crt_linkage (str): The CRT linkage type ("static" or "dynamic").
         target_abi (str): The target ABI, which maps to the VCPKG_TARGET_ARCHITECTURE variable. Valid options include x86, x64, arm, arm64, arm64ec, s390x, ppc64le, riscv32, riscv64, loongarch32, loongarch64, mips64.
         osx_deployment_target (str, optional): The macOS deployment target version. The parameter sets the minimum macOS version for compiled binaries. It also changes what versions of the macOS platform SDK CMake will search for. See the CMake documentation for CMAKE_OSX_DEPLOYMENT_TARGET for more information.
+        use_full_protobuf (bool): Flag indicating if full Protobuf is used.
     """
     folder_name_parts = []
     if enable_asan:
@@ -453,7 +466,9 @@ def generate_triplet_for_posix_platform(
             else:
                 f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
             add_build_type(f, config)
-            add_port_configs(f, enable_exception, False, enable_minimal_build)  # Pass enable_minimal_build
+            add_port_configs(
+                f, enable_exception, False, enable_minimal_build, use_full_protobuf=use_full_protobuf
+            )  # Pass enable_minimal_build
 
 
 def generate_vcpkg_triplets_for_emscripten(
@@ -466,6 +481,7 @@ def generate_vcpkg_triplets_for_emscripten(
     enable_wasm_exception_catching: bool,  # Controls -sDISABLE_EXCEPTION_CATCHING=...
     enable_minimal_onnx_build: bool,  # Controls ONNX port setting AND C++ exceptions (-fno-exceptions)
     enable_asan: bool,
+    use_full_protobuf: bool,
 ) -> None:
     """
     Generate triplet files for Emscripten (WASM) for wasm32 and wasm64.
@@ -501,6 +517,7 @@ def generate_vcpkg_triplets_for_emscripten(
                                         Also implicitly controls C++ exceptions for
                                         dependencies (True => -fno-exceptions).
         enable_asan (bool): Flag indicating if AddressSanitizer is enabled for dependencies.
+        use_full_protobuf (bool): Flag indicating if full Protobuf is used.
     """
     # Always place generated files in the 'default' folder for Emscripten
     folder_name = "default"
@@ -617,16 +634,18 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
                     has_exception=cpp_exceptions_enabled,  # Derived value
                     is_emscripten=True,
                     enable_minimal_build=enable_minimal_onnx_build,
+                    use_full_protobuf=use_full_protobuf,
                 )  # Original parameter
 
 
-def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version: str) -> None:
+def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version: str, use_full_protobuf: bool) -> None:
     """
     Generate triplet files for Windows platforms.
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
         toolset_version (str, optional): The version of the platform toolset.
+        use_full_protobuf (bool): Flag indicating if full Protobuf is used.
     """
     # Below are all the CPU ARCHs we support on Windows.
     # ARM64 is for ARM64 processes that contains traditional ARM64 code.
@@ -711,16 +730,22 @@ def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version
                                             f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
                                         add_build_type(f, config)
                                         add_port_configs(
-                                            f, enable_exception, False, enable_minimal_build
+                                            f,
+                                            enable_exception,
+                                            False,
+                                            enable_minimal_build,
+                                            use_full_protobuf=use_full_protobuf,
                                         )  # Pass enable_minimal_build
 
 
-def generate_linux_triplets(build_dir: str, configs: set[str]) -> None:
+def generate_linux_triplets(build_dir: str, configs: set[str], use_full_protobuf: bool) -> None:
     """
     Generate triplet files for Linux platforms.
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
+        configs (set[str]): The set of build configurations.
+        use_full_protobuf (bool): Flag indicating if full Protobuf is used.
     """
     target_abis = ["x86", "x64", "arm", "arm64", "s390x", "ppc64le", "riscv64", "loongarch64", "mips64"]
     for enable_rtti in [True, False]:
@@ -745,16 +770,20 @@ def generate_linux_triplets(build_dir: str, configs: set[str]) -> None:
                                 "dynamic",
                                 target_abi,
                                 None,
+                                use_full_protobuf=use_full_protobuf,
                             )
 
 
-def generate_macos_triplets(build_dir: str, configs: set[str], osx_deployment_target: str) -> None:
+def generate_macos_triplets(
+    build_dir: str, configs: set[str], osx_deployment_target: str, use_full_protobuf: bool
+) -> None:
     """
     Generate triplet files for macOS platforms.
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
         osx_deployment_target (str, optional): The macOS deployment target version.
+        use_full_protobuf (bool): Flag indicating if full Protobuf is used.
     """
     target_abis = ["x64", "arm64", "universal2"]
     for enable_rtti in [True, False]:
@@ -780,4 +809,5 @@ def generate_macos_triplets(build_dir: str, configs: set[str], osx_deployment_ta
                                 "dynamic",
                                 target_abi,
                                 osx_deployment_target,
+                                use_full_protobuf=use_full_protobuf,
                             )

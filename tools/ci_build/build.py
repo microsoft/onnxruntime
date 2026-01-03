@@ -624,21 +624,24 @@ def generate_build_tree(
                 not args.disable_wasm_exception_catching,
                 args.minimal_build is not None,
                 args.enable_address_sanitizer,
+                args.use_full_protobuf,
             )
         elif args.android:
-            generate_android_triplets(build_dir, configs, args.android_cpp_shared, args.android_api)
+            generate_android_triplets(
+                build_dir, configs, args.android_cpp_shared, args.android_api, args.use_full_protobuf
+            )
         elif is_windows():
-            generate_windows_triplets(build_dir, configs, args.msvc_toolset)
+            generate_windows_triplets(build_dir, configs, args.msvc_toolset, args.use_full_protobuf)
         elif is_macOS():
             osx_target = args.apple_deploy_target
             if args.apple_deploy_target is None:
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target)
+            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs)
+            generate_linux_triplets(build_dir, configs, args.use_full_protobuf)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
