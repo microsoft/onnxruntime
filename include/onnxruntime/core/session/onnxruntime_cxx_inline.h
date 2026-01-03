@@ -1661,6 +1661,19 @@ inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() co
 }
 
 template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForOutputs() const {
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstEpDevice> output_devices;
+  if (num_outputs > 0) {
+    output_devices.resize(num_outputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtEpDevice**>(output_devices.data()),
+                                                       num_outputs));
+  }
+  return output_devices;
+}
+
+template <typename T>
 inline uint64_t ConstSessionImpl<T>::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(this->p_, &out));

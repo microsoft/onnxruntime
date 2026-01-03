@@ -484,6 +484,15 @@ class InferenceSession {
    * This is required for a user to know the location of the input/output when autoep selection is enabled.
    */
   common::Status GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
+
+  /**
+   * Get the OrtEpDevice (if available) for the outputs of the model.
+   *
+   * This is required for a user to validate that outputs will be placed on the expected device
+   * for external resource sharing.
+   */
+  common::Status GetEpDeviceForOutputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
+
   /**
    * Get the current number of in-progress concurrent Run calls.
    */

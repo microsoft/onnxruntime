@@ -3372,6 +3372,34 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForOutputs, _In_ const OrtSession* ort_session,
+                    _Out_writes_(num_values) const OrtEpDevice** outputs_ep_devices,
+                    _In_ size_t num_values) {
+  API_IMPL_BEGIN
+  if (ort_session == nullptr || outputs_ep_devices == nullptr || num_values == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to SessionGetEpDeviceForOutputs.");
+  }
+
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
+
+  InlinedVector<const OrtEpDevice*> ep_devices;
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->GetEpDeviceForOutputs(ep_devices));
+
+  auto num_found = ep_devices.size();
+  if (num_found > num_values) {
+    auto msg = MakeString("Number of outputs ", num_found, " exceeds the provided size of ", num_values);
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
+  }
+
+  for (size_t i = 0; i < num_values; ++i) {
+    outputs_ep_devices[i] = (i < num_found) ? ep_devices[i] : nullptr;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _In_opt_ const OrtKeyValuePairs* stream_options,
                     _Outptr_ OrtSyncStream** ort_stream) {
@@ -3536,6 +3564,242 @@ ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
   API_IMPL_END
 }
 
+// ============================================================================
+// External Resource Importer APIs (Version 1.24)
+// ============================================================================
+
+// Wrapper class for OrtExternalResourceImporterImpl
+namespace {
+struct ExternalResourceImporterWrapper {
+  const OrtEpDevice* ep_device;
+  OrtExternalResourceImporterImpl* impl;
+
+  ExternalResourceImporterWrapper(const OrtEpDevice* device, OrtExternalResourceImporterImpl* importer)
+      : ep_device(device), impl(importer) {}
+
+  ~ExternalResourceImporterWrapper() {
+    if (impl && impl->Release) {
+      impl->Release(impl);
+    }
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExternalResourceImporterWrapper);
+};
+
+}  // namespace
+
+ORT_API_STATUS_IMPL(OrtApis::CreateExternalResourceImporterForDevice, _In_ const OrtEpDevice* ep_device,
+                    _Outptr_result_maybenull_ OrtExternalResourceImporter** out_importer) {
+  API_IMPL_BEGIN
+  if (ep_device == nullptr || out_importer == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and out_importer must be provided.");
+  }
+
+  *out_importer = nullptr;
+
+  // OrtEpFactory::CreateExternalResourceImporterForDevice was added in ORT 1.24.
+  const auto* factory = ep_device->ep_factory;
+  if (factory == nullptr ||
+      factory->ort_version_supported < 24 ||
+      factory->CreateExternalResourceImporterForDevice == nullptr) {
+    // EP doesn't support external resource import - not an error, just return nullptr
+    return nullptr;
+  }
+
+  OrtExternalResourceImporterImpl* impl = nullptr;
+  ORT_API_RETURN_IF_ERROR(factory->CreateExternalResourceImporterForDevice(
+      ep_device->GetMutableFactory(),
+      ep_device,
+      &impl));
+
+  if (impl == nullptr) {
+    // EP supports the factory method but returned null - not supported for this device
+    return nullptr;
+  }
+
+  auto wrapper = std::make_unique<ExternalResourceImporterWrapper>(ep_device, impl);
+  *out_importer = reinterpret_cast<OrtExternalResourceImporter*>(wrapper.release());
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalResourceImporter, _Frees_ptr_opt_ OrtExternalResourceImporter* importer) {
+  if (importer != nullptr) {
+    delete reinterpret_cast<ExternalResourceImporterWrapper*>(importer);
+  }
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_CanImportMemory, _In_ const OrtExternalResourceImporter* importer,
+                    _In_ OrtExternalMemoryHandleType handle_type,
+                    _Out_ bool* out_supported) {
+  API_IMPL_BEGIN
+  if (importer == nullptr || out_supported == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "importer and out_supported must be provided.");
+  }
+
+  auto* wrapper = reinterpret_cast<const ExternalResourceImporterWrapper*>(importer);
+  if (wrapper->impl == nullptr || wrapper->impl->CanImportMemory == nullptr) {
+    *out_supported = false;
+    return nullptr;
+  }
+
+  *out_supported = wrapper->impl->CanImportMemory(wrapper->impl, handle_type);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_ImportMemory, _In_ OrtExternalResourceImporter* importer,
+                    _In_ const OrtExternalMemoryDescriptor* desc,
+                    _Outptr_ OrtExternalMemoryHandle** out_handle) {
+  API_IMPL_BEGIN
+  if (importer == nullptr || desc == nullptr || out_handle == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "importer, desc, and out_handle must be provided.");
+  }
+
+  auto* wrapper = reinterpret_cast<ExternalResourceImporterWrapper*>(importer);
+  if (wrapper->impl == nullptr || wrapper->impl->ImportMemory == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External memory import is not supported by this EP.");
+  }
+
+  // EP creates derived type and returns base pointer. EP owns the handle lifetime.
+  OrtExternalMemoryHandle* handle = nullptr;
+  ORT_API_RETURN_IF_ERROR(wrapper->impl->ImportMemory(wrapper->impl, desc, &handle));
+
+  if (handle == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL, "ImportMemory returned null handle.");
+  }
+
+  *out_handle = handle;
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalMemoryHandle, _Frees_ptr_opt_ OrtExternalMemoryHandle* handle) {
+  if (handle != nullptr && handle->Release != nullptr) {
+    handle->Release(handle);
+  }
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_CreateTensorFromMemory, _In_ OrtExternalResourceImporter* importer,
+                    _In_ const OrtExternalMemoryHandle* mem_handle,
+                    _In_ const OrtExternalTensorDescriptor* tensor_desc,
+                    _In_opt_ const OrtMemoryInfo* /*tensor_location*/,
+                    _Outptr_ OrtValue** out_tensor) {
+  API_IMPL_BEGIN
+  if (importer == nullptr || mem_handle == nullptr || tensor_desc == nullptr || out_tensor == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "importer, mem_handle, tensor_desc, and out_tensor must be provided.");
+  }
+
+  auto* imp_wrapper = reinterpret_cast<ExternalResourceImporterWrapper*>(importer);
+
+  if (imp_wrapper->impl == nullptr || imp_wrapper->impl->CreateTensorFromMemory == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateTensorFromMemory is not supported by this EP.");
+  }
+
+  OrtValue* tensor = nullptr;
+  ORT_API_RETURN_IF_ERROR(imp_wrapper->impl->CreateTensorFromMemory(imp_wrapper->impl, mem_handle, tensor_desc, &tensor));
+
+  *out_tensor = tensor;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_CanImportSemaphore, _In_ const OrtExternalResourceImporter* importer,
+                    _In_ OrtExternalSemaphoreType type,
+                    _Out_ bool* out_supported) {
+  API_IMPL_BEGIN
+  if (importer == nullptr || out_supported == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "importer and out_supported must be provided.");
+  }
+
+  auto* wrapper = reinterpret_cast<const ExternalResourceImporterWrapper*>(importer);
+  if (wrapper->impl == nullptr || wrapper->impl->CanImportSemaphore == nullptr) {
+    *out_supported = false;
+    return nullptr;
+  }
+
+  *out_supported = wrapper->impl->CanImportSemaphore(wrapper->impl, type);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_ImportSemaphore, _In_ OrtExternalResourceImporter* importer,
+                    _In_ const OrtExternalSemaphoreDescriptor* desc,
+                    _Outptr_ OrtExternalSemaphoreHandle** out_handle) {
+  API_IMPL_BEGIN
+  if (importer == nullptr || desc == nullptr || out_handle == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "importer, desc, and out_handle must be provided.");
+  }
+
+  auto* wrapper = reinterpret_cast<ExternalResourceImporterWrapper*>(importer);
+  if (wrapper->impl == nullptr || wrapper->impl->ImportSemaphore == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External semaphore import is not supported by this EP.");
+  }
+
+  // EP creates derived type and returns base pointer. EP owns the handle lifetime.
+  OrtExternalSemaphoreHandle* handle = nullptr;
+  ORT_API_RETURN_IF_ERROR(wrapper->impl->ImportSemaphore(wrapper->impl, desc, &handle));
+
+  if (handle == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL, "ImportSemaphore returned null handle.");
+  }
+
+  *out_handle = handle;
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalSemaphoreHandle, _Frees_ptr_opt_ OrtExternalSemaphoreHandle* handle) {
+  if (handle != nullptr && handle->Release != nullptr) {
+    handle->Release(handle);
+  }
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_WaitSemaphore, _In_ OrtExternalResourceImporter* importer,
+                    _In_ OrtExternalSemaphoreHandle* semaphore_handle,
+                    _In_ OrtSyncStream* stream,
+                    _In_ uint64_t value) {
+  API_IMPL_BEGIN
+  if (importer == nullptr || semaphore_handle == nullptr || stream == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "importer, semaphore_handle, and stream must be provided.");
+  }
+
+  auto* imp_wrapper = reinterpret_cast<ExternalResourceImporterWrapper*>(importer);
+
+  if (imp_wrapper->impl == nullptr || imp_wrapper->impl->WaitSemaphore == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "WaitSemaphore is not supported by this EP.");
+  }
+
+  ORT_API_RETURN_IF_ERROR(imp_wrapper->impl->WaitSemaphore(imp_wrapper->impl, semaphore_handle, stream, value));
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_SignalSemaphore, _In_ OrtExternalResourceImporter* importer,
+                    _In_ OrtExternalSemaphoreHandle* semaphore_handle,
+                    _In_ OrtSyncStream* stream,
+                    _In_ uint64_t value) {
+  API_IMPL_BEGIN
+  if (importer == nullptr || semaphore_handle == nullptr || stream == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "importer, semaphore_handle, and stream must be provided.");
+  }
+
+  auto* imp_wrapper = reinterpret_cast<ExternalResourceImporterWrapper*>(importer);
+
+  if (imp_wrapper->impl == nullptr || imp_wrapper->impl->SignalSemaphore == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SignalSemaphore is not supported by this EP.");
+  }
+
+  ORT_API_RETURN_IF_ERROR(imp_wrapper->impl->SignalSemaphore(imp_wrapper->impl, semaphore_handle, stream, value));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 #else  // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
@@ -3618,6 +3882,94 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
                     _In_ size_t /*num_tensors*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CopyTensors is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+// External Resource Importer minimal build stubs
+ORT_API_STATUS_IMPL(OrtApis::CreateExternalResourceImporterForDevice, _In_ const OrtEpDevice* /*ep_device*/,
+                    _Outptr_result_maybenull_ OrtExternalResourceImporter** /*out_importer*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateExternalResourceImporterForDevice is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalResourceImporter, _Frees_ptr_opt_ OrtExternalResourceImporter* /*importer*/) {
+  fprintf(stderr, "External resource import is not supported in a minimal build.\n");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_CanImportMemory, _In_ const OrtExternalResourceImporter* /*importer*/,
+                    _In_ OrtExternalMemoryHandleType /*handle_type*/,
+                    _Out_ bool* /*out_supported*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External resource import is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_ImportMemory, _In_ OrtExternalResourceImporter* /*importer*/,
+                    _In_ const OrtExternalMemoryDescriptor* /*desc*/,
+                    _Outptr_ OrtExternalMemoryHandle** /*out_handle*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External resource import is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalMemoryHandle, _Frees_ptr_opt_ OrtExternalMemoryHandle* /*handle*/) {
+  fprintf(stderr, "External resource import is not supported in a minimal build.\n");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_CreateTensorFromMemory, _In_ OrtExternalResourceImporter* /*importer*/,
+                    _In_ const OrtExternalMemoryHandle* /*mem_handle*/,
+                    _In_ const OrtExternalTensorDescriptor* /*tensor_desc*/,
+                    _In_opt_ const OrtMemoryInfo* /*tensor_location*/,
+                    _Outptr_ OrtValue** /*out_tensor*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External resource import is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_CanImportSemaphore, _In_ const OrtExternalResourceImporter* /*importer*/,
+                    _In_ OrtExternalSemaphoreType /*type*/,
+                    _Out_ bool* /*out_supported*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External resource import is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_ImportSemaphore, _In_ OrtExternalResourceImporter* /*importer*/,
+                    _In_ const OrtExternalSemaphoreDescriptor* /*desc*/,
+                    _Outptr_ OrtExternalSemaphoreHandle** /*out_handle*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External resource import is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalSemaphoreHandle, _Frees_ptr_opt_ OrtExternalSemaphoreHandle* /*handle*/) {
+  fprintf(stderr, "External resource import is not supported in a minimal build.\n");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_WaitSemaphore, _In_ OrtExternalResourceImporter* /*importer*/,
+                    _In_ OrtExternalSemaphoreHandle* /*semaphore_handle*/,
+                    _In_ OrtSyncStream* /*stream*/,
+                    _In_ uint64_t /*value*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External resource import is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ExternalResourceImporter_SignalSemaphore, _In_ OrtExternalResourceImporter* /*importer*/,
+                    _In_ OrtExternalSemaphoreHandle* /*semaphore_handle*/,
+                    _In_ OrtSyncStream* /*stream*/,
+                    _In_ uint64_t /*value*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External resource import is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForOutputs, _In_ const OrtSession* /*ort_session*/,
+                    _Out_writes_(num_values) const OrtEpDevice** /*outputs_ep_devices*/,
+                    _In_ size_t /*num_values*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionGetEpDeviceForOutputs is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4238,6 +4590,19 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::TensorTypeAndShape_HasShape,
     &OrtApis::KernelInfo_GetConfigEntries,
+
+    &OrtApis::CreateExternalResourceImporterForDevice,
+    &OrtApis::ReleaseExternalResourceImporter,
+    &OrtApis::ExternalResourceImporter_CanImportMemory,
+    &OrtApis::ExternalResourceImporter_ImportMemory,
+    &OrtApis::ReleaseExternalMemoryHandle,
+    &OrtApis::ExternalResourceImporter_CreateTensorFromMemory,
+    &OrtApis::ExternalResourceImporter_CanImportSemaphore,
+    &OrtApis::ExternalResourceImporter_ImportSemaphore,
+    &OrtApis::ReleaseExternalSemaphoreHandle,
+    &OrtApis::ExternalResourceImporter_WaitSemaphore,
+    &OrtApis::ExternalResourceImporter_SignalSemaphore,
+    &OrtApis::SessionGetEpDeviceForOutputs,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
