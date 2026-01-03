@@ -13,15 +13,13 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& b,
                         const ShaderIndicesHelper* batch_dims,
                         bool transA,
-                        bool transB,
-                        bool is_vec4);
+                        bool transB);
 
 void MatMulWriteFnSource(ShaderHelper& shader,
                          const ShaderVariableHelper& output,
                          const ShaderVariableHelper* bias,
                          bool is_gemm,
                          int c_components,
-                         int output_components,
                          bool c_is_scalar,
                          std::string activation_snippet = "",
                          bool is_channels_last = false,

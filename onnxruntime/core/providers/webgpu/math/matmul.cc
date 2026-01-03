@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
@@ -161,6 +162,10 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   if (has_bias) {
     const auto* bias = context.Input(2);
     inputs.push_back(bias);
+  }
+
+  if (intel::CanApplyMatMulIntel(context, helper.M(), helper.N(), helper.K())) {
+    return intel::ApplyMatMulIntel(context, Activation(), inputs, output_tensor);
   }
 
   return ComputeMatMul(&context, Activation(), inputs, output_tensor, false);
