@@ -36,6 +36,18 @@ static OpKernelTypeStrMap::const_iterator LookUpOpId(const OpIdentifier& op_id,
     }
   }
 
+#ifdef USE_KLEIDIAI
+  // Klediai specific block for NhwcFusedConvolutions
+  if (op_it == map.end() && op_id.domain == kMSDomain && op_id.op_type == "NhwcFusedConv") {
+    const auto fused_conv_op_id = OpIdentifier{std::string{kMSDomain}, "FusedConv", op_id.since_version};
+    op_it = map.find(fused_conv_op_id);
+    if (op_it == map.end()) {
+      const auto conv_op_id = OpIdentifier{std::string{kOnnxDomain}, "Conv", op_id.since_version};
+      op_it = map.find(conv_op_id);
+    }
+  }
+#endif
+
   return op_it;
 }
 

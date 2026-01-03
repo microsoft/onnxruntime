@@ -403,7 +403,7 @@ Only has fp16 implementation as of 2023/04/15.
                                 .Input(2, "B", "", "T", OpSchema::Optional)
                                 .Input(3, "Z", "Tensor to be added to the output, must be the same shape and format as the output tensor.", "T", OpSchema::Optional)
                                 .Output(0, "Y", "", "T")
-                                .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float tensors")
+                                .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to float tensors")
                                 .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
                                   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
                                   convPoolShapeInferenceNhwc(ctx, true, false, 0, 1);

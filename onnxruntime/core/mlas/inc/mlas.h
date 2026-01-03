@@ -851,6 +851,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t BatchCount;
     size_t GroupCount;
     size_t InputChannels;
+    bool ChannelsLast;
     size_t InputShape[3];
     size_t KernelShape[3];
     size_t DilationShape[3];
@@ -890,6 +891,7 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t FilterCount,
                 const MLAS_ACTIVATION* Activation,
                 size_t* WorkingBufferSize,
+                bool ChannelsLast,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
 

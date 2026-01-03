@@ -26,5 +26,13 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FusedConvFloat);
 
+ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+    NhwcFusedConv,
+    1,
+    float,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    FusedConvFloat);
+
 }  // namespace contrib
 }  // namespace onnxruntime
