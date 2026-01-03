@@ -978,7 +978,8 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.PushErrorScope();
   }
 
-  if (profiler_->Enabled()) {
+  // Start GPU profiling if session-level OR run-level profiling is enabled
+  if (profiler_->Enabled() || run_options.enable_profiling) {
     context_.StartProfiling();
   }
 
@@ -1000,7 +1001,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
   return Status::OK();
 }
 
-Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& /* run_options */) {
+Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
   context_.Flush(BufferManager());
 
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(m_current_graph_annotation_id)) {
@@ -1013,8 +1014,12 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
   }
 
-  if (profiler_->Enabled()) {
-    context_.CollectProfilingData(profiler_->Events());
+  // Collect GPU profiling data if session-level OR run-level profiling is enabled
+  if (profiler_->Enabled() || run_options.enable_profiling) {
+    onnxruntime::profiling::Events gpu_events;
+    context_.CollectProfilingData(gpu_events);
+    // Dispatch to appropriate containers (session-level, run-level, or both)
+    profiler_->DispatchGpuEvents(gpu_events);
   }
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)

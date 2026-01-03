@@ -119,6 +119,22 @@ class Profiler {
     }
   }
 
+  /*
+  Start run-level profiling for the current thread.
+  */
+  void StartRunLevelProfiling();
+
+  /*
+  End run-level profiling for the current thread and write to file.
+  Returns the file path if successful, empty string otherwise.
+  */
+  std::string EndRunLevelProfiling(const std::string& file_path);
+
+  /*
+  Whether run-level profiling is enabled for the current thread.
+  */
+  bool IsRunLevelProfilingEnabled() const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
@@ -156,6 +172,14 @@ class Profiler {
 #endif
 
   std::vector<std::unique_ptr<EpProfiler>> ep_profilers_;
+
+  // TLS: Run level profiling state
+  struct RunLevelState {
+    bool enabled = false;
+    Events events;
+    TimePoint start_time;
+  };
+  static thread_local RunLevelState run_level_state_;
 };
 
 }  // namespace profiling
