@@ -27,8 +27,9 @@ const OrtDevice OpKernel::GetDevice(OrtMemType mem_type) const {
 
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                                  _In_ Stream* stream,
-                                 _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
-    : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger), stream_(stream) {
+                                 _In_ const std::function<concurrency::ThreadPool*()>& threadpool_fn,
+                                 _In_ const logging::Logger& logger)
+    : execution_frame_(frame), kernel_(kernel), get_threadpool_fn_(threadpool_fn), logger_(&logger), stream_(stream) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 
@@ -39,7 +40,10 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
 
 OpKernelContext::OpKernelContext(concurrency::ThreadPool* threadpool,
                                  const logging::Logger& logger,
-                                 Stream* stream) : threadpool_(threadpool), logger_(&logger), stream_(stream) {}
+                                 Stream* stream)
+    : get_threadpool_fn_([threadpool]() { return threadpool; }),
+      logger_(&logger),
+      stream_(stream) {}
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);

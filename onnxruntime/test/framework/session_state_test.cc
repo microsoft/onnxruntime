@@ -1380,5 +1380,38 @@ INSTANTIATE_TEST_SUITE_P(SessionStateTests,
                                          PrepackingTestParam{true, true}));
 #endif
 
+TEST(SessionStateTest, TestDelayedThreadPoolFetch) {
+  std::unique_ptr<concurrency::ThreadPool> tp;
+  auto get_thread_pool = [&tp]() {
+    OrtThreadPoolParams to;
+    to.thread_pool_size = 4;
+    tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+
+    return tp.get();
+  };
+
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ExecutionProviders execution_providers;
+  auto tmp_cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_cpu_execution_provider)));
+
+  DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
+  profiling::Profiler profiler;
+
+  SessionOptions sess_options;
+  SessionState s(graph, execution_providers, nullptr, nullptr, dtm, edlm,
+                 DefaultLoggingManager().DefaultLogger(), profiler, sess_options,
+                 nullptr, nullptr, nullptr,
+                 get_thread_pool);
+
+  ASSERT_EQ(tp, nullptr) << "Thread pool should not be created yet";
+  auto* fetched_tp = s.GetThreadPool();
+  ASSERT_EQ(tp.get(), fetched_tp) << "Fetched thread pool should match created one";
+  auto* fetched_tp_2 = s.GetThreadPool();
+  ASSERT_EQ(fetched_tp, fetched_tp_2) << "Fetched thread pool should not change.";
+}
 }  // namespace test
 }  // namespace onnxruntime
