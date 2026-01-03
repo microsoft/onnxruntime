@@ -386,9 +386,10 @@ Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
                                           const MatMulComputeHelper& helper) const {
   const auto* a_data = a->Data<T1>();
   auto* y_data = y->MutableData<T1>();
-  const size_t M = static_cast<size_t>(helper.M());
-  const size_t N = static_cast<size_t>(helper.N());
-  const size_t K = static_cast<size_t>(helper.K());
+  // MlasLUTGemm expects int for M, N, K parameters
+  const int M = static_cast<int>(helper.M());
+  const int N = static_cast<int>(helper.N());
+  const int K = static_cast<int>(helper.K());
   // TODO(vraspar): Should we batch it here?
   MlasLUTGemm(a_data, block_size_, packed_b_.get(), packed_scales_zp_.get(), y_data, K, M, N, thread_pool);
   return Status::OK();

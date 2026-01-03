@@ -395,7 +395,10 @@ tbl_g4_int8_float_update_impl(int32_t m, float* c, const int8_t* lut, const uint
 
     SignedAdder<FastAggregation, ActK> adder;
     for (int i = 0; i < m / 2; i += 16) {
-        __m256 vec_c0, vec_c1, vec_c2, vec_c3;
+        __m256 vec_c0 = _mm256_setzero_ps();
+        __m256 vec_c1 = _mm256_setzero_ps();
+        __m256 vec_c2 = _mm256_setzero_ps();
+        __m256 vec_c3 = _mm256_setzero_ps();
 
         float partial_sum = -0.0f;
         PRAGMA_UNROLL

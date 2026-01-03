@@ -584,7 +584,8 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
-    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
+    const bool HasI8MMInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM();
+    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
         this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;

@@ -287,7 +287,7 @@ MlasLUTPackScalesAndZeroPointsSize(
     }
 }
 
-void
+void MLASCALL
 MlasLUTPackScalesAndZeroPoints(
     size_t N,
     size_t K,
