@@ -34,6 +34,9 @@ Abstract:
 #define POWER_10_ANDUP (POWER_10)
 #include <sys/systemcfg.h>
 #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
+#elif defined(__FreeBSD__)
+#include <machine/cpu.h>
+#include <sys/auxv.h>
 #endif
 #endif
 
