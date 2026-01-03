@@ -512,6 +512,28 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   }
 
   session_profiler_.Initialize(session_logger_);
+
+  // Check for environment variable to enable profiling
+  const std::string env_enable_profiling = session_env.GetEnvironment().GetEnvironmentVar("ORT_ENABLE_PROFILING");
+  const std::string env_profile_prefix = session_env.GetEnvironment().GetEnvironmentVar("ORT_PROFILE_FILE_PREFIX");
+
+  if (!env_enable_profiling.empty()) {
+    if (env_enable_profiling == "1") {
+      // Environment variable enables profiling (does not disable if already enabled via SessionOptions)
+      session_options_.enable_profiling = true;
+      if (!env_profile_prefix.empty()) {
+        session_options_.profile_file_prefix = ToPathString(env_profile_prefix);
+      } else if (session_options_.profile_file_prefix.empty()) {
+        session_options_.profile_file_prefix = ORT_TSTR("onnxruntime_profile");
+      }
+      LOGS(*session_logger_, INFO) << "Profiling enabled via ORT_ENABLE_PROFILING environment variable. "
+                                   << "Profile prefix: " << ToUTF8String(session_options_.profile_file_prefix);
+    } else if (env_enable_profiling != "0") {
+      LOGS(*session_logger_, WARNING) << "Invalid value for ORT_ENABLE_PROFILING environment variable: '"
+                                      << env_enable_profiling << "'. Expected '0' or '1'. Ignoring.";
+    }
+  }
+
   if (session_options_.enable_profiling) {
     StartProfiling(session_options_.profile_file_prefix);
   }
