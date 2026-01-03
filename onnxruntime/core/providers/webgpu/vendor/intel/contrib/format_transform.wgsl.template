@@ -1,0 +1,114 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Format transformation shader for OneDNN blocked layouts
+// Supports Plain (NCHW), nChw4c, and ABcd16a4b formats
+
+#define FORMAT_PLAIN 0
+#define FORMAT_NCHW4C 1
+#define FORMAT_ABCD16A4B 2
+
+#use getElementAt
+#use .getByOffset .setByOffset
+#use guardAgainstOutOfBoundsWorkgroupSizes
+
+#param src_format
+#param dst_format
+
+$MAIN {
+    guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+
+  // Get shapes from uniforms
+  let N = uniforms.input_shape[0];
+  let C = uniforms.input_shape[1];
+  let H = uniforms.input_shape[2];
+  let W = uniforms.input_shape[3];
+
+  let out_N = uniforms.output_shape[0];
+  let out_C = uniforms.output_shape[1];
+  let out_H = uniforms.output_shape[2];
+  let out_W = uniforms.output_shape[3];
+
+  // Calculate NCHW indices from output global index
+  let n = global_idx / (out_C * out_H * out_W);
+  let chw_idx = global_idx % (out_C * out_H * out_W);
+  let c = chw_idx / (out_H * out_W);
+  let hw_idx = chw_idx % (out_H * out_W);
+  let h = hw_idx / out_W;
+  let w = hw_idx % out_W;
+
+  var output_idx: u32 = 0u;
+#if dst_format == FORMAT_PLAIN
+  // Plain format: NCHW
+  output_idx = n * C * H * W + c * H * W + h * W + w;
+#elif dst_format == FORMAT_NCHW4C
+  // nChw4c format: [N, C/4, H, W, 4]
+  let block_size = 4u;
+  let num_blocks = (out_C + block_size - 1u) / block_size;
+  let block_idx = c / block_size;
+  let c_in_block = c % block_size;
+  output_idx = n * num_blocks * out_H * out_W * block_size +
+               block_idx * out_H * out_W * block_size +
+               h * out_W * block_size +
+               w * block_size +
+               c_in_block;
+#elif dst_format == FORMAT_ABCD16A4B
+  // ABcd16a4b format: [N/16, C/4, H, W, 16, 4]
+  let a_block = 16u;
+  let b_block = 4u;
+  let num_a_blocks = (out_N + a_block - 1u) / a_block;
+  let num_b_blocks = (out_C + b_block - 1u) / b_block;
+  let a_block_idx = n / a_block;
+  let n_in_block = n % a_block;
+  let b_block_idx = c / b_block;
+  let c_in_block = c % b_block;
+  output_idx = a_block_idx * num_b_blocks * out_H * out_W * a_block * b_block +
+               b_block_idx * out_H * out_W * a_block * b_block +
+               h * out_W * a_block * b_block +
+               w * a_block * b_block +
+               n_in_block * b_block +
+               c_in_block;
+#endif
+
+  // Check if this output position is within input bounds
+  if (n >= N || c >= C || h >= H || w >= W) {
+    // Padding area - fill with zero
+    output.setByOffset(output_idx, output_value_t(0));
+  } else {
+    // Within input bounds - transform data
+    // Calculate input index
+#if src_format == FORMAT_PLAIN
+    // Plain format: NCHW
+    let input_idx = n * C * H * W + c * H * W + h * W + w;
+#elif src_format == FORMAT_NCHW4C
+    // nChw4c format: [N, C/4, H, W, 4]
+    let block_size = 4u;
+    let num_blocks = (C + block_size - 1u) / block_size;
+    let block_idx = c / block_size;
+    let c_in_block = c % block_size;
+    let input_idx = n * num_blocks * H * W * block_size +
+                    block_idx * H * W * block_size +
+                    h * W * block_size +
+                    w * block_size +
+                    c_in_block;
+#elif src_format == FORMAT_ABCD16A4B
+    // ABcd16a4b format: [N/16, C/4, H, W, 16, 4]
+    let a_block = 16u;
+    let b_block = 4u;
+    let num_a_blocks = (N + a_block - 1u) / a_block;
+    let num_b_blocks = (C + b_block - 1u) / b_block;
+    let a_block_idx = n / a_block;
+    let n_in_block = n % a_block;
+    let b_block_idx = c / b_block;
+    let c_in_block = c % b_block;
+    let input_idx = a_block_idx * num_b_blocks * H * W * a_block * b_block +
+                    b_block_idx * H * W * a_block * b_block +
+                    h * W * a_block * b_block +
+                    w * a_block * b_block +
+                    n_in_block * b_block +
+                    c_in_block;
+#endif
+
+    output.setByOffset(output_idx, input.getByOffset(input_idx));
+  }
+} // MAIN
