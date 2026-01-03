@@ -515,9 +515,9 @@ TMACComputeGemm_avx2(
     size_t BlkLen  // Weight quantization group size (q_group_size)
 )
 {
-    // // Validate batch size
+    // Validate batch size
     if (N != 1) {
-        throw std::runtime_error("N > 1 is not supported yet");
+        MLAS_THROW_EX(std::runtime_error, "N > 1 is not supported yet");
     }
 
     // get kernel config
@@ -577,9 +577,11 @@ TMACComputeGemm_avx2(
     } else if (scale_gs == 8) {
         scale_idx_shfr = 3;
     } else {
-        fprintf(stderr, "q_group_size=%d, kfactor=%d, g=%d\n", q_group_size, kfactor, g);
-        fprintf(stderr, "Unsupported scale group size over kfactor. Expected {1,2,4,8}, got %d.\n", scale_gs);
-        throw std::runtime_error("Invalid scale group size configuration");
+        MLAS_THROW_EX(std::runtime_error,
+                      ("Unsupported scale_gs=" + std::to_string(scale_gs) +
+                       " (q_group_size=" + std::to_string(q_group_size) +
+                       ", kfactor=" + std::to_string(kfactor) +
+                       ", g=" + std::to_string(g) + "). Expected {1,2,4,8}.").c_str());
     }
 
     // ==================== MAIN COMPUTATION LOOP ====================
