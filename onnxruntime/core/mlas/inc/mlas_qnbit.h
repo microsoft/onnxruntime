@@ -27,11 +27,11 @@ Abstract:
  * @brief Define compute types of block quantization, in order of decreasing accuracy.
  */
 typedef enum {
-    SQNBIT_CompFp32,      /*!< input fp32, accumulator fp32 */
-    HQNBIT_CompFp16,      /*!< input fp16, accumulator fp16 */
-    BHQNBIT_CompBf16,     /*!< input bf16, accumulator fp32 */
-    SQNBIT_CompInt8,      /*!< input int8, accumulator int32, input fp32 */
-    HQNBIT_CompInt8,      /*!< input int8, accumulator int32, input fp16 */
+    SQNBIT_CompFp32,  /*!< input fp32, accumulator fp32 */
+    HQNBIT_CompFp16,  /*!< input fp16, accumulator fp16 */
+    BHQNBIT_CompBf16, /*!< input bf16, accumulator fp32 */
+    SQNBIT_CompInt8,  /*!< input int8, accumulator int32, input fp32 */
+    HQNBIT_CompInt8,  /*!< input int8, accumulator int32, input fp16 */
 } MLAS_QNBIT_GEMM_COMPUTE_TYPE;
 
 /**
@@ -41,13 +41,13 @@ typedef enum {
  */
 template <typename T>
 struct MLAS_QNBIT_GEMM_DATA_PARAMS {
-    const T* A = nullptr;                       ///< address of A (float32/16 matrix)
-    size_t lda = 0;                                 ///< leading dimension of A
-    const void* QuantBDataWorkspace;                ///< address of quantized B (quantized n-bit int values)
-    const std::byte* PackedQuantBData = nullptr;    /// address of packed quantized B data
-    const T* QuantBScale = nullptr;             ///< address of scale values of quantized B, one per block
-    const void* QuantBZeroPoint = nullptr;          ///< optional address of zero point values of quantized B, one per block
-    const T* QuantBBlkSum = nullptr;            ///< optional address of scale * zp, one per block
+    const T* A = nullptr;                         ///< address of A (float32/16 matrix)
+    size_t lda = 0;                               ///< leading dimension of A
+    const void* QuantBDataWorkspace;              ///< address of quantized B (quantized n-bit int values)
+    const std::byte* PackedQuantBData = nullptr;  /// address of packed quantized B data
+    const T* QuantBScale = nullptr;               ///< address of scale values of quantized B, one per block
+    const void* QuantBZeroPoint = nullptr;        ///< optional address of zero point values of quantized B, one per block
+    const T* QuantBBlkSum = nullptr;              ///< optional address of scale * zp, one per block
 
     /// <summary>
     /// Address of scale * accumulate(quant - zp), one per block, where `scale`, `quant`, `zp` are respectively
@@ -58,10 +58,10 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
     /// This input is to be used only when A is quantized to uint8.
     /// </summary>
     const T* BlkUnsignedQuantAZeroPointCorrection = nullptr;
-    
-    const T* Bias = nullptr;                    ///< optional address of Bias, vector size N
-    T* C = nullptr;                             ///< address of result matrix
-    size_t ldc = 0;                                 ///< leading dimension of C
+
+    const T* Bias = nullptr;  ///< optional address of Bias, vector size N
+    T* C = nullptr;           ///< address of result matrix
+    size_t ldc = 0;           ///< leading dimension of C
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<T>* PostProcessor = nullptr;
@@ -231,4 +231,97 @@ MlasQNBitGemmScalesPacked(
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     bool HasZeroPoint
+);
+
+size_t MLASCALL
+MlasLUTGemmPackQuantBDataSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint
+);
+
+void MLASCALL
+MlasLUTGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+/**
+ * @brief Gets the size in float of the packed quantized B scales and zero points.
+ */
+
+size_t MLASCALL
+MlasLUTPackScalesAndZeroPointsSize(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    bool HasZeroPoint
+);
+
+/**
+ * @brief Packs the scales and zero points into a format that the TMAC kernel expects.
+ */
+void MLASCALL
+MlasLUTPackScalesAndZeroPoints(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    float* PackedQuantBZPBegin,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint
+);
+
+/**
+ * @brief Determines whether the TMAC LUT optimization path is available on the current platform
+ *        for the provided quantization parameters.
+ *
+ * This API is used by higher-level ops to choose the TMAC path. It complements
+ * MlasIsQNBitGemmAvailable by querying availability of the LUT-based strategy.
+ */
+bool MLASCALL
+MlasIsLUTGemmAvailable(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen
+);
+
+void MLASCALL
+MlasInitLUTGemmKernelConfig(
+    size_t M,
+    size_t N,
+    size_t nbits,
+    size_t block_size,
+    bool has_zp_point
+);
+
+void MLASCALL
+MlasClearLUTGemmKernelConfig();
+
+/**
+ * @brief Executes TMAC compute
+ *
+ * This function handles generating the look up tables and accumulating the matmul results.
+ * Results will be stored in C.
+ */
+void MLASCALL
+MlasLUTGemm(
+    const void* A,
+    size_t BlkLen,
+    const void* QuantBData,
+    const float* QuantBScale,
+    void* C,
+    int K,
+    int M,
+    int N,
+    MLAS_THREADPOOL* threadpool
 );
