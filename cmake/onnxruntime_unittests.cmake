@@ -1043,6 +1043,10 @@ if (MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
 
+  # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+  # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd4702")
+
   # Avoid this compile error in graph_transform_test.cc and qdq_transformer_test.cc:
   # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
   set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
@@ -1235,6 +1239,13 @@ block()
 
   # enable dynamic plugin EP usage
   target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+
+
+  if (MSVC)
+    # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+    # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+    target_compile_options(onnxruntime_provider_test PRIVATE "/wd4702")
+  endif()
 
   # TODO fix shorten-64-to-32 warnings
   # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'

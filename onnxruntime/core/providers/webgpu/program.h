@@ -7,7 +7,17 @@
 #include <vector>
 #include <iosfwd>
 
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4702: unreachable code
+#pragma warning(disable : 4702)
+#endif  // _MSC_VER
+
 #include <absl/strings/str_join.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif  // _MSC_VER
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
