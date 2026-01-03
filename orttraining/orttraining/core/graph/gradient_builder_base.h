@@ -118,6 +118,25 @@ class GradientBuilderBase {
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
+  // i-th implicit input of forward op
+  ArgDef II(const size_t i, bool record_stashing = true) const {
+    ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
+
+    const std::string& name = node_->ImplicitInputDefs()[i]->Name();
+    const NodeArg* recomputed_nodearg = graph_->GetNodeArg(graph_utils::RecomputeName(name));
+    if (recomputed_nodearg) {
+      const Node* producer_node = graph_->GetProducerNode(name);
+      LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
+      return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
+    }
+
+    if (record_stashing) {
+      RecordStashedTensor(node_->ImplicitInputDefs()[i]->Name());
+    }
+
+    return ArgDef(node_->ImplicitInputDefs()[i]->Name(), node_->ImplicitInputDefs()[i]->TypeAsProto());
+  }
+
   // i-th output of forward op
   ArgDef O(const size_t i, bool record_stashing = true) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
@@ -149,6 +168,18 @@ class GradientBuilderBase {
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), type);
   }
 
+  // gradient of i-th input of forward op
+  ArgDef GII(const size_t i) const {
+    ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
+    return ArgDef(GradientName(node_->ImplicitInputDefs()[i]->Name()), node_->ImplicitInputDefs()[i]->TypeAsProto());
+  }
+
+  // gradient of i-th implicit input of forward op - useful when gradient type does not match input type
+  ArgDef GII(const size_t i, const TypeProto* type) const {
+    ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
+    return ArgDef(GradientName(node_->ImplicitInputDefs()[i]->Name()), type);
+  }
+
   // gradient of i-th output of forward op
   ArgDef GO(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
@@ -166,6 +197,12 @@ class GradientBuilderBase {
     return node_->InputDefs()[i]->TypeAsProto();
   }
 
+  // type of i-th implicit input of forward op
+  const TypeProto* IIType(const size_t i) const {
+    ORT_ENFORCE(i < node_->ImplicitInputDefs().size());
+    return node_->InputDefs()[i]->TypeAsProto();
+  }
+
   // type of i-th output of forward op
   const TypeProto* OType(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
@@ -175,6 +212,11 @@ class GradientBuilderBase {
   // Element type of i-th input of forward op.
   int IElemType(const size_t i) const {
     return IType(i)->tensor_type().elem_type();
+  }
+
+  // Element type of i-th implicit input of forward op.
+  int IIElemType(const size_t i) const {
+    return IIType(i)->tensor_type().elem_type();
   }
 
   // Element type of i-th output of forward op.
@@ -187,6 +229,11 @@ class GradientBuilderBase {
     return (int)node_->InputDefs().size();
   }
 
+  int GetSrcNodeImplicitInputSize() const {
+    ORT_ENFORCE(node_ != nullptr);
+    return (int)node_->ImplicitInputDefs().size();
+  }
+
   int GetSrcNodeOutputSize() const {
     ORT_ENFORCE(node_ != nullptr);
     return (int)node_->OutputDefs().size();
@@ -196,6 +243,12 @@ class GradientBuilderBase {
   bool IsGradientRequiredForSrcNodeInput(const size_t i) const {
     return i < node_->InputDefs().size() &&
            gradient_outputs_.find(node_->InputDefs()[i]->Name()) != gradient_outputs_.end();
+  }
+
+  // returns true if the implicit input at index i of the node_ requires gradient
+  bool IsGradientRequiredForSrcNodeImplicitInput(const size_t i) const {
+    return i < node_->ImplicitInputDefs().size() &&
+           gradient_outputs_.find(node_->ImplicitInputDefs()[i]->Name()) != gradient_outputs_.end();
   }
 
   // returns true if the output at index i of the node_ has a gradient
@@ -211,6 +264,11 @@ class GradientBuilderBase {
   const NodeAttributes& SrcNodeAttributes() const {
     return node_->GetAttributes();
   }
+
+  std::unique_ptr<ONNX_NAMESPACE::GraphProto> SubgraphGradient(
+      const std::string& name,
+      std::function<void(std::vector<std::string>&, std::vector<std::string>&)> grad_func,
+      std::function<void(Graph*)> adjust_func) const;
 
   const std::string& SrcNodeOpType() const {
     return node_->OpType();

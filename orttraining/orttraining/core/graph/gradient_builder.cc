@@ -2317,5 +2317,240 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetScanGradient) {
+  std::vector<NodeDef> result;
+  auto attributes = SrcNodeAttributes();
+
+  size_t input_size = GetSrcNodeInputSize();
+  size_t output_size = GetSrcNodeOutputSize();
+  size_t num_scan_inputs = attributes.at("num_scan_inputs").i();
+  size_t n_carries = input_size - num_scan_inputs;
+  size_t n_inputs = input_size - n_carries;
+  size_t n_outputs = output_size - (n_carries * 2);
+  std::vector<int64_t> scan_input_axes;
+  std::vector<int64_t> scan_input_directions;
+  std::vector<int64_t> scan_output_axes;
+  std::vector<int64_t> scan_output_directions;
+
+  if (attributes.find("scan_input_axes") != attributes.end()) {
+    auto a = attributes.at("scan_input_axes").ints();
+    scan_input_axes.insert(scan_input_axes.end(), a.begin(), a.end());
+  } else {
+    for (size_t i = 0; i < n_inputs; i++)
+      scan_input_axes.push_back(0);
+  }
+
+  if (attributes.find("scan_input_directions") != attributes.end()) {
+    auto a = attributes.at("scan_input_directions").ints();
+    scan_input_directions.insert(scan_input_directions.end(), a.begin(), a.end());
+  } else {
+    for (size_t i = 0; i < n_inputs; i++)
+      scan_input_directions.push_back(0);
+  }
+
+  if (attributes.find("scan_output_axes") != attributes.end()) {
+    auto a = attributes.at("scan_output_axes").ints();
+    scan_output_axes.insert(scan_output_axes.end(), a.begin(), a.end());
+  } else {
+    // n_outputs + n_carries because ScanReplacement adds carries output for all time step.
+    for (size_t i = 0; i < (n_outputs + n_carries); i++)
+      scan_output_axes.push_back(0);
+  }
+
+  if (attributes.find("scan_output_directions") != attributes.end()) {
+    auto a = attributes.at("scan_output_directions").ints();
+    scan_output_directions.insert(scan_output_directions.end(), a.begin(), a.end());
+  } else {
+    // n_outputs + n_carries because ScanReplacement adds carries output for all time step.
+    for (size_t i = 0; i < (n_outputs + n_carries); i++)
+      scan_output_directions.push_back(0);
+  }
+
+  // body_gradient: gradient graph for body.
+  // In:  carry, input, GO(...)
+  // Out: carry, output, saved carries, GI(...), GII(...)
+  // We want:
+  // In:  carry_grad, carry, input, output_grad, carry_grad
+  // Out: carry_grad, input_grad, implicit_input_grad
+  auto body_gradient = SubgraphGradient("body",
+    [&](std::vector<std::string>& gradient_inputs, std::vector<std::string>& gradient_outputs) {
+      // remove saved carry from input grad
+      gradient_inputs.erase(gradient_inputs.begin() + n_carries + n_outputs, gradient_inputs.end()); }, [&](Graph* graph) {
+      std::vector<const NodeArg*> inputs(graph->GetInputs());
+      std::vector<const NodeArg*> outputs(graph->GetOutputs());
+      outputs.reserve(graph->GetOutputs().size());
+
+      std::vector<const NodeArg*> saved_carries;
+      saved_carries.reserve(n_carries);
+      for (size_t i = 0; i < n_carries; i++) {
+        NodeArg *carry = &graph->GetOrCreateNodeArg(inputs[i]->Name(), nullptr);
+        NodeArg *saved_carry = &graph->GetOrCreateNodeArg(
+          Name(outputs[i + n_carries + n_outputs]->Name()), outputs[i + n_carries + n_outputs]->TypeAsProto());
+        saved_carries.push_back(saved_carry);
+        graph->AddNode("", "Identity", "", {saved_carry}, {carry}, nullptr, kOnnxDomain);
+      }
+
+      std::vector<const NodeArg*> i_inputs;
+      i_inputs.reserve(n_inputs);
+      for (size_t i = 0; i < n_inputs; i++)
+        i_inputs.push_back(&graph->GetOrCreateNodeArg(inputs[i + n_carries]->Name(), nullptr));
+		  
+      std::vector<const NodeArg*> go_carries;
+      go_carries.reserve(n_carries);
+      for (size_t i = 0; i < n_carries; i++)
+        go_carries.push_back(&graph->GetOrCreateNodeArg(inputs[i + n_carries + n_inputs]->Name(), nullptr));
+
+      std::vector<const NodeArg*> go_outputs;
+      go_outputs.reserve(n_outputs);
+      for (size_t i = 0; i < n_outputs; i++) {
+        const std::string &name = inputs[i + 2 * n_carries + n_inputs]->Name();
+        go_outputs.push_back(&graph->GetOrCreateNodeArg(name, nullptr));
+      }
+
+      std::vector<const NodeArg*> gi;
+      gi.reserve(GetSrcNodeInputSize());
+      for (int i = 0; i < GetSrcNodeInputSize(); i++)
+        gi.push_back(&graph->GetOrCreateNodeArg(outputs[i + 2 * n_carries + n_outputs]->Name(), nullptr));
+
+      std::vector<const NodeArg*> gii;
+      gii.reserve(GetSrcNodeImplicitInputSize());
+      for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++)
+        gii.push_back(&graph->GetOrCreateNodeArg(
+      outputs[i + 3 * n_carries + n_outputs + n_inputs]->Name(), nullptr));
+
+      inputs.clear();
+      inputs.insert(inputs.end(), go_carries.begin(), go_carries.end());
+      inputs.insert(inputs.end(), saved_carries.begin(), saved_carries.end());
+      inputs.insert(inputs.end(), i_inputs.begin(), i_inputs.end());
+      inputs.insert(inputs.end(), go_outputs.begin(), go_outputs.end());
+
+      outputs.clear();
+      outputs.insert(outputs.end(), gi.begin(), gi.end());
+      outputs.insert(outputs.end(), gii.begin(), gii.end());
+
+      graph->SetInputs(inputs);
+      graph->SetOutputs(outputs); });
+  // Now, we need to setup attributes for backward Scan.
+  // Because backward Scan calculate reverse order from forward one, we need to flip direction for carries_t, and inputs_t.
+  // output_t_grad is also scan input, so need to copy scan direction and flip them.
+  // We need to do similar things to output.
+  int64_t training_num_scan_inputs = n_carries + n_inputs + n_outputs;
+  int64_t training_num_scan_outputs = n_inputs + GetSrcNodeImplicitInputSize();
+  std::vector<int64_t> training_scan_input_axes;
+  std::vector<int64_t> training_scan_input_directions;
+  std::vector<int64_t> training_scan_output_axes;
+  std::vector<int64_t> training_scan_output_directions;
+
+  training_scan_input_axes.reserve(training_num_scan_inputs);
+  training_scan_input_directions.reserve(training_num_scan_inputs);
+  training_scan_output_axes.reserve(training_num_scan_outputs);
+  training_scan_output_directions.reserve(training_num_scan_outputs);
+
+  for (size_t i = 0; i < n_carries; i++) {
+    training_scan_input_axes.push_back(0);
+    training_scan_input_directions.push_back(0);  // Will be flipped to 1
+  }
+
+  training_scan_input_axes.insert(
+      training_scan_input_axes.end(),
+      scan_input_axes.begin(), scan_input_axes.end());
+  training_scan_input_axes.insert(
+      training_scan_input_axes.end(),
+      scan_output_axes.begin() + n_carries, scan_output_axes.end());
+  training_scan_input_directions.insert(
+      training_scan_input_directions.end(),
+      scan_input_directions.begin(), scan_input_directions.end());
+  training_scan_input_directions.insert(
+      training_scan_input_directions.end(),
+      scan_output_directions.begin() + n_carries, scan_output_directions.end());
+
+  // Flip directions
+  for (auto i = training_scan_input_directions.begin(); i != training_scan_input_directions.end(); i++)
+    *i = !*i;
+
+  training_scan_output_axes.reserve(training_num_scan_inputs);
+  training_scan_output_directions.reserve(training_num_scan_inputs);
+
+  training_scan_output_axes.insert(
+      training_scan_output_axes.end(),
+      scan_input_axes.begin(), scan_input_axes.end());
+  training_scan_output_directions.insert(
+      training_scan_output_directions.end(),
+      scan_input_directions.begin(), scan_input_directions.end());
+
+  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++) {
+    training_scan_output_axes.push_back(0);
+    training_scan_output_directions.push_back(0);
+  }
+
+  for (auto i = training_scan_output_directions.begin(); i != training_scan_output_directions.end(); i++)
+    *i = !*i;
+
+  std::vector<ONNX_NAMESPACE::AttributeProto> training_attributes;
+  training_attributes.push_back(MakeAttribute("body", *body_gradient));
+  training_attributes.push_back(MakeAttribute("num_scan_inputs", training_num_scan_inputs));
+  training_attributes.push_back(MakeAttribute("scan_input_axes", training_scan_input_axes));
+  training_attributes.push_back(MakeAttribute("scan_input_directions", training_scan_input_directions));
+  training_attributes.push_back(MakeAttribute("scan_output_axes", training_scan_output_axes));
+  training_attributes.push_back(MakeAttribute("scan_output_directions", training_scan_output_directions));
+
+  // Finally, setup inputs and outputs for Scan node:
+  // in  : carries_T_grad, carries, input, output_grad
+  // out : carries_0_grad, input_grad, implicit_input_grad
+  // Note, I, and O are different from above body graph inputs/outputs
+  // I: carries, inputs
+  // O: carries, outputs, carries
+  std::vector<ArgDef> training_inputs;
+  std::vector<ArgDef> training_outputs;
+  training_inputs.reserve(n_carries + n_carries + n_inputs + n_outputs);
+  training_outputs.reserve(n_carries + n_inputs);
+
+  for (size_t i = 0; i < n_carries; i++) {
+    training_inputs.push_back(GO(i));
+    training_outputs.push_back(GI(i));
+  }
+
+  for (size_t i = 0; i < n_carries; i++)
+    training_inputs.push_back(O(n_carries + n_outputs + i));
+
+  for (size_t i = 0; i < n_inputs; i++) {
+    training_inputs.push_back(I(n_carries + i));
+    training_outputs.push_back(GI(n_carries + i));
+  }
+
+  for (size_t i = 0; i < n_outputs; i++)
+    training_inputs.push_back(GO(n_carries + i));
+
+  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++) {
+    std::stringstream buf;
+    buf << "GI" << i;
+    training_outputs.push_back(IA(buf.str()));
+  }
+
+  result.push_back(ConstantScalarNode(static_cast<float>(0), {}, Name("0")));
+  for (int i = 0; i < GetSrcNodeOutputSize(); i++) {
+    if (IsGradientAvailableForSrcNodeOutput(i))
+      continue;
+    auto shape = IA("O(" + std::to_string(i) + ")_shape");
+    result.push_back(NodeDef("Shape", {O(i)}, {shape}));
+    result.push_back(NodeDef("Expand", {ArgDef(Name("0")), shape}, {GO(i)}));
+  }
+
+  result.push_back(NodeDef("Scan", training_inputs, training_outputs, training_attributes));
+
+  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++) {
+    std::stringstream buf;
+    buf << "GI" << i;
+
+    std::vector<AttributeProto> attr;
+    attr.reserve(2);
+    attr.push_back(MakeAttribute("axes", std::vector<int64_t>({0})));
+    attr.push_back(MakeAttribute("keepdims", static_cast<int64_t>(0)));
+    result.push_back(NodeDef("ReduceSum", {IA(buf.str())}, {GII(i)}, attr));
+  }
+
+  return result;
+}
+
 }  // namespace training
 }  // namespace onnxruntime

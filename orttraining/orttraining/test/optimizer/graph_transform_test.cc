@@ -33,6 +33,7 @@
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
 #include "orttraining/core/optimizer/gru_replacement.h"
+#include "orttraining/core/optimizer/scan_replacement.h"
 #ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
 #endif
@@ -1196,6 +1197,31 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(1, true, false),
         std::make_tuple(1, false, true),
         std::make_tuple(2, true, true)));
+
+TEST_F(GraphTransformationTests, ScanReplacement) {
+  auto model_uri = MODEL_FOLDER "controlflow/scan_replacement.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  const Node* node_before = graph.GetProducerNode("y");
+  ASSERT_TRUE(node_before != nullptr);
+  ASSERT_TRUE(node_before->Name() == "scan");
+  ASSERT_TRUE(node_before->OutputDefs().size() == 2);  // y_next, y
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("ScanReplacement");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ScanReplacement>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  const Node* node_after = graph.GetProducerNode("y");
+  ASSERT_TRUE(node_after != nullptr);
+  ASSERT_TRUE(node_after->Name() == "scan");
+  ASSERT_TRUE(node_after->OutputDefs().size() == 3);  // y_next, y, y_next_carries
+  std::cout << node_after->OutputDefs()[2]->Name() << std::endl;
+  ASSERT_TRUE(node_after->OutputDefs()[2]->Name().find("y_next_carries") != std::string::npos);
+}
 
 class QDQFusionTestsParameterized : public GraphTransformationTests,
                                     public ::testing::WithParamInterface<std::tuple<PathString>> {

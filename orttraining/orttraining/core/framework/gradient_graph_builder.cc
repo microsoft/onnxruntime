@@ -163,6 +163,11 @@ NodeSet GradientGraphBuilder::BFSWithStopGradient(const std::unordered_set<std::
   for (const auto& name : x_node_arg_names) {
     std::vector<const Node*> nodes = graph_->GetConsumerNodes(name);
     for (const Node* node : nodes) {
+      if (std::find_if(node->ImplicitInputDefs().begin(), node->ImplicitInputDefs().end(),
+                       [&name](const NodeArg* arg) { return arg->Name() == name; }) != node->ImplicitInputDefs().end()) {
+        queue.push_back(node);
+        continue;
+      }
       int input_index = graph_utils::GetNodeInputIndexFromInputName(*node, name);
       const std::unordered_set<size_t>* edges = GetStopGradientEdges(*node);
       if (edges != nullptr && edges->count(input_index)) {
@@ -290,7 +295,9 @@ const std::unordered_set<size_t>* GradientGraphBuilder::GetStopGradientEdges(con
   }
 }
 
-Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
+Status GradientGraphBuilder::Build(
+    const std::unordered_set<std::string>* p_initializer_names_to_preserve,
+    bool is_isolated) {
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
 
@@ -303,6 +310,20 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     tensor_proto.set_name(GradientBuilderBase::GradientName(loss_node_arg_name_));
 
     gradient_graph_defs.AddInitializers({tensor_proto});
+  }
+
+  std::unordered_map<std::string, int> y_node_arg_pending;
+  if ((loss_node_arg_name_ == "") && is_isolated) {
+    for (auto y_node_arg : y_node_args_) {
+      std::string grad_name = GradientBuilderBase::GradientName(y_node_arg->Name());
+      y_node_arg_pending[grad_name] = 1;
+
+      auto found = pending_.find(grad_name);
+      if (found != pending_.end()) {
+        y_node_arg_pending[grad_name] += found->second;
+        found->second += 1;
+      }
+    }
   }
 
   ORT_RETURN_IF_ERROR(CheckNodeArgsReachable());
@@ -378,6 +399,12 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
           input_args_need_grad.insert(arg->Name());
         }
       }
+      // For controlflow ops
+      for (auto arg : node->ImplicitInputDefs()) {
+        if (visited_node_args.find(arg) != visited_node_args.end()) {
+          input_args_need_grad.insert(arg->Name());
+        }
+      }
       for (auto arg : node->OutputDefs()) {
         if (visited_node_args.find(arg) != visited_node_args.end()) {
           output_args_need_grad.insert(arg->Name());
@@ -396,17 +423,43 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       // updates arg name if gradient accumulation is needed
       for (auto& op_def : node_defs) {
         for (auto& arg : op_def.output_args) {
+          if (arg.name.empty())
+            continue;
           auto found = pending_.find(arg.name);
-          if (found != pending_.end() && found->second > 1) {
+          auto y_found = y_node_arg_pending.find(arg.name);
+          if ((found != pending_.end() && found->second > 1) || (y_found != y_node_arg_pending.end())) {
             auto idx = gradients_to_accumulate_[arg].size();
             std::string indexed_arg_name = arg.name + "_" + to_string(idx);
             gradients_to_accumulate_[arg].push_back(ArgDef(indexed_arg_name, arg.type_proto));
 
             arg.name = indexed_arg_name;
+            if (y_found != y_node_arg_pending.end())
+              y_found->second++;
           }
         }
       }
       gradient_graph_defs.AddNodeDefs(node_defs);
+    }
+  }
+
+  // add existing gradient to this gradient graph
+  std::vector<std::unique_ptr<ONNX_NAMESPACE::TypeProto>> types;
+  if ((loss_node_arg_name_ == "") && is_isolated) {
+    for (auto y_node_arg : y_node_args_) {
+      std::string grad_name = GradientBuilderBase::GradientName(y_node_arg->Name());
+      auto found = y_node_arg_pending.find(grad_name);
+      ORT_ENFORCE(found != y_node_arg_pending.end());
+      if (found->second > 1) {
+        auto idx = gradients_to_accumulate_[grad_name].size();
+        std::string indexed_arg_name = grad_name + "_" + to_string(idx);
+        std::unique_ptr<ONNX_NAMESPACE::TypeProto> type = std::make_unique<ONNX_NAMESPACE::TypeProto>();
+        type->mutable_tensor_type()->set_elem_type(y_node_arg->TypeAsProto()->tensor_type().elem_type());
+        gradients_to_accumulate_[grad_name].push_back(ArgDef(indexed_arg_name, type.get()));
+        types.push_back(std::move(type));
+        grad_name = indexed_arg_name;
+      }
+
+      gradient_graph_defs.AddGraphInputs({grad_name});
     }
   }
 
@@ -426,7 +479,8 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     }
   }
 
-  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve));
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(
+      *graph_, gradient_graph_defs, p_initializer_names_to_preserve, is_isolated));
 
   // For ORTModule, the graph will be sent back to frontend for cache. Frontend will use inference session to run the
   // cached graph. We need to save the new NodeArgs to value_info so we will not loss those shape/type information
