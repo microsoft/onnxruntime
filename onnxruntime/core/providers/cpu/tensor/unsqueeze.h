@@ -51,7 +51,8 @@ class UnsqueezeBase {
   }
 
  protected:
-  UnsqueezeBase(const OpKernelInfo& info) {
+  template <typename KernelInfoType>
+  UnsqueezeBase(const KernelInfoType& info) {
     size_t num_inputs = info.GetInputCount();
     if (num_inputs == 1) {  // axes must be a valid attribute
       ORT_ENFORCE(info.GetAttrs("axes", axes_).IsOK(), "Missing/Invalid 'axes' attribute value");
