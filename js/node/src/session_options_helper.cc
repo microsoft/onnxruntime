@@ -38,6 +38,50 @@ const std::unordered_map<std::string, ExecutionMode> EXECUTION_MODE_NAME_TO_ID_M
                                                                                       {"parallel", ORT_PARALLEL}};
 
 void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sessionOptions) {
+  // Storage for string options to ensure they persist during the session options setup
+  std::vector<std::string> stringStorage;
+  
+  // Helper lambda to get integer option
+  auto getIntOption = [](const Napi::Object& obj, const char* key, int& target) {
+    if (obj.Has(key)) {
+      auto val = obj.Get(key);
+      if (val.IsNumber()) {
+        target = val.As<Napi::Number>().Int32Value();
+      }
+    }
+  };
+  
+  // Helper lambda to get boolean option (converts to int)
+  auto getBoolOption = [](const Napi::Object& obj, const char* key, int& target) {
+    if (obj.Has(key)) {
+      auto val = obj.Get(key);
+      if (val.IsBoolean()) {
+        target = val.As<Napi::Boolean>().Value() ? 1 : 0;
+      }
+    }
+  };
+  
+  // Helper lambda to get string option
+  auto getStringOption = [&stringStorage](const Napi::Object& obj, const char* key, const char*& target) {
+    if (obj.Has(key)) {
+      auto val = obj.Get(key);
+      if (val.IsString()) {
+        stringStorage.push_back(val.As<Napi::String>().Utf8Value());
+        target = stringStorage.back().c_str();
+      }
+    }
+  };
+  
+  // Helper lambda to get size_t option
+  auto getSizeTOption = [](const Napi::Object& obj, const char* key, size_t& target) {
+    if (obj.Has(key)) {
+      auto val = obj.Get(key);
+      if (val.IsNumber()) {
+        target = static_cast<size_t>(val.As<Napi::Number>().Int64Value());
+      }
+    }
+  };
+  
   for (uint32_t i = 0; i < epList.Length(); i++) {
     Napi::Value epValue = epList[i];
     std::string name;
@@ -145,6 +189,52 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       OrtCUDAProviderOptionsV2* options;
       Ort::GetApi().CreateCUDAProviderOptions(&options);
       options->device_id = deviceId;
+      
+      // Parse additional CUDA options if provided
+      if (epValue.IsObject()) {
+        auto obj = epValue.As<Napi::Object>();
+        
+        getSizeTOption(obj, "gpuMemLimit", options->gpu_mem_limit);
+        getBoolOption(obj, "doCopyInDefaultStream", options->do_copy_in_default_stream);
+        getBoolOption(obj, "cudnnConvUseMaxWorkspace", options->cudnn_conv_use_max_workspace);
+        getBoolOption(obj, "enableCudaGraph", options->enable_cuda_graph);
+        getBoolOption(obj, "tunableOpEnable", options->tunable_op_enable);
+        getBoolOption(obj, "tunableOpTuningEnable", options->tunable_op_tuning_enable);
+        getIntOption(obj, "tunableOpMaxTuningDurationMs", options->tunable_op_max_tuning_duration_ms);
+        getBoolOption(obj, "enableSkipLayerNormStrictMode", options->enable_skip_layer_norm_strict_mode);
+        getBoolOption(obj, "preferNhwc", options->prefer_nhwc);
+        getBoolOption(obj, "useEpLevelUnifiedStream", options->use_ep_level_unified_stream);
+        getBoolOption(obj, "useTf32", options->use_tf32);
+        
+        // Handle arenaExtendStrategy enum
+        if (obj.Has("arenaExtendStrategy")) {
+          auto val = obj.Get("arenaExtendStrategy");
+          if (val.IsString()) {
+            auto strategy = val.As<Napi::String>().Utf8Value();
+            if (strategy == "kNextPowerOfTwo") {
+              options->arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+            } else if (strategy == "kSameAsRequested") {
+              options->arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
+            }
+          }
+        }
+        
+        // Handle cudnnConvAlgoSearch enum
+        if (obj.Has("cudnnConvAlgoSearch")) {
+          auto val = obj.Get("cudnnConvAlgoSearch");
+          if (val.IsString()) {
+            auto search = val.As<Napi::String>().Utf8Value();
+            if (search == "EXHAUSTIVE") {
+              options->cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
+            } else if (search == "HEURISTIC") {
+              options->cudnn_conv_algo_search = OrtCudnnConvAlgoSearchHeuristic;
+            } else if (search == "DEFAULT") {
+              options->cudnn_conv_algo_search = OrtCudnnConvAlgoSearchDefault;
+            }
+          }
+        }
+      }
+      
       sessionOptions.AppendExecutionProvider_CUDA_V2(*options);
       Ort::GetApi().ReleaseCUDAProviderOptions(options);
 #endif
@@ -153,6 +243,55 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       OrtTensorRTProviderOptionsV2* options;
       Ort::GetApi().CreateTensorRTProviderOptions(&options);
       options->device_id = deviceId;
+      
+      // Parse additional TensorRT options if provided
+      if (epValue.IsObject()) {
+        auto obj = epValue.As<Napi::Object>();
+        
+        getIntOption(obj, "trtMaxPartitionIterations", options->trt_max_partition_iterations);
+        getIntOption(obj, "trtMinSubgraphSize", options->trt_min_subgraph_size);
+        getSizeTOption(obj, "trtMaxWorkspaceSize", options->trt_max_workspace_size);
+        getBoolOption(obj, "trtFp16Enable", options->trt_fp16_enable);
+        getBoolOption(obj, "trtBf16Enable", options->trt_bf16_enable);
+        getBoolOption(obj, "trtInt8Enable", options->trt_int8_enable);
+        getStringOption(obj, "trtInt8CalibrationTableName", options->trt_int8_calibration_table_name);
+        getBoolOption(obj, "trtInt8UseNativeCalibrationTable", options->trt_int8_use_native_calibration_table);
+        getBoolOption(obj, "trtDlaEnable", options->trt_dla_enable);
+        getIntOption(obj, "trtDlaCore", options->trt_dla_core);
+        getBoolOption(obj, "trtDumpSubgraphs", options->trt_dump_subgraphs);
+        getBoolOption(obj, "trtEngineCacheEnable", options->trt_engine_cache_enable);
+        getStringOption(obj, "trtEngineCachePath", options->trt_engine_cache_path);
+        getBoolOption(obj, "trtEngineDecryptionEnable", options->trt_engine_decryption_enable);
+        getStringOption(obj, "trtEngineDecryptionLibPath", options->trt_engine_decryption_lib_path);
+        getBoolOption(obj, "trtForceSequentialEngineBuild", options->trt_force_sequential_engine_build);
+        getBoolOption(obj, "trtContextMemorySharingEnable", options->trt_context_memory_sharing_enable);
+        getBoolOption(obj, "trtLayerNormFp32Fallback", options->trt_layer_norm_fp32_fallback);
+        getBoolOption(obj, "trtTimingCacheEnable", options->trt_timing_cache_enable);
+        getStringOption(obj, "trtTimingCachePath", options->trt_timing_cache_path);
+        getBoolOption(obj, "trtForceTimingCache", options->trt_force_timing_cache);
+        getBoolOption(obj, "trtDetailedBuildLog", options->trt_detailed_build_log);
+        getBoolOption(obj, "trtBuildHeuristicsEnable", options->trt_build_heuristics_enable);
+        getBoolOption(obj, "trtSparsityEnable", options->trt_sparsity_enable);
+        getIntOption(obj, "trtBuilderOptimizationLevel", options->trt_builder_optimization_level);
+        getIntOption(obj, "trtAuxiliaryStreams", options->trt_auxiliary_streams);
+        getStringOption(obj, "trtTacticSources", options->trt_tactic_sources);
+        getStringOption(obj, "trtExtraPluginLibPaths", options->trt_extra_plugin_lib_paths);
+        getStringOption(obj, "trtProfileMinShapes", options->trt_profile_min_shapes);
+        getStringOption(obj, "trtProfileMaxShapes", options->trt_profile_max_shapes);
+        getStringOption(obj, "trtProfileOptShapes", options->trt_profile_opt_shapes);
+        getBoolOption(obj, "trtCudaGraphEnable", options->trt_cuda_graph_enable);
+        getStringOption(obj, "trtPreviewFeatures", options->trt_preview_features);
+        getBoolOption(obj, "trtDumpEpContextModel", options->trt_dump_ep_context_model);
+        getStringOption(obj, "trtEpContextFilePath", options->trt_ep_context_file_path);
+        getIntOption(obj, "trtEpContextEmbedMode", options->trt_ep_context_embed_mode);
+        getBoolOption(obj, "trtWeightStrippedEngineEnable", options->trt_weight_stripped_engine_enable);
+        getStringOption(obj, "trtOnnxModelFolderPath", options->trt_onnx_model_folder_path);
+        getStringOption(obj, "trtEngineCachePrefix", options->trt_engine_cache_prefix);
+        getBoolOption(obj, "trtEngineHwCompatible", options->trt_engine_hw_compatible);
+        getStringOption(obj, "trtOpTypesToExclude", options->trt_op_types_to_exclude);
+        getBoolOption(obj, "trtLoadUserInitializer", options->trt_load_user_initializer);
+      }
+      
       sessionOptions.AppendExecutionProvider_TensorRT_V2(*options);
       Ort::GetApi().ReleaseTensorRTProviderOptions(options);
 #endif
