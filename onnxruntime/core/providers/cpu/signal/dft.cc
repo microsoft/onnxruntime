@@ -101,7 +101,7 @@ static std::complex<T> compute_exponential(size_t index, const T angular_velocit
 }
 
 template <typename T, typename U>
-static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, size_t X_offset, size_t X_stride,
+static Status fft_radix2(OpKernelContext* ctx, const Tensor* X, Tensor* Y, size_t X_offset, size_t X_stride,
                          size_t Y_offset, size_t Y_stride, int64_t axis, size_t dft_length, const Tensor* window,
                          bool is_onesided, bool inverse, InlinedVector<std::complex<T>>& V,
                          InlinedVector<std::complex<T>>& temp_output) {
@@ -141,11 +141,39 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
     }
   }
 
-  for (size_t i = 0; i < dft_length; i++) {
-    size_t bit_reversed_index = bit_reverse(i, significant_bits);
-    auto x = (bit_reversed_index < number_of_samples) ? *(X_data + bit_reversed_index * X_stride) : 0;
-    auto window_element = window_data ? *(window_data + bit_reversed_index) : 1;
-    *(Y_data + i * Y_data_stride) = std::complex<T>(1, 0) * x * window_element;
+  // Copy input data with bit-reversed indexing, with optional parallelization
+  auto threadpool = ctx->GetOperatorThreadPool();
+  if (dft_length > 256 && threadpool != nullptr) {
+    onnxruntime::concurrency::ThreadPool::TryParallelFor(
+      threadpool,
+      static_cast<std::ptrdiff_t>(dft_length),
+      2.0, // cost estimate for bit reverse and multiplication
+      [&](std::ptrdiff_t start, std::ptrdiff_t end) {
+        for (auto i = start; i < end; i++) {
+          size_t bit_reversed_index = bit_reverse(static_cast<size_t>(i), significant_bits);
+          auto x = (bit_reversed_index < number_of_samples) 
+                   ? *(X_data + bit_reversed_index * X_stride) 
+                   : static_cast<U>(0);
+          auto window_element = window_data 
+                               ? *(window_data + bit_reversed_index) 
+                               : static_cast<U>(1);
+          *(Y_data + static_cast<size_t>(i) * Y_data_stride) = 
+            std::complex<T>(static_cast<T>(x * window_element), static_cast<T>(0));
+        }
+      });
+  } else {
+    // Sequential copying for smaller transforms
+    for (size_t i = 0; i < dft_length; i++) {
+      size_t bit_reversed_index = bit_reverse(i, significant_bits);
+      auto x = (bit_reversed_index < number_of_samples) 
+               ? *(X_data + bit_reversed_index * X_stride) 
+               : static_cast<U>(0);
+      auto window_element = window_data 
+                           ? *(window_data + bit_reversed_index) 
+                           : static_cast<U>(1);
+      *(Y_data + i * Y_data_stride) = 
+        std::complex<T>(static_cast<T>(x * window_element), static_cast<T>(0));
+    }
   }
 
   // Run fft_radix2
@@ -154,27 +182,75 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
     size_t midpoint = i >> 1;
     current_significant_bits++;
 
-    for (size_t k = 0; k < midpoint; k++) {
-      auto first_idx = bit_reverse(k, current_significant_bits);
-      auto second_idx = bit_reverse(midpoint + k, current_significant_bits);
-      for (size_t j = 0; j < dft_length; j += i) {
-        auto even_index = k + j;
-        auto odd_index = k + j + midpoint;
-        std::complex<T>* even = (Y_data + even_index * Y_data_stride);
-        std::complex<T>* odd = (Y_data + odd_index * Y_data_stride);
-        std::complex<T> first = *even + (V[first_idx] * *odd);
-        std::complex<T> second = *even + (V[second_idx] * *odd);
-        *even = first;
-        *odd = second;
+    // Parallelize the k loop for better performance
+    auto threadpool = ctx->GetOperatorThreadPool();
+    const size_t num_butterflies = dft_length / i;
+    const size_t total_work = midpoint * num_butterflies;
+    
+    // Use threading for larger workloads
+    if (total_work > 64 && threadpool != nullptr) {
+      onnxruntime::concurrency::ThreadPool::TryParallelFor(
+        threadpool, 
+        static_cast<std::ptrdiff_t>(midpoint),
+        static_cast<double>(num_butterflies * 10), // cost estimate
+        [&](std::ptrdiff_t k_start, std::ptrdiff_t k_end) {
+          for (auto k = k_start; k < k_end; k++) {
+            auto first_idx = bit_reverse(static_cast<size_t>(k), current_significant_bits);
+            auto second_idx = bit_reverse(midpoint + static_cast<size_t>(k), current_significant_bits);
+            for (size_t j = 0; j < dft_length; j += i) {
+              auto even_index = static_cast<size_t>(k) + j;
+              auto odd_index = static_cast<size_t>(k) + j + midpoint;
+              std::complex<T>* even = (Y_data + even_index * Y_data_stride);
+              std::complex<T>* odd = (Y_data + odd_index * Y_data_stride);
+              std::complex<T> first = *even + (V[first_idx] * *odd);
+              std::complex<T> second = *even + (V[second_idx] * *odd);
+              *even = first;
+              *odd = second;
+            }
+          }
+        });
+    } else {
+      // Use sequential execution for smaller workloads
+      for (size_t k = 0; k < midpoint; k++) {
+        auto first_idx = bit_reverse(k, current_significant_bits);
+        auto second_idx = bit_reverse(midpoint + k, current_significant_bits);
+        for (size_t j = 0; j < dft_length; j += i) {
+          auto even_index = k + j;
+          auto odd_index = k + j + midpoint;
+          std::complex<T>* even = (Y_data + even_index * Y_data_stride);
+          std::complex<T>* odd = (Y_data + odd_index * Y_data_stride);
+          std::complex<T> first = *even + (V[first_idx] * *odd);
+          std::complex<T> second = *even + (V[second_idx] * *odd);
+          *even = first;
+          *odd = second;
+        }
       }
     }
   }
 
   // Scale the output if inverse
   if (inverse) {
-    for (size_t i = 0; i < dft_length; i++) {
-      std::complex<T>& val = *(Y_data + i * Y_data_stride);
-      val /= static_cast<T>(dft_length);
+    auto threadpool = ctx->GetOperatorThreadPool();
+    if (dft_length > 256 && threadpool != nullptr) {
+      // Use parallel scaling for larger transforms
+      onnxruntime::concurrency::ThreadPool::TryParallelFor(
+        threadpool,
+        static_cast<std::ptrdiff_t>(dft_length),
+        1.0, // low cost per element
+        [&](std::ptrdiff_t start, std::ptrdiff_t end) {
+          const T scale_factor = static_cast<T>(1.0) / static_cast<T>(dft_length);
+          for (auto i = start; i < end; i++) {
+            std::complex<T>& val = *(Y_data + static_cast<size_t>(i) * Y_data_stride);
+            val *= scale_factor;
+          }
+        });
+    } else {
+      // Use sequential scaling for smaller transforms
+      const T scale_factor = static_cast<T>(1.0) / static_cast<T>(dft_length);
+      for (size_t i = 0; i < dft_length; i++) {
+        std::complex<T>& val = *(Y_data + i * Y_data_stride);
+        val *= scale_factor;
+      }
     }
   }
 
@@ -191,12 +267,28 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
 
 template <typename T>
 T next_power_of_2(T in) {
-  in--;
-  T out = 1;
-  while (out <= in) {
-    out <<= 1;
+  if (in <= 1) return 1;
+  
+  // For small integers, use the optimized bit manipulation approach
+  if constexpr (sizeof(T) <= sizeof(uint64_t)) {
+    in--;
+    in |= in >> 1;
+    in |= in >> 2;
+    in |= in >> 4;
+    in |= in >> 8;
+    in |= in >> 16;
+    if constexpr (sizeof(T) > sizeof(uint32_t)) {
+      in |= in >> 32;
+    }
+    return in + 1;
+  } else {
+    // Fallback for very large types
+    T out = 1;
+    while (out < in) {
+      out <<= 1;
+    }
+    return out;
   }
-  return out;
 }
 
 template <typename T, typename U>
@@ -230,15 +322,37 @@ static Status dft_bluestein_z_chirp(
     memset(reinterpret_cast<void*>(b_fft_data), 0, b_fft.SizeInBytes());
     memset(reinterpret_cast<void*>(chirp_data), 0, chirp.SizeInBytes());
 
-    for (size_t n = 0; n < N; n++) {
-      std::complex<T>& chirp_n = *(chirp_data + n);
-      // chirp
-      auto exponent = direction * pi * n * n / N;
-      chirp_n = std::complex<T>(cos(exponent), sin(exponent));
+    // Compute chirp coefficients in parallel for better performance
+    auto threadpool = ctx->GetOperatorThreadPool();
+    if (N > 128 && threadpool != nullptr) {
+      onnxruntime::concurrency::ThreadPool::TryParallelFor(
+        threadpool,
+        static_cast<std::ptrdiff_t>(N),
+        10.0, // cost estimate for trig functions
+        [&](std::ptrdiff_t start, std::ptrdiff_t end) {
+          for (auto n = start; n < end; n++) {
+            std::complex<T>& chirp_n = *(chirp_data + n);
+            // chirp
+            auto exponent = direction * pi * static_cast<T>(n * n) / static_cast<T>(N);
+            chirp_n = std::complex<T>(cos(exponent), sin(exponent));
 
-      // b
-      std::complex<T>& b_n = *(b_data + n);
-      b_n = std::conj(chirp_n);
+            // b
+            std::complex<T>& b_n = *(b_data + n);
+            b_n = std::conj(chirp_n);
+          }
+        });
+    } else {
+      // Sequential computation for smaller sizes
+      for (size_t n = 0; n < N; n++) {
+        std::complex<T>& chirp_n = *(chirp_data + n);
+        // chirp
+        auto exponent = direction * pi * static_cast<T>(n * n) / static_cast<T>(N);
+        chirp_n = std::complex<T>(cos(exponent), sin(exponent));
+
+        // b
+        std::complex<T>& b_n = *(b_data + n);
+        b_n = std::conj(chirp_n);
+      }
     }
 
     for (size_t n = M - N + 1; n < M; n++) {
@@ -272,24 +386,58 @@ static Status dft_bluestein_z_chirp(
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
 
-  // Prepare "a" signal
-  for (size_t n = 0; n < number_of_samples; n++) {
-    std::complex<T>& a_n = *(a_data + n);
-    std::complex<T>& chirp_n = *(chirp_data + n);
-    auto window_n = window_data ? *(window_data + n) : 1;
-    a_n = *(X_data + n * X_stride);  // input
-    a_n *= window_n;
-    a_n *= chirp_n;
+  // Prepare "a" signal with optional parallelization
+  if (number_of_samples > 128 && ctx->GetOperatorThreadPool() != nullptr) {
+    onnxruntime::concurrency::ThreadPool::TryParallelFor(
+      ctx->GetOperatorThreadPool(),
+      static_cast<std::ptrdiff_t>(number_of_samples),
+      3.0, // cost estimate for multiplication operations
+      [&](std::ptrdiff_t start, std::ptrdiff_t end) {
+        for (auto n = start; n < end; n++) {
+          std::complex<T>& a_n = *(a_data + n);
+          std::complex<T>& chirp_n = *(chirp_data + n);
+          auto window_n = window_data ? *(window_data + n) : static_cast<U>(1);
+          a_n = *(X_data + static_cast<size_t>(n) * X_stride);  // input
+          a_n *= window_n;
+          a_n *= chirp_n;
+        }
+      });
+  } else {
+    // Sequential preparation for smaller sizes
+    for (size_t n = 0; n < number_of_samples; n++) {
+      std::complex<T>& a_n = *(a_data + n);
+      std::complex<T>& chirp_n = *(chirp_data + n);
+      auto window_n = window_data ? *(window_data + n) : static_cast<U>(1);
+      a_n = *(X_data + n * X_stride);  // input
+      a_n *= window_n;
+      a_n *= chirp_n;
+    }
   }
 
   // Forward FFT radix2 for the "a" signal
   ORT_RETURN_IF_ERROR((fft_radix2<T, std::complex<T>>(ctx, &a, &a_fft, 0, 1, 0, 1, 1, M, nullptr,
                                                       false, false, V, temp_output)));
 
-  for (size_t i = 0; i < M; i++) {
-    std::complex<T>& a_i = *(a_fft_data + i);
-    std::complex<T>& b_i = *(b_fft_data + i);
-    a_i *= b_i;
+  // Complex multiplication of FFT results with optional parallelization
+  if (M > 256 && ctx->GetOperatorThreadPool() != nullptr) {
+    onnxruntime::concurrency::ThreadPool::TryParallelFor(
+      ctx->GetOperatorThreadPool(),
+      static_cast<std::ptrdiff_t>(M),
+      2.0, // cost estimate for complex multiplication
+      [&](std::ptrdiff_t start, std::ptrdiff_t end) {
+        for (auto i = start; i < end; i++) {
+          std::complex<T>& a_i = *(a_fft_data + i);
+          std::complex<T>& b_i = *(b_fft_data + i);
+          a_i *= b_i;
+        }
+      });
+  } else {
+    // Sequential multiplication for smaller sizes
+    for (size_t i = 0; i < M; i++) {
+      std::complex<T>& a_i = *(a_fft_data + i);
+      std::complex<T>& b_i = *(b_fft_data + i);
+      a_i *= b_i;
+    }
   }
 
   // Inverse FFT radix2 for the "a" signal
@@ -298,17 +446,40 @@ static Status dft_bluestein_z_chirp(
   const auto& Y_shape = Y->Shape();
   size_t dft_output_size = static_cast<size_t>(Y_shape[onnxruntime::narrow<size_t>(axis)]);
 
-  for (size_t i = 0; i < dft_output_size; i++) {
-    std::complex<T>& chirp_i = *(chirp_data + i);
-    std::complex<T>& out = *(Y_data + i * Y_stride);
-    std::complex<T>& c_i = *(a_data + i);
-    if (i > 0) {
-      // The inverse fft is computed using the same cached vandermonde matrix (V) created by the
-      // forward fft. This reversal causes the output to be reversed as well.
-      // Therefore we undo the reversal when writing the output back out.
-      c_i = *(a_data + M - i);
+  // Final output processing with optional parallelization
+  if (dft_output_size > 128 && ctx->GetOperatorThreadPool() != nullptr) {
+    onnxruntime::concurrency::ThreadPool::TryParallelFor(
+      ctx->GetOperatorThreadPool(),
+      static_cast<std::ptrdiff_t>(dft_output_size),
+      3.0, // cost estimate for complex operations
+      [&](std::ptrdiff_t start, std::ptrdiff_t end) {
+        for (auto i = start; i < end; i++) {
+          std::complex<T>& chirp_i = *(chirp_data + i);
+          std::complex<T>& out = *(Y_data + static_cast<size_t>(i) * Y_stride);
+          std::complex<T>& c_i = *(a_data + i);
+          if (i > 0) {
+            // The inverse fft is computed using the same cached vandermonde matrix (V) created by the
+            // forward fft. This reversal causes the output to be reversed as well.
+            // Therefore we undo the reversal when writing the output back out.
+            c_i = *(a_data + M - static_cast<size_t>(i));
+          }
+          out = c_i * chirp_i * scale;
+        }
+      });
+  } else {
+    // Sequential processing for smaller sizes
+    for (size_t i = 0; i < dft_output_size; i++) {
+      std::complex<T>& chirp_i = *(chirp_data + i);
+      std::complex<T>& out = *(Y_data + i * Y_stride);
+      std::complex<T>& c_i = *(a_data + i);
+      if (i > 0) {
+        // The inverse fft is computed using the same cached vandermonde matrix (V) created by the
+        // forward fft. This reversal causes the output to be reversed as well.
+        // Therefore we undo the reversal when writing the output back out.
+        c_i = *(a_data + M - i);
+      }
+      out = c_i * chirp_i * scale;
     }
-    out = c_i * chirp_i * scale;
   }
   return Status::OK();
 }
