@@ -61,6 +61,17 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  std::string register_int64_ops_str;
+  if (config_options.TryGetConfigEntry(kRegisterInt64Ops, register_int64_ops_str)) {
+    if (register_int64_ops_str == kRegisterInt64Ops_ON) {
+      webgpu_ep_config.register_int64_ops = true;
+    } else if (register_int64_ops_str == kRegisterInt64Ops_OFF) {
+      webgpu_ep_config.register_int64_ops = false;
+    } else {
+      ORT_THROW("Invalid register int64 ops: ", register_int64_ops_str);
+    }
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.
@@ -96,6 +107,7 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP register int64 ops: " << webgpu_ep_config.register_int64_ops;
 
   return webgpu_ep_config;
 }

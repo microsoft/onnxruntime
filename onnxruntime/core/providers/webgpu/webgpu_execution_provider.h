@@ -34,6 +34,7 @@ struct WebGpuExecutionProviderConfig {
   DataLayout data_layout{DataLayout::NHWC};  // preferred layout is NHWC by default
   bool enable_graph_capture{false};          // graph capture feature is disabled by default
   bool enable_pix_capture{false};            // PIX capture is disabled by default
+  bool register_int64_ops{false};            // int64 ops are not registered by default
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -92,6 +93,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   DataLayout preferred_data_layout_;
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
+  bool register_int64_ops_ = false;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
