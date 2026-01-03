@@ -30,6 +30,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
 #include "core/framework/float4.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
@@ -80,6 +81,8 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_INT4 = 22,
   TensorProto_DataType_FLOAT4E2M1 = 23,
   TensorProto_DataType_FLOAT8E8M0 = 24,
+  TensorProto_DataType_UINT2 = 25,
+  TensorProto_DataType_INT2 = 26,
 };
 
 enum TensorProto_DataLocation : int {
@@ -408,6 +411,15 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
+}
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2;
 }
 
 inline std::vector<std::unique_ptr<ComputeCapability>>

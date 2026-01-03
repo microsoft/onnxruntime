@@ -500,6 +500,9 @@ else()
   set(ONNX_USE_LITE_PROTO OFF CACHE BOOL "" FORCE)
 endif()
 
+# Disable ONNX's static schema registration to prevent duplicate registrations
+set(ONNX_DISABLE_STATIC_REGISTRATION ON CACHE BOOL "" FORCE)
+
 if(Patch_FOUND)
   set(ONNXRUNTIME_ONNX_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/onnx/onnx.patch)
 else()
@@ -588,7 +591,11 @@ set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${W
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)
 
 if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
-  target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS> PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
+  target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_COMPILE_DEFINITIONS>)
+  # For ONNX >= 1.20.0, the actual compilation happens in onnx_object target
+  if(TARGET onnx_object)
+    target_compile_definitions(onnx_object PRIVATE "__ONNX_DISABLE_STATIC_REGISTRATION")
+  endif()
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
     target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
   endif()
