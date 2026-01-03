@@ -18,7 +18,7 @@ parameters:
     default: 'TensorRT-10.13.3.9.Windows.win10.cuda-13.0'
   - name: win_trt_folder_cuda12
     type: string
-    default: 'TensorRT-10.9.0.34.Windows10.x86_64.cuda-12.8'
+    default: 'TensorRT-10.14.1.48.Windows.win10.cuda-12.9'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
