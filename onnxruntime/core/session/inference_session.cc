@@ -2569,6 +2569,10 @@ int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
 }
 
+int InferenceSession::GetTotalRunCount() const {
+  return total_run_count_.load();
+}
+
 const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() const {
   return execution_providers_.GetIds();
 }
@@ -2938,6 +2942,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
   const Env& env = Env::Default();
 
+  // Increment total run count for this session
+  total_run_count_.fetch_add(1, std::memory_order_relaxed);
+
   int graph_annotation_id = 0;
   const std::string& graph_annotation_str =
       run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "");
@@ -3137,6 +3144,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+  }
+  // Check if we've reached 10 runs and need to stop profiling
+  if (total_run_count_.load() == 10 && session_options_.enable_profiling) {
+    session_options_.enable_profiling = false;
+    EndProfiling();
   }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
