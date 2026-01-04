@@ -2782,6 +2782,10 @@ struct KernelInfoImpl : Base<T> {
   Logger GetLogger() const;
 
   KeyValuePairs GetConfigEntries() const;
+
+  std::string GetOperatorType() const;  ///< Wraps KernelInfo_GetOperatorType
+  int GetSinceVersion() const;          ///< Wraps KernelInfo_GetSinceVersion
+  const OrtEp* GetEp() const;           ///< Wraps KernelInfo_GetEp
 };
 
 }  // namespace detail

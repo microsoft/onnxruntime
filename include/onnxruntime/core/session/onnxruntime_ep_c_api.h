@@ -971,6 +971,18 @@ struct OrtEpApi {
                   _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
                   _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
                   _In_ size_t num_buffers);
+
+  /** \brief Get the OrtEp instance to which the node is assigned from the OrtKernelInfo.
+   *
+   * \note Used within OrtKernelImpl implementations to obtain a reference to the OrtEp.
+   *
+   * \param[in] info The ::OrtKernelInfo instance.
+   * \param[out] ep Output parameter set to the OrtEp instance associated with the OrtKernelInfo.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
 };
 
 /**

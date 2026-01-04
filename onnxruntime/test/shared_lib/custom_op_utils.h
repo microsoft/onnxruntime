@@ -9,10 +9,7 @@
 #endif
 
 struct MyCustomKernel {
-  MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* /*info*/)
-      : ort_(ort_api) {
-  }
-
+  MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* info);
   void Compute(OrtKernelContext* context);
 
  private:

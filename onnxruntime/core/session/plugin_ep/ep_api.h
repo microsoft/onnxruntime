@@ -105,4 +105,7 @@ ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
                     _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
                     _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
                     _In_ size_t num_buffers);
+
+// KernelInfo
+ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
 }  // namespace OrtExecutionProviderApi
