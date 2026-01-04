@@ -515,7 +515,8 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
 Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
                                     gsl::span<const char* const> ep_option_keys,
                                     gsl::span<const char* const> ep_option_vals,
-                                    SessionOptions& session_options) {
+                                    OrtSessionOptions& ort_session_options) {
+  SessionOptions& session_options = ort_session_options.value;
   const size_t num_ep_options = ep_option_keys.size();
   if (ep_option_vals.size() != num_ep_options) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -537,6 +538,46 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       }
 
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
+    }
+
+    // Add custom op domain provided by EP to the session options if any.
+    // OrtEpFactory::GetNumCustomOpDomains and OrtEpFactory::CreateCustomOpDomains
+    // were added in ORT 1.24.
+    OrtEpFactory* ep_factory = ep_device->ep_factory;
+    if (ep_factory &&
+        ep_factory->ort_version_supported >= 24 &&
+        ep_factory->GetNumCustomOpDomains != nullptr &&
+        ep_factory->CreateCustomOpDomains != nullptr) {
+      auto is_already_in_domains =
+          [&](const std::string& domain_name, const std::vector<OrtCustomOpDomain*>& domains) {
+            for (auto ptr : domains) {
+              if (domain_name == ptr->domain_) {
+                return true;
+              }
+            }
+            return false;
+          };
+
+      size_t num_domains = 0;
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->GetNumCustomOpDomains(ep_factory, &num_domains)));
+
+      InlinedVector<OrtCustomOpDomain*> domains;
+      domains.resize(num_domains);
+
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->CreateCustomOpDomains(ep_factory,
+                                                                               domains.data(),
+                                                                               domains.size())));
+
+      const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
+      for (auto domain : domains_span) {
+        if (!is_already_in_domains(domain->domain_, ort_session_options.custom_op_domains_) &&
+            domain->custom_ops_.size() > 0) {
+          ort_session_options.custom_op_domains_.push_back(domain);
+        } else {
+          LOGS_DEFAULT(WARNING) << "The custom op domain name "
+                                << domain->domain_ << " is already in the session option. Skip it.";
+        }
+      }
     }
   }
 

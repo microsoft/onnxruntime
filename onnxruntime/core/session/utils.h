@@ -69,7 +69,7 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
 Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
                                     gsl::span<const char* const> ep_options_keys,
                                     gsl::span<const char* const> ep_options_vals,
-                                    SessionOptions& session_options);
+                                    OrtSessionOptions& session_options);
 
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

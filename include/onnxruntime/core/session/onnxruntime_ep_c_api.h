@@ -1538,6 +1538,62 @@ struct OrtEpFactory {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
+
+  /** \brief Returns the number of OrtCustomOpDomains that this factory creates.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[out] num_domains Output parameter set to the number of created OrtCustomOpDomain instances.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetNumCustomOpDomains, _In_ OrtEpFactory* this_ptr, _Out_ size_t* num_domains);
+
+  /** \brief Creates the EP-specific OrtCustomOpDomains.
+   *
+   * This function is used when running inference on a model that contains EP-specific custom operations.
+   *
+   * Workflow:
+   * 1. The EP implements this function to supply a list of OrtCustomOpDomain instances.
+   * 2. The application calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
+   *    the plugin EP's factory.
+   * 3. SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomain list to the
+   *    session options.
+   *
+   * As a result, any session created from these session options will have these custom op domains registered
+   * in ORT, ensuring that the custom ops are properly recognized and validated when the model is loaded.
+   *
+   * Plugin EPs can provide two types of custom ops:
+   *  1. A full OrtCustomOp with a concrete kernel implementation
+   *    - This Example EP demonstrates this approach.
+   *    - In GetCapability(), it calls EpGraphSupportInfo_AddSingleNode() to inform ORT
+   *      that the custom node should NOT be fused or compiled. Instead, ORT should invoke
+   *      the custom node's Compute() function at runtime.
+   *
+   * 2. A "placeholder" OrtCustomOp with an empty kernel implementation
+   *    - A compile-based Plugin EP can supply an OrtCustomOp whose CustomKernel::Compute()
+   *      does nothing. The purpose is to satisfy model validation during model loading by
+   *      registering the custom op as a valid operator in the session.
+   *    - In GetCapability(), the EP should call EpGraphSupportInfo_AddNodesToFuse() to
+   *      notify ORT that this custom node should be fused and compiled by the EP.
+   *    - In Compile(), the EP executes its compiled bits to perform inference for
+   *      the fused custom node.
+   *
+   * Note: EP has the responsibility to release OrtCustomOpDomain instances it creates. It happens
+   *       automatically if using ORT C++ api.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[out] domains Pre-allocated array of `num_domains` elements by ORT that should be filled with
+                         OrtCustomOpDomain created by the EP.
+   * \param[in] num_domains The size of the `domains` array pre-allocated by ORT.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateCustomOpDomains, _In_ OrtEpFactory* this_ptr,
+                  _Outptr_result_maybenull_ OrtCustomOpDomain** domains, _In_ size_t num_domains);
 };
 
 #ifdef __cplusplus
