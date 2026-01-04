@@ -603,6 +603,17 @@ std::optional<bool> PluginExecutionProvider::ShouldConvertDataLayoutForOp(std::s
   }
 }
 
+bool PluginExecutionProvider::ConcurrentRunSupported() const {
+  if (ort_ep_->ort_version_supported < 24 || ort_ep_->IsConcurrentRunSupported == nullptr) {
+    return true;
+  }
+
+  bool is_supported = false;
+  ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->IsConcurrentRunSupported(ort_ep_.get(), &is_supported)));
+
+  return is_supported;
+}
+
 Status PluginExecutionProvider::OnRunStart(const RunOptions& run_options) {
   if (ort_ep_->OnRunStart == nullptr) {
     return Base::OnRunStart(run_options);
