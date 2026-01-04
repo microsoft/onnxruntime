@@ -85,7 +85,7 @@ class EpProfiler {
   virtual void Stop(uint64_t) {}                                        // called after op stop, accept an id as argument to identify the op
 
   // Run-level profiling support
-  virtual void StartRunProfiling();
+  virtual void StartRunProfiling() {}
   virtual void EndRunProfiling(TimePoint start_time, Events& events) {
     ORT_UNUSED_PARAMETER(start_time);
     ORT_UNUSED_PARAMETER(events);

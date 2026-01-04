@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "cuda_profiler.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace profiling {
@@ -20,6 +21,16 @@ CudaProfiler::CudaProfiler() {
 CudaProfiler::~CudaProfiler() {
   auto& manager = CUPTIManager::GetInstance();
   manager.DeregisterClient(client_handle_);
+}
+
+void CudaProfiler::StartRunProfiling() {
+  LOGS_DEFAULT(WARNING) << "Run-level profiling is not implemented for this EP profiler, so GPU kernel events for this EP cannot be captured.";
+}
+
+#else
+
+void CudaProfiler::StartRunProfiling() {
+  LOGS_DEFAULT(WARNING) << "Run-level profiling is not implemented for this EP profiler, so GPU kernel events for this EP cannot be captured.";
 }
 
 #endif /* #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */

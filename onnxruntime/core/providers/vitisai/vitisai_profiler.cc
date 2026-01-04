@@ -12,6 +12,10 @@ bool VitisaiProfiler::StartProfiling(TimePoint tp) {
   return true;
 }
 
+void VitisaiProfiler::StartRunProfiling() {
+  LOGS_DEFAULT(WARNING) << "Run-level profiling is not implemented for this EP profiler, so GPU kernel events for this EP cannot be captured.";
+}
+
 void VitisaiProfiler::EndProfiling(TimePoint tp, Events& events) {
   auto time_point =
       std::chrono::duration_cast<std::chrono::microseconds>(tp.time_since_epoch()).count();

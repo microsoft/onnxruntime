@@ -443,6 +443,8 @@ class GPUProfilerBase : public EpProfiler {
     return true;
   }
 
+  virtual void StartRunProfiling() override {}
+
   virtual void EndProfiling(TimePoint start_time, Events& events) override {
     auto& manager = TManager::GetInstance();
     std::map<uint64_t, Events> event_map;

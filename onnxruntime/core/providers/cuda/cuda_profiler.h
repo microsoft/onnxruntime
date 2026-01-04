@@ -23,6 +23,7 @@ class CudaProfiler final : public GPUProfilerBase<CUPTIManager> {
   CudaProfiler();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaProfiler);
   ~CudaProfiler();
+  void StartRunProfiling() override;
 };
 
 #else /* #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */
@@ -34,6 +35,7 @@ class CudaProfiler final : public EpProfiler {
   ~CudaProfiler() {}
   bool StartProfiling(TimePoint) override { return true; }
   void EndProfiling(TimePoint, Events&) override {}
+  void StartRunProfiling() override;
   void Start(uint64_t) override {}
   void Stop(uint64_t) override {}
 };
