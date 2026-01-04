@@ -144,6 +144,7 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
     ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 ||
                           var_type == ProgramVariableDataType::Uint32 ||
                           var_type == ProgramVariableDataType::Float32 ||
+                          var_type == ProgramVariableDataType::Float16 ||
                           var_type == ProgramVariableDataType::Float16x4 ||
                           var_type == ProgramVariableDataType::Float32x4,
                       "Unexpected program variable type ", int(var_type), " for atomic variable");
