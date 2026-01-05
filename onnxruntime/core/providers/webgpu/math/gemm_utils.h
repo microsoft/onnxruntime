@@ -18,7 +18,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
 
 void MatMulWriteFnSource(ShaderHelper& shader,
                          const ShaderVariableHelper& output,
-                         bool has_bias,
+                         const ShaderVariableHelper* bias,
                          bool is_gemm,
                          int c_components,
                          int output_components,

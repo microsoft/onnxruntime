@@ -73,6 +73,3 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if (onnxruntime_USE_NCCL AND onnxruntime_USE_ROCM)
-  add_dependencies(onnxruntime_session generate_hipified_files)
-endif()

@@ -10,13 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-#ifdef USE_ROCM
-constexpr int kNumElementsPerThread = 2;
-constexpr int kNumThreadsPerBlock = 512;
-#else
 constexpr int kNumElementsPerThread = GridDim::maxElementsPerThread;
 constexpr int kNumThreadsPerBlock = GridDim::maxThreadsPerBlock;
-#endif
 }  // namespace
 
 // concat dimension are same for all inputs

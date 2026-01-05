@@ -21,6 +21,7 @@
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/partitioning_utils.h"
 
@@ -43,21 +44,51 @@ PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_
   }
 }
 
+PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_factory,
+                                                               gsl::span<const OrtEpDevice* const> ep_devices,
+                                                               gsl::span<const OrtHardwareDevice* const> hw_devices,
+                                                               gsl::span<const OrtKeyValuePairs* const> ep_metadata)
+    : ep_factory_{ep_factory},
+      devices_{ep_devices.begin(), ep_devices.end()},
+      hardware_devices_{hw_devices.begin(), hw_devices.end()},
+      ep_metadata_{ep_metadata.begin(), ep_metadata.end()} {
+}
+
 std::unique_ptr<IExecutionProvider>
 PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
                                                const OrtLogger& session_logger) {
-  OrtEp* ort_ep = nullptr;
-  Status status = ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(), ep_metadata_.data(),
-                                                          hardware_devices_.size(), &session_options, &session_logger,
-                                                          &ort_ep));
+  std::unique_ptr<PluginExecutionProvider> plugin_ep;
+  Status status = CreatePluginExecutionProvider(session_options, session_logger, plugin_ep);
 
   if (!status.IsOK()) {
-    ORT_THROW("Error creating execution provider: ", status.ToString());
+    LOGS(*session_logger.ToInternal(), ERROR) << "Error creating execution provider: " << status.ToString();
+    return nullptr;
   }
 
-  return std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
-                                                   session_options, ep_factory_, devices_,
-                                                   *session_logger.ToInternal());
+  return plugin_ep;
+}
+
+Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
+    const OrtSessionOptions& session_options,
+    const OrtLogger& logger,
+    /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep) {
+  plugin_ep = nullptr;
+  OrtEp* ort_ep = nullptr;
+
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(),
+                                                              ep_metadata_.data(), hardware_devices_.size(),
+                                                              &session_options, &logger, &ort_ep)));
+  ORT_RETURN_IF(ort_ep == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
+                "' returned a NULL OrtEp instance");
+
+  std::shared_ptr<KernelRegistry> kernel_registry;
+  ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
+
+  plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
+                                                        session_options, ep_factory_, devices_,
+                                                        kernel_registry,
+                                                        *logger.ToInternal());
+  return Status::OK();
 }
 
 /// <summary>
@@ -132,11 +163,13 @@ static const Node* FindFirstNodeAssignedToOtherEP(const std::string& ep_type,
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
+                                                 std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
     : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
-      ep_devices_(ep_devices.begin(), ep_devices.end()) {
+      ep_devices_(ep_devices.begin(), ep_devices.end()),
+      kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 
   for (const auto* ep_device : ep_devices_) {
@@ -155,10 +188,14 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
 }
 
 PluginExecutionProvider::~PluginExecutionProvider() {
-  if (ort_ep_ && !api_node_compute_infos_.empty()) {
+  if (ort_ep_ && !api_node_compute_infos_.empty() && ort_ep_->ReleaseNodeComputeInfos != nullptr) {
     ort_ep_->ReleaseNodeComputeInfos(ort_ep_.get(), api_node_compute_infos_.data(),
                                      api_node_compute_infos_.size());
   }
+}
+
+std::shared_ptr<KernelRegistry> PluginExecutionProvider::GetKernelRegistry() const {
+  return kernel_registry_;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -168,7 +205,6 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        IResourceAccountant* resource_accountant) const {
   ORT_UNUSED_PARAMETER(graph_optimizer_registry);  // TODO: Add support
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
-  ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
   const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
 
@@ -178,7 +214,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     return {};
   }
 
-  OrtEpGraphSupportInfo api_graph_support_info(*ep_graph);
+  OrtEpGraphSupportInfo api_graph_support_info(*ep_graph, kernel_lookup);
   Status status = ToStatusAndRelease(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info));
 
   if (!status.IsOK()) {
@@ -377,7 +413,11 @@ static Status ConvertEpContextNodes(const std::string& ep_name, const std::vecto
 
 Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                         std::vector<NodeComputeInfo>& node_compute_infos) {
-  const logging::Logger* logger = GetLogger();
+  ORT_RETURN_IF(ort_ep_->Compile == nullptr, "OrtEp for ", Type(), " did not provide a valid Compile() function");
+  ORT_RETURN_IF(ort_ep_->ReleaseNodeComputeInfos == nullptr, "OrtEp for ", Type(),
+                " did not provide a valid ReleaseNodeComputeInfos() function");
+
+  const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
   std::vector<const OrtGraph*> api_graphs;
@@ -443,16 +483,16 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
                   "instance for graph at index ", i);
 
     NodeComputeInfo compute_info;
-    compute_info.create_state_func = [api_node_compute_info, logger](ComputeContext* context,
-                                                                     FunctionState* compute_state) -> int {
+    compute_info.create_state_func = [api_node_compute_info, &logger](ComputeContext* context,
+                                                                      FunctionState* compute_state) -> int {
       Status status = ToStatusAndRelease(
           api_node_compute_info->CreateState(api_node_compute_info,
                                              reinterpret_cast<OrtNodeComputeContext*>(context),
                                              compute_state));
       const bool success = status.IsOK();
       if (!success) {
-        LOGS(*logger, ERROR) << "OrtNodeComputeInfo::CreateComputeState() failed with error: "
-                             << status.ErrorMessage();
+        LOGS(logger, ERROR) << "OrtNodeComputeInfo::CreateState() failed with error: "
+                            << status.ErrorMessage();
       }
 
       return success ? 0 : 1;
@@ -680,7 +720,7 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
 
           ORT_ENFORCE(status == nullptr && stream != nullptr,
                       "Error creating sync stream for device: ", ToStatusAndRelease(status).ToString());
-          return std::make_unique<plugin_ep::Stream>(device, *stream, *GetLogger());
+          return std::make_unique<plugin_ep::Stream>(device, *stream, *GetLogger()->ToExternal());
         });
 
     registry.RegisterWaitFn(device_type, device_type, plugin_ep::Notification::WaitNotificationOnDevice);

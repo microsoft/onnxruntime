@@ -194,13 +194,8 @@ void BinaryElementWiseNoBroadcastImpl(
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
 
-#ifdef USE_ROCM
-  const int num_elements_per_thread = 2;
-  const int num_threads_per_block = 512;
-#else
   const int num_elements_per_thread = GridDim::maxElementsPerThread;
   const int num_threads_per_block = GridDim::maxThreadsPerBlock;
-#endif
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
 #define FUNC_CALL(NumElemT)                                                                                        \
@@ -237,13 +232,8 @@ void _BinaryElementWiseImpl(
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
 
-#ifdef USE_ROCM
-  const int num_elements_per_thread = 2;
-  const int num_threads_per_block = 512;
-#else
   const int num_elements_per_thread = GridDim::maxElementsPerThread;
   const int num_threads_per_block = GridDim::maxThreadsPerBlock;
-#endif
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
   NumElemT N = static_cast<NumElemT>(count);

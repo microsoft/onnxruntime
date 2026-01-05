@@ -221,7 +221,7 @@ TEST(FusedMatMulOpTest, FloatTypeNoTranspose) {
   RunFusedMatMulTest<float>("FusedMatMul", 1);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)  // double support only implemented in CUDA/ROCM kernel
+#if defined(USE_CUDA)  // double support only implemented in CUDA kernel
 TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
   RunFusedMatMulTest<double>("FusedMatMul", 1);
 }
@@ -270,7 +270,7 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeBatch) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, true, true);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_DML)
 TEST(FusedMatMulOpTest, Float16_NoTranspose) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -315,7 +315,7 @@ TEST(FusedMatMulOpTest, Float16_NoTranspose) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+#if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -371,8 +371,6 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
     execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif

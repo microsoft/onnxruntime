@@ -108,7 +108,7 @@ fn erf_v(v: x_value_t) -> x_value_t {
 constexpr const char HardSigmoidImpl[] = R"(
 fn hard_sigmoid_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
   let alpha = x_element_t(uniforms.attr[0]);
-  let beta_v = vec4<x_element_t>(uniforms.attr[1]);
+  let beta_v = vec4<x_element_t>(x_element_t(uniforms.attr[1]));
   return max(vec4<x_element_t>(0.0),
              min(vec4<x_element_t>(1.0), alpha * v + beta_v));
 }

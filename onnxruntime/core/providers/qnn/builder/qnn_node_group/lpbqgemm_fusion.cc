@@ -22,6 +22,7 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& act_dql_node_unit,
                                     const NodeUnit& gemm_node_unit,
                                     const NodeUnit& output_ql_node_unit,
+                                    const logging::Logger& logger,
                                     bool validate);
 
 std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
@@ -115,6 +116,7 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
                                             *p_act_dql_node_unit,
                                             gemm_node_unit,
                                             *p_output_ql_node_unit,
+                                            logger,
                                             true);
       !status.IsOK()) {
     return nullptr;
@@ -143,13 +145,11 @@ LowPowerBlockQuantizedGemmFusion::LowPowerBlockQuantizedGemmFusion(const NodeUni
 }
 
 Status LowPowerBlockQuantizedGemmFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(logger);
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], *node_units_[2], *node_units_[3], *node_units_[4], *node_units_[5], true);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], *node_units_[2], *node_units_[3], *node_units_[4], *node_units_[5], logger, true);
 }
 
 Status LowPowerBlockQuantizedGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(logger);
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], *node_units_[2], *node_units_[3], *node_units_[4], *node_units_[5], false);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], *node_units_[2], *node_units_[3], *node_units_[4], *node_units_[5], logger, false);
 }
 
 gsl::span<const NodeUnit* const> LowPowerBlockQuantizedGemmFusion::GetNodeUnits() const {
@@ -164,13 +164,15 @@ Status UnpackWeightTensorData(const QnnModelWrapper& qnn_model_wrapper,
                               const onnx::TensorProto* weight_tensor_proto,
                               std::vector<uint32_t>& weight_shape,
                               int64_t input_channel_axis,
-                              std::vector<uint8_t>& unpacked_tensor) {
+                              std::vector<uint8_t>& unpacked_tensor,
+                              const logging::Logger& logger,
+                              bool validate) {
   ORT_RETURN_IF_NOT(weight_tensor_proto != nullptr, "Weight tensor proto is null");
 
   if (input_channel_axis == 0) {
     // Transpose to keep output_channel at index 0;
     // This is needed for proper LPBQ encoding where output channels must be at dimension 0
-    return utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, *weight_tensor_proto, unpacked_tensor);
+    return utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, *weight_tensor_proto, unpacked_tensor, logger, validate);
   } else {
     // No transpose needed, just unpack the initializer data
     return qnn_model_wrapper.UnpackInitializerData(*weight_tensor_proto, unpacked_tensor);
@@ -184,6 +186,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                              const NodeUnit& act_dql_node_unit,
                              const NodeUnit& gemm_node_unit,
                              const NodeUnit& output_ql_node_unit,
+                             const logging::Logger& logger,
                              bool validate) {
   assert(scale_dql_node_unit.OpType() == "DequantizeLinear" &&
          w_ql_node_unit.OpType() == "QuantizeLinear" &&
@@ -255,7 +258,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint8_t> unpacked_tensor;
   Qnn_DataType_t weight_data_type = is_int4_type ? QNN_DATATYPE_SFIXED_POINT_4 : QNN_DATATYPE_SFIXED_POINT_8;
   const auto& weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
-  ORT_RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor));
+  ORT_RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor, logger, validate));
 
   // Quantize weight tensor
   size_t weight_elements = unpacked_tensor.size() / sizeof(float);

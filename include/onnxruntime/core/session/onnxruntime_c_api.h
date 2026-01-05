@@ -4593,7 +4593,7 @@ struct OrtApi {
    *
    * \param[in] context OrtKernelContext instance
    * \param[in] mem_info OrtMemoryInfo instance
-   * \param[out] out A pointer to OrtAllocator.
+   * \param[out] out A pointer to OrtAllocator. Must be released with OrtApi::ReleaseAllocator.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

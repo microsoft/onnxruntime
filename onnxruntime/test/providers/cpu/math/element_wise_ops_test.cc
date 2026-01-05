@@ -40,8 +40,6 @@ void TestBinaryFloat16(const char* op_name,
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
     if (execution_providers.size() > 0) {
       OpTester tester(op_name, 14);
@@ -56,8 +54,6 @@ void TestBinaryFloat16(const char* op_name,
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
 
     if (enable_bf16 && execution_providers.size() > 0) {
@@ -84,8 +80,6 @@ void TestUnaryFloat16(const char* op_name,
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
     if (execution_providers.size() > 0) {
       OpTester tester(op_name, opset);
@@ -100,8 +94,6 @@ void TestUnaryFloat16(const char* op_name,
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
 
     if (run_bf16 && execution_providers.size() > 0) {
@@ -1439,7 +1431,7 @@ TEST(MathOpTest, Pow_float16_float16) {
                     dims, {1.0f, 256.0f, 2.0f, 1.0f}, false);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST(MathOpTest, Pow_float_float16) {
   OpTester test("Pow", 12);
   std::vector<int64_t> dims{4};
@@ -1451,8 +1443,6 @@ TEST(MathOpTest, Pow_float_float16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_COREML
   execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #endif
@@ -4079,19 +4069,17 @@ TEST(ModOpTest, Fmod_float16_mixed_sign) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   OpTester test("Mod", 13);
   test.AddAttribute<int64_t>("fmod", 1);
-  // Due to BFloat16's precision, if the result is too small, it's not easy get pass for both CUDA and ROCm.
+  // Due to BFloat16's precision, if the result is too small, it's not easy get pass for both CUDA.
   test.AddInput<BFloat16>("X", {4}, MakeBFloat16({8.0f, 5.0f, -8.0f, 8.0f}));
   test.AddInput<BFloat16>("Y", {4}, MakeBFloat16({-3.4f, 8.0f, 3.4f, 5.0f}));
   test.AddOutput<BFloat16>("Z", {4}, MakeBFloat16({1.2f, 5.f, -1.2f, 3.f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }

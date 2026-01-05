@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/webgpu/webgpu_utils.h"
+
+#include <sstream>
+#include "core/providers/webgpu/shader_variable.h"
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -45,6 +49,7 @@ bool SplitKConfig::UseSplitK(
     bool is_vec4,
     ActivationKind activation_kind,
     uint64_t batch_size,
+    bool is_gemm,
     bool is_channels_last,
     uint32_t dim_a_outer,
     uint32_t dim_b_outer,
@@ -60,8 +65,8 @@ bool SplitKConfig::UseSplitK(
   use_split_k &= is_vec4;
   use_split_k &= batch_size == 1;
   // Now `is_channels_last` is only supported because we only generate vec4 shaders in
-  // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
-  use_split_k &= is_channels_last;
+  // `MatMulFillBiasOrZeroBeforeSplitKProgram` when `is_gemm` is false.
+  use_split_k &= (is_channels_last || is_gemm);
 
   // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and
   // `dim_b_outer`. Currently we use the factor between `(dim_a_outer * dim_b_outer)` and
@@ -75,6 +80,24 @@ bool SplitKConfig::UseSplitK(
 
 uint32_t SplitKConfig::GetSplitDimInner() const {
   return split_dim_inner_;
+}
+
+std::string GenerateAtomicAddNonIntegerCode(const ShaderVariableHelper& output, const std::string& offset, const std::string& output_type, const std::string& add_value) {
+  std::ostringstream ss;
+
+  std::string get_output_by_offset = output.GetByOffset(offset);
+  ss << "while (true) {\n"
+     << "  let old_output_i32 = atomicLoad(&" << get_output_by_offset << ");\n"
+     << "  let old_output_" << output_type << " = bitcast<" << output_type << ">(old_output_i32);\n"
+     << "  let new_output_" << output_type << " = old_output_" << output_type << " + " << add_value << ";\n"
+     << "  let new_output_i32 = bitcast<i32>(new_output_" << output_type << ");\n"
+     << "  let output_compare_exchange = atomicCompareExchangeWeak(&" << get_output_by_offset << ", old_output_i32, new_output_i32);\n"
+     << "  if (output_compare_exchange.old_value == old_output_i32) {\n"
+     << "    break;\n"
+     << "  }\n"
+     << "}\n";
+
+  return ss.str();
 }
 
 }  // namespace webgpu
