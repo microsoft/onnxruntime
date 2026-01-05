@@ -3,12 +3,51 @@
 
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 
+#include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/tensor.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_api.h"
+
+//
+// OrtSharedPrePackedWeightCache
+//
+OrtSharedPrePackedWeightCache::OrtSharedPrePackedWeightCache(onnxruntime::PrePackedWeights& container,
+                                                             onnxruntime::AllocatorPtr allocator)
+    : container_(container), allocator_(std::move(allocator)) {}
+
+void OrtSharedPrePackedWeightCache::SetBuffers(void** data_ptrs, size_t* data_sizes, size_t num_buffers) {
+  container_.buffers_.clear();
+  container_.buffer_sizes_.clear();
+
+  container_.buffers_.reserve(num_buffers);
+  container_.buffer_sizes_.reserve(num_buffers);
+
+  for (size_t i = 0; i < num_buffers; i++) {
+    auto data_unique_ptr = onnxruntime::IAllocatorUniquePtr<void>(data_ptrs[i], onnxruntime::BufferDeleter(allocator_));
+    container_.buffers_.push_back(std::move(data_unique_ptr));
+    container_.buffer_sizes_.push_back(data_sizes[i]);
+  }
+}
+
+bool OrtSharedPrePackedWeightCache::HasData() const noexcept {
+  return !container_.buffers_.empty();
+}
+
+void OrtSharedPrePackedWeightCache::ReleaseAllData() noexcept {
+  for (onnxruntime::IAllocatorUniquePtr<void>& data_unique_ptr : container_.buffers_) {
+    data_unique_ptr.release();
+  }
+
+  container_.buffers_.clear();
+  container_.buffer_sizes_.clear();
+}
 
 namespace onnxruntime {
 
@@ -17,6 +56,7 @@ namespace onnxruntime {
 /// </summary>
 class PluginEpOpKernel final : public OpKernel {
  private:
+  // Prevents calling constructor directly without having to make it private (required by std::make_unique).
   struct PrivateTag {};
 
  public:
@@ -37,8 +77,108 @@ class PluginEpOpKernel final : public OpKernel {
     return ToStatusAndRelease(kernel_impl_->Compute(kernel_impl_, reinterpret_cast<OrtKernelContext*>(ctx)));
   }
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
+
+    if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->PrePackWeight == nullptr) {
+      // OrtKernelImpl does not define a PrePack implementation.
+      is_packed = false;
+      return Status::OK();
+    }
+
+    // Convert AllocatorPtr to an OrtAllocator* (that wraps the AllocatorPtr) and cache it.
+    OrtAllocator* ort_allocator = GetPrePackOrtAllocator(alloc);
+
+    // Create a non-owning OrtValue that wraps the const Tensor& with an empty deleter.
+    // This is passed to OrtKernelImpl::PrePackWeight() as a const OrtValue*.
+    // The above reasons make the const_cast relatively "safe".
+    // Note: Documentation for OrtKernelImpl::PrePackWeight disallows caching the OrtValue pointer.
+    auto empty_tensor_deleter = [](void* /*data*/) -> void { /* do not delete Tensor (not owned) */ };
+    const OrtValue ort_value(const_cast<Tensor*>(&tensor), DataTypeImpl::GetType<Tensor>(), empty_tensor_deleter);
+
+    // Only allow kernel to store/share pre-packed weights if the weight data will be stored in cpu-accessible memory.
+    // ORT requires that the data reside in cpu memory to be able to compute the hash of the weight's contents.
+    //
+    // If the allocator does not use CPU memory, we pass a NULL OrtSharedPrePackedWeightCache instance to the kernel to
+    // indicate that storing/sharing is not allowed and the kernel should manage the memory for the pre-packed weight.
+    std::optional<OrtSharedPrePackedWeightCache> shared_weight_cache;
+
+    if (prepacked_weights != nullptr && alloc->Info().device.UsesCpuMemory()) {
+      ORT_RETURN_IF(!prepacked_weights->buffers_.empty() || !prepacked_weights->buffer_sizes_.empty(),
+                    "PluginEpOpKernel::PrePack() expected PrePackedWeights instance to be initially empty");
+      shared_weight_cache.emplace(OrtSharedPrePackedWeightCache(*prepacked_weights, alloc));
+    }
+
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        kernel_impl_->PrePackWeight(kernel_impl_, &ort_value, input_idx,
+                                    ort_allocator,
+                                    shared_weight_cache.has_value() ? &*shared_weight_cache : nullptr,
+                                    &is_packed)));
+
+    const bool tried_to_share = shared_weight_cache.has_value() && shared_weight_cache->HasData();
+    ORT_RETURN_IF(tried_to_share && !is_packed, "OrtKernelImpl::PrePackWeight() tried to share packed weight data ",
+                  "but did not set the `is_packed` output parameter to true.");
+
+    return Status::OK();
+  }
+
+  Status UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& buffer_unique_ptrs,
+                                      gsl::span<const size_t> buffer_sizes,
+                                      int input_idx, /*out*/ bool& used_shared_buffers) override {
+    assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
+
+    if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->SetSharedPrePackedWeight == nullptr) {
+      // OrtKernelImpl does not define an implementation. The session state, which calls this function,
+      // generates an error if necessary (i.e., kernel indicated it wanted to share weights but did not define this).
+      used_shared_buffers = false;
+      return Status::OK();
+    }
+
+    std::vector<const void*> buffer_data_ptrs;
+
+    buffer_data_ptrs.reserve(buffer_unique_ptrs.size());
+    std::transform(buffer_unique_ptrs.begin(), buffer_unique_ptrs.end(), std::back_inserter(buffer_data_ptrs),
+                   [](const BufferUniquePtr& buff) -> const void* { return buff.get(); });
+
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        kernel_impl_->SetSharedPrePackedWeight(kernel_impl_, buffer_data_ptrs.data(), buffer_sizes.data(),
+                                               buffer_data_ptrs.size(), input_idx)));
+
+    used_shared_buffers = true;
+    return Status::OK();
+  }
+
  private:
+  /// <summary>
+  /// Gets the cached OrtAllocator for the given AllocatorPtr passed to PrePack().
+  /// </summary>
+  /// <param name="alloc"></param>
+  /// <returns></returns>
+  OrtAllocator* GetPrePackOrtAllocator(AllocatorPtr alloc) {
+    IAllocator* i_allocator = alloc.get();
+
+    // Try to find an existing OrtAllocator* that wraps the given IAllocator*
+    for (auto& ort_allocator_wrapper : prepack_ort_allocators_) {
+      if (ort_allocator_wrapper->GetWrappedIAllocator().get() == i_allocator) {
+        return ort_allocator_wrapper.get();
+      }
+    }
+
+    // Create a new OrtAllocatorImplWrappingIAllocator
+    auto ort_allocator_wrapper = std::make_unique<OrtAllocatorImplWrappingIAllocator>(std::move(alloc));
+
+    prepack_ort_allocators_.push_back(std::move(ort_allocator_wrapper));
+    return prepack_ort_allocators_.back().get();
+  }
+
   OrtKernelImpl* kernel_impl_ = nullptr;
+
+  // We create and cache a OrtAllocator that wraps each unique IAllocator passed to PrePack(). Need to keep these
+  // OrtAllocator instances alive because the plugin EP kernel implementation uses the OrtAllocators to allocate
+  // and free packed weight data. Note: use a vector instead of an unordered_map because this will almost always
+  // contain only one element and we want to limit the size of this class.
+  std::vector<std::unique_ptr<OrtAllocatorImplWrappingIAllocator>> prepack_ort_allocators_;
 };
 
 /*static*/

@@ -3379,5 +3379,34 @@ struct KernelRegistry : detail::Base<OrtKernelRegistry> {
   Status AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,
                    void* kernel_create_func_state);
 };
+
+namespace detail {
+template <typename T>
+struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  //< Wraps SharedPrePackedWeightCache_StoreWeightData
+  Status StoreWeightData(void** buffer_data_ptrs, size_t* buffer_sizes, size_t num_buffers);
+};
+}  // namespace detail
+
+/** \brief Convenience C++ wrapper class around a ::OrtSharedPrePackedWeightCache instance owned by ORT.
+ *
+ * An `OrtSharedPrePackedWeightCache*` instance is passed as an argument to OrtKernelImpl::PrePackWeight.
+ * Example use:
+ *   OrtStatus* MyKernel::PrePackWeightImpl(OrtKernelImpl*, ..., OrtSharedPrePackedWeightCache* c_cache, ...) {
+ *     ...
+ *     if (c_cache != nullptr) {
+ *       Ort::UnownedSharedPrePackedWeightCache cpp_cache(c_cache);
+ *       Ort::Status status = cpp_cache.StoreWeightData(...);
+ *     }
+ *     ...
+ *   }
+ *
+ * \remarks OrtSharedPrePackedWeightCache is always unowned, but mutable, for EpApi users.
+ */
+using UnownedSharedPrePackedWeightCache =
+    detail::SharedPrePackedWeightCacheImpl<Ort::detail::Unowned<OrtSharedPrePackedWeightCache>>;
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"
