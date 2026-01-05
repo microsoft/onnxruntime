@@ -150,7 +150,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   for (size_t i = 0; i < dimension_count; i++) {
     int64_t extent = std::max<int64_t>(SafeInt<int64_t>(input_dims[i]) +
                                            (*p_slices)[i] + (*p_slices)[i + dimension_count],
-                                       0U);
+                                       0LL);
     effective_input_extents.push_back(extent);
   }
 
@@ -163,9 +163,11 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (input_shape.Size() == 0) {
     ORT_RETURN_IF_ERROR(PadBase::HandleDimValueZero(mode_, input_shape, output_shape));
     if (mode_ == Mode::Constant) {
-      CUDA_CALL_THROW(cudaMemsetAsync(output_tensor.MutableDataRaw(), value, output_tensor.SizeInBytes(),
-                                      Stream(ctx)));
-      cudaStreamSynchronize(Stream(ctx));
+      const int64_t output_size = output_shape.Size();
+      if (output_size > 0) {
+        Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(output_tensor.MutableData<T>()), value,
+                    output_size);
+      }
     }
     // No error for other modes (preserve CPU historical behavior),
     // but no output should be expected either
@@ -182,8 +184,11 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (mode_ == Mode::Constant) {
       // Attempt to pad constant mode in case output is not empty
       // all other modes are an error
-      CUDA_CALL_THROW(cudaMemsetAsync(output_tensor.MutableDataRaw(), value, output_tensor.SizeInBytes(),
-                                      Stream(ctx)));
+      const int64_t output_size = output_shape.Size();
+      if (output_size > 0) {
+        Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(output_tensor.MutableData<T>()), value,
+                    output_size);
+      }
       return Status::OK();
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

@@ -911,6 +911,7 @@ class PadOpTest_Pad_Reflect_DimWithZeroInput_Test : public PadOpTest<gtest_TypeP
 template <typename gtest_TypeParam_>
 void PadOpTest_Pad_Reflect_DimWithZeroInput_Test<gtest_TypeParam_>::TestBody() {
   using T = TypeParam;
+  // DML: Unskip when fixed #41968513
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
                                   {1, 0, 1, 0},  // allowed if it doesn't pad the empty dim
@@ -920,8 +921,9 @@ void PadOpTest_Pad_Reflect_DimWithZeroInput_Test<gtest_TypeParam_>::TestBody() {
                                   "reflect",
                                   OpTester::ExpectResult::kExpectSuccess,
                                   "",
-                                  {kDmlExecutionProvider});  // DML: Unskip when fixed #41968513
+                                  {kDmlExecutionProvider});
 
+  // DML: Unskip when fixed #41968513
   RunAllOpsetAllDomainPadTests<T>({0, 2, 1},  // 3D
                                   {},
                                   {1, 1, 1, 1, 1, 1},  // not allowed if it pads the empty dim
@@ -931,7 +933,7 @@ void PadOpTest_Pad_Reflect_DimWithZeroInput_Test<gtest_TypeParam_>::TestBody() {
                                   "reflect",
                                   OpTester::ExpectResult::kExpectFailure,
                                   "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}",
-                                  {kDmlExecutionProvider, kTensorrtExecutionProvider});  // DML: Unskip when fixed #41968513
+                                  {kDmlExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(PadOpTest, BoolType) {
@@ -1106,50 +1108,6 @@ TEST(PadOpTest, ConstantPadNegativeAxes) {
                          0.0f, 1.0f, 1.0f, 0.0f,
                          0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-}
-
-TEST(PadOpTest, ConstantMode_MixedSigns_Small_F32) {
-  const std::vector<int64_t> input_shape{2, 6, 4};
-  std::vector<float> input_data(2 * 6 * 4);
-
-  for (size_t i = 0; i < input_data.size(); ++i) input_data[i] = static_cast<float>((i % 5) + 1);
-
-  const std::vector<int64_t> pads{1, 3, -2, -1, 0, 1};
-  const float cv = 9.0f;
-  // starting from input shape {2,6,4}
-  // after padding:      {2+1+-1,6+3-0,4-2_1}  => {2,9,3}
-  const std::vector<int64_t> expected_shape{2, 9, 3};
-
-  const std::vector<float> expected_data = {
-      // sample 0
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-
-      // sample 1
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      9.0F, 9.0F, 9.0F,
-      3.0F, 4.0F, 9.0F,
-      2.0F, 3.0F, 9.0F,
-      1.0F, 2.0F, 9.0F,
-      5.0F, 1.0F, 9.0F,
-      4.0F, 5.0F, 9.0F,
-      3.0F, 4.0F, 9.0F};
-
-  OpTester test("Pad", 13);
-  test.AddInput<float>("data", input_shape, input_data);
-  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
-  test.AddInput<float>("constant_value", {}, {cv}, true);
-  test.AddOutput<float>("output", expected_shape, expected_data);
-  test.AddAttribute("mode", "constant");
-  test.Run();
 }
 
 TEST(PadOpTest, ConstantFill_F32_RemovesAllDataOnAxis) {

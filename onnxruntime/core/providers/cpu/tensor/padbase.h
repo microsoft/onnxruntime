@@ -96,9 +96,9 @@ class PadBase {
         SafeInt<size_t>(postpad_elems);
     if (checked_sum != total_output_elems) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             +"Pad coverage invalid: pre=", prepad_elems,
-                             +" copy=", copy_elems, " post=", postpad_elems,
-                             +" total=", total_output_elems);
+                             "Pad coverage invalid: pre=", prepad_elems,
+                             " copy=", copy_elems, " post=", postpad_elems,
+                             " total=", total_output_elems);
     }
     return Status::OK();
   }

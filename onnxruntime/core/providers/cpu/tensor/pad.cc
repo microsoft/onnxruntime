@@ -516,7 +516,7 @@ static Status PadImpl(OpKernelContext* ctx,
     // Do not allow negative extents
     int64_t extent = std::max<int64_t>(SafeInt<int64_t>(reshaped_input_dims[i]) +
                                            reshaped_slice[i] + reshaped_slice[i + new_dims_count],
-                                       0U);
+                                       0LL);
     effective_input_extents.push_back(extent);
     reshaped_output_dims[i] += SafeInt<int64_t>(reshaped_pad[i]) + reshaped_pad[i + new_dims_count] +
                                reshaped_slice[i] + reshaped_slice[i + new_dims_count];
@@ -617,7 +617,7 @@ static Status PadImpl(OpKernelContext* ctx,
           const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
           const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
           if (pre_pad > 0) {
-            /// Pre - pad(innermost) retro - fill remains valid(write before row_start).
+            /// Pre-pad(innermost) retro-fill remains valid(write before row_start).
             PadAxisConstant(sink, axis_start - static_cast<size_t>(pre_pad), value, pre_pad);
           }
           if (post_pad > 0) {
