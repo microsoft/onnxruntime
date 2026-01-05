@@ -3069,5 +3069,26 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 }
 #endif
 
+TEST(InferenceSessionTests, BadDataTypeInInitializerIsHandled) {
+  // model has an initializer with a bogus data type. Graph ctor should detect and throw.
+  auto model_uri = ORT_TSTR("testdata/msrc-31000000518082.onnx");
+
+  SessionOptions so;
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Load(model_uri), "does not have valid data type");
+}
+
+TEST(InferenceSessionTests, GraphResolveHandlesNodeWithSubgraphBeingRemoved) {
+  // model has a subgraph with output that is not consumed. the node with the subgraph should get removed in
+  // Graph::BuildConnections and Graph::Resolve should adjust its list of subgraphs to not access the removed subgraph.
+  auto model_uri = ORT_TSTR("testdata/msrc-31000000518483.onnx");
+
+  SessionOptions so;
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
