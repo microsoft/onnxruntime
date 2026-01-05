@@ -31,7 +31,7 @@ parameters:
 - name: PackageName
   displayName: What is the package name? Override using an environment variable CustomPackageName.
   type: string
-  default: 'Microsoft.ML.OnnxRuntime.Flamingo'
+  default: 'Microsoft.ML.OnnxRuntime.Foundry'
 
 variables:
   - template: templates/common-variables.yml
