@@ -167,5 +167,59 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
     ort_env->UnregisterExecutionProviderLibrary(registration_name_for_virtual_devices.c_str());
   }
 }
+
+TEST(OrtEpLibrary, RegisterExecutionProviderLibraryWithOptions) {
+  const std::filesystem::path& library_path = Utils::example_ep_kernel_registry_info.library_path;
+  const std::string& registration_name = Utils::example_ep_kernel_registry_info.registration_name;
+  const std::string& ep_name = Utils::example_ep_kernel_registry_info.ep_name;
+
+  auto get_plugin_ep_devices = [&]() -> std::vector<Ort::ConstEpDevice> {
+    std::vector<Ort::ConstEpDevice> all_ep_devices = ort_env->GetEpDevices();
+    std::vector<Ort::ConstEpDevice> ep_devices;
+
+    std::copy_if(all_ep_devices.begin(), all_ep_devices.end(), std::back_inserter(ep_devices),
+                 [&](Ort::ConstEpDevice& device) {
+                   return device.EpName() == ep_name;
+                 });
+
+    return ep_devices;
+  };
+
+  // Test registering example kernel EP with options. These options are passed to OrtEpFactory::SetEnvironmentOptions.
+  // For testing convenience, the example EP stores a specific env option into the OrtEpDevice metadata.
+  {
+    Ort::KeyValuePairs ep_env_options;
+    ep_env_options.Add("some_env_config", "2");
+
+    ort_env->RegisterExecutionProviderLibraryWithOptions(registration_name.c_str(),
+                                                         library_path.c_str(),
+                                                         ep_env_options);
+
+    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices();
+    ASSERT_EQ(ep_devices.size(), 1);
+
+    // The example EP stores the env config in the OrtEpDevice metadata just for testing convenience.
+    auto metadata = ep_devices[0].EpMetadata();
+    ASSERT_STREQ(metadata.GetValue("some_env_config"), "2");
+
+    ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+  }
+
+  // Test calling RegisterExecutionProviderLibraryWithOptions using a NULL options argument.
+  {
+    ort_env->RegisterExecutionProviderLibraryWithOptions(registration_name.c_str(),
+                                                         library_path.c_str(),
+                                                         /*options*/ nullptr);
+
+    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices();
+    ASSERT_EQ(ep_devices.size(), 1);
+
+    // The example EP stores the env config in the OrtEpDevice metadata just for testing convenience.
+    auto metadata = ep_devices[0].EpMetadata();
+    ASSERT_EQ(metadata.GetValue("some_env_config"), nullptr);  // Does not exist
+
+    ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime

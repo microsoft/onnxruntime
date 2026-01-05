@@ -451,6 +451,10 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Graph_GetModelMetadata;
         public IntPtr GetModelCompatibilityForEpDevices;
         public IntPtr CreateExternalInitializerInfo;
+
+        public IntPtr TensorTypeAndShape_HasShape;
+        public IntPtr KernelInfo_GetConfigEntries;
+        public IntPtr RegisterExecutionProviderLibraryWithOptions;
     }
 
     internal static class NativeMethods
@@ -847,7 +851,7 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.CreateSyncStreamForEpDevice,
                     typeof(DOrtCreateSyncStreamForEpDevice));
 
-            OrtSyncStream_GetHandle = 
+            OrtSyncStream_GetHandle =
                 (DOrtSyncStream_GetHandle)Marshal.GetDelegateForFunctionPointer(
                     api_.SyncStream_GetHandle,
                     typeof(DOrtSyncStream_GetHandle));
@@ -861,6 +865,11 @@ namespace Microsoft.ML.OnnxRuntime
                 (DOrtCopyTensors)Marshal.GetDelegateForFunctionPointer(
                     api_.CopyTensors,
                     typeof(DOrtCopyTensors));
+
+            OrtRegisterExecutionProviderLibraryWithOptions =
+                (DOrtRegisterExecutionProviderLibraryWithOptions)Marshal.GetDelegateForFunctionPointer(
+                    api_.RegisterExecutionProviderLibraryWithOptions,
+                    typeof(DOrtRegisterExecutionProviderLibraryWithOptions));
         }
 
         internal class NativeLib
@@ -2781,6 +2790,22 @@ namespace Microsoft.ML.OnnxRuntime
             byte[] /* const ORTCHAR_T* */ path);
 
         /// <summary>
+        /// Register an execution provider library. The provided options are passed to EP factories after creation.
+        /// The library must implement CreateEpFactories and ReleaseEpFactory.
+        /// </summary>
+        /// <param name="env">Environment to add the EP library to.</param>
+        /// <param name="registration_name">Name to register the library under.</param>
+        /// <param name="path">Absolute path to the library.</param>
+        /// <param name="options">Options passed to OrtEpFactory::SetEnvironmentOptions after creation.</param>
+        /// <returns>OrtStatus*</returns>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtRegisterExecutionProviderLibraryWithOptions(
+            IntPtr /* OrtEnv* */ env,
+            byte[] /* const char* */ registration_name,
+            byte[] /* const ORTCHAR_T* */ path,
+            IntPtr /* const OrtKeyValuePairs* */ options);
+
+        /// <summary>
         /// Unregister an execution provider library.
         /// </summary>
         /// <param name="env">The environment to unregister the library from.</param>
@@ -2792,6 +2817,7 @@ namespace Microsoft.ML.OnnxRuntime
             byte[] /* const char* */ registration_name);
 
         public static DOrtRegisterExecutionProviderLibrary OrtRegisterExecutionProviderLibrary;
+        public static DOrtRegisterExecutionProviderLibraryWithOptions OrtRegisterExecutionProviderLibraryWithOptions;
         public static DOrtUnregisterExecutionProviderLibrary OrtUnregisterExecutionProviderLibrary;
 
         /// <summary>

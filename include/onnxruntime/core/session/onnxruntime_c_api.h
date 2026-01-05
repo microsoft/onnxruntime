@@ -6608,6 +6608,24 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Register an execution provider library with ORT. The provided options are passed to
+   *         OrtEpFactory::SetEnvironmentOptions after factory creation.
+   *
+   * The library must export 'CreateEpFactories' and 'ReleaseEpFactory' functions.
+   * See OrtEpApi for more details.
+   *
+   * \param[in] env The OrtEnv instance to register the library in.
+   * \param[in] registration_name The name to register the execution provider library under.
+   * \param[in] path The path to the execution provider library.
+   * \param[in] options Map of options to pass to each OrtEpFactory via OrtEpFactory::SetEnvironmentOptions.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(RegisterExecutionProviderLibraryWithOptions, _In_ OrtEnv* env, _In_ const char* registration_name,
+                  _In_ const ORTCHAR_T* path, _In_opt_ const OrtKeyValuePairs* options);
 };
 
 /*

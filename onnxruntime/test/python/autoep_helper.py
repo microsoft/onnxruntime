@@ -37,11 +37,41 @@ class AutoEpTestCase(unittest.TestCase):
         cls._tmp_model_dir.cleanup()
 
     def register_execution_provider_library(self, ep_registration_name: str, ep_lib_path: os.PathLike | str):
+        """
+        Test utility that registers an execution provider library with ORT.
+        Ensures that the library is unregistered if the unit test doesn't do it.
+        """
         if ep_registration_name in self._registered_providers:
             return  # Already registered
 
         try:
             onnxrt.register_execution_provider_library(ep_registration_name, ep_lib_path)
+        except Fail as onnxruntime_error:
+            if "already registered" in str(onnxruntime_error):
+                pass  # Allow register to fail if the EP library was previously registered.
+            else:
+                raise onnxruntime_error
+
+        # Add this EP library to set of registered EP libraries.
+        # If the unit test itself does not unregister the library, tearDown() will try.
+        self._registered_providers.add(ep_registration_name)
+
+    def register_execution_provider_library_with_options(
+        self,
+        ep_registration_name: str,
+        ep_lib_path: os.PathLike | str,
+        options: dict[str, str],
+    ):
+        """
+        Test utility that registers an execution provider library with ORT.
+        Ensures that the library is unregistered if the unit test doesn't do it.
+        The provided options are passed to EP factories after creation.
+        """
+        if ep_registration_name in self._registered_providers:
+            return  # Already registered
+
+        try:
+            onnxrt.register_execution_provider_library(ep_registration_name, ep_lib_path, options)
         except Fail as onnxruntime_error:
             if "already registered" in str(onnxruntime_error):
                 pass  # Allow register to fail if the EP library was previously registered.

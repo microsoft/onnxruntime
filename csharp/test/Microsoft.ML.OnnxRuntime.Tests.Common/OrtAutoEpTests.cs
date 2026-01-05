@@ -94,6 +94,37 @@ public class OrtAutoEpTests
     }
 
     [Fact]
+    public void RegisterLibraryWithOptions()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            const string registrationName = "example_plugin_ep_kernel_registry";
+            const string epName = "ExampleKernelEp";
+
+            string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), "example_plugin_ep_kernel_registry.dll");
+            Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
+
+            Dictionary<string, string> options = new Dictionary<string, string> { { "some_env_config", "2" } };
+            ortEnvInstance.RegisterExecutionProviderLibrary(registrationName, libFullPath, options);
+            try
+            {
+                // check OrtEpDevice was found
+                var epDevices = ortEnvInstance.GetEpDevices();
+                var epDevice = epDevices.FirstOrDefault(d => string.Equals(epName, d.EpName, StringComparison.OrdinalIgnoreCase));
+                Assert.NotNull(epDevice);
+
+                // The example EP stores the env config in the OrtEpDevice metadata for testing convenience.
+                var epMetadata = epDevice.EpMetadata.Entries;
+                Assert.Equal("2", epMetadata["some_env_config"]);
+            }
+            finally
+            {   // unregister
+                ortEnvInstance.UnregisterExecutionProviderLibrary(registrationName);
+            }
+        }
+    }
+
+    [Fact]
     public void AppendToSessionOptionsV2()
     {
         var runTest = (Func<Dictionary<string, string>> getEpOptions) =>
@@ -194,7 +225,7 @@ public class OrtAutoEpTests
 
         // doesn't matter what the value is. should fallback to ORT CPU EP
         sessionOptions.SetEpSelectionPolicyDelegate(SelectionPolicyDelegate);
-        
+
         var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 
         // session should load successfully

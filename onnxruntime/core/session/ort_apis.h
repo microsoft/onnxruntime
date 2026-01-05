@@ -755,4 +755,6 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
 
 ORT_API_STATUS_IMPL(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
 
+ORT_API_STATUS_IMPL(RegisterExecutionProviderLibraryWithOptions, _In_ OrtEnv* env, _In_ const char* registration_name,
+                    _In_ const ORTCHAR_T* path, _In_opt_ const OrtKeyValuePairs* options);
 }  // namespace OrtApis

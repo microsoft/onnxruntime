@@ -835,6 +835,13 @@ inline Env& Env::RegisterExecutionProviderLibrary(const char* registration_name,
   return *this;
 }
 
+inline Env& Env::RegisterExecutionProviderLibraryWithOptions(const char* registration_name,
+                                                             const std::basic_string<ORTCHAR_T>& path,
+                                                             const OrtKeyValuePairs* options) {
+  ThrowOnError(GetApi().RegisterExecutionProviderLibraryWithOptions(p_, registration_name, path.c_str(), options));
+  return *this;
+}
+
 inline Env& Env::UnregisterExecutionProviderLibrary(const char* registration_name) {
   ThrowOnError(GetApi().UnregisterExecutionProviderLibrary(p_, registration_name));
   return *this;

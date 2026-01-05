@@ -3287,7 +3287,18 @@ ORT_API(void, OrtApis::ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs* k
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
                     const ORTCHAR_T* path) {
   API_IMPL_BEGIN
-  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterExecutionProviderLibrary(registration_name, path));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterExecutionProviderLibrary(registration_name, path,
+                                                                                         nullptr));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibraryWithOptions, _In_ OrtEnv* env,
+                    _In_ const char* registration_name, _In_ const ORTCHAR_T* path,
+                    _In_opt_ const OrtKeyValuePairs* options) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterExecutionProviderLibrary(registration_name, path,
+                                                                                         options));
   return nullptr;
   API_IMPL_END
 }
@@ -4238,6 +4249,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::TensorTypeAndShape_HasShape,
     &OrtApis::KernelInfo_GetConfigEntries,
+    &OrtApis::RegisterExecutionProviderLibraryWithOptions,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

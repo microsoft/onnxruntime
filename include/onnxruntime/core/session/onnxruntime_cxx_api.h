@@ -1199,8 +1199,14 @@ struct Env : detail::Base<OrtEnv> {
   void ReleaseSharedAllocator(const OrtEpDevice* ep_device,
                               OrtDeviceMemoryType mem_type);  ///< Wraps OrtApi::ReleaseSharedAllocator
 
-  Env& RegisterExecutionProviderLibrary(const char* registration_name, const std::basic_string<ORTCHAR_T>& path);  ///< Wraps OrtApi::RegisterExecutionProviderLibrary
-  Env& UnregisterExecutionProviderLibrary(const char* registration_name);                                          ///< Wraps OrtApi::UnregisterExecutionProviderLibrary
+  ///< Wraps OrtApi::RegisterExecutionProviderLibrary
+  Env& RegisterExecutionProviderLibrary(const char* registration_name, const std::basic_string<ORTCHAR_T>& path);
+
+  ///< Wraps OrtApi::RegisterExecutionProviderLibraryWithOptions
+  Env& RegisterExecutionProviderLibraryWithOptions(const char* registration_name, const std::basic_string<ORTCHAR_T>& path,
+                                                   const OrtKeyValuePairs* options);
+
+  Env& UnregisterExecutionProviderLibrary(const char* registration_name);  ///< Wraps OrtApi::UnregisterExecutionProviderLibrary
 
   std::vector<ConstEpDevice> GetEpDevices() const;
 

@@ -523,9 +523,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// A registered execution provider library can be used by all sessions created with the OrtEnv instance.
         /// Devices the execution provider can utilize are added to the values returned by GetEpDevices() and can
         /// be used in SessionOptions.AppendExecutionProvider to select an execution provider for a device.
-        /// 
-        /// Coming: A selection policy can be specified and ORT will automatically select the best execution providers
-        /// and devices for the model.
         /// </summary>
         /// <param name="registrationName">The name to register the library under.</param>
         /// <param name="libraryPath">The path to the library to register.</param>
@@ -538,6 +535,48 @@ namespace Microsoft.ML.OnnxRuntime
 
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtRegisterExecutionProviderLibrary(handle, registrationNameUtf8, pathUtf8));
+        }
+
+        /// <summary>
+        /// Register an execution provider library with the OrtEnv instance. The provided options are passed to
+        /// EP factory instances after creation.
+        ///
+        /// A registered execution provider library can be used by all sessions created with the OrtEnv instance.
+        /// Devices the execution provider can utilize are added to the values returned by GetEpDevices() and can
+        /// be used in SessionOptions.AppendExecutionProvider to select an execution provider for a device.
+        /// </summary>
+        /// <param name="registrationName">The name to register the library under.</param>
+        /// <param name="libraryPath">The path to the library to register.</param>
+        /// <param name="options">Optional options to pass to each EP factory after creation. May be null.</param>
+        /// <see cref="GetEpDevices"/>
+        /// <see cref="SessionOptions.AppendExecutionProvider(OrtEnv, IReadOnlyList{OrtEpDevice}, IReadOnlyDictionary{string, string})"/>
+        public void RegisterExecutionProviderLibrary(string registrationName, string libraryPath,
+                                                     IReadOnlyDictionary<string, string> options)
+        {
+            var registrationNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(registrationName);
+            var pathUtf8 = NativeOnnxValueHelper.GetPlatformSerializedString(libraryPath);
+
+            if (options != null && options.Count > 0)
+            {
+                // this creates an OrtKeyValuePairs instance with a backing native instance
+                using var optionsKvps = new OrtKeyValuePairs(options);
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtRegisterExecutionProviderLibraryWithOptions(
+                        handle,
+                        registrationNameUtf8,
+                        pathUtf8,
+                        optionsKvps.Handle));
+            }
+            else
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtRegisterExecutionProviderLibraryWithOptions(
+                        handle,
+                        registrationNameUtf8,
+                        pathUtf8,
+                        IntPtr.Zero));  // Options OrtKeyValuePairs
+            }
         }
 
         /// <summary>

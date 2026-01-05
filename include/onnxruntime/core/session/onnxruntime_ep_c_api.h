@@ -1510,12 +1510,13 @@ struct OrtEpFactory {
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
 
-  /** \brief Set environment options on this EP factory.
+  /** \brief Sets environment options that are provided by the application during EP library registration.
    *
-   * Environment options can be set by ORT after calling the library's 'CreateEpFactories' function to
-   * create EP factories.
+   * If defined, ORT calls this function during EP library registration directly after creating the factory instance.
+   * Valid option keys and values are defined by the EP library. However, some common EP-agnostic options are listed
+   * below.
    *
-   * Supported options:
+   * Common EP options:
    *   "allow_virtual_devices": Allows EP factory to specify OrtEpDevice instances that use custom
    *      virtual OrtHardwareDevices, which can be created via OrtEpApi::CreateHardwareDevice().
    *
@@ -1528,10 +1529,11 @@ struct OrtEpFactory {
    *      -# "1": Creation of virtual devices is allowed.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] options The configuration options.
+   * \param[in] options The configuration options. Do not cache pointers to the OrtKeyValuePairs instance or its
+   *                    keys and values. Key and value strings should be copied if necessary.
    *
    * \note Implementation of this function is optional.
-   *       An EP factory should only implement this if it needs to handle any environment options.
+   *       An EP factory should implement this if it needs to handle any environment options.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

@@ -1505,7 +1505,8 @@ void addGlobalMethods(py::module& m) {
       "register_execution_provider_library",
       [](const std::string& registration_name, const PathString& library_path) -> void {
 #if !defined(ORT_MINIMAL_BUILD)
-        OrtPybindThrowIfError(GetEnv().RegisterExecutionProviderLibrary(registration_name, library_path.c_str()));
+        OrtPybindThrowIfError(GetEnv().RegisterExecutionProviderLibrary(registration_name, library_path.c_str(),
+                                                                        nullptr));
 #else
         ORT_UNUSED_PARAMETER(registration_name);
         ORT_UNUSED_PARAMETER(library_path);
@@ -1513,6 +1514,23 @@ void addGlobalMethods(py::module& m) {
 #endif
       },
       R"pbdoc(Register an execution provider library with ONNX Runtime.)pbdoc");
+  m.def(
+      "register_execution_provider_library",
+      [](const std::string& registration_name, const PathString& library_path,
+         const std::map<std::string, std::string>& options) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
+        OrtKeyValuePairs key_value_pairs;
+        key_value_pairs.CopyFromMap(options);
+        OrtPybindThrowIfError(GetEnv().RegisterExecutionProviderLibrary(registration_name, library_path.c_str(),
+                                                                        &key_value_pairs));
+#else
+        ORT_UNUSED_PARAMETER(registration_name);
+        ORT_UNUSED_PARAMETER(library_path);
+        ORT_UNUSED_PARAMETER(options);
+        ORT_THROW("Execution provider libraries are not supported in this build.");
+#endif
+      },
+      R"pbdoc(Register an execution provider library with ONNX Runtime. Options are passed to EP factories after creation.)pbdoc");
   m.def(
       "unregister_execution_provider_library",
       [](const std::string& registration_name) -> void {

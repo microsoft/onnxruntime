@@ -24,6 +24,7 @@ ExampleKernelEpFactory::ExampleKernelEpFactory(const OrtApi& ort_api, const OrtE
   GetVendor = GetVendorImpl;
   GetVendorId = GetVendorIdImpl;
   GetVersion = GetVersionImpl;
+  SetEnvironmentOptions = SetEnvironmentOptionsImpl;
 
   GetSupportedDevices = GetSupportedDevicesImpl;
 
@@ -121,6 +122,23 @@ const char* ORT_API_CALL ExampleKernelEpFactory::GetVersionImpl(const OrtEpFacto
 }
 
 /*static*/
+OrtStatus* ORT_API_CALL ExampleKernelEpFactory::SetEnvironmentOptionsImpl(OrtEpFactory* this_ptr,
+                                                                          const OrtKeyValuePairs* options) noexcept {
+  // This factory just gets some trivial value from the environment and stores it in the factory as an example.
+  //
+  // An actual EP factory implementation could use these environment options to set common configurations
+  // for all EPs created by this factory.
+  auto* factory = static_cast<ExampleKernelEpFactory*>(this_ptr);
+  const char* value = factory->ort_api_.GetKeyValue(options, "some_env_config");
+
+  if (value != nullptr) {
+    factory->some_env_config_ = value;
+  }
+
+  return nullptr;
+}
+
+/*static*/
 OrtStatus* ORT_API_CALL ExampleKernelEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                                         const OrtHardwareDevice* const* hw_devices,
                                                                         size_t num_devices,
@@ -145,6 +163,11 @@ OrtStatus* ORT_API_CALL ExampleKernelEpFactory::GetSupportedDevicesImpl(OrtEpFac
       // random example using made up values
       factory->ort_api_.AddKeyValuePair(ep_metadata, "supported_devices", "CrackGriffin 7+");
       factory->ort_api_.AddKeyValuePair(ep_options, "run_really_fast", "true");
+
+      if (!factory->some_env_config_.empty()) {
+        // Store config obtained from OrtEpFactory::SetEnvironmentOptions into the EP metadata for testing convenience.
+        factory->ort_api_.AddKeyValuePair(ep_metadata, "some_env_config", factory->some_env_config_.c_str());
+      }
 
       // OrtEpDevice copies ep_metadata and ep_options.
       OrtEpDevice* ep_device = nullptr;

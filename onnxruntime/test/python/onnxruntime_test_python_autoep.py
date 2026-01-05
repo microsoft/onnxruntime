@@ -341,6 +341,30 @@ class TestAutoEP(AutoEpTestCase):
 
         self.unregister_execution_provider_library(ep_name)
 
+    def test_register_execution_provider_with_options(self):
+        """
+        Test registration of an example EP plugin with options.
+        """
+        ep_lib_path = "example_plugin_ep_kernel_registry.dll"
+        try:
+            ep_lib_path = get_name("example_plugin_ep_kernel_registry.dll")
+        except FileNotFoundError:
+            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+
+        registration_name = "example_plugin_ep_kernel_registry"
+        ep_name = "ExampleKernelEp"
+        options = {"some_env_config": "2"}  # The environment options to pass to OrtEpFactory::SetEnvironmentOptions
+        self.register_execution_provider_library_with_options(registration_name, os.path.realpath(ep_lib_path), options)
+
+        ep_devices = onnxrt.get_ep_devices()
+        ep_device = next((ep_device for ep_device in ep_devices if ep_device.ep_name == ep_name), None)
+        self.assertIsNotNone(ep_device)
+
+        # The example EP stores the env config in the OrtEpDevice metadata for testing convenience.
+        ep_metadata = ep_device.ep_metadata
+        self.assertEqual(ep_metadata["some_env_config"], "2")
+        self.unregister_execution_provider_library(registration_name)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

@@ -39,6 +39,10 @@ struct OrtKeyValuePairs {
     Sync();
   }
 
+  bool HasKey(const std::string& key) const {
+    return entries_.find(key) != entries_.end();
+  }
+
   void Add(const char* key, const char* value) {
     // ignore if either are nullptr.
     if (key && value) {

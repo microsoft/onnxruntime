@@ -132,7 +132,8 @@ class Environment {
                                       const OrtArenaCfg* arena_cfg = nullptr);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path);
+  Status RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path,
+                                          const OrtKeyValuePairs* options);
   Status UnregisterExecutionProviderLibrary(const std::string& registration_name);
 
   // convert an OrtEpFactory* to EpFactoryInternal* if possible.
@@ -206,14 +207,16 @@ class Environment {
 
   Status RegisterExecutionProviderLibrary(const std::string& registration_name,
                                           std::unique_ptr<EpLibrary> ep_library,
-                                          const std::vector<EpFactoryInternal*>& internal_factories = {});
+                                          const std::vector<EpFactoryInternal*>& internal_factories = {},
+                                          const OrtKeyValuePairs* options = nullptr);
 
   struct EpInfo {
     // calls EpLibrary::Load
     // for each factory gets the OrtEpDevice instances and adds to execution_devices
     // internal_factory is set if this is an internal EP
     static Status Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
-                         const std::vector<EpFactoryInternal*>& internal_factories = {});
+                         const std::vector<EpFactoryInternal*>& internal_factories = {},
+                         const OrtKeyValuePairs* options = nullptr);
 
     // removes entries for this library from execution_devices
     // calls EpLibrary::Unload

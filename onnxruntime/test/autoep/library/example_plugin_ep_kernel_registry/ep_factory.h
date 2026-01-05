@@ -35,6 +35,8 @@ class ExampleKernelEpFactory : public OrtEpFactory {
   static uint32_t ORT_API_CALL GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept;
 
   static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL SetEnvironmentOptionsImpl(OrtEpFactory* this_ptr,
+                                                           const OrtKeyValuePairs* options) noexcept;
 
   static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                          const OrtHardwareDevice* const* devices,
@@ -76,6 +78,7 @@ class ExampleKernelEpFactory : public OrtEpFactory {
   const std::string vendor_{"Contoso2"};   // EP vendor name
   const uint32_t vendor_id_{0xB358};       // EP vendor ID
   const std::string ep_version_{"0.1.0"};  // EP version
+  std::string some_env_config_;
 
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;
