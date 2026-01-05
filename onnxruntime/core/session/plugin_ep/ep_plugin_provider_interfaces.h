@@ -108,6 +108,8 @@ class PluginExecutionProvider : public IExecutionProvider {
                                                    std::string_view node_op_type,
                                                    DataLayout target_data_layout) const override;
 
+  bool ConcurrentRunSupported() const override;
+
   Status OnRunStart(const RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
