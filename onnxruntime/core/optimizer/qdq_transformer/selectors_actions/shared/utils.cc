@@ -129,8 +129,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
 }
 static const OpVersionsAndSelector::OpVersionsMap GetInstanceAndLayerNormalizationOpVersionsMap() {
   return {{"InstanceNormalization", {}},
-          {"LayerNormalization", {}},
-          {"RMSNormalization", {}}};
+          {"LayerNormalization", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBatchNormalizationOpVersionsMap() {
   return {{"BatchNormalization", {}}};
@@ -158,6 +157,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetCumSumOpVersionsMap() {
 
 static const OpVersionsAndSelector::OpVersionsMap GetScatterElementsOpVersionsMap() {
   return {{"ScatterElements", {}}};
+}
+
+static const OpVersionsAndSelector::OpVersionsMap GetRMSNormalizationOpVersionsMap() {
+  return {{"RMSNormalization", {}}};
 }
 
 /* Selector rules registration related */
@@ -302,6 +305,13 @@ void RegisterScatterElementsSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterRMSNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for RMSNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<RMSNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetRMSNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -323,6 +333,7 @@ void SelectorManager::CreateSelectors() {
   RegisterTopKSelector(qdq_selectors_);
   RegisterCumSumSelector(qdq_selectors_);
   RegisterScatterElementsSelector(qdq_selectors_);
+  RegisterRMSNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {
