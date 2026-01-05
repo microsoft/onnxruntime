@@ -325,7 +325,7 @@ bool PerformanceRunner::Initialize() {
     for (int i = 0; i != input_count; ++i) {
       auto iter = feeds.find(test_model_info->GetInputName(i));
       if (iter == feeds.end()) {
-        std::cout << "there is no test input data in " << test_case_->GetDataDir(test_data_id)
+        std::cout << "there is no test input data in " << test_case_->GetDatasetDebugInfoString(test_data_id)
                   << " for input " << test_model_info->GetInputName(i)
                   << " and model " << test_case_->GetTestCaseName()
                   << std::endl;
