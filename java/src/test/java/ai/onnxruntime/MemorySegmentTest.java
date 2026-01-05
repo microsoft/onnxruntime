@@ -110,6 +110,20 @@ public class MemorySegmentTest {
   }
 
   @Test
+  public void testNotASegment() throws OrtException {
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    long[] shape = new long[] {256 * 1024, 4 * 1024};
+    Object notASegment = new Object();
+    try {
+      OnnxTensor tensor =
+              OnnxTensor.createTensorFromMemorySegment(env, notASegment, shape, OnnxJavaType.FLOAT);
+      Assertions.fail("Should have thrown.");
+    } catch (IllegalArgumentException e) {
+      Assertions.assertTrue(e.getMessage().contains("Segment argument was not a java.lang.foreign.MemorySegment"));
+    }
+  }
+
+  @Test
   public void testSegments() throws OrtException {
     OrtEnvironment env = OrtEnvironment.getEnvironment();
     // Construct a big segment.
