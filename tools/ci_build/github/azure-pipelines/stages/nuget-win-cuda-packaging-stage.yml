@@ -15,7 +15,7 @@ parameters:
   type: string
   default: '13.0'
   values:
-   - 12.8
+   - 12.9
    - 13.0
 
 - name: win_cuda_home

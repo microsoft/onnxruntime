@@ -29,10 +29,10 @@ parameters:
 
 - name: CudaVersion
   type: string
-  default: '12.8'
+  default: '12.9'
   values:
     - 13.0
-    - 12.8
+    - 12.9
 
 steps:
 - task: UsePythonVersion@0

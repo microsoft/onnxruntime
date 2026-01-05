@@ -32,16 +32,16 @@ parameters:
 - name: CudaVersion
   displayName: CUDA version
   type: string
-  default: '12.8'
+  default: '12.9'
   values:
     - 13.0
-    - 12.8
+    - 12.9
 
 variables:
   - name: setup_env_script
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: 'setup_env_cuda13.bat'
-    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    ${{ if eq(parameters.CudaVersion, '12.9') }}:
       value: 'setup_env_cuda12.bat'
 
 stages:
