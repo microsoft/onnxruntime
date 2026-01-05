@@ -321,7 +321,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       if (is_from_outer_scope) {
         value_infos.emplace(value_name, ort_value_info);
         if (is_constant_initializer) {
-          initializer_value_infos.emplace(value_name, &ort_value_info);
+          initializer_value_infos.emplace(value_name, ort_value_info);
         }
       } else if (is_optional_graph_input) {
         initializer_value_infos.emplace(value_name, ort_value_info);
