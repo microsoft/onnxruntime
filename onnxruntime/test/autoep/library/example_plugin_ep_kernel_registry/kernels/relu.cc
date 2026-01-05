@@ -15,7 +15,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     /*version*/ 14,  // Equivalent to start_version: 14, end_version: 14 (inclusive)
     (Ort::KernelDefBuilder()
-         .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
+         .AddTypeConstraint("T", GetTensorTypes({ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                                 ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64}))
          .AddInputOutputMutableAlias(0, 0)),
     Relu)
 
@@ -36,6 +37,23 @@ OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::uni
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
+template <typename T>
+static OrtStatus* ApplyRelu(Ort::KernelContext kernel_context) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  gsl::span<const T> input0;
+  std::vector<int64_t> shape0;
+  RETURN_IF_ERROR(GetKernelInputDataAndShape<T>(kernel_context, 0, input0, shape0));
+
+  Ort::UnownedValue output = kernel_context.GetOutput(0, shape0);
+  T* output_data = output.GetTensorMutableData<T>();
+
+  for (size_t i = 0; i < input0.size(); ++i) {
+    output_data[i] = std::max(static_cast<T>(0), input0[i]);
+  }
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
 /*static*/
 OrtStatus* ORT_API_CALL Relu::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
@@ -43,15 +61,15 @@ OrtStatus* ORT_API_CALL Relu::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelCont
   Ort::KernelContext kernel_context(kernel_ctx);
   static_cast<void>(relu_kernel->info_);  // NOTE: Unused in this example.
 
-  gsl::span<const float> input0;
-  std::vector<int64_t> shape0;
-  RETURN_IF_ERROR(GetKernelInputDataAndShape<float>(kernel_context, 0, input0, shape0));
+  Ort::ConstValue input = kernel_context.GetInput(0);
+  auto type_shape = input.GetTensorTypeAndShapeInfo();
+  auto elem_type = type_shape.GetElementType();
 
-  Ort::UnownedValue output = kernel_context.GetOutput(0, shape0);
-  float* output_data = output.GetTensorMutableData<float>();
-
-  for (size_t i = 0; i < input0.size(); ++i) {
-    output_data[i] = std::max(0.0f, input0[i]);
+  if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+    ApplyRelu<float>(kernel_context);
+  } else {
+    assert(elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+    ApplyRelu<int64_t>(kernel_context);
   }
 
   return nullptr;

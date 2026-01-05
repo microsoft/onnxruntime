@@ -128,13 +128,15 @@ OrtStatus* ORT_API_CALL Reshape::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelC
   // Input[1] has the requested shape for the reshape operation.
   Ort::ConstValue shape_input = kernel_context.GetInput(1);
   gsl::span<const int64_t> shape_input_data;
-  std::vector<int64_t> final_shape;
+  std::vector<int64_t> shape_input_shape;
 
-  RETURN_IF_ERROR(GetValueDataAndShape(shape_input, shape_input_data, final_shape));
-  RETURN_IF(final_shape.size() != 1, Ort::GetApi(), "A shape tensor must have one dimension");
-  RETURN_IF_ERROR(GetRequestedShape(input_shape, reshape_kernel->allow_zero_, final_shape));
+  RETURN_IF_ERROR(GetValueDataAndShape(shape_input, shape_input_data, shape_input_shape));
+  RETURN_IF(shape_input_shape.size() != 1, Ort::GetApi(), "A shape tensor must have one dimension");
 
-  Ort::UnownedValue output = kernel_context.GetOutput(0, final_shape);
+  std::vector<int64_t> output_shape(shape_input_data.begin(), shape_input_data.end());
+  RETURN_IF_ERROR(GetRequestedShape(input_shape, reshape_kernel->allow_zero_, output_shape));
+
+  Ort::UnownedValue output = kernel_context.GetOutput(0, output_shape);
 
   // This kernel aliases the input and output, so a copy is not really necessary.
   // CopyTensor() will not do a copy if the source and destination buffers are the same.

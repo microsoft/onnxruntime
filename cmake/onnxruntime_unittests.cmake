@@ -2100,6 +2100,8 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_lib_entry.cc"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_factory.h"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_factory.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/get_capability_utils.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/get_capability_utils.cc"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep.h"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep.cc"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_allocator.h"
