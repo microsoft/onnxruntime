@@ -3555,6 +3555,15 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*en
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibraryWithOptions, _In_ OrtEnv* /*env*/,
+                    _In_ const char* /*registration_name*/, _In_ const ORTCHAR_T* /*path*/,
+                    _In_opt_ const OrtKeyValuePairs* /*options*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "RegisterExecutionProviderLibraryWithOptions is not supported in a minimal build.");
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/,
                     _In_ const char* /*registration_name*/) {
   API_IMPL_BEGIN
