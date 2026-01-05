@@ -211,7 +211,7 @@ Status ScatterElements::ComputeInternal(ComputeContext& context) const {
   }
 
   const uint32_t output_size = onnxruntime::narrow<uint32_t>(indices_shape.Size());
-  const uint32_t axis_dim_limit = onnxruntime::narrow<uint32_t>(input_shape[axis]);
+  const uint32_t axis_dim_limit = onnxruntime::narrow<uint32_t>(input_shape[static_cast<size_t>(axis)]);
 
   MLDataType data_type = input->DataType();
   ScatterElementsProgram program(axis, reduction_, data_type);
