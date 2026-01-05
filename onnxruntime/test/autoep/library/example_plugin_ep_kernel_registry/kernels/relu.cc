@@ -66,10 +66,10 @@ OrtStatus* ORT_API_CALL Relu::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelCont
   auto elem_type = type_shape.GetElementType();
 
   if (elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    ApplyRelu<float>(kernel_context);
+    RETURN_IF_ERROR(ApplyRelu<float>(kernel_context));
   } else {
     assert(elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
-    ApplyRelu<int64_t>(kernel_context);
+    RETURN_IF_ERROR(ApplyRelu<int64_t>(kernel_context));
   }
 
   return nullptr;

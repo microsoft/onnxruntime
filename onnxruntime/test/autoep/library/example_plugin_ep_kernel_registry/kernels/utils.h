@@ -40,7 +40,7 @@ inline std::vector<const OrtDataType*> GetTensorTypes(const std::vector<ONNXTens
 
 /// <summary>
 /// Copy a tensor using a OrtDataTransferImpl instance. Used by kernel implementations to copy
-/// tensors that my reside on different devices.
+/// tensors that may reside on different devices.
 /// </summary>
 /// <param name="data_transfer_impl"></param>
 /// <param name="src_tensor"></param>

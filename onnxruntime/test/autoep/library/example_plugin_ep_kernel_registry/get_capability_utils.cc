@@ -158,8 +158,8 @@ OrtStatus* GetCpuPreferredNodes(const OrtGraph& ort_graph, OrtEpGraphSupportInfo
       Ort::ConstValueInfo input = inputs[i];
       if (input == nullptr) continue;  // Skip missing optional input
 
-      // skip placing on CPU if the data typs is float16 or bfloat16 or
-      // float8e4m3fn, float8e4m3fnuz, floate5m2, floate5m2fnuz or float4e2m1
+      // skip placing on CPU if the data types is float16 or bfloat16 or
+      // float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz or float4e2m1
       Ort::ConstTypeInfo type_info = input.TypeInfo();
       auto type_shape_info = type_info.GetTensorTypeAndShapeInfo();
       auto elem_type = type_shape_info.GetElementType();
@@ -189,7 +189,7 @@ OrtStatus* GetCpuPreferredNodes(const OrtGraph& ort_graph, OrtEpGraphSupportInfo
       }
 
       // input is a CPU tensor, but it's intended to be consumed as CPU input by the target EP
-      bool is_input_on_cpu = MemTypeOnCpuExplicitly(node_to_kernel[cur].GetOutputMemType(i));
+      bool is_input_on_cpu = MemTypeOnCpuExplicitly(node_to_kernel[cur].GetInputMemType(i));
       if (is_input_on_cpu) {
         place_in_cpu = false;
         break;
