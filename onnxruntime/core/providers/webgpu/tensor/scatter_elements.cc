@@ -71,9 +71,6 @@ Status ScatterElementsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
 
     switch (reduction) {
-      case ScatterElementsReduction::None:
-        ss << "    " << base_ptr << "[" << offset_var << "] = " << value << ";\n";
-        break;
       case ScatterElementsReduction::Add:
         if (is_32_bit_integer) {
           ss << "    atomicAdd(&" << base_ptr << "[" << offset_var << "], bitcast<" << data_type << ">(" << value << "));\n";
@@ -167,7 +164,15 @@ Status ScatterElementsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Get update value and scatter
   shader.MainFunctionBody() << "  let update_value = " << updates.GetByOffset("global_idx") << ";\n";
   shader.MainFunctionBody() << "  let output_offset = " << output.IndicesToOffset("output_indices") << ";\n";
-  shader.MainFunctionBody() << atomic_reduction_snippet(reduction_, "output", "output_offset", "update_value", data_type_str);
+
+  // Handle reduction
+  if (reduction_ == ScatterElementsReduction::None) {
+    // Non-reduction path: use direct assignment
+    shader.MainFunctionBody() << "  " << output.SetByOffset("output_offset", "update_value") << ";\n";
+  } else {
+    // Reduction path: use atomic operations
+    shader.MainFunctionBody() << atomic_reduction_snippet(reduction_, "output", "output_offset", "update_value", data_type_str);
+  }
 
   return Status::OK();
 }
