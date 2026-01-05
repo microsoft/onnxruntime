@@ -1981,13 +1981,13 @@ class TestInferenceSession(unittest.TestCase):
         # Query session for information on each subgraph assigned to an EP.
         ep_subgraphs = session.get_provider_graph_partitioning_info()
 
-        # Check that the all 3 nodes are assigned to CPU EP (each in its own subgraph)
+        # Check that all 3 nodes are assigned to CPU EP (each in its own subgraph)
         self.assertEqual(len(ep_subgraphs), 3)
         for ep_subgraph in ep_subgraphs:
             self.assertEqual(ep_subgraph.ep_name, "CPUExecutionProvider")
             self.assertEqual(len(ep_subgraph.get_nodes()), 1)
 
-        # Serialize each node to an identifer (concatinates operator type and node name)
+        # Serialize each node to an identifier (concatenates operator type and node name)
         node_ids: list[str] = [f"{n.op_type}/{n.name}" for s in ep_subgraphs for n in s.get_nodes()]
 
         # Should have 1 Mul and 2 Adds.
