@@ -495,8 +495,6 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
   try {
     // Check that OrtGraph is a top-level graph (no parent node).
     Ort::ConstGraph ort_graph{&graph};
-    Ort::ConstNode parent_node = ort_graph.GetParentNode();
-    // ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, "Cannot serialize nested OrtGraph into a ModelProto");
 
     // Set model description.
     model_proto.set_doc_string("Serialized from OrtGraph");
