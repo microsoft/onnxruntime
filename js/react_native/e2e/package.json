@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@dr.pogodin/react-native-fs": "^2.36.2",
-    "react": "^18.2.0",
+    "react": "^18.3.1",
     "react-native": "^0.73.11"
   },
   "devDependencies": {
