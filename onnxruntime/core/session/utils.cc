@@ -102,6 +102,10 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
+  if (size == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "`size` argument is NULL");
+  }
+
   const size_t str_len = str.size();
   const size_t req_size = str_len + 1;
 

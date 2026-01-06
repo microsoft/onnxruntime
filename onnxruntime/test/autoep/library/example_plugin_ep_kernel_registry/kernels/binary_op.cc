@@ -104,7 +104,7 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
   }
 
   // Equal input shapes is checked by GetCapability, but verify here.
-  RETURN_IF(shape0 != shape1, Ort::GetApi(), "BinaryOp kernels do not support broadcasting.");
+  RETURN_IF(shape0 != shape1, Ort::GetApi(), "BinaryOp kernel does not support broadcasting.");
 
   Ort::UnownedValue output = kernel_context.GetOutput(0, shape0);
   float* output_data = output.GetTensorMutableData<float>();
