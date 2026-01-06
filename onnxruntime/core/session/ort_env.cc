@@ -19,7 +19,7 @@ std::atomic<bool> g_is_shutting_down(false);
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
 namespace onnxruntime {
 namespace webgpu {
 void CleanupWebGpuContexts();
@@ -41,13 +41,13 @@ OrtEnv::~OrtEnv() {
   UnloadSharedProviders();
 #endif
 
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
   // Explicitly destroy the Environment first, which will properly clean up DataTransferManager
   // and call ReleaseImpl on WebGpuDataTransferImpl
   value_.reset();
 
   // Now that Environment is destroyed and all data transfers are cleaned up,
   // we can safely cleanup any remaining WebGPU contexts
-#ifdef USE_WEBGPU
   webgpu::CleanupWebGpuContexts();
 #endif
 }
