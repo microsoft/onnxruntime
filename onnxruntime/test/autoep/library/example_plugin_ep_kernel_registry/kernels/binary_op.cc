@@ -47,10 +47,16 @@ OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state,
   Ort::ConstKernelInfo kernel_info(info);
 
   // Note: can do basic validation or preprocessing via the OrtKernelInfo APIs.
-  // Here, we check that this BinaryOp class is only instantiated for a Mul or Add operator.
+  // Here, we check that this BinaryOp class is only instantiated for an onnx Mul or Add operator.
+  std::string op_domain = kernel_info.GetOperatorDomain();
   std::string op_type = kernel_info.GetOperatorType();
-  RETURN_IF(op_type != "Add" && op_type != "Mul", Ort::GetApi(),
-            std::string("BinaryOp does not support kernel for operator type: " + op_type).c_str());
+
+  if ((!op_domain.empty() && op_domain != "ai.onnx") || (op_type != "Add" && op_type != "Mul")) {
+    std::ostringstream oss;
+    oss << "ExampleKernelEp's BinaryOp class does not support operator with domain '" << op_domain << "' and "
+        << " type '" << op_type << "'.";
+    return Ort::GetApi().CreateStatus(ORT_EP_FAIL, oss.str().c_str());
+  }
 
   result = std::make_unique<BinaryOp>(kernel_info, state, PrivateTag{});
   return nullptr;

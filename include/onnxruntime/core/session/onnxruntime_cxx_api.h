@@ -2783,9 +2783,10 @@ struct KernelInfoImpl : Base<T> {
 
   KeyValuePairs GetConfigEntries() const;
 
-  std::string GetOperatorType() const;  ///< Wraps KernelInfo_GetOperatorType
-  int GetSinceVersion() const;          ///< Wraps KernelInfo_GetSinceVersion
-  const OrtEp* GetEp() const;           ///< Wraps KernelInfo_GetEp
+  std::string GetOperatorDomain() const;  ///< Wraps OrtApi::KernelInfo_GetOperatorDomain
+  std::string GetOperatorType() const;    ///< Wraps OrtApi::KernelInfo_GetOperatorType
+  int GetOperatorSinceVersion() const;    ///< Wraps OrtApi::KernelInfo_GetOperatorSinceVersion
+  const OrtEp* GetEp() const;             ///< Wraps OrtEpApi::KernelInfo_GetEp
 };
 
 }  // namespace detail

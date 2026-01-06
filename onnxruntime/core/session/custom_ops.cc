@@ -726,7 +726,20 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* i
   });
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_ char* out,
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorDomain, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                    _Inout_ size_t* size) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+
+    auto status = CopyStringToOutputArg(op_info->node().Domain(),
+                                        "Output buffer is not large enough for ::OrtKernelInfo's operator domain",
+                                        out, size);
+
+    return onnxruntime::ToOrtStatus(status);
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
                     _Inout_ size_t* size) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
@@ -739,7 +752,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorType, _In_ const OrtKernelInf
   });
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetSinceVersion, _In_ const OrtKernelInfo* info, _Out_ int* since_version) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorSinceVersion, _In_ const OrtKernelInfo* info,
+                    _Out_ int* since_version) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
 

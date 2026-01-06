@@ -2843,6 +2843,21 @@ inline KeyValuePairs KernelInfoImpl<T>::GetConfigEntries() const {
 }
 
 template <typename T>
+inline std::string KernelInfoImpl<T>::GetOperatorDomain() const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorDomain(this->p_, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorDomain(this->p_, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
 inline std::string KernelInfoImpl<T>::GetOperatorType() const {
   size_t size = 0;
 
@@ -2858,9 +2873,9 @@ inline std::string KernelInfoImpl<T>::GetOperatorType() const {
 }
 
 template <typename T>
-inline int KernelInfoImpl<T>::GetSinceVersion() const {
+inline int KernelInfoImpl<T>::GetOperatorSinceVersion() const {
   int out = 0;
-  Ort::ThrowOnError(GetApi().KernelInfo_GetSinceVersion(this->p_, &out));
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorSinceVersion(this->p_, &out));
   return out;
 }
 
