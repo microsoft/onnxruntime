@@ -51,7 +51,9 @@ steps:
    RunAsPreJob: false
 
 - pwsh: |
-    del "$env:APPDATA\gnupg\trustdb.gpg"
+    try {
+      del "$env:APPDATA\gnupg\trustdb.gpg"
+    }
   displayName: 'Clear GPG Trust DB Cache'
 
 - task: PythonScript@0
