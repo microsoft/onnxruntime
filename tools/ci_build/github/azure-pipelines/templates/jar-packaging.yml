@@ -53,6 +53,8 @@ steps:
 - pwsh: |
     try {
       del "$env:APPDATA\gnupg\trustdb.gpg"
+    } catch {
+      Write-Host "Trust DB not found or could not be deleted: $_"
     }
   displayName: 'Clear GPG Trust DB Cache'
 
