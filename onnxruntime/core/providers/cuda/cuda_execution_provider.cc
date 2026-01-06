@@ -215,7 +215,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaPinnedAllocator(OrtDevice::DeviceI
       true,
       {default_memory_arena_cfg ? *default_memory_arena_cfg
                                 : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1, -1L)},
-      // make it stream aware
+      // stream-aware flag (intentionally set to false for this allocator)
       false);
 
   return CreateAllocator(pinned_memory_info);
