@@ -31,7 +31,7 @@ parameters:
 - name: PackageName
   displayName: What is the package name? Override using an environment variable CustomPackageName.
   type: string
-  default: 'Microsoft.ML.OnnxRuntime.Flamingo'
+  default: 'Microsoft.ML.OnnxRuntime.Foundry'
 
 variables:
   - template: templates/common-variables.yml
@@ -107,7 +107,7 @@ extends:
           msbuildPlatform: x64
           packageName: x64-cuda
           CudaVersion: ${{ parameters.CudaVersion }}
-          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
+          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --parallel 4 --nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
           runTests: false
           buildJava: false
           java_artifact_id: onnxruntime_gpu
@@ -127,6 +127,7 @@ extends:
           build_config: 'RelWithDebInfo'
           PublishArchive: true
           PublishNugetToFeed: false
+          AdditionalBuildArgs: '--caller_framework WinAI'
 
       - template: templates/mac-cpu-packaging-pipeline.yml
         parameters:
