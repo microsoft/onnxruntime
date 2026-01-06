@@ -347,7 +347,7 @@ void PadBase::FlattenInnerShape(gsl::span<const int64_t> input_dims, gsl::span<c
                                 gsl::span<const int64_t> slices, TensorShapeVector& reshaped_dims) {
   const size_t dims_count = input_dims.size();
   size_t inner_axis = dims_count - 1;
-  SafeInt<size_t> inner_size = 1;
+  SafeInt<int64_t> inner_size = 1;
 
   // Find all inner most dimensions that can be flattened.
   do {
