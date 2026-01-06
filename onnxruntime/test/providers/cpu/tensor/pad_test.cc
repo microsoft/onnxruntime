@@ -1405,7 +1405,6 @@ TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "wrap");
   test.ConfigExcludeEps({kQnnExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
-  test.Config(OpTester::ExpectResult::kExpectFailure, "");
   test.RunWithConfig();
 }
 
