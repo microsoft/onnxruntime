@@ -1107,7 +1107,7 @@ TEST(PadOpTest, ConstantPadNegativeAxes) {
                          0.0f, 1.0f, 1.0f, 0.0f,
                          0.0f, 1.0f, 1.0f, 0.0f,
                          0.0f, 1.0f, 1.0f, 0.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
 TEST(PadOpTest, ConstantFill_F32_RemovesAllDataOnAxis) {

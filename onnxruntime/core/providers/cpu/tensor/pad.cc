@@ -496,9 +496,9 @@ static Status PadImpl(OpKernelContext* ctx,
   // Reshape padding
   const size_t new_dims_count = reshaped_input_dims.size();
   const size_t inner_axis = new_dims_count - 1;
-  const int64_t inner_no_pad_size = output_dims[inner_axis] > 0
-                                        ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
-                                        : 0;
+  const size_t inner_no_pad_size = narrow<size_t>(output_dims[inner_axis] > 0
+                                                      ? reshaped_input_dims[inner_axis] / output_dims[inner_axis]
+                                                      : 0);
   PadsVector reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
   PadBase::ReshapePads(pads, data_rank, new_dims_count, inner_no_pad_size, reshaped_pad);
   PadBase::ReshapePads(slices, data_rank, new_dims_count, inner_no_pad_size, reshaped_slice);
