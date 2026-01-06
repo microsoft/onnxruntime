@@ -8,6 +8,17 @@ import sys
 import tempfile
 from pathlib import Path
 
+def clean_gpg_trustdb() -> None:
+    if platform.system() == "Windows":
+        # Clean up GPG trust database if it exists
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            trustdb_path = Path(appdata) / "gnupg" / "trustdb.gpg"
+            if trustdb_path.exists():
+                try:
+                    trustdb_path.unlink()
+                except OSError as e:
+                    print(f"Warning: failed to delete GPG trust database at {trustdb_path}: {e}")
 
 def get_gpg_path() -> Path:
     """Finds the path to the GPG executable."""
@@ -112,6 +123,9 @@ def main() -> None:
         passphrase_file.write_text(gpg_passphrase, encoding="utf-8")
 
         # Clear GPG trustdb to avoid issues with cached trust settings
+        clean_gpg_trustdb()
+
+        # Check GPG trust database to generate a fresh one
         print("Checking trust db")
         run_command([str(gpg_exe_path), "--check-trustdb"])
 

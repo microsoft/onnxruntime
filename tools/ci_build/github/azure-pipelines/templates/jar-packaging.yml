@@ -50,14 +50,6 @@ steps:
    SecretsFilter: 'java-pgp-pwd,java-pgp-key'
    RunAsPreJob: false
 
-- pwsh: |
-    try {
-      del "$env:APPDATA\gnupg\trustdb.gpg"
-    } catch {
-      Write-Host "Trust DB not found or could not be deleted: $_"
-    }
-  displayName: 'Clear GPG Trust DB Cache'
-
 - task: PythonScript@0
   displayName: 'Sign files: GnuPG, sha1, and md5'
   env:
