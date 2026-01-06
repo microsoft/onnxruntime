@@ -4428,7 +4428,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
