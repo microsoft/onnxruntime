@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <iostream>
 #include <unordered_map>
+#include <numeric>
+#include <optional>
 
 float DiffL2Norm(const Ort::Value& a, const Ort::Value& b)
 {
@@ -28,7 +30,49 @@ float DiffL2Norm(const Ort::Value& a, const Ort::Value& b)
     return diff_norm;
 }
 
-std::pair<float, bool> CalculateOffsets(
+std::optional<float> CosineSimilarity(const Ort::Value& a, const Ort::Value& b)
+{
+    if (!a.IsTensor() || !b.IsTensor())
+        return std::nullopt;
+
+    // Get tensor shape info
+    Ort::TensorTypeAndShapeInfo a_info = a.GetTensorTypeAndShapeInfo();
+    Ort::TensorTypeAndShapeInfo b_info = b.GetTensorTypeAndShapeInfo();
+
+    // Validate element count
+    const size_t num_elems = a_info.GetElementCount();
+    if (num_elems == 0 || num_elems != b_info.GetElementCount())
+        return std::nullopt;
+
+    // Assumes tensors are contiguous and of type float
+    const float* data_a = a.GetTensorData<float>();
+    const float* data_b = b.GetTensorData<float>();
+
+    double dot = 0.0;
+    double na = 0.0;
+    double nb = 0.0;
+
+    for (size_t i = 0; i < num_elems; ++i)
+    {
+        const double va = static_cast<double>(data_a[i]);
+        const double vb = static_cast<double>(data_b[i]);
+
+        dot += va * vb;
+        na += va * va;
+        nb += vb * vb;
+    }
+
+    const double eps = 1e-12;
+    const double denom = std::sqrt(na) * std::sqrt(nb);
+
+    // Invalid comparison: zero or near-zero magnitude
+    if (denom < eps)
+        return std::nullopt;
+
+    return static_cast<float>(dot / denom);
+}
+
+std::pair<float, bool> CalculateOffsetsL2(
     const Ort::Value& f32_cpu_output, const Ort::Value& qdq_npu_output, const float& l2_norm_output, float threshold)
 {
     float fp32_vs_npu = DiffL2Norm(f32_cpu_output, qdq_npu_output);
@@ -38,15 +82,23 @@ std::pair<float, bool> CalculateOffsets(
     return {diff, is_good_diff};
 }
 
-std::pair<std::unordered_map<std::string, std::vector<float>>, bool> CheckAccuracy(
-    std::unordered_map<std::string, float>& acc_threshold,
+std::pair<AccuracyResult, bool> CheckAccuracy(
+    const std::vector<AccuracyMetric>& metrics,
+    const std::unordered_map<std::string, std::unordered_map<std::string, float>>& acc_threshold,
     const std::unordered_map<std::string, std::vector<Ort::Value>>& npu_outputs,
     const std::unordered_map<std::string, std::vector<Ort::Value>>& f32_cpu_outputs,
     const std::unordered_map<std::string, std::vector<float>>& l2_norm_outputs,
-    const std::unordered_map<std::string, std::string> output_map)
+    const std::unordered_map<std::string, std::string>& output_map)
 {
     bool is_tolerable = true;
-    std::unordered_map<std::string, std::vector<float>> diffs_per_sample;
+    AccuracyResult diffs_per_sample;
+    bool do_l2 = false;
+    bool do_cos = false;
+    for (auto m : metrics)
+    {
+        if (m == AccuracyMetric::L2Norm) do_l2 = true;
+        if (m == AccuracyMetric::Cosine) do_cos = true;
+    }
 
     for (const auto& [output_name, _] : output_map)
     {
@@ -66,16 +118,16 @@ std::pair<std::unordered_map<std::string, std::vector<float>>, bool> CheckAccura
             return {{}, false};
         }
 
-        auto l2_it = l2_norm_outputs.find(output_name);
-        if (l2_it == l2_norm_outputs.end())
-        {
-            std::cerr << "ERROR: Output '" << output_name << "' not found in L2 norm outputs." << std::endl;
-            return {{}, false};
-        }
-
         const auto& npu_samples = npu_it->second;
         const auto& f32_samples = f32_it->second;
-        const auto& l2_samples = l2_it->second;
+        const auto* l2_samples_ptr = [&]() -> const std::vector<float>* {
+            if (!do_l2)
+                return nullptr;
+            auto l2_it = l2_norm_outputs.find(output_name);
+            if (l2_it == l2_norm_outputs.end())
+                return nullptr;
+            return &l2_it->second;
+        }();
 
         if (npu_samples.size() != f32_samples.size())
         {
@@ -83,35 +135,112 @@ std::pair<std::unordered_map<std::string, std::vector<float>>, bool> CheckAccura
                       << "' (NPU: " << npu_samples.size() << ", F32 CPU: " << f32_samples.size() << ")." << std::endl;
             return {{}, false};
         }
-
-        if (npu_samples.size() != l2_samples.size())
+        if (do_l2)
         {
-            std::cerr << "ERROR: Mismatch in number of samples for output '" << output_name
-                      << "' (NPU: " << npu_samples.size() << ", L2 norm: " << l2_samples.size() << ")." << std::endl;
-            return {{}, false};
-        }
-
-        std::vector<float> diffs;
-        diffs.reserve(npu_samples.size());
-
-        for (size_t sample_idx = 0; sample_idx < npu_samples.size(); ++sample_idx)
-        {
-            float threshold =
-                acc_threshold.find(output_name) != acc_threshold.end() ? acc_threshold.at(output_name) : 0.0f;
-
-            auto [diff, good_diff] =
-                CalculateOffsets(f32_samples[sample_idx], npu_samples[sample_idx], l2_samples[sample_idx], threshold);
-
-            diffs.push_back(diff);
-            if (!good_diff)
+            if (!l2_samples_ptr)
             {
-                is_tolerable = false;
-                std::cout << "Sample " << sample_idx << " accuracy for '" << output_name << "' "
-                          << "worse than the threshold set." << std::endl;
+                std::cerr << "ERROR: Output '" << output_name << "' not found in L2 norm outputs." << std::endl;
+                return {{}, false};
+            }
+            if (npu_samples.size() != l2_samples_ptr->size())
+            {
+                std::cerr << "ERROR: Mismatch in number of samples for output '" << output_name
+                          << "' (NPU: " << npu_samples.size() << ", L2 norm: " << l2_samples_ptr->size()
+                          << ")." << std::endl;
+                return {{}, false};
             }
         }
 
-        diffs_per_sample[output_name] = std::move(diffs);
+        MetricDiffs metric_diffs;
+        if (do_l2)
+        {
+            metric_diffs[ToString(AccuracyMetric::L2Norm)].reserve(npu_samples.size());
+        }
+        if (do_cos)
+        {
+            metric_diffs[ToString(AccuracyMetric::Cosine)].reserve(npu_samples.size());
+        }
+
+        for (size_t sample_idx = 0; sample_idx < npu_samples.size(); ++sample_idx)
+        {
+            // Per-metric, per-tensor thresholds
+            float l2_threshold = 0.0f;
+            float cosine_threshold = 0.0f;
+            {
+                // acc_threshold[metric_name][tensor_name]
+                auto metric_it = acc_threshold.find(ToString(AccuracyMetric::L2Norm));
+                if (metric_it != acc_threshold.end())
+                {
+                    auto t_it = metric_it->second.find(output_name);
+                    if (t_it != metric_it->second.end())
+                    {
+                        l2_threshold = t_it->second;
+                    }
+                }
+
+                metric_it = acc_threshold.find(ToString(AccuracyMetric::Cosine));
+                if (metric_it != acc_threshold.end())
+                {
+                    auto t_it = metric_it->second.find(output_name);
+                    if (t_it != metric_it->second.end())
+                    {
+                        cosine_threshold = t_it->second;
+                    }
+                }
+            }
+
+            if (do_cos)
+            {
+                auto cos_opt = CosineSimilarity(f32_samples[sample_idx], npu_samples[sample_idx]);
+
+                bool good = true;
+
+                if (!cos_opt.has_value())
+                {
+                    // Invalid cosine comparison
+                    good = false;
+                }
+                else
+                {
+                    float cos_value = cos_opt.value();
+
+                    // Always record cosine value when requested
+                    metric_diffs[ToString(AccuracyMetric::Cosine)].push_back(cos_value);
+
+                    // If no cosine threshold is configured (0.0), treat all valid cosine values as acceptable.
+                    good = (cosine_threshold > 0.0f)
+                        ? (cos_value >= cosine_threshold)
+                        : true;
+                }
+
+                if (!good)
+                {
+                    is_tolerable = false;
+                    std::cout << "Sample " << sample_idx << " accuracy for '" << output_name
+                        << "' (Cosine) worse than the threshold set." << std::endl;
+                }
+            }
+
+            if (do_l2)
+            {
+                auto [l2_diff, l2_good] = CalculateOffsetsL2(
+                    f32_samples[sample_idx],
+                    npu_samples[sample_idx],
+                    (*l2_samples_ptr)[sample_idx],
+                    l2_threshold);
+
+                metric_diffs[ToString(AccuracyMetric::L2Norm)].push_back(l2_diff);
+
+                if (!l2_good)
+                {
+                    is_tolerable = false;
+                    std::cout << "Sample " << sample_idx << " accuracy for '" << output_name
+                              << "' (L2Norm) worse than the threshold set." << std::endl;
+                }
+            }
+        }
+
+        diffs_per_sample[output_name] = std::move(metric_diffs);
     }
 
     return {diffs_per_sample, is_tolerable};

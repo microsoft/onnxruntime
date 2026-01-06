@@ -345,6 +345,26 @@
         },
         "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
       }
+    },
+    {
+      "Component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/matajoh/libnpy",
+          "commitHash": "57fcaeaf957af01396b0d468e480b2eb79c8a3f0"
+        }
+      },
+      "DevelopmentDependency": true
+    },
+    {
+      "Component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/nlohmann/json",
+          "commitHash": "55f93686c01528224f448c19128836e7df245f72"
+        }
+      },
+      "DevelopmentDependency": true
     }
   ],
   "Version": 1

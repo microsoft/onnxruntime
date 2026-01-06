@@ -1,0 +1,23 @@
+// Forked from https://devicesasg.visualstudio.com/PerceptiveShell/_git/PerceptiveShell?version=GC2e88aa051dc10c8a8434a6240e25be4ca6963c9c&path=/scripts/cmake/encryption_key_manager.cpp.in
+
+#include "encryption_key_manager.h"
+
+@SYMBOL_ENCRYPTION_KEY_MANAGER_INCLUDES@
+
+namespace EncryptionKeyManager
+{
+    const std::unordered_map<std::string, const char*> c_keyIdToKeyMapping{
+    @SYMBOL_KEY_ID_TO_KEY_MAPPING@
+    };
+};
+
+const char* EncryptionKeyManager::GetEncryptionKeyFromKeyId(const std::string& keyId)
+{
+    const auto& elem = c_keyIdToKeyMapping.find(keyId);
+    if (elem == c_keyIdToKeyMapping.end())
+    {
+        return nullptr;
+    }
+
+    return elem->second;
+}

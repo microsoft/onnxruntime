@@ -1,6 +1,7 @@
 {
   "models": {
     "psf": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psf_accuracy_collaterals_v2.0",
@@ -14,6 +15,7 @@
       }
     },
     "psi": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psi_accuracy_collaterals_v3.0",
@@ -27,6 +29,7 @@
       }
     },
     "psj": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psj_accuracy_collaterals_v2.0",
@@ -40,6 +43,7 @@
       }
     },
     "psa": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psa_accuracy_collaterals_v2.3",
@@ -53,6 +57,7 @@
       }
     },
     "pss": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_pss_accuracy_collaterals_v2.0",
@@ -66,6 +71,7 @@
       }
     },
     "psv": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psv_accuracy_collaterals_v2.0",
@@ -79,6 +85,7 @@
       }
     },
     "pst": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_pst_accuracy_collaterals_v2.0",
@@ -92,6 +99,7 @@
       }
     },
     "psh": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psh_accuracy_collaterals_v2.1",
@@ -105,6 +113,7 @@
       }
     },
     "psr": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psr_accuracy_collaterals_v2.0",
@@ -118,6 +127,7 @@
       }
     },
     "psl": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psl_accuracy_collaterals_v1.0",
@@ -131,6 +141,7 @@
       }
     },
     "psw": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psw_accuracy_collaterals_v2.0",
@@ -144,6 +155,7 @@
       }
     },
     "psd5_1": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psd5_1_accuracy_collaterals_v1.0",
@@ -157,6 +169,7 @@
       }
     },
     "psd1": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psd1_accuracy_collaterals_1.0.0",
@@ -170,6 +183,7 @@
       }
     },
     "psd6": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psd6_accuracy_collaterals_1.0.0",
@@ -183,6 +197,7 @@
       }
     },
     "psd2": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psd2_accuracy_collaterals_1.0.0",
@@ -196,6 +211,7 @@
       }
     },
     "psd3": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psd3_accuracy_collaterals_1.0.0",
@@ -209,6 +225,7 @@
       }
     },
     "psd4": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psd4_accuracy_collaterals_1.0.0",
@@ -222,6 +239,7 @@
       }
     },
     "psd7": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_psd7_accuracy_collaterals_1.0.0",
@@ -235,6 +253,7 @@
       }
     },
     "pso0": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_pso0_accuracy_collaterals",
@@ -242,6 +261,7 @@
       }
     },
     "pso1": {
+      "metric": "L2Norm",
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_pso1_accuracy_collaterals",
@@ -249,6 +269,7 @@
       }
     },
     "pso2_80": {
+      "metric": ["L2Norm", "Cosine"],
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_pso2_80_accuracy_collaterals",
@@ -256,6 +277,7 @@
       }
     },
     "pso2_160": {
+      "metric": ["L2Norm", "Cosine"],
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_pso2_160_accuracy_collaterals",
@@ -263,6 +285,7 @@
       }
     },
     "pso2_320": {
+      "metric": ["L2Norm", "Cosine"],
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_pso2_320_accuracy_collaterals",
@@ -270,6 +293,7 @@
       }
     },
     "pso2_640": {
+      "metric": ["L2Norm", "Cosine"],
       "dataset_package": {
         "nuget_feed": "ModelCollaterals",
         "package_name": "model_pso2_640_accuracy_collaterals",

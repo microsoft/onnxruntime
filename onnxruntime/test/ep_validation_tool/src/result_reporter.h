@@ -9,7 +9,7 @@ public:
         const Config config,
         CompilationResult& compilation_result,
         const PerformanceResult& performance_result,
-        std::unordered_map<std::string, std::vector<float>>& accuracy_result)
+        const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<float>>>& accuracy_result)
         : m_config(config),
           m_compilation_result(compilation_result),
           m_performance_result(performance_result),
@@ -37,12 +37,15 @@ public:
                   << "Inference peak pagefile usage: " << m_performance_result.peak_pagefile_usage << " bytes\n"
                   << "Average CPU usage: " << m_performance_result.average_cpu_usage << " %" << std::endl;
 
-        for (const auto& [tensor_name, norm_diffs] : m_accuracy_result)
+        for (const auto& [tensor_name, metric_map] : m_accuracy_result)
         {
-            float total_node_norm_diff = std::accumulate(norm_diffs.begin(), norm_diffs.end(), 0.0f);
-            float average_norm_diff = total_node_norm_diff / norm_diffs.size();
-            std::cout << "Average diff. of L2 norms for '" << tensor_name << "': " << average_norm_diff << "\n"
-                      << std::endl;
+            for (const auto& [metric_name, diffs] : metric_map)
+            {
+                float total = std::accumulate(diffs.begin(), diffs.end(), 0.0f);
+                float avg = diffs.empty() ? 0.0f : total / diffs.size();
+                std::cout << "Average diff. for '" << tensor_name << "' (" << metric_name << "): " << avg
+                          << "\n" << std::endl;
+            }
         }
 
         std::cout << "----- Test configuration -----\n"
@@ -50,7 +53,7 @@ public:
                   << "EP options: " << MapToString(m_config.ep_options) << "\n"
                   << "Graph optimization level: " << m_config.graph_opt_level << "\n"
                   << "Performance threshold: " << m_config.perf_threshold << "\n"
-                  << "Accuracy thresholds: " << MapToString(m_config.acc_threshold) << "\n"
+                  << "Accuracy thresholds: " << ThresholdsToString(m_config.acc_threshold) << "\n"
                   << std::endl;
     }
 
@@ -75,11 +78,16 @@ public:
         json_result["average_cpu_usage"] = m_performance_result.average_cpu_usage;
 
         nlohmann::json accuracy_json;
-        for (const auto& [tensor_name, norm_diffs] : m_accuracy_result)
+        for (const auto& [tensor_name, metric_map] : m_accuracy_result)
         {
-            float total_node_norm_diff = std::accumulate(norm_diffs.begin(), norm_diffs.end(), 0.0f);
-            float average_norm_diff = total_node_norm_diff / norm_diffs.size();
-            accuracy_json[tensor_name] = average_norm_diff;
+            nlohmann::json metric_json;
+            for (const auto& [metric_name, diffs] : metric_map)
+            {
+                float total = std::accumulate(diffs.begin(), diffs.end(), 0.0f);
+                float avg = diffs.empty() ? 0.0f : total / diffs.size();
+                metric_json[metric_name] = avg;
+            }
+            accuracy_json[tensor_name] = metric_json;
         }
         json_result["accuracy"] = accuracy_json;
 
@@ -99,7 +107,7 @@ private:
     Config m_config;
     CompilationResult m_compilation_result;
     PerformanceResult m_performance_result;
-    std::unordered_map<std::string, std::vector<float>> m_accuracy_result;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::vector<float>>> m_accuracy_result;
 
     template<typename T>
     std::string MapToString(const std::unordered_map<std::string, T>& map) const
@@ -110,6 +118,20 @@ private:
             oss << pair.first << "|" << pair.second << " ";
         }
 
+        return oss.str();
+    }
+
+    std::string ThresholdsToString(
+        const std::unordered_map<std::string, std::unordered_map<std::string, float>>& thresholds) const
+    {
+        std::ostringstream oss;
+        for (const auto& [metric, tensor_map] : thresholds)
+        {
+            for (const auto& [tensor, value] : tensor_map)
+            {
+                oss << metric << ":" << tensor << "|" << value << " ";
+            }
+        }
         return oss.str();
     }
 };

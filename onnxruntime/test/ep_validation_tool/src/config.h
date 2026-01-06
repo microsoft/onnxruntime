@@ -25,10 +25,38 @@ enum class ExecutionStage
     INFERENCE = 1,
     ACCURACY = 2
 };
+
+enum class AccuracyMetric
+{
+    L2Norm,
+    Cosine
+};
+
+inline AccuracyMetric ParseAccuracyMetric(const std::wstring& w)
+{
+    std::string s = wstring_to_string(w);
+    for (auto& c : s) c = static_cast<char>(::tolower(c));
+    if (s == "cosine") return AccuracyMetric::Cosine;
+    if (s == "l2norm") return AccuracyMetric::L2Norm;
+
+    std::wcout << L"Unknown accuracy metric: " << w << L". Falling back to 'l2norm'." << std::endl;
+    return AccuracyMetric::L2Norm;
+}
+
+inline const char* ToString(AccuracyMetric m)
+{
+    switch (m)
+    {
+    case AccuracyMetric::Cosine: return "cosine";
+    case AccuracyMetric::L2Norm:
+    default: return "l2norm";
+    }
+}
+
 #ifdef USE_WINML_FEATURES
 // Global list of execution providers accessible from other .cpp files
 inline std::unordered_set<std::string> g_executionProviders = {
-    "VitisAIExecutionProvider", "OpenVINOExecutionProvider", "QNNExecutionProvider"};
+    "VitisAIExecutionProvider", "OpenVINOExecutionProvider", "QNNExecutionProvider" };
 struct EpInfo
 {
     std::string name;
@@ -113,11 +141,15 @@ public:
         m_arg_parser.AddArgument(
             L"--accThreshold",
             L"-q",
-            L"Thresholds for model to be considered accurate. In form 'key1|value1 key2|value2 ...'. (L2 norm "
-            L"threshold for each output tensor)");
+            L"Thresholds for model to be considered accurate. Supported forms: "
+            L"1) 'tensor|value tensor2|value2 ...' (legacy L2Norm), 2) 'Metric:tensor|value Metric2:tensor2|value2 ...'.");
+        m_arg_parser.AddArgument(
+            L"--accMetrics",
+            L"-am",
+            L"Accuracy metrics to compute (space-separated). Supported values: L2Norm Cosine.",
+            false,
+            false);
         m_arg_parser.AddArgument(L"--epPolicy", L"-ep", L"Ep Selection Policy");
-        m_arg_parser.AddArgument(L"--compile", L"-cp", L"Compile");
-        m_arg_parser.AddArgument(L"--compiledModelPath", L"-cmp", L"Compiled Model Path");
         m_arg_parser.AddArgument(L"--executionProvider", L"-x", L"Execution provider to use.");
         m_arg_parser.AddArgument(
             L"--epName", L"-epn", L"EP name like CPUExecutionProvider , QNNExecutionProvider, etc");
@@ -179,6 +211,10 @@ public:
             std::wcout << "Error parsing session options." << std::endl;
             success = false;
         }
+        auto iter = session_options.find("ep.context_enable");
+        if (iter != session_options.end() && iter->second == "1") {
+            shouldCompileContextCache = true;
+        }
 
         if (!ParseOptions(m_arg_parser.Get(L"--epOptions"), ep_options))
         {
@@ -200,35 +236,103 @@ public:
             perf_threshold = m_arg_parser.GetFloat(L"--perfThreshold");
             if (perf_threshold == 0.0f)
             {
-                std::wcout << "WARNING: Performance threshold not specified. Performance won't be validated."
-                           << std::endl;
+                std::wcout << "WARNING: Performance threshold not specified. Performance won't be validated." << std::endl;
             }
         }
 
         if (stage >= ExecutionStage::ACCURACY)
         {
-            if (!ParseOptions(m_arg_parser.Get(L"--accThreshold"), acc_threshold))
+            // Parse accuracy threshold options per metric.
+            // Supported formats:
+            //  1) Legacy string: "tensor|value tensor2|value2 ..." (L2Norm thresholds)
+            //  2) String: "Metric:tensor|value Metric2:tensor2|value2 ..."
+            std::wstring acc_ws = m_arg_parser.Get(L"--accThreshold");
+            std::string acc_str = wstring_to_string(acc_ws);
+
+            // String-based forms
+            std::istringstream ss(acc_str);
+            std::string token;
+            while (ss >> token)
             {
-                std::wcout << "Error parsing accuracy threshold options. "
-                              "Argument --accThreshold is missing or in a bad format."
-                           << std::endl;
-                success = false;
+                if (token.empty())
+                {
+                    continue;
+                }
+
+                std::string metric_name;
+                std::string kv;
+
+                auto colon_pos = token.find(':');
+                if (colon_pos == std::string::npos)
+                {
+                    // Legacy form: treat the whole token as "tensor|value" for L2Norm
+                    metric_name = ToString(AccuracyMetric::L2Norm);
+                    kv = token;
+                }
+                else
+                {
+                    // Metric:tensor|value
+                    if (colon_pos == 0 || colon_pos + 1 >= token.size())
+                    {
+                        std::cerr << "Invalid accThreshold token (expected 'Metric:Tensor|Value'): " << token
+                                  << std::endl;
+                        success = false;
+                        continue;
+                    }
+                    metric_name = token.substr(0, colon_pos);
+                    kv = token.substr(colon_pos + 1);
+                }
+
+                auto pipe_pos = kv.find('|');
+                if (pipe_pos == std::string::npos || pipe_pos == 0 || pipe_pos + 1 >= kv.size())
+                {
+                    std::cerr << "Use 'tensor|value' after metric prefix in accThreshold: " << token << std::endl;
+                    success = false;
+                    continue;
+                }
+
+                std::string tensor_name = kv.substr(0, pipe_pos);
+                float value = 0.0f;
+                try
+                {
+                    value = std::stof(kv.substr(pipe_pos + 1));
+                }
+                catch (const std::exception&)
+                {
+                    std::cerr << "Invalid float value in accThreshold token: " << token << std::endl;
+                    success = false;
+                    continue;
+                }
+
+                acc_threshold[metric_name][tensor_name] = value;
             }
-            else if (acc_threshold.empty())
+
+            if (acc_threshold.empty())
             {
-                std::wcout << "WARNING: Accuracy thresholds not set. Accuracy will be reported, but won't be validated."
-                           << std::endl;
+                std::wcout << "WARNING: Accuracy thresholds not set. Accuracy will be reported, but won't be validated." << std::endl;
             }
             if (dataset_dir.empty())
             {
                 std::wcout << "Dataset directory must be specified for accuracy stage." << std::endl;
                 success = false;
             }
+
+            // Parse accuracy metrics list (space-separated tokens)
+            std::wstring metrics_ws = m_arg_parser.Get(L"--accMetrics");
+            std::wstring metric_token;
+            std::wstringstream metrics_ss(metrics_ws);
+            while (metrics_ss >> metric_token)
+            {
+                acc_metrics.push_back(ParseAccuracyMetric(metric_token));
+            }
+            if (acc_metrics.empty())
+            {
+                // Default to L2Norm when nothing is specified
+                acc_metrics.emplace_back(AccuracyMetric::L2Norm);
+            }
         }
 #ifdef USE_WINML_FEATURES
         ep_policy = ParseEpDevicePolicy(m_arg_parser.Get(L"--epPolicy"));
-        shouldCompile = m_arg_parser.IsArg(L"--compile");
-        compiledModelPath = m_arg_parser.Get(L"--compiledModelPath");
         // Parse EP Name if provided and construct EPInfo object with other params like device type, vendorId, deviceId,
         // etc if provided
         std::string ep_name_str = wstring_to_string(m_arg_parser.Get(L"--epName"));
@@ -292,13 +396,13 @@ public:
     std::wstring out_dir;
     std::wstring result_path;
     std::wstring ref_out_dir;
+    std::wstring compiledModelPath;
+    bool shouldCompileContextCache;
 #ifndef USE_WINML_FEATURES
     std::string execution_provider;
 #endif
 #ifdef USE_WINML_FEATURES
     std::optional<OrtExecutionProviderDevicePolicy> ep_policy;
-    bool shouldCompile;
-    std::wstring compiledModelPath;
     std::optional<EpInfo> ep_info;
     std::optional<WASDKRuntimeInfo> runtimeInfo;
 #endif
@@ -309,11 +413,13 @@ public:
     int repeat_times = 1;
     int warmup_iterations = 0;
     float perf_threshold = 0.0;
-    std::unordered_map<std::string, float> acc_threshold;
+    // metric_name -> (tensor_name -> threshold)
+    std::unordered_map<std::string, std::unordered_map<std::string, float>> acc_threshold;
+    std::vector<AccuracyMetric> acc_metrics;
 
 private:
     static inline const std::unordered_set<int> s_opt_levels{
-        ORT_DISABLE_ALL, ORT_ENABLE_BASIC, ORT_ENABLE_EXTENDED, ORT_ENABLE_ALL};
+        ORT_DISABLE_ALL, ORT_ENABLE_BASIC, ORT_ENABLE_EXTENDED, ORT_ENABLE_ALL };
 
     // Forked from
     // https://github.com/microsoft/onnxruntime/blob/2d05c4bcd940aa25561ed7de26481f219618dd7a/onnxruntime/test/perftest/strings_helper.cc#L15.
@@ -335,8 +441,7 @@ private:
             auto pos = token_sv.find("|");
             if (pos == std::string_view::npos || pos == 0 || pos == token_sv.length())
             {
-                std::cerr << "Use a '|' to separate the key and value for the option you are trying to use."
-                          << std::endl;
+                std::cerr << "Use a '|' to separate the key and value for the option you are trying to use." << std::endl;
                 return false;
             }
 
@@ -440,7 +545,7 @@ private:
             info = {
                 majorMinorVersion, // UINT32
                 versionTagStr,     // PCWSTR (backed by versionTagStr's storage; keep it alive)
-                packageVersion};
+                packageVersion };
             return std::optional<WASDKRuntimeInfo>{info};
         }
         else

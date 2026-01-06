@@ -34,11 +34,6 @@ public:
         std::unordered_map<std::string, std::string>& ep_options,
         Ort::Env& env,
         std::optional<EpInfo>& ep_info);
-    OrtStatus* CompileModel(
-        const OrtApi& ortApi,
-        OrtSessionOptions* sessionOptions,
-        const std::filesystem::path& modelPath,
-        const std::filesystem::path& compiledModelPath);
     std::string ToString(OrtExecutionProviderDevicePolicy policy);
     std::string ToString(OrtHardwareDeviceType policy);
     void ConvertToOrtKeyValuePairs(
@@ -49,21 +44,16 @@ public:
     PerformanceRunner(
         std::wstring model_path,
         std::string model_key,
-        std::unique_ptr<IDatasetReader>& dataset_reader
-#ifdef USE_WINML_FEATURES
-        ,
-        std::wstring compiled_model_path,
-        bool should_compile_model
-#endif
+        std::unique_ptr<IDatasetReader>& dataset_reader,
+        std::wstring compiled_model_path
     );
 
     std::pair<bool, CompilationResult> InitializeSession(
-#ifndef USE_WINML_FEATURES
         std::string execution_provider,
-#endif
         std::unordered_map<std::string, std::string>& ep_options,
         std::unordered_map<std::string, std::string>& session_options,
-        int graph_opt_level = DEFAULT_GRAPH_OPTIM_LEVEL
+        int graph_opt_level = DEFAULT_GRAPH_OPTIM_LEVEL,
+        bool shouldCompileContextCache=false
 #ifdef USE_WINML_FEATURES
         ,
         std::optional<OrtExecutionProviderDevicePolicy> ep_policy = DEFAULT_EP_POLICY,
@@ -89,10 +79,7 @@ private:
 
     std::wstring m_model_path;
     std::string m_model_key;
-#ifdef USE_WINML_FEATURES
     std::wstring m_compiled_model_path;
-    bool m_should_compile_model;
-#endif
 
     std::unique_ptr<IDatasetReader>& m_dataset_reader;
     Ort::Env m_env;

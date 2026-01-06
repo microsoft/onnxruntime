@@ -48,9 +48,9 @@ int wmain(int argc, const wchar_t* argv[])
     {
         std::cout << "Runtime version is passed from cmd." << std::endl;
         std::cout << "UINT32 representation of Major Minor Version : " << config.runtimeInfo->majorMinorVersion
-                  << std::endl;
+            << std::endl;
         std::cout << "UINT64 representation of Package Version : " << config.runtimeInfo->packageVersion.Version
-                  << std::endl;
+            << std::endl;
         std::wcout << "Version Tag : " << config.runtimeInfo->versionTag << std::endl;
         MddBootstrapInitialize2(
             config.runtimeInfo->majorMinorVersion,
@@ -66,13 +66,14 @@ int wmain(int argc, const wchar_t* argv[])
         MddBootstrapInitialize2(
             WINDOWSAPPSDK_RELEASE_MAJORMINOR,    // points to 0x00010008 (1.8) right now
             WINDOWSAPPSDK_RELEASE_VERSION_TAG_W, // e.g., L"",L"stable", L"preview", or L"experimental") that indicates
-                                                 // the release channel. By default it is empty string.
+            // the release channel. By default it is empty string.
             version,
             MddBootstrapInitializeOptions_OnNoMatch_ShowUI);
     }
     winrt::init_apartment();
     Ort::InitApi();
-    if (config.shouldCompile && config.compiledModelPath.empty())
+#endif
+    if (config.compiledModelPath.empty())
     {
         auto model_path = config.model_path;
         auto pos = model_path.rfind(L".");
@@ -85,7 +86,6 @@ int wmain(int argc, const wchar_t* argv[])
             config.compiledModelPath = model_path + L"_ctx.onnx";
         }
     }
-#endif
     // Memory optimization: Load FP32 data more efficiently
     std::unordered_map<std::string, std::vector<Ort::Value>> fp32_cpu_outputs;
     std::unordered_map<std::string, std::string> output_map;
@@ -135,12 +135,8 @@ int wmain(int argc, const wchar_t* argv[])
             PerformanceRunner ref_performance_runner(
                 ref_model_wpath,
                 "",
-                dataset_reader
-#ifdef USE_WINML_FEATURES
-                ,
-                L"",
-                false
-#endif
+                dataset_reader,
+                L""
             );
             if (!output_loaded)
             {
@@ -149,9 +145,7 @@ int wmain(int argc, const wchar_t* argv[])
                 {
                     std::cout << "\n----- Initializing CPU session with reference model" << std::endl;
                     const auto& [ref_init_success, ref_init_result] = ref_performance_runner.InitializeSession(
-#ifndef USE_WINML_FEATURES
-                        config.execution_provider,
-#endif
+                        "cpu",
                         empty_options,
                         empty_options);
                     if (!ref_init_success)
@@ -188,17 +182,11 @@ int wmain(int argc, const wchar_t* argv[])
             PerformanceRunner cpu_performance_runner(
                 model_wpath,
                 config.model_key,
-                dataset_reader
-#ifdef USE_WINML_FEATURES
-                ,
-                L"",
-                false
-#endif
+                dataset_reader,
+                L""
             );
             const auto& [cpu_init_success, cpu_init_result] = cpu_performance_runner.InitializeSession(
-#ifndef USE_WINML_FEATURES
-                config.execution_provider,
-#endif
+                "cpu",
                 empty_options,
                 empty_options);
             if (!cpu_init_success)
@@ -222,10 +210,10 @@ int wmain(int argc, const wchar_t* argv[])
             {
                 l2norm_map = CalculateCPUL2Norm(qdq_cpu_outputs, fp32_cpu_outputs);
             }
-            else 
+            else
             {
-                // Note: ref_performance_runner is out of scope, so we use the loaded fp32_cpu_outputs
-                // This is a limitation but maintains memory efficiency
+				// Note: ref_performance_runner is out of scope here, so we use the loaded fp32_cpu_outputs
+				// This is a limitation but maintains memory efficiency
                 std::cerr << "ERROR: Reference model outputs not available in this scope for L2 norm calculation." << std::endl;
                 return -1;
             }
@@ -253,21 +241,21 @@ int wmain(int argc, const wchar_t* argv[])
             PerformanceRunner performance_runner(
                 model_wpath,
                 config.model_key,
-                dataset_reader
-#ifdef USE_WINML_FEATURES
-                ,
-                config.compiledModelPath,
-                config.shouldCompile
-#endif
+                dataset_reader,
+                config.compiledModelPath
             );
 
             auto [is_compiling, compilation_result] = performance_runner.InitializeSession(
 #ifndef USE_WINML_FEATURES
                 config.execution_provider,
 #endif
+#ifdef USE_WINML_FEATURES
+                "",
+#endif
                 config.ep_options,
                 config.session_options,
-                config.graph_opt_level
+                config.graph_opt_level,
+                config.shouldCompileContextCache
 #ifdef USE_WINML_FEATURES
                 ,
                 config.ep_policy,
@@ -281,7 +269,7 @@ int wmain(int argc, const wchar_t* argv[])
             }
 
             PerformanceResult performance_result;
-            std::unordered_map<std::string, std::vector<float>> accuracy_result;
+            std::unordered_map<std::string, std::unordered_map<std::string, std::vector<float>>> accuracy_result;
 
             if (config.stage >= ExecutionStage::INFERENCE)
             {
@@ -295,7 +283,7 @@ int wmain(int argc, const wchar_t* argv[])
                 // Memory optimization: Only store outputs in memory if ACCURACY stage will run
                 bool need_outputs_in_memory = (config.stage >= ExecutionStage::ACCURACY);
 
-                const auto& [success, perf_result] = need_outputs_in_memory ? 
+                const auto& [success, perf_result] = need_outputs_in_memory ?
                     performance_runner.RunInferences(npu_outputs_store) :
                     performance_runner.RunInferencesStreamOnly(npu_outputs_store);
                 performance_result = perf_result;
@@ -306,7 +294,7 @@ int wmain(int argc, const wchar_t* argv[])
                 }
 
                 // Only get outputs if needed for accuracy stage
-                const auto* npu_outputs_ptr = need_outputs_in_memory ? 
+                const auto* npu_outputs_ptr = need_outputs_in_memory ?
                     &performance_runner.GetOutputs() : nullptr;
                 if (config.perf_threshold != 0.0f &&
                     !performance_runner.IsPerformant(config.perf_threshold, performance_result))
@@ -331,26 +319,30 @@ int wmain(int argc, const wchar_t* argv[])
                     }
                     const auto& npu_outputs = *npu_outputs_ptr;
                     std::cout << "----- Checking accuracy" << std::endl;
-                    std::cout << "Loading L2 norm values and fp32 model outputs." << std::endl;
+                    std::cout << "Loading reference values and model outputs." << std::endl;
 
+                    // Load L2 norm values when L2 metric is requested
                     std::unordered_map<std::string, std::vector<float>> l2_norm_outputs;
-                    if (!output_map.empty())
+                    const bool need_l2 = true; // L2 norms are cheap and used for thresholds today
+                    if (need_l2)
                     {
-                        for (const auto& [name, value] : output_map)
+                        if (!output_map.empty())
                         {
-                            // Load l2_norm values
-                            l2_norm_outputs[name].clear();
-                            if (!dataset_reader->LoadL2Norm(name, l2_norm_outputs[name]))
+                            for (const auto& [name, value] : output_map)
                             {
-                                std::cerr << "ERROR: Failed to load l2_norm values for output: " << name << std::endl;
-                                return -1;
+                                l2_norm_outputs[name].clear();
+                                if (!dataset_reader->LoadL2Norm(name, l2_norm_outputs[name]))
+                                {
+                                    std::cerr << "ERROR: Failed to load l2_norm values for output: " << name << std::endl;
+                                    return -1;
+                                }
                             }
                         }
-                    }
-                    else
-                    {
-                        std::cerr << "ERROR: No output map available from dataset reader, skipping accuracy validation." << std::endl;
-                        return -1;
+                        else
+                        {
+                            std::cerr << "ERROR: No output map available from dataset reader, skipping accuracy validation." << std::endl;
+                            return -1;
+                        }
                     }
 
                     if (!output_loaded)
@@ -359,8 +351,13 @@ int wmain(int argc, const wchar_t* argv[])
                         return -1;
                     }
 
-                    auto [accuracy_result_map, is_accurate] =
-                        CheckAccuracy(config.acc_threshold, npu_outputs, fp32_cpu_outputs, l2_norm_outputs, output_map);
+                    auto [accuracy_result_map, is_accurate] = CheckAccuracy(
+                        config.acc_metrics,
+                        config.acc_threshold,
+                        npu_outputs,
+                        fp32_cpu_outputs,
+                        l2_norm_outputs,
+                        output_map);
                     accuracy_result = accuracy_result_map;
                     if (!is_accurate)
                     {

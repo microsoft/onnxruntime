@@ -5,13 +5,18 @@
 
 #include <string>
 #include <unordered_map>
+#include "config.h"
 
-std::pair<std::unordered_map<std::string, std::vector<float>>, bool> CheckAccuracy(
-    std::unordered_map<std::string, float>& acc_threshold,
+using MetricDiffs = std::unordered_map<std::string, std::vector<float>>;
+using AccuracyResult = std::unordered_map<std::string, MetricDiffs>;
+
+std::pair<AccuracyResult, bool> CheckAccuracy(
+    const std::vector<AccuracyMetric>& metrics,
+    const std::unordered_map<std::string, std::unordered_map<std::string, float>>& acc_threshold,
     const std::unordered_map<std::string, std::vector<Ort::Value>>& npu_outputs,
     const std::unordered_map<std::string, std::vector<Ort::Value>>& f32_cpu_outputs,
     const std::unordered_map<std::string, std::vector<float>>& l2_norm_outputs,
-    const std::unordered_map<std::string, std::string> output_map);
+    const std::unordered_map<std::string, std::string>& output_map);
 
 std::unordered_map<std::string, std::vector<float>> CalculateCPUL2Norm(
     const std::unordered_map<std::string, std::vector<Ort::Value>>& qdq_cpu_outputs,

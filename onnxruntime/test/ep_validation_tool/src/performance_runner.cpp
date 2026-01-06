@@ -20,24 +20,16 @@ using namespace winrt::Windows::Foundation;
 PerformanceRunner::PerformanceRunner(
     std::wstring model_path,
     std::string model_key,
-    std::unique_ptr<IDatasetReader>& dataset_reader
-#ifdef USE_WINML_FEATURES
-    ,
-    std::wstring compiled_model_path,
-    bool should_compile_model
-#endif
+    std::unique_ptr<IDatasetReader>& dataset_reader ,
+    std::wstring compiled_model_path
     )
     : m_model_path(model_path),
       m_model_key(model_key),
       m_dataset_reader(dataset_reader),
       m_env(ORT_LOGGING_LEVEL_WARNING, "ep_validtion_tool_winml"),
       m_session(nullptr),
-      m_run_options()
-#ifdef USE_WINML_FEATURES
-      ,
-      m_compiled_model_path(compiled_model_path),
-      m_should_compile_model(should_compile_model)
-#endif
+      m_run_options(),
+      m_compiled_model_path(compiled_model_path)
 {
 }
 #ifdef USE_WINML_FEATURES
@@ -80,89 +72,6 @@ void PerformanceRunner::ConvertToOrtKeyValuePairs(
     {
         ep_options.Add(key.c_str(), value.c_str());
     }
-}
-
-/**
- * @brief Compile an ONNX model using the OrtCompileApi
- *
- * This function demonstrates how to:
- * 1. Get the compile API
- * 2. Create compilation options from session options
- * 3. Configure input and output paths
- * 4. Compile the model
- *
- * @param ortApi ORT API instance
- * @param env ORT environment
- * @param sessionOptions Session options to use for compilation
- * @param modelPath Path to the input model
- * @param compiledModelPath Path where the compiled model will be saved
- * @return OrtStatus* Status of the compilation, nullptr if successful
- */
-OrtStatus* PerformanceRunner::CompileModel(
-    const OrtApi& ortApi,
-    OrtSessionOptions* sessionOptions,
-    const std::filesystem::path& modelPath,
-    const std::filesystem::path& compiledModelPath)
-{
-    std::cout << "Compiling model from " << modelPath << std::endl;
-    std::cout << "Output path: " << compiledModelPath << std::endl;
-
-    // Get compile API
-    const OrtCompileApi* compileApi = ortApi.GetCompileApi();
-    if (!compileApi)
-    {
-        std::cerr << "Failed to get compile API" << std::endl;
-        return nullptr;
-    }
-
-    // Create compilation options from session options
-    OrtModelCompilationOptions* compileOptions = nullptr;
-    OrtStatus* status =
-        compileApi->CreateModelCompilationOptionsFromSessionOptions(m_env, sessionOptions, &compileOptions);
-    if (status != nullptr)
-    {
-        std::cerr << "Failed to create compilation options: " << ortApi.GetErrorMessage(status) << std::endl;
-        return status;
-    }
-
-    // Set input and output model paths
-    status = compileApi->ModelCompilationOptions_SetInputModelPath(compileOptions, modelPath.c_str());
-    if (status != nullptr)
-    {
-        std::cerr << "Failed to set input model path: " << ortApi.GetErrorMessage(status) << std::endl;
-        compileApi->ReleaseModelCompilationOptions(compileOptions);
-        return status;
-    }
-
-    status = compileApi->ModelCompilationOptions_SetOutputModelPath(compileOptions, compiledModelPath.c_str());
-    if (status != nullptr)
-    {
-        std::cerr << "Failed to set output model path: " << ortApi.GetErrorMessage(status) << std::endl;
-        compileApi->ReleaseModelCompilationOptions(compileOptions);
-        return status;
-    }
-
-    // Measure compile time
-    std::cout << "Starting compile, this may take a few moments..." << std::endl;
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Compile the model
-    status = compileApi->CompileModel(m_env, compileOptions);
-
-    auto stop = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-
-    if (status == nullptr)
-    {
-        std::cout << "Model compiled successfully in " << duration.count() << " ms" << std::endl;
-    }
-    else
-    {
-        std::cerr << "Failed to compile model: " << ortApi.GetErrorMessage(status) << std::endl;
-    }
-
-    compileApi->ReleaseModelCompilationOptions(compileOptions);
-    return status;
 }
 void PerformanceRunner::ConfigureExecutionProviders(
     Ort::SessionOptions& session_options,
@@ -332,12 +241,11 @@ void PerformanceRunner::ConfigureExecutionProviders(
 #endif
 
 std::pair<bool, CompilationResult> PerformanceRunner::InitializeSession(
-#ifndef USE_WINML_FEATURES
     std::string execution_provider,
-#endif
     std::unordered_map<std::string, std::string>& ep_options,
     std::unordered_map<std::string, std::string>& session_options,
-    int graph_opt_level
+    int graph_opt_level,
+    bool shouldCompileContextCache
 #ifdef USE_WINML_FEATURES
     ,
     std::optional<OrtExecutionProviderDevicePolicy> ep_policy,
@@ -386,40 +294,6 @@ std::pair<bool, CompilationResult> PerformanceRunner::InitializeSession(
             ConfigureExecutionProviders(sess_options, ep_options, m_env, ep_info);
         }
         // Handle model compilation if needed
-
-        bool isCompiledModelAvailable = std::filesystem::exists(m_compiled_model_path);
-        if (isCompiledModelAvailable)
-        {
-            std::wcout << "Using existing compiled model: " << m_compiled_model_path << std::endl;
-            actualModelPath = m_compiled_model_path;
-        }
-        else if (m_should_compile_model)
-        {
-            std::cout << "No compiled model found, attempting to create compiled model" << std::endl;
-
-            const OrtApi& ortApi = Ort::GetApi();
-            OrtStatus* status = CompileModel(ortApi, sess_options, m_model_path, m_compiled_model_path);
-
-            if (status == nullptr && std::filesystem::exists(m_compiled_model_path))
-            {
-                std::wcout << "Compiled model created successfully at " << m_compiled_model_path << std::endl;
-                actualModelPath = m_compiled_model_path;
-            }
-            else
-            {
-                std::wcout << "Falling back to original model: " << m_model_path << std::endl;
-                actualModelPath = m_model_path;
-                if (status != nullptr)
-                {
-                    ortApi.ReleaseStatus(status);
-                }
-            }
-        }
-        else
-        {
-            std::wcout << "Using original model: " << m_model_path << std::endl;
-            actualModelPath = m_model_path;
-        }
 #endif
 #ifndef USE_WINML_FEATURES
         if (execution_provider == "qnn")
@@ -444,8 +318,17 @@ std::pair<bool, CompilationResult> PerformanceRunner::InitializeSession(
             return {false, compilation_result};
         }
 #endif
+        bool isCompiledModelAvailable;
+        if (shouldCompileContextCache) {
+            isCompiledModelAvailable = std::filesystem::exists(m_compiled_model_path);
+            sess_options.AddConfigEntry("ep.context_file_path", wstring_to_string(m_compiled_model_path).c_str());
+        }
+        if (shouldCompileContextCache && isCompiledModelAvailable )
+        {
+            std::wcout << "Compiled cache already exist at path :  " << m_compiled_model_path << " . Delete the file and run it again." << std::endl;
+            return { false, compilation_result };
+        }
         auto compilation_start = std::chrono::high_resolution_clock::now();
-
         if (m_model_key.empty())
         {
             // Unencrypted model loading
@@ -473,7 +356,32 @@ std::pair<bool, CompilationResult> PerformanceRunner::InitializeSession(
         compilation_result.compilation_time_cost_ms =
             std::chrono::duration_cast<std::chrono::milliseconds>(compilation_end - compilation_start).count();
         compilation_result.peak_workingset_size = memory_usage.peak_working_set_size;
-        compilation_result.peak_pagefile_usage = memory_usage.peak_pagefile_usage;
+        compilation_result.peak_pagefile_usage = memory_usage.peak_pagefile_usage; 
+
+        isCompiledModelAvailable = std::filesystem::exists(m_compiled_model_path);
+        if (shouldCompileContextCache && isCompiledModelAvailable)
+        {
+            std::wcout << "Compiled model created successfully at " << m_compiled_model_path << std::endl;
+            actualModelPath = m_compiled_model_path;
+            if (m_session) {
+                m_session.release();//Destroy the session used for context cache creation
+            }
+            //Remove context creation entries if any present in session options
+            sess_options.AddConfigEntry("ep.context_enable", "0");       // disable
+            sess_options.AddConfigEntry("ep.context_file_path", "");     // clear file path
+            sess_options.AddConfigEntry("ep.context_embed_mode", "0");
+            // Unencrypted model context cache loading
+            try {
+                m_session = Ort::Session(m_env, actualModelPath.c_str(), sess_options);
+            }
+            catch (const Ort::Exception& e) {
+                std::wcout << "Falling back to original model: " << m_model_path << std::endl;
+                actualModelPath = m_model_path;
+                m_session = Ort::Session(m_env, actualModelPath.c_str(), sess_options);
+            }
+            
+        }
+        
     }
     catch (const Ort::Exception& e)
     {
