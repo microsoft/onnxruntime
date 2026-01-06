@@ -333,6 +333,7 @@ ORT_RUNTIME_CLASS(ExternalInitializerInfo);
 ORT_RUNTIME_CLASS(ExternalResourceImporter);  // Capability object for external resource import
 ORT_RUNTIME_CLASS(ExternalMemoryHandle);      // EP-imported view of shared external allocation
 ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared external semaphore
+ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -509,6 +510,16 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
+
+/** \brief Reasons why an execution provider might not be compatible with a device
+ */
+typedef enum OrtDeviceEpIncompatibilityReason {
+  OrtDeviceEpIncompatibility_NONE             = 0,
+  OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE   = 1u << 0,
+  OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE = 1u << 1,
+  OrtDeviceEpIncompatibility_MISSING_DEPENDENCY = 1u << 2,
+  OrtDeviceEpIncompatibility_UNKNOWN          = 1u << 31
+} OrtDeviceEpIncompatibilityReason;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
@@ -6784,6 +6795,101 @@ struct OrtApi {
   ORT_API2_STATUS(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
                   _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                   _In_ size_t num_outputs);
+  /** \brief Get the list of available hardware devices.
+   *
+   * Enumerates hardware devices available on the system. Device discovery results
+   * are stored in the ORT environment.
+   *
+   * \param[in] env The OrtEnv instance where device discovery results are stored.
+   * \param[out] devices The OrtHardwareDevice instances that are available.
+   * \param[out] num_devices The number of OrtHardwareDevice instances returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetOrtHardwareDevices, _In_ const OrtEnv* env,
+                  _Outptr_ const OrtHardwareDevice* const** devices,
+                  _Out_ size_t* num_devices);
+
+  /** \brief Check for known incompatibility reasons between hardware device and a specific execution provider.
+   *
+   * This function checks for known incompatibility reasons between the specified hardware device
+   * and a specific execution provider.
+   * If incompatibility reasons are returned, it indicates the device is not compatible.
+   * However, if no reasons are returned, it doesn't guarantee 100% compatibility for all models,
+   * as models may have specific requirements.
+   *
+   * Note: This method should only be called when the OrtEnv has been initialized with execution
+   * providers (after RegisterExecutionProviderLibrary is called).
+   *
+   * \param[in] env The OrtEnv instance with registered execution providers.
+   * \param[in] ep_name The name of the execution provider to check. Required and cannot be null or empty.
+   * \param[in] hw The hardware device to check for incompatibility.
+   * \param[out] details Compatibility details including reasons for incompatibility if any.
+   *                     Must be freed with OrtApi::ReleaseDeviceEpIncompatibilityDetails.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetHardwareDeviceEPIncompatibilityReasons, _In_ const OrtEnv* env,
+                  _In_ const char* ep_name,
+                  _In_ const OrtHardwareDevice* hw,
+                  _Outptr_ OrtDeviceEpIncompatibilityDetails** details);
+
+  /// \name OrtDeviceEpIncompatibilityDetails
+  /// Accessor functions for device incompatibility details
+  /// @{
+
+  /** \brief Get the incompatibility reasons bitmask from OrtDeviceEpIncompatibilityDetails.
+   *
+   * \param[in] details The OrtDeviceEpIncompatibilityDetails instance to query.
+   * \param[out] reasons_bitmask Pointer to store the bitmask of incompatibility reasons.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(DeviceEpIncompatibilityDetails_GetReasonsBitmask,
+                  _In_ const OrtDeviceEpIncompatibilityDetails* details,
+                  _Out_ uint32_t* reasons_bitmask);
+
+  /** \brief Get the notes from OrtDeviceEpIncompatibilityDetails.
+   *
+   * \param[in] details The OrtDeviceEpIncompatibilityDetails instance to query.
+   * \param[out] notes Pointer to the notes string. May be nullptr if no notes are available.
+   *                   The returned string is owned by the details object and should not be freed.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(DeviceEpIncompatibilityDetails_GetNotes,
+                  _In_ const OrtDeviceEpIncompatibilityDetails* details,
+                  _Outptr_result_maybenull_ const char** notes);
+
+  /** \brief Get the execution provider error code from OrtDeviceEpIncompatibilityDetails.
+   *
+   * This allows Independent Hardware Vendors (IHVs) to define their own error codes
+   * to provide additional details about device incompatibility.
+   *
+   * \param[in] details The OrtDeviceEpIncompatibilityDetails instance to query.
+   * \param[out] error_code Pointer to store the EP-specific error code. A value of 0 indicates no error code was set.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(DeviceEpIncompatibilityDetails_GetErrorCode,
+                  _In_ const OrtDeviceEpIncompatibilityDetails* details,
+                  _Out_ int32_t* error_code);
+
+  /** \brief Release an OrtDeviceEpIncompatibilityDetails instance.
+   *
+   * \since Version 1.24.
+   */
+  ORT_CLASS_RELEASE(DeviceEpIncompatibilityDetails);
 
   /// @}
 };

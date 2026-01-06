@@ -677,6 +677,27 @@ ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outp
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(CreateDeviceEpIncompatibilityDetails, _In_ uint32_t reasons_bitmask,
+                    _In_ int32_t error_code,
+                    _In_opt_z_ const char* notes,
+                    _Outptr_ OrtDeviceEpIncompatibilityDetails** details) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details output parameter must not be null");
+  }
+
+  auto compat_details = std::make_unique<OrtDeviceEpIncompatibilityDetails>();
+  compat_details->reasons_bitmask = reasons_bitmask;
+  compat_details->error_code = error_code;
+  if (notes != nullptr) {
+    compat_details->notes = notes;
+  }
+
+  *details = compat_details.release();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtLoopKernelHelper* helper,
                     _Outptr_ OrtKernelImpl** kernel_out) {
   API_IMPL_BEGIN
@@ -823,6 +844,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::CreateLoopKernel,
     &OrtExecutionProviderApi::CreateScanKernel,
     &OrtExecutionProviderApi::ReleaseKernelImpl,
+    &OrtExecutionProviderApi::CreateDeviceEpIncompatibilityDetails,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -830,7 +852,6 @@ static_assert(offsetof(OrtEpApi, ReleaseEpDevice) / sizeof(void*) == 1,
               "Size of version 22 API cannot change");  // initial version in ORT 1.22
 static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void*) == 15,
               "Size of version 23 API cannot change");
-
 }  // namespace OrtExecutionProviderApi
 
 ORT_API(const OrtEpApi*, OrtExecutionProviderApi::GetEpApi) {

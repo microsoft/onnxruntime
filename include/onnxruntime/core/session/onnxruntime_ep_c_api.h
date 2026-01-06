@@ -1408,6 +1408,25 @@ struct OrtEpApi {
                   _Outptr_ OrtKernelImpl** kernel_out);
 
   ORT_CLASS_RELEASE(KernelImpl);
+  /** \brief Create an OrtDeviceEpIncompatibilityDetails instance.
+   *
+   * Used by execution provider factories to create incompatibility details in their
+   * GetHardwareDeviceIncompatibilityReasons implementation.
+   *
+   * \param[in] reasons_bitmask Bitmask of OrtDeviceEpIncompatibilityReason values.
+   * \param[in] error_code EP-specific error code (0 = no error).
+   * \param[in] notes Optional human-readable notes. Can be null.
+   * \param[out] details Output parameter set to the new OrtDeviceEpIncompatibilityDetails instance.
+   *                     Must be released by ORT using ReleaseDeviceEpIncompatibilityDetails.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateDeviceEpIncompatibilityDetails, _In_ uint32_t reasons_bitmask,
+                  _In_ int32_t error_code,
+                  _In_opt_z_ const char* notes,
+                  _Outptr_ OrtDeviceEpIncompatibilityDetails** details);
 };
 
 /**
@@ -2015,6 +2034,28 @@ struct OrtEpFactory {
   ORT_API2_STATUS(CreateExternalResourceImporterForDevice, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device,
                   _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** out_importer);
+  /** \brief Check for known incompatibility reasons between a hardware device and this execution provider.
+   *
+   * This function allows an execution provider to check if a specific hardware device is compatible
+   * with the execution provider. The EP can return specific incompatibility reasons via the
+   * OrtDeviceEpIncompatibilityDetails output parameter.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] hw The hardware device to check for incompatibility.
+   * \param[out] details Incompatibility details including reasons for incompatibility if any.
+   *                     The EP should allocate this using OrtEpApi::CreateDeviceEpIncompatibilityDetails.
+   *                     ORT will take ownership and call ReleaseDeviceEpIncompatibilityDetails.
+   *
+   * \note Implementation of this function is optional.
+   *       If not implemented, ORT will assume the device is compatible with this EP.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetHardwareDeviceIncompatibilityReasons, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtHardwareDevice* hw,
+                  _Outptr_ OrtDeviceEpIncompatibilityDetails** details);
 };
 
 #ifdef __cplusplus

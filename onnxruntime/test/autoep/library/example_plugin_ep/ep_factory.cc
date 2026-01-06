@@ -36,6 +36,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  GetHardwareDeviceIncompatibilityReasons = GetHardwareDeviceIncompatibilityReasonsImpl;
 
   CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
 
@@ -331,4 +332,28 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDevic
   *out_importer = importer.release();
 
   return nullptr;
+}
+
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetHardwareDeviceIncompatibilityReasonsImpl(
+    OrtEpFactory* this_ptr,
+    const OrtHardwareDevice* hw,
+    OrtDeviceEpIncompatibilityDetails** details) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+  *details = nullptr;
+
+  // Example: This EP only supports CPU devices. Report incompatibility for non-CPU devices.
+  OrtHardwareDeviceType device_type = factory.ort_api.HardwareDevice_Type(hw);
+
+  if (device_type != OrtHardwareDeviceType_CPU) {
+    // Report that the device type is not supported
+    uint32_t reasons = OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE;
+    return factory.ep_api.CreateDeviceEpIncompatibilityDetails(
+        reasons,
+        static_cast<int32_t>(device_type),  // Use device type as the error code for testing
+        "ExampleEP only supports CPU devices",
+        details);
+  }
+
+  // Device is compatible - return empty details (no incompatibility reasons)
+  return factory.ep_api.CreateDeviceEpIncompatibilityDetails(0, 0, nullptr, details);
 }

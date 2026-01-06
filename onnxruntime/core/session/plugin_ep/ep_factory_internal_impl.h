@@ -96,6 +96,13 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
+  virtual OrtStatus* GetHardwareDeviceIncompatibilityReasons(_In_ const OrtHardwareDevice* /*hw*/,
+                                                             _Outptr_ OrtDeviceEpIncompatibilityDetails** details) noexcept {
+    // Default implementation: return nullptr to indicate no incompatibility info provided (device assumed compatible)
+    *details = nullptr;
+    return nullptr;
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
 

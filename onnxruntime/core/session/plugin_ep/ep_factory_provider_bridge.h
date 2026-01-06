@@ -77,6 +77,16 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
     return ep_factory_.CreateExternalResourceImporterForDevice(&ep_factory_, ep_device, importer);
   }
 
+  OrtStatus* GetHardwareDeviceIncompatibilityReasons(_In_ const OrtHardwareDevice* hw,
+                                                     _Outptr_ OrtDeviceEpIncompatibilityDetails** details) noexcept override {
+    if (ep_factory_.GetHardwareDeviceIncompatibilityReasons == nullptr) {
+      // Factory doesn't implement this hook, return nullptr (no incompatibility)
+      *details = nullptr;
+      return nullptr;
+    }
+    return ep_factory_.GetHardwareDeviceIncompatibilityReasons(&ep_factory_, hw, details);
+  }
+
   OrtEpFactory& ep_factory_;
   ProviderLibrary& provider_library_;
   std::optional<std::filesystem::path> library_path_;

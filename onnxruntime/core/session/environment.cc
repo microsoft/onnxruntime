@@ -637,6 +637,113 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
   return status;
 }
 
+Status Environment::GetHardwareDeviceEPIncompatibilityReasons(
+    const std::string& ep_name,
+    const OrtHardwareDevice* hw,
+    std::unique_ptr<OrtDeviceEpIncompatibilityDetails>& details) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+
+  OrtEpFactory* matched_factory = nullptr;
+
+  // Search for a factory whose GetName() matches ep_name exactly.
+  for (const auto& [registration_name, ep_info] : ep_libraries_) {
+    for (OrtEpFactory* factory : ep_info->factories) {
+      if (factory != nullptr && factory->GetName != nullptr) {
+        const char* factory_name = factory->GetName(factory);
+        if (factory_name != nullptr && ep_name == factory_name) {
+          matched_factory = factory;
+          break;
+        }
+      }
+    }
+    if (matched_factory != nullptr) {
+      break;
+    }
+  }
+
+  if (matched_factory == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "No valid factory found for execution provider '", ep_name, "'.");
+  }
+
+  // Check if the factory implements GetHardwareDeviceIncompatibilityReasons
+  if (matched_factory->GetHardwareDeviceIncompatibilityReasons != nullptr) {
+    OrtDeviceEpIncompatibilityDetails* factory_details = nullptr;
+    OrtStatusPtr status = matched_factory->GetHardwareDeviceIncompatibilityReasons(matched_factory, hw, &factory_details);
+
+    if (status != nullptr) {
+      return ToStatusAndRelease(status);
+    }
+
+    if (factory_details != nullptr) {
+      details.reset(factory_details);
+      return Status::OK();
+    }
+  }
+
+  // Factory doesn't implement the hook or returned nullptr - create empty details (compatible)
+  details = std::make_unique<OrtDeviceEpIncompatibilityDetails>();
+  details->reasons_bitmask = 0;
+  details->error_code = 0;
+  details->notes = "";
+
+  return Status::OK();
+}
+
+namespace {
+std::vector<const OrtHardwareDevice*> SortDevicesByType() {
+  auto& devices = DeviceDiscovery::GetDevices();
+  std::vector<const OrtHardwareDevice*> sorted_devices;
+  sorted_devices.reserve(devices.size());
+
+  const auto select_by_type = [&](OrtHardwareDeviceType type) {
+    for (const auto& device : devices) {
+      if (device.type == type) {
+        sorted_devices.push_back(&device);
+      }
+    }
+  };
+
+  select_by_type(OrtHardwareDeviceType_NPU);
+  select_by_type(OrtHardwareDeviceType_GPU);
+  select_by_type(OrtHardwareDeviceType_CPU);
+
+  return sorted_devices;
+}
+
+bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
+  constexpr std::string_view suffix{".virtual"};
+
+  return lib_registration_name.size() >= suffix.size() &&
+         lib_registration_name.compare(lib_registration_name.size() - suffix.size(),
+                                       suffix.size(), suffix) == 0;
+}
+
+Status SetEpFactoryEnvironmentOptions(OrtEpFactory& factory, std::string_view lib_registration_name) {
+  // OrtEpFactory::SetEnvironmentOptions was added in ORT 1.24
+  if (factory.ort_version_supported < 24 || factory.SetEnvironmentOptions == nullptr) {
+    return Status::OK();
+  }
+
+  // We only set one option now but this can be generalized if necessary.
+  OrtKeyValuePairs options;
+  options.Add("allow_virtual_devices", AreVirtualDevicesAllowed(lib_registration_name) ? "1" : "0");
+
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(factory.SetEnvironmentOptions(&factory, &options)));
+
+  return Status::OK();
+}
+}  // namespace
+
+const std::vector<const OrtHardwareDevice*>& Environment::GetSortedOrtHardwareDevices() const
+{
+  std::lock_guard<std::mutex> lock{mutex_};
+  if (ort_hardware_devices_.empty()) {
+    ort_hardware_devices_ = SortDevicesByType();
+  }
+  return ort_hardware_devices_;
+}
+
 Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device,
                                           OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                           const OrtKeyValuePairs* allocator_options,
@@ -727,51 +834,6 @@ Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDevi
 
   return status;
 }
-
-namespace {
-std::vector<const OrtHardwareDevice*> SortDevicesByType() {
-  auto& devices = DeviceDiscovery::GetDevices();
-  std::vector<const OrtHardwareDevice*> sorted_devices;
-  sorted_devices.reserve(devices.size());
-
-  const auto select_by_type = [&](OrtHardwareDeviceType type) {
-    for (const auto& device : devices) {
-      if (device.type == type) {
-        sorted_devices.push_back(&device);
-      }
-    }
-  };
-
-  select_by_type(OrtHardwareDeviceType_NPU);
-  select_by_type(OrtHardwareDeviceType_GPU);
-  select_by_type(OrtHardwareDeviceType_CPU);
-
-  return sorted_devices;
-}
-
-bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
-  constexpr std::string_view suffix{".virtual"};
-
-  return lib_registration_name.size() >= suffix.size() &&
-         lib_registration_name.compare(lib_registration_name.size() - suffix.size(),
-                                       suffix.size(), suffix) == 0;
-}
-
-Status SetEpFactoryEnvironmentOptions(OrtEpFactory& factory, std::string_view lib_registration_name) {
-  // OrtEpFactory::SetEnvironmentOptions was added in ORT 1.24
-  if (factory.ort_version_supported < 24 || factory.SetEnvironmentOptions == nullptr) {
-    return Status::OK();
-  }
-
-  // We only set one option now but this can be generalized if necessary.
-  OrtKeyValuePairs options;
-  options.Add("allow_virtual_devices", AreVirtualDevicesAllowed(lib_registration_name) ? "1" : "0");
-
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(factory.SetEnvironmentOptions(&factory, &options)));
-
-  return Status::OK();
-}
-}  // namespace
 
 Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
                                    const std::vector<EpFactoryInternal*>& internal_factories) {
