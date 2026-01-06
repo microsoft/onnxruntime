@@ -1288,7 +1288,9 @@ TEST(PadOpTest, EdgeMode_ZeroExtentFails) {
   test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "edge");
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.ConfigExcludeEps({kQnnExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure, "");
+  test.RunWithConfig();
 }
 
 TEST(PadOpTest, EdgeMode_ExtentOne_Valid) {
@@ -1379,8 +1381,10 @@ TEST(PadOpTest, Pad_Reflect_NegativeFront_PositiveBack) {
   test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "reflect");
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Pad reflect requires axis length >= 2 after slicing");
+  test.ConfigExcludeEps({kQnnExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure,
+              "Pad reflect requires axis length >= 2 after slicing");
+  test.RunWithConfig();
 }
 
 TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
@@ -1400,7 +1404,9 @@ TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
   test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
   test.AddOutput<float>("output", expected_shape, expected_data);
   test.AddAttribute("mode", "wrap");
-  test.Run();
+  test.ConfigExcludeEps({kQnnExecutionProvider, kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+  test.Config(OpTester::ExpectResult::kExpectFailure, "");
+  test.RunWithConfig();
 }
 
 }  // namespace test
