@@ -311,7 +311,6 @@ class MatMulIntegerBase : public OpKernel {
     The shape should be at least 2D and all the dimentions except the last two should be 1. 1D tensor is promoted to 2D.
   */
   bool IsBShapeSupportedForDynamicQuant(const TensorShape& tensor_shape) {
-
     b_shape_ = tensor_shape;
     if (!PromoteBShapeIfNeeded()) {
       return false;
