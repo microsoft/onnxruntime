@@ -111,8 +111,12 @@ def main() -> None:
         private_key_file.write_text(gpg_private_key, encoding="utf-8")
         passphrase_file.write_text(gpg_passphrase, encoding="utf-8")
 
+        # Clear GPG trustdb to avoid issues with cached trust settings
+        print("Checking trust db")
+        run_command([str(gpg_exe_path), "--check-trustdb"])
+
         print("Importing GnuPG private key.")
-        run_command([str(gpg_exe_path), "--batch", "--import", str(private_key_file)])
+        run_command([str(gpg_exe_path), "--batch", "--yes", "--import", str(private_key_file)])
         print("Successfully imported GnuPG private key.")
 
         print(f"\nProcessing {len(files_to_process)} files in '{jar_file_directory}'.")
