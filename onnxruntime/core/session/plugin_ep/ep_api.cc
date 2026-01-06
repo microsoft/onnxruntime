@@ -852,6 +852,7 @@ static_assert(offsetof(OrtEpApi, ReleaseEpDevice) / sizeof(void*) == 1,
               "Size of version 22 API cannot change");  // initial version in ORT 1.22
 static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void*) == 15,
               "Size of version 23 API cannot change");
+
 }  // namespace OrtExecutionProviderApi
 
 ORT_API(const OrtEpApi*, OrtExecutionProviderApi::GetEpApi) {
