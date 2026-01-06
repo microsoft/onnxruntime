@@ -4204,7 +4204,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
@@ -4220,7 +4220,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.14
    */
-  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                   _Inout_ size_t* size);
 
   /** \brief Get the name of a ::OrtKernelInfo's output.
@@ -4231,7 +4231,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
@@ -4248,7 +4248,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.14
    */
-  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                   _Inout_ size_t* size);
 
   /** \brief Get the type information for a ::OrtKernelInfo's input.
@@ -4445,7 +4445,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.15
    */
-  ORT_API2_STATUS(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
+  ORT_API2_STATUS(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_opt_ char* out, _Inout_ size_t* size);
 
   /** \brief Get the session logger from ::OrtKernelInfo.
    *

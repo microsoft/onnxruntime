@@ -428,9 +428,9 @@ ORT_API_STATUS_IMPL(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
-ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                     _Inout_ size_t* size);
-ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                     _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
                     _Outptr_ OrtTypeInfo** type_info);
@@ -455,7 +455,7 @@ ORT_API_STATUS_IMPL(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOp
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions*);
 
-ORT_API_STATUS_IMPL(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_opt_ char* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger);
 ORT_API_STATUS_IMPL(KernelContext_GetLogger, _In_ const OrtKernelContext* context, _Outptr_ const OrtLogger** logger);
 

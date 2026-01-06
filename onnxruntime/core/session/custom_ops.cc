@@ -625,7 +625,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
-                    _Out_ char* out, _Inout_ size_t* size) {
+                    _Out_opt_ char* out, _Inout_ size_t* size) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
     const auto input_defs = op_info->node().InputDefs();
@@ -641,8 +641,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* 
   });
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
-                    _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index,
+                    _Out_opt_ char* out, _Inout_ size_t* size) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
     const auto output_defs = op_info->node().OutputDefs();
@@ -714,7 +714,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKe
   });
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out,
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
                     _Inout_ size_t* size) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
