@@ -11,8 +11,8 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_funcs[] = {
     // Mul version 14
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 14, Mul)>,
 
-    // Add version 14
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 14, Add)>,
+    // Sub version 14
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 14, Sub)>,
 
     // Relu version 14
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kOnnxDomain, 14, Relu)>,

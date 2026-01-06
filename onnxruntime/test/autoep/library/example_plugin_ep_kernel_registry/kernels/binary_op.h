@@ -9,7 +9,7 @@
 
 /// <summary>
 /// An OrtKernelImpl class for binary element-wise operations.
-/// Only Add and Mul are supported currently.
+/// Only Sub and Mul are supported currently.
 /// </summary>
 class BinaryOp : public OrtKernelImpl {
  private:

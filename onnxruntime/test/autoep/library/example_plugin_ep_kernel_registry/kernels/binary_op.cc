@@ -17,9 +17,9 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     BinaryOp)
 
-// Defines a kernel creation function for version 14 of Add.
+// Defines a kernel creation function for version 14 of Sub.
 ONNX_OPERATOR_KERNEL_EX(
-    Add,
+    Sub,
     kOnnxDomain,
     /*version*/ 14,  // Equivalent to start_version: 14, end_version: 14 (inclusive)
     (Ort::KernelDefBuilder()
@@ -35,7 +35,7 @@ BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag)
   Release = ReleaseImpl;
 
   // Optional functions that are only needed to pre-pack weights. This BinaryOp kernel pre-packs
-  // input[1] weights as an example (not typically done by an actual implementations of Mul/Add).
+  // input[1] weights as an example (not typically done by an actual implementations of Mul/Sub).
   PrePackWeight = PrePackWeightImpl;
   SetSharedPrePackedWeight = SetSharedPrePackedWeightImpl;
 }
@@ -47,11 +47,11 @@ OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state,
   Ort::ConstKernelInfo kernel_info(info);
 
   // Note: can do basic validation or preprocessing via the OrtKernelInfo APIs.
-  // Here, we check that this BinaryOp class is only instantiated for an onnx Mul or Add operator.
+  // Here, we check that this BinaryOp class is only instantiated for an onnx Mul or Sub operator.
   std::string op_domain = kernel_info.GetOperatorDomain();
   std::string op_type = kernel_info.GetOperatorType();
 
-  if ((!op_domain.empty() && op_domain != "ai.onnx") || (op_type != "Add" && op_type != "Mul")) {
+  if ((!op_domain.empty() && op_domain != "ai.onnx") || (op_type != "Sub" && op_type != "Mul")) {
     std::ostringstream oss;
     oss << "ExampleKernelEp's BinaryOp class does not support operator with domain '" << op_domain << "' and "
         << " type '" << op_type << "'.";
@@ -110,9 +110,9 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
   float* output_data = output.GetTensorMutableData<float>();
 
   std::string op_type = binary_op_kernel->info_.GetOperatorType();
-  if (op_type == "Add") {
+  if (op_type == "Sub") {
     for (size_t i = 0; i < input0.size(); ++i) {
-      output_data[i] = input0[i] + input1[i];
+      output_data[i] = input0[i] - input1[i];
     }
   } else {
     assert(op_type == "Mul");  // Checked by BinaryOp::Create
