@@ -30,6 +30,8 @@ ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
 ORT_RUNTIME_CLASS(DataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
 ORT_RUNTIME_CLASS(SharedPrePackedWeightCache);
+ORT_RUNTIME_CLASS(ScanKernelConfig);
+ORT_RUNTIME_CLASS(LoopKernelConfig);
 
 /** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
  *
@@ -420,6 +422,37 @@ struct OrtKernelImpl {
 typedef OrtStatus*(ORT_API_CALL* OrtKernelCreateFunc)(_In_ void* kernel_create_func_state,
                                                       _In_ const OrtKernelInfo* info,
                                                       _Outptr_result_maybenull_ OrtKernelImpl** kernel_out);
+
+typedef OrtStatus*(ORT_API_CALL* OrtScanZeroDataFunc)(_In_ void* state, _In_ void* data, _In_ size_t size_in_bytes);
+typedef OrtStatus*(ORT_API_CALL* OrtScanTransposeFunc)(_In_ void* state,
+                                                       _In_reads_(num_permutation_elems) const size_t* permutations,
+                                                       _In_ size_t num_permutation_elems,
+                                                       _In_ const OrtValue* input,
+                                                       _In_ OrtSyncStream* stream,
+                                                       _In_ OrtValue* output);
+
+/** \brief Type definition for a function that concatenates OrtValue instances from each Loop iteration into a single
+ *         output buffer.
+ *
+ * \param[in] state Opaque state provided by the EP that executes the Loop kernel.
+ * \param[in] stream_handle An opaque stream handle.
+ * \param[in] per_iteration_output Array of OrtValue instances from each iteration. All OrtValue elements have the
+ *                                 same shape.
+ * \param[in] num_iteration_outputs The number of OrtValue* elements in the `per_iteration_output` array.
+ * \param[out] output The pre-allocated output buffer. Memory is allocated on the device for the EP running the
+ *                    Loop node.
+ * \param[in] output_size_in_bytes The size in bytes of the `output` buffer.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ *
+ * \since Version 1.24.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtLoopConcatOutputFunc)(_In_ void* state,
+                                                          _In_ void* stream_handle,
+                                                          _In_ OrtValue* const* per_iteration_output,
+                                                          _In_ size_t num_itertion_outputs,
+                                                          _Out_writes_bytes_all_(output_size_in_bytes) void* output,
+                                                          _In_ size_t output_size_in_bytes);
 
 /**
  * \brief The OrtEpApi struct provides functions that are relevant to the implementation of an execution provider.
@@ -983,6 +1016,25 @@ struct OrtEpApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
+
+  ORT_API2_STATUS(CreateScanKernelConfig, _Outptr_ OrtScanKernelConfig** out);
+  ORT_CLASS_RELEASE(ScanKernelConfig);
+  ORT_API2_STATUS(ScanKernelConfig_SetTransposeFunc, _In_ OrtScanKernelConfig* config,
+                  _In_ OrtScanTransposeFunc func, _In_ void* func_state);
+  ORT_API2_STATUS(ScanKernelConfig_SetZeroDataFunc, _In_ OrtScanKernelConfig* config,
+                  _In_ OrtScanZeroDataFunc func, _In_ void* func_state);
+  ORT_API2_STATUS(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info,
+                  _In_ const OrtScanKernelConfig* config, _Outptr_ OrtKernelImpl** kernel_out);
+
+  ORT_API2_STATUS(CreateLoopKernelConfig, _Outptr_ OrtLoopKernelConfig** out);
+  ORT_CLASS_RELEASE(LoopKernelConfig);
+  ORT_API2_STATUS(LoopKernelConfig_SetConcatOutputFunc, _In_ OrtLoopKernelConfig* config,
+                  _In_ OrtLoopConcatOutputFunc func, _In_ void* func_state);
+  ORT_API2_STATUS(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info,
+                  _In_ const OrtLoopKernelConfig* config, _Outptr_ OrtKernelImpl** kernel_out);
+
+  ORT_API2_STATUS(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out);
+  ORT_CLASS_RELEASE(KernelImpl);
 };
 
 /**

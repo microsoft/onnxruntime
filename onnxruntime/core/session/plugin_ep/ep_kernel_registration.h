@@ -14,6 +14,10 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/prepacked_weights.h"
 
+#include "core/providers/cpu/controlflow/if.h"
+#include "core/providers/cpu/controlflow/loop.h"
+#include "core/providers/cpu/controlflow/scan.h"
+
 /// <summary>
 /// Implementation of the public C API opaque type OrtSharedPrePackedWeightCache used by plugin EP kernels.
 /// This wraps and fills out an instance of onnxruntime::PrePackedWeights via the
@@ -56,7 +60,77 @@ struct OrtSharedPrePackedWeightCache {
   onnxruntime::AllocatorPtr allocator_;
 };
 
+struct OrtScanKernelConfig {
+  OrtScanTransposeFunc transpose_func = nullptr;
+  void* transpose_func_state = nullptr;
+
+  OrtScanZeroDataFunc zero_data_func = nullptr;
+  void* zero_data_func_state = nullptr;
+};
+
+struct OrtLoopKernelConfig {
+  OrtLoopConcatOutputFunc concat_output_func = nullptr;
+  void* concat_output_func_state = nullptr;
+};
+
 namespace onnxruntime {
+
+class PluginEpIfKernel : public OrtKernelImpl {
+ private:
+  struct PrivateTag {};
+
+ public:
+  static Status Create(const OpKernelInfo& info, /*out*/ std::unique_ptr<PluginEpIfKernel>& out);
+
+  // Note: Must use ::Create() to create an instance.
+  PluginEpIfKernel(const OpKernelInfo& info, PrivateTag);
+
+  // Static functions assigned to the OrtKernelImpl fields:
+  static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
+  static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+
+ private:
+  If kernel_;
+};
+
+class PluginEpLoopKernel : public OrtKernelImpl {
+ private:
+  struct PrivateTag {};
+
+ public:
+  static Status Create(const OpKernelInfo& info, const OrtLoopKernelConfig& config,
+                       /*out*/ std::unique_ptr<PluginEpLoopKernel>& out);
+
+  // Note: Must use ::Create() to create an instance.
+  PluginEpLoopKernel(const OpKernelInfo& info, Loop::ConcatOutput concat_func, PrivateTag);
+
+  // Static functions assigned to the OrtKernelImpl fields:
+  static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
+  static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+
+ private:
+  Loop kernel_;
+};
+
+template <int OpSet>
+class PluginEpScanKernel : public OrtKernelImpl {
+ private:
+  struct PrivateTag {};
+
+ public:
+  static Status Create(const OpKernelInfo& info, const OrtScanKernelConfig& config,
+                       /*out*/ std::unique_ptr<PluginEpScanKernel<OpSet>>& out);
+
+  // Note: Must use ::Create() to create an instance.
+  PluginEpScanKernel(const OpKernelInfo& info, const scan::detail::DeviceHelpers& device_helpers, PrivateTag);
+
+  // Static functions assigned to the OrtKernelImpl fields:
+  static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
+  static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+
+ private:
+  Scan<OpSet> kernel_;
+};
 
 /// <summary>
 /// Make a KernelCreateInfo for a plugin EP's kernel. A KernelCreateInfo contains the function and state
