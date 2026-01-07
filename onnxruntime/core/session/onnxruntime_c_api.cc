@@ -4285,6 +4285,9 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::TensorTypeAndShape_HasShape,
     &OrtApis::KernelInfo_GetConfigEntries,
+    &OrtApis::KernelInfo_GetOperatorDomain,
+    &OrtApis::KernelInfo_GetOperatorType,
+    &OrtApis::KernelInfo_GetOperatorSinceVersion,
 
     &OrtApis::GetInteropApi,
     &OrtApis::SessionGetEpDeviceForOutputs,

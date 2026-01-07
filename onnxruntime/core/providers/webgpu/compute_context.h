@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/providers/webgpu/webgpu_external_header.h"
-
+#include <memory>
 #include <utility>
 
+#include "core/providers/webgpu/webgpu_external_header.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
