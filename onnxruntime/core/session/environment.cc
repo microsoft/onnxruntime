@@ -735,8 +735,7 @@ Status SetEpFactoryEnvironmentOptions(OrtEpFactory& factory, std::string_view li
 }
 }  // namespace
 
-const std::vector<const OrtHardwareDevice*>& Environment::GetSortedOrtHardwareDevices() const
-{
+const std::vector<const OrtHardwareDevice*>& Environment::GetSortedOrtHardwareDevices() const {
   std::lock_guard<std::mutex> lock{mutex_};
   if (ort_hardware_devices_.empty()) {
     ort_hardware_devices_ = SortDevicesByType();

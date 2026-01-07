@@ -314,15 +314,18 @@ TEST(GetOrtHardwareDevicesCapiTest, ReturnsDevices) {
   EXPECT_GT(num_devices, 0u);
   EXPECT_NE(devices, nullptr);
 
-  // Verify we can access device properties
+  // Verify we can access device properties via C API accessor functions
   for (size_t i = 0; i < num_devices; ++i) {
     const OrtHardwareDevice* device = devices[i];
     // Device type should be valid (CPU, GPU, or NPU)
-    EXPECT_TRUE(device->type == OrtHardwareDeviceType_CPU ||
-                device->type == OrtHardwareDeviceType_GPU ||
-                device->type == OrtHardwareDeviceType_NPU);
+    OrtHardwareDeviceType device_type = api->HardwareDevice_Type(device);
+    EXPECT_TRUE(device_type == OrtHardwareDeviceType_CPU ||
+                device_type == OrtHardwareDeviceType_GPU ||
+                device_type == OrtHardwareDeviceType_NPU);
     // Vendor should not be empty
-    EXPECT_FALSE(device->vendor.empty());
+    const char* vendor = api->HardwareDevice_Vendor(device);
+    EXPECT_NE(vendor, nullptr);
+    EXPECT_GT(strlen(vendor), 0u);
   }
 
   api->ReleaseEnv(env);
