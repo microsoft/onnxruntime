@@ -841,11 +841,11 @@ bool RMSNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer, c
     return false;
   }
 
-  int32_t dt_scale = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  // Scale and output need to be the same type.
-  return (dt_scale == dt_output);
+  // input and output need to be the same type.
+  return (dt_input == dt_output);
 }
 
 }  // namespace QDQ

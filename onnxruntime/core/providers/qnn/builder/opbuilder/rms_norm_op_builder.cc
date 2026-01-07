@@ -48,12 +48,12 @@ Status RMSNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
   const size_t input_rank = input_shape.size();
-  ORT_RETURN_IF(input_rank > 4, "QNN RMSNorm only supports input rank <= 4, got rank: %zu", input_rank);
+  ORT_RETURN_IF(input_rank > 4, "QNN RMSNorm only supports input rank <= 4");
 
   std::vector<uint32_t> output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(outputs[0].node_arg, output_shape), "Cannot get shape of output 0");
   const size_t output_rank = output_shape.size();
-  ORT_RETURN_IF(output_rank > 4, "QNN RMSNorm only supports output rank <= 4, got rank: %zu", output_rank);
+  ORT_RETURN_IF(output_rank > 4, "QNN RMSNorm only supports output rank <= 4");
 
   // Additional constraints for NPU backend
   bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
