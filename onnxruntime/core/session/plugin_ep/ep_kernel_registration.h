@@ -75,7 +75,12 @@ struct OrtLoopKernelConfig {
 
 namespace onnxruntime {
 
-class PluginEpIfKernel : public OrtKernelImpl {
+struct PluginEpControlFlowKernel : public OrtKernelImpl {
+  PluginEpControlFlowKernel() : OrtKernelImpl{} {}
+  virtual controlflow::IControlFlowKernel& GetIControlFlowKernel() = 0;
+};
+
+class PluginEpIfKernel : public PluginEpControlFlowKernel {
  private:
   struct PrivateTag {};
 
@@ -84,20 +89,17 @@ class PluginEpIfKernel : public OrtKernelImpl {
 
   // Note: Must use ::Create() to create an instance.
   PluginEpIfKernel(const OpKernelInfo& info, PrivateTag);
+  controlflow::IControlFlowKernel& GetIControlFlowKernel() override { return kernel_; }
 
   // Static functions assigned to the OrtKernelImpl fields:
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL SetupSubgraphExecutionInfoImpl(OrtKernelImpl* this_ptr,
-                                                                const OrtSessionState* session_state,
-                                                                const char* attribute_name,
-                                                                const OrtSessionState* subgraph_session_state) noexcept;
 
  private:
   If kernel_;
 };
 
-class PluginEpLoopKernel : public OrtKernelImpl {
+class PluginEpLoopKernel : public PluginEpControlFlowKernel {
  private:
   struct PrivateTag {};
 
@@ -107,21 +109,18 @@ class PluginEpLoopKernel : public OrtKernelImpl {
 
   // Note: Must use ::Create() to create an instance.
   PluginEpLoopKernel(const OpKernelInfo& info, Loop::ConcatOutput concat_func, PrivateTag);
+  controlflow::IControlFlowKernel& GetIControlFlowKernel() override { return kernel_; }
 
   // Static functions assigned to the OrtKernelImpl fields:
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL SetupSubgraphExecutionInfoImpl(OrtKernelImpl* this_ptr,
-                                                                const OrtSessionState* session_state,
-                                                                const char* attribute_name,
-                                                                const OrtSessionState* subgraph_session_state) noexcept;
 
  private:
   Loop kernel_;
 };
 
 template <int OpSet>
-class PluginEpScanKernel : public OrtKernelImpl {
+class PluginEpScanKernel : public PluginEpControlFlowKernel {
  private:
   struct PrivateTag {};
 
@@ -131,14 +130,11 @@ class PluginEpScanKernel : public OrtKernelImpl {
 
   // Note: Must use ::Create() to create an instance.
   PluginEpScanKernel(const OpKernelInfo& info, const scan::detail::DeviceHelpers& device_helpers, PrivateTag);
+  controlflow::IControlFlowKernel& GetIControlFlowKernel() override { return kernel_; }
 
   // Static functions assigned to the OrtKernelImpl fields:
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL SetupSubgraphExecutionInfoImpl(OrtKernelImpl* this_ptr,
-                                                                const OrtSessionState* session_state,
-                                                                const char* attribute_name,
-                                                                const OrtSessionState* subgraph_session_state) noexcept;
 
  private:
   Scan<OpSet> kernel_;
