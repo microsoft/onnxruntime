@@ -186,7 +186,9 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     }
   }
 
-  ORT_RETURN_IF(inputs.size() > 4 && inputs[4].node_arg.Exists(), "Unsupported inputs g_idx or bias");
+  ORT_RETURN_IF((inputs.size() > 4 && inputs[4].node_arg.Exists()) ||
+                    (inputs.size() > 5 && inputs[5].node_arg.Exists()),
+                "Unsupported inputs g_idx or bias");
 
   // Validate Process
   std::vector<std::string> input_names;
