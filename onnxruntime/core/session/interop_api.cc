@@ -55,8 +55,8 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::CreateExternalResourceImporterForDevice, _In_
   if (factory == nullptr ||
       factory->ort_version_supported < 24 ||
       factory->CreateExternalResourceImporterForDevice == nullptr) {
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
-                                 "Execution provider does not support external resource import.");
+    // EP doesn't support this optional feature
+    return nullptr;
   }
 
   OrtExternalResourceImporterImpl* impl = nullptr;
@@ -66,8 +66,8 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::CreateExternalResourceImporterForDevice, _In_
       &impl));
 
   if (impl == nullptr) {
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
-                                 "Execution provider does not support external resource import for this device.");
+    // EP doesn't support this for the specific device
+    return nullptr;
   }
 
   auto wrapper = std::make_unique<ExternalResourceImporterWrapper>(ep_device, impl);

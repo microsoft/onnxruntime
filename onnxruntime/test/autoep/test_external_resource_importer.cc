@@ -41,13 +41,13 @@ TEST_F(ExternalResourceImporterTest, CreateExternalResourceImporter) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
 
-  if (status != nullptr) {
-    std::string error = Ort::GetApi().GetErrorMessage(status);
-    Ort::GetApi().ReleaseStatus(status);
-    GTEST_SKIP() << "CreateExternalResourceImporterForDevice not supported: " << error;
-  }
+  // Status should be nullptr on success (even if importer is null for unsupported EPs)
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
 
-  ASSERT_NE(importer, nullptr) << "External resource importer should not be null";
+  // importer may be nullptr if EP doesn't support this optional feature
+  if (importer == nullptr) {
+    GTEST_SKIP() << "External resource interop not supported by this EP";
+  }
 
   // Release the importer
   GetInteropApi().ReleaseExternalResourceImporter(importer);
@@ -57,8 +57,8 @@ TEST_F(ExternalResourceImporterTest, CreateExternalResourceImporter) {
 TEST_F(ExternalResourceImporterTest, CanImportMemory) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr) {
-    Ort::GetApi().ReleaseStatus(status);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 
@@ -83,8 +83,8 @@ TEST_F(ExternalResourceImporterTest, CanImportMemory) {
 TEST_F(ExternalResourceImporterTest, CanImportSemaphore) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr) {
-    Ort::GetApi().ReleaseStatus(status);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 
@@ -102,8 +102,8 @@ TEST_F(ExternalResourceImporterTest, CanImportSemaphore) {
 TEST_F(ExternalResourceImporterTest, ImportMemory) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr) {
-    Ort::GetApi().ReleaseStatus(status);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 
@@ -134,8 +134,8 @@ TEST_F(ExternalResourceImporterTest, ImportMemory) {
 TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr) {
-    Ort::GetApi().ReleaseStatus(status);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 
@@ -209,8 +209,8 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
 TEST_F(ExternalResourceImporterTest, ImportSemaphore) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr) {
-    Ort::GetApi().ReleaseStatus(status);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 
@@ -237,8 +237,8 @@ TEST_F(ExternalResourceImporterTest, ImportSemaphore) {
 TEST_F(ExternalResourceImporterTest, WaitAndSignalSemaphore) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr) {
-    Ort::GetApi().ReleaseStatus(status);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 
@@ -285,8 +285,8 @@ TEST_F(ExternalResourceImporterTest, WaitAndSignalSemaphore) {
 TEST_F(ExternalResourceImporterTest, MultipleMemoryImports) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr) {
-    Ort::GetApi().ReleaseStatus(status);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 
@@ -320,8 +320,8 @@ TEST_F(ExternalResourceImporterTest, MultipleMemoryImports) {
 TEST_F(ExternalResourceImporterTest, AccessModeVariations) {
   OrtExternalResourceImporter* importer = nullptr;
   OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr) {
-    Ort::GetApi().ReleaseStatus(status);
+  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
+  if (importer == nullptr) {
     GTEST_SKIP() << "External resource interop not supported";
   }
 

@@ -7622,11 +7622,16 @@ struct OrtInteropApi {
    * The external resource importer is a capability object that provides methods for importing
    * external GPU memory and semaphores for zero-copy import with an execution provider.
    *
-   * \param[in] ep_device The OrtEpDevice instance to create the importer for.
-   * \param[out] out_importer Output parameter set to the created OrtExternalResourceImporter instance.
+   * This is an optional EP capability. If the EP does not support external resource import,
+   * out_importer is set to nullptr and the function returns success (nullptr status).
+   * This allows callers to use the simple "if (status != nullptr) handle_error()" pattern
+   * and check out_importer separately for capability detection.
    *
-   * \return nullptr on success, or an OrtStatus with ORT_NOT_IMPLEMENTED if the EP does not
-   *         support external resource import.
+   * \param[in] ep_device The OrtEpDevice instance to create the importer for.
+   * \param[out] out_importer Output parameter set to the created OrtExternalResourceImporter instance,
+   *                          or nullptr if the EP does not support external resource import.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
