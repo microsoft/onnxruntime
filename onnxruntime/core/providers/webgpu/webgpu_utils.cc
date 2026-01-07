@@ -26,7 +26,7 @@ TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components
 }
 
 SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
-  if (adapter_info.vendor == std::string_view{"intel"})
+  if (adapter_info.vendor == std::string_view{"intel"}) {
     // Disable Split-K on old Intel GPUs.
     if (adapter_info.architecture == std::string_view{"gen-7"} ||
         adapter_info.architecture == std::string_view{"gen-8"} ||
@@ -59,6 +59,7 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       configs_per_dim_inner_range_.emplace_back(3072, 8.0f);
       configs_per_dim_inner_range_.emplace_back(4096, 6.0f);
     }
+  }
 }
 
 SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, float rate)
