@@ -143,26 +143,26 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
     return nullptr;
   }
 
-  return std::make_unique<LowPowerBlockQuantizedGemmFusion>(p_scale_dql_node_unit,
+  return std::make_unique<LowPowerBlockQuantizedGemmFusion>(*p_scale_dql_node_unit,
                                                             p_w_ql_node_unit,
-                                                            p_w_dql_node_unit,
-                                                            p_act_dql_node_unit,
-                                                            &gemm_node_unit,
-                                                            p_output_ql_node_unit);
+                                                            *p_w_dql_node_unit,
+                                                            *p_act_dql_node_unit,
+                                                            gemm_node_unit,
+                                                            *p_output_ql_node_unit);
 }
 
-LowPowerBlockQuantizedGemmFusion::LowPowerBlockQuantizedGemmFusion(const NodeUnit* Scale_DQL_node_unit,
+LowPowerBlockQuantizedGemmFusion::LowPowerBlockQuantizedGemmFusion(const NodeUnit& Scale_DQL_node_unit,
                                                                    const NodeUnit* W_QL_node_unit,
-                                                                   const NodeUnit* W_DQL_node_unit,
-                                                                   const NodeUnit* Act_DQL_node_unit,
-                                                                   const NodeUnit* Gemm_node_unit,
-                                                                   const NodeUnit* Output_QL_node_unit)
-    : node_units_{Scale_DQL_node_unit,
+                                                                   const NodeUnit& W_DQL_node_unit,
+                                                                   const NodeUnit& Act_DQL_node_unit,
+                                                                   const NodeUnit& Gemm_node_unit,
+                                                                   const NodeUnit& Output_QL_node_unit)
+    : node_units_{&Scale_DQL_node_unit,
                   W_QL_node_unit,
-                  W_DQL_node_unit,
-                  Act_DQL_node_unit,
-                  Gemm_node_unit,
-                  Output_QL_node_unit} {
+                  &W_DQL_node_unit,
+                  &Act_DQL_node_unit,
+                  &Gemm_node_unit,
+                  &Output_QL_node_unit} {
   // Populate filtered_node_units_ immediately
   for (size_t i = 0; i < node_units_.size(); ++i) {
     if (node_units_[i] != nullptr) {
@@ -309,7 +309,6 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                                               block_size,
                                                               block_scales_shape));
 
-    // Get weight tensor type from input of w_dql_tensor or output_dql_tensor
     Qnn_TensorType_t weight_tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
     weight_tensor = QnnTensorWrapper(weight_tensor_name, weight_tensor_type, QNN_DATATYPE_SFIXED_POINT_8,
                                      std::move(weight_qparams), std::move(weight_shape),

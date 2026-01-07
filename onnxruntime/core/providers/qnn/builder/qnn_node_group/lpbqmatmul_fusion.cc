@@ -107,17 +107,17 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedMatMulFusion::TryFusion(
     return nullptr;
   }
 
-  return std::make_unique<LowPowerBlockQuantizedMatMulFusion>(p_scale_dql_node_unit,
+  return std::make_unique<LowPowerBlockQuantizedMatMulFusion>(*p_scale_dql_node_unit,
                                                               p_w_ql_node_unit,
-                                                              &matmul_node_unit);
+                                                              matmul_node_unit);
 }
 
-LowPowerBlockQuantizedMatMulFusion::LowPowerBlockQuantizedMatMulFusion(const NodeUnit* Scale_DQL_node_unit,
+LowPowerBlockQuantizedMatMulFusion::LowPowerBlockQuantizedMatMulFusion(const NodeUnit& Scale_DQL_node_unit,
                                                                        const NodeUnit* W_QL_node_unit,
-                                                                       const NodeUnit* MatMul_node_unit)
-    : node_units_{Scale_DQL_node_unit,
+                                                                       const NodeUnit& MatMul_node_unit)
+    : node_units_{&Scale_DQL_node_unit,
                   W_QL_node_unit,
-                  MatMul_node_unit} {
+                  &MatMul_node_unit} {
   // Populate filtered_node_units_ immediately
   for (size_t i = 0; i < node_units_.size(); ++i) {
     if (node_units_[i] != nullptr) {
@@ -386,7 +386,7 @@ Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
 
     size_t output_channel_axis = 0;  // MatMul requires axis to be rank-1
 
-    // MatMul w/ LPBQ requies MatMul(MxK, KxN) and axis = rank-1 (out channels)
+    // MatMul w/ LPBQ requires MatMul(MxK, KxN) and axis = rank-1 (out channels)
     // Transpose Weight to KxN, output_channel_axis is modified to rank-1;
     if (input_channel_axis == 1) {
       ORT_RETURN_IF_ERROR(TwoDimensionTranspose(quant_data, weight_shape, QNN_DATATYPE_SFIXED_POINT_8));
