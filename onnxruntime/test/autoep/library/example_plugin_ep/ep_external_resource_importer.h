@@ -7,7 +7,7 @@
 
 #include <atomic>
 #include <cstddef>
-#include <cstdlib>
+#include <memory>
 
 /**
  * @brief Example derived handle for imported external memory.
@@ -17,7 +17,7 @@
  * In a real EP, this would hold a GPU-mapped pointer from an imported D3D12/Vulkan/CUDA resource.
  */
 struct ExampleExternalMemoryHandle : OrtExternalMemoryHandle {
-  void* simulated_ptr;                      ///< Simulated mapped pointer (CPU memory for testing)
+  std::unique_ptr<char[]> simulated_ptr;    ///< Simulated mapped pointer (CPU memory for testing)
   OrtExternalMemoryAccessMode access_mode;  ///< Access mode for the imported memory
 
   ExampleExternalMemoryHandle()
@@ -31,13 +31,7 @@ struct ExampleExternalMemoryHandle : OrtExternalMemoryHandle {
     Release = ReleaseCallback;
   }
 
-  ~ExampleExternalMemoryHandle() {
-    // Free the simulated pointer if allocated
-    if (simulated_ptr != nullptr) {
-      free(simulated_ptr);
-      simulated_ptr = nullptr;
-    }
-  }
+  ~ExampleExternalMemoryHandle() = default;
 
   static void ORT_API_CALL ReleaseCallback(_In_ OrtExternalMemoryHandle* handle) noexcept {
     if (handle == nullptr) return;
