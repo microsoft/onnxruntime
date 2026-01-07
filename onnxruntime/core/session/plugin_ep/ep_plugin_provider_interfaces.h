@@ -133,6 +133,8 @@ class PluginExecutionProvider : public IExecutionProvider {
   Status ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
                                                 OrtCompiledModelCompatibility& model_compatibility) const override;
 
+  const OrtEp* GetOrtEp() const override;
+
  private:
   struct FusedNodeState {
     FusedNodeState() = default;
