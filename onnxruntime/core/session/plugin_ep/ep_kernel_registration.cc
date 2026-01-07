@@ -208,14 +208,6 @@ Status PluginEpIfKernel::Create(const OpKernelInfo& info, /*out*/ std::unique_pt
   return Status::OK();
 }
 
-PluginEpIfKernel::PluginEpIfKernel(const OpKernelInfo& info, PrivateTag)
-    : OrtKernelImpl{},
-      kernel_(info) {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = ComputeImpl;
-  Release = ReleaseImpl;
-}
-
 /*static*/
 OrtStatus* ORT_API_CALL PluginEpIfKernel::ComputeImpl(OrtKernelImpl* this_ptr,
                                                       OrtKernelContext* kernel_ctx) noexcept {
@@ -228,6 +220,14 @@ OrtStatus* ORT_API_CALL PluginEpIfKernel::ComputeImpl(OrtKernelImpl* this_ptr,
 /*static*/
 void ORT_API_CALL PluginEpIfKernel::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
   delete static_cast<PluginEpIfKernel*>(this_ptr);
+}
+
+PluginEpIfKernel::PluginEpIfKernel(const OpKernelInfo& info, PrivateTag)
+    : OrtKernelImpl{},
+      kernel_(info) {
+  ort_version_supported = ORT_API_VERSION;
+  Compute = ComputeImpl;
+  Release = ReleaseImpl;
 }
 
 //
@@ -258,15 +258,6 @@ Status PluginEpLoopKernel::Create(const OpKernelInfo& info, const OrtLoopKernelC
   return Status::OK();
 }
 
-PluginEpLoopKernel::PluginEpLoopKernel(const OpKernelInfo& info, Loop::ConcatOutput concat_output_func, PrivateTag)
-    : OrtKernelImpl{},
-      kernel_(info) {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = ComputeImpl;
-  Release = ReleaseImpl;
-  kernel_.SetConcatOutputFunc(concat_output_func);
-}
-
 /*static*/
 OrtStatus* ORT_API_CALL PluginEpLoopKernel::ComputeImpl(OrtKernelImpl* this_ptr,
                                                         OrtKernelContext* kernel_ctx) noexcept {
@@ -279,6 +270,15 @@ OrtStatus* ORT_API_CALL PluginEpLoopKernel::ComputeImpl(OrtKernelImpl* this_ptr,
 /*static*/
 void ORT_API_CALL PluginEpLoopKernel::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
   delete static_cast<PluginEpLoopKernel*>(this_ptr);
+}
+
+PluginEpLoopKernel::PluginEpLoopKernel(const OpKernelInfo& info, Loop::ConcatOutput concat_output_func, PrivateTag)
+    : OrtKernelImpl{},
+      kernel_(info) {
+  ort_version_supported = ORT_API_VERSION;
+  Compute = ComputeImpl;
+  Release = ReleaseImpl;
+  kernel_.SetConcatOutputFunc(concat_output_func);
 }
 
 //
@@ -346,28 +346,6 @@ Status PluginEpScanKernel<9>::Create(const OpKernelInfo& info, const OrtScanKern
   return Status::OK();
 }
 
-template <>
-PluginEpScanKernel<8>::PluginEpScanKernel(const OpKernelInfo& info,
-                                          const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
-    : OrtKernelImpl{},
-      kernel_(info) {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = PluginEpScanKernel<8>::ComputeImpl;
-  Release = PluginEpScanKernel<8>::ReleaseImpl;
-  kernel_.SetDeviceHelpers(device_helpers);
-}
-
-template <>
-PluginEpScanKernel<9>::PluginEpScanKernel(const OpKernelInfo& info,
-                                          const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
-    : OrtKernelImpl{},
-      kernel_(info) {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = PluginEpScanKernel<9>::ComputeImpl;
-  Release = PluginEpScanKernel<9>::ReleaseImpl;
-  kernel_.SetDeviceHelpers(device_helpers);
-}
-
 /*static*/
 template <>
 OrtStatus* ORT_API_CALL PluginEpScanKernel<8>::ComputeImpl(OrtKernelImpl* this_ptr,
@@ -398,6 +376,28 @@ void ORT_API_CALL PluginEpScanKernel<8>::ReleaseImpl(OrtKernelImpl* this_ptr) no
 template <>
 void ORT_API_CALL PluginEpScanKernel<9>::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
   delete static_cast<PluginEpScanKernel<9>*>(this_ptr);
+}
+
+template <>
+PluginEpScanKernel<8>::PluginEpScanKernel(const OpKernelInfo& info,
+                                          const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
+    : OrtKernelImpl{},
+      kernel_(info) {
+  ort_version_supported = ORT_API_VERSION;
+  Compute = PluginEpScanKernel<8>::ComputeImpl;
+  Release = PluginEpScanKernel<8>::ReleaseImpl;
+  kernel_.SetDeviceHelpers(device_helpers);
+}
+
+template <>
+PluginEpScanKernel<9>::PluginEpScanKernel(const OpKernelInfo& info,
+                                          const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
+    : OrtKernelImpl{},
+      kernel_(info) {
+  ort_version_supported = ORT_API_VERSION;
+  Compute = PluginEpScanKernel<9>::ComputeImpl;
+  Release = PluginEpScanKernel<9>::ReleaseImpl;
+  kernel_.SetDeviceHelpers(device_helpers);
 }
 
 /// <summary>
