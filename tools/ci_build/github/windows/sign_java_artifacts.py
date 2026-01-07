@@ -23,7 +23,6 @@ def clean_gpg_trustdb() -> None:
                     print(f"Warning: failed to delete GPG trust database at {trustdb_path}: {e}")
 
 
-
 def get_gpg_path() -> Path:
     """Finds the path to the GPG executable."""
     if platform.system() == "Windows":
