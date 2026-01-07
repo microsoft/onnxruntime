@@ -899,17 +899,7 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
                                   {kDmlExecutionProvider});
 }
 
-static_assert(sizeof("Pad_Reflect_DimWithZeroInput") > 1, "test-name must not be empty");
-template <typename gtest_TypeParam_>
-class PadOpTest_Pad_Reflect_DimWithZeroInput_Test : public PadOpTest<gtest_TypeParam_> {
- private:
-  typedef PadOpTest<gtest_TypeParam_> TestFixture;
-  typedef gtest_TypeParam_ TypeParam;
-  void TestBody() override;
-};
-[[maybe_unused]] static bool gtest_PadOpTest_Pad_Reflect_DimWithZeroInput_registered_ = ::testing::internal::TypeParameterizedTest<PadOpTest, ::testing::internal::TemplateSel<PadOpTest_Pad_Reflect_DimWithZeroInput_Test>, gtest_type_params_PadOpTest_>::Register("", ::testing::internal::CodeLocation("D:\\dev\\ort_main\\onnxruntime\\test\\providers\\cpu\\tensor\\pad_test.cc", 892), "PadOpTest", "Pad_Reflect_DimWithZeroInput", 0, ::testing::internal::GenerateNames<gtest_type_params_PadOpTest_NameGenerator, gtest_type_params_PadOpTest_>());
-template <typename gtest_TypeParam_>
-void PadOpTest_Pad_Reflect_DimWithZeroInput_Test<gtest_TypeParam_>::TestBody() {
+TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
   using T = TypeParam;
   // DML: Unskip when fixed #41968513
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
