@@ -4377,6 +4377,7 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
 
 ORT_API_STATUS_IMPL(OrtApis::GetOrtHardwareDevices, _In_ const OrtEnv* env, _Outptr_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_devices) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   if (env == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env must not be null");
   }
@@ -4388,6 +4389,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetOrtHardwareDevices, _In_ const OrtEnv* env, _Out
   *devices = device_vector.data();
   *num_devices = device_vector.size();
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(devices);
+  ORT_UNUSED_PARAMETER(num_devices);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtHardwareDevices is not available in minimal build");
+#endif
   API_IMPL_END
 }
 
