@@ -142,6 +142,7 @@ option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternat
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
 option(onnxruntime_WGSL_TEMPLATE "Specify the code generator for WGSL template. Default is static." "static")
+option(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB "Build WebGPU EP as a static library" OFF)
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
@@ -892,11 +893,13 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/HtpPrepare.dll")
       if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc" OR ${QNN_ARCH_ABI} STREQUAL "arm64x-windows-msvc")
         file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
-                                               "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so"
-                                               "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libqnnhtpv73.cat"
-                                               "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so"
-                                               "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libqnnhtpv81.cat")
+                                  "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so"
+                                  "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libqnnhtpv73.cat"
+                                  "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so"
+                                  "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libqnnhtpv81.cat")
         list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
+      elseif(${QNN_ARCH_ABI} STREQUAL "aarch64-ubuntu-gcc9.4")
+        list(APPEND QNN_LIB_FILES "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so")
       endif()
       message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
     endif()
@@ -977,8 +980,13 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
-    list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_SHARED_LIBRARY=1)
+    if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+      list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_SHARED_LIBRARY=1)
+    else()
+      message(FATAL_ERROR "onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=OFF is not supported with onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON")
+    endif()
   endif()
+
   if (onnxruntime_USE_EXTERNAL_DAWN)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_EXTERNAL_DAWN=1)
   endif()

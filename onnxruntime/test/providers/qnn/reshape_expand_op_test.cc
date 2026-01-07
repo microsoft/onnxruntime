@@ -50,16 +50,6 @@ TEST_F(QnnCPUBackendTests, Reshape_DynamicShape_Unsupported) {
                        19);                             // Opset
 }
 
-// Test that Reshape with an enabled 'allowzero' attribute is not supported by QNN EP.
-TEST_F(QnnCPUBackendTests, Reshape_AllowZeroAttr_Unsupported) {
-  RunReshapeExpandTest("Reshape", TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                       TestInputDef<int64_t>({2}, true, {1, 48}),
-                       {utils::MakeAttribute("allowzero", static_cast<int64_t>(1))},
-                       ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
-                       "cpu",                           // Backend
-                       19);                             // Opset
-}
-
 // Test Reshape of rank 4 -> rank 2.
 TEST_F(QnnCPUBackendTests, Reshape_4D_f32) {
   RunReshapeExpandTest("Reshape", TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
@@ -271,14 +261,24 @@ TEST_F(QnnHTPBackendTests, Reshape_DynamicShape_Unsupported) {
                                         19);                             // Opset
 }
 
-// Test that QDQ Reshape with an enabled 'allowzero' attribute is not supported by QNN EP.
-TEST_F(QnnHTPBackendTests, Reshape_AllowZeroAttr_Unsupported) {
+// Test that QDQ Reshape with allowzero=1 and a shape containing zeros is not supported by QNN EP.
+TEST_F(QnnHTPBackendTests, Reshape_AllowZeroAttr_WithZeros_Unsupported) {
+  RunReshapeExpandTestOnHTP<float>("Reshape",
+                                   TestInputDef<float>({2, 0, 3}, false, {}),
+                                   TestInputDef<int64_t>({2}, true, {6, 0}),
+                                   {utils::MakeAttribute("allowzero", static_cast<int64_t>(1))},
+                                   ExpectedEPNodeAssignment::None,
+                                   19);
+}
+
+// Test that QDQ Reshape with allowzero=1 but no zeros in shape IS supported by QNN EP.
+TEST_F(QnnHTPBackendTests, Reshape_AllowZeroAttr_NoZeros_Supported) {
   RunQDQReshapeExpandTestOnHTP<uint8_t>("Reshape",
-                                        TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                                        TestInputDef<int64_t>({2}, true, {1, 48}),
+                                        TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+                                        TestInputDef<int64_t>({2}, true, {1, 48}),  // concrete shape with no zeros
                                         {utils::MakeAttribute("allowzero", static_cast<int64_t>(1))},
-                                        ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
-                                        19);                             // Opset
+                                        ExpectedEPNodeAssignment::All,
+                                        19);
 }
 
 // Test 8-bit QDQ Reshape of rank 4 -> rank 2.

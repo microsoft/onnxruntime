@@ -4,8 +4,7 @@ mypy
 pytest
 setuptools>=68.2.2
 wheel
-protobuf==4.25.1; python_version < "3.14"
-protobuf==6.33.0; python_version >= "3.14"
+protobuf==6.33.0
 sympy==1.14
 flatbuffers
 psutil

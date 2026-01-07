@@ -34,7 +34,7 @@ Status WebGpuKernel::Compute(OpKernelContext* p_op_kernel_context) const {
   return s;
 }
 
-Status WebGpuKernel::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+Status WebGpuKernel::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr /*alloc*/,
                              /*out*/ bool& is_packed, /*out*/ PrePackedWeights* /* prepacked_weights */) {
   ComputeContextBase context{webgpu_context_, ep_, *this};
 
@@ -45,8 +45,9 @@ Status WebGpuKernel::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr a
   // Currently, ORT does not allow using prepacked weights in non-CPU EPs.
   // So we do not pass prepacked_weights to PrePackInternal.
   // Kernel implementation that supports prepacking should manage its own storage.
+  // Use the EP's prepack allocator which creates unmapped GPU buffers.
 
-  Status s = PrePackInternal(context, tensor, input_idx, alloc, is_packed);
+  Status s = PrePackInternal(context, tensor, input_idx, ep_.PrepackAllocator(), is_packed);
 
   if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {
     ORT_RETURN_IF_ERROR(webgpu_context_.PopErrorScope());
