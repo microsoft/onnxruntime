@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 
+
 def clean_gpg_trustdb() -> None:
     if platform.system() == "Windows":
         # Clean up GPG trust database if it exists
