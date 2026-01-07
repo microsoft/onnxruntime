@@ -1167,14 +1167,14 @@ TEST(PadOpTest, ConstantPadLargeNegativePadNoOutput) {
 
   // Expected shape is as follows:
   // dim0: 2 + 1(pad) - 3(crop at the back) = (0) removed // Should produce empty output
-  // dim1: 18 + 0x100000(pad) - 0(crop at the front) = 65554
+  // dim1: 18 + 0x100000(pad) - 0(crop at the front) = 1,048,594
   // dim2: 4 + -2(crop at the front) + 1(pad at the back) = 3
-  // Resulting shape is {0, 65554, 3} with 0 at the front.
+  // Resulting shape is {0, 1048594, 3} with 0 at the front.
   // How do we handle zero shapes? Currently ONNX spec allows it.
   // We choose to produce a empty tensor
-  constexpr int64_t dim0 = 2 + 1 - 3;
-  constexpr int64_t dim1 = 18 + 0x100000 - 0;
-  constexpr int64_t dim2 = 4 + -2 + 1;
+  constexpr int64_t dim0 = 2LL + 1 - 3;
+  constexpr int64_t dim1 = 18LL + 0x100000 - 0;
+  constexpr int64_t dim2 = 4LL + -2 + 1;
   const std::initializer_list<int64_t> output_shape{dim0, dim1, dim2};
 
   std::vector<float> output_data;  // empty now

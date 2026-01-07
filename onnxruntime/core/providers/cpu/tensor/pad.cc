@@ -387,7 +387,7 @@ struct OutputSink {
   void operator()(T* output, T value) const {
 #ifdef _DEBUG
     if (output < beg || output >= end) {
-      throw std::out_of_range("Pad OutputSink: Output pointer is out of range");
+      ORT_THROW("Pad OutputSink: Output pointer is out of range");
     }
 #endif
     *output = value;
