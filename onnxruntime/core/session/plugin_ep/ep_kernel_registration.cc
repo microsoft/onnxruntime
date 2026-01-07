@@ -14,6 +14,7 @@
 #include "core/framework/tensor.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_api.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 //
 // OrtSharedPrePackedWeightCache
@@ -54,13 +55,14 @@ namespace onnxruntime {
 /// <summary>
 /// OpKernel that wraps a OrtKernelImpl provided by a plugin EP.
 /// </summary>
-class PluginEpOpKernel final : public OpKernel {
+class PluginEpOpKernel final : public controlflow::IControlFlowKernel {
  private:
   // Prevents calling constructor directly without having to make it private (required by std::make_unique).
   struct PrivateTag {};
 
  public:
-  PluginEpOpKernel(const OpKernelInfo& info, PrivateTag) : OpKernel{info} {}  // must use ::Create()
+  PluginEpOpKernel(const OpKernelInfo& info, PrivateTag)
+      : controlflow::IControlFlowKernel{info} {}  // must use ::Create()
 
   static Status Create(FuncManager& fn_manager, const OpKernelInfo& info,
                        OrtKernelCreateFunc kernel_create_func, void* kernel_create_func_state,
@@ -149,6 +151,27 @@ class PluginEpOpKernel final : public OpKernel {
     return Status::OK();
   }
 
+  Status SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                    const std::string& attribute_name,
+                                    const SessionState& subgraph_session_state) override {
+    assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
+
+    if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->SetupSubgraphExecutionInfo == nullptr) {
+      // OrtKernelImpl does not define an implementation. This is an error because this function will only
+      // be called by ORT when necessary (for controlflow ops).
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "PluginEpOpKernel instance is missing an implementation of ",
+                             "OrtKernelImpl::SetupSubgraphExecutionInfo");
+    }
+
+    const auto* ort_state = reinterpret_cast<const OrtSessionState*>(&session_state);
+    const auto* ort_subgraph_state = reinterpret_cast<const OrtSessionState*>(&subgraph_session_state);
+
+    return ToStatusAndRelease(
+        kernel_impl_->SetupSubgraphExecutionInfo(kernel_impl_, ort_state, attribute_name.c_str(),
+                                                 ort_subgraph_state));
+  }
+
  private:
   /// <summary>
   /// Gets the cached OrtAllocator for the given AllocatorPtr passed to PrePack().
@@ -218,6 +241,24 @@ OrtStatus* ORT_API_CALL PluginEpIfKernel::ComputeImpl(OrtKernelImpl* this_ptr,
 }
 
 /*static*/
+OrtStatus* ORT_API_CALL PluginEpIfKernel::SetupSubgraphExecutionInfoImpl(
+    OrtKernelImpl* this_ptr,
+    const OrtSessionState* ort_session_state,
+    const char* attribute_name_c_str,
+    const OrtSessionState* ort_subgraph_session_state) noexcept {
+  auto plugin_ep_kernel = static_cast<PluginEpIfKernel*>(this_ptr);
+
+  const auto& session_state = *reinterpret_cast<const SessionState*>(ort_session_state);
+  const auto& subgraph_session_state = *reinterpret_cast<const SessionState*>(ort_subgraph_session_state);
+  const std::string attribute_name(attribute_name_c_str);
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.SetupSubgraphExecutionInfo(session_state,
+                                                                                       attribute_name,
+                                                                                       subgraph_session_state));
+  return nullptr;
+}
+
+/*static*/
 void ORT_API_CALL PluginEpIfKernel::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
   delete static_cast<PluginEpIfKernel*>(this_ptr);
 }
@@ -228,6 +269,7 @@ PluginEpIfKernel::PluginEpIfKernel(const OpKernelInfo& info, PrivateTag)
   ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
+  SetupSubgraphExecutionInfo = SetupSubgraphExecutionInfoImpl;
 }
 
 //
@@ -272,12 +314,31 @@ void ORT_API_CALL PluginEpLoopKernel::ReleaseImpl(OrtKernelImpl* this_ptr) noexc
   delete static_cast<PluginEpLoopKernel*>(this_ptr);
 }
 
+/*static*/
+OrtStatus* ORT_API_CALL PluginEpLoopKernel::SetupSubgraphExecutionInfoImpl(
+    OrtKernelImpl* this_ptr,
+    const OrtSessionState* ort_session_state,
+    const char* attribute_name_c_str,
+    const OrtSessionState* ort_subgraph_session_state) noexcept {
+  auto plugin_ep_kernel = static_cast<PluginEpLoopKernel*>(this_ptr);
+
+  const auto& session_state = *reinterpret_cast<const SessionState*>(ort_session_state);
+  const auto& subgraph_session_state = *reinterpret_cast<const SessionState*>(ort_subgraph_session_state);
+  const std::string attribute_name(attribute_name_c_str);
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.SetupSubgraphExecutionInfo(session_state,
+                                                                                       attribute_name,
+                                                                                       subgraph_session_state));
+  return nullptr;
+}
+
 PluginEpLoopKernel::PluginEpLoopKernel(const OpKernelInfo& info, Loop::ConcatOutput concat_output_func, PrivateTag)
     : OrtKernelImpl{},
       kernel_(info) {
   ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
+  SetupSubgraphExecutionInfo = SetupSubgraphExecutionInfoImpl;
   kernel_.SetConcatOutputFunc(concat_output_func);
 }
 
@@ -378,6 +439,44 @@ void ORT_API_CALL PluginEpScanKernel<9>::ReleaseImpl(OrtKernelImpl* this_ptr) no
   delete static_cast<PluginEpScanKernel<9>*>(this_ptr);
 }
 
+/*static*/
+template <>
+OrtStatus* ORT_API_CALL PluginEpScanKernel<8>::SetupSubgraphExecutionInfoImpl(
+    OrtKernelImpl* this_ptr,
+    const OrtSessionState* ort_session_state,
+    const char* attribute_name_c_str,
+    const OrtSessionState* ort_subgraph_session_state) noexcept {
+  auto plugin_ep_kernel = static_cast<PluginEpScanKernel<8>*>(this_ptr);
+
+  const auto& session_state = *reinterpret_cast<const SessionState*>(ort_session_state);
+  const auto& subgraph_session_state = *reinterpret_cast<const SessionState*>(ort_subgraph_session_state);
+  const std::string attribute_name(attribute_name_c_str);
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.SetupSubgraphExecutionInfo(session_state,
+                                                                                       attribute_name,
+                                                                                       subgraph_session_state));
+  return nullptr;
+}
+
+/*static*/
+template <>
+OrtStatus* ORT_API_CALL PluginEpScanKernel<9>::SetupSubgraphExecutionInfoImpl(
+    OrtKernelImpl* this_ptr,
+    const OrtSessionState* ort_session_state,
+    const char* attribute_name_c_str,
+    const OrtSessionState* ort_subgraph_session_state) noexcept {
+  auto plugin_ep_kernel = static_cast<PluginEpScanKernel<9>*>(this_ptr);
+
+  const auto& session_state = *reinterpret_cast<const SessionState*>(ort_session_state);
+  const auto& subgraph_session_state = *reinterpret_cast<const SessionState*>(ort_subgraph_session_state);
+  const std::string attribute_name(attribute_name_c_str);
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.SetupSubgraphExecutionInfo(session_state,
+                                                                                       attribute_name,
+                                                                                       subgraph_session_state));
+  return nullptr;
+}
+
 template <>
 PluginEpScanKernel<8>::PluginEpScanKernel(const OpKernelInfo& info,
                                           const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
@@ -386,6 +485,7 @@ PluginEpScanKernel<8>::PluginEpScanKernel(const OpKernelInfo& info,
   ort_version_supported = ORT_API_VERSION;
   Compute = PluginEpScanKernel<8>::ComputeImpl;
   Release = PluginEpScanKernel<8>::ReleaseImpl;
+  SetupSubgraphExecutionInfo = PluginEpScanKernel<8>::SetupSubgraphExecutionInfoImpl;
   kernel_.SetDeviceHelpers(device_helpers);
 }
 
@@ -397,6 +497,7 @@ PluginEpScanKernel<9>::PluginEpScanKernel(const OpKernelInfo& info,
   ort_version_supported = ORT_API_VERSION;
   Compute = PluginEpScanKernel<9>::ComputeImpl;
   Release = PluginEpScanKernel<9>::ReleaseImpl;
+  SetupSubgraphExecutionInfo = PluginEpScanKernel<9>::SetupSubgraphExecutionInfoImpl;
   kernel_.SetDeviceHelpers(device_helpers);
 }
 

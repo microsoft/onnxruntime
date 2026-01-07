@@ -97,34 +97,54 @@ static constexpr const char* kOnnxDomain = "";
       const char* ep_name,                                                                          \
       void* create_kernel_state,                                                                    \
       KernelCreateInfo* result) {                                                                   \
-    try {                                                                                           \
-      Ort::KernelDef kernel_def = builder.SetOperatorType(#name)                                    \
-                                      .SetDomain(domain)                                            \
-                                      .SetSinceVersion(startver, endver)                            \
-                                      .SetExecutionProvider(ep_name)                                \
-                                      .Build();                                                     \
+    EXCEPTION_TO_RETURNED_STATUS_BEGIN                                                              \
+    Ort::KernelDef kernel_def = builder.SetOperatorType(#name)                                      \
+                                    .SetDomain(domain)                                              \
+                                    .SetSinceVersion(startver, endver)                              \
+                                    .SetExecutionProvider(ep_name)                                  \
+                                    .Build();                                                       \
                                                                                                     \
-      auto kernel_create_func = [](void* state, const OrtKernelInfo* info,                          \
-                                   OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {             \
-        *kernel_out = nullptr;                                                                      \
+    auto kernel_create_func = [](void* state, const OrtKernelInfo* info,                            \
+                                 OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {               \
+      *kernel_out = nullptr;                                                                        \
                                                                                                     \
-        std::unique_ptr<kernel_class> kernel;                                                       \
-        RETURN_IF_ERROR(kernel_class::Create(info, state, kernel));                                 \
-        *kernel_out = kernel.release();                                                             \
-        return nullptr;                                                                             \
-      };                                                                                            \
+      std::unique_ptr<kernel_class> kernel;                                                         \
+      RETURN_IF_ERROR(kernel_class::Create(info, state, kernel));                                   \
+      *kernel_out = kernel.release();                                                               \
+      return nullptr;                                                                               \
+    };                                                                                              \
                                                                                                     \
-      *result = KernelCreateInfo(std::move(kernel_def), kernel_create_func, create_kernel_state);   \
-    } catch (const Ort::Exception& ex) {                                                            \
-      Ort::Status status(ex);                                                                       \
-      return status.release();                                                                      \
-    } catch (const std::exception& ex) {                                                            \
-      Ort::Status status(ex.what(), ORT_EP_FAIL);                                                   \
-      return status.release();                                                                      \
-    }                                                                                               \
+    *result = KernelCreateInfo(std::move(kernel_def), kernel_create_func, create_kernel_state);     \
     return nullptr;                                                                                 \
+    EXCEPTION_TO_RETURNED_STATUS_END                                                                \
   }
 
 // Defines a function of type BuildKernelCreateInfoFn for a kernel implementation with a start version.
 #define ONNX_OPERATOR_KERNEL_EX(name, domain, version, builder, kernel_class) \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(name, domain, version, version, builder, kernel_class)
+
+// Defines a function of type BuildKernelCreateInfoFn for a control flow kernel implementation with a start and end
+// version range.
+#define ONNX_CONTROL_FLOW_OPERATOR_VERSIONED_KERNEL_EX(name, domain, startver, endver, builder, kernel_create_func) \
+  class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, startver, endver, name);                                  \
+  template <>                                                                                                       \
+  OrtStatus*                                                                                                        \
+  BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(domain, startver, endver, name)>(                 \
+      const char* ep_name,                                                                                          \
+      void* create_kernel_state,                                                                                    \
+      KernelCreateInfo* result) {                                                                                   \
+    EXCEPTION_TO_RETURNED_STATUS_BEGIN                                                                              \
+    Ort::KernelDef kernel_def = builder.SetOperatorType(#name)                                                      \
+                                    .SetDomain(domain)                                                              \
+                                    .SetSinceVersion(startver, endver)                                              \
+                                    .SetExecutionProvider(ep_name)                                                  \
+                                    .Build();                                                                       \
+                                                                                                                    \
+    *result = KernelCreateInfo(std::move(kernel_def), (kernel_create_func), create_kernel_state);                   \
+    return nullptr;                                                                                                 \
+    EXCEPTION_TO_RETURNED_STATUS_END                                                                                \
+  }
+
+// Defines a function of type BuildKernelCreateInfoFn for a control flow kernel implementation with a start version.
+#define ONNX_CONTROL_FLOW_OPERATOR_KERNEL_EX(name, domain, version, builder, kernel_create_func) \
+  ONNX_CONTROL_FLOW_OPERATOR_VERSIONED_KERNEL_EX(name, domain, version, version, builder, kernel_create_func)

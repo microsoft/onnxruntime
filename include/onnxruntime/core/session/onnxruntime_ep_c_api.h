@@ -30,6 +30,7 @@ ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
 ORT_RUNTIME_CLASS(DataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
 ORT_RUNTIME_CLASS(SharedPrePackedWeightCache);
+ORT_RUNTIME_CLASS(SessionState);
 ORT_RUNTIME_CLASS(ScanKernelConfig);
 ORT_RUNTIME_CLASS(LoopKernelConfig);
 
@@ -406,6 +407,10 @@ struct OrtKernelImpl {
                   _In_reads_(num_buffers) const void* const* buffer_data_ptrs,
                   _In_reads_(num_buffers) const size_t* buffer_data_sizes,
                   _In_ size_t num_buffers, _In_ int input_index);
+
+  ORT_API2_STATUS(SetupSubgraphExecutionInfo, _In_ OrtKernelImpl* this_ptr,
+                  _In_ const OrtSessionState* session_state, _In_ const char* attribute_name,
+                  _In_ const OrtSessionState* subgraph_session_state);
 };
 
 /** \brief Type definition for a function that creates an OrtKernelImpl instance for an operator kernel.

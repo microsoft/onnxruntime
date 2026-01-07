@@ -88,6 +88,10 @@ class PluginEpIfKernel : public OrtKernelImpl {
   // Static functions assigned to the OrtKernelImpl fields:
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL SetupSubgraphExecutionInfoImpl(OrtKernelImpl* this_ptr,
+                                                                const OrtSessionState* session_state,
+                                                                const char* attribute_name,
+                                                                const OrtSessionState* subgraph_session_state) noexcept;
 
  private:
   If kernel_;
@@ -107,6 +111,10 @@ class PluginEpLoopKernel : public OrtKernelImpl {
   // Static functions assigned to the OrtKernelImpl fields:
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL SetupSubgraphExecutionInfoImpl(OrtKernelImpl* this_ptr,
+                                                                const OrtSessionState* session_state,
+                                                                const char* attribute_name,
+                                                                const OrtSessionState* subgraph_session_state) noexcept;
 
  private:
   Loop kernel_;
@@ -127,6 +135,10 @@ class PluginEpScanKernel : public OrtKernelImpl {
   // Static functions assigned to the OrtKernelImpl fields:
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL SetupSubgraphExecutionInfoImpl(OrtKernelImpl* this_ptr,
+                                                                const OrtSessionState* session_state,
+                                                                const char* attribute_name,
+                                                                const OrtSessionState* subgraph_session_state) noexcept;
 
  private:
   Scan<OpSet> kernel_;
