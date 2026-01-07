@@ -503,9 +503,11 @@ extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm_LICENSE.pdf
 header_files = []
 session_headers_src = path.join("include", "onnxruntime", "core", "session")
 if path.isdir(session_headers_src):
-    header_files = [
-        path.join("include", "onnxruntime", "core", "session", "*.h")
-    ]
+    header_pattern = path.join("include", "onnxruntime", "core", "session", "*.h")
+    header_files_full_paths = glob(header_pattern)
+    header_files = [path.join("include", "onnxruntime", "core", "session", path.basename(h))
+                    for h in header_files_full_paths]
+
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
