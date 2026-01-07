@@ -729,14 +729,14 @@ ORT_API_STATUS_IMPL(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info,
   int opset = op_kernel_info->node().SinceVersion();
 
   if (opset == 8) {
-    std::unique_ptr<PluginEpScanKernel<8>> kernel_unique_ptr;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(PluginEpScanKernel<8>::Create(*op_kernel_info, *config, kernel_unique_ptr));
+    std::unique_ptr<PluginEpScanKernelImpl<8>> kernel_unique_ptr;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(PluginEpScanKernelImpl<8>::Create(*op_kernel_info, *config, kernel_unique_ptr));
 
     *kernel_out = kernel_unique_ptr.release();
   } else if (opset > 8) {
     // Note: CPU EP always uses Scan<9> for all opsets >= 9.
-    std::unique_ptr<PluginEpScanKernel<9>> kernel_unique_ptr;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(PluginEpScanKernel<9>::Create(*op_kernel_info, *config, kernel_unique_ptr));
+    std::unique_ptr<PluginEpScanKernelImpl<9>> kernel_unique_ptr;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(PluginEpScanKernelImpl<9>::Create(*op_kernel_info, *config, kernel_unique_ptr));
 
     *kernel_out = kernel_unique_ptr.release();
   } else /*if (opset < 8)*/ {
@@ -798,9 +798,9 @@ ORT_API_STATUS_IMPL(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info,
                                  "Must specify a non-null OrtLoopKernelConfig instance to create a Loop OrtKernelImpl");
   }
 
-  std::unique_ptr<PluginEpLoopKernel> kernel_unique_ptr;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(PluginEpLoopKernel::Create(*reinterpret_cast<const OpKernelInfo*>(kernel_info),
-                                                             *config, kernel_unique_ptr));
+  std::unique_ptr<PluginEpLoopKernelImpl> kernel_unique_ptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(PluginEpLoopKernelImpl::Create(*reinterpret_cast<const OpKernelInfo*>(kernel_info),
+                                                                 *config, kernel_unique_ptr));
 
   *kernel_out = kernel_unique_ptr.release();
   return nullptr;
@@ -814,9 +814,9 @@ ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outp
                                  "Must specify a non-null OrtKernelInfo instance to create an If OrtKernelImpl");
   }
 
-  std::unique_ptr<PluginEpIfKernel> kernel_unique_ptr;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(PluginEpIfKernel::Create(*reinterpret_cast<const OpKernelInfo*>(kernel_info),
-                                                           kernel_unique_ptr));
+  std::unique_ptr<PluginEpIfKernelImpl> kernel_unique_ptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(PluginEpIfKernelImpl::Create(*reinterpret_cast<const OpKernelInfo*>(kernel_info),
+                                                               kernel_unique_ptr));
 
   *kernel_out = kernel_unique_ptr.release();
   return nullptr;

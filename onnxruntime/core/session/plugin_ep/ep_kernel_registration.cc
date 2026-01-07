@@ -159,8 +159,7 @@ class PluginEpOpKernel final : public controlflow::IControlFlowKernel {
     if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->GetControlFlowKernel == nullptr) {
       // OrtKernelImpl does not define an implementation. This is an error because this function will only
       // be called by ORT when necessary (for controlflow ops).
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "PluginEpOpKernel instance is missing an implementation of ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtKernelImpl instance is missing an implementation of ",
                              "OrtKernelImpl::GetControlFlowKernel");
     }
 
@@ -168,7 +167,7 @@ class PluginEpOpKernel final : public controlflow::IControlFlowKernel {
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(kernel_impl_->GetControlFlowKernel(kernel_impl_, &cf_kernel_impl)));
     ORT_RETURN_IF(cf_kernel_impl == nullptr, "OrtKernelImpl::GetControlFlowKernel() returned a NULL OrtKernelImpl");
 
-    auto& cf_kernel = static_cast<PluginEpControlFlowKernel&>(*cf_kernel_impl);
+    auto& cf_kernel = static_cast<PluginEpControlFlowKernelImpl&>(*cf_kernel_impl);
     return cf_kernel.GetIControlFlowKernel().SetupSubgraphExecutionInfo(session_state, attribute_name,
                                                                         subgraph_session_state);
   }
@@ -222,51 +221,55 @@ Status PluginEpOpKernel::Create(FuncManager& /*fn_manager*/, const OpKernelInfo&
   return Status::OK();
 }
 
-static OrtStatus* ORT_API_CALL GetControlFlowKernelImpl(OrtKernelImpl* this_ptr,
-                                                        OrtKernelImpl** out) noexcept {
-  *out = this_ptr;
-  return nullptr;
+//
+// PluginEpControlFlowKernelImpl
+//
+
+PluginEpControlFlowKernelImpl::PluginEpControlFlowKernelImpl() : OrtKernelImpl{} {
+  ort_version_supported = ORT_API_VERSION;
+  GetControlFlowKernel = [](OrtKernelImpl* this_ptr, OrtKernelImpl** out) noexcept -> OrtStatus* {
+    *out = this_ptr;
+    return nullptr;
+  };
 }
 
 //
-// PluginEpIfKernel
+// PluginEpIfKernelImpl
 //
 
 /*static*/
-Status PluginEpIfKernel::Create(const OpKernelInfo& info, /*out*/ std::unique_ptr<PluginEpIfKernel>& out) {
-  out = std::make_unique<PluginEpIfKernel>(info, PrivateTag{});
+Status PluginEpIfKernelImpl::Create(const OpKernelInfo& info, /*out*/ std::unique_ptr<PluginEpIfKernelImpl>& out) {
+  out = std::make_unique<PluginEpIfKernelImpl>(info, PrivateTag{});
   return Status::OK();
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL PluginEpIfKernel::ComputeImpl(OrtKernelImpl* this_ptr,
-                                                      OrtKernelContext* kernel_ctx) noexcept {
-  auto plugin_ep_kernel = static_cast<PluginEpIfKernel*>(this_ptr);
+OrtStatus* ORT_API_CALL PluginEpIfKernelImpl::ComputeImpl(OrtKernelImpl* this_ptr,
+                                                          OrtKernelContext* kernel_ctx) noexcept {
+  auto plugin_ep_kernel = static_cast<PluginEpIfKernelImpl*>(this_ptr);
   ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.Compute(reinterpret_cast<OpKernelContext*>(kernel_ctx)));
 
   return nullptr;
 }
 
 /*static*/
-void ORT_API_CALL PluginEpIfKernel::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
-  delete static_cast<PluginEpIfKernel*>(this_ptr);
+void ORT_API_CALL PluginEpIfKernelImpl::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
+  delete static_cast<PluginEpIfKernelImpl*>(this_ptr);
 }
 
-PluginEpIfKernel::PluginEpIfKernel(const OpKernelInfo& info, PrivateTag)
+PluginEpIfKernelImpl::PluginEpIfKernelImpl(const OpKernelInfo& info, PrivateTag)
     : kernel_(info) {
-  ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
-  GetControlFlowKernel = GetControlFlowKernelImpl;
 }
 
 //
-// PluginEpLoopKernel
+// PluginEpLoopKernelImpl
 //
 
 /*static*/
-Status PluginEpLoopKernel::Create(const OpKernelInfo& info, const OrtLoopKernelConfig& config,
-                                  /*out*/ std::unique_ptr<PluginEpLoopKernel>& out) {
+Status PluginEpLoopKernelImpl::Create(const OpKernelInfo& info, const OrtLoopKernelConfig& config,
+                                      /*out*/ std::unique_ptr<PluginEpLoopKernelImpl>& out) {
   auto concat_output_func =
       [ep_concat_func = config.concat_output_func,
        ep_concat_func_state = config.concat_output_func_state](void* stream,
@@ -284,41 +287,40 @@ Status PluginEpLoopKernel::Create(const OpKernelInfo& info, const OrtLoopKernelC
                                              output, output_size_in_bytes));
   };
 
-  out = std::make_unique<PluginEpLoopKernel>(info, concat_output_func, PrivateTag{});
+  out = std::make_unique<PluginEpLoopKernelImpl>(info, concat_output_func, PrivateTag{});
   return Status::OK();
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL PluginEpLoopKernel::ComputeImpl(OrtKernelImpl* this_ptr,
-                                                        OrtKernelContext* kernel_ctx) noexcept {
-  auto plugin_ep_kernel = static_cast<PluginEpLoopKernel*>(this_ptr);
+OrtStatus* ORT_API_CALL PluginEpLoopKernelImpl::ComputeImpl(OrtKernelImpl* this_ptr,
+                                                            OrtKernelContext* kernel_ctx) noexcept {
+  auto plugin_ep_kernel = static_cast<PluginEpLoopKernelImpl*>(this_ptr);
   ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.Compute(reinterpret_cast<OpKernelContext*>(kernel_ctx)));
 
   return nullptr;
 }
 
 /*static*/
-void ORT_API_CALL PluginEpLoopKernel::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
-  delete static_cast<PluginEpLoopKernel*>(this_ptr);
+void ORT_API_CALL PluginEpLoopKernelImpl::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
+  delete static_cast<PluginEpLoopKernelImpl*>(this_ptr);
 }
 
-PluginEpLoopKernel::PluginEpLoopKernel(const OpKernelInfo& info, Loop::ConcatOutput concat_output_func, PrivateTag)
+PluginEpLoopKernelImpl::PluginEpLoopKernelImpl(const OpKernelInfo& info, Loop::ConcatOutput concat_output_func,
+                                               PrivateTag)
     : kernel_(info) {
-  ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
-  GetControlFlowKernel = GetControlFlowKernelImpl;
   kernel_.SetConcatOutputFunc(concat_output_func);
 }
 
 //
-// PluginEpScanKernel
+// PluginEpScanKernelImpl
 //
 
 /*static*/
 template <>
-Status PluginEpScanKernel<8>::Create(const OpKernelInfo& info, const OrtScanKernelConfig& config,
-                                     /*out*/ std::unique_ptr<PluginEpScanKernel<8>>& out) {
+Status PluginEpScanKernelImpl<8>::Create(const OpKernelInfo& info, const OrtScanKernelConfig& config,
+                                         /*out*/ std::unique_ptr<PluginEpScanKernelImpl<8>>& out) {
   if (config.zero_data_func == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Kernel configuration for Scan opset 8 requires a valid ",
                            "OrtScanZeroDataFunc function.");
@@ -338,14 +340,14 @@ Status PluginEpScanKernel<8>::Create(const OpKernelInfo& info, const OrtScanKern
   scan::detail::DeviceHelpers device_helpers{};
   device_helpers.set_data_to_zero_func = zero_data_func;
 
-  out = std::make_unique<PluginEpScanKernel<8>>(info, device_helpers, PrivateTag{});
+  out = std::make_unique<PluginEpScanKernelImpl<8>>(info, device_helpers, PrivateTag{});
   return Status::OK();
 }
 
 /*static*/
 template <>
-Status PluginEpScanKernel<9>::Create(const OpKernelInfo& info, const OrtScanKernelConfig& config,
-                                     /*out*/ std::unique_ptr<PluginEpScanKernel<9>>& out) {
+Status PluginEpScanKernelImpl<9>::Create(const OpKernelInfo& info, const OrtScanKernelConfig& config,
+                                         /*out*/ std::unique_ptr<PluginEpScanKernelImpl<9>>& out) {
   if (config.transpose_func == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Kernel configuration for Scan opset >= 9 requires a valid ",
                            "OrtScanTransposeFunc function.");
@@ -372,15 +374,15 @@ Status PluginEpScanKernel<9>::Create(const OpKernelInfo& info, const OrtScanKern
   scan::detail::DeviceHelpers device_helpers{};
   device_helpers.transpose_func = transpose_func;
 
-  out = std::make_unique<PluginEpScanKernel<9>>(info, device_helpers, PrivateTag{});
+  out = std::make_unique<PluginEpScanKernelImpl<9>>(info, device_helpers, PrivateTag{});
   return Status::OK();
 }
 
 /*static*/
 template <>
-OrtStatus* ORT_API_CALL PluginEpScanKernel<8>::ComputeImpl(OrtKernelImpl* this_ptr,
-                                                           OrtKernelContext* kernel_ctx) noexcept {
-  auto plugin_ep_kernel = static_cast<PluginEpScanKernel<8>*>(this_ptr);
+OrtStatus* ORT_API_CALL PluginEpScanKernelImpl<8>::ComputeImpl(OrtKernelImpl* this_ptr,
+                                                               OrtKernelContext* kernel_ctx) noexcept {
+  auto plugin_ep_kernel = static_cast<PluginEpScanKernelImpl<8>*>(this_ptr);
   ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.Compute(reinterpret_cast<OpKernelContext*>(kernel_ctx)));
 
   return nullptr;
@@ -388,9 +390,9 @@ OrtStatus* ORT_API_CALL PluginEpScanKernel<8>::ComputeImpl(OrtKernelImpl* this_p
 
 /*static*/
 template <>
-OrtStatus* ORT_API_CALL PluginEpScanKernel<9>::ComputeImpl(OrtKernelImpl* this_ptr,
-                                                           OrtKernelContext* kernel_ctx) noexcept {
-  auto plugin_ep_kernel = static_cast<PluginEpScanKernel<9>*>(this_ptr);
+OrtStatus* ORT_API_CALL PluginEpScanKernelImpl<9>::ComputeImpl(OrtKernelImpl* this_ptr,
+                                                               OrtKernelContext* kernel_ctx) noexcept {
+  auto plugin_ep_kernel = static_cast<PluginEpScanKernelImpl<9>*>(this_ptr);
   ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.Compute(reinterpret_cast<OpKernelContext*>(kernel_ctx)));
 
   return nullptr;
@@ -398,35 +400,31 @@ OrtStatus* ORT_API_CALL PluginEpScanKernel<9>::ComputeImpl(OrtKernelImpl* this_p
 
 /*static*/
 template <>
-void ORT_API_CALL PluginEpScanKernel<8>::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
-  delete static_cast<PluginEpScanKernel<8>*>(this_ptr);
+void ORT_API_CALL PluginEpScanKernelImpl<8>::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
+  delete static_cast<PluginEpScanKernelImpl<8>*>(this_ptr);
 }
 
 /*static*/
 template <>
-void ORT_API_CALL PluginEpScanKernel<9>::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
-  delete static_cast<PluginEpScanKernel<9>*>(this_ptr);
+void ORT_API_CALL PluginEpScanKernelImpl<9>::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
+  delete static_cast<PluginEpScanKernelImpl<9>*>(this_ptr);
 }
 
 template <>
-PluginEpScanKernel<8>::PluginEpScanKernel(const OpKernelInfo& info,
-                                          const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
+PluginEpScanKernelImpl<8>::PluginEpScanKernelImpl(const OpKernelInfo& info,
+                                                  const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
     : kernel_(info) {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = PluginEpScanKernel<8>::ComputeImpl;
-  Release = PluginEpScanKernel<8>::ReleaseImpl;
-  GetControlFlowKernel = GetControlFlowKernelImpl;
+  Compute = PluginEpScanKernelImpl<8>::ComputeImpl;
+  Release = PluginEpScanKernelImpl<8>::ReleaseImpl;
   kernel_.SetDeviceHelpers(device_helpers);
 }
 
 template <>
-PluginEpScanKernel<9>::PluginEpScanKernel(const OpKernelInfo& info,
-                                          const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
+PluginEpScanKernelImpl<9>::PluginEpScanKernelImpl(const OpKernelInfo& info,
+                                                  const scan::detail::DeviceHelpers& device_helpers, PrivateTag)
     : kernel_(info) {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = PluginEpScanKernel<9>::ComputeImpl;
-  Release = PluginEpScanKernel<9>::ReleaseImpl;
-  GetControlFlowKernel = GetControlFlowKernelImpl;
+  Compute = PluginEpScanKernelImpl<9>::ComputeImpl;
+  Release = PluginEpScanKernelImpl<9>::ReleaseImpl;
   kernel_.SetDeviceHelpers(device_helpers);
 }
 

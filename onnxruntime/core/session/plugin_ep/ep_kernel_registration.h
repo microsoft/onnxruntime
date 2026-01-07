@@ -75,20 +75,20 @@ struct OrtLoopKernelConfig {
 
 namespace onnxruntime {
 
-struct PluginEpControlFlowKernel : public OrtKernelImpl {
-  PluginEpControlFlowKernel() : OrtKernelImpl{} {}
+struct PluginEpControlFlowKernelImpl : public OrtKernelImpl {
+  PluginEpControlFlowKernelImpl();
   virtual controlflow::IControlFlowKernel& GetIControlFlowKernel() = 0;
 };
 
-class PluginEpIfKernel : public PluginEpControlFlowKernel {
+class PluginEpIfKernelImpl final : public PluginEpControlFlowKernelImpl {
  private:
   struct PrivateTag {};
 
  public:
-  static Status Create(const OpKernelInfo& info, /*out*/ std::unique_ptr<PluginEpIfKernel>& out);
+  static Status Create(const OpKernelInfo& info, /*out*/ std::unique_ptr<PluginEpIfKernelImpl>& out);
 
   // Note: Must use ::Create() to create an instance.
-  PluginEpIfKernel(const OpKernelInfo& info, PrivateTag);
+  PluginEpIfKernelImpl(const OpKernelInfo& info, PrivateTag);
   controlflow::IControlFlowKernel& GetIControlFlowKernel() override { return kernel_; }
 
   // Static functions assigned to the OrtKernelImpl fields:
@@ -99,16 +99,16 @@ class PluginEpIfKernel : public PluginEpControlFlowKernel {
   If kernel_;
 };
 
-class PluginEpLoopKernel : public PluginEpControlFlowKernel {
+class PluginEpLoopKernelImpl final : public PluginEpControlFlowKernelImpl {
  private:
   struct PrivateTag {};
 
  public:
   static Status Create(const OpKernelInfo& info, const OrtLoopKernelConfig& config,
-                       /*out*/ std::unique_ptr<PluginEpLoopKernel>& out);
+                       /*out*/ std::unique_ptr<PluginEpLoopKernelImpl>& out);
 
   // Note: Must use ::Create() to create an instance.
-  PluginEpLoopKernel(const OpKernelInfo& info, Loop::ConcatOutput concat_func, PrivateTag);
+  PluginEpLoopKernelImpl(const OpKernelInfo& info, Loop::ConcatOutput concat_func, PrivateTag);
   controlflow::IControlFlowKernel& GetIControlFlowKernel() override { return kernel_; }
 
   // Static functions assigned to the OrtKernelImpl fields:
@@ -120,16 +120,16 @@ class PluginEpLoopKernel : public PluginEpControlFlowKernel {
 };
 
 template <int OpSet>
-class PluginEpScanKernel : public PluginEpControlFlowKernel {
+class PluginEpScanKernelImpl final : public PluginEpControlFlowKernelImpl {
  private:
   struct PrivateTag {};
 
  public:
   static Status Create(const OpKernelInfo& info, const OrtScanKernelConfig& config,
-                       /*out*/ std::unique_ptr<PluginEpScanKernel<OpSet>>& out);
+                       /*out*/ std::unique_ptr<PluginEpScanKernelImpl<OpSet>>& out);
 
   // Note: Must use ::Create() to create an instance.
-  PluginEpScanKernel(const OpKernelInfo& info, const scan::detail::DeviceHelpers& device_helpers, PrivateTag);
+  PluginEpScanKernelImpl(const OpKernelInfo& info, const scan::detail::DeviceHelpers& device_helpers, PrivateTag);
   controlflow::IControlFlowKernel& GetIControlFlowKernel() override { return kernel_; }
 
   // Static functions assigned to the OrtKernelImpl fields:
