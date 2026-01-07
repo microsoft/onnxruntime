@@ -7624,9 +7624,9 @@ struct OrtInteropApi {
    *
    * \param[in] ep_device The OrtEpDevice instance to create the importer for.
    * \param[out] out_importer Output parameter set to the created OrtExternalResourceImporter instance.
-   *                          Returns nullptr if the EP does not support external resource import.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \return nullptr on success, or an OrtStatus with ORT_NOT_IMPLEMENTED if the EP does not
+   *         support external resource import.
    *
    * \since Version 1.24.
    */

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/ep_interop_api.h"
+#include "core/session/interop_api.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include <memory>
@@ -55,8 +55,8 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::CreateExternalResourceImporterForDevice, _In_
   if (factory == nullptr ||
       factory->ort_version_supported < 24 ||
       factory->CreateExternalResourceImporterForDevice == nullptr) {
-    // EP doesn't support external resource import - not an error, just return nullptr
-    return nullptr;
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "Execution provider does not support external resource import.");
   }
 
   OrtExternalResourceImporterImpl* impl = nullptr;
@@ -66,8 +66,8 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::CreateExternalResourceImporterForDevice, _In_
       &impl));
 
   if (impl == nullptr) {
-    // EP supports the factory method but returned null - not supported for this device
-    return nullptr;
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "Execution provider does not support external resource import for this device.");
   }
 
   auto wrapper = std::make_unique<ExternalResourceImporterWrapper>(ep_device, impl);

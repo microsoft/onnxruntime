@@ -38,7 +38,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
-#include "core/session/ep_interop_api.h"
+#include "core/session/interop_api.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/inference_session.h"
