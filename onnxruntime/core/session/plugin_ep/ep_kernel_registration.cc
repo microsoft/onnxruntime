@@ -352,8 +352,8 @@ PluginEpScanKernel<8>::PluginEpScanKernel(const OpKernelInfo& info,
     : OrtKernelImpl{},
       kernel_(info) {
   ort_version_supported = ORT_API_VERSION;
-  Compute = ComputeImpl;
-  Release = ReleaseImpl;
+  Compute = PluginEpScanKernel<8>::ComputeImpl;
+  Release = PluginEpScanKernel<8>::ReleaseImpl;
   kernel_.SetDeviceHelpers(device_helpers);
 }
 
@@ -363,8 +363,8 @@ PluginEpScanKernel<9>::PluginEpScanKernel(const OpKernelInfo& info,
     : OrtKernelImpl{},
       kernel_(info) {
   ort_version_supported = ORT_API_VERSION;
-  Compute = ComputeImpl;
-  Release = ReleaseImpl;
+  Compute = PluginEpScanKernel<9>::ComputeImpl;
+  Release = PluginEpScanKernel<9>::ReleaseImpl;
   kernel_.SetDeviceHelpers(device_helpers);
 }
 
