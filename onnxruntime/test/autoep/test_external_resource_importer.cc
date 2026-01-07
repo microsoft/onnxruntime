@@ -28,6 +28,10 @@ class ExternalResourceImporterTest : public ::testing::Test {
     ep_device_ = registered_ep_.get();
   }
 
+  const OrtInteropApi& GetInteropApi() const {
+    return Ort::GetInteropApi();
+  }
+
   RegisteredEpDeviceUniquePtr registered_ep_;
   const OrtEpDevice* ep_device_ = nullptr;
 };
@@ -35,7 +39,7 @@ class ExternalResourceImporterTest : public ::testing::Test {
 // Test: Create External Resource Importer
 TEST_F(ExternalResourceImporterTest, CreateExternalResourceImporter) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
 
   if (status != nullptr) {
     std::string error = Ort::GetApi().GetErrorMessage(status);
@@ -46,13 +50,13 @@ TEST_F(ExternalResourceImporterTest, CreateExternalResourceImporter) {
   ASSERT_NE(importer, nullptr) << "External resource importer should not be null";
 
   // Release the importer
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: Memory Import Capability
 TEST_F(ExternalResourceImporterTest, CanImportMemory) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr) {
     Ort::GetApi().ReleaseStatus(status);
     GTEST_SKIP() << "External resource interop not supported";
@@ -60,25 +64,25 @@ TEST_F(ExternalResourceImporterTest, CanImportMemory) {
 
   // Check D3D12 Resource support
   bool can_import_resource = false;
-  status = Ort::GetApi().ExternalResourceImporter_CanImportMemory(
+  status = GetInteropApi().CanImportMemory(
       importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE, &can_import_resource);
   ASSERT_EQ(status, nullptr) << "CanImportMemory for D3D12_RESOURCE should succeed";
   EXPECT_TRUE(can_import_resource) << "Example EP should support D3D12 Resource import";
 
   // Check D3D12 Heap support
   bool can_import_heap = false;
-  status = Ort::GetApi().ExternalResourceImporter_CanImportMemory(
+  status = GetInteropApi().CanImportMemory(
       importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP, &can_import_heap);
   ASSERT_EQ(status, nullptr) << "CanImportMemory for D3D12_HEAP should succeed";
   EXPECT_TRUE(can_import_heap) << "Example EP should support D3D12 Heap import";
 
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: Semaphore Import Capability
 TEST_F(ExternalResourceImporterTest, CanImportSemaphore) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr) {
     Ort::GetApi().ReleaseStatus(status);
     GTEST_SKIP() << "External resource interop not supported";
@@ -86,18 +90,18 @@ TEST_F(ExternalResourceImporterTest, CanImportSemaphore) {
 
   // Check D3D12 Fence support
   bool can_import_fence = false;
-  status = Ort::GetApi().ExternalResourceImporter_CanImportSemaphore(
+  status = GetInteropApi().CanImportSemaphore(
       importer, ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE, &can_import_fence);
   ASSERT_EQ(status, nullptr) << "CanImportSemaphore for D3D12_FENCE should succeed";
   EXPECT_TRUE(can_import_fence) << "Example EP should support D3D12 Fence import";
 
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: Import Memory (Simulated)
 TEST_F(ExternalResourceImporterTest, ImportMemory) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr) {
     Ort::GetApi().ReleaseStatus(status);
     GTEST_SKIP() << "External resource interop not supported";
@@ -116,20 +120,20 @@ TEST_F(ExternalResourceImporterTest, ImportMemory) {
   mem_desc.access_mode = ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE;
 
   OrtExternalMemoryHandle* mem_handle = nullptr;
-  status = Ort::GetApi().ExternalResourceImporter_ImportMemory(importer, &mem_desc, &mem_handle);
+  status = GetInteropApi().ImportMemory(importer, &mem_desc, &mem_handle);
   ASSERT_EQ(status, nullptr) << "ImportMemory should succeed";
   ASSERT_NE(mem_handle, nullptr) << "Memory handle should not be null";
 
   // Release memory handle
-  Ort::GetApi().ReleaseExternalMemoryHandle(mem_handle);
+  GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
 
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: Create Tensor from Imported Memory
 TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr) {
     Ort::GetApi().ReleaseStatus(status);
     GTEST_SKIP() << "External resource interop not supported";
@@ -153,7 +157,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
   mem_desc.access_mode = ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE;
 
   OrtExternalMemoryHandle* mem_handle = nullptr;
-  status = Ort::GetApi().ExternalResourceImporter_ImportMemory(importer, &mem_desc, &mem_handle);
+  status = GetInteropApi().ImportMemory(importer, &mem_desc, &mem_handle);
   ASSERT_EQ(status, nullptr);
 
   // Create tensor from imported memory
@@ -165,7 +169,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
   tensor_desc.offset_bytes = 0;
 
   OrtValue* tensor = nullptr;
-  status = Ort::GetApi().ExternalResourceImporter_CreateTensorFromMemory(
+  status = GetInteropApi().CreateTensorFromMemory(
       importer, mem_handle, &tensor_desc, nullptr, &tensor);
   ASSERT_EQ(status, nullptr) << "CreateTensorFromMemory should succeed";
   ASSERT_NE(tensor, nullptr) << "Tensor should not be null";
@@ -197,14 +201,14 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
 
   // Cleanup
   Ort::GetApi().ReleaseValue(tensor);
-  Ort::GetApi().ReleaseExternalMemoryHandle(mem_handle);
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: Import Semaphore (Simulated)
 TEST_F(ExternalResourceImporterTest, ImportSemaphore) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr) {
     Ort::GetApi().ReleaseStatus(status);
     GTEST_SKIP() << "External resource interop not supported";
@@ -219,20 +223,20 @@ TEST_F(ExternalResourceImporterTest, ImportSemaphore) {
   sem_desc.native_handle = dummy_handle;
 
   OrtExternalSemaphoreHandle* sem_handle = nullptr;
-  status = Ort::GetApi().ExternalResourceImporter_ImportSemaphore(importer, &sem_desc, &sem_handle);
+  status = GetInteropApi().ImportSemaphore(importer, &sem_desc, &sem_handle);
   ASSERT_EQ(status, nullptr) << "ImportSemaphore should succeed";
   ASSERT_NE(sem_handle, nullptr) << "Semaphore handle should not be null";
 
   // Release semaphore handle
-  Ort::GetApi().ReleaseExternalSemaphoreHandle(sem_handle);
+  GetInteropApi().ReleaseExternalSemaphoreHandle(sem_handle);
 
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: Wait and Signal Semaphore (Simulated)
 TEST_F(ExternalResourceImporterTest, WaitAndSignalSemaphore) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr) {
     Ort::GetApi().ReleaseStatus(status);
     GTEST_SKIP() << "External resource interop not supported";
@@ -252,35 +256,35 @@ TEST_F(ExternalResourceImporterTest, WaitAndSignalSemaphore) {
   sem_desc.native_handle = dummy_handle;
 
   OrtExternalSemaphoreHandle* sem_handle = nullptr;
-  status = Ort::GetApi().ExternalResourceImporter_ImportSemaphore(importer, &sem_desc, &sem_handle);
+  status = GetInteropApi().ImportSemaphore(importer, &sem_desc, &sem_handle);
   ASSERT_EQ(status, nullptr);
 
   // Signal the semaphore with value 1
-  status = Ort::GetApi().ExternalResourceImporter_SignalSemaphore(importer, sem_handle, stream, 1);
+  status = GetInteropApi().SignalSemaphore(importer, sem_handle, stream, 1);
   ASSERT_EQ(status, nullptr) << "SignalSemaphore should succeed";
 
   // Wait for value 1 (should succeed immediately since we just signaled it)
-  status = Ort::GetApi().ExternalResourceImporter_WaitSemaphore(importer, sem_handle, stream, 1);
+  status = GetInteropApi().WaitSemaphore(importer, sem_handle, stream, 1);
   ASSERT_EQ(status, nullptr) << "WaitSemaphore should succeed";
 
   // Signal with value 5
-  status = Ort::GetApi().ExternalResourceImporter_SignalSemaphore(importer, sem_handle, stream, 5);
+  status = GetInteropApi().SignalSemaphore(importer, sem_handle, stream, 5);
   ASSERT_EQ(status, nullptr);
 
   // Wait for value 3 (should succeed since current value is 5)
-  status = Ort::GetApi().ExternalResourceImporter_WaitSemaphore(importer, sem_handle, stream, 3);
+  status = GetInteropApi().WaitSemaphore(importer, sem_handle, stream, 3);
   ASSERT_EQ(status, nullptr);
 
   // Cleanup
-  Ort::GetApi().ReleaseExternalSemaphoreHandle(sem_handle);
+  GetInteropApi().ReleaseExternalSemaphoreHandle(sem_handle);
   Ort::GetApi().ReleaseSyncStream(stream);
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: Multiple Memory Imports
 TEST_F(ExternalResourceImporterTest, MultipleMemoryImports) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr) {
     Ort::GetApi().ReleaseStatus(status);
     GTEST_SKIP() << "External resource interop not supported";
@@ -299,23 +303,23 @@ TEST_F(ExternalResourceImporterTest, MultipleMemoryImports) {
     mem_desc.offset_bytes = 0;
     mem_desc.access_mode = ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE;
 
-    status = Ort::GetApi().ExternalResourceImporter_ImportMemory(importer, &mem_desc, &handles[i]);
+    status = GetInteropApi().ImportMemory(importer, &mem_desc, &handles[i]);
     ASSERT_EQ(status, nullptr) << "ImportMemory " << i << " should succeed";
     ASSERT_NE(handles[i], nullptr);
   }
 
   // Release all handles
   for (int i = 0; i < kNumBuffers; ++i) {
-    Ort::GetApi().ReleaseExternalMemoryHandle(handles[i]);
+    GetInteropApi().ReleaseExternalMemoryHandle(handles[i]);
   }
 
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: Access Mode Variations
 TEST_F(ExternalResourceImporterTest, AccessModeVariations) {
   OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = Ort::GetApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
+  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr) {
     Ort::GetApi().ReleaseStatus(status);
     GTEST_SKIP() << "External resource interop not supported";
@@ -336,14 +340,14 @@ TEST_F(ExternalResourceImporterTest, AccessModeVariations) {
     mem_desc.access_mode = access_mode;
 
     OrtExternalMemoryHandle* mem_handle = nullptr;
-    status = Ort::GetApi().ExternalResourceImporter_ImportMemory(importer, &mem_desc, &mem_handle);
+    status = GetInteropApi().ImportMemory(importer, &mem_desc, &mem_handle);
     ASSERT_EQ(status, nullptr) << "ImportMemory with access_mode " << access_mode << " should succeed";
     ASSERT_NE(mem_handle, nullptr);
 
-    Ort::GetApi().ReleaseExternalMemoryHandle(mem_handle);
+    GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
   }
 
-  Ort::GetApi().ReleaseExternalResourceImporter(importer);
+  GetInteropApi().ReleaseExternalResourceImporter(importer);
 }
 
 // Test: SessionGetEpDeviceForOutputs
