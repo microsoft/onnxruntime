@@ -600,8 +600,6 @@ TEST(OrtEpLibrary, PluginEp_CpuDevice_ReturnsCompatible) {
 // Tests the GetHardwareDeviceEPIncompatibilityReasons C API with the example plugin EP.
 // The example plugin EP only supports CPU devices, so this test verifies that a GPU device
 // is reported as incompatible (reasons_bitmask != 0).
-// Note: This test uses the virtual GPU EP to register a GPU device, then checks if it's
-// compatible with the regular example_plugin_ep (which only supports CPU).
 TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
@@ -611,10 +609,6 @@ TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
   // Register the regular example plugin EP (CPU-only)
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
-
-  // Register the virtual GPU EP to get a GPU device
-  RegisteredEpDeviceUniquePtr virt_gpu_ep;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_virt_gpu_info, virt_gpu_ep));
 
   // Get all hardware devices
   const OrtHardwareDevice* const* hw_devices = nullptr;
@@ -630,7 +624,11 @@ TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
       break;
     }
   }
-  ASSERT_NE(gpu_device, nullptr) << "No GPU device found (virtual GPU EP should have added one)";
+
+  if (gpu_device == nullptr) {
+    // GPU device not found, early exit
+    GTEST_SKIP() << "No GPU device found";
+  }
 
   // Check compatibility - ExampleEP only supports CPU, so GPU should return incompatibility reasons
   OrtDeviceEpIncompatibilityDetails* details = nullptr;

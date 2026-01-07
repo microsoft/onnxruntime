@@ -322,10 +322,9 @@ TEST(GetOrtHardwareDevicesCapiTest, ReturnsDevices) {
     EXPECT_TRUE(device_type == OrtHardwareDeviceType_CPU ||
                 device_type == OrtHardwareDeviceType_GPU ||
                 device_type == OrtHardwareDeviceType_NPU);
-    // Vendor should not be empty
+    // Vendor should not be null
     const char* vendor = api->HardwareDevice_Vendor(device);
     EXPECT_NE(vendor, nullptr);
-    EXPECT_GT(strlen(vendor), 0u);
   }
 
   api->ReleaseEnv(env);

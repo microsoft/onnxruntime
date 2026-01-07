@@ -515,10 +515,10 @@ typedef enum OrtExecutionProviderDevicePolicy {
  */
 typedef enum OrtDeviceEpIncompatibilityReason {
   OrtDeviceEpIncompatibility_NONE = 0,
-  OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE = 1u << 0,
-  OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE = 1u << 1,
-  OrtDeviceEpIncompatibility_MISSING_DEPENDENCY = 1u << 2,
-  OrtDeviceEpIncompatibility_UNKNOWN = 1u << 31
+  OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE = 1 << 0,
+  OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE = 1 << 1,
+  OrtDeviceEpIncompatibility_MISSING_DEPENDENCY = 1 << 2,
+  OrtDeviceEpIncompatibility_UNKNOWN = 1 << 30
 } OrtDeviceEpIncompatibilityReason;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
