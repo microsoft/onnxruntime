@@ -23,7 +23,7 @@ stages:
     - name: CUDA_VERSION_MAJOR
       value: ${{ parameters.CudaVersion.major }}
     - name: CUDA_VERSION
-      value: ${{ parameters.CudaVersion }}
+      value: ${{ parameters.CudaVersion.version }}
     steps:
     - template: ../templates/set-version-number-variables-step.yml
     - task: UsePythonVersion@0
