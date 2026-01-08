@@ -968,22 +968,15 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
 
 /** \brief External memory handle type for importing GPU resources.
  *
+ * \todo Add POSIX file descriptor (OPAQUE_FD) for Linux Vulkan/CUDA/OpenCL interop
+ * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
+ *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
   ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
   ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
 } OrtExternalMemoryHandleType;
-
-/** \brief Access mode for imported external memory.
- *
- * \since Version 1.24.
- */
-typedef enum OrtExternalMemoryAccessMode {
-  ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE = 0, /**< Memory can be read and written */
-  ORT_EXTERNAL_MEMORY_ACCESS_READ_ONLY = 1,  /**< Memory is read-only */
-  ORT_EXTERNAL_MEMORY_ACCESS_WRITE_ONLY = 2, /**< Memory is write-only */
-} OrtExternalMemoryAccessMode;
 
 /** \brief Descriptor for importing external memory.
  *
@@ -997,8 +990,8 @@ typedef struct OrtExternalMemoryDescriptor {
   OrtExternalMemoryHandleType handle_type; /**< Type of the external memory handle */
   void* native_handle;                     /**< Platform-specific handle (e.g., Windows HANDLE) */
   size_t size_bytes;                       /**< Total size in bytes of the external allocation */
-  size_t offset_bytes;                     /**< Offset in bytes into the allocation (default 0) */
-  OrtExternalMemoryAccessMode access_mode; /**< Access mode for the imported memory */
+  size_t offset_bytes;                     /**< Offset in bytes into the allocation (default 0).
+                                                Base offset for the imported memory region. */
 } OrtExternalMemoryDescriptor;
 
 /** \brief External semaphore type for GPU synchronization.
@@ -1034,7 +1027,9 @@ typedef struct OrtExternalTensorDescriptor {
   ONNXTensorElementDataType element_type; /**< Data type of tensor elements */
   const int64_t* shape;                   /**< Array of dimension sizes */
   size_t rank;                            /**< Number of dimensions */
-  size_t offset_bytes;                    /**< Optional offset within imported memory (default 0) */
+  size_t offset_bytes;                    /**< Additional offset within imported memory (default 0).
+                                               Applied relative to OrtExternalMemoryDescriptor::offset_bytes.
+                                               Enables multiple tensors from the same imported memory handle. */
 } OrtExternalTensorDescriptor;
 
 /// @}
@@ -6769,8 +6764,8 @@ struct OrtApi {
    * Returns the OrtEpDevice assigned to each output of the session after graph partitioning.
    * This allows validation that outputs are placed on the expected device for external resource sharing.
    *
-   * The EP device for each output is determined by which execution provider claims that output
-   * during graph partitioning. This information is useful for:
+   * The EP device for each output is determined by which execution provider will produce that output
+   * during inferencing. This information is useful for:
    * - Validating that outputs will be placed on the expected device for external resource sharing
    * - Deciding whether to use external memory handles for outputs
    *
@@ -7601,6 +7596,10 @@ struct OrtCompileApi {
  *   OrtExternalResourceImporter* importer = NULL;
  *
  *   status = interop_api->CreateExternalResourceImporterForDevice(ep_device, &importer);
+ *   if (importer == nullptr) {
+ *     // External resource import is optional for EPs to implement
+ *     return;
+ *   }
  *   bool can_import = false;
  *   status = interop_api->CanImportMemory(importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE, &can_import);
  *   if (can_import) {
@@ -7698,7 +7697,6 @@ struct OrtInteropApi {
    * \param[in] importer The OrtExternalResourceImporter instance.
    * \param[in] mem_handle The imported external memory handle.
    * \param[in] tensor_desc Descriptor specifying tensor element type, shape, and optional offset.
-   * \param[in] tensor_location Optional OrtMemoryInfo for the tensor location. May be nullptr.
    * \param[out] out_tensor Output parameter set to the created OrtValue containing the tensor.
    *                        The caller owns the returned tensor and must call ReleaseValue to free it.
    *
@@ -7710,7 +7708,6 @@ struct OrtInteropApi {
                   _In_ OrtExternalResourceImporter* importer,
                   _In_ const OrtExternalMemoryHandle* mem_handle,
                   _In_ const OrtExternalTensorDescriptor* tensor_desc,
-                  _In_opt_ const OrtMemoryInfo* tensor_location,
                   _Outptr_ OrtValue** out_tensor);
 
   /// @}
@@ -7733,6 +7730,9 @@ struct OrtInteropApi {
                   _Out_ bool* out_supported);
 
   /** \brief Import an external semaphore into the execution provider.
+   *
+   * The returned OrtExternalSemaphoreHandle can be used with WaitSemaphore and an OrtSyncStream
+   * to synchronize execution with external operations.
    *
    * \param[in] importer The OrtExternalResourceImporter instance.
    * \param[in] desc Descriptor containing the external semaphore handle and type.

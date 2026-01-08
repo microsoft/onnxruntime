@@ -28,7 +28,6 @@ ORT_API(void, ReleaseExternalMemoryHandle, _Frees_ptr_opt_ OrtExternalMemoryHand
 ORT_API_STATUS_IMPL(CreateTensorFromMemory, _In_ OrtExternalResourceImporter* importer,
                     _In_ const OrtExternalMemoryHandle* mem_handle,
                     _In_ const OrtExternalTensorDescriptor* tensor_desc,
-                    _In_opt_ const OrtMemoryInfo* tensor_location,
                     _Outptr_ OrtValue** out_tensor);
 
 ORT_API_STATUS_IMPL(CanImportSemaphore, _In_ const OrtExternalResourceImporter* importer,

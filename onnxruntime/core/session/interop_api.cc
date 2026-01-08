@@ -144,7 +144,6 @@ ORT_API(void, OrtInteropAPI::ReleaseExternalMemoryHandle, _Frees_ptr_opt_ OrtExt
 ORT_API_STATUS_IMPL(OrtInteropAPI::CreateTensorFromMemory, _In_ OrtExternalResourceImporter* importer,
                     _In_ const OrtExternalMemoryHandle* mem_handle,
                     _In_ const OrtExternalTensorDescriptor* tensor_desc,
-                    _In_opt_ const OrtMemoryInfo* /*tensor_location*/,
                     _Outptr_ OrtValue** out_tensor) {
   API_IMPL_BEGIN
   if (importer == nullptr || mem_handle == nullptr || tensor_desc == nullptr || out_tensor == nullptr) {
@@ -299,13 +298,11 @@ ORT_API_STATUS_IMPL(OrtInteropAPI::ImportMemory, _In_ OrtExternalResourceImporte
 ORT_API_STATUS_IMPL(OrtInteropAPI::CreateTensorFromMemory, _In_ OrtExternalResourceImporter* importer,
                     _In_ const OrtExternalMemoryHandle* mem_handle,
                     _In_ const OrtExternalTensorDescriptor* tensor_desc,
-                    _In_opt_ const OrtMemoryInfo* tensor_location,
                     _Outptr_ OrtValue** out_tensor) {
   API_IMPL_BEGIN
   ORT_UNUSED_PARAMETER(importer);
   ORT_UNUSED_PARAMETER(mem_handle);
   ORT_UNUSED_PARAMETER(tensor_desc);
-  ORT_UNUSED_PARAMETER(tensor_location);
   ORT_UNUSED_PARAMETER(out_tensor);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Interop API is not supported in this build");
   API_IMPL_END

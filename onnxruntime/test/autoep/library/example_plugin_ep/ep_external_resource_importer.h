@@ -18,10 +18,9 @@
  */
 struct ExampleExternalMemoryHandle : OrtExternalMemoryHandle {
   std::unique_ptr<char[]> simulated_ptr;    ///< Simulated mapped pointer (CPU memory for testing)
-  OrtExternalMemoryAccessMode access_mode;  ///< Access mode for the imported memory
 
   ExampleExternalMemoryHandle()
-      : simulated_ptr(nullptr), access_mode(ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE) {
+      : simulated_ptr(nullptr) {
     // Initialize base struct fields
     version = ORT_API_VERSION;
     ep_device = nullptr;

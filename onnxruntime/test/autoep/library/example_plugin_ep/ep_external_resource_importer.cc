@@ -77,7 +77,6 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::ImportMemoryImpl(
   handle->size_bytes = desc->size_bytes;
   handle->offset_bytes = desc->offset_bytes;
   handle->handle_type = desc->handle_type;
-  handle->access_mode = desc->access_mode;
 
   *out_handle = handle;
   return nullptr;
@@ -129,6 +128,10 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::CreateTensorFromMemoryI
   }
 
   // Calculate buffer size
+  // NOTE: This is a simplified calculation for testing. Production code should:
+  //   1. Calculate actual tensor size from shape + element_type
+  //   2. Validate it fits within available memory region
+  //   3. Use that validated size rather than subtracting offsets
   size_t buffer_size = handle->size_bytes - handle->offset_bytes - tensor_desc->offset_bytes;
 
   // Create tensor with pre-allocated memory

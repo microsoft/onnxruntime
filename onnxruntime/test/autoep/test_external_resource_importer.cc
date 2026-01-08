@@ -117,7 +117,6 @@ TEST_F(ExternalResourceImporterTest, ImportMemory) {
   mem_desc.native_handle = dummy_handle;
   mem_desc.size_bytes = buffer_size;
   mem_desc.offset_bytes = 0;
-  mem_desc.access_mode = ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE;
 
   OrtExternalMemoryHandle* mem_handle = nullptr;
   status = GetInteropApi().ImportMemory(importer, &mem_desc, &mem_handle);
@@ -154,7 +153,6 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
   mem_desc.native_handle = dummy_handle;
   mem_desc.size_bytes = buffer_size;
   mem_desc.offset_bytes = 0;
-  mem_desc.access_mode = ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE;
 
   OrtExternalMemoryHandle* mem_handle = nullptr;
   status = GetInteropApi().ImportMemory(importer, &mem_desc, &mem_handle);
@@ -170,7 +168,7 @@ TEST_F(ExternalResourceImporterTest, CreateTensorFromMemory) {
 
   OrtValue* tensor = nullptr;
   status = GetInteropApi().CreateTensorFromMemory(
-      importer, mem_handle, &tensor_desc, nullptr, &tensor);
+      importer, mem_handle, &tensor_desc, &tensor);
   ASSERT_EQ(status, nullptr) << "CreateTensorFromMemory should succeed";
   ASSERT_NE(tensor, nullptr) << "Tensor should not be null";
 
@@ -301,7 +299,6 @@ TEST_F(ExternalResourceImporterTest, MultipleMemoryImports) {
     mem_desc.native_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x10000000 + i * 0x1000));
     mem_desc.size_bytes = (i + 1) * 1024;
     mem_desc.offset_bytes = 0;
-    mem_desc.access_mode = ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE;
 
     status = GetInteropApi().ImportMemory(importer, &mem_desc, &handles[i]);
     ASSERT_EQ(status, nullptr) << "ImportMemory " << i << " should succeed";
@@ -311,40 +308,6 @@ TEST_F(ExternalResourceImporterTest, MultipleMemoryImports) {
   // Release all handles
   for (int i = 0; i < kNumBuffers; ++i) {
     GetInteropApi().ReleaseExternalMemoryHandle(handles[i]);
-  }
-
-  GetInteropApi().ReleaseExternalResourceImporter(importer);
-}
-
-// Test: Access Mode Variations
-TEST_F(ExternalResourceImporterTest, AccessModeVariations) {
-  OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = GetInteropApi().CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  ASSERT_EQ(status, nullptr) << "CreateExternalResourceImporterForDevice should succeed";
-  if (importer == nullptr) {
-    GTEST_SKIP() << "External resource interop not supported";
-  }
-
-  const OrtExternalMemoryAccessMode access_modes[] = {
-      ORT_EXTERNAL_MEMORY_ACCESS_READ_WRITE,
-      ORT_EXTERNAL_MEMORY_ACCESS_READ_ONLY,
-      ORT_EXTERNAL_MEMORY_ACCESS_WRITE_ONLY};
-
-  for (auto access_mode : access_modes) {
-    OrtExternalMemoryDescriptor mem_desc = {};
-    mem_desc.version = ORT_API_VERSION;
-    mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
-    mem_desc.native_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(0x12345678));
-    mem_desc.size_bytes = 4096;
-    mem_desc.offset_bytes = 0;
-    mem_desc.access_mode = access_mode;
-
-    OrtExternalMemoryHandle* mem_handle = nullptr;
-    status = GetInteropApi().ImportMemory(importer, &mem_desc, &mem_handle);
-    ASSERT_EQ(status, nullptr) << "ImportMemory with access_mode " << access_mode << " should succeed";
-    ASSERT_NE(mem_handle, nullptr);
-
-    GetInteropApi().ReleaseExternalMemoryHandle(mem_handle);
   }
 
   GetInteropApi().ReleaseExternalResourceImporter(importer);

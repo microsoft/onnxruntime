@@ -324,6 +324,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDevic
   }
 
   // Create the external resource importer
+  // NOTE: For production multi-GPU EPs, you should capture ep_device in the importer
+  // to enable proper device validation and support multiple physical devices.
+  // This example EP only supports a single device, so we don't store it.
   auto importer = std::make_unique<ExampleExternalResourceImporter>(factory);
   *out_importer = importer.release();
 
