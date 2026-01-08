@@ -1,6 +1,6 @@
 import os
 
-base_dir = "/home/tlwu/onnxruntime/onnxruntime/contrib_ops/cuda/bert/flash_attention"
+base_dir = os.path.dirname(os.path.realpath(__file__))
 dims = [32, 64, 96, 128, 192, 256]
 types = ["fp16", "bf16"]
 
