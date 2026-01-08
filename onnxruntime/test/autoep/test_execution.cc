@@ -111,6 +111,9 @@ void RunSubMulSubModel(const Ort::SessionOptions& session_options) {
 }
 
 void RunIfMulModel(const Ort::SessionOptions& session_options, bool if_condition) {
+  // Model graph does the following computation:
+  // if (A) { C = B * 2.0; }
+  // else { C = B * 3; }
   Ort::Session session(*ort_env, ORT_TSTR("testdata/if_mul.onnx"), session_options);
 
   // Create inputs
@@ -149,8 +152,7 @@ void RunIfMulModel(const Ort::SessionOptions& session_options, bool if_condition
 }
 
 void RunLoopSubOneModel(const Ort::SessionOptions& session_options) {
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/loop_sub_one.onnx"), session_options);
-
+  // Model graph does the following computation:
   // x = A
   // for (int i = 0; i < MAX_ITERS; i++) {
   //   y = x - 1.0;
@@ -159,6 +161,7 @@ void RunLoopSubOneModel(const Ort::SessionOptions& session_options) {
   // }
   // C = x;
   // D = user_val (will be concatenated result of each iteration)
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/loop_sub_one.onnx"), session_options);
 
   // Create inputs
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);

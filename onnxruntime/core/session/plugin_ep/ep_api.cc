@@ -24,6 +24,7 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
+#include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 #include "core/session/utils.h"
 
 using namespace onnxruntime;
