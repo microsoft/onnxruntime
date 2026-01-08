@@ -41,14 +41,16 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
     npu_qdq_optimizer_enabled = true;  // see data_ops.cc ~615 where we check for int16 types for gpu, this may change to a better approach later
   }
 
-#if OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 0
-  data_ops_ = new DataOps(graph_viewer_, V_2025_0, device_type_, npu_qdq_optimizer_enabled);
-#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 1
-  data_ops_ = new DataOps(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
+#if OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 1
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 2
-  data_ops_ = new DataOps(graph_viewer_, V_2025_2, device_type_, npu_qdq_optimizer_enabled);
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_2, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 3
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_3, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 4
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_4, device_type_, npu_qdq_optimizer_enabled);
 #else
-  data_ops_ = new DataOps(graph_viewer_, V_2025_2, device_type_, npu_qdq_optimizer_enabled);
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_4, device_type_, npu_qdq_optimizer_enabled);
 #endif
 }
 
@@ -179,7 +181,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           omit_subgraph = false;
         } else if (j < total_clusters - 1) {
           bool append_node = false;
-          while (j < total_clusters && !append_node) {
+          while (j < total_clusters - 1 && !append_node) {
             j = j + 1;
             append_node = AddTrivialClusterToNextClusterIfConnected(graph_viewer_, index, connected_clusters[j]);
           }

@@ -15,6 +15,11 @@ namespace webgpu {
 
 class ShaderVariableHelper;
 
+template <typename T>
+inline T CeilDiv(T numerator, T denominator) {
+  return (numerator + denominator - 1) / denominator;
+}
+
 /**
  * Returns the maximum number of components `N` to be used as `vecN` for the given size.
  */
@@ -101,7 +106,7 @@ class SplitKConfig {
   explicit SplitKConfig(const wgpu::AdapterInfo& adapter_info);
 
   bool UseSplitK(
-      bool is_vec4, ActivationKind activation_kind, uint64_t batch_size,
+      bool is_vec4, ActivationKind activation_kind, uint64_t batch_size, bool is_gemm,
       bool is_channels_last, uint32_t dim_a_outer,
       uint32_t dim_b_outer, uint32_t dim_inner) const;
 
@@ -111,8 +116,15 @@ class SplitKConfig {
   bool enable_split_k_ = false;
   uint32_t split_dim_inner_ = 0;
   uint32_t min_dim_inner_with_split_k_ = 0;
-  uint32_t max_dim_inner_with_split_k_ = 0;
-  float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 0.0f;
+
+  uint32_t GetMaxDimInnerWithSplitK() const;
+
+  struct ConfigAtRange {
+    ConfigAtRange(uint32_t max_dim_inner, float rate);
+    uint32_t max_dim_inner_with_rate = 0;
+    float max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner = 0.0f;
+  };
+  std::vector<ConfigAtRange> configs_per_dim_inner_range_;
 };
 
 /**

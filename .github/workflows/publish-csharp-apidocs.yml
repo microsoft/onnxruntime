@@ -60,7 +60,7 @@ jobs:
         if (Test-Path $OutputDirectory) { Remove-Item -Recurse -Force $OutputDirectory }
         Move-Item -Path csharp\ApiDocs\csharp -Destination $OutputDirectory
     - name: Upload docs artifact
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: onnxruntime-csharp-apidocs
         path: _site

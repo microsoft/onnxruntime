@@ -18,6 +18,14 @@ template <typename T>
 void cuda_slice(const T*, int64_t, int64_t, T*, cudaStream_t compute_stream);
 #endif
 
+MyCustomKernel::MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* info)
+    : ort_(ort_api) {
+  Ort::ConstKernelInfo kernel_info(info);
+  EXPECT_EQ(kernel_info.GetOperatorDomain(), "test");
+  EXPECT_EQ(kernel_info.GetOperatorType(), "Foo");
+  EXPECT_EQ(kernel_info.GetOperatorSinceVersion(), 1);
+}
+
 void MyCustomKernel::Compute(OrtKernelContext* context) {
   // Setup inputs
   Ort::KernelContext ctx(context);
@@ -41,11 +49,10 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator,
                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
 #endif
-  OrtAllocator* allocator;
-  Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
-  void* allocated = allocator->Alloc(allocator, 2);
+  Ort::Allocator allocator = ctx.GetAllocator(mem_info);
+  void* allocated = allocator.Alloc(2);
   EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
-  allocator->Free(allocator, allocated);
+  allocator.Free(allocated);
 
   // Do computation
 #ifdef USE_CUDA

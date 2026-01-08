@@ -29,6 +29,7 @@
 #include "core/framework/run_options.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_proto_serializer.h"
@@ -1281,6 +1282,11 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::utils::HasExternalDataInMemory(ten_proto);
   }
 
+  Status Utils__ValidateExternalDataPath(const std::filesystem::path& base_path,
+                                         const std::filesystem::path& location) override {
+    return onnxruntime::utils::ValidateExternalDataPath(base_path, location);
+  }
+
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -1485,6 +1491,25 @@ struct ProviderHostImpl : ProviderHost {
   void GraphUtils__MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
                                                  const std::string& name, bool load_in_memory) override {
     graph_utils::MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_in_memory);
+  }
+
+  // ExternalDataInfo (wrapped)
+  void ExternalDataInfo__operator_delete(ExternalDataInfo* p) override { delete p; }
+  const PathString& ExternalDataInfo__GetRelPath(const ExternalDataInfo* p) const override {
+    return p->GetRelPath();
+  }
+  int64_t ExternalDataInfo__GetOffset(const ExternalDataInfo* p) const override {
+    return narrow<int64_t>(p->GetOffset());
+  }
+  size_t ExternalDataInfo__GetLength(const ExternalDataInfo* p) const override {
+    return p->GetLength();
+  }
+  const std::string& ExternalDataInfo__GetChecksum(const ExternalDataInfo* p) const override {
+    return p->GetChecksum();
+  }
+  Status ExternalDataInfo__Create(const ONNX_NAMESPACE::StringStringEntryProtos& input,
+                                  std::unique_ptr<ExternalDataInfo>& out) override {
+    return ExternalDataInfo::Create(input, out);
   }
 
   // Initializer (wrapped)
@@ -2553,9 +2578,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
     // arbitrary length to validate the key/value. adjust if/when needed.
     // TODO: are any other input validation checks required here (and in the other functions that process
     // provider options)?
-    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 2048) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Maximum string length for a provider options key/value is 1024.");
+                                   "Maximum string length for a provider options key is 1024 and value is 2048.");
     }
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
