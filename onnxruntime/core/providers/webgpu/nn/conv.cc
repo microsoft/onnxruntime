@@ -298,7 +298,9 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   // Im2ColMatMul path uses a different transpose (OIHW -> OHWI) and reads
   // kernel directly from context.Input(1), ignoring prepacked weights.
   // Skip prepacking when this path will be used at runtime.
-  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, is_fused, kernel_shape, conv_attrs_.auto_pad, onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
+  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_.activation_kind_ != ActivationKind::None,
+                                  kernel_shape, conv_attrs_.auto_pad,
+                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
     return Status::OK();
   }
 
@@ -352,11 +354,9 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   }
   TensorShape transposed_kernel_shape(transposed_kernel_shape_vector);
 
-  ORT_ENFORCE(alloc != nullptr, "Allocator must be provided for WebGPU pre-pack.");
-
-  // Create the transposed kernel tensor using the WebGPU allocator.
-  // Both input tensor and output tensor are GPU tensors, ready for GPU operations.
-  ORT_RETURN_IF_ERROR(context.CreateUnmappedGPUTensor(alloc, tensor.DataType(), transposed_kernel_shape, transposed_kernel_));
+  // Create the transposed kernel tensor using the prepack allocator.
+  // This allocator creates GPU buffers without mapping, suitable for GPU-based operations.
+  transposed_kernel_ = std::make_unique<Tensor>(tensor.DataType(), transposed_kernel_shape, alloc);
 
   // Perform GPU-based transpose directly from the input GPU tensor
   ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, tensor, *transposed_kernel_));
