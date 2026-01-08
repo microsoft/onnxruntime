@@ -1262,8 +1262,8 @@ def get_softmax_options(allow_head_sink: bool = True):
 
 def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True):
     batches = [3, 1, 5]
-    seqs = [(35, 35), (64, 64), (128, 128), (240, 240), (2000, 2000)]
-    heads = [(6, 3), (9, 9), (32, 8)]
+    seqs = [(35, 35), (1, 1), (64, 64), (128, 128), (240, 240), (2000, 2000)]
+    heads = [(6, 3), (3, 1), (32, 8)]
     h_sizes = [128] if quick_build else [128, 32, 64, 256]
     smmoth_softmax__head_sink = get_softmax_options(allow_head_sink)
 
@@ -1272,17 +1272,27 @@ def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True):
     share_buffer_opts = [True, False]
     softcap_opts = [0.0, 50.0]
 
+    # Use new strategy for both modes: iterate over key code path parameters
+    # The difference between modes is the number of head_sizes tested
+    # Pipeline mode: h_sizes[:1] = [128] -> 12 combinations (fast)
+    # Comprehensive mode: all h_sizes -> 40+ combinations (thorough)
+    h_sizes_to_test = h_sizes[:1] if pipeline_mode else h_sizes
+
     combo_index = 0
-    for b in batches[:param_count]:
-        for sq, skv in seqs[:param_count]:
-            for n, n2 in heads[:param_count]:
-                for h in h_sizes[:param_count]:
+    for h in h_sizes_to_test:
+        for packed in packed_opts:
+            for rotary, rotary_interleaved in rotary_opts:
+                # Skip invalid: rotary requires head_size divisible by 16
+                if rotary and h % 16 > 0:
+                    continue
+
+                for share_buffer in share_buffer_opts:
+                    # Rotate secondary parameters
+                    b = batches[combo_index % len(batches)]
+                    sq, skv = seqs[combo_index % len(seqs)]
+                    n, n2 = heads[combo_index % len(heads)]
                     lws_opts = [-1, random.randint(1, skv)]
                     lws = lws_opts[combo_index % len(lws_opts)]
-
-                    rotary, rotary_interleaved = rotary_opts[combo_index % len(rotary_opts)]
-                    packed = packed_opts[combo_index % len(packed_opts)]
-                    share_buffer = share_buffer_opts[combo_index % len(share_buffer_opts)]
                     softcap = softcap_opts[combo_index % len(softcap_opts)]
                     use_smooth_softmax, has_head_sink = smmoth_softmax__head_sink[
                         combo_index % len(smmoth_softmax__head_sink)
@@ -1290,9 +1300,6 @@ def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True):
                     has_position_ids = False if pipeline_mode else combo_index % 2 == 0
 
                     combo_index += 1
-
-                    if rotary and h % 16 > 0:
-                        continue
 
                     if softcap > 0 and (use_smooth_softmax or has_head_sink):
                         continue
@@ -1326,27 +1333,42 @@ def gqa_cuda_past_test_cases(allow_head_sink: bool = True):
     seqs = [(1, 1), (1, 128), (1, 2048), (1, 5000)]
     subsequent_prompt_seqs = [(3, 256)]
     heads = [(32, 8), (6, 3), (9, 9)]
-    h_sizes = [128] if quick_build else [128, 64, 256]
+    h_sizes = [128] if quick_build else [128, 40, 64, 256]
     smmoth_softmax__head_sink = get_softmax_options(allow_head_sink)
 
     rotary_opts = list(get_cuda_rotary_options())
     packed_opts = [False, True]
+    # For past test: pipeline tests share_buffer=True only, comprehensive tests both
     share_buffer_opts = [True] if pipeline_mode else [True, False]
     softcap_opts = [0.0, 50.0]
 
+    # Use new strategy for both modes: iterate over key code path parameters
+    # The difference between modes is the number of head_sizes tested
+    # Pipeline mode: h_sizes[:1] = [128] -> 6 combinations (share_buffer=[True] only)
+    # Comprehensive mode: all h_sizes -> 36+ combinations
+    h_sizes_to_test = h_sizes[:1] if pipeline_mode else h_sizes
+    all_seqs = seqs + subsequent_prompt_seqs
+
     combo_index = 0
-    for b in batches[:param_count]:
-        for s, s2 in seqs[:param_count] + subsequent_prompt_seqs[:param_count]:
-            if s > 1 and b > 1:  # Subsequent prompt is not supported for batch > 1
-                continue
-            for n, n2 in heads[:param_count]:
-                for h in h_sizes[:param_count]:
+    for h in h_sizes_to_test:
+        for packed in packed_opts:
+            for rotary, rotary_interleaved in rotary_opts:
+                # Skip invalid: rotary requires head_size divisible by 16
+                if rotary and h % 16 > 0:
+                    continue
+
+                for share_buffer in share_buffer_opts:
+                    # Rotate secondary parameters
+                    b = batches[combo_index % len(batches)]
+                    s, s2 = all_seqs[combo_index % len(all_seqs)]
+
+                    # Skip subsequent prompt for batch > 1
+                    if s > 1 and b > 1:
+                        b = 1  # Force batch=1 for subsequent prompt
+
+                    n, n2 = heads[combo_index % len(heads)]
                     lws_opts = [-1, random.randint(1, s2)]
                     lws = lws_opts[combo_index % len(lws_opts)]
-
-                    rotary, rotary_interleaved = rotary_opts[combo_index % len(rotary_opts)]
-                    packed = packed_opts[combo_index % len(packed_opts)]
-                    share_buffer = share_buffer_opts[combo_index % len(share_buffer_opts)]
                     softcap = softcap_opts[combo_index % len(softcap_opts)]
                     use_smooth_softmax, has_head_sink = smmoth_softmax__head_sink[
                         combo_index % len(smmoth_softmax__head_sink)
@@ -1354,9 +1376,6 @@ def gqa_cuda_past_test_cases(allow_head_sink: bool = True):
                     has_position_ids = False if pipeline_mode else s > 1
 
                     combo_index += 1
-
-                    if rotary and h % 16 > 0:
-                        continue
 
                     if softcap > 0 and (use_smooth_softmax or has_head_sink):
                         continue
@@ -1540,6 +1559,154 @@ class TestMemoryEfficientGQAPaddingPrompt(unittest.TestCase):
     def test_gqa_padding_prompt_memory_efficient_attention(self):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         parity_test_gqa_padding_prompt()
+
+
+# #################################################################################################
+# Fused Kernel Parity Tests (ORT_DISABLE_FUSED_KV and ORT_DISABLE_FLASH_DECODE)
+# #################################################################################################
+
+
+def fused_kernel_test_cases():
+    """Test cases specifically for fused vs unfused kernel parity."""
+    configs = [
+        # Decoding with RoPE and shared buffer
+        GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            num_heads=16,
+            kv_num_heads=4,
+            head_size=128,
+            past_kv_sequence_length=128,
+            buffer_sequence_length=256,
+            rotary=True,
+            packed=False,
+            share_buffer=True,
+        ),
+        # Packed QKV decoding with RoPE
+        GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=128,
+            past_kv_sequence_length=64,
+            buffer_sequence_length=128,
+            rotary=True,
+            packed=True,
+            share_buffer=True,
+        ),
+        # Subsequent prompt with RoPE
+        GQAConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=128,
+            past_kv_sequence_length=32,
+            buffer_sequence_length=64,
+            rotary=True,
+            packed=False,
+            share_buffer=True,
+        ),
+    ]
+    for i, config in enumerate(configs):
+        yield f"fused_config_{i}", config
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestFusedKernelParity(unittest.TestCase):
+    """Tests that verify fused kernels produce the same results as unfused kernels."""
+
+    @parameterized.expand(fused_kernel_test_cases())
+    def test_fused_kv_parity(self, name, config):
+        """Test ORT_DISABLE_FUSED_KV: fused vs unfused KV append kernels."""
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+
+        # Run with fused kernels (default)
+        if "ORT_DISABLE_FUSED_KV" in os.environ:
+            del os.environ["ORT_DISABLE_FUSED_KV"]
+
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+        # Run with unfused kernels
+        os.environ["ORT_DISABLE_FUSED_KV"] = "1"
+
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+        # Clean up
+        del os.environ["ORT_DISABLE_FUSED_KV"]
+
+    def test_flash_decode_parity(self):
+        """Test ORT_DISABLE_FLASH_DECODE: fast decode vs standard path."""
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+
+        # Decoding config (seq_len=1, share_buffer=True)
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            num_heads=16,
+            kv_num_heads=4,
+            head_size=128,
+            past_kv_sequence_length=128,
+            buffer_sequence_length=256,
+            rotary=True,
+            packed=False,
+            share_buffer=True,
+        )
+
+        # Run with flash decode enabled (default)
+        if "ORT_DISABLE_FLASH_DECODE" in os.environ:
+            del os.environ["ORT_DISABLE_FLASH_DECODE"]
+
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+        # Run with flash decode disabled
+        os.environ["ORT_DISABLE_FLASH_DECODE"] = "1"
+
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+        # Clean up
+        del os.environ["ORT_DISABLE_FLASH_DECODE"]
 
 
 if __name__ == "__main__":

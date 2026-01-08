@@ -193,6 +193,7 @@ struct GroupQueryAttentionData {
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
+  bool disable_fused_kv = false;
 };
 
 template <typename T>

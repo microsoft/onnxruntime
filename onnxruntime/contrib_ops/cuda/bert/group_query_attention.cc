@@ -38,6 +38,9 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
 
+constexpr const char* kDisableFlashDecode = "ORT_DISABLE_FLASH_DECODE";
+constexpr const char* kDisableFusedKv = "ORT_DISABLE_FUSED_KV";
+
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
@@ -67,6 +70,9 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
     CUDA_CALL_THROW(cudaMemset(zeros_.get(), 0, kZerosCount * sizeof(int)));
   }
+
+  disable_flash_decode_ = ParseEnvironmentVariableWithDefault<bool>(kDisableFlashDecode, false);
+  disable_fused_kv_ = ParseEnvironmentVariableWithDefault<bool>(kDisableFusedKv, false);
 }
 
 template <typename T>
@@ -184,7 +190,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                  parameters.head_size,
                                                                  parameters.num_heads,
                                                                  parameters.kv_num_heads);
-  data.use_flash_attention_fast_decode = use_flash_attention && !parameters.is_first_prompt && parameters.kv_share_buffer;
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_share_buffer;
   if (use_flash_attention) {
     data.use_flash_attention = true;
     data.use_memory_efficient_attention = false;
@@ -203,33 +209,18 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
     data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
-
-    if (!data.use_flash_attention_fast_decode) {
-      size_t unpacked_qkv_bytes = parameters.is_packed_qkv
-                                      ? (static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T))
-                                      : 0;
-      if (parameters.do_rotary && unpacked_qkv_bytes == 0) {
-        // Unpacked case, Q and K rotation
-        unpacked_qkv_bytes = (static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * (parameters.num_heads + parameters.kv_num_heads) * parameters.head_size * sizeof(T));
-      }
-
-      if (unpacked_qkv_bytes > 0) {
-        unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
-        data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
-      }
-    }
   }
-#else
 #endif
 
-  if (data.use_flash_attention_fast_decode && !parameters.is_subsequent_prompt) {
+  if (data.use_flash_attention_fast_decode && parameters.sequence_length == 1) {
+    // FlashAttentionDecoding Fast Path:
+    // - Uses Flash Attention's internal KV append logic, so total_seq_lens and padded_seq_lens are not needed.
+    // - Past_seq_lens is passed as seqlens_k to Flash Attention, which uses it to:
+    //   1. Determine where to append new K/V in the cache
+    //   2. Apply correct causal masking (attention only to positions [0, past_seq_len])
+    // - The input seqlens_k from ONNX graph is (total_len - 1), which equals past_seq_len when seq_len == 1.
+    // - This optimization avoids launching GetSequenceLengths kernel for single-token decoding.
     data.past_seq_lens = const_cast<int*>(total_seq_lens_minus_one->Data<int>());
-    // total_seq_lens and padded_seq_lens are not used in fast decode.
-    // In fast decode (FlashAttentionDecoding), we pass past_seq_lens (which holds total_len - 1 effectively)
-    // as seqlens_k to Flash Attention. Flash Attention expects accumulated sequence lengths or simple lengths depending on mode.
-    // Actually, for decoding, seqlens_k is just used to determine the context length.
-    // The variable naming 'total_seq_lens_minus_one' and casting to 'past_seq_lens' might be confusing,
-    // but in decoding, past_seq_len == total_seq_len - 1. So we reuse the tensor.
   } else {
     // Compute sequence length buffers (past_seq_lens and total_seq_lens).
     // Allocate buffer for both: first half is past_seq_lens, second half is total_seq_lens.
@@ -286,8 +277,22 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
     data.v = reinterpret_cast<CudaT*>(v_buffer.get());
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
-    data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+
+    data.disable_fused_kv = disable_fused_kv_;
     data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
+  }
+
+  if (!data.use_flash_attention_fast_decode) {
+    size_t per_head_bytes = static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.head_size * sizeof(T);
+    size_t unpacked_qkv_bytes = per_head_bytes * (static_cast<size_t>(parameters.num_heads + 2 * parameters.kv_num_heads));
+    unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
+    data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+
+    if (use_flash_attention && parameters.do_rotary) {
+      size_t rotary_buffer_bytes = sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.sequence_length * parameters.head_size * 2;
+      rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
+      data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
+    }
   }
 
   if (kernel_options_->AllowDebugInfo()) {
