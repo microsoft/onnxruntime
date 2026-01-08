@@ -354,7 +354,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateCustomOpDomainsImpl(
   return nullptr;
 }
 
-void* ExampleEpCustomOp::CreateKernel(const OrtApi& /*api*/, const OrtKernelInfo* /*info*/) const {
+OrtStatusPtr ExampleEpCustomOp::CreateKernelV2(const OrtApi& /*api*/,
+                                               const OrtKernelInfo* /*info*/,
+                                               void** op_kernel) const {
   std::string node_input_0 = "X";
   std::string node_input_1 = "W";
   auto custom_kernel_op = std::make_unique<CustomMulKernel>(factory_->ort_api,
@@ -362,5 +364,10 @@ void* ExampleEpCustomOp::CreateKernel(const OrtApi& /*api*/, const OrtKernelInfo
                                                             float_initializers_,
                                                             node_input_0,
                                                             node_input_1);
-  return custom_kernel_op.release();
+  *op_kernel = custom_kernel_op.release();
+  return nullptr;
+}
+
+OrtStatusPtr ExampleEpCustomOp::KernelComputeV2(void* op_kernel, OrtKernelContext* context) const {
+  return static_cast<CustomMulKernel*>(op_kernel)->ComputeV2(context);
 }

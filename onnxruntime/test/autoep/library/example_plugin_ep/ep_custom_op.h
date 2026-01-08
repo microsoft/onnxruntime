@@ -34,14 +34,20 @@ struct CustomMulKernel : MulKernel {
                   std::string input1_name) : MulKernel(ort_api, logger, float_initializers,
                                                        input0_name, input1_name) {
   }
+
+  OrtStatusPtr ComputeV2(OrtKernelContext* kernel_ctx) {
+    return MulKernel::Compute(kernel_ctx);
+  }
 };
 
-struct ExampleEpCustomOp : Ort::CustomOpBase<ExampleEpCustomOp, CustomMulKernel> {
+struct ExampleEpCustomOp : Ort::CustomOpBase<ExampleEpCustomOp, CustomMulKernel, /*WithStatus*/ true> {
   explicit ExampleEpCustomOp(const char* provider, ExampleEpFactory* factory) : provider_(provider),
                                                                                 factory_(factory) {
   }
 
-  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const;
+  OrtStatusPtr CreateKernelV2(const OrtApi& api, const OrtKernelInfo* info, void** op_kernel) const;
+
+  OrtStatusPtr KernelComputeV2(void* op_kernel, OrtKernelContext* context) const;
 
   const char* GetName() const { return name_; };
 
