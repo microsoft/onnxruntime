@@ -103,7 +103,8 @@ export class WebNNBackend {
   private mlOpSupportLimitsBySessionId = new Map<number, MLOpSupportLimits>();
 
   constructor(env: Env) {
-    configureLogger(env.logLevel, !!env.debug);
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    configureLogger(env.logLevel!, !!env.debug);
   }
 
   public get currentSessionId(): number {
