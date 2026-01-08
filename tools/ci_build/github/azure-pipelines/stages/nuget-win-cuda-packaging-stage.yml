@@ -54,8 +54,8 @@ stages:
     stage_name_suffix: CUDA_${{parameters.StageToken}}
     buildArch: x64
     msbuildPlatform: x64
-    packageName: x64-cuda
-    CudaVersion: ${{ parameters.CudaVersion.version }}
+    packageName: x64-${{parameters.StageToken}}
+    CudaVersion: "${{ parameters.CudaVersion.version }}"
     buildparameter: --use_cuda --cuda_home=${{ parameters.CudaVersion.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaVersion.archs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
@@ -74,8 +74,8 @@ stages:
     stage_name_suffix: TensorRT_${{parameters.StageToken}}
     buildArch: x64
     msbuildPlatform: x64
-    CudaVersion: ${{ parameters.CudaVersion.version }}
-    packageName: x64-tensorrt
+    CudaVersion: "${{ parameters.CudaVersion.version }}"
+    packageName: x64-tensorrt-${{parameters.StageToken}}
     buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.CudaVersion.win_trt_home }} --cuda_home=${{ parameters.CudaVersion.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaVersion.archs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
