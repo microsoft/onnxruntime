@@ -569,8 +569,8 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       domains.resize(num_domains);
 
       ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->GetCustomOpDomains(ep_factory,
-                                                                               domains.data(),
-                                                                               domains.size())));
+                                                                            domains.data(),
+                                                                            domains.size())));
 
       const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
       for (auto domain : domains_span) {

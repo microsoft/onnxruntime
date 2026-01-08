@@ -75,8 +75,8 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                            _Out_ size_t* num_domains) noexcept;
 
   static OrtStatus* ORT_API_CALL GetCustomOpDomainsImpl(OrtEpFactory* this_ptr,
-                                                           _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
-                                                           _Out_ size_t num_domains) noexcept;
+                                                        _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
+                                                        _Out_ size_t num_domains) noexcept;
 
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
