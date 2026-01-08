@@ -109,7 +109,7 @@ if (isProxyWorker) {
         case 'init-wasm':
           initializeWebAssembly(message!.wasm).then(
             () => {
-              initRuntime(message!).then(
+              initRuntime(message).then(
                 () => {
                   postMessage({ type });
                 },

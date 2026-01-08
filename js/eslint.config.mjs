@@ -141,7 +141,7 @@ export default [
 
       // extra type assertions are sometimes needed for complex scenarios
       // https://eslint.org/docs/latest/use/configure/rules#rule-severities
-      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'error',
 
       '@typescript-eslint/no-unused-vars': [
         'error',

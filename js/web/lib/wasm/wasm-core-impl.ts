@@ -92,7 +92,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
  */
 export const initRuntime = async (env: Env): Promise<void> => {
   // init ORT
-  initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+  initOrt(env.wasm.numThreads, logLevelStringToEnum(env.logLevel));
 };
 
 /**
@@ -955,7 +955,7 @@ export const run = async (
                   gpuBuffer,
                   download: async () => {
                     const arrayBuffer = await downloadDataFunction();
-                    const data = new (tensorTypeToTypedArrayConstructor(type!))(arrayBuffer);
+                    const data = new (tensorTypeToTypedArrayConstructor(type))(arrayBuffer);
                     return data as Tensor.DataTypeMap[Tensor.GpuBufferDataTypes];
                   },
                   dispose: () => {
