@@ -253,14 +253,14 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                  ? (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.seqlen_present_kv_cache * parameters.head_size)
                                  : 0;
     size_t rotary_buffer_bytes = use_memory_efficient_attention && do_rotary_
-                                     ? (2 * sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.sequence_length * parameters.head_size +
+                                     ? (sizeof(T) * 2 * parameters.batch_size * parameters.num_heads * parameters.sequence_length * parameters.head_size +
                                         sizeof(int64_t) * parameters.batch_size * parameters.sequence_length)
                                      : 0;
     size_t fmha_buffer_bytes = (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float)))
-                                   ? (static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads * parameters.head_size * sizeof(float))
+                                   ? (sizeof(float) * parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size)
                                    : 0;
     size_t unpacked_qkv_bytes = use_memory_efficient_attention && parameters.is_packed_qkv
-                                    ? (static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size * sizeof(T))
+                                    ? (sizeof(T) * parameters.batch_size * parameters.sequence_length * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size)
                                     : 0;
     k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
     v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
@@ -283,8 +283,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (!data.use_flash_attention_fast_decode) {
-    size_t per_head_bytes = static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.head_size * sizeof(T);
-    size_t unpacked_qkv_bytes = per_head_bytes * (static_cast<size_t>(parameters.num_heads + 2 * parameters.kv_num_heads));
+    size_t per_head_bytes = sizeof(T) * parameters.batch_size * parameters.sequence_length * parameters.head_size;
+    size_t unpacked_qkv_bytes = per_head_bytes * (parameters.num_heads + 2 * parameters.kv_num_heads);
     unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
     data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
 

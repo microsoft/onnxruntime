@@ -9,7 +9,7 @@
 #include "core/providers/cuda/cuda_common.h"
 
 // Macro to help compute index of flatten 4D matrix, note that dim1 is not used so it is excluded.
-#define INDEX_4D(dim2, dim3, dim4, i, j, k, l) ((i) * (dim2) * (dim3) * (dim4) + (j) * (dim3) * (dim4) + (k) * (dim4) + (l))
+#define INDEX_4D(dim2, dim3, dim4, i, j, k, l) (int64_t(i) * (dim2) * (dim3) * (dim4) + int64_t(j) * (dim3) * (dim4) + int64_t(k) * (dim4) + int64_t(l))
 
 namespace onnxruntime {
 namespace contrib {

@@ -815,12 +815,12 @@ __global__ void ConcatKVInPlace(const int max_seqlen,
   const int past_seq_len = (past_seq_lens != nullptr) ? past_seq_lens[b] : (total_seq_lens[b] - new_seqlen);
 
   int64_t out_offset = is_past_kv_bnsh_format
-                           ? INDEX_4D(int64_t(kv_num_heads), int64_t(max_seqlen), int64_t(H), int64_t(b), int64_t(n), int64_t(s + past_seq_len), int64_t(h))
-                           : INDEX_4D(int64_t(max_seqlen), int64_t(kv_num_heads), int64_t(H), int64_t(b), int64_t(s + past_seq_len), int64_t(n), int64_t(h));
+                           ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
+                           : INDEX_4D(max_seqlen, kv_num_heads, H, b, s + past_seq_len, n, h);
 
   int64_t in_offset = is_new_kv_bnsh_format
-                          ? INDEX_4D(int64_t(kv_num_heads), int64_t(new_seqlen), int64_t(H), int64_t(b), int64_t(n), int64_t(s), int64_t(h))
-                          : INDEX_4D(int64_t(new_seqlen), int64_t(kv_num_heads), int64_t(H), int64_t(b), int64_t(s), int64_t(n), int64_t(h));
+                          ? INDEX_4D(kv_num_heads, new_seqlen, H, b, n, s, h)
+                          : INDEX_4D(new_seqlen, kv_num_heads, H, b, s, n, h);
 
   if (s + past_seq_len < total_seq_lens[b]) {
     kv_buff[out_offset] = new_kv[in_offset];
@@ -847,12 +847,12 @@ __global__ void ConcatKVInPlaceLarge(const int max_seqlen,
     const int past_seq_len = (past_seq_lens != nullptr) ? past_seq_lens[b] : (total_seq_lens[b] - new_seqlen);
 
     int64_t out_offset = is_past_kv_bnsh_format
-                             ? INDEX_4D(int64_t(kv_num_heads), int64_t(max_seqlen), int64_t(H), int64_t(b), int64_t(n), int64_t(s + past_seq_len), int64_t(h))
-                             : INDEX_4D(int64_t(max_seqlen), int64_t(kv_num_heads), int64_t(H), int64_t(b), int64_t(s + past_seq_len), int64_t(n), int64_t(h));
+                             ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
+                             : INDEX_4D(max_seqlen, kv_num_heads, H, b, s + past_seq_len, n, h);
 
     int64_t in_offset = is_new_kv_bnsh_format
-                            ? INDEX_4D(int64_t(kv_num_heads), int64_t(new_seqlen), int64_t(H), int64_t(b), int64_t(n), int64_t(s), int64_t(h))
-                            : INDEX_4D(int64_t(new_seqlen), int64_t(kv_num_heads), int64_t(H), int64_t(b), int64_t(s), int64_t(n), int64_t(h));
+                            ? INDEX_4D(kv_num_heads, new_seqlen, H, b, n, s, h)
+                            : INDEX_4D(new_seqlen, kv_num_heads, H, b, s, n, h);
 
     if (s + past_seq_len < total_seq_lens[b]) {
       kv_buff[out_offset] = new_kv[in_offset];
@@ -1025,12 +1025,12 @@ __global__ void ConcatKVInPlaceFused(const int max_seqlen,
 
   // Use int64_t for offsets to prevent overflow
   int64_t out_offset = is_past_kv_bnsh_format
-                           ? INDEX_4D(int64_t(kv_num_heads), int64_t(max_seqlen), int64_t(H), int64_t(b), int64_t(n), int64_t(s + past_seq_len), int64_t(h))
-                           : INDEX_4D(int64_t(max_seqlen), int64_t(kv_num_heads), int64_t(H), int64_t(b), int64_t(s + past_seq_len), int64_t(n), int64_t(h));
+                           ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
+                           : INDEX_4D(max_seqlen, kv_num_heads, H, b, s + past_seq_len, n, h);
 
   int64_t in_offset = is_new_kv_bnsh_format
-                          ? INDEX_4D(int64_t(kv_num_heads), int64_t(new_seqlen), int64_t(H), int64_t(b), int64_t(n), int64_t(s), int64_t(h))
-                          : INDEX_4D(int64_t(new_seqlen), int64_t(kv_num_heads), int64_t(H), int64_t(b), int64_t(s), int64_t(n), int64_t(h));
+                          ? INDEX_4D(kv_num_heads, new_seqlen, H, b, n, s, h)
+                          : INDEX_4D(new_seqlen, kv_num_heads, H, b, s, n, h);
 
   // Simple copy for K and V
   k_buff[out_offset] = new_k[in_offset];
@@ -1065,12 +1065,12 @@ __global__ void ConcatKVInPlaceFusedLarge(const int max_seqlen,
     }
 
     int64_t out_offset = is_past_kv_bnsh_format
-                             ? INDEX_4D(int64_t(kv_num_heads), int64_t(max_seqlen), int64_t(H), int64_t(b), int64_t(n), int64_t(s + past_seq_len), int64_t(h))
-                             : INDEX_4D(int64_t(max_seqlen), int64_t(kv_num_heads), int64_t(H), int64_t(b), int64_t(s + past_seq_len), int64_t(n), int64_t(h));
+                             ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
+                             : INDEX_4D(max_seqlen, kv_num_heads, H, b, s + past_seq_len, n, h);
 
     int64_t in_offset = is_new_kv_bnsh_format
-                            ? INDEX_4D(int64_t(kv_num_heads), int64_t(new_seqlen), int64_t(H), int64_t(b), int64_t(n), int64_t(s), int64_t(h))
-                            : INDEX_4D(int64_t(new_seqlen), int64_t(kv_num_heads), int64_t(H), int64_t(b), int64_t(s), int64_t(n), int64_t(h));
+                            ? INDEX_4D(kv_num_heads, new_seqlen, H, b, n, s, h)
+                            : INDEX_4D(new_seqlen, kv_num_heads, H, b, s, n, h);
 
     k_buff[out_offset] = new_k[in_offset];
     v_buff[out_offset] = new_v[in_offset];

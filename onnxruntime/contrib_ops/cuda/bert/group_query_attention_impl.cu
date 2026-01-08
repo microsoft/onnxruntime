@@ -1071,8 +1071,8 @@ Status EfficientAttention(
     key = reinterpret_cast<const void*>(data.key);
     value = reinterpret_cast<const void*>(data.value);
   } else {
-    size_t q_size = static_cast<size_t>(batch_size * sequence_length * num_heads * head_size);
-    size_t k_size = static_cast<size_t>(batch_size * sequence_length * kv_num_heads * head_size);
+    size_t q_size = static_cast<size_t>(batch_size) * sequence_length * num_heads * head_size;
+    size_t k_size = static_cast<size_t>(batch_size) * sequence_length * kv_num_heads * head_size;
     auto q = reinterpret_cast<T*>(data.unpacked_qkv_buffer);
     auto k = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size);
     auto v = reinterpret_cast<T*>(data.unpacked_qkv_buffer + q_size + k_size);
