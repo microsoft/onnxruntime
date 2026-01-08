@@ -13,7 +13,7 @@ parameters:
   type: string
   default: '0'
 
-- nanme: StageToken
+- name: StageToken
   type: string
 
 stages:
