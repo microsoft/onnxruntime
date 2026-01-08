@@ -11,18 +11,11 @@ parameters:
   type: boolean
   default: true
 
+- name: StageToken
+  type: string
+
 - name: CudaVersion
-  type: string
-  default: '13.0'
-  values:
-   - 12.8
-   - 13.0
-
-- name: win_cuda_home
-  type: string
-
-- name: win_trt_home
-  type: string
+  type: object
 
 - name: SpecificArtifact
   displayName: Use Specific Artifact
@@ -50,9 +43,6 @@ parameters:
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
 
-- name: CudaArchs
-  type: string
-
 stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
@@ -61,12 +51,12 @@ stages:
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
     DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CUDA
+    stage_name_suffix: CUDA_${{parameters.StageToken}}
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    CudaVersion: ${{ parameters.CudaVersion }}
-    buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
+    CudaVersion: ${{ parameters.CudaVersion.version }}
+    buildparameter: --use_cuda --cuda_home=${{ parameters.CudaVersion.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaVersion.archs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
@@ -81,12 +71,12 @@ stages:
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
     DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: TensorRT
+    stage_name_suffix: TensorRT_${{parameters.StageToken}}
     buildArch: x64
     msbuildPlatform: x64
-    CudaVersion: ${{ parameters.CudaVersion }}
+    CudaVersion: ${{ parameters.CudaVersion.version }}
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
+    buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.CudaVersion.win_trt_home }} --cuda_home=${{ parameters.CudaVersion.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaVersion.archs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
@@ -97,8 +87,8 @@ stages:
 # Windows CUDA Combined Testing and Publishing
 - stage: Windows_Packaging_combined_GPU
   dependsOn:
-  - Windows_Packaging_CUDA
-  - Windows_Packaging_TensorRT
+  - Windows_Packaging_CUDA_${{parameters.StageToken}}
+  - Windows_Packaging_TensorRT_${{parameters.StageToken}}
   condition: succeeded()
 
   jobs:
@@ -120,22 +110,22 @@ stages:
       parameters:
         DownloadCUDA: true
         DownloadTRT: true
-        CudaVersion: ${{ parameters.CudaVersion }}
+        CudaVersion: ${{ parameters.CudaVersion.version }}
 
     - template: ../templates/set-version-number-variables-step.yml
       parameters:
         versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
         workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-cuda'
+      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-${{parameters.StageToken}}'
       inputs:
-        artifactName: 'onnxruntime-win-x64-cuda'
+        artifactName: 'onnxruntime-win-x64-${{parameters.StageToken}}'
         targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-tensorrt'
+      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-tensorrt-${{parameters.StageToken}}'
       inputs:
-        artifactName: 'onnxruntime-win-x64-tensorrt'
+        artifactName: 'onnxruntime-win-x64-tensorrt-${{parameters.StageToken}}'
         targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
     - task: PowerShell@2
@@ -182,5 +172,5 @@ stages:
     - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Combined GPU Package Artifact'
       inputs:
-        artifactName: 'onnxruntime-win-x64-gpu'
+        artifactName: 'onnxruntime-win-x64-gpu-${{parameters.StageToken}}'
         targetPath: '$(Build.ArtifactStagingDirectory)'

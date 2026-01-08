@@ -13,15 +13,18 @@ parameters:
   type: string
   default: '0'
 
+- nanme: StageToken
+  type: string
+
 stages:
 ######## Nuget ########
 # Win/Linux CUDA Combined packaging
-- stage: NuGet_Packaging_GPU
+- stage: NuGet_Packaging_GPU_${{parameters.StageToken}}
   dependsOn:
   - Setup
-  - Windows_Packaging_CUDA
-  - Windows_Packaging_TensorRT
-  - Linux_C_API_Packaging_GPU
+  - Windows_Packaging_CUDA_${{parameters.StageToken}}
+  - Windows_Packaging_TensorRT_${{parameters.StageToken}}
+  - Linux_C_API_Packaging_GPU_${{parameters.StageToken}}
   #    This is need for Download Linux CustomOp TestData
   - Linux_C_API_Packaging_CPU
   condition: succeeded()
@@ -43,7 +46,7 @@ stages:
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
-        ArtifactName: 'onnxruntime-win-x64-cuda'
+        ArtifactName: 'onnxruntime-win-x64-${{parameters.StageToken}}'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -51,7 +54,7 @@ stages:
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
-        ArtifactName: 'onnxruntime-win-x64-tensorrt'
+        ArtifactName: 'onnxruntime-win-x64-tensorrt-${{parameters.StageToken}}'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -59,7 +62,7 @@ stages:
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
-        ArtifactName: 'onnxruntime-linux-x64-cuda'
+        ArtifactName: 'onnxruntime-linux-x64-${{parameters.StageToken}}'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -67,7 +70,7 @@ stages:
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
-        ArtifactName: 'onnxruntime-linux-x64-tensorrt'
+        ArtifactName: 'onnxruntime-linux-x64-tensorrt-${{parameters.StageToken}}'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -212,8 +215,16 @@ stages:
         msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+    # Backwards compat shim for currently publishing pipelines:
+    - ${{if eq(parameters.StageToken, 'cuda_12')}}:
+      - task: 1ES.PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline NuGet Artifact'
+        inputs:
+          artifactName: 'drop-signed-nuget-GPU'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+
     - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline NuGet Artifact'
       inputs:
-        artifactName: 'drop-signed-nuget-GPU'
+        artifactName: 'drop-signed-nuget-GPU-${{parameters.StageToken}}'
         targetPath: '$(Build.ArtifactStagingDirectory)'

@@ -6,13 +6,7 @@ parameters:
   type: boolean
 
 - name: CudaVersion
-  type: string
-
-- name: win_trt_home
-  type: string
-
-- name: win_cuda_home
-  type: string
+  type: object
 
 - name: UseIncreasedTimeoutForTests
   type: boolean
@@ -45,36 +39,35 @@ parameters:
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
 
-- name: CudaArchs
-  type: string
-
 stages:
-- template: nuget-linux-cuda-packaging-stage.yml
-  parameters:
-    CudaVersion: ${{ parameters.CudaVersion }}
-    buildJava: ${{ parameters.buildJava }}
-    buildNodejs: ${{ parameters.buildNodejs }}
-
-- ${{ if eq(parameters.buildNodejs, 'true') }}:
-  - template: nodejs-linux-packaging-stage.yml
+- ${{ each cuda_version in parameters.CudaVersion }}:
+  - template: nuget-linux-cuda-packaging-stage.yml
     parameters:
-      CudaVersion: ${{ parameters.CudaVersion }}
+      CudaVersion: ${{ cuda_version.value }}
+      buildJava: ${{ parameters.buildJava }}
+      buildNodejs: ${{ parameters.buildNodejs }}
+      StageToken: ${{ cuda_version.key }}
 
-- template: nuget-win-cuda-packaging-stage.yml
-  parameters:
-    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-    UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
-    CudaVersion: ${{ parameters.CudaVersion }}
-    win_trt_home: ${{ parameters.win_trt_home }}
-    win_cuda_home: ${{ parameters.win_cuda_home }}
-    buildJava: ${{ parameters.buildJava }}
-    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
-    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
-    CudaArchs: ${{ parameters.CudaArchs }}
+  - ${{ if eq(parameters.buildNodejs, 'true') }}:
+    - template: nodejs-linux-packaging-stage.yml
+      parameters:
+        StageToken: ${{ cuda_version.key }}
+        CudaVersion: ${{ cuda_version.value.version }}
 
-- template: nuget-cuda-packaging-stage.yml
-  parameters:
-    DoEsrp: ${{ parameters.DoEsrp }}
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
+  - template: nuget-win-cuda-packaging-stage.yml
+    parameters:
+      RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+      UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+      CudaVersion: ${{ cuda_version.value }}
+      StageToken: ${{ cuda_version.key }}
+      buildJava: ${{ parameters.buildJava }}
+      PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+      PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
+  - template: nuget-cuda-packaging-stage.yml
+    parameters:
+      DoEsrp: ${{ parameters.DoEsrp }}
+      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
+      StagkeToken: ${{ cuda_version.key }}
