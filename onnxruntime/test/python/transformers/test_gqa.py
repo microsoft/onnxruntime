@@ -22,7 +22,7 @@ from einops import rearrange, repeat
 from onnx import TensorProto, helper
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, SessionOptions, get_available_providers
+from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_build_info
 
 # Set seed for reproducibility
 torch.manual_seed(0)
@@ -33,6 +33,9 @@ pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
 # Maximum number of values per parameter
 param_count = int(os.getenv("PARAM_COUNT", "3")) if not pipeline_mode else 2
+
+# When quick build is used, flash attention only supports fp16 and head_size=128
+quick_build = ", quick-build=1, " in get_build_info()
 
 # #################################################################################################
 #  Configuration and Helper Classes
@@ -1098,7 +1101,7 @@ def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True):
     batches = [3, 1, 5]
     seqs = [(35, 35), (64, 64), (128, 128), (240, 240), (2000, 2000)]
     heads = [(6, 3), (9, 9), (32, 8)]
-    h_sizes = [128, 32, 64, 256]
+    h_sizes = [128] if quick_build else [128, 32, 64, 256]
     smmoth_softmax__head_sink = get_softmax_options(allow_head_sink)
 
     rotary_opts = list(get_cuda_rotary_options())
@@ -1154,7 +1157,7 @@ def gqa_cuda_past_test_cases(allow_head_sink: bool = True):
     # s: new sequence length, s2: past sequence length
     seqs = [(1, 128), (3, 1024), (1, 2048), (1, 5000)]
     heads = [(32, 8), (6, 3), (9, 9)]
-    h_sizes = [128, 64, 256]
+    h_sizes = [128] if quick_build else [128, 64, 256]
     smmoth_softmax__head_sink = get_softmax_options(allow_head_sink)
 
     rotary_opts = list(get_cuda_rotary_options())
@@ -1223,7 +1226,9 @@ def has_cuda_device(min_capability: int = 80):
     return major * 10 + minor >= min_capability
 
 
-def has_flash_attention():
+def has_flash_attention(bf16: bool = False):
+    if bf16 and quick_build:
+        return False
     return has_cuda_device(80)
 
 
@@ -1258,7 +1263,7 @@ class TestFlashGQA(unittest.TestCase):
         )
 
 
-@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_flash_attention(bf16=True), "Flash Attention is not available, skipping tests.")
 class TestFlashGQABF16(unittest.TestCase):
     @parameterized.expand(gqa_cuda_prompt_test_cases())
     def test_gqa_prompt_flash_attention_bf16(self, name, config):

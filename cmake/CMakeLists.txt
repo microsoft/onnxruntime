@@ -102,6 +102,7 @@ cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention ke
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" OFF)
+option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -789,6 +790,11 @@ if (onnxruntime_USE_CUDA)
       message( STATUS "Enable FpA IntB Gemm for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
     endif()
+
+    if (onnxruntime_QUICK_BUILD)
+      message( STATUS "Quick build mode: Flash attention limited to fp16 only")
+      list(APPEND ORT_PROVIDER_FLAGS -DORT_QUICK_BUILD=1)
+    endif()
 endif()
 
 if (onnxruntime_USE_CUDA_INTERFACE AND (NOT onnxruntime_USE_CUDA))
@@ -892,11 +898,12 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libHtpPrepare.so"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/HtpPrepare.dll")
       if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc" OR ${QNN_ARCH_ABI} STREQUAL "arm64x-windows-msvc")
-        list(APPEND QNN_LIB_FILES "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
+        file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
                                   "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so"
                                   "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libqnnhtpv73.cat"
                                   "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so"
                                   "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libqnnhtpv81.cat")
+        list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
       elseif(${QNN_ARCH_ABI} STREQUAL "aarch64-ubuntu-gcc9.4")
         list(APPEND QNN_LIB_FILES "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so")
       endif()
@@ -1441,6 +1448,9 @@ if (Git_FOUND)
       OUTPUT_VARIABLE ORT_GIT_BRANCH)
   string(STRIP "${ORT_GIT_BRANCH}" ORT_GIT_BRANCH)
   string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
+  if (onnxruntime_QUICK_BUILD)
+    string(APPEND ORT_BUILD_INFO "quick-build=1, ")
+  endif()
 endif()
 string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)

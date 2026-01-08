@@ -116,10 +116,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                              nullptr == present &&
                              parameters.hidden_size == parameters.v_hidden_size &&
                              nullptr == mask_index &&
-                             onnxruntime::flash::is_supported(device_prop,
-                                                              parameters.head_size,
-                                                              parameters.num_heads,
-                                                              parameters.num_heads);
+                             onnxruntime::flash::is_supported<T>(device_prop,
+                                                                 parameters.head_size,
+                                                                 parameters.num_heads,
+                                                                 parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
   if (use_flash_attention && parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;

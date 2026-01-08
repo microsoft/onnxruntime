@@ -726,16 +726,9 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   parameters.qkv_format_ = Q_K_V_BSNH;
 
   // Check if we can use flash attention
-  // For Attention operator, we need to create present_key and present_value tensors for flash attention
-  // even though they are not exposed as outputs
-  TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
-                                      parameters.total_sequence_length_, parameters.head_size_});
-  Tensor present_key = context.CreateGPUTensor(input->DataType(), present_kv_shape);
-  Tensor present_value = context.CreateGPUTensor(input->DataType(), present_kv_shape);
-
-  if (CanApplyFlashAttention(nullptr, &present_key, &present_value, parameters, context)) {
+  if (CanApplyFlashAttention(nullptr, parameters, context)) {
     // FlashAttention supports Q_K_V_BSNH format directly
-    return ApplyFlashAttention(&Q_bsd, &K_bsd, &V_bsd, attention_bias, output, nullptr, &present_key, nullptr, &present_value,
+    return ApplyFlashAttention(&Q_bsd, &K_bsd, &V_bsd, attention_bias, output, nullptr, nullptr, nullptr, nullptr,
                                parameters, context, nullptr);
   }
 

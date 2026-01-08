@@ -140,10 +140,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
-                             onnxruntime::flash::is_supported(device_prop,
-                                                              parameters.head_size,
-                                                              parameters.num_heads,
-                                                              parameters.kv_num_heads);
+                             onnxruntime::flash::is_supported<T>(device_prop,
+                                                                 parameters.head_size,
+                                                                 parameters.num_heads,
+                                                                 parameters.kv_num_heads);
   // Allocate buffers
   size_t softmax_lse_bytes = 0;
   size_t softmax_lse_accum_bytes = 0;
