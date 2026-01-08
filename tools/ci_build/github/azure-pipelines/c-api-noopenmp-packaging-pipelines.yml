@@ -63,16 +63,16 @@ parameters:
   type: object
   default:
     cuda_12:
-      version: "12.8"
       major: "12"
+      minor: "8"
       archs: '75-real;86-real;89-real;90-virtual'
       trt_version: '10.14.1.48'
       win_cuda_home: '$(Agent.TempDirectory)\v12.8'
       win_trt_home: '$(Agent.TempDirectory)\TensorRT-10.14.1.48.Windows.win10.cuda-12.9'
       linux_trt_version: 10.14.1.48-1.cuda12.9
     cuda_13:
-      version: "14.2"
       major: "13"
+      minor: "0"
       archs:  '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
       trt_version: '10.14.1.48'
       win_cuda_home: '$(Agent.TempDirectory)\v13.0'
