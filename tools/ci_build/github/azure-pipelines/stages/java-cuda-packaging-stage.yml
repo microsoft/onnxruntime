@@ -1,31 +1,37 @@
-stages:
-- stage: Jar_Packaging_GPU
-  dependsOn:
-  - Linux_C_API_Packaging_GPU
-  - Windows_Packaging_CUDA
-  - Windows_Packaging_TensorRT
-  jobs:
-  - job: Jar_Packaging_GPU
-    workspace:
-      clean: all
-    templateContext:
-      inputs:
-      - input: pipelineArtifact
-        artifactName: drop-onnxruntime-java-win-x64-tensorrt
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+parameters:
+  CudaVersion:
+    type: object
 
-      - input: pipelineArtifact
-        artifactName: drop-onnxruntime-java-linux-x64-tensorrt
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
-        
-      outputs:
-      - output: pipelineArtifact
-        targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
-        artifactName: onnxruntime-java-gpu
-    pool: 'onnxruntime-Win-CPU-VS2022-Latest'
-    dependsOn: []
-    condition: succeeded()
-    steps:
-    - template: ../templates/jar-packaging.yml
-      parameters:
-        package_type: gpu
+
+stages:
+- ${{ each cuda_version in parameters.CudaVersion }}:
+  - stage: Jar_Packaging_GPU_${{cuda_version.key}}
+    dependsOn:
+    - Linux_C_API_Packaging_GPU_${{cuda_version.key}}
+    - Windows_Packaging_CUDA_${{cuda_version.key}}
+    - Windows_Packaging_TensorRT_${{cuda_version.key}}
+    jobs:
+    - job: Jar_Packaging_GPU
+      workspace:
+        clean: all
+      templateContext:
+        inputs:
+        - input: pipelineArtifact
+          artifactName: drop-onnxruntime-java-win-x64-tensorrt
+          targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
+        - input: pipelineArtifact
+          artifactName: drop-onnxruntime-java-linux-x64-tensorrt
+          targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
+          artifactName: onnxruntime-java-gpu
+      pool: 'onnxruntime-Win-CPU-VS2022-Latest'
+      dependsOn: []
+      condition: succeeded()
+      steps:
+      - template: ../templates/jar-packaging.yml
+        parameters:
+          package_type: gpu
