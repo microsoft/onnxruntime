@@ -1348,18 +1348,23 @@ struct OrtEpFactory {
 
   /** \brief Get information from the execution provider about OrtHardwareDevice support.
    *
+   * If this function succeeds, ORT will take ownership of the first `num_ep_devices` OrtEpDevice instances populated
+   * in the `ep_devices` array.
+   *
    * \param[in] this_ptr The OrtEpFactory instance.
    *                     Non-const as the factory is passed through to the CreateEp call via the OrtEpDevice.
    * \param[in] devices The OrtHardwareDevice instances that are available.
    * \param[in] num_devices The number of OrtHardwareDevice instances.
    * \param[out] ep_devices OrtEpDevice instances for each OrtHardwareDevice that the EP can use.
-   *                        The implementation should call OrtEpApi::CreateEpDevice to create, and add the OrtEpDevice
-   *                        instances to this pre-allocated array. ORT will take ownership of the values returned.
-   *                        i.e. usage is `ep_devices[0] = <ptr to OrtEpDevice created with OrtEpApi::CreateEpDevice>;`
+   *                        The implementation should call OrtEpApi::CreateEpDevice to create the OrtEpDevice
+   *                        instances and add them to this pre-allocated array.
+   *                        I.e., usage is something like this:
+   *                        `ep_devices[0] = <ptr to OrtEpDevice created with OrtEpApi::CreateEpDevice>;`
    * \param[in] max_ep_devices The maximum number of OrtEpDevices that can be added to ep_devices.
    *                           Current default is 8. This can be increased if needed.
    * \param[out] num_ep_devices The number of EP devices added to ep_devices.
-   * \return true if the factory can create an execution provider that uses `device`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.22.
    */
