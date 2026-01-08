@@ -194,6 +194,30 @@ void RunLoopSubOneModel(const Ort::SessionOptions& session_options) {
   EXPECT_THAT(output_d_span, ::testing::ElementsAre(9.f, 8.f, 7.f));
 }
 
+void RunScanMulModel(const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/scan_mul.onnx"), session_options);
+
+  // Create inputs
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 2> x_shape = {3, 3};
+  std::array<float, 9> x_data = {1.f, 2.f, 3.f, 10.f, 20.f, 30.f, 100.f, 200.f, 300.f};
+
+  std::vector<Ort::Value> ort_inputs{};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, x_data.data(), x_data.size(), x_shape.data(), x_shape.size()));
+
+  std::array ort_input_names{"X"};
+
+  // Run session and get outputs
+  std::array output_names{"Y"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  gsl::span<const float> output_span(ort_outputs[0].GetTensorData<float>(), 9);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(2.f, 4.f, 6.f, 20.f, 40.f, 60.f, 200.f, 400.f, 600.f));
+}
+
 void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_options) {
   // This model has Add -> Mul -> Add. The example plugin EP supports Mul but not Add.
   Ort::Session session(*ort_env, ORT_TSTR("testdata/add_mul_add.onnx"), session_options);
@@ -480,7 +504,7 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Loop) {
     std::unordered_map<std::string, std::string> ep_options;
     Ort::SessionOptions session_options;
 
-    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP.
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
     ASSERT_NO_FATAL_FAILURE(RunLoopSubOneModel(session_options));
   }
@@ -494,6 +518,35 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Loop) {
     session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
     ASSERT_NO_FATAL_FAILURE(RunLoopSubOneModel(session_options));
+  }
+}
+
+TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Scan) {
+  RegisteredEpDeviceUniquePtr example_kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info,
+                                                         example_kernel_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
+
+  // Run model with Scan and Mul ops.
+  // No sharing of pre-packed weights.
+  {
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    ASSERT_NO_FATAL_FAILURE(RunScanMulModel(session_options));
+  }
+
+  // Run model with Scan and Mul ops.
+  // Enable sharing of pre-packed weights.
+  {
+    std::unordered_map<std::string, std::string> ep_options = {{"enable_prepack_weight_sharing", "1"}};
+    Ort::SessionOptions session_options;
+
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    ASSERT_NO_FATAL_FAILURE(RunScanMulModel(session_options));
   }
 }
 }  // namespace test

@@ -5,39 +5,6 @@
 
 #include "utils.h"
 
-// Defines a kernel creation function for If opset 13
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    If,
-    kOnnxDomain,
-    /*start version*/ 13, /*end version*/ 15,
-    (Ort::KernelDefBuilder()
-         .SetInputMemType(0, OrtMemTypeCPUInput)  // 'cond' needs to be on CPU
-         .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
-         .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    If)
-
-// Defines a kernel creation function for If opset 16
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    If,
-    kOnnxDomain,
-    /*start version*/ 16, /*end version*/ 18,
-    (Ort::KernelDefBuilder()
-         .SetInputMemType(0, OrtMemTypeCPUInput)  // 'cond' needs to be on CPU
-         .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
-         .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    If)
-
-// Defines a kernel creation function for If opset 19
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    If,
-    kOnnxDomain,
-    /*start version*/ 19, /*end version*/ 20,
-    (Ort::KernelDefBuilder()
-         .SetInputMemType(0, OrtMemTypeCPUInput)  // 'cond' needs to be on CPU
-         .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
-         .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    If)
-
 // Defines a kernel creation function for If opset 21
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     If,

@@ -6,45 +6,6 @@
 #include <gsl/gsl>
 #include "utils.h"
 
-// Defines a kernel creation function for Loop opset 13
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Loop,
-    kOnnxDomain,
-    /*start version*/ 13, /*end version*/ 15,
-    (Ort::KernelDefBuilder()
-         .SetInputMemType(0, OrtMemTypeCPUInput)  // 'M' needs to be on CPU
-         .SetInputMemType(1, OrtMemTypeCPUInput)  // 'cond' needs to be on CPU
-         .AddTypeConstraint("I", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
-         .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
-         .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    Loop)
-
-// Defines a kernel creation function for Loop opset 16
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Loop,
-    kOnnxDomain,
-    /*start version*/ 16, /*end version*/ 18,
-    (Ort::KernelDefBuilder()
-         .SetInputMemType(0, OrtMemTypeCPUInput)  // 'M' needs to be on CPU
-         .SetInputMemType(1, OrtMemTypeCPUInput)  // 'cond' needs to be on CPU
-         .AddTypeConstraint("I", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
-         .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
-         .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    Loop)
-
-// Defines a kernel creation function for Loop opset 19
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Loop,
-    kOnnxDomain,
-    /*start version*/ 19, /*end version*/ 20,
-    (Ort::KernelDefBuilder()
-         .SetInputMemType(0, OrtMemTypeCPUInput)  // 'M' needs to be on CPU
-         .SetInputMemType(1, OrtMemTypeCPUInput)  // 'cond' needs to be on CPU
-         .AddTypeConstraint("I", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
-         .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
-         .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    Loop)
-
 // Defines a kernel creation function for Loop opset 21
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Loop,

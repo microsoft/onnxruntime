@@ -97,26 +97,32 @@ static constexpr const char* kOnnxDomain = "";
       const char* ep_name,                                                                          \
       void* create_kernel_state,                                                                    \
       KernelCreateInfo* result) {                                                                   \
-    EXCEPTION_TO_RETURNED_STATUS_BEGIN                                                              \
-    Ort::KernelDef kernel_def = builder.SetOperatorType(#name)                                      \
-                                    .SetDomain(domain)                                              \
-                                    .SetSinceVersion(startver, endver)                              \
-                                    .SetExecutionProvider(ep_name)                                  \
-                                    .Build();                                                       \
+    try {                                                                                           \
+      Ort::KernelDef kernel_def = builder.SetOperatorType(#name)                                    \
+                                      .SetDomain(domain)                                            \
+                                      .SetSinceVersion(startver, endver)                            \
+                                      .SetExecutionProvider(ep_name)                                \
+                                      .Build();                                                     \
                                                                                                     \
-    auto kernel_create_func = [](void* state, const OrtKernelInfo* info,                            \
-                                 OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {               \
-      *kernel_out = nullptr;                                                                        \
+      auto kernel_create_func = [](void* state, const OrtKernelInfo* info,                          \
+                                   OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {             \
+        *kernel_out = nullptr;                                                                      \
                                                                                                     \
-      std::unique_ptr<kernel_class> kernel;                                                         \
-      RETURN_IF_ERROR(kernel_class::Create(info, state, kernel));                                   \
-      *kernel_out = kernel.release();                                                               \
-      return nullptr;                                                                               \
-    };                                                                                              \
+        std::unique_ptr<kernel_class> kernel;                                                       \
+        RETURN_IF_ERROR(kernel_class::Create(info, state, kernel));                                 \
+        *kernel_out = kernel.release();                                                             \
+        return nullptr;                                                                             \
+      };                                                                                            \
                                                                                                     \
-    *result = KernelCreateInfo(std::move(kernel_def), kernel_create_func, create_kernel_state);     \
+      *result = KernelCreateInfo(std::move(kernel_def), kernel_create_func, create_kernel_state);   \
+    } catch (const Ort::Exception& ex) {                                                            \
+      Ort::Status status(ex);                                                                       \
+      return status.release();                                                                      \
+    } catch (const std::exception& ex) {                                                            \
+      Ort::Status status(ex.what(), ORT_EP_FAIL);                                                   \
+      return status.release();                                                                      \
+    }                                                                                               \
     return nullptr;                                                                                 \
-    EXCEPTION_TO_RETURNED_STATUS_END                                                                \
   }
 
 // Defines a function of type BuildKernelCreateInfoFn for a kernel implementation with a start version.
