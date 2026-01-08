@@ -85,7 +85,7 @@ stages:
     BuildId: ${{ parameters.BuildId }}
 
 # Windows CUDA Combined Testing and Publishing
-- stage: Windows_Packaging_combined_GPU
+- stage: Windows_Packaging_combined_GPU_${{parameters.StageToken}}
   dependsOn:
   - Windows_Packaging_CUDA_${{parameters.StageToken}}
   - Windows_Packaging_TensorRT_${{parameters.StageToken}}
