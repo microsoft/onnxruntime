@@ -1258,12 +1258,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     for (const auto* op : domain->custom_ops_) {
       // define kernel
       const auto* name = op->GetName(op);
-      auto it = domain_kernels.find(name);
-      if (it == domain_kernels.end()) {
-        domain_kernels[name] = {op};
-      } else {
-        domain_kernels[name].push_back(op);
-      }
+      domain_kernels[name].push_back(op);
     }
 
     // Creation of the schemas, one per unique name.
