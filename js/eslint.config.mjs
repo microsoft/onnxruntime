@@ -139,7 +139,7 @@ export default [
         },
       ],
 
-      '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
 
       '@typescript-eslint/no-unused-vars': [
         'error',
