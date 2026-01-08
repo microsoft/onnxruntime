@@ -149,15 +149,9 @@ void set_params_fprop(Flash_fwd_params& params,
 
   params.is_seqlens_k_cumulative = true;
   params.unpadded_lse = unpadded_lse;
-  params.seqlenq_ngroups_swapped = false;
 
   params.leftpad_k = static_cast<int*>(leftpad_k);
   params.cache_batch_idx = static_cast<int*>(cache_batch_idx);
-  params.rotary_cos_ptr = nullptr;
-  params.rotary_sin_ptr = nullptr;
-  params.is_rotary_interleaved = false;
-  params.alibi_slopes_ptr = nullptr;
-  params.alibi_slopes_batch_stride = 0;
 }
 
 size_t get_softmax_lse_size(size_t seqlen, size_t batch_size, size_t num_heads) {
@@ -328,25 +322,12 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    cache_batch_idx,
                    leftpad_k);
   params.dprops = &dprops;
-  params.knew_ptr = nullptr;
-  params.vnew_ptr = nullptr;
-  params.knew_batch_stride = 0;
-  params.vnew_batch_stride = 0;
-  params.knew_row_stride = 0;
-  params.vnew_row_stride = 0;
-  params.knew_head_stride = 0;
-  params.vnew_head_stride = 0;
 
   params.num_splits = num_splits;
   if (params.num_splits > 1 && softmax_lse_accum != nullptr && out_accum != nullptr) {
     params.softmax_lseaccum_ptr = softmax_lse_accum;
     params.oaccum_ptr = out_accum;
-  } else {
-    params.softmax_lseaccum_ptr = nullptr;
-    params.oaccum_ptr = nullptr;
   }
-
-  params.alibi_slopes_ptr = nullptr;
 
   run_mha_fwd(params, stream);
   return Status::OK();
@@ -412,12 +393,6 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
 
   params.total_q = total_q;
   params.dprops = &dprops;
-  params.num_splits = 0;
-  params.softmax_lseaccum_ptr = nullptr;
-  params.oaccum_ptr = nullptr;
-  params.knew_ptr = nullptr;
-  params.vnew_ptr = nullptr;
-  params.alibi_slopes_ptr = nullptr;
   if (paged_KV) {
     params.block_table = block_table;
     params.block_table_batch_stride = max_num_blocks_per_seq;
@@ -533,16 +508,6 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     }
     params.knew_head_stride = head_size;
     params.vnew_head_stride = head_size;
-  } else {
-    params.seqlen_knew = 0;
-    params.knew_ptr = nullptr;
-    params.vnew_ptr = nullptr;
-    params.knew_batch_stride = 0;
-    params.vnew_batch_stride = 0;
-    params.knew_row_stride = 0;
-    params.vnew_row_stride = 0;
-    params.knew_head_stride = 0;
-    params.vnew_head_stride = 0;
   }
 
   params.is_seqlens_k_cumulative = seqlens_k_ == nullptr;
@@ -566,7 +531,6 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     params.oaccum_ptr = nullptr;
   }
 
-  params.alibi_slopes_ptr = nullptr;
   if (paged_KV) {
     params.block_table = block_table;
     params.block_table_batch_stride = max_num_blocks_per_seq;
