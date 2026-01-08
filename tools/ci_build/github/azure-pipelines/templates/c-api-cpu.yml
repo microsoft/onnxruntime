@@ -383,7 +383,7 @@ stages:
   - Setup
   - Windows_Nodejs_Packaging_x64
   - Windows_Nodejs_Packaging_arm64
-  - Linux_Nodejs_Packaging_x64
+  - Linux_Nodejs_Packaging_x64_cuda_12
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Packaging_CPU
   condition: succeeded()
