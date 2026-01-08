@@ -16,7 +16,9 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
@@ -33,6 +35,10 @@ Abstract:
 #include <sys/systemcfg.h>
 #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
 #endif
+#endif
+
+#if defined(MLAS_TARGET_S390X)
+#include <sys/auxv.h>
 #endif
 
 #if defined(MLAS_TARGET_ARM64)
@@ -412,7 +418,7 @@ Return Value:
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
-                this->LUTGenKernel = &MlasLUTGenKernelAvx2;
+                this->LutGenKernel = &MlasLutGenKernelAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -559,6 +565,17 @@ Return Value:
     this->HGemmDispatch = &MlasHGemmDispatchNeon;
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
+
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
+    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
+    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
+    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
+    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
+    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;
+    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelNeon;
+    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelNeon;
+    this->NchwcBlockSize = MLAS_NEON_NCHWC_BLOCK_SIZE;
+#endif
 
     //
     // Check if the processor supports ASIMD dot product instructions.

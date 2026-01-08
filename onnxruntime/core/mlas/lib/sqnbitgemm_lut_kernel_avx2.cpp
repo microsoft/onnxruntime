@@ -512,7 +512,8 @@ TMACComputeGemm_avx2(
     int K,
     int M,
     int N,
-    size_t BlkLen  // Weight quantization group size (q_group_size)
+    size_t BlkLen,  // Weight quantization group size (q_group_size)
+    bool HasZeroPoint
 )
 {
     // Validate batch size
@@ -521,7 +522,7 @@ TMACComputeGemm_avx2(
     }
 
     // get kernel config
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(M, K, 2, BlkLen);
+    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(M, K, 2, BlkLen, HasZeroPoint);
 
     // ==================== CONFIGURATION ====================
     // Fixed parameters for this kernel implementation
@@ -662,21 +663,9 @@ TMACComputeGemm_avx2(
     delete[] CBits;
 }
 
-void
-QuantizeARow_CompInt8(
-    size_t /*BlkLen*/,
-    const float* /*A*/,
-    size_t /*CountK*/,
-    std::byte* /*QuantA*/
-)
-{
-    // placeholder so that dispatch doesn't break
-    // TODO: figure out a way that we can omit this altogether
-}
-
 // Kernel dispatch structure definition.
 
-const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLUTGenKernelAvx2 = []() {
+const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2 = []() {
     MLAS_QNBIT_LUT_GEMM_DISPATCH d;
     d.GenerateLUT = GenerateLUT_avx2;
     d.ComputeGemm = TMACComputeGemm_avx2;

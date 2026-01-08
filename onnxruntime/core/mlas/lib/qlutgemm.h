@@ -43,7 +43,7 @@ struct MlasTMACKernelParams {
 };
 
 const MlasTMACKernelParams&
-MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size);
+MlasGetLutGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point);
 
 typedef void(MLAS_QNBIT_GEMM_LUT_GEN)(
     const float* b,
@@ -66,7 +66,8 @@ typedef void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
     int K,
     int M,  // batch size (number of rows in activation)
     int N,
-    size_t BlkLen
+    size_t BlkLen,
+    bool HasZeroPoint
 );
 
 //

@@ -233,95 +233,123 @@ MlasQNBitGemmScalesPacked(
     bool HasZeroPoint
 );
 
-size_t MLASCALL
-MlasLUTGemmPackQuantBDataSize(
-    size_t N,
-    size_t K,
-    size_t BlkBitWidth,
-    size_t BlkLen,
-    bool HasZeroPoint
-);
-
-void MLASCALL
-MlasLUTGemmPackQuantBData(
-    size_t N,
-    size_t K,
-    size_t BlkBitWidth,
-    size_t BlkLen,
-    const std::byte* QuantBDataBegin,
-    std::byte* PackedQuantBDataBegin,
-    MLAS_THREADPOOL* ThreadPool
-);
-
 /**
- * @brief Gets the size in float of the packed quantized B scales and zero points.
- */
-
-size_t MLASCALL
-MlasLUTPackScalesAndZeroPointsSize(
-    size_t N,
-    size_t K,
-    size_t BlkLen,
-    bool HasZeroPoint
-);
-
-/**
- * @brief Packs the scales and zero points into a format that the TMAC kernel expects.
- */
-void MLASCALL
-MlasLUTPackScalesAndZeroPoints(
-    size_t N,
-    size_t K,
-    size_t BlkBitWidth,
-    size_t BlkLen,
-    bool HasZeroPoint,
-    float* PackedQuantBZPBegin,
-    const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint
-);
-
-/**
- * @brief Determines whether the TMAC LUT optimization path is available on the current platform
- *        for the provided quantization parameters.
+ * @brief Determines whether the Lut (Lookup Table) GEMM optimization path is available.
  *
- * This API is used by higher-level ops to choose the TMAC path. It complements
- * MlasIsQNBitGemmAvailable by querying availability of the LUT-based strategy.
+ * @param[in]   N               column size of matrix B
+ * @param[in]   K               row size of matrix B
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 2 means 2 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @return      true if Lut GEMM is available for the given parameters
  */
 bool MLASCALL
-MlasIsLUTGemmAvailable(
+MlasIsLutGemmAvailable(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen
 );
 
+/**
+ * @brief Initializes kernel configuration for Lut GEMM.
+ *
+ * @param[in]   M               row size of output matrix
+ * @param[in]   N               column size of matrix B
+ * @param[in]   nbits           quantized value bit width
+ * @param[in]   block_size      number of quantized values per block
+ * @param[in]   has_zero_point  whether zero points are provided
+ */
 void MLASCALL
-MlasInitLUTGemmKernelConfig(
+MlasInitLutGemmKernelConfig(
     size_t M,
     size_t N,
     size_t nbits,
     size_t block_size,
-    bool has_zp_point
+    bool has_zero_point
 );
 
+/**
+ * @brief Clears the cached LUT GEMM kernel configuration.
+ *        Call this when the model dimensions change or to reset state between operations.
+ *        Primarily used in testing scenarios to ensure clean state between test runs.
+ */
 void MLASCALL
-MlasClearLUTGemmKernelConfig();
+MlasClearLutGemmKernelConfig();
 
 /**
- * @brief Executes TMAC compute
+ * @brief Gets the total size in bytes of the prepacked buffer for Lut GEMM.
+ *        This buffer contains packed quantized B data followed by packed scales and zero points.
+ *
+ * @param[in]   N               column size of matrix B
+ * @param[in]   K               row size of matrix B
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 2 means 2 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   HasZeroPoint    whether zero points are provided
+ * @return      Total size in bytes of the prepacked buffer
+ */
+size_t MLASCALL
+MlasLutGemmPackedSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint
+);
+
+/**
+ * @brief Packs quantized B data and/or scales/zero points into a buffer for Lut GEMM.
+ *        If QuantBScale is nullptr, only packs B data. If QuantBData is nullptr, only packs scales.
+ *
+ * @param[in]   N                   column size of matrix B
+ * @param[in]   K                   row size of matrix B
+ * @param[in]   BlkBitWidth         quantized value bit width (e.g., 2 means 2 bit ints)
+ * @param[in]   BlkLen              number of quantized values per block
+ * @param[in]   HasZeroPoint        whether zero points are provided
+ * @param[in]   QuantBData          quantized B data (nullptr to skip B packing)
+ * @param[in]   QuantBScale         quantized B scales (nullptr to skip scale packing)
+ * @param[in]   QuantBZeroPoint     quantized B zero points (nullptr if HasZeroPoint is false)
+ * @param[out]  PackedBuf           output buffer (must be at least MlasLutGemmPackedSize bytes)
+ * @param[in]   ThreadPool          thread pool for parallel packing
+ */
+void MLASCALL
+MlasLutGemmPack(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    std::byte* PackedBuf,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+/**
+ * @brief Executes TMAC compute using Lut (Lookup Table) based GEMM.
  *
  * This function handles generating the look up tables and accumulating the matmul results.
  * Results will be stored in C.
+ *
+ * @param[in]   A               activation matrix
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   PackedBuf       packed buffer containing weights and scales/zp (from MlasLutGemmPack)
+ * @param[out]  C               output matrix
+ * @param[in]   K               inner dimension
+ * @param[in]   M               batch size (number of rows in activation)
+ * @param[in]   N               column size of matrix B
+ * @param[in]   HasZeroPoint    whether zero points are provided
+ * @param[in]   threadpool      thread pool for parallel computation
  */
 void MLASCALL
-MlasLUTGemm(
+MlasLutGemm(
     const void* A,
     size_t BlkLen,
-    const void* QuantBData,
-    const float* QuantBScale,
+    const void* PackedBuf,
     void* C,
-    int K,
-    int M,
-    int N,
+    size_t K,
+    size_t M,
+    size_t N,
+    bool HasZeroPoint,
     MLAS_THREADPOOL* threadpool
 );

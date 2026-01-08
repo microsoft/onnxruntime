@@ -31,8 +31,7 @@ class MlasSQLutGemmTest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferQuantBScale;
   MatrixGuardBuffer<uint8_t> BufferQuantBZeroPoint;
   MatrixGuardBuffer<float> BufferDequantizedB;
-  MatrixGuardBuffer<std::byte> BufferPackedQuantBData;
-  MatrixGuardBuffer<float> BufferPackedQuantBScaleZeroPoint;
+  MatrixGuardBuffer<std::byte> BufferPackedB;  // Single buffer for packed weights and scales
 
   void CallReferenceGemm(size_t M,
                          size_t N,
@@ -70,7 +69,7 @@ class MlasSQLutGemmTest : public MlasTestBase {
     MLAS_THREADPOOL* tp = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
     // Clear config cache to ensure fresh config for each test case
-    MlasClearLUTGemmKernelConfig();
+    MlasClearLutGemmKernelConfig();
 
     const float* A = BufferA.GetBuffer(K * M);
     const float* B = BufferB.GetBuffer(N * K);
@@ -102,42 +101,33 @@ class MlasSQLutGemmTest : public MlasTestBase {
                                                 GetMlasThreadPool());
     }
 
-    MlasInitLUTGemmKernelConfig(N, K, BlkBitWidth, BlkLen, !Symmetric);
+    MlasInitLutGemmKernelConfig(N, K, BlkBitWidth, BlkLen, !Symmetric);
 
-    size_t PackedBSize = MlasLUTGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric);
-    std::byte* PackedBData = BufferPackedQuantBData.GetBuffer(PackedBSize);
+    // Use unified packing - single buffer for weights and scales/zp
+    size_t PackedBufSize = MlasLutGemmPackedSize(N, K, BlkBitWidth, BlkLen, !Symmetric);
+    std::byte* PackedBuf = BufferPackedB.GetBuffer(PackedBufSize);
 
-    MlasLUTGemmPackQuantBData(
-        N,
-        K,
-        BlkBitWidth,
-        BlkLen,
-        reinterpret_cast<std::byte*>(QuantBData),
-        PackedBData,
-        tp);
-
-    size_t PackedScalesZPSize = MlasLUTPackScalesAndZeroPointsSize(N, K, BlkLen, !Symmetric);
-    float* PackedScalesZPData = BufferPackedQuantBScaleZeroPoint.GetBuffer(PackedScalesZPSize);
-
-    MlasLUTPackScalesAndZeroPoints(
+    MlasLutGemmPack(
         N,
         K,
         BlkBitWidth,
         BlkLen,
         !Symmetric,
-        PackedScalesZPData,
+        reinterpret_cast<std::byte*>(QuantBData),
         QuantBScale,
-        QuantBZeroPoint);
+        QuantBZeroPoint,
+        PackedBuf,
+        tp);
 
-    MlasLUTGemm(
+    MlasLutGemm(
         A,
         BlkLen,
-        PackedBData,
-        PackedScalesZPData,
+        PackedBuf,
         C,
         static_cast<int>(K),
         static_cast<int>(M),
         static_cast<int>(N),
+        !Symmetric,
         tp);
 
     // Reference computation
@@ -181,7 +171,7 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
   }
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K, bool WithThreadpool, bool Symmetric) {
-    if (!MlasIsLUTGemmAvailable(N, K, BlkBitWidth, BlkLen)) {
+    if (!MlasIsLutGemmAvailable(N, K, BlkBitWidth, BlkLen)) {
       return 0;
     }
 

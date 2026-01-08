@@ -31,25 +31,25 @@ Abstract:
 static std::unordered_map<std::string, struct MlasTMACKernelParams> tmac_kernel_configs;
 
 const MlasTMACKernelParams&
-MlasGetLUTGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size)
+MlasGetLutGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
 {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size);
+    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
     if (tmac_kernel_configs.count(key)) {
         return tmac_kernel_configs[key];
     }
-    ORT_THROW("T-MAC kernel parameters not initialized for M=", M, ", N=", N, ", nbits=", nbits, ", block_size=", block_size);
+    ORT_THROW("T-MAC kernel parameters not initialized for M=", M, ", N=", N, ", nbits=", nbits, ", block_size=", block_size, ", has_zero_point=", has_zero_point);
 }
 
 void MLASCALL
-MlasClearLUTGemmKernelConfig()
+MlasClearLutGemmKernelConfig()
 {
     tmac_kernel_configs.clear();
 }
 
 void MLASCALL
-MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zp_point)
+MlasInitLutGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
 {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size);
+    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
     if (tmac_kernel_configs.count(key)) {
         return;
     }
@@ -83,7 +83,6 @@ MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
         bms = {192, 384, 576, 758};
     }
 
-    std::vector<size_t> bns = {8, 16, 32, 64};
     std::vector<size_t> kfactors = {8, 16};
 
     // TODO(vraspar): add profile based policy
@@ -120,15 +119,16 @@ MlasInitLUTGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
 
     params.n_tiles_num = M * params.bits / params.bm;
     params.has_scale = true;  // TODO(vraspar): TMAC supports only scale for now
-    params.has_zero_point = has_zp_point;
+    params.has_zero_point = has_zero_point;
     params.one_scale = false;  // TODO(vraspar): support one scale case for bitnet
 
     tmac_kernel_configs[key] = params;
     return;
 }
 
-size_t MLASCALL
-MlasLUTGemmPackQuantBDataSize(
+// Internal helper: calculates packed quantized B data size
+static size_t
+LutGemmPackQuantBDataSize(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
@@ -136,25 +136,26 @@ MlasLUTGemmPackQuantBDataSize(
     bool HasZeroPoint
 )
 {
-    ORT_UNUSED_PARAMETER(HasZeroPoint);
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth, BlkLen);
+    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
     const size_t PackedQuantBDataSize = (N * BlkBitWidth) * (K / tmac_params.g / tmac_params.ngroups_per_elem);
     return PackedQuantBDataSize;
 }
 
-void MLASCALL
-MlasLUTGemmPackQuantBData(
+// Internal helper: packs quantized B data
+static void
+LutGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
+    bool HasZeroPoint,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool
 )
 {
     // decompose W into w1,... w_bits create temp buffer buf2 of size N * bits * (K/g)
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth, BlkLen);
+    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
     const size_t bits = tmac_params.bits;
     const size_t g = tmac_params.g;
     const size_t ngroups_per_elem = tmac_params.ngroups_per_elem;
@@ -271,8 +272,9 @@ MlasLUTGemmPackQuantBData(
     );
 }
 
-size_t MLASCALL
-MlasLUTPackScalesAndZeroPointsSize(
+// Internal helper: calculates packed scales and zero points size in floats
+static size_t
+LutPackScalesAndZeroPointsSize(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -287,8 +289,9 @@ MlasLUTPackScalesAndZeroPointsSize(
     }
 }
 
-void MLASCALL
-MlasLUTPackScalesAndZeroPoints(
+// Internal helper: packs scales and zero points
+static void
+LutPackScalesAndZeroPoints(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
@@ -299,7 +302,7 @@ MlasLUTPackScalesAndZeroPoints(
     const uint8_t* QuantBZeroPoint
 )
 {
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, BlkBitWidth, BlkLen);
+    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
     const size_t bits = tmac_params.bits;
     const size_t simd_n_out = tmac_params.simd_n_out;
     const size_t bm = tmac_params.bm;
@@ -359,15 +362,76 @@ MlasLUTPackScalesAndZeroPoints(
     }
 }
 
+// Internal helper: calculates the offset to scales in the packed buffer
+static size_t
+LutGemmPackedScalesOffset(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint
+)
+{
+    constexpr size_t kAlignment = 64;  // Cache line alignment
+    size_t packed_b_size = LutGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
+    return ((packed_b_size + kAlignment - 1) / kAlignment) * kAlignment;
+}
+
+size_t MLASCALL
+MlasLutGemmPackedSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint
+)
+{
+    // Get packed B size (aligned)
+    size_t aligned_b_size = LutGemmPackedScalesOffset(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
+
+    // Get packed scales/zp size (in floats, convert to bytes)
+    size_t packed_scales_count = LutPackScalesAndZeroPointsSize(N, K, BlkLen, HasZeroPoint);
+    size_t packed_scales_bytes = packed_scales_count * sizeof(float);
+
+    return aligned_b_size + packed_scales_bytes;
+}
+
+void MLASCALL
+MlasLutGemmPack(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool HasZeroPoint,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    std::byte* PackedBuf,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    // Pack B data if provided
+    if (QuantBData != nullptr) {
+        LutGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, HasZeroPoint, QuantBData, PackedBuf, ThreadPool);
+    }
+
+    // Pack scales/zero points if scales are provided
+    if (QuantBScale != nullptr) {
+        size_t scales_offset = LutGemmPackedScalesOffset(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
+        float* scales_dest = reinterpret_cast<float*>(PackedBuf + scales_offset);
+        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint);
+    }
+}
+
 bool MLASCALL
-MlasIsLUTGemmAvailable(
+MlasIsLutGemmAvailable(
     size_t N,
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen
 )
 {
-    const auto* lut_kernel = GetMlasPlatform().LUTGenKernel;
+    const auto* lut_kernel = GetMlasPlatform().LutGenKernel;
     if (lut_kernel == nullptr || lut_kernel->GenerateLUT == nullptr || lut_kernel->ComputeGemm == nullptr) {
         return false;
     }
@@ -406,7 +470,7 @@ MlasIsLUTGemmAvailable(
 }
 
 size_t
-CalculateLUTBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams& tmac_params)
+CalculateLutBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams& tmac_params)
 {
     ORT_UNUSED_PARAMETER(n);
     constexpr size_t kAllockAligment = 64;
@@ -422,23 +486,31 @@ CalculateLUTBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams&
 }
 
 void MLASCALL
-MlasLUTGemm(
+MlasLutGemm(
     const void* A,
     size_t BlkLen,
-    const void* QuantBData,    // Quantized weights (B matrix)
-    const float* QuantBScale,  // scale(s) for quantized weights
+    const void* PackedBuf,  // Packed buffer containing weights followed by scales/zp
     void* C,
-    int K,
-    int M,  // batch size (number of rows in activation)
-    int N,
+    size_t K,
+    size_t M,  // batch size (number of rows in activation)
+    size_t N,
+    bool HasZeroPoint,
     MLAS_THREADPOOL* threadpool
 )
 {
     // adapted from ggml_backend_tmac_mul_mat
-    const auto* Dispatch = GetMlasPlatform().LUTGenKernel;
-    if (!Dispatch || !Dispatch->GenerateLUT) {
-        ORT_THROW("TMAC not supported in this configuration.");
-    }
+    const auto* Dispatch = GetMlasPlatform().LutGenKernel;
+    // This should be ensured by calling MlasIsLutGemmAvailable() before MlasLutGemm()
+    assert(Dispatch && Dispatch->GenerateLUT && "TMAC not supported in this configuration.");
+
+    // Calculate scales offset from packed buffer
+    // TODO(vraspar): support other bitwidths
+    constexpr size_t BlkBitWidth = 2;
+    size_t scales_offset = LutGemmPackedScalesOffset(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
+    const auto* QuantBData = PackedBuf;
+    const auto* QuantBScale = reinterpret_cast<const float*>(
+        static_cast<const std::byte*>(PackedBuf) + scales_offset
+    );
 
     /** TODO(vraspar): The biases_float and scales float values don't make sense
      * FP 16
@@ -461,9 +533,9 @@ MlasLUTGemm(
     // n_tiles_num = m * bits / bm;
 
     // TODO(vraspar): support other bitwidths
-    const MlasTMACKernelParams& tmac_params = MlasGetLUTGemmKernelParams(N, K, 2, BlkLen);
+    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, 2, BlkLen, HasZeroPoint);
     const size_t lut_scales_size = K / tmac_params.act_group_size;
-    size_t lut_buffer_size = CalculateLUTBufferSize(N, K, M, tmac_params);
+    size_t lut_buffer_size = CalculateLutBufferSize(N, K, M, tmac_params);
 
     // make buffer of lut_buffer_size bytes
     // TODO(vraspar): other way to do it
@@ -537,7 +609,7 @@ MlasLUTGemm(
     // Determine weight-scale layout. These should be provided by the caller or inferred from the packed weights.
     // For now we default to per-group symmetric quantization (no zero-point, not one-scale).
 
-    const size_t scales_size_total = MlasLUTPackScalesAndZeroPointsSize(
+    const size_t scales_size_total = LutPackScalesAndZeroPointsSize(
         static_cast<size_t>(N),
         static_cast<size_t>(K),
         BlkLen,
@@ -595,7 +667,6 @@ MlasLUTGemm(
 
                     // Call the dispatch function to compute this tile
                     // Note M and N are swapped in TMAC terminology
-                    // TODO(vrapsar): fix this M and N swapp mess
                     Dispatch->ComputeGemm(
                         packed_weights + w_offset,       // Weight tile
                         QuantBScale + scales_offset,     // Weight scales for this tile
@@ -604,9 +675,10 @@ MlasLUTGemm(
                         lut_biases + lut_scales_offset,  // LUT biases
                         act_output + dst_offset,         // Output location
                         static_cast<int>(K),             // K dimension
-                        static_cast<int>(N),             // K dimension
-                        static_cast<int>(1),
-                        BlkLen  // Weight quantization group size
+                        static_cast<int>(N),             // N dimension
+                        static_cast<int>(1),             // M dimension (processing one batch item at a time)
+                        BlkLen,                          // Weight quantization group size
+                        HasZeroPoint                     // Whether zero points are used
                     );
                 }
             }
