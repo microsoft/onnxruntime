@@ -71,7 +71,7 @@ parameters:
       win_trt_home: '$(Agent.TempDirectory)\TensorRT-10.14.1.48.Windows.win10.cuda-12.9'
       linux_trt_version: 10.14.1.48-1.cuda12.9
     cuda_13:
-      version: "13.0"
+      version: "14.2"
       major: "13"
       archs:  '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
       trt_version: '10.14.1.48'
