@@ -1230,7 +1230,9 @@ static Ort::Status TransposeDataRank5(gsl::span<const int64_t> input_shape,
 Ort::Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
                                   std::vector<uint32_t>& data_shape,
                                   const OrtValueInfo* initializer,
-                                  std::vector<uint8_t>& transposed_data) {
+                                  std::vector<uint8_t>& transposed_data,
+                                  const Ort::Logger& logger,
+                                  bool skip_output_data_copy) {
   const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
 
   RETURN_IF_NOT(data_shape.size() == 2, "Expected shape of rank 2");
@@ -1253,12 +1255,25 @@ Ort::Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
 
   std::vector<uint8_t> input_buffer;
   RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
-  transposed_data.resize(input_buffer.size());
+  transposed_data.resize(input_buffer.size(), 0);
 
-  for (size_t row = 0; row < data_shape[0]; row++) {
-    for (size_t col = 0; col < data_shape[1]; col++) {
-      const size_t src_elem_index = (row * data_shape[1] + col);
-      const size_t dst_elem_index = (col * output_shape[1] + row);
+  if (skip_output_data_copy) {  // Only shape & dtype validation are needed, no need for real tensor
+    ORT_CXX_LOG(logger,
+                ORT_LOGGING_LEVEL_VERBOSE,
+                "Only shape and dtype validation are required, so we can use dummy tensor to avoid heavy memcpy.");
+    data_shape = std::move(output_shape);  // Update parameter with final transposed shape
+    return Ort::Status();
+  }
+
+  // Actual tensor content is required.
+  const size_t rows = data_shape[0];
+  const size_t cols = data_shape[1];
+  const size_t output_cols = output_shape[1];
+
+  for (size_t row = 0; row < rows; row++) {
+    for (size_t col = 0; col < cols; col++) {
+      const size_t src_elem_index = (row * cols + col);
+      const size_t dst_elem_index = (col * output_cols + row);
       const size_t src_byte_index = src_elem_index * elem_byte_size;
       const size_t dst_byte_index = dst_elem_index * elem_byte_size;
       assert(src_byte_index < input_buffer.size());
