@@ -968,6 +968,7 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
 
 /** \brief External memory handle type for importing GPU resources.
  *
+ * \todo Add OPAQUE_WIN32 for Windows Vulkan-specific memory handles
  * \todo Add POSIX file descriptor (OPAQUE_FD) for Linux Vulkan/CUDA/OpenCL interop
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
