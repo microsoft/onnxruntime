@@ -17,7 +17,7 @@
  * In a real EP, this would hold a GPU-mapped pointer from an imported D3D12/Vulkan/CUDA resource.
  */
 struct ExampleExternalMemoryHandle : OrtExternalMemoryHandle {
-  std::unique_ptr<char[]> simulated_ptr;    ///< Simulated mapped pointer (CPU memory for testing)
+  std::unique_ptr<char[]> simulated_ptr;  ///< Simulated mapped pointer (CPU memory for testing)
 
   ExampleExternalMemoryHandle()
       : simulated_ptr(nullptr) {
