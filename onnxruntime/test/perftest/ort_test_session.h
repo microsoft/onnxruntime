@@ -42,9 +42,11 @@ class OnnxRuntimeTestSession : public TestSession {
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
-  OrtAllocator* allocator_ = Ort::AllocatorWithDefaultOptions();
+  Ort::AllocatorWithDefaultOptions default_allocator_;
   // Note: custom_allocator_, if used, must outlive the `Ort::Value`s allocated with it in test_inputs_ and outputs_.
+  // and must be declared before them to ensure it is destroyed after them.
   Ort::Allocator custom_allocator_{nullptr};
+  Ort::UnownedAllocator allocator_{default_allocator_};
   std::vector<std::vector<Ort::Value>> test_inputs_;
   std::vector<Ort::Value> outputs_;
   std::vector<std::string> output_names_;
@@ -56,9 +58,11 @@ class OnnxRuntimeTestSession : public TestSession {
   const int input_length_;
   std::string provider_name_;
   std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
+  const std::unordered_map<std::string, std::string>& run_config_entries_;
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
   cudaStream_t stream_;  // Device stream if required by IO bindings
 #endif
+  Ort::ArenaCfg cuda_mempool_arena_cfg_{nullptr};
 };
 
 }  // namespace perftest

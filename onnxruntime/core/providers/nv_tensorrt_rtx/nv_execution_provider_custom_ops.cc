@@ -41,10 +41,15 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
   static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+  static std::unique_ptr<OrtCustomOpDomain> native_custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+  static std::vector<std::unique_ptr<TensorRTCustomOp>> native_custom_op_list;
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain.get());
+    if (native_custom_op_domain->domain_ != "" && native_custom_op_domain->custom_ops_.size() > 0) {
+      domain_list.push_back(native_custom_op_domain.get());
+    }
     return Status::OK();
   }
 
@@ -65,6 +70,23 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
       }
     }
     is_loaded = true;
+  }
+
+  // Load external tensorrt_plugins library from EP directory (same location as nvinfer_plugin)
+  // This library contains GroupQueryAttention and RotaryEmbedding plugins for transformer models
+  try {
+    const auto& env = onnxruntime::GetDefaultEnv();
+    auto external_plugin_path = env.GetRuntimePath() +
+                                PathString(LIBRARY_PREFIX ORT_TSTR("tensorrt_plugins") LIBRARY_EXTENSION);
+    void* external_plugin_handle = nullptr;
+    auto status = env.LoadDynamicLibrary(external_plugin_path, false, &external_plugin_handle);
+    if (status.IsOK()) {
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] External plugins loaded: tensorrt_plugins (GQA + RotaryEmbedding)";
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] tensorrt_plugins library not found in runtime path (optional)";
+    }
+  } catch (const std::exception& e) {
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] tensorrt_plugins library not available: " << e.what();
   }
 
   try {
@@ -119,6 +141,19 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   } catch (const std::exception&) {
     LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
   }
+
+  // Register native custom ops (register these independent of TRT plugin library availability)
+  const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
+  int num_native_custom_ops = std::size(native_custom_ops_names);
+
+  for (int i = 0; i < num_native_custom_ops; i++) {
+    native_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kNvTensorRTRTXExecutionProvider, nullptr));
+    native_custom_op_list.back()->SetName(native_custom_ops_names[i]);
+    native_custom_op_domain->custom_ops_.push_back(native_custom_op_list.back().get());
+  }
+
+  native_custom_op_domain->domain_ = "trt";
+  domain_list.push_back(native_custom_op_domain.get());
   return Status::OK();
 }
 

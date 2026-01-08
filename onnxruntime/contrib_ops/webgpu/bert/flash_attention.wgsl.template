@@ -4,6 +4,7 @@
 #param is_qualcomm
 #param is_unidirectional
 #param prefer_subgroupshuffle
+#param q_BNSH
 #param qkv_head_size
 #param qkv_num_heads
 #param use_seqlen_k
@@ -26,7 +27,7 @@ fn get_total_sequence_length() -> u32 {
 #if is_fp16
 const min_value = q_element_t(-65504.0);
 #else
-const min_value = q_element_t(-3.402823e+38f);
+const min_value = q_element_t(-3.4028234663852886e+38f);
 #endif
 
 // For max performance max_k_step should be the same as sg_size, however we might run out of registers
@@ -42,20 +43,27 @@ var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 
 // Private memory per lane.
 var<private> q_tile : array<q_value_t, head_size_vec>;
-fn loadq(q_idx_global : u32, head_idx : u32, alpha : q_element_t) {
-  // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
-  // This is the layout if TransferBSDToBNSH has not been run.
-  let offset = q_idx_global * (head_size_vec)*num_heads + head_size_vec * head_idx;
-  // Stored as BNSH - which is what webgpu uses after TransferBSDToBNSH has been run.
-  // let offset = head_idx * uniforms.new_sequence_length * head_size_vec + q_idx_global * head_size_vec;
+fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_t) {
+#if q_BNSH
+  // Stored as BNSH - float16[batch_size, num_heads, sequence_length, head_size]
+  let offset = batch_idx * num_heads * uniforms.new_sequence_length * head_size_vec +
+               head_idx * uniforms.new_sequence_length * head_size_vec +
+               q_idx_global * head_size_vec;
+#else
+  // Stored as BSNH - float16[batch_size, sequence_length, num_heads, head_size]
+  let offset = batch_idx * uniforms.new_sequence_length * head_size_vec * num_heads +
+               q_idx_global * head_size_vec * num_heads +
+               head_idx * head_size_vec;
+#endif
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
     q_tile[idx] = q[idx + offset] * alpha;
   }
 }
 
-fn loadk(k_start : u32, head_idx : u32, local_idx : u32, k_step : u32) {
+fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32) {
   // Stored as float16[batch_size,num_heads,present_sequence_length,96]
-  let offset = head_idx * uniforms.present_sequence_length * head_size_vec + k_start * head_size_vec;
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
+               k_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
     let val = select(q_value_t(0), present_key[offset + idx], k_start + slot < get_total_sequence_length());
@@ -63,9 +71,10 @@ fn loadk(k_start : u32, head_idx : u32, local_idx : u32, k_step : u32) {
   }
 }
 
-fn loadv(v_start : u32, head_idx : u32, local_idx : u32, v_step : u32) {
+fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32) {
   // Stored as float16[batch_size,num_heads,present_sequence_length,96]
-  let offset = head_idx * uniforms.present_sequence_length * head_size_vec + v_start * head_size_vec;
+  let offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * head_size_vec +
+               v_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * v_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
     let val = select(q_value_t(0), present_value[offset + idx], v_start + slot < get_total_sequence_length());
@@ -83,9 +92,10 @@ var<workgroup> o_tile_r : array<array<q_value_t, half_head_size_vec>, workgroup_
 
 // Private memory per lane.
 var<private> o_tile : array<q_value_t, half_head_size_vec>;
-fn writeo(o_idx_global : u32, head_idx : u32, local_idx : u32) {
+fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32, local_idx : u32) {
   // Stored as float16[batch_size,sequence_length,3072]
-  let offset = o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
+  let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
+               o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
   for (var idx : u32 = 0; idx < half_head_size_vec; idx++) {
     output[offset + idx] = o_tile[idx];
     output[offset + idx + half_head_size_vec] = o_tile_r[local_idx][idx];
@@ -94,9 +104,10 @@ fn writeo(o_idx_global : u32, head_idx : u32, local_idx : u32) {
 #else
 // Private memory per lane.
 var<private> o_tile : array<q_value_t, head_size_vec>;
-fn writeo(o_idx_global : u32, head_idx : u32) {
+fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
   // Stored as float16[batch_size,sequence_length,3072]
-  let offset = o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
+  let offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
+               o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
     output[offset + idx] = o_tile[idx];
   }
@@ -104,12 +115,17 @@ fn writeo(o_idx_global : u32, head_idx : u32) {
 #endif
 
 #if has_attention_bias
-fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
   // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
-  if (q_idx_global >= uniforms.new_sequence_length || k_idx_global >= get_total_sequence_length()) {
+  if (k_idx_global >= get_total_sequence_length()) {
     return vec4<q_element_t>(0);
   }
-  let offset_base = head_idx * uniforms.new_sequence_length * get_total_sequence_length() + q_idx_global * get_total_sequence_length();
+  // Handle broadcasting: if dimension size is 1, use index 0
+  let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
+  let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
+
+  let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * get_total_sequence_length() +
+                    bias_head_idx * uniforms.new_sequence_length * get_total_sequence_length() + q_idx_global * get_total_sequence_length();
   let offset = offset_base + k_idx_global;
   let offset_max = offset_base + get_total_sequence_length();
   let c1 = q_element_t(attention_bias[min(offset, offset_max)]);
@@ -119,7 +135,7 @@ fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> 
   return vec4<q_element_t>(c1, c2, c3, c4);
 }
 #else
-fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32) -> vec4<q_element_t> {
   return vec4<q_element_t>(0);
 }
 #endif
@@ -141,15 +157,21 @@ fn fetchVTile(k_idx: u32, vec_idx: u32, v_val: q_value_t) -> q_value_t {
 }
 
 $MAIN {
-  let head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
+  let batch_head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
+  let head_idx = batch_head_idx % num_heads;
+  let batch_idx = batch_head_idx / num_heads;
   let capped_sg_id = min(sg_id, max_k_step - 1u);
   let capped_sg_size = min(sg_size, max_k_step);
+
+  if (batch_idx >= uniforms.batch_size) {
+    return;
+  }
 
   // Load Q
   let q_idx_global = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x + local_idx;
   let valid_q = q_idx_global < uniforms.new_sequence_length;
   if (valid_q) {
-    loadq(q_idx_global, head_idx, q_element_t(uniforms.alpha));
+    loadq(batch_idx, q_idx_global, head_idx, q_element_t(uniforms.alpha));
   }
 
   var previous_max : q_element_t = min_value;
@@ -170,8 +192,8 @@ $MAIN {
 
   for (var k_start = 0u; k_start < loop_bound; k_start += capped_sg_size) {
     workgroupBarrier();
-    loadk(k_start, head_idx / uniforms.n_reps, local_idx, capped_sg_size);
-    loadv(k_start, head_idx / uniforms.n_reps, local_idx, capped_sg_size);
+    loadk(k_start, batch_head_idx, local_idx, capped_sg_size);
+    loadv(k_start, batch_head_idx, local_idx, capped_sg_size);
     workgroupBarrier();
 
     // Compute QKt
@@ -229,11 +251,11 @@ $MAIN {
         qk_2[3] += dot(q_own, fetchKTile(7, i, k_local));
       }
     }
-    qk_1 = qk_1 + loadAttentionBias(q_idx_global, k_start, head_idx);
-    qk_2 = qk_2 + loadAttentionBias(q_idx_global, k_start + 4, head_idx);
+    qk_1 = qk_1 + loadAttentionBias(batch_idx, q_idx_global, k_start, head_idx);
+    qk_2 = qk_2 + loadAttentionBias(batch_idx, q_idx_global, k_start + 4, head_idx);
     if (sg_size > 8) {
-      qk_3 = qk_3 + loadAttentionBias(q_idx_global, k_start + 8, head_idx);
-      qk_4 = qk_4 + loadAttentionBias(q_idx_global, k_start + 12, head_idx);
+      qk_3 = qk_3 + loadAttentionBias(batch_idx, q_idx_global, k_start + 8, head_idx);
+      qk_4 = qk_4 + loadAttentionBias(batch_idx, q_idx_global, k_start + 12, head_idx);
     }
 
     // Neuter qk values where K is out of bounds.
@@ -360,7 +382,7 @@ $MAIN {
   }
 
   if (valid_q) {
-    writeo(q_idx_global, head_idx, local_idx);
+    writeo(batch_idx, q_idx_global, head_idx, local_idx);
   }
 #else
     if (sg_size > 8) {
@@ -409,7 +431,7 @@ $MAIN {
   }
 
   if (valid_q) {
-    writeo(q_idx_global, head_idx);
+    writeo(batch_idx, q_idx_global, head_idx);
   }
 #endif
 }  // MAIN

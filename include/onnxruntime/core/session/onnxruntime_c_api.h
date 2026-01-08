@@ -3937,6 +3937,7 @@ struct OrtApi {
    *      -# "69"
    *      -# "73"
    *      -# "75"
+   *      -# "81"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
    *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
    *      Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
@@ -4203,7 +4204,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
@@ -4219,7 +4220,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.14
    */
-  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                   _Inout_ size_t* size);
 
   /** \brief Get the name of a ::OrtKernelInfo's output.
@@ -4230,7 +4231,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
@@ -4247,7 +4248,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.14
    */
-  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                   _Inout_ size_t* size);
 
   /** \brief Get the type information for a ::OrtKernelInfo's input.
@@ -4427,7 +4428,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
@@ -4444,7 +4445,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.15
    */
-  ORT_API2_STATUS(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
+  ORT_API2_STATUS(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_opt_ char* out, _Inout_ size_t* size);
 
   /** \brief Get the session logger from ::OrtKernelInfo.
    *
@@ -4592,7 +4593,7 @@ struct OrtApi {
    *
    * \param[in] context OrtKernelContext instance
    * \param[in] mem_info OrtMemoryInfo instance
-   * \param[out] out A pointer to OrtAllocator.
+   * \param[out] out A pointer to OrtAllocator. Must be released with OrtApi::ReleaseAllocator.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6590,6 +6591,82 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API_T(bool, TensorTypeAndShape_HasShape, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /** \brief Get all config entries from ::OrtKernelInfo.
+   *
+   * Gets all configuration entries from the ::OrtKernelInfo object as key-value pairs.
+   * Config entries are set on the ::OrtSessionOptions and are accessible in custom operator kernels.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to access all session configuration entries
+   * during kernel construction.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out A pointer to a newly created OrtKeyValuePairs instance containing all config entries.
+   *                 Note: the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Get the graph node's operator domain from ::OrtKernelInfo.
+   *
+   * If `out` is nullptr, the value of `size` is set to the size of the operator domain
+   * string (including null-terminator), and a success status is returned.
+   *
+   * If the `size` parameter is greater than or equal to the string's size and `out` is not nullptr,
+   * the value of `size` is set to the true size of the string (including null-terminator),
+   * the provided memory is filled with the string's contents, and a success status is returned.
+   *
+   * If the `size` parameter is less than the actual string's size and `out`
+   * is not nullptr, the value of `size` is set to the true size of the string
+   * and a failure status with error code ORT_INVALID_ARGUMENT is returned.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the
+   *                 operator domain.
+   * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetOperatorDomain, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                  _Inout_ size_t* size);
+
+  /** \brief Get the graph node's operator type from ::OrtKernelInfo.
+   *
+   * If `out` is nullptr, the value of `size` is set to the size of the operator type
+   * string (including null-terminator), and a success status is returned.
+   *
+   * If the `size` parameter is greater than or equal to the string's size and `out` is not nullptr,
+   * the value of `size` is set to the true size of the string (including null-terminator),
+   * the provided memory is filled with the string's contents, and a success status is returned.
+   *
+   * If the `size` parameter is less than the actual string's size and `out`
+   * is not nullptr, the value of `size` is set to the true size of the string
+   * and a failure status with error code ORT_INVALID_ARGUMENT is returned.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the
+   *                 operator type.
+   * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                  _Inout_ size_t* size);
+
+  /** \brief Get the opset version in which the given node's operator type was first defined from ::OrtKernelInfo.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] since_version The opset version in which the node's operator type was first defined.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetOperatorSinceVersion, _In_ const OrtKernelInfo* info,
+                  _Out_ int* since_version);
 };
 
 /*

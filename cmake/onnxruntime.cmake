@@ -42,7 +42,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
     # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory
     # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
-    if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
+    if(NOT f STREQUAL cuda)
       file(GLOB _provider_headers CONFIGURE_DEPENDS
         "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
       )
@@ -225,7 +225,6 @@ set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
-  ${PROVIDERS_WEBGPU}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
@@ -233,6 +232,10 @@ set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
 
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
+endif()
+
+if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_webgpu)
 endif()
 
 # This list is a reversed topological ordering of library dependencies.

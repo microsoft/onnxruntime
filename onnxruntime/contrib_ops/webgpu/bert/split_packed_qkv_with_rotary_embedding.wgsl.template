@@ -36,11 +36,11 @@ $MAIN {
 
     // Calculate actual indices in the head for i and j
 #if interleaved
-    let idx_i = in_head_idx;
-    let idx_j = in_head_idx + 1u;
+    let idx_i = in_head_idx + in_head_idx;
+    let idx_j = idx_i + 1u;
 #else
     let idx_i = in_head_idx;
-    let idx_j = in_head_idx + uniforms.half_rotary_dim;
+    let idx_j = idx_i + uniforms.half_rotary_dim;
 #endif
 
     // Process Q pair

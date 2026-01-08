@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
   <!-- 2-parameter form: InlinedVector<T, N> (allocator defaulted) -->
-  <Type Name="absl::lts_20250512::InlinedVector&lt;*,*&gt;">
+  <Type Name="absl::lts_20250814::InlinedVector&lt;*,*&gt;">
     <!-- Metadata layout:
          metadata_.value stores (size << 1) | is_allocated_bit -->
     <Intrinsic Name="_meta_value" Expression="storage_.metadata_.value"/>
@@ -40,7 +40,7 @@
   </Type>
 
   <!-- 3-parameter form: InlinedVector<T, N, A> -->
-  <Type Name="absl::lts_20250512::InlinedVector&lt;*,*,*&gt;">
+  <Type Name="absl::lts_20250814::InlinedVector&lt;*,*,*&gt;">
     <Intrinsic Name="_meta_value" Expression="storage_.metadata_.value"/>
     <Intrinsic Name="_size" Expression="_meta_value() >> 1"/>
     <Intrinsic Name="_is_allocated" Expression="(_meta_value() &amp; 1) == 1"/>

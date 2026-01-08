@@ -1202,6 +1202,7 @@ TEST_F(QnnHTPBackendTests, CastAddQDQS16) {
 
 // Test float32 model with FP16 precision
 TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -1430,7 +1431,8 @@ TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
 }
 #endif  // BUILD_QNN_EP_STATIC_LIB
 
-#if !BUILD_QNN_EP_STATIC_LIB
+// TODO: Test will be re-enabled for Linux once QNN API issue is resolved
+#if !BUILD_QNN_EP_STATIC_LIB && !defined(__linux__)
 // Tests that loading and unloading of an EP library in the same process does not cause a segfault.
 TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
@@ -1459,12 +1461,16 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
     EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
   }
 }
-#endif  // !BUILD_QNN_EP_STATIC_LIB
+#endif  // !BUILD_QNN_EP_STATIC_LIB && !defined(__linux__)
 
 #if defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 // Tests autoEP feature to automatically select an EP that supports the NPU.
 // Currently only works on Windows.
 TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
+  // V68 device (Makena) on win-arm64 doesn't support NPU device discovery with dxcore.dll,
+  // which is required by auto-EP.
+  QNN_SKIP_TEST_IF_AUTOEP_NPU_UNSUPPORTED();
+
   ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
                                                                      ORT_TSTR("onnxruntime_providers_qnn.dll")));
 

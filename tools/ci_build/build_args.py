@@ -96,6 +96,18 @@ def _openvino_verify_device_type(device_read: str) -> str:
     return device_read
 
 
+def _webgpu_verify_library_kind(library_kind: str) -> str:
+    """Verifies the library kind for the WebGPU Execution Provider."""
+    choices = ["shared_lib", "static_lib"]
+    if library_kind not in choices:
+        print("\nYou have specified an invalid library kind for WebGPU EP.")
+        print(f"The invalid library kind was: {library_kind}")
+        print("Provide a library kind from the following options: ", choices)
+        print(f"Example: --use_webgpu {choices[0]}")
+        sys.exit("Incorrect build configuration")
+    return library_kind
+
+
 # --- Argument Grouping Functions ---
 
 
@@ -174,6 +186,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
             "NMake Makefiles JOM",
             "Unix Makefiles",
             "Visual Studio 17 2022",
+            "Visual Studio 18 2026",
             "Xcode",
         ],
         default=None,  # Will be set later based on OS and WASM
@@ -359,7 +372,7 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.11", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.21", help="Specify version of emsdk.")
     parser.add_argument(
         "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
     )
@@ -763,9 +776,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group = parser.add_argument_group("MIGraphX Execution Provider")
     migx_group.add_argument("--use_migraphx", action="store_true", help="Enable MIGraphX EP.")
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
-    migx_group.add_argument("--use_rocm", action="store_true", help="Enable ROCm EP.")
-    migx_group.add_argument("--rocm_version", help="ROCm stack version.")
-    migx_group.add_argument("--rocm_home", help="Path to ROCm installation directory.")
+    # --rocm_version and --rocm_home are deprecated. See https://github.com/microsoft/onnxruntime/issues/26801.
+    migx_group.add_argument("--rocm_version", help="ROCm stack version. This option is deprecated and has no effect.")
+    migx_group.add_argument(
+        "--rocm_home", help="Path to ROCm installation directory. This option is deprecated and has no effect."
+    )
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")
@@ -777,7 +792,13 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
     # --- WebGPU ---
     webgpu_group = parser.add_argument_group("WebGPU Execution Provider")
-    webgpu_group.add_argument("--use_webgpu", action="store_true", help="Enable WebGPU EP.")
+    webgpu_group.add_argument(
+        "--use_webgpu",
+        nargs="?",
+        const="static_lib",
+        type=_webgpu_verify_library_kind,
+        help="Enable WebGPU EP. Optionally specify 'static_lib' (default) or 'shared_lib'.",
+    )
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
     )

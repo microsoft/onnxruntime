@@ -666,13 +666,14 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kArmNNExecutionProvider,
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
-          kRocmExecutionProvider,
           kCoreMLExecutionProvider,
           kCoreMLExecutionProviderMLProgram,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
           kWebGpuExecutionProvider,
+#endif
       };
 
       // need to special case any synthetic EP names in the exclude list
@@ -732,8 +733,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultAclExecutionProvider();
         else if (provider_type == onnxruntime::kArmNNExecutionProvider)
           execution_provider = DefaultArmNNExecutionProvider();
-        else if (provider_type == onnxruntime::kRocmExecutionProvider)
-          execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == kCoreMLExecutionProviderMLProgram)
@@ -746,8 +745,10 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+#if !defined(USE_WEBGPU) || defined(BUILD_WEBGPU_EP_STATIC_LIB)
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();
+#endif
         else if (provider_type == dynamic_plugin_ep_name) {
           execution_provider = dynamic_plugin_ep_infra::MakeEp();
         }
@@ -770,27 +771,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             allow_released_onnx_opset_only,
             number_of_pre_packed_weights_counter,
             number_of_shared_pre_packed_weights_counter);
-
-        // Run Models with subscribed run_options->config_options
-        if (ctx_.run_options != nullptr &&
-            ctx_.run_options->config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp) == "true") {
-          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-          if (provider_type == onnxruntime::kRocmExecutionProvider) {
-            execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-          }
-
-          if (!execution_providers.empty()) {
-            ExecuteModelForEps(
-                std::move(execution_providers), model, ctx_.session_options,
-                ctx_.expect_result, ctx_.expected_failure_string,
-                ctx_.run_options, feeds, output_names,
-                &custom_session_registries_,
-                /*assign_ep_for_nodes=*/true,
-                allow_released_onnx_opset_only,
-                number_of_pre_packed_weights_counter,
-                number_of_shared_pre_packed_weights_counter);
-          }
-        }
 
         has_run = true;
         cur_provider = "not set";

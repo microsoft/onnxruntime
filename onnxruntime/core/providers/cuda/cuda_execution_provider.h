@@ -103,8 +103,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
+  struct CUDAAllocatorParams {
+    OrtDevice::DeviceId device_id = 0;
+    size_t cuda_mem_threshold = std::numeric_limits<size_t>::max();
+    ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
+    const CUDAExecutionProviderInfo* provider_info = nullptr;
+    const CUDAExecutionProviderExternalAllocatorInfo* external_alloc_info = nullptr;
+    const OrtArenaCfg* arena_cfg = nullptr;
+    const logging::Logger* logger = nullptr;
+  };
+
+  static AllocatorPtr CreateCudaAllocator(const CUDAAllocatorParams& cuda_allocator_params);
 
   ITuningContext* GetTuningContext() const override;
 

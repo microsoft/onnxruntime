@@ -257,7 +257,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::WebGPU: {
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
       options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
 #else
       status = create_not_supported_status();
@@ -628,6 +628,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
   return CreateNotEnabledStatus("VitisAI");
 }
 #endif
+
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
                     _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
   ORT_UNUSED_PARAMETER(options);

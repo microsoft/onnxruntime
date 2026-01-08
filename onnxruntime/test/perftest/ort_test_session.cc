@@ -10,9 +10,11 @@
 #include <set>
 #include <list>
 #include <type_traits>
+#include <core/framework/allocator.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include <assert.h>
@@ -45,12 +47,15 @@ RunTiming OnnxRuntimeTestSession::Run() {
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
   Ort::RunOptions run_options;
+  for (const auto& kv : run_config_entries_) {
+    run_options.AddConfigEntry(kv.first.c_str(), kv.second.c_str());
+  }
+
   RunTiming timing;
   if (CUDA == device_memory_name_) {
     run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
     Ort::IoBinding io_binding(session_);
-    const OrtMemoryInfo* mem_info;
-    Ort::ThrowOnError(Ort::GetApi().AllocatorGetInfo(allocator_, &mem_info));
+    auto mem_info = allocator_.GetInfo();
 
     for (size_t i = 0; i < input_names_.size(); ++i) {
       io_binding.BindInput(input_names_[i], input[i]);
@@ -76,7 +81,11 @@ RunTiming OnnxRuntimeTestSession::Run() {
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo& m)
-    : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
+    : rand_engine_(rd()),
+      input_names_(m.GetInputCount()),
+      input_names_str_(m.GetInputCount()),
+      input_length_(m.GetInputCount()),
+      run_config_entries_(performance_test_config.run_config.run_config_entries) {
   Ort::SessionOptions session_options;
 
   // Add EP devices if any (created by plugin EP)
@@ -218,8 +227,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name_ == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    Ort::CUDAProviderOptions cuda_options;
 
+    Ort::CUDAProviderOptions cuda_options;
     const char* config_val = nullptr;
     switch (performance_test_config.run_config.cudnn_conv_algo) {
       case 0:
@@ -248,6 +257,24 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       provider_options["user_compute_stream"] = stream_str;
     }
     cuda_options.Update(provider_options);
+
+    if (performance_test_config.run_config.cuda_mempool_arena_config) {
+      // Enable and configure cuda_mempool arena
+      const size_t release_threshold =
+          static_cast<size_t>(std::atoll(performance_test_config.run_config.cuda_mempool_arena_config->release_threshold.c_str()));
+      const size_t bytes_to_keep_on_shrink =
+          static_cast<size_t>(std::atoll(performance_test_config.run_config.cuda_mempool_arena_config->bytes_to_keep.c_str()));
+      // Create a map of properties for the arena configuration
+      std::unordered_map<std::string, size_t> arena_config_map = {
+          {"use_cuda_mempool", 1U},
+          {"cuda_mempool_bytes_to_keep_on_shrink", bytes_to_keep_on_shrink},
+          {"cuda_mempool_release_threshold", release_threshold},
+      };
+      // Must be kept alive while session is alive
+      Ort::ArenaCfg cuda_arena_cfg(arena_config_map);
+      cuda_mempool_arena_cfg_ = std::move(cuda_arena_cfg);
+      (*cuda_options).default_memory_arena_cfg = cuda_mempool_arena_cfg_;
+    }
 
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 #else
@@ -635,16 +662,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kRocmExecutionProvider) {
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
-    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    // TODO: Support arena configuration for users of perf test
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
-#else
-    ORT_THROW("ROCM is not supported in this build\n");
-#endif
   } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
@@ -1014,7 +1031,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
-    allocator_ = custom_allocator_;
+    // Switch to custom
+    allocator_ = Ort::UnownedAllocator(custom_allocator_);
 
     // free dimensions are treated as 1 if not overridden
     transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };

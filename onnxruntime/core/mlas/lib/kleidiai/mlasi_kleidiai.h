@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "mlasi.h"
+#include "../mlasi.h"
 #include <iostream>
 
 // Fix to ensure compatibility with MSVC build
@@ -50,13 +50,12 @@
 #endif
 
 namespace ArmKleidiAI {
+
 // By default we should try for SME2 first before falling back to SME.
 inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
 
-//
 // Buffer packing routines.
 //
-
 size_t
 MLASCALL
 MlasGemmPackBSize(
@@ -77,6 +76,19 @@ MlasGemmPackB(
     size_t ldb,
     void* PackedB
     );
+
+bool
+MLASCALL
+MlasGemvBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize
+    );
+
 
 bool
 MLASCALL
