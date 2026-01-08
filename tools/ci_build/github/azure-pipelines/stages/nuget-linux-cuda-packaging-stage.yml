@@ -160,7 +160,7 @@ stages:
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Pipeline Artifact - Combined GPU'
       inputs:
-        artifactName: 'onnxruntime-linux-x64-tensorrt-${{parameters.StageToken}'
+        artifactName: 'onnxruntime-linux-x64-tensorrt-${{parameters.StageToken}}'
         targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
 
     - task: ShellScript@2
