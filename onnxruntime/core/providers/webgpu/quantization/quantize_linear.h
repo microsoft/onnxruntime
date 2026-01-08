@@ -48,5 +48,47 @@ class DequantizeLinear final : public WebGpuKernel {
   int64_t output_dtype_;
 };
 
+class QuantizeLinearProgram final : public Program<QuantizeLinearProgram> {
+ public:
+  QuantizeLinearProgram(const bool packed, const bool issigned, const bool per_layer,
+                        const bool per_axis, bool has_zeropoint) : Program<QuantizeLinearProgram>{"QuantizeLinear"},
+                                                                   packed_{packed},
+                                                                   signed_{issigned},
+                                                                   per_layer_{per_layer},
+                                                                   per_axis_{per_axis},
+                                                                   has_zeropoint_{has_zeropoint} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"axis", ProgramUniformVariableDataType::Uint32},
+                                          {"block_size", ProgramUniformVariableDataType::Uint32},
+                                          {"output_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool packed_;
+  bool signed_;
+  bool per_layer_;
+  bool per_axis_;
+  bool has_zeropoint_;
+};
+
+class QuantizeLinear final : public WebGpuKernel {
+ public:
+  QuantizeLinear(const OpKernelInfo& info) : WebGpuKernel(info) {
+    axis_ = info.GetAttrOrDefault<int64_t>("axis", 1);
+    block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 0);
+    saturate_ = info.GetAttrOrDefault<int64_t>("saturate", 1);
+    output_dtype_ = info.GetAttrOrDefault<int64_t>("output_dtype", 0);
+  }
+
+  Status ComputeInternal(ComputeContext& context) const override;
+
+ private:
+  int64_t axis_;
+  int64_t block_size_;
+  int64_t saturate_;
+  int64_t output_dtype_;
+};
+
 }  // namespace webgpu
 }  // namespace onnxruntime

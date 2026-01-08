@@ -416,6 +416,13 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, DequantizeLinear);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, DequantizeLinear);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 10, 12, QuantizeLinear);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 18, QuantizeLinear);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 19, 20, QuantizeLinear);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, QuantizeLinear);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, 24, QuantizeLinear);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 25, QuantizeLinear);
+
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, ScatterND);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 15, ScatterND);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterND);
@@ -759,6 +766,13 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
       KERNEL_CREATE_INFO_VERSIONED(19, 20, DequantizeLinear),
       KERNEL_CREATE_INFO_VERSIONED(21, 22, DequantizeLinear),
       KERNEL_CREATE_INFO(23, DequantizeLinear),
+
+      KERNEL_CREATE_INFO_VERSIONED(10, 12, QuantizeLinear),
+      KERNEL_CREATE_INFO_VERSIONED(13, 18, QuantizeLinear),
+      KERNEL_CREATE_INFO_VERSIONED(19, 20, QuantizeLinear),
+      KERNEL_CREATE_INFO_VERSIONED(21, 22, QuantizeLinear),
+      KERNEL_CREATE_INFO_VERSIONED(23, 24, QuantizeLinear),
+      KERNEL_CREATE_INFO(25, QuantizeLinear),
 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 13, CumSum)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, CumSum)>,
