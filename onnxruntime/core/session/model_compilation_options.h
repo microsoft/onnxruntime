@@ -159,6 +159,44 @@ class ModelCompilationOptions {
   /// <returns>An error status if the compilation options are invalid</returns>
   Status Check() const;
 
+  // Telemetry helper methods
+
+  /// <summary>
+  /// Returns a string describing the input source type: "file" or "buffer".
+  /// </summary>
+  /// <returns>"file" or "buffer"</returns>
+  std::string GetInputSourceForTelemetry() const;
+
+  /// <summary>
+  /// Returns a string describing the output target type: "file", "buffer", or "callback".
+  /// </summary>
+  /// <returns>"file", "buffer", or "callback"</returns>
+  std::string GetOutputTargetForTelemetry() const;
+
+  /// <summary>
+  /// Returns the flags value for telemetry.
+  /// </summary>
+  /// <returns>The flags value</returns>
+  uint32_t GetFlagsForTelemetry() const;
+
+  /// <summary>
+  /// Returns the graph optimization level for telemetry.
+  /// </summary>
+  /// <returns>The graph optimization level as an integer</returns>
+  int GetGraphOptimizationLevelForTelemetry() const;
+
+  /// <summary>
+  /// Returns whether EP context embedding is enabled.
+  /// </summary>
+  /// <returns>True if EP context is embedded in model</returns>
+  bool GetEmbedEpContextForTelemetry() const;
+
+  /// <summary>
+  /// Returns whether external initializers file is configured.
+  /// </summary>
+  /// <returns>True if external initializers file is configured</returns>
+  bool HasExternalInitializersFileForTelemetry() const;
+
  private:
   void ResetInputModelSettings();
 

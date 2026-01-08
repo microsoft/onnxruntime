@@ -47,8 +47,71 @@ void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
+void RunSqueezeMulReluModel(const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/squeeze_mul_relu.onnx"), session_options);
+
+  // Create inputs
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 3> a_shape = {3, 1, 2};
+  std::array<int64_t, 2> b_shape = {3, 2};
+
+  std::array<float, 6> a_data = {1.f, -2.f, 3.f, 4.f, -5.f, 6.f};
+  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, 6.f, 7.f};
+
+  std::vector<Ort::Value> ort_inputs{};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), b_shape.data(), b_shape.size()));
+
+  std::array ort_input_names{"A", "B"};
+
+  // Run session and get outputs
+  std::array output_names{"C"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(4, 0, 24, 0, 0, 84));
+}
+
+void RunSubMulSubModel(const Ort::SessionOptions& session_options) {
+  // This model has Sub -> Mul -> Sub: (A - B) * B - A
+  // The example plugin EP supports all ops.
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/sub_mul_sub.onnx"), session_options);
+
+  // Create inputs
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+
+  std::vector<float> a_data{1, 2, 3, 4, 5, 6};
+  std::vector<float> b_data{2, 3, 4, 5, 6, 7};
+
+  std::vector<Ort::Value> ort_inputs{};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, a_data.data(), a_data.size(), shape.data(), shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), shape.data(), shape.size()));
+
+  std::array ort_input_names{"A", "B"};
+
+  // Run session and get outputs
+  std::array output_names{"C"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(-3, -5, -7, -9, -11, -13));
+}
+
 void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_options) {
-  // This model has Add -> Mul -> Add. The example plugin EP only supports Mul.
+  // This model has Add -> Mul -> Add. The example plugin EP supports Mul but not Add.
   Ort::Session session(*ort_env, ORT_TSTR("testdata/add_mul_add.onnx"), session_options);
 
   // Create inputs
@@ -245,42 +308,49 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
                                                          example_kernel_ep));
   Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
 
-  // Create session with example kernel-based plugin EP
-  Ort::SessionOptions session_options;
-  session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP.
+  // Run model with squeeze, mul, and relu nodes.
+  // No sharing of pre-packed weights.
+  {
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
 
-  std::unordered_map<std::string, std::string> ep_options;
-  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP.
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    ASSERT_NO_FATAL_FAILURE(RunSqueezeMulReluModel(session_options));
+  }
 
-  // This model has Squeeze, Mul, and Relu nodes. The example plugin EP supports all nodes using registered kernels.
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/squeeze_mul_relu.onnx"), session_options);
+  // Run model with squeeze, mul, and relu nodes.
+  // Enable sharing of pre-packed weights.
+  {
+    std::unordered_map<std::string, std::string> ep_options = {{"enable_prepack_weight_sharing", "1"}};
+    Ort::SessionOptions session_options;
 
-  // Create inputs
-  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-  std::array<int64_t, 3> a_shape = {3, 1, 2};
-  std::array<int64_t, 2> b_shape = {3, 2};
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    ASSERT_NO_FATAL_FAILURE(RunSqueezeMulReluModel(session_options));
+  }
 
-  std::array<float, 6> a_data = {1.f, -2.f, 3.f, 4.f, -5.f, 6.f};
-  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, 6.f, 7.f};
+  // Run model with sub, mul, sub.
+  // No sharing of pre-packed weights.
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
 
-  std::vector<Ort::Value> ort_inputs{};
-  ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<float>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
-  ort_inputs.emplace_back(
-      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), b_shape.data(), b_shape.size()));
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    ASSERT_NO_FATAL_FAILURE(RunSubMulSubModel(session_options));
+  }
 
-  std::array ort_input_names{"A", "B"};
+  // Run model with sub, mul, sub.
+  // Enable sharing of pre-packed weights.
+  {
+    std::unordered_map<std::string, std::string> ep_options = {{"enable_prepack_weight_sharing", "1"}};
+    Ort::SessionOptions session_options;
 
-  // Run session and get outputs
-  std::array output_names{"C"};
-  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                    ort_inputs.size(), output_names.data(), output_names.size());
-
-  // Check expected output values
-  Ort::Value& ort_output = ort_outputs[0];
-  const float* output_data = ort_output.GetTensorData<float>();
-  gsl::span<const float> output_span(output_data, 6);
-  EXPECT_THAT(output_span, ::testing::ElementsAre(4, 0, 24, 0, 0, 84));
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    ASSERT_NO_FATAL_FAILURE(RunSubMulSubModel(session_options));
+  }
 }
 }  // namespace test
 }  // namespace onnxruntime

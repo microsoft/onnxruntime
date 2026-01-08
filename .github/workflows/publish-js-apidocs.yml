@@ -47,7 +47,7 @@ jobs:
           mkdir -p _site/docs/api
           mv js/common/docs _site/docs/api/js
       - name: Upload docs artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: onnxruntime-node-apidocs
           path: _site
