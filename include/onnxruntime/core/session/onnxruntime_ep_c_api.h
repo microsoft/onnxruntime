@@ -1619,7 +1619,7 @@ struct OrtEpFactory {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(GetCustomOpDomains, _In_ OrtEpFactory* this_ptr,
-                  _Outptr_ OrtCustomOpDomain** domains, _In_ size_t num_domains);
+                  _Outptr_result_maybenull_ OrtCustomOpDomain** domains, _In_ size_t num_domains);
 };
 
 #ifdef __cplusplus
