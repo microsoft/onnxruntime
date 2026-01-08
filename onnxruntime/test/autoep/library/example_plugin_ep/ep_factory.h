@@ -74,7 +74,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   static OrtStatus* ORT_API_CALL GetNumCustomOpDomainsImpl(OrtEpFactory* this_ptr,
                                                            _Out_ size_t* num_domains) noexcept;
 
-  static OrtStatus* ORT_API_CALL CreateCustomOpDomainsImpl(OrtEpFactory* this_ptr,
+  static OrtStatus* ORT_API_CALL GetCustomOpDomainsImpl(OrtEpFactory* this_ptr,
                                                            _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
                                                            _Out_ size_t num_domains) noexcept;
 

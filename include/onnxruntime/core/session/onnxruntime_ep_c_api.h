@@ -1576,7 +1576,7 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(GetNumCustomOpDomains, _In_ OrtEpFactory* this_ptr, _Out_ size_t* num_domains);
 
-  /** \brief Creates the EP-specific OrtCustomOpDomains.
+  /** \brief Gets the EP-specific OrtCustomOpDomains.
    *
    * This function is used when running inference on a model that contains EP-specific custom operations.
    *
@@ -1618,8 +1618,8 @@ struct OrtEpFactory {
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(CreateCustomOpDomains, _In_ OrtEpFactory* this_ptr,
-                  _Outptr_result_maybenull_ OrtCustomOpDomain** domains, _In_ size_t num_domains);
+  ORT_API2_STATUS(GetCustomOpDomains, _In_ OrtEpFactory* this_ptr,
+                  _Outptr_ OrtCustomOpDomain** domains, _In_ size_t num_domains);
 };
 
 #ifdef __cplusplus

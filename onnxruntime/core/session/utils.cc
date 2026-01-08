@@ -545,13 +545,13 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
     }
 
     // Add custom op domain provided by EP to the session options if any.
-    // OrtEpFactory::GetNumCustomOpDomains and OrtEpFactory::CreateCustomOpDomains
+    // OrtEpFactory::GetNumCustomOpDomains and OrtEpFactory::GetCustomOpDomains
     // were added in ORT 1.24.
     OrtEpFactory* ep_factory = ep_device->ep_factory;
     if (ep_factory &&
         ep_factory->ort_version_supported >= 24 &&
         ep_factory->GetNumCustomOpDomains != nullptr &&
-        ep_factory->CreateCustomOpDomains != nullptr) {
+        ep_factory->GetCustomOpDomains != nullptr) {
       auto is_already_in_domains =
           [&](const std::string& domain_name, const std::vector<OrtCustomOpDomain*>& domains) {
             for (auto ptr : domains) {
@@ -568,7 +568,7 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       InlinedVector<OrtCustomOpDomain*> domains;
       domains.resize(num_domains);
 
-      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->CreateCustomOpDomains(ep_factory,
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->GetCustomOpDomains(ep_factory,
                                                                                domains.data(),
                                                                                domains.size())));
 

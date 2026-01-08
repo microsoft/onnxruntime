@@ -46,8 +46,8 @@ void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
-  
- void RunCustomMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
+
+void RunCustomMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
   Ort::Session session(*ort_env, ORT_TSTR("testdata/custom_mul.onnx"), session_options);
 
   // Create two inputs with same values
