@@ -148,6 +148,49 @@ void RunIfMulModel(const Ort::SessionOptions& session_options, bool if_condition
   }
 }
 
+void RunLoopSubOneModel(const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/loop_sub_one.onnx"), session_options);
+
+  // x = A
+  // for (int i = 0; i < MAX_ITERS; i++) {
+  //   y = x - 1.0;
+  //   user_val = x - 1.0;
+  //   x = y;
+  // }
+  // C = x;
+  // D = user_val (will be concatenated result of each iteration)
+
+  // Create inputs
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 1> max_iters_shape = {1};
+  std::array<int64_t, 1> a_shape = {1};
+
+  std::array<int64_t, 1> max_iters_data = {3};
+  std::array<float, 1> a_data = {10.0f};
+
+  std::vector<Ort::Value> ort_inputs{};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<int64_t>(memory_info, max_iters_data.data(), max_iters_data.size(),
+                                        max_iters_shape.data(), max_iters_shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
+
+  std::array ort_input_names{"MAX_ITERS", "A"};
+
+  // Run session and get outputs
+  std::array output_names{"C", "D"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  // Expect that input elems are all subtracted by 3 (1 each iteration).
+  gsl::span<const float> output_c_span(ort_outputs[0].GetTensorData<float>(), 1);
+  EXPECT_THAT(output_c_span, ::testing::ElementsAre(7.f));
+
+  gsl::span<const float> output_d_span(ort_outputs[1].GetTensorData<float>(), 3);
+  EXPECT_THAT(output_d_span, ::testing::ElementsAre(9.f, 8.f, 7.f));
+}
+
 void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_options) {
   // This model has Add -> Mul -> Add. The example plugin EP supports Mul but not Add.
   Ort::Session session(*ort_env, ORT_TSTR("testdata/add_mul_add.onnx"), session_options);
@@ -419,6 +462,35 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_If) {
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
     ASSERT_NO_FATAL_FAILURE(RunIfMulModel(session_options, /*if_condition*/ true));
     ASSERT_NO_FATAL_FAILURE(RunIfMulModel(session_options, /*if_condition*/ false));
+  }
+}
+
+TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Loop) {
+  RegisteredEpDeviceUniquePtr example_kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info,
+                                                         example_kernel_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
+
+  // Run model with Loop and Sub ops.
+  // No sharing of pre-packed weights.
+  {
+    std::unordered_map<std::string, std::string> ep_options;
+    Ort::SessionOptions session_options;
+
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP.
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    ASSERT_NO_FATAL_FAILURE(RunLoopSubOneModel(session_options));
+  }
+
+  // Run model with Loop and Sub ops.
+  // Enable sharing of pre-packed weights.
+  {
+    std::unordered_map<std::string, std::string> ep_options = {{"enable_prepack_weight_sharing", "1"}};
+    Ort::SessionOptions session_options;
+
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+    ASSERT_NO_FATAL_FAILURE(RunLoopSubOneModel(session_options));
   }
 }
 }  // namespace test

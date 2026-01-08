@@ -452,7 +452,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtScanTransposeFunc)(_In_ void* state,
 typedef OrtStatus*(ORT_API_CALL* OrtLoopConcatOutputFunc)(_In_ void* state,
                                                           _In_ void* stream_handle,
                                                           _In_ OrtValue* const* per_iteration_output,
-                                                          _In_ size_t num_itertion_outputs,
+                                                          _In_ size_t num_iteration_outputs,
                                                           _Out_writes_bytes_all_(output_size_in_bytes) void* output,
                                                           _In_ size_t output_size_in_bytes);
 
