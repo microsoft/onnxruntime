@@ -52,7 +52,7 @@ stages:
     - template: nodejs-linux-packaging-stage.yml
       parameters:
         StageToken: ${{ cuda_version.key }}
-        CudaVersion: ${{ cuda_version.value.version }}
+        CudaVersion: ${{ cuda_version.value }}
 
   - template: nuget-win-cuda-packaging-stage.yml
     parameters:
@@ -70,4 +70,4 @@ stages:
       IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
-      StagkeToken: ${{ cuda_version.key }}
+      StageToken: ${{ cuda_version.key }}
