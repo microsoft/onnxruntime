@@ -5,6 +5,8 @@
 #include "core/framework/device_stream_collection.h"
 #include "core/framework/session_state.h"
 
+#include <optional>
+
 namespace onnxruntime {
 
 struct DummyNotification : public synchronize::Notification {
@@ -79,8 +81,30 @@ class DeviceStreamCollectionImpl {
     device_streams_[idx] = stream;
   }
 
+  Status SetStreamOverride(Stream* stream) {
+    ORT_ENFORCE(stream != nullptr);
+    for (size_t i = 0, lim = device_streams_.size(); i < lim; ++i) {
+      if (device_streams_[i] != nullptr &&
+          // Exact match
+          device_streams_[i]->GetDevice() == stream->GetDevice()) {
+        stream_override_.emplace(i, stream);
+        return Status::OK();
+      }
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No matching stream found to override");
+  }
+
+  void ResetStreamOverride() {
+    stream_override_.reset();
+  }
+
   Stream* GetStream(size_t stream_idx) const {
     ORT_ENFORCE(stream_idx < num_streams_);
+    if (stream_override_) {
+      if (stream_idx == stream_override_->first) {
+        return stream_override_->second;
+      }
+    }
     return device_streams_[stream_idx];
   }
 
@@ -94,6 +118,9 @@ class DeviceStreamCollectionImpl {
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
   InlinedVector<std::unique_ptr<Stream>> owned_streams_;
+  // RunOptions allow specifying a stream override for a specific run.
+  // if this is present, it would be used as a stream for a given stream_id
+  std::optional<std::pair<size_t, Stream*>> stream_override_;
   const AllocatorMap& allocators_;
   bool is_main_graph_ = false;
   // This is used in ExecutionFrame when memory pattern is enabled, to allocate the peak size memory
@@ -115,6 +142,14 @@ void DeviceStreamCollection::AddDeviceStream(size_t idx, std::unique_ptr<Stream>
 
 void DeviceStreamCollection::SetDeviceStream(size_t idx, Stream* stream) {
   impl_->SetDeviceStream(idx, stream);
+}
+
+Status DeviceStreamCollection::SetStreamOverride(Stream* stream) {
+  return impl_->SetStreamOverride(stream);
+}
+
+void DeviceStreamCollection::ResetStreamOverride() {
+  impl_->ResetStreamOverride();
 }
 
 size_t DeviceStreamCollection::NumStreams() const {
@@ -140,6 +175,7 @@ DeviceStreamCollectionHolder::DeviceStreamCollectionHolder(const SessionState* s
 
 DeviceStreamCollectionHolder::~DeviceStreamCollectionHolder() {
   if (p_) {
+    p_->ResetStreamOverride();
     session_state_->RecycleDeviceStreamCollection(std::move(p_));
   }
 }
