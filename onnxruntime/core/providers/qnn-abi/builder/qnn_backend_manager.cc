@@ -33,6 +33,11 @@
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
 
+// Ensure that we have a recent enough version of QNN
+static_assert(QNN_API_VERSION_MAJOR > 2 ||
+                  (QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR >= 29),
+              "Minimum required QAIRT SDK version is 2.39.0");
+
 namespace onnxruntime {
 namespace qnn {
 
@@ -297,7 +302,7 @@ Ort::Status QnnBackendManager::LoadBackend() {
   // QNN requires ADSP_LIBRARY_PATH to be set in order to find skel libs on Linux
   static std::once_flag set_adsp_path_once;
 
-  std::call_once(set_adsp_path_once, []() {
+  std::call_once(set_adsp_path_once, [&backend_path = backend_path_]() {
     constexpr std::string_view kAdspLibraryPathEnvVar{"ADSP_LIBRARY_PATH"};
     const char* existingPath = getenv(kAdspLibraryPathEnvVar.data());
     if (existingPath != nullptr) {
@@ -309,7 +314,10 @@ Ort::Status QnnBackendManager::LoadBackend() {
       return;
     }
 
-    std::filesystem::path qnnLibPath(OrtGetRuntimePath());
+    std::filesystem::path _backend_path(backend_path);
+    std::filesystem::path qnnLibPath = _backend_path.is_absolute()
+                                           ? _backend_path.parent_path()
+                                           : std::filesystem::path(OrtGetRuntimePath());
     ORT_CXX_LOG(OrtLoggingManager::GetDefaultLogger(),
                 ORT_LOGGING_LEVEL_WARNING,
                 ("Setting " + std::string(kAdspLibraryPathEnvVar) + " = " + qnnLibPath.string()).c_str());
@@ -1481,6 +1489,7 @@ Ort::Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_clien
   // choose performance mode
   switch (htp_performance_mode) {
     case HtpPerformanceMode::kHtpBurst:
+    case HtpPerformanceMode::kHtpSustainedHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMinLatency;
       dcvs_v3.dcvsEnable = kDcvsDisable;
@@ -1493,7 +1502,6 @@ Ort::Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_clien
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       break;
-    case HtpPerformanceMode::kHtpSustainedHighPerformance:
     case HtpPerformanceMode::kHtpHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepLowLatency;

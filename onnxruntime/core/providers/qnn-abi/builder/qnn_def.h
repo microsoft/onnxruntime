@@ -100,6 +100,8 @@ enum class QnnBackendType : uint8_t {
   SERIALIZER,
 };
 
+bool IsIrBackend(QnnBackendType backend_type);
+
 bool IsCpuBackend(QnnBackendType backend_type);
 
 bool IsNpuBackend(QnnBackendType backend_type);

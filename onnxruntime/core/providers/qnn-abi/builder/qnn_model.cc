@@ -255,14 +255,16 @@ Ort::Status QnnModel::SetupQnnInputOutput(const Ort::Logger& logger) {
   auto result = SetupTensors(qnn_input_infos_, graph_info_->InputTensors());
 
   if (!result.IsOK()) {
-    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name();
+    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name() + ". " +
+                                result.GetErrorMessage();
     ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_ERROR, message.c_str());
     return MAKE_EP_FAIL(message.c_str());
   }
 
   result = SetupTensors(qnn_output_infos_, graph_info_->OutputTensors(), false);
   if (!result.IsOK()) {
-    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name();
+    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name() + ". " +
+                                result.GetErrorMessage();
     ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_ERROR, message.c_str());
     return MAKE_EP_FAIL(message.c_str());
   }

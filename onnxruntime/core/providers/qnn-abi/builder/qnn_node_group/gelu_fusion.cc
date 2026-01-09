@@ -68,8 +68,8 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     return nullptr;
   }
 
-  const OrtNodeUnit* add_node_unit = GetChildOfOutput(qnn_model_wrapper, erf_node_unit, erf_outputs[0],
-                                                      node_to_node_unit, node_unit_to_qnn_node_group);
+  const OrtNodeUnit* add_node_unit = GetOnlyChildOfOutput(qnn_model_wrapper, erf_node_unit, erf_outputs[0],
+                                                          node_to_node_unit, node_unit_to_qnn_node_group);
   if (add_node_unit == nullptr || add_node_unit->OpType() != "Add") {
     return nullptr;
   }
@@ -86,8 +86,8 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
     return nullptr;
   }
 
-  const OrtNodeUnit* mul_node_unit = GetChildOfOutput(qnn_model_wrapper, *add_node_unit, add_outputs[0],
-                                                      node_to_node_unit, node_unit_to_qnn_node_group);
+  const OrtNodeUnit* mul_node_unit = GetOnlyChildOfOutput(qnn_model_wrapper, *add_node_unit, add_outputs[0],
+                                                          node_to_node_unit, node_unit_to_qnn_node_group);
   if (mul_node_unit == nullptr || mul_node_unit->OpType() != "Mul") {
     return nullptr;
   }
@@ -173,8 +173,8 @@ std::unique_ptr<IQnnNodeGroup> GeluFusion::TryFusion(
       return nullptr;
     }
 
-    const OrtNodeUnit* mul2_node_unit_pattern2 = GetChildOfOutput(qnn_model_wrapper, *mul_node_unit, mul_outputs[0],
-                                                                  node_to_node_unit, node_unit_to_qnn_node_group);
+    const OrtNodeUnit* mul2_node_unit_pattern2 = GetOnlyChildOfOutput(qnn_model_wrapper, *mul_node_unit, mul_outputs[0],
+                                                                      node_to_node_unit, node_unit_to_qnn_node_group);
     if (mul2_node_unit_pattern2 == nullptr || mul2_node_unit_pattern2->OpType() != "Mul") {
       return nullptr;
     }

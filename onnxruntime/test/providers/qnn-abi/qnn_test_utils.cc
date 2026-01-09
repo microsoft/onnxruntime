@@ -188,6 +188,13 @@ void RunQnnModelTestABI(const GetTestModelFn& build_test_case, ProviderOptions p
                         int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                         float fp32_abs_err, logging::Severity log_severity, bool verify_outputs,
                         std::function<void(const Graph&)>* ep_graph_checker) {
+  std::filesystem::path output_dir;
+  if (QNNABITestEnvironment::GetInstance().dump_onnx() ||
+      QNNABITestEnvironment::GetInstance().dump_json() ||
+      QNNABITestEnvironment::GetInstance().dump_dlc()) {
+    output_dir = QNNABITestEnvironment::GetInstance().CreateTestcaseDirs();
+  }
+
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
   verification_params.fp32_abs_err = fp32_abs_err;
@@ -197,6 +204,10 @@ void RunQnnModelTestABI(const GetTestModelFn& build_test_case, ProviderOptions p
 
   auto& logging_manager = DefaultLoggingManager();
   logging_manager.SetDefaultLoggerSeverity(log_severity);
+  if (QNNABITestEnvironment::GetInstance().verbose()) {
+    logging_manager.RemoveSink(logging::SinkType::EtwSink);
+    logging_manager.SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
+  }
 
   onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
@@ -210,7 +221,28 @@ void RunQnnModelTestABI(const GetTestModelFn& build_test_case, ProviderOptions p
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+
+  if (QNNABITestEnvironment::GetInstance().dump_onnx()) {
+    auto dump_path = output_dir / ToPathString("dumped_f32_model.onnx");
+    LOGS(logging_manager.DefaultLogger(), VERBOSE) << "Save onnx model at: " << dump_path;
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(model, dump_path));
+  }
+
   TryEnableQNNSaverABI(provider_options);
+
+  if (QNNABITestEnvironment::GetInstance().dump_dlc()) {
+    provider_options["dump_qnn_ir_dlc"] = "1";
+    provider_options["dump_qnn_ir_dlc_dir"] = output_dir.string();
+#if defined(_WIN32)
+    provider_options["qnn_ir_backend_path"] = "QnnIr.dll";
+#else
+    provider_options["qnn_ir_backend_path"] = "libQnnIr.so";
+#endif  // defined(_WIN32)
+  }
+  if (QNNABITestEnvironment::GetInstance().dump_json()) {
+    provider_options["dump_json_qnn_graph"] = "1";
+    provider_options["json_qnn_graph_dir"] = output_dir.string();
+  }
 
   // Run with QNN-ABI.
   RegisteredEpDeviceUniquePtr registered_ep_device;

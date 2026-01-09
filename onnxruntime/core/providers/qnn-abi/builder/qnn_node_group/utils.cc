@@ -186,11 +186,11 @@ const OrtNodeUnit* GetParentOfInput(const QnnModelWrapper& /*qnn_model_wrapper*/
   return nullptr;
 }
 
-const OrtNodeUnit* GetChildOfOutput(const QnnModelWrapper& /*qnn_model_wrapper*/,
-                                    const OrtNodeUnit& node_unit,
-                                    const OrtNodeUnitIODef& output,
-                                    const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
-                                    const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
+const OrtNodeUnit* GetOnlyChildOfOutput(const QnnModelWrapper& /*qnn_model_wrapper*/,
+                                        const OrtNodeUnit& node_unit,
+                                        const OrtNodeUnitIODef& output,
+                                        const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
+                                        const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
   const OrtNode* p_parent_node = nullptr;
 
   for (const OrtNode* node : node_unit.GetAllNodesInGroup()) {
@@ -199,13 +199,14 @@ const OrtNodeUnit* GetChildOfOutput(const QnnModelWrapper& /*qnn_model_wrapper*/
         p_parent_node = node;
         break;
       }
-
-      if (p_parent_node != nullptr) {
-        break;
-      }
+    }
+    // Break the loop if producer node of output is found.
+    if (p_parent_node != nullptr) {
+      break;
     }
   }
 
+  // Return if the given output tensor is not produced by any node in the given node_unit.
   if (p_parent_node == nullptr) {
     return nullptr;
   }
@@ -214,18 +215,20 @@ const OrtNodeUnit* GetChildOfOutput(const QnnModelWrapper& /*qnn_model_wrapper*/
 
   for (const Ort::ConstValueInfo& parent_output_info : parent_node.GetOutputs()) {
     if (parent_output_info.IsGraphOutput()) {
-      // Node is producing a graph output
+      // Node is producing a graph output.
       return nullptr;
     }
   }
 
   for (const Ort::ConstValueInfo& output_info : parent_node.GetOutputs()) {
-    // Check if this is the output we're looking for
+    // Check if this is the output we're looking for.
     if (output_info.GetName() != output.name) {
       continue;
     }
 
     std::vector<Ort::ValueInfoConsumerProducerInfo> consumers = output_info.GetConsumers();
+    // Check if there is exactly one child.
+    // The returned consumer info should not be nullptr node but check to be safe.
     if (consumers.size() != 1 || consumers[0].node == nullptr) {
       return nullptr;
     }
@@ -245,6 +248,7 @@ const OrtNodeUnit* GetChildOfOutput(const QnnModelWrapper& /*qnn_model_wrapper*/
 
     return p_child_node_unit;
   }
+
   return nullptr;
 }
 
