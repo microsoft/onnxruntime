@@ -330,6 +330,9 @@ ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
 ORT_RUNTIME_CLASS(SyncStream);  // Opaque class to create an onnxruntime::Stream.
 ORT_RUNTIME_CLASS(ExternalInitializerInfo);
+ORT_RUNTIME_CLASS(ExternalResourceImporter);  // Capability object for external resource import
+ORT_RUNTIME_CLASS(ExternalMemoryHandle);      // EP-imported view of shared external allocation
+ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared external semaphore
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -878,6 +881,9 @@ typedef struct OrtModelEditorApi OrtModelEditorApi;
 struct OrtCompileApi;
 typedef struct OrtCompileApi OrtCompileApi;
 
+struct OrtInteropApi;
+typedef struct OrtInteropApi OrtInteropApi;
+
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
 
@@ -955,6 +961,80 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
  *
  * \nosubgrouping
  */
+
+/** \addtogroup Global
+ * @{
+ */
+
+/** \brief External memory handle type for importing GPU resources.
+ *
+ * \todo Add OPAQUE_WIN32 for Windows Vulkan-specific memory handles
+ * \todo Add POSIX file descriptor (OPAQUE_FD) for Linux Vulkan/CUDA/OpenCL interop
+ * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
+ *
+ * \since Version 1.24.
+ */
+typedef enum OrtExternalMemoryHandleType {
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+} OrtExternalMemoryHandleType;
+
+/** \brief Descriptor for importing external memory.
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ *       This ensures forward compatibility as fields may be added in future versions.
+ *
+ * \since Version 1.24.
+ */
+typedef struct OrtExternalMemoryDescriptor {
+  uint32_t version;                        /**< Must be ORT_API_VERSION */
+  OrtExternalMemoryHandleType handle_type; /**< Type of the external memory handle */
+  void* native_handle;                     /**< Platform-specific handle (e.g., Windows HANDLE) */
+  size_t size_bytes;                       /**< Total size in bytes of the external allocation */
+  size_t offset_bytes;                     /**< Offset in bytes into the allocation (default 0).
+                                                Base offset for the imported memory region. */
+} OrtExternalMemoryDescriptor;
+
+/** \brief External semaphore type for GPU synchronization.
+ *
+ * \since Version 1.24.
+ */
+typedef enum OrtExternalSemaphoreType {
+  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+} OrtExternalSemaphoreType;
+
+/** \brief Descriptor for importing external semaphores.
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ *       This ensures forward compatibility as fields may be added in future versions.
+ *
+ * \since Version 1.24.
+ */
+typedef struct OrtExternalSemaphoreDescriptor {
+  uint32_t version;              /**< Must be ORT_API_VERSION */
+  OrtExternalSemaphoreType type; /**< Type of the external semaphore */
+  void* native_handle;           /**< Platform-specific handle (e.g., Windows HANDLE) */
+} OrtExternalSemaphoreDescriptor;
+
+/** \brief Descriptor for creating a tensor from imported external memory.
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ *       This ensures forward compatibility as fields may be added in future versions.
+ *
+ * \since Version 1.24.
+ */
+typedef struct OrtExternalTensorDescriptor {
+  uint32_t version;                       /**< Must be ORT_API_VERSION */
+  ONNXTensorElementDataType element_type; /**< Data type of tensor elements */
+  const int64_t* shape;                   /**< Array of dimension sizes */
+  size_t rank;                            /**< Number of dimensions */
+  size_t offset_bytes;                    /**< Additional offset within imported memory (default 0).
+                                               Applied relative to OrtExternalMemoryDescriptor::offset_bytes.
+                                               Enables multiple tensors from the same imported memory handle. */
+} OrtExternalTensorDescriptor;
+
+/// @}
+
 /*
  * Public enum for compiled model compatibility across EPs.
  */
@@ -4204,7 +4284,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
@@ -4220,7 +4300,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.14
    */
-  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                   _Inout_ size_t* size);
 
   /** \brief Get the name of a ::OrtKernelInfo's output.
@@ -4231,7 +4311,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
@@ -4248,7 +4328,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.14
    */
-  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                   _Inout_ size_t* size);
 
   /** \brief Get the type information for a ::OrtKernelInfo's input.
@@ -4428,7 +4508,7 @@ struct OrtApi {
    * If `out` is nullptr, the value of `size` is set to the size of the name
    * string (including null-terminator), and a success status is returned.
    *
-   * If the `size` parameter is greater than or equal to the name string's size,
+   * If the `size` parameter is greater than or equal to the name string's size and `out` is not nullptr,
    * the value of `size` is set to the true size of the string (including null-terminator),
    * the provided memory is filled with the string's contents, and a success status is returned.
    *
@@ -4445,7 +4525,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.15
    */
-  ORT_API2_STATUS(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
+  ORT_API2_STATUS(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_opt_ char* out, _Inout_ size_t* size);
 
   /** \brief Get the session logger from ::OrtKernelInfo.
    *
@@ -4593,7 +4673,7 @@ struct OrtApi {
    *
    * \param[in] context OrtKernelContext instance
    * \param[in] mem_info OrtMemoryInfo instance
-   * \param[out] out A pointer to OrtAllocator.
+   * \param[out] out A pointer to OrtAllocator. Must be released with OrtApi::ReleaseAllocator.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6608,6 +6688,104 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Get the graph node's operator domain from ::OrtKernelInfo.
+   *
+   * If `out` is nullptr, the value of `size` is set to the size of the operator domain
+   * string (including null-terminator), and a success status is returned.
+   *
+   * If the `size` parameter is greater than or equal to the string's size and `out` is not nullptr,
+   * the value of `size` is set to the true size of the string (including null-terminator),
+   * the provided memory is filled with the string's contents, and a success status is returned.
+   *
+   * If the `size` parameter is less than the actual string's size and `out`
+   * is not nullptr, the value of `size` is set to the true size of the string
+   * and a failure status with error code ORT_INVALID_ARGUMENT is returned.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the
+   *                 operator domain.
+   * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetOperatorDomain, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                  _Inout_ size_t* size);
+
+  /** \brief Get the graph node's operator type from ::OrtKernelInfo.
+   *
+   * If `out` is nullptr, the value of `size` is set to the size of the operator type
+   * string (including null-terminator), and a success status is returned.
+   *
+   * If the `size` parameter is greater than or equal to the string's size and `out` is not nullptr,
+   * the value of `size` is set to the true size of the string (including null-terminator),
+   * the provided memory is filled with the string's contents, and a success status is returned.
+   *
+   * If the `size` parameter is less than the actual string's size and `out`
+   * is not nullptr, the value of `size` is set to the true size of the string
+   * and a failure status with error code ORT_INVALID_ARGUMENT is returned.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the
+   *                 operator type.
+   * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                  _Inout_ size_t* size);
+
+  /** \brief Get the opset version in which the given node's operator type was first defined from ::OrtKernelInfo.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] since_version The opset version in which the node's operator type was first defined.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetOperatorSinceVersion, _In_ const OrtKernelInfo* info,
+                  _Out_ int* since_version);
+
+  /** \brief Get the EP Interop API instance.
+   *
+   * Get the Interop API instance to work with external resources. This API provides functions
+   * for importing external GPU memory and semaphores for zero-copy sharing between ORT inference
+   * and other GPU workloads.
+   *
+   * \return Interop API struct instance.
+   *
+   * \since Version 1.24.
+   */
+  const OrtInteropApi*(ORT_API_CALL* GetInteropApi)(void);
+
+  /** \brief Get the EP device assigned to each session output.
+   *
+   * Returns the OrtEpDevice assigned to each output of the session after graph partitioning.
+   * This allows validation that outputs are placed on the expected device for external resource sharing.
+   *
+   * The EP device for each output is determined by which execution provider will produce that output
+   * during inferencing. This information is useful for:
+   * - Validating that outputs will be placed on the expected device for external resource sharing
+   * - Deciding whether to use external memory handles for outputs
+   *
+   * \param[in] session The OrtSession instance to query.
+   * \param[out] outputs_ep_devices An array to be filled with the EP device for each output.
+   *                                The array must be allocated by the caller with space for
+   *                                OrtEpDevice* values for each output.
+   *                                The order is the same as returned by SessionGetOutputName.
+   * \param[in] num_outputs The number of outputs in the session. Must match SessionGetOutputCount.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
+                  _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
+                  _In_ size_t num_outputs);
+
+  /// @}
 };
 
 /*
@@ -7403,6 +7581,224 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state);
+};
+
+/**
+ * \brief The OrtInteropApi struct provides functions for external resource interop with execution providers.
+ *
+ * This API enables importing external GPU resources (memory and semaphores) for zero-copy sharing
+ * between ORT inference and other GPU workloads (e.g., D3D12 applications, media pipelines).
+ *
+ * The API is designed to be EP-agnostic and can be extended to support various GPU interop mechanisms
+ * (D3D12 shared handles, CUDA external memory, Vulkan, etc.).
+ *
+ * Example usage (error handling not shown):
+ *   const OrtInteropApi* interop_api = ort_api->GetInteropApi();
+ *   OrtExternalResourceImporter* importer = NULL;
+ *
+ *   status = interop_api->CreateExternalResourceImporterForDevice(ep_device, &importer);
+ *   if (importer == nullptr) {
+ *     // External resource import is optional for EPs to implement
+ *     return;
+ *   }
+ *   bool can_import = false;
+ *   status = interop_api->CanImportMemory(importer, ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE, &can_import);
+ *   if (can_import) {
+ *     OrtExternalMemoryHandle* mem_handle = NULL;
+ *     status = interop_api->ImportMemory(importer, &mem_desc, &mem_handle);
+ *     // ... use mem_handle to create tensors ...
+ *     interop_api->ReleaseExternalMemoryHandle(mem_handle);
+ *   }
+ *   interop_api->ReleaseExternalResourceImporter(importer);
+ *
+ * \since Version 1.24.
+ */
+struct OrtInteropApi {
+  /// \name OrtExternalResourceImporter
+  /// @{
+
+  /** \brief Create an external resource importer for a specific EP device.
+   *
+   * The external resource importer is a capability object that provides methods for importing
+   * external GPU memory and semaphores for zero-copy import with an execution provider.
+   *
+   * This is an optional EP capability. If the EP does not support external resource import,
+   * out_importer is set to nullptr and the function returns success (nullptr status).
+   * This allows callers to use the simple "if (status != nullptr) handle_error()" pattern
+   * and check out_importer separately for capability detection.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to create the importer for.
+   * \param[out] out_importer Output parameter set to the created OrtExternalResourceImporter instance,
+   *                          or nullptr if the EP does not support external resource import.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateExternalResourceImporterForDevice,
+                  _In_ const OrtEpDevice* ep_device,
+                  _Outptr_result_maybenull_ OrtExternalResourceImporter** out_importer);
+
+  /** \brief Release an OrtExternalResourceImporter instance.
+   *
+   * \param[in] importer The OrtExternalResourceImporter instance to release. May be nullptr.
+   *
+   * \since Version 1.24.
+   */
+  ORT_CLASS_RELEASE(ExternalResourceImporter);
+
+  /// @}
+  /// \name Memory Import
+  /// @{
+
+  /** \brief Check if the external resource importer can import a specific memory handle type.
+   *
+   * \param[in] importer The OrtExternalResourceImporter instance.
+   * \param[in] handle_type The type of external memory handle to check.
+   * \param[out] out_supported Set to true if the handle type is supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CanImportMemory,
+                  _In_ const OrtExternalResourceImporter* importer,
+                  _In_ OrtExternalMemoryHandleType handle_type,
+                  _Out_ bool* out_supported);
+
+  /** \brief Import external memory into the execution provider.
+   *
+   * \param[in] importer The OrtExternalResourceImporter instance.
+   * \param[in] desc Descriptor containing the external memory handle and properties.
+   * \param[out] out_handle Output parameter set to the created OrtExternalMemoryHandle.
+   *                        The caller owns the returned handle and must call ReleaseExternalMemoryHandle to free it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(ImportMemory,
+                  _In_ OrtExternalResourceImporter* importer,
+                  _In_ const OrtExternalMemoryDescriptor* desc,
+                  _Outptr_ OrtExternalMemoryHandle** out_handle);
+
+  /** \brief Release an OrtExternalMemoryHandle instance.
+   *
+   * \param[in] handle The OrtExternalMemoryHandle instance to release. May be nullptr.
+   *
+   * \since Version 1.24.
+   */
+  ORT_CLASS_RELEASE(ExternalMemoryHandle);
+
+  /** \brief Create a tensor backed by imported external memory.
+   *
+   * The created tensor is a view over the imported memory and does not copy data.
+   * The OrtExternalMemoryHandle must remain valid for the lifetime of the tensor.
+   *
+   * \param[in] importer The OrtExternalResourceImporter instance.
+   * \param[in] mem_handle The imported external memory handle.
+   * \param[in] tensor_desc Descriptor specifying tensor element type, shape, and optional offset.
+   * \param[out] out_tensor Output parameter set to the created OrtValue containing the tensor.
+   *                        The caller owns the returned tensor and must call ReleaseValue to free it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateTensorFromMemory,
+                  _In_ OrtExternalResourceImporter* importer,
+                  _In_ const OrtExternalMemoryHandle* mem_handle,
+                  _In_ const OrtExternalTensorDescriptor* tensor_desc,
+                  _Outptr_ OrtValue** out_tensor);
+
+  /// @}
+  /// \name Semaphore Import
+  /// @{
+
+  /** \brief Check if the external resource importer can import a specific semaphore type.
+   *
+   * \param[in] importer The OrtExternalResourceImporter instance.
+   * \param[in] type The type of external semaphore to check.
+   * \param[out] out_supported Set to true if the semaphore type is supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CanImportSemaphore,
+                  _In_ const OrtExternalResourceImporter* importer,
+                  _In_ OrtExternalSemaphoreType type,
+                  _Out_ bool* out_supported);
+
+  /** \brief Import an external semaphore into the execution provider.
+   *
+   * The returned OrtExternalSemaphoreHandle can be used with WaitSemaphore and an OrtSyncStream
+   * to synchronize execution with external operations.
+   *
+   * \param[in] importer The OrtExternalResourceImporter instance.
+   * \param[in] desc Descriptor containing the external semaphore handle and type.
+   * \param[out] out_handle Output parameter set to the created OrtExternalSemaphoreHandle.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(ImportSemaphore,
+                  _In_ OrtExternalResourceImporter* importer,
+                  _In_ const OrtExternalSemaphoreDescriptor* desc,
+                  _Outptr_ OrtExternalSemaphoreHandle** out_handle);
+
+  /** \brief Release an OrtExternalSemaphoreHandle instance.
+   *
+   * \param[in] handle The OrtExternalSemaphoreHandle instance to release. May be nullptr.
+   *
+   * \since Version 1.24.
+   */
+  ORT_CLASS_RELEASE(ExternalSemaphoreHandle);
+
+  /** \brief Wait on an external semaphore on the EP's stream.
+   *
+   * Inserts a wait operation into the EP's stream that blocks until the semaphore
+   * reaches the specified value. This is used to synchronize with external GPU work
+   * (e.g., D3D12 timeline fence).
+   *
+   * \param[in] importer The OrtExternalResourceImporter instance.
+   * \param[in] semaphore_handle The imported external semaphore.
+   * \param[in] stream The OrtSyncStream to wait on.
+   * \param[in] value The fence/semaphore value to wait for.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(WaitSemaphore,
+                  _In_ OrtExternalResourceImporter* importer,
+                  _In_ OrtExternalSemaphoreHandle* semaphore_handle,
+                  _In_ OrtSyncStream* stream,
+                  _In_ uint64_t value);
+
+  /** \brief Signal an external semaphore from the EP's stream.
+   *
+   * Inserts a signal operation into the EP's stream that sets the semaphore
+   * to the specified value when reached. This is used to notify external GPU work
+   * (e.g., D3D12 timeline fence) that ORT inference is complete.
+   *
+   * \param[in] importer The OrtExternalResourceImporter instance.
+   * \param[in] semaphore_handle The imported external semaphore.
+   * \param[in] stream The OrtSyncStream to signal from.
+   * \param[in] value The fence/semaphore value to signal.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SignalSemaphore,
+                  _In_ OrtExternalResourceImporter* importer,
+                  _In_ OrtExternalSemaphoreHandle* semaphore_handle,
+                  _In_ OrtSyncStream* stream,
+                  _In_ uint64_t value);
+
+  /// @}
 };
 
 /*

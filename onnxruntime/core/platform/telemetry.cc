@@ -81,8 +81,34 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(captureState);
 }
 
-void Telemetry::LogCompileModel(uint32_t session_id) const {
+void Telemetry::LogCompileModelStart(uint32_t session_id,
+                                     const std::string& input_source,
+                                     const std::string& output_target,
+                                     uint32_t flags,
+                                     int graph_optimization_level,
+                                     bool embed_ep_context,
+                                     bool has_external_initializers_file,
+                                     const std::vector<std::string>& execution_provider_ids) const {
   ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(input_source);
+  ORT_UNUSED_PARAMETER(output_target);
+  ORT_UNUSED_PARAMETER(flags);
+  ORT_UNUSED_PARAMETER(graph_optimization_level);
+  ORT_UNUSED_PARAMETER(embed_ep_context);
+  ORT_UNUSED_PARAMETER(has_external_initializers_file);
+  ORT_UNUSED_PARAMETER(execution_provider_ids);
+}
+
+void Telemetry::LogCompileModelComplete(uint32_t session_id,
+                                        bool success,
+                                        uint32_t error_code,
+                                        uint32_t error_category,
+                                        const std::string& error_message) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(success);
+  ORT_UNUSED_PARAMETER(error_code);
+  ORT_UNUSED_PARAMETER(error_category);
+  ORT_UNUSED_PARAMETER(error_message);
 }
 
 void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,

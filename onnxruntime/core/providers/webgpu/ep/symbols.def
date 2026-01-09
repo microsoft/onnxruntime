@@ -1,0 +1,4 @@
+LIBRARY "onnxruntime_providers_webgpu.dll"
+EXPORTS
+ CreateEpFactories @1
+ ReleaseEpFactory @2

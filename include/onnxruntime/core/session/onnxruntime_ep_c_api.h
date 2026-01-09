@@ -24,11 +24,72 @@ ORT_RUNTIME_CLASS(DataTransferImpl);
 ORT_RUNTIME_CLASS(SyncNotificationImpl);
 ORT_RUNTIME_CLASS(SyncStreamImpl);
 
+ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
+
+/** \brief Base struct for imported external memory handles.
+ *
+ * EPs derive from this struct to add EP-specific fields (e.g., CUdeviceptr for CUDA).
+ * EP is responsible for creating and releasing instances of the derived type.
+ *
+ * Example derived type for CUDA EP:
+ * \code
+ * struct MyCudaExternalMemoryHandle : OrtExternalMemoryHandle {
+ *   CUexternalMemory ext_memory;
+ *   CUdeviceptr mapped_ptr;
+ *   bool is_dedicated;
+ * };
+ * \endcode
+ *
+ * \since Version 1.24.
+ */
+struct OrtExternalMemoryHandle {
+  uint32_t version;                         ///< Must be ORT_API_VERSION
+  const OrtEpDevice* ep_device;             ///< EP device that created this handle
+  OrtExternalMemoryHandleType handle_type;  ///< Original handle type for tracking
+  size_t size_bytes;                        ///< Size of the imported memory
+  size_t offset_bytes;                      ///< Offset into the imported memory
+
+  /** \brief Release callback for this handle. EP sets this to its release function.
+   *
+   * ORT calls this when ReleaseExternalMemoryHandle is invoked. The EP's callback
+   * should cast the handle to its derived type and delete it.
+   */
+  void(ORT_API_CALL* Release)(_In_ OrtExternalMemoryHandle* handle);
+};
+
+/** \brief Base struct for imported external semaphore handles.
+ *
+ * EPs derive from this struct to add EP-specific fields (e.g., CUexternalSemaphore for CUDA).
+ * EP is responsible for creating and releasing instances of the derived type.
+ *
+ * Example derived type for CUDA EP:
+ * \code
+ * struct MyCudaExternalSemaphoreHandle : OrtExternalSemaphoreHandle {
+ *   CUexternalSemaphore ext_semaphore;
+ * };
+ * \endcode
+ *
+ * \since Version 1.24.
+ */
+struct OrtExternalSemaphoreHandle {
+  uint32_t version;               ///< Must be ORT_API_VERSION
+  const OrtEpDevice* ep_device;   ///< EP device that created this handle
+  OrtExternalSemaphoreType type;  ///< Original semaphore type
+
+  /** \brief Release callback for this handle. EP sets this to its release function.
+   *
+   * ORT calls this when ReleaseExternalSemaphoreHandle is invoked. The EP's callback
+   * should cast the handle to its derived type and delete it.
+   */
+  void(ORT_API_CALL* Release)(_In_ OrtExternalSemaphoreHandle* handle);
+};
+
 // Opaque types for kernel-based EPs
 ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
 ORT_RUNTIME_CLASS(DataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
+ORT_RUNTIME_CLASS(SharedPrePackedWeightCache);
 
 /** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
  *
@@ -190,6 +251,180 @@ struct OrtSyncStreamImpl {
   ORT_API2_STATUS(OnSessionRunEnd, _In_ OrtSyncStreamImpl* this_ptr);
 };
 
+/** \brief Struct that an EP implements for external resource import (memory + semaphore import).
+ *
+ * This capability object provides methods for importing external GPU memory and semaphores
+ * for zero-copy import. EPs that support D3D12, CUDA, HIP, or Vulkan external resource APIs
+ * can implement this interface.
+ *
+ * \since Version 1.24.
+ */
+struct OrtExternalResourceImporterImpl {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
+
+  // Memory operations (stream-independent)
+
+  /** \brief Check if the implementation can import external memory of the given handle type.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle_type The type of external memory handle to check.
+   * \return True if the handle type is supported.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(bool, CanImportMemory,
+            _In_ const OrtExternalResourceImporterImpl* this_ptr,
+            _In_ OrtExternalMemoryHandleType handle_type);
+
+  /** \brief Import external memory.
+   *
+   * The EP creates a derived type of OrtExternalMemoryHandle and returns a pointer to the base.
+   * EP is responsible for the lifetime of the handle (release via ReleaseMemory).
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] desc Descriptor containing the external memory handle and properties.
+   * \param[out] out_handle Output parameter set to the created OrtExternalMemoryHandle (EP's derived type).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(ImportMemory,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ const OrtExternalMemoryDescriptor* desc,
+                  _Outptr_ OrtExternalMemoryHandle** out_handle);
+
+  /** \brief Release an imported external memory handle.
+   *
+   * The EP deletes its derived type instance.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle The OrtExternalMemoryHandle to release (EP casts to its derived type).
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, ReleaseMemory,
+            _In_ OrtExternalResourceImporterImpl* this_ptr,
+            _In_ OrtExternalMemoryHandle* handle);
+
+  /** \brief Create a tensor backed by imported external memory.
+   *
+   * The created tensor is a view over the imported memory and does not copy data.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] mem_handle The imported external memory handle (EP casts to its derived type).
+   * \param[in] tensor_desc Descriptor specifying tensor element type, shape, and optional offset.
+   * \param[out] out_tensor Output parameter set to the created OrtValue containing the tensor.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateTensorFromMemory,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ const OrtExternalMemoryHandle* mem_handle,
+                  _In_ const OrtExternalTensorDescriptor* tensor_desc,
+                  _Outptr_ OrtValue** out_tensor);
+
+  // Semaphore operations (require stream)
+
+  /** \brief Check if the implementation can import external semaphores of the given type.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] type The type of external semaphore to check.
+   * \return True if the semaphore type is supported.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(bool, CanImportSemaphore,
+            _In_ const OrtExternalResourceImporterImpl* this_ptr,
+            _In_ OrtExternalSemaphoreType type);
+
+  /** \brief Import an external semaphore.
+   *
+   * The EP creates a derived type of OrtExternalSemaphoreHandle and returns a pointer to the base.
+   * EP is responsible for the lifetime of the handle (release via ReleaseSemaphore).
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] desc Descriptor containing the external semaphore handle and type.
+   * \param[out] out_handle Output parameter set to the created OrtExternalSemaphoreHandle (EP's derived type).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(ImportSemaphore,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ const OrtExternalSemaphoreDescriptor* desc,
+                  _Outptr_ OrtExternalSemaphoreHandle** out_handle);
+
+  /** \brief Release an imported external semaphore handle.
+   *
+   * The EP deletes its derived type instance.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle The OrtExternalSemaphoreHandle to release (EP casts to its derived type).
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, ReleaseSemaphore,
+            _In_ OrtExternalResourceImporterImpl* this_ptr,
+            _In_ OrtExternalSemaphoreHandle* handle);
+
+  /** \brief Wait on an external semaphore on the EP's stream.
+   *
+   * Inserts a wait operation into the EP's stream that blocks until the semaphore
+   * reaches the specified value.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle The imported external semaphore (EP casts to its derived type).
+   * \param[in] stream The OrtSyncStream to wait on.
+   * \param[in] value The fence/semaphore value to wait for.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(WaitSemaphore,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ OrtExternalSemaphoreHandle* handle,
+                  _In_ OrtSyncStream* stream,
+                  _In_ uint64_t value);
+
+  /** \brief Signal an external semaphore from the EP's stream.
+   *
+   * Inserts a signal operation into the EP's stream that sets the semaphore
+   * to the specified value when reached.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   * \param[in] handle The imported external semaphore (EP casts to its derived type).
+   * \param[in] stream The OrtSyncStream to signal from.
+   * \param[in] value The fence/semaphore value to signal.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SignalSemaphore,
+                  _In_ OrtExternalResourceImporterImpl* this_ptr,
+                  _In_ OrtExternalSemaphoreHandle* handle,
+                  _In_ OrtSyncStream* stream,
+                  _In_ uint64_t value);
+
+  // Release the capability object itself
+
+  /** \brief Release the OrtExternalResourceImporterImpl instance.
+   *
+   * This is called by ORT when the OrtExternalResourceImporterImpl instance is no longer needed.
+   * The implementation should release any resources held by the instance.
+   *
+   * \param[in] this_ptr Pointer to the OrtExternalResourceImporterImpl instance.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, Release, _In_ OrtExternalResourceImporterImpl* this_ptr);
+};
+
 struct OrtNodeFusionOptions;
 typedef struct OrtNodeFusionOptions OrtNodeFusionOptions;
 
@@ -308,6 +543,101 @@ struct OrtKernelImpl {
    * \since Version 1.24.
    */
   ORT_API_T(void, Release, _In_ OrtKernelImpl* this_ptr);
+
+  /** \brief Optional function to pre-pack a constant tensor (i.e., a weight) to the kernel's preferred data layout.
+   *
+   * For example, a Conv kernel can define this function to pack input W to the channel-last data layout
+   * before inference.
+   *
+   * Pre-packing can operate in three different modes: no pre-packing mode, sharing mode, and non-sharing mode.
+   *    1) No pre-packing mode: The kernel can forgo any weight pre-packing for the given `input_index` by setting
+   *                            `is_packed` to false and returning a successful OrtStatus. In this mode, the kernel's
+   *                            OrtKernelImpl::SetSharedPrePackedWeight() function is not called for that specific
+   *                            `input_index`.
+   *    2) Sharing mode: Sharing is allowed if the `prepacked_weight_cache` argument is not NULL and the EP stores
+   *                     weight data in CPU-accessible memory. In this case, the kernel can optionally choose
+   *                     to share the packed weight with other kernels that use the same weight
+   *                     (compared by content hash). To do so, the kernel must allocate the packed weight with the
+   *                     provided `allocator`, then it stores the packed weight data into `prepacked_weight_cache`
+   *                     via SharedPrePackedWeightCache_StoreWeightData(), sets `is_packed` to true, and returns a
+   *                     successful OrtStatus. ORT will subsequently call OrtKernelImpl::SetSharedPrePackedWeight()
+   *                     to provide this kernel with the actual shared weight data, whose memory location could
+   *                     differ (i.e., if shared data was allocated by a previously processed kernel).
+   *    3) Non-sharing mode: In non-sharing mode, the `prepacked_weight_cache` argument is ignored. In this mode,
+   *                         the implementation allocates the packed data with the provided `allocator`, sets
+   *                         `is_packed` to true, and returns a successful OrtStatus. The kernel is ultimately
+   *                         responsible for releasing the packed data for the weight with `allocator`.
+   *                         ORT may release the original (unpacked) weight, which must not be accessed in
+   *                         OrtKernelImpl::Compute(). Note that in this mode, the kernel's
+   *                         OrtKernelImpl::SetSharedPrePackedWeight() function is not called by ORT for that specific
+   *                         `input_index`.
+   *
+   * \note This function is based on the internal OpKernel::PrePack() virtual function used within ORT.
+   *
+   * \param[in] this_ptr The OrtKernelImpl instance.
+   * \param[in] tensor The OrtValue instance representing the constant tensor (weight). Do not cache in the kernel.
+   * \param[in] input_index The input index of the tensor in this kernel.
+   * \param[in] allocator Allocator for allocating the pre-packed data. Its use is required in sharing mode and
+   *                      recommended, but not required, in the non-sharing mode. This will be an allocator set by
+   *                      the application for the session/environment (e.g., via CreateAndRegisterAllocator[V2]
+   *                      or RegisterAllocator), or an allocator on the OrtEpDevice (read-only or default) otherwise.
+   *                      The allocator remains valid throughout the lifetime of the OrtKernelImpl instance.
+   * \param[in] prepacked_weight_cache May be NULL. If not NULL, the kernel may choose to share a packed weight by
+   *                                   first storing it in the OrtSharedPrePackedWeightCache instance and then
+   *                                   receiving the actual shared weight data in the call to
+   *                                   OrtKernelImpl::SetSharedPrePackedWeight(). See the above description for
+   *                                   "sharing mode".
+   * \param[out] is_packed Output parameter that the implementation sets to true if the kernel packed the tensor data.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If not implemented (set to NULL), ORT assumes the kernel
+   *       does not pre-pack weight data (i.e., `is_packed` defaults to false).
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(PrePackWeight, _In_ OrtKernelImpl* this_ptr, _In_ const OrtValue* tensor,
+                  _In_ int input_index, _Inout_ OrtAllocator* allocator,
+                  _In_opt_ OrtSharedPrePackedWeightCache* prepacked_weight_cache, _Out_ bool* is_packed);
+
+  /** \brief Optional function that receives data for a shared pre-packed weight from ORT.
+   *
+   * ORT calls this function after calling OrtKernelImpl::PrePackWeight for a specific `input_index` if:
+   *   - OrtKernelImpl::PrePackWeight set the output parameter `is_packed` to true.
+   *   - OrtKernelImpl::PrePackWeight stored weight data to share into the provided OrtSharedPrePackedWeightCache
+   *     parameter (`prepacked_weight_cache`) via the API SharedPrePackedWeightCache_StoreWeightData.
+   *
+   * Refer to the description of the "sharing-mode" in the documentation for OrtKernelImpl::PrePackWeight().
+   *
+   * \note ORT will not call this function for an `input_index` that a previous call to
+   *       OrtKernelImpl::PrePackWeight() did not elect to pre-pack and share.
+   *
+   * \note This function is based on the internal OpKernel::UseSharedPrePackedBuffers() virtual function used
+   *       within ORT.
+   *
+   * \param[in] this_ptr The OrtKernelImpl instance.
+   * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
+   *                             single shared weight. The buffers are provided in the same order and with the same
+   *                             contents (in a potentially different memory location) as the buffers
+   *                             passed into SharedPrePackedWeightCache_StoreWeightData() within the
+   *                             OrtKernelImpl::PrePackWeight() call for the same `input_index`.
+   * \param[in] buffer_data_sizes An array of buffer byte sizes, one per element in `buffer_data_ptrs`.
+   * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
+   *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_data_sizes` arrays.
+   * \param[in] input_index The input index of the tensor in this kernel. This index identifies the identity of
+   *                        the weight.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is generally optional. It is only required if OrtKernelImpl::PrePack()
+   *       elects to share pre-packed weights.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SetSharedPrePackedWeight, _In_ OrtKernelImpl* this_ptr,
+                  _In_reads_(num_buffers) const void* const* buffer_data_ptrs,
+                  _In_reads_(num_buffers) const size_t* buffer_data_sizes,
+                  _In_ size_t num_buffers, _In_ int input_index);
 };
 
 /** \brief Type definition for a function that creates an OrtKernelImpl instance for an operator kernel.
@@ -772,8 +1102,8 @@ struct OrtEpApi {
   /** \brief Gets the kernel's opset version range that is supported.
    *
    * \param[in] kernel_def The OrtKernelDef instance.
-   * \param[out] version_start Output parameter set to the starting opset version that is supported.
-   * \param[out] version_end Output parameter set to the ending opset version (inclusive) that is supported.
+   * \param[out] start_version Output parameter set to the starting opset version that is supported.
+   * \param[out] end_version Output parameter set to the ending opset version (inclusive) that is supported.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -846,6 +1176,47 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
                   _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def);
+
+  /** \brief Sets one or more data buffers that collectively hold the pre-packed data for a single shared weight.
+   *
+   * \note Used within the implementation of OrtKernelImpl::PrePackWeight() when the kernel wants to share pre-packed
+   *       weight data with other kernels. The buffer data MUST be allocated with the OrtAllocator provided to
+   *       OrtKernelImpl::PrePack.
+   *
+   * \note Ownership of weight data transfers to the OrtSharedPrePackedWeightCache instance on success.
+   *       If this function returns an error status, the caller retains ownership of the weight data.
+   *
+   * \note Subsequent calls with the same OrtSharedPrePackedWeightCache instance release and replace the old data.
+   *
+   * \param[in] prepacked_weight_cache The OrtSharedPrePackedWeightCache instance.
+   * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
+   *                             single shared weight. Note that sometimes a single weight may have multiple pre-packed
+   *                             buffers and it is up to the kernel implementation to determine how to split the data
+   *                             into multiple buffers (if desired).
+   * \param[in] buffer_data_sizes An array of buffer byte sizes, one per element in `buffer_data_ptrs`.
+   * \param[in] num_buffers The number of buffers used to store the data for the shared pre-packed weight.
+   *                        Specifies the number of elements in the `buffer_data_ptrs` and `buffer_data_sizes` arrays.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SharedPrePackedWeightCache_StoreWeightData,
+                  _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
+                  _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
+                  _In_ size_t num_buffers);
+
+  /** \brief Get the OrtEp instance to which the node is assigned from the OrtKernelInfo.
+   *
+   * \note Used within OrtKernelImpl implementations to obtain a reference to the OrtEp.
+   *
+   * \param[in] info The ::OrtKernelInfo instance.
+   * \param[out] ep Output parameter set to the OrtEp instance associated with the OrtKernelInfo.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
 };
 
 /**
@@ -1129,6 +1500,20 @@ struct OrtEp {
    */
   ORT_API2_STATUS(GetKernelRegistry, _In_ OrtEp* this_ptr,
                   _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry);
+
+  /** \brief Gets whether the execution provider supports concurrent run calls made on the session.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] is_supported Whether concurrent runs are supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, ORT assumes that concurrent runs are supported.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(IsConcurrentRunSupported, _In_ OrtEp* this_ptr, _Outptr_ bool* is_supported);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -1413,6 +1798,32 @@ struct OrtEpFactory {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
+
+  /** \brief Create an OrtExternalResourceImporterImpl for external resource import.
+   *
+   * This is used to create an external resource importer that enables zero-copy import of
+   * external GPU memory (e.g., D3D12 shared resources) and synchronization primitives
+   * (e.g., D3D12 timeline fences).
+   *
+   * EPs that support external resource import (via CUDA, HIP, Vulkan, or D3D12 APIs) can
+   * implement this to allow applications to share GPU resources without copies.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] ep_device The OrtEpDevice to create the external resource importer for.
+   * \param[out] out_importer The created OrtExternalResourceImporterImpl instance.
+   *                          Set to nullptr if external resource import is not supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional.
+   *       An EP factory should only implement this if it supports external resource import.
+   *       If not implemented or not supported, return ORT_NOT_IMPLEMENTED or set out_importer to nullptr.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(CreateExternalResourceImporterForDevice, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtEpDevice* ep_device,
+                  _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** out_importer);
 };
 
 #ifdef __cplusplus

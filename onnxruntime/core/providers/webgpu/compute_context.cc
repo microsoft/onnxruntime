@@ -20,22 +20,6 @@ const webgpu::BufferManager& ComputeContextBase::BufferManagerAccessor::Get(cons
   return context.ep_.BufferManager();
 }
 
-Status ComputeContextBase::CreateUnmappedGPUTensor(AllocatorPtr alloc, MLDataType data_type, const TensorShape& shape, std::unique_ptr<Tensor>& tensor) const {
-  ORT_RETURN_IF_NOT(alloc != nullptr, "Allocator must not be null when creating GPU tensor.");
-
-  tensor = std::make_unique<Tensor>(data_type, shape, alloc);
-  ORT_RETURN_IF_NOT(tensor != nullptr, "Failed to allocate GPU tensor.");
-
-  void* data = tensor->MutableDataRaw();
-  ORT_RETURN_IF_NOT(data != nullptr, "Failed to get GPU tensor buffer.");
-
-  auto buffer = reinterpret_cast<WGPUBuffer>(data);
-  if (wgpuBufferGetMapState(buffer) != WGPUBufferMapState_Unmapped) {
-    wgpuBufferUnmap(buffer);
-  }
-  return Status::OK();
-}
-
 ComputeContext::ComputeContext(WebGpuContext& webgpu_context,
                                const WebGpuExecutionProvider& ep,
                                const OpKernel& op_kernel,

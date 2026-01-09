@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "ep.h"
+#include "ep_allocator.h"
 #include "ep_kernel_registration.h"
 #include "../plugin_ep_utils.h"
 
@@ -15,7 +16,9 @@ ExampleKernelEpFactory::ExampleKernelEpFactory(const OrtApi& ort_api, const OrtE
                                                const OrtLogger& /*default_logger*/)
     : OrtEpFactory{},
       ort_api_(ort_api),
-      ep_api_(ep_api) {
+      ep_api_(ep_api),
+      default_memory_info_{nullptr},
+      readonly_memory_info_{nullptr} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
@@ -34,6 +37,32 @@ ExampleKernelEpFactory::ExampleKernelEpFactory(const OrtApi& ort_api, const OrtE
 
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+
+  // Define the default memory info. Allows creating custom OrtAllocators and OrtDataTransferImpls.
+  // This is not strictly required for cpu-based EPs, like this example EP. However, we define it here
+  // to serve as an example for non-cpu EPs.
+  default_memory_info_ = Ort::MemoryInfo{"ExampleKernelEp CPU",
+                                         OrtMemoryInfoDeviceType_CPU,
+                                         // Use vendor ID 0 for generic allocator (e.g., webGPU)
+                                         /* vendor */ 0,
+                                         /* device_id */ 0,
+                                         OrtDeviceMemoryType_DEFAULT,
+                                         /*alignment*/ 0,
+                                         OrtAllocatorType::OrtDeviceAllocator};
+
+  // create data transfer for the device
+  const OrtMemoryDevice* device = ep_api.MemoryInfo_GetMemoryDevice(default_memory_info_);
+  data_transfer_impl_ = std::make_unique<ExampleDataTransfer>(ort_api, ep_api, device);
+
+  // Create read-only allocator for use with initializers. same info as DEFAULT memory apart from the allocator type.
+  // This is optional. It is only required if the readonly allocator differs from the default device allocator.
+  // This is not required for this cpu-based example EP, but show it as an example.
+  readonly_memory_info_ = Ort::MemoryInfo{"ExampleKernelEp CPU readonly",
+                                          OrtMemoryInfoDeviceType_CPU,
+                                          /*vendor*/ 0, /* device_id */ 0,
+                                          OrtDeviceMemoryType_DEFAULT,
+                                          /*alignment*/ 0,
+                                          OrtAllocatorType::OrtReadOnlyAllocator};
 }
 
 ExampleKernelEpFactory::~ExampleKernelEpFactory() {
@@ -51,7 +80,9 @@ OrtStatus* ExampleKernelEpFactory::GetKernelRegistryForEp(ExampleKernelEp& ep,
   }
 
   if (kernel_registry_ == nullptr) {
-    void* op_kernel_state = nullptr;  // Optional state that is provided to kernels on creation (can be null).
+    // Optional state that is provided to kernels on creation (can be null).
+    // We pass the OrtDataTransferImpl created by this factory to allow kernels to copy data between devices.
+    void* op_kernel_state = static_cast<OrtDataTransferImpl*>(data_transfer_impl_.get());
     const char* ep_name = ep.GetName(static_cast<const OrtEp*>(&ep));
 
     // This statement creates the kernel registry and caches it in the OrtEpFactory instance.
@@ -103,7 +134,8 @@ OrtStatus* ORT_API_CALL ExampleKernelEpFactory::GetSupportedDevicesImpl(OrtEpFac
 
   for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
     const OrtHardwareDevice& device = *hw_devices[i];
-    if (factory->ort_api_.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
+    auto hw_type = factory->ort_api_.HardwareDevice_Type(&device);
+    if (hw_type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
       // these can be returned as nullptr if you have nothing to add.
       OrtKeyValuePairs* ep_metadata = nullptr;
       OrtKeyValuePairs* ep_options = nullptr;
@@ -129,8 +161,8 @@ OrtStatus* ORT_API_CALL ExampleKernelEpFactory::GetSupportedDevicesImpl(OrtEpFac
       // register the allocator info required by the EP.
       // registering OrtMemoryInfo for host accessible memory would be done in an additional call.
       // OrtReadOnlyAllocator + OrtDeviceMemoryType_DEFAULT allocator for use with initializers is optional.
-      // RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_.get()));
-      // RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_.get()));
+      RETURN_IF_ERROR(factory->ep_api_.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_));
+      RETURN_IF_ERROR(factory->ep_api_.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_));
 
       ep_devices[num_ep_devices++] = ep_device;
     }
@@ -144,7 +176,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateEpImpl(OrtEpFactory* this_
                                                              const OrtHardwareDevice* const* /*devices*/,
                                                              const OrtKeyValuePairs* const* /*ep_metadata*/,
                                                              size_t num_devices,
-                                                             const OrtSessionOptions* /*session_options*/,
+                                                             const OrtSessionOptions* session_options,
                                                              const OrtLogger* logger,
                                                              OrtEp** ep) noexcept {
   auto* factory = static_cast<ExampleKernelEpFactory*>(this_ptr);
@@ -155,7 +187,14 @@ OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateEpImpl(OrtEpFactory* this_
                                           "ExampleKernelEpFactory only supports selection for one device.");
   }
 
-  auto actual_ep = std::make_unique<ExampleKernelEp>(*factory, *logger);
+  std::string enable_prepack_weight_sharing;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.examplekernelep.enable_prepack_weight_sharing",
+                                                 "0", enable_prepack_weight_sharing));
+
+  ExampleKernelEp::Config config = {};
+  config.enable_prepack_weight_sharing = enable_prepack_weight_sharing == "1";
+
+  auto actual_ep = std::make_unique<ExampleKernelEp>(*factory, config, *logger);
   *ep = actual_ep.release();
 
   return nullptr;
@@ -167,26 +206,40 @@ void ORT_API_CALL ExampleKernelEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateAllocatorImpl(OrtEpFactory* /*this_ptr*/,
-                                                                    const OrtMemoryInfo* /*memory_info*/,
+OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                                    const OrtMemoryInfo* memory_info,
                                                                     const OrtKeyValuePairs* /*allocator_options*/,
                                                                     OrtAllocator** allocator) noexcept {
-  // Don't support custom allocators in this example for simplicity. A GPU EP would normally support allocators.
+  auto& factory = *static_cast<ExampleKernelEpFactory*>(this_ptr);
   *allocator = nullptr;
+
+  bool is_default_allocator = memory_info == factory.default_memory_info_;
+  bool is_readonly_allocator = memory_info == factory.readonly_memory_info_;
+
+  if (!is_default_allocator && !is_readonly_allocator) {
+    return factory.ort_api_.CreateStatus(ORT_INVALID_ARGUMENT,
+                                         "INTERNAL ERROR! Unknown memory info provided to CreateAllocator. "
+                                         "Value did not come directly from an OrtEpDevice returned by this factory.");
+  }
+
+  // Note: the same allocator handles both default and readonly allocations. A readonly only allocator would
+  // typically be different.
+  auto custom_allocator = std::make_unique<CustomAllocator>(memory_info);
+  *allocator = custom_allocator.release();
   return nullptr;
 }
 
 /*static*/
 void ORT_API_CALL ExampleKernelEpFactory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/,
-                                                               OrtAllocator* /*allocator*/) noexcept {
-  // Do nothing.
+                                                               OrtAllocator* allocator) noexcept {
+  delete static_cast<CustomAllocator*>(allocator);
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateDataTransferImpl(OrtEpFactory* /*this_ptr*/,
+OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateDataTransferImpl(OrtEpFactory* this_ptr,
                                                                        OrtDataTransferImpl** data_transfer) noexcept {
-  // Don't support data transfer in this example for simplicity. A GPU EP would normally support it.
-  *data_transfer = nullptr;
+  auto& factory = *static_cast<ExampleKernelEpFactory*>(this_ptr);
+  *data_transfer = factory.data_transfer_impl_.get();
   return nullptr;
 }
 
