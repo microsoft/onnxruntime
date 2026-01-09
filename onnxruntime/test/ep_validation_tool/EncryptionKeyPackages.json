@@ -1,0 +1,17 @@
+[
+    {
+        "encryption_key_package_name": "ps_enc_key",
+        "encrption_key_package_version": "1.0.80-main",
+        "encryption_key_id": "key"
+    },
+    {
+        "encryption_key_package_name": "ps_enc_key",
+        "encrption_key_package_version": "1.0.81-main",
+        "encryption_key_id": "long_key"
+    },
+    {
+        "encryption_key_package_name" : "lora_key",
+         "encrption_key_package_version": "1.0.56-main",
+         "encryption_key_id": "lora_key_v1"
+    }
+]
