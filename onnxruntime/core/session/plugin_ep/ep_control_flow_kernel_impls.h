@@ -11,6 +11,14 @@
 #include "core/providers/cpu/controlflow/scan.h"
 
 namespace onnxruntime {
+/// <summary>
+/// Flags that ORT can set on OrtKernelImpl instances.
+/// Note: This enum can be moved to a more central location if/when we add other flags.
+/// </summary>
+enum OrtKernelImplFlags : uint32_t {
+  // Denotes a control flow kernel created by ORT (i.e., a PluginEpControlFlowKernelImpl)
+  kIsControlFlowKernelImpl = 1 << 0,
+};
 
 /// <summary>
 /// Base class for ORT-defined OrtKernelImpl classes for control flow operators.

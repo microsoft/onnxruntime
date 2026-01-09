@@ -20,10 +20,9 @@ ONNX_OPERATOR_KERNEL_EX(
     Relu)
 
 Relu::Relu(const OrtKernelInfo* info, void* /*state*/, PrivateTag)
-    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl members to NULL/zero
       info_{info} {
   ort_version_supported = ORT_API_VERSION;
-  creator = ORT_KERNEL_IMPL_CREATOR_EP;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
 }

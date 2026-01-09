@@ -27,11 +27,10 @@ ONNX_OPERATOR_KERNEL_EX(
     BinaryOp)
 
 BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag)
-    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl members to NULL/zero
       info_{info},
       data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
   ort_version_supported = ORT_API_VERSION;
-  creator = ORT_KERNEL_IMPL_CREATOR_EP;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
 

@@ -18,10 +18,10 @@ namespace onnxruntime {
 PluginEpControlFlowKernelImpl::PluginEpControlFlowKernelImpl() : OrtKernelImpl{} {
   ort_version_supported = ORT_API_VERSION;
 
-  // Indicate that this OrtKernelImpl was created by ORT.
+  // Indicate that this is a control flow OrtKernelImpl created by ORT.
   // Without RTTI, this gives ORT some way to check that static casting a OrtKernelImpl to
   // PluginEpControlFlowKernelImpl is valid.
-  creator = ORT_KERNEL_IMPL_CREATOR_ORT;
+  flags = OrtKernelImplFlags::kIsControlFlowKernelImpl;
 }
 
 //

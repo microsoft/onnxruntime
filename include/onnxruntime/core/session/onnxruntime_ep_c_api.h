@@ -515,16 +515,6 @@ struct OrtNodeComputeInfo {
   void(ORT_API_CALL* ReleaseState)(_In_ OrtNodeComputeInfo* this_ptr, _Frees_ptr_opt_ void* compute_state);
 };
 
-/**
- * \brief Used to denote the creator of an OrtKernelImpl. Most OrtKernelImpl instances are created by
- * EPs. However, OrtKernelImpl instances for control flow operators (e.g., If, Loop, and Scan) are created by ORT.
- * \since Version 1.24.
- */
-typedef enum OrtKernelImplCreator {
-  ORT_KERNEL_IMPL_CREATOR_EP = 0,
-  ORT_KERNEL_IMPL_CREATOR_ORT = 1,
-} OrtKernelImplCreator;
-
 struct OrtKernelImpl;
 typedef struct OrtKernelImpl OrtKernelImpl;
 
@@ -534,7 +524,7 @@ typedef struct OrtKernelImpl OrtKernelImpl;
  */
 struct OrtKernelImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
-  uint32_t creator;                ///< EP must set to ORT_KERNEL_IMPL_CREATOR_EP (0) if it created the OrtKernelImpl
+  uint32_t flags;                  ///< EP must initialize to 0. Used internally by ORT.
 
   /** \brief Computation function called to execute the kernel on an EP.
    *
@@ -689,6 +679,8 @@ struct OrtLoopKernelHelper {
   /** \brief Helper function that concatenates OrtValue instances from each loop iteration into a single
    *         pre-allocated output buffer.
    *
+   * \note Implementing this function is required for all Loop opset versions.
+   *
    * \param[in] this_ptr The OrtLoopKernelHelper instance.
    * \param[in] stream_handle Optional native stream handle that enables asynchronous operations. May be NULL.
    * \param[in] per_iteration_output Array of OrtValue instances from each iteration. All OrtValue elements have the
@@ -726,6 +718,9 @@ struct OrtScanKernelHelper {
   ORT_API_T(void, Release, _In_ OrtScanKernelHelper* this_ptr);
 
   /** \brief Helper function that transposes an OrtValue instance during execution of a Scan kernel.
+   *
+   * \note Called for Scan (opset >= 9) when the 'scan_input_axes' or 'scan_output_axes' attributes contain
+   *       non-zero values. Implementing this function is required for Scan opset versions >= 9.
    *
    * \param[in] this_ptr The OrtScanKernelHelper instance.
    * \param[in] permutation An array of integers that defines how the input tensor's axes should be permuted.
@@ -1309,9 +1304,22 @@ struct OrtEpApi {
 
   /** \brief Creates an OrtKernelImpl instance for an If operator.
    *
-   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations.
-   *       This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
-   *       the EP can add to its kernel registry.
+   * Control flow operators require access to ORT session internals to orchestrate subgraph operations.
+   * This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
+   * the EP can add to its kernel registry.
+   *
+   * An EP is required to create an OrtKernelDef that keeps input[0] ('cond') on the CPU (i.e., OrtMemTypeCPUInput)
+   * as this input is used by CPU logic. The output should remain on the device (i.e., OrtMemTypeDefault), which is
+   * the default setting, to avoid copying to/from CPU.
+   *
+   * Example kernel definition (CXX API):
+   *     Ort::KernelDef kernel_def = Ort::KernelDefBuilder()
+   *                                     .SetDomain("").SetOperatorType("If").SetSinceVersion(21, 22)
+   *                                     .SetExecutionProvider("MyEp")
+   *                                     .SetInputMemType(0, OrtMemTypeCPUInput) // 'cond' on CPU
+   *                                     .SetOutputMemType(0, OrtMemTypeDefault) // output on EP device
+   *                                     .AddTypeConstraint("B", ...)
+   *                                     .AddTypeConstraint("V", ...).Build();
    *
    * \param[in] kernel_info The ::OrtKernelInfo instance for an If node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
@@ -1326,9 +1334,25 @@ struct OrtEpApi {
 
   /** \brief Creates an OrtKernelImpl instance for a Loop operator.
    *
-   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations.
-   *       This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
-   *       the EP can add to its kernel registry.
+   * Control flow operators require access to ORT session internals to orchestrate subgraph operations.
+   * This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
+   * the EP can add to its kernel registry.
+   *
+   * An EP is required to create an OrtKernelDef that keeps input[0] ('M') and input[1] ('cond') on the CPU
+   * (i.e., OrtMemTypeCPUInput) as these inputs are used by CPU logic. Input[2] ('v_initial') and the output should
+   * remain on the device (i.e., OrtMemTypeDefault), which is the default setting, to avoid copying to/from CPU.
+   *
+   * Example kernel definition (CXX API):
+   *     Ort::KernelDef kernel_def = Ort::KernelDefBuilder()
+   *                                     .SetDomain("").SetOperatorType("Loop").SetSinceVersion(21, 22)
+   *                                     .SetExecutionProvider("MyEp")
+   *                                     .SetInputMemType(0, OrtMemTypeCPUInput) // 'M' on CPU
+   *                                     .SetInputMemType(1, OrtMemTypeCPUInput) // 'cond' on CPU
+   *                                     .SetInputMemType(2, OrtMemTypeDefault) // 'v_initial' on EP device
+   *                                     .SetOutputMemType(0, OrtMemTypeDefault) // output on EP device
+   *                                     .AddTypeConstraint("I", ...)
+   *                                     .AddTypeConstraint("B", ...)
+   *                                     .AddTypeConstraint("V", ...).Build();
    *
    * \param[in] kernel_info The ::OrtKernelInfo instance for a Loop node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
@@ -1347,9 +1371,20 @@ struct OrtEpApi {
 
   /** \brief Creates an OrtKernelImpl instance for a Scan operator. Does not support opset versions older than 9.
    *
-   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations.
-   *       This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
-   *       the EP can add to its kernel registry.
+   * Control flow operators require access to ORT session internals to orchestrate subgraph operations.
+   * This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
+   * the EP can add to its kernel registry.
+   *
+   * It is recommended that an EP create an OrtKernelDef that keeps the inputs and outputs on the EP's
+   * device (i.e., OrtMemTypeDefault), which is the default setting, to avoid copying to/from CPU.
+   *
+   * Example kernel definition (CXX API):
+   *     Ort::KernelDef kernel_def = Ort::KernelDefBuilder()
+   *                                     .SetDomain("").SetOperatorType("Scan").SetSinceVersion(21, 22)
+   *                                     .SetExecutionProvider("MyEp")
+   *                                     .SetInputMemType(0, OrtMemTypeDefault) // input[0] on EP device
+   *                                     .SetOutputMemType(0, OrtMemTypeDefault) // output[0] on EP device
+   *                                     .AddTypeConstraint("V", ...).Build();
    *
    * \param[in] kernel_info The ::OrtKernelInfo instance for a Scan node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
