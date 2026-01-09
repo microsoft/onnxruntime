@@ -508,11 +508,32 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     }
     params.knew_head_stride = head_size;
     params.vnew_head_stride = head_size;
+  } else if (is_packed_qkv) {
+    // Handle Packed QKV where K/V are part of Q
+    // q_ptr points to the start of the packed buffer (Batch, Seq, (H + 2*Hk)*D)
+
+    params.seqlen_knew = seqlen_q;  // For packed, new K len is same as Q len
+
+    // Strides for Packed QKV
+    // layout: [batch, seq, (h + 2*hk), d]
+    int64_t row_stride = (num_heads + 2 * num_heads_k) * head_size;
+    params.q_batch_stride = seqlen_q * row_stride;
+    params.knew_batch_stride = seqlen_q * row_stride;
+    params.vnew_batch_stride = seqlen_q * row_stride;
+
+    params.q_row_stride = row_stride;
+    params.knew_row_stride = row_stride;
+    params.vnew_row_stride = row_stride;
+
+    params.q_head_stride = head_size;
+    params.knew_head_stride = head_size;
+    params.vnew_head_stride = head_size;
   }
 
   params.is_seqlens_k_cumulative = seqlens_k_ == nullptr;
   if (seqlens_k_ != nullptr) {
     params.cu_seqlens_k = static_cast<int*>(seqlens_k_);
+    params.seqused_k = static_cast<int*>(seqlens_k_);
   }
 
   if (rotary_cos != nullptr) {
@@ -546,7 +567,12 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   }
 
   // Only split kernel supports appending to KV cache
-  run_mha_fwd(params, stream, /*force_split_kernel=*/k_new != nullptr || cache_batch_idx != nullptr);
+  // or if using packed QKV (to ensure correct handling of strided inputs which might be better supported or isolated in split kernel logic).
+  // Note: if the fused kernel handles packing/rotary/appending, it should pass is_packed_qkv=false to this API (via use_packed_for_fa=false),
+  // effectively bypassing this check and allowing standard kernels if otherwise eligible.
+  bool force_split = (k_new != nullptr) || is_packed_qkv || cache_batch_idx != nullptr;
+
+  run_mha_fwd(params, stream, force_split);
 
   return Status::OK();
 }

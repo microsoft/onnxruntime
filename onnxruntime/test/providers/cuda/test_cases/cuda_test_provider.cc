@@ -105,6 +105,11 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     return nullptr;
   }
 
+  std::shared_ptr<onnxruntime::IAllocator> CreateCudaPinnedAllocator(int16_t, size_t, onnxruntime::ArenaExtendStrategy,
+                                                                     const OrtArenaCfg*) override {
+    return nullptr;
+  }
+
   void TestAll() override {
     // TestAll is the entry point of CUDA EP's internal tests.
     // Those internal tests are not directly callable from onnxruntime_provider_test

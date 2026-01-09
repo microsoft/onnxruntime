@@ -184,7 +184,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr,
                            const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr);
 
-bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
+bool CanApplyFlashAttention(const Tensor* bias,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 
 // Split packed QKV with Q/K rotary embedding and copy KV cache fusion

@@ -33,6 +33,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::IsStreamAware = Forward::IsStreamAware;
   OrtEpFactory::CreateSyncStreamForDevice = Forward::CreateSyncStreamForDevice;
   OrtEpFactory::SetEnvironmentOptions = Forward::SetEnvironmentOptions;
+  OrtEpFactory::CreateExternalResourceImporterForDevice = Forward::CreateExternalResourceImporterForDevice;
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,
