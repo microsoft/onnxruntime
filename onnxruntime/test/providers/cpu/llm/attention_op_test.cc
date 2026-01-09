@@ -1347,13 +1347,14 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
       0.5f, 1.5f,
       2.5f, 3.5f};
 
-  std::vector<float> k_expected = {
+  // The output key/value has 4d shapes. So the data is transposed
+  std::vector<float> expected_present_key = {
       0.1f, 0.7f,
       0.8f, 0.3f,
       0.4f, 0.6f,
       0.2f, 0.9f};
 
-  std::vector<float> v_expected = {
+  std::vector<float> expected_present_value = {
       1.0f, 2.0f,
       0.5f, 1.5f,
       3.0f, 4.0f,
@@ -1368,12 +1369,6 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
       2.731472f, 3.731472f,
       0.720963f, 1.720963f,
       2.755302f, 3.755302f};
-
-  // Expected present_key should be same as K since no past_key
-  std::vector<float> expected_present_key = k;
-
-  // Expected present_value should be same as V since no past_value
-  std::vector<float> expected_present_value = v;
 
   RunTest3D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
