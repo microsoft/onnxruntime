@@ -45,7 +45,7 @@ The following table lists the **required** variables and functions that an imple
 
 <tr>
 <td>GetName</td>
-<td>Get the execution provider name.</td>
+<td>Get the execution provider name.<br/><br/>The recommended convention for a plugin execution provider name is to have the name end with the suffix "PluginExecutionProvider". E.g., "ContosoAiPluginExecutionProvider".</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/16ae99ede405d3d6c59d7cce80c53f5f7055aeed/onnxruntime/test/autoep/library/ep.cc#L181">ExampleEp::GetNameImpl()</a></td>
 </tr>
 
