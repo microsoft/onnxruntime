@@ -32,35 +32,37 @@ static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
                      expected_ep_assignment);
 }
 
-TEST_F(QnnABICPUBackendTests, LayerNorm) {
+// Disabled all QNN CPU LayerNorm tests due to bug in 2.42 SDK
+
+TEST_F(QnnABICPUBackendTests, DISABLED_LayerNorm) {
   RunLayerNormCpuTest(TestInputDef<float>({2, 3}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 6)),
                       TestInputDef<float>({2, 3}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 6)),
                       {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnABICPUBackendTests, LayerNorm1D_Axis0) {
+TEST_F(QnnABICPUBackendTests, DISABLED_LayerNorm1D_Axis0) {
   RunLayerNormCpuTest(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 6)),
                       TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 6)),
                       {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnABICPUBackendTests, LayerNorm1D_AxisLast) {
+TEST_F(QnnABICPUBackendTests, DISABLED_LayerNorm1D_AxisLast) {
   RunLayerNormCpuTest(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 6)),
                       TestInputDef<float>({3}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 3)),
                       {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
                       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnABICPUBackendTests, LayerNorm2D) {
+TEST_F(QnnABICPUBackendTests, DISABLED_LayerNorm2D) {
   RunLayerNormCpuTest(TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 18)),
                       TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 18)),
                       {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                       ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnABICPUBackendTests, LayerNorm3D) {
+TEST_F(QnnABICPUBackendTests, DISABLED_LayerNorm3D) {
   RunLayerNormCpuTest(TestInputDef<float>({1, 2, 3, 3, 4}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 72)),
                       TestInputDef<float>({1, 2, 3, 3, 4}, false, GetFloatDataInRangeABI(0.0f, 10.0f, 72)),
                       {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
