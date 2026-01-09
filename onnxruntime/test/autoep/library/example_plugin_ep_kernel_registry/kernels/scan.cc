@@ -39,21 +39,22 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
     Scan)
 
-static OrtStatus* ORT_API_CALL Transpose(void* state, const size_t* permutations, size_t num_perm_elems,
-                                         const OrtValue* ort_input, OrtSyncStream* /*stream*/,
+static OrtStatus* ORT_API_CALL Transpose(void* state, const size_t* permutation, size_t num_perm_elems,
+                                         const OrtValue* ort_input, OrtSyncStream* stream,
                                          OrtValue* ort_output) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   // An actual implementation can retrieve state from the Scan OrtKernelImpl (e.g., OrtDataTransferImpl, etc.).
   Scan* scan_kernel = reinterpret_cast<Scan*>(state);
   (void)scan_kernel;  // Note: Unused in this example.
+  (void)stream;
 
   Ort::ConstValue input(ort_input);
   Ort::UnownedValue output(ort_output);
-  gsl::span<const size_t> perms(permutations, num_perm_elems);
+  gsl::span<const size_t> perm(permutation, num_perm_elems);
 
   // Note: This example implementation only supports 2D transpose (perm: [1, 0]) for convenience. A correct implementation
   // should support more general dimensions/permutations.
-  RETURN_IF(perms.size() != 2 || perms[0] != 1 || perms[1] != 0, Ort::GetApi(),
+  RETURN_IF(perm.size() != 2 || perm[0] != 1 || perm[1] != 0, Ort::GetApi(),
             "Scan kernel for ExampleKernelEp only supports 2D transpose.");
 
   Ort::TensorTypeAndShapeInfo input_type_shape = input.GetTensorTypeAndShapeInfo();
@@ -88,27 +89,14 @@ OrtStatus* Scan::Create(const OrtKernelInfo* info, void* state, /*out*/ std::uni
   const OrtEpApi& ep_api = Ort::GetEpApi();
   auto kernel_unique_ptr = std::make_unique<Scan>(info, state, PrivateTag{});
 
-  // Create configuration with helper to concatenate loop outputs.
-  OrtScanKernelConfig* config = nullptr;
-  RETURN_IF_ERROR(ep_api.CreateScanKernelConfig(&config));
-  Ort::Status status{ep_api.ScanKernelConfig_SetTransposeFunc(config, Transpose, kernel_unique_ptr.get())};
-
-  if (!status.IsOK()) {
-    ep_api.ReleaseScanKernelConfig(config);  // TODO: Add CXX API for RAII
-    return status.release();
-  }
-
-  // Create actual Scan kernel implementation.
-  Ort::Status status2{ep_api.CreateScanKernel(info, config, &kernel_unique_ptr->control_flow_kernel_)};
-
-  if (!status2.IsOK()) {
-    ep_api.ReleaseScanKernelConfig(config);  // TODO: Add CXX API for RAII
-    return status2.release();
-  }
+  // Ask ORT to create a OrtKernelImpl for Scan. The EP author provides a helper function
+  // for transposing tensors. We pass `this` as the transpose function state, which
+  // allows retrieval of EP resources (e.g., allocators, data transfer, etc.).
+  void* transpose_func_state = kernel_unique_ptr.get();
+  RETURN_IF_ERROR(ep_api.CreateScanKernel(info, Transpose, transpose_func_state,
+                                          &kernel_unique_ptr->control_flow_kernel_));
 
   kernel = std::move(kernel_unique_ptr);
-
-  ep_api.ReleaseScanKernelConfig(config);  // TODO: Add CXX API for RAII
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

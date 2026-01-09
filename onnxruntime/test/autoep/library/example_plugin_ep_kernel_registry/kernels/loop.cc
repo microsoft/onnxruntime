@@ -90,27 +90,14 @@ OrtStatus* Loop::Create(const OrtKernelInfo* info, void* state, /*out*/ std::uni
   const OrtEpApi& ep_api = Ort::GetEpApi();
   auto kernel_unique_ptr = std::make_unique<Loop>(info, state, PrivateTag{});
 
-  // Create configuration with helper to concatenate loop outputs.
-  OrtLoopKernelConfig* config = nullptr;
-  RETURN_IF_ERROR(ep_api.CreateLoopKernelConfig(&config));
-  Ort::Status status{ep_api.LoopKernelConfig_SetConcatOutputFunc(config, ConcatLoopOutput, kernel_unique_ptr.get())};
-
-  if (!status.IsOK()) {
-    ep_api.ReleaseLoopKernelConfig(config);  // TODO: Add CXX API for RAII
-    return status.release();
-  }
-
-  // Create actual Loop kernel implementation.
-  Ort::Status status2{ep_api.CreateLoopKernel(info, config, &kernel_unique_ptr->control_flow_kernel_)};
-
-  if (!status2.IsOK()) {
-    ep_api.ReleaseLoopKernelConfig(config);  // TODO: Add CXX API for RAII
-    return status2.release();
-  }
+  // Ask ORT to create a OrtKernelImpl for Loop. The EP author provides a helper function
+  // for concatenation of loop outputs. We pass `this` as the concat function state, which
+  // allows retrieval of EP resources (e.g., allocators, data transfer, etc.).
+  void* concat_func_state = kernel_unique_ptr.get();
+  RETURN_IF_ERROR(ep_api.CreateLoopKernel(info, ConcatLoopOutput, concat_func_state,
+                                          &kernel_unique_ptr->control_flow_kernel_));
 
   kernel = std::move(kernel_unique_ptr);
-
-  ep_api.ReleaseLoopKernelConfig(config);  // TODO: Add CXX API for RAII
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

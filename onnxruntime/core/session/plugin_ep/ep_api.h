@@ -110,22 +110,12 @@ ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
 ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
 
 // Control flow kernel APIs
-ORT_API_STATUS_IMPL(CreateScanKernelConfig, _Outptr_ OrtScanKernelConfig** out);
-ORT_API(void, ReleaseScanKernelConfig, _Frees_ptr_opt_ OrtScanKernelConfig* config);
-ORT_API_STATUS_IMPL(ScanKernelConfig_SetTransposeFunc, _In_ OrtScanKernelConfig* config,
-                    _In_ OrtScanTransposeFunc func, _In_ void* func_state);
-ORT_API_STATUS_IMPL(ScanKernelConfig_SetZeroDataFunc, _In_ OrtScanKernelConfig* config,
-                    _In_ OrtScanZeroDataFunc func, _In_ void* func_state);
-ORT_API_STATUS_IMPL(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info,
-                    _In_ const OrtScanKernelConfig* config, _Outptr_ OrtKernelImpl** kernel_out);
-
-ORT_API_STATUS_IMPL(CreateLoopKernelConfig, _Outptr_ OrtLoopKernelConfig** out);
-ORT_API(void, ReleaseLoopKernelConfig, _Frees_ptr_opt_ OrtLoopKernelConfig* config);
-ORT_API_STATUS_IMPL(LoopKernelConfig_SetConcatOutputFunc, _In_ OrtLoopKernelConfig* config,
-                    _In_ OrtLoopConcatOutputFunc func, _In_ void* func_state);
-ORT_API_STATUS_IMPL(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info,
-                    _In_ const OrtLoopKernelConfig* config, _Outptr_ OrtKernelImpl** kernel_out);
-
 ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out);
+ORT_API_STATUS_IMPL(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info,
+                    _In_ OrtLoopConcatOutputFunc concat_func, _In_opt_ void* concat_func_state,
+                    _Outptr_ OrtKernelImpl** kernel_out);
+ORT_API_STATUS_IMPL(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info,
+                    _In_ OrtScanTransposeFunc transpose_func, _In_opt_ void* transpose_func_state,
+                    _Outptr_ OrtKernelImpl** kernel_out);
 ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl);
 }  // namespace OrtExecutionProviderApi
