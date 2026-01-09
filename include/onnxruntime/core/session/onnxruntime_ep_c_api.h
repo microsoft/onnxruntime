@@ -1612,9 +1612,9 @@ struct OrtEpFactory {
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[out] domains Pre-allocated array of `num_domains` elements by ORT that should be filled with
-                         OrtCustomOpDomain created by the EP.
+                         OrtCustomOpDomain created by the EP. The `num_domains` is the value returned by
+                         GetNumCustomOpDomains(). The implementation is expected to treat `domains` as a buffer.
    * \param[in] num_domains The size of the `domains` array pre-allocated by ORT.
-                            The value is returned by GetNumCustomOpDomains().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
