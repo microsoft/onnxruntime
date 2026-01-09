@@ -1565,7 +1565,7 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
 
-  /** \brief Returns the number of OrtCustomOpDomains that this factory creates.
+  /** \brief Returns the number of OrtCustomOpDomains that this factory provides.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[out] num_domains Output parameter set to the number of created OrtCustomOpDomain instances.
@@ -1581,7 +1581,7 @@ struct OrtEpFactory {
    * This function is used when running inference on a model that contains EP-specific custom operations.
    *
    * Workflow:
-   * 1. The EP implements this function to supply a list of OrtCustomOpDomain instances.
+   * 1. The EP factory implements this function to supply a list of OrtCustomOpDomain instances.
    * 2. The application calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
    *    the plugin EP's factory.
    * 3. SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomain list to the
@@ -1597,7 +1597,7 @@ struct OrtEpFactory {
    *      that the custom node should NOT be fused or compiled. Instead, ORT should invoke
    *      the custom node's Compute() function at runtime.
    *
-   * 2. A "placeholder" OrtCustomOp with an empty kernel implementation
+   *  2. A "placeholder" OrtCustomOp with an empty kernel implementation
    *    - A compile-based Plugin EP can supply an OrtCustomOp whose CustomKernel::Compute()
    *      does nothing. The purpose is to satisfy model validation during model loading by
    *      registering the custom op as a valid operator in the session.
@@ -1606,20 +1606,22 @@ struct OrtEpFactory {
    *    - In Compile(), the EP executes its compiled bits to perform inference for
    *      the fused custom node.
    *
-   * Note: EP has the responsibility to release OrtCustomOpDomain instances it creates. It happens
+   * Note: The OrtCustomOpDomain instances must be valid while any session is using them.
+           EP factory has the responsibility to release OrtCustomOpDomain instances it creates. It happens
    *       automatically if using ORT C++ api.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[out] domains Pre-allocated array of `num_domains` elements by ORT that should be filled with
                          OrtCustomOpDomain created by the EP.
    * \param[in] num_domains The size of the `domains` array pre-allocated by ORT.
+                            The value is returned by GetNumCustomOpDomains().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
   ORT_API2_STATUS(GetCustomOpDomains, _In_ OrtEpFactory* this_ptr,
-                  _Outptr_result_maybenull_ OrtCustomOpDomain** domains, _In_ size_t num_domains);
+                  _Out_writes_all_(num_domains) OrtCustomOpDomain** domains, _In_ size_t num_domains);
 };
 
 #ifdef __cplusplus

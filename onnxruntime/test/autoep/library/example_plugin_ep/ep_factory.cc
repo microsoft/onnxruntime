@@ -71,6 +71,22 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
                                                      OrtDeviceMemoryType_HOST_ACCESSIBLE,
                                                      /*alignment*/ 0,
                                                      OrtAllocatorType::OrtDeviceAllocator};
+  // Custom Op Domains
+  custom_op_domains_[0] = Ort::CustomOpDomain{"test"};
+  custom_op_domains_[1] = Ort::CustomOpDomain{"test2"};
+
+  std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list;
+  created_custom_op_list.push_back(std::make_unique<ExampleEpCustomOp>(ep_name_.c_str(), this));
+  created_custom_op_list.back().get()->SetName("Custom_Mul");
+  custom_op_domains_[0].Add(created_custom_op_list.back().get());
+
+  std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list_2;
+  created_custom_op_list_2.push_back(std::make_unique<ExampleEpCustomOp>(ep_name_.c_str(), this));
+  created_custom_op_list_2.back().get()->SetName("Custom_Mul2");
+  custom_op_domains_[1].Add(created_custom_op_list_2.back().get());
+
+  created_custom_op_lists_[0] = std::move(created_custom_op_list);
+  created_custom_op_lists_[1] = std::move(created_custom_op_list_2);
 }
 
 /*static*/
@@ -328,28 +344,11 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetCustomOpDomainsImpl(
     _Out_ size_t num_domains) noexcept {
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
-  // Custom Op Domains
-  factory->custom_op_domains_[0] = Ort::CustomOpDomain{"test"};
-  factory->custom_op_domains_[1] = Ort::CustomOpDomain{"test2"};
-
-  std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list;
-  created_custom_op_list.push_back(std::make_unique<ExampleEpCustomOp>(factory->ep_name_.c_str(), factory));
-  created_custom_op_list.back().get()->SetName("Custom_Mul");
-  factory->custom_op_domains_[0].Add(created_custom_op_list.back().get());
-
-  std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list_2;
-  created_custom_op_list_2.push_back(std::make_unique<ExampleEpCustomOp>(factory->ep_name_.c_str(), factory));
-  created_custom_op_list_2.back().get()->SetName("Custom_Mul2");
-  factory->custom_op_domains_[1].Add(created_custom_op_list_2.back().get());
-
   // The `num_domains` should be 2 as ORT calls GetNumCustomOpDomainsImpl() to get the number prior to
   // call this function.
   gsl::span<OrtCustomOpDomain*> domains_span(domains, num_domains);
   domains_span[0] = factory->custom_op_domains_[0];
   domains_span[1] = factory->custom_op_domains_[1];
-
-  factory->created_custom_op_lists_[0] = std::move(created_custom_op_list);
-  factory->created_custom_op_lists_[1] = std::move(created_custom_op_list_2);
 
   return nullptr;
 }
