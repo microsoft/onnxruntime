@@ -218,7 +218,7 @@ ONNX_OPERATOR_KERNEL_EX(
     DequantizeLinear);
 
 Status QuantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& x = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& x = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseElementTypeAlias);
 
@@ -305,7 +305,7 @@ Status QuantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (x.NumComponents() == 4) {
       // Vectorized input - quantize 4 values at once
       shader.MainFunctionBody()
-          << "let quantized_f32 = round(x_value / scale_value) + input_value_t(zero_point_value);\n";
+          << "let quantized_f32 = round(x_value / scale_value) + input_value_t(input_element_t(zero_point_value));\n";
 
       if (signed_) {
         shader.MainFunctionBody()
