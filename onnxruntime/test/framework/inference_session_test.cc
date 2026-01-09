@@ -254,9 +254,8 @@ void RunModel(InferenceSession& session_object,
 
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
-    std::vector<int64_t> output_dims = {3, 3};
     for (auto& elem : fetches) {
-      AllocateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], output_dims, &elem);
+      AllocateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, &elem);
     }
   }
 
