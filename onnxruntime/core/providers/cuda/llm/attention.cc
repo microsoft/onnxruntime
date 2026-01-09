@@ -166,11 +166,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // transpose_output is true for 3D inputs, false for 4D inputs
   if (!parameters.transpose_output) {
     contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH;
-    contribop_parameters.output_is_Q_K_V_BNSH = true;
+    contribop_parameters.is_output_bnsh = true;
   } else {
     // 3D inputs in BSNH format (will be transposed)
     contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH;
-    contribop_parameters.output_is_Q_K_V_BNSH = false;
+    contribop_parameters.is_output_bnsh = false;
   }
 
   // TODO(titaiwang, xadupre): Group query attention is not supported yet

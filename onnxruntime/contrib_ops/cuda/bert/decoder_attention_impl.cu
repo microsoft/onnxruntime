@@ -153,12 +153,12 @@ Status DecoderQkvToContext(
         attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
         scratch1, scratch2, is_unidirectional,
         1.0f, mask_dimension, max_sequence_length, false, nullptr,
-        mask_filter_value));
+        mask_filter_value, kv_sequence_length));
   } else {
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(
         stream, kv_sequence_length, sequence_length, batch_size, num_heads,
         attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
-        scratch1, scratch2, is_unidirectional));
+        scratch1, scratch2, is_unidirectional, kv_sequence_length));
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
