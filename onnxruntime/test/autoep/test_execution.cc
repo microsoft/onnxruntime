@@ -352,5 +352,64 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
     ASSERT_NO_FATAL_FAILURE(RunSubMulSubModel(session_options));
   }
 }
+
+TEST(OrtEpLibrary, KernelPluginEp_OffloadPreferredCpuNodes) {
+  RegisteredEpDeviceUniquePtr example_kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info,
+                                                         example_kernel_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
+
+  {
+    Ort::SessionOptions session_options;
+    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Fail if any node assigned to CPU EP.
+
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // The example kernel EP supports all operator types in this model.
+    // However, this model has a subgraph with nodes that should be offloaded to CPU:
+    //          Shape -> [Nodes to offload] -> Reshape
+    // Expect failure because we also disabled CPU EP fallback via session options.
+    try {
+      Ort::Session session(*ort_env, ORT_TSTR("testdata/plugin_kernel_ep_cpu_preferred_nodes.onnx"), session_options);
+      FAIL();  // Should not get here!
+    } catch (const Ort::Exception& excpt) {
+      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("fallback to CPU EP has been explicitly disabled"));
+    }
+  }
+
+  // Allow nodes to fallback to CPU and run inference.
+  // The example kernel EP will offload a subgraph that processes a shape to CPU.
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/plugin_kernel_ep_cpu_preferred_nodes.onnx"), session_options);
+    // Create inputs
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::array<int64_t, 2> a_shape = {3, 2};
+    std::array<float, 6> a_data = {1.f, -2.f, 3.f, 4.f, -5.f, 6.f};
+
+    std::vector<Ort::Value> ort_inputs{};
+    ort_inputs.emplace_back(
+        Ort::Value::CreateTensor<float>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
+
+    std::array ort_input_names{"A"};
+
+    // Run session and get outputs
+    std::array output_names{"B"};
+    std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                      ort_inputs.size(), output_names.data(), output_names.size());
+
+    // Check expected output values
+    Ort::Value& ort_output = ort_outputs[0];
+    const float* output_data = ort_output.GetTensorData<float>();
+    gsl::span<const float> output_span(output_data, 6);
+    EXPECT_THAT(output_span, ::testing::ElementsAre(2.f, -4.f, 6.f, 8.f, -10.f, 12.f));
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime

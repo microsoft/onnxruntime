@@ -9,9 +9,11 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "ep_factory.h"
+#include "get_capability_utils.h"
 #include "../plugin_ep_utils.h"
 
 ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const Config& config, const OrtLogger& logger)
@@ -61,12 +63,19 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetCapabilityImpl(OrtEp* this_ptr, cons
     }
 
     // Collect candidate nodes that this EP may support.
-    std::vector<Ort::ConstNode> candidate_nodes;
+    std::vector<const OrtNode*> candidate_nodes;
 
     for (const auto& node : all_nodes) {
       std::string op_type = node.GetOperatorType();
 
-      if (op_type == "Relu" || op_type == "Squeeze") {
+      const OrtKernelDef* kernel_def = nullptr;
+      RETURN_IF_ERROR(ep->ep_api_.EpGraphSupportInfo_LookUpKernel(graph_support_info, node, &kernel_def));
+
+      if (kernel_def == nullptr) {
+        continue;  // Does not have a registered kernel for this node.
+      }
+
+      if (op_type == "Relu" || op_type == "Squeeze" || op_type == "Shape" || op_type == "Reshape") {
         candidate_nodes.push_back(node);
       } else if (op_type == "Mul" || op_type == "Sub") {
         std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
@@ -87,12 +96,13 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetCapabilityImpl(OrtEp* this_ptr, cons
       }
     }
 
-    // Mark candidate nodes as supported if we have a registered kernel.
-    for (const auto& node : candidate_nodes) {
-      const OrtKernelDef* kernel_def = nullptr;
-      RETURN_IF_ERROR(ep->ep_api_.EpGraphSupportInfo_LookUpKernel(graph_support_info, node, &kernel_def));
+    // Get subset of candidate nodes that would be better to offload to CPU.
+    std::unordered_set<const OrtNode*> cpu_nodes;
+    RETURN_IF_ERROR(GetCpuPreferredNodes(*ort_graph, *graph_support_info, ep->logger_, candidate_nodes, cpu_nodes));
 
-      if (kernel_def != nullptr) {
+    // Mark candidate nodes as supported.
+    for (const auto& node : candidate_nodes) {
+      if (cpu_nodes.count(node) == 0) {
         RETURN_IF_ERROR(ep->ep_api_.EpGraphSupportInfo_AddSingleNode(graph_support_info, node));
       }
     }

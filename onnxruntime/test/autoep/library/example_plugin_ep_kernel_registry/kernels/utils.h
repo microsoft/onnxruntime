@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <vector>
 #include "../../plugin_ep_utils.h"
 
 /// <summary>
@@ -19,8 +20,27 @@ inline const OrtDataType* GetTensorType(ONNXTensorElementDataType elem_type) {
 }
 
 /// <summary>
+/// Gets OrtDataTypes for the given tensor types. Throws on error.
+/// </summary>
+/// <param name="elem_types"></param>
+/// <returns></returns>
+inline std::vector<const OrtDataType*> GetTensorTypes(const std::vector<ONNXTensorElementDataType>& elem_types) {
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+  std::vector<const OrtDataType*> result;
+  result.reserve(elem_types.size());
+
+  for (auto elem_type : elem_types) {
+    const OrtDataType* tensor_data_type = nullptr;
+    Ort::ThrowOnError(ep_api.GetTensorDataType(elem_type, &tensor_data_type));
+    result.push_back(tensor_data_type);
+  }
+
+  return result;
+}
+
+/// <summary>
 /// Copy a tensor using a OrtDataTransferImpl instance. Used by kernel implementations to copy
-/// tensors that my reside on different devices.
+/// tensors that may reside on different devices.
 /// </summary>
 /// <param name="data_transfer_impl"></param>
 /// <param name="src_tensor"></param>
