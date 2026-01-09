@@ -528,6 +528,8 @@ struct OrtKernelImpl {
 
   /** \brief Computation function called to execute the kernel on an EP.
    *
+   * \note Implementation of this function is required.
+   *
    * \param[in] this_ptr The OrtKernelImpl instance.
    * \param[in] context The OrtKernelContext instance that provides access to the inputs and outputs.
    *
@@ -538,6 +540,8 @@ struct OrtKernelImpl {
   ORT_API2_STATUS(Compute, _In_ OrtKernelImpl* this_ptr, _In_ OrtKernelContext* context);
 
   /** \brief Called by ORT to release the OrtKernelImpl instance and its resources.
+   *
+   * \note Implementation of this function is required.
    *
    * \param[in] this_ptr The OrtKernelImpl instance.
    *

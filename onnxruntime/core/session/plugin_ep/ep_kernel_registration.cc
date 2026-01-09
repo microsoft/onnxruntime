@@ -215,7 +215,26 @@ Status PluginEpOpKernel::Create(FuncManager& /*fn_manager*/, const OpKernelInfo&
 
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(
       kernel_create_func(kernel_create_func_state, kernel_info, &op_kernel->kernel_impl_)));
-  ORT_RETURN_IF(op_kernel->kernel_impl_ == nullptr, "OrtKernelCreateFunc returned a NULL OrtKernelImpl");
+
+  const auto& op_type = info.node().OpType();
+  const auto& node_name = info.node().Name();
+  std::string_view ep_name = "(unknown ep)";
+
+  if (const auto* ep = info.GetExecutionProvider(); ep != nullptr) {
+    ep_name = ep->Type();
+  }
+
+  // Do some basic checks for the OrtKernelImpl provided by the EP. Other checks for missing function implementations
+  // that are only required in certain situations (e.g., pre-packing) happen later as soon as we know they are required.
+  ORT_RETURN_IF(op_kernel->kernel_impl_ == nullptr, "OrtKernelCreateFunc returned a NULL OrtKernelImpl for ", op_type,
+                " node named ", node_name, " assigned to ", ep_name);
+  ORT_RETURN_IF(op_kernel->kernel_impl_->flags > OrtKernelImplFlags::kOrtKernelImplFlags_MAX_VALUE,
+                "OrtKernelImpl::flags has been initialized to an unexpected value for ", op_type,
+                " node named ", node_name, " assigned to ", ep_name);
+  ORT_RETURN_IF(op_kernel->kernel_impl_->Compute == nullptr, "OrtKernelImpl is missing an implementation of the ",
+                " Compute() function for ", op_type, " node named ", node_name, " assigned to ", ep_name);
+  ORT_RETURN_IF(op_kernel->kernel_impl_->Release == nullptr, "OrtKernelImpl is missing an implementation of the ",
+                " Release() function for ", op_type, " node named ", node_name, " assigned to ", ep_name);
 
   return Status::OK();
 }

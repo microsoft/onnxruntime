@@ -14,10 +14,16 @@ namespace onnxruntime {
 /// <summary>
 /// Flags that ORT can set on OrtKernelImpl instances.
 /// Note: This enum can be moved to a more central location if/when we add other flags.
+///
+/// IMPORTANT: When adding a new flag, update kOrtKernelImplFlags_MAX_VALUE.
 /// </summary>
 enum OrtKernelImplFlags : uint32_t {
   // Denotes a control flow kernel created by ORT (i.e., a PluginEpControlFlowKernelImpl)
   kIsControlFlowKernelImpl = 1 << 0,
+
+  // The largest flag value. Used to validate that flags are within the expected range.
+  // Must be updated when a new flag is added.
+  kOrtKernelImplFlags_MAX_VALUE = kIsControlFlowKernelImpl
 };
 
 /// <summary>
