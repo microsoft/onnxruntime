@@ -54,7 +54,6 @@ struct AttentionData {
   T* v = nullptr;
   T* scratch = nullptr;
   AttentionQkvFormat qkv_format = AttentionQkvFormat::UNKNOWN;
-  bool is_4d_input = false;
 
   // Flash buffers
   T* softmax_lse = nullptr;

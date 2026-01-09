@@ -748,7 +748,7 @@ Status UnfusedAttention(
             mask_index, nullptr, data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
             data.scratch, scratch2, parameters.is_unidirectional, scale, mask_dimension,
             parameters.max_sequence_length, use_persistent_softmax, persistent_softmax_workspace,
-            parameters.mask_filter_value, parameters.past_sequence_length));
+            parameters.mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index
     assert(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
@@ -756,7 +756,7 @@ Status UnfusedAttention(
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
         stream, total_sequence_length, sequence_length, batch_size, num_heads,
         mask_index, mask_start, data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
-        data.scratch, scratch2, parameters.is_unidirectional, parameters.past_sequence_length));
+        data.scratch, scratch2, parameters.is_unidirectional));
   } else {  // no mask
     if (nullptr != data.output_qk) {
       int64_t qk_size = (int64_t)batch_size * num_heads * sequence_length * total_sequence_length;
@@ -767,14 +767,14 @@ Status UnfusedAttention(
         ComputeSoftmax<T>(
             stream, total_sequence_length, sequence_length, batch_size, num_heads,
             data.attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
-            data.scratch, scratch2, parameters.is_unidirectional, parameters.past_sequence_length));
+            data.scratch, scratch2, parameters.is_unidirectional));
   }
 
   DUMP_TENSOR_D("Softmax", scratch2, batch_size, num_heads, sequence_length, total_sequence_length);
 
   // compute R*V (as V*R), and store in output or temp workspace depending on whether transpose is needed
   // For 4D input (BNSH), write directly to output. For 3D input (BSNH), write to temp then transpose.
-  T* temp_output = data.is_4d_input ? data.output : data.q;
+  T* temp_output = parameters.output_is_Q_K_V_BNSH ? data.output : data.q;
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N,
       v_head_size, sequence_length, total_sequence_length,
@@ -782,7 +782,7 @@ Status UnfusedAttention(
       scratch2, total_sequence_length, sequence_length * total_sequence_length,
       &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
 
-  if (!data.is_4d_input) {
+  if (!parameters.output_is_Q_K_V_BNSH) {
     // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
     ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                        device_prop.maxThreadsPerBlock, false, temp_output, data.output));

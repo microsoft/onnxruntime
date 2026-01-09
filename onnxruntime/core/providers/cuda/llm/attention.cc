@@ -166,11 +166,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // transpose_output is true for 3D inputs, false for 4D inputs
   if (!parameters.transpose_output) {
     contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH;
-    contribop_parameters.is_4d_input = true;
+    contribop_parameters.output_is_Q_K_V_BNSH = true;
   } else {
     // 3D inputs in BSNH format (will be transposed)
     contribop_parameters.qkv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH;
-    contribop_parameters.is_4d_input = false;  // default
+    contribop_parameters.output_is_Q_K_V_BNSH = false;
   }
 
   // TODO(titaiwang, xadupre): Group query attention is not supported yet
@@ -219,7 +219,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
   }
   data.qkv_format = contribop_parameters.qkv_format;
-  data.is_4d_input = contribop_parameters.is_4d_input;
 
   // TODO: Determine which kernel to use (Flash Attention, Memory Efficient Attention, etc.)
   // For now, set flags to false and let QkvToContext use the unfused path

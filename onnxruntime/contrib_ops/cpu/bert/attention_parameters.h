@@ -34,7 +34,7 @@ struct AttentionParameters {
   float mask_filter_value;
   float scale;
   bool use_tf32;
-  bool is_4d_input = false;
+  bool output_is_Q_K_V_BNSH;  // whether the output format is Q_K_V_BNSH
   AttentionMaskType mask_type;
   AttentionQkvFormat qkv_format;
 };
