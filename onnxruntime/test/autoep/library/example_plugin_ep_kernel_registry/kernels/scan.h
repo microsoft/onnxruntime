@@ -7,7 +7,7 @@
 
 class ScanHelper : public OrtScanKernelHelper {
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept;
+  static OrtStatus* CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept;
   ScanHelper(Ort::ConstKernelInfo info, void* state);
 
   // Static functions assigned to the OrtScanKernelHelper fields:

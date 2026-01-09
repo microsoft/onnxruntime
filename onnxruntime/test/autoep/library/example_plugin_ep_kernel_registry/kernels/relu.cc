@@ -29,7 +29,7 @@ Relu::Relu(const OrtKernelInfo* info, void* /*state*/, PrivateTag)
 }
 
 /*static*/
-OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept {
+OrtStatus* Relu::CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
   auto relu_kernel = std::make_unique<Relu>(info, state, PrivateTag{});

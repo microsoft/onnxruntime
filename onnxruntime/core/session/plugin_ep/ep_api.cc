@@ -664,6 +664,11 @@ ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outp
                                  "Must specify a non-null OrtKernelInfo instance to create an If OrtKernelImpl");
   }
 
+  if (kernel_out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter to hold the OrtKernelImpl for If");
+  }
+
   const auto* op_kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(kernel_info);
   auto kernel_unique_ptr = std::make_unique<PluginEpIfKernelImpl>(*op_kernel_info);
 

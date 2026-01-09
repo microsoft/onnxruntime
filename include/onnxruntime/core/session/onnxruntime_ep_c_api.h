@@ -1065,7 +1065,7 @@ struct OrtEpApi {
    *
    * \note Used within OrtKernelImpl implementations to obtain a reference to the OrtEp.
    *
-   * \param[in] info The OrtApi::OrtKernelInfo instance.
+   * \param[in] info The ::OrtKernelInfo instance.
    * \param[out] ep Output parameter set to the OrtEp instance associated with the OrtKernelInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -1079,7 +1079,7 @@ struct OrtEpApi {
    *       This function allows an EP to create a properly configured kernel for an If operator that the EP can then add
    *       to its kernel registry.
    *
-   * \param[in] kernel_info The OrtApi::OrtKernelInfo instance for an If node. This function returns error ORT_FAIL
+   * \param[in] kernel_info The ::OrtKernelInfo instance for an If node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the If node.
    *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
@@ -1096,7 +1096,7 @@ struct OrtEpApi {
    *       This function allows an EP to create a properly configured kernel for a Loop operator that the EP can then
    *       add to its kernel registry.
    *
-   * \param[in] kernel_info The OrtApi::OrtKernelInfo instance for a Loop node. This function returns error ORT_FAIL
+   * \param[in] kernel_info The ::OrtKernelInfo instance for a Loop node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
    * \param[in] helper A OrtLoopKernelHelper instance that contains helper functions that ORT calls during kernel
    *                   execution to operate on tensors allocated with the EP's device memory.
@@ -1117,7 +1117,7 @@ struct OrtEpApi {
    *       This function allows an EP to create a properly configured kernel for a Scan operator that the EP can then
    *       add to its kernel registry.
    *
-   * \param[in] kernel_info The OrtApi::OrtKernelInfo instance for a Scan node. This function returns error ORT_FAIL
+   * \param[in] kernel_info The ::OrtKernelInfo instance for a Scan node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
    * \param[in] helper A OrtScanKernelHelper instance that contains helper functions that ORT calls during kernel
    *                   execution to operate on tensors allocated with the EP's device memory.

@@ -110,7 +110,7 @@ static constexpr const char* kOnnxDomain = "";
                   "OrtKernelCreateFunc received a NULL kernel_out argument");                       \
                                                                                                     \
         *kernel_out = nullptr;                                                                      \
-        RETURN_IF_ERROR(kernel_class::Create(info, state, *kernel_out));                            \
+        RETURN_IF_ERROR(kernel_class::CreateKernelImpl(info, state, *kernel_out));                  \
         return nullptr;                                                                             \
       };                                                                                            \
                                                                                                     \

@@ -42,7 +42,7 @@ BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag)
 }
 
 /*static*/
-OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& result) noexcept {
+OrtStatus* BinaryOp::CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& result) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
 

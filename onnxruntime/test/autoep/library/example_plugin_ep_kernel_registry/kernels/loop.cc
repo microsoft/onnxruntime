@@ -47,8 +47,8 @@ ONNX_OPERATOR_KERNEL_EX(
     LoopHelper)
 
 /*static*/
-OrtStatus* LoopHelper::Create(const OrtKernelInfo* ort_kernel_info, void* state,
-                              /*out*/ OrtKernelImpl*& kernel) noexcept {
+OrtStatus* LoopHelper::CreateKernelImpl(const OrtKernelInfo* ort_kernel_info, void* state,
+                                        /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   const OrtEpApi& ep_api = Ort::GetEpApi();
   Ort::ConstKernelInfo kernel_info(ort_kernel_info);

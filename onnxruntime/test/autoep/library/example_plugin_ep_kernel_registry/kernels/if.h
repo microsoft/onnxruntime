@@ -6,5 +6,5 @@
 #include "../../plugin_ep_utils.h"
 
 struct IfHelper {
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept;
+  static OrtStatus* CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept;
 };

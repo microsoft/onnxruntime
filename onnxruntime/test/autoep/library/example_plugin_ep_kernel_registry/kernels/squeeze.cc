@@ -60,7 +60,7 @@ Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag)
 }
 
 /*static*/
-OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept {
+OrtStatus* Squeeze::CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
   auto squeeze_kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});

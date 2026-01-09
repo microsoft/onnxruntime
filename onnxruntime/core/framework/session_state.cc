@@ -1184,7 +1184,8 @@ Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       const auto& ep_type = node.GetExecutionProviderType();
-      const bool is_plugin_ep = execution_providers_.Get(ep_type)->GetOrtEp() != nullptr;
+      const IExecutionProvider* ep = execution_providers_.Get(ep_type);
+      const bool is_plugin_ep = ep != nullptr && ep->GetOrtEp() != nullptr;
 
       if (!ep_type.empty() &&
           ep_type != kCpuExecutionProvider && ep_type != kCudaExecutionProvider &&

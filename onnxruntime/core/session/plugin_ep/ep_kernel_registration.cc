@@ -163,7 +163,7 @@ class PluginEpOpKernel final : public controlflow::IControlFlowKernel {
       // is not supported for control flow ops.
       const auto& op_type = Info().node().OpType();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtKernelImpl instance for control flow operator ", op_type,
-                             "was not originally created by ORT via an OrtEpApi function.");
+                             " was not originally created by ORT via an OrtEpApi function.");
     }
 
     auto& cf_kernel = static_cast<PluginEpControlFlowKernelImpl&>(*kernel_impl_);

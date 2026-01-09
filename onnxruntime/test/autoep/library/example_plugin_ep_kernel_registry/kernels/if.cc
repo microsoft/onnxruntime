@@ -39,7 +39,8 @@ ONNX_OPERATOR_KERNEL_EX(
     IfHelper)
 
 /*static*/
-OrtStatus* IfHelper::Create(const OrtKernelInfo* info, void* /*state*/, /*out*/ OrtKernelImpl*& kernel) noexcept {
+OrtStatus* IfHelper::CreateKernelImpl(const OrtKernelInfo* info, void* /*state*/,
+                                      /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   RETURN_IF_ERROR(Ort::GetEpApi().CreateIfKernel(info, &kernel));
   return nullptr;

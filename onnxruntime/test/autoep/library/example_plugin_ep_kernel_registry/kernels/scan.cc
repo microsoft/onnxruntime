@@ -40,13 +40,13 @@ ONNX_OPERATOR_KERNEL_EX(
     ScanHelper)
 
 /*static*/
-OrtStatus* ScanHelper::Create(const OrtKernelInfo* ort_kernel_info, void* state,
-                              /*out*/ OrtKernelImpl*& kernel) noexcept {
+OrtStatus* ScanHelper::CreateKernelImpl(const OrtKernelInfo* ort_kernel_info, void* state,
+                                        /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   const OrtEpApi& ep_api = Ort::GetEpApi();
   Ort::ConstKernelInfo kernel_info(ort_kernel_info);
 
-  // Ask ORT to create a OrtKernelImpl for Loop.
+  // Ask ORT to create a OrtKernelImpl for Scan.
   auto scan_helper = std::make_unique<ScanHelper>(kernel_info, state);
   RETURN_IF_ERROR(ep_api.CreateScanKernel(kernel_info, scan_helper.get(), &kernel));
   scan_helper.release();  // ORT owns this instance on successful call to CreateScanKernel.

@@ -68,7 +68,7 @@ class PluginEpLoopKernelImpl final : public PluginEpControlFlowKernelImpl {
 /// OrtKernelImpl class for a Scan kernel (opset >= 9). The OrtKernelImpl function calls are forwarded to an internal
 /// onnxruntime::Scan operator kernel instance.
 ///
-/// An EP can create an instance of this class by calling OrtEpApi::CreateLoopKernel().
+/// An EP can create an instance of this class by calling OrtEpApi::CreateScanKernel().
 /// </summary>
 class PluginEpScanKernelImpl final : public PluginEpControlFlowKernelImpl {
  public:
