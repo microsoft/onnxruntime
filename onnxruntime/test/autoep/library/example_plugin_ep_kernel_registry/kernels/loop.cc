@@ -77,12 +77,13 @@ void ORT_API_CALL LoopHelper::ReleaseImpl(_In_ OrtLoopKernelHelper* this_ptr) no
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL LoopHelper::ConcatOutputImpl(_In_ OrtLoopKernelHelper* this_ptr,
-                                                     _In_opt_ void* /*stream_handle*/,
-                                                     _In_ OrtValue* const* per_iteration_output,
-                                                     _In_ size_t num_iteration_outputs,
-                                                     _Out_writes_bytes_all_(output_size_in_bytes) void* output,
-                                                     _In_ size_t output_size_in_bytes) noexcept {
+OrtStatus* ORT_API_CALL LoopHelper::ConcatOutputImpl(
+    _In_ OrtLoopKernelHelper* this_ptr,
+    _In_opt_ void* /*stream_handle*/,
+    _In_reads_(num_per_iteration_outputs) const OrtValue* const* per_iteration_outputs,
+    _In_ size_t num_per_iteration_outputs,
+    _Out_writes_bytes_all_(output_size_in_bytes) void* output,
+    _In_ size_t output_size_in_bytes) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   // Concatenates loop iteration outputs. Ignores native stream handle argument as this example EP kernel
   // uses CPU memory. Based on the default implementation in CPU EP.
@@ -92,7 +93,7 @@ OrtStatus* ORT_API_CALL LoopHelper::ConcatOutputImpl(_In_ OrtLoopKernelHelper* t
   (void)loop_kernel_helper->info_;                // Unused in this example.
   (void)loop_kernel_helper->data_transfer_impl_;  // Unused in this example.
 
-  Ort::ConstValue first_output{per_iteration_output[0]};
+  Ort::ConstValue first_output{per_iteration_outputs[0]};
   Ort::TensorTypeAndShapeInfo type_shape = first_output.GetTensorTypeAndShapeInfo();
   std::vector<int64_t> per_iteration_shape = type_shape.GetShape();
   size_t bytes_per_iteration = first_output.GetTensorSizeInBytes();
@@ -100,8 +101,8 @@ OrtStatus* ORT_API_CALL LoopHelper::ConcatOutputImpl(_In_ OrtLoopKernelHelper* t
   gsl::span<std::byte> output_span = gsl::make_span<std::byte>(static_cast<std::byte*>(output),
                                                                output_size_in_bytes);
 
-  for (size_t i = 0; i < num_iteration_outputs; i++) {
-    Ort::ConstValue ort_value{per_iteration_output[i]};
+  for (size_t i = 0; i < num_per_iteration_outputs; i++) {
+    Ort::ConstValue ort_value{per_iteration_outputs[i]};
 
     // Sanity check that all OrtValue's have the same amount of data.
     RETURN_IF(bytes_per_iteration != ort_value.GetTensorSizeInBytes(), Ort::GetApi(),

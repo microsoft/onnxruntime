@@ -687,20 +687,22 @@ struct OrtLoopKernelHelper {
    *
    * \param[in] this_ptr The OrtLoopKernelHelper instance.
    * \param[in] stream_handle Optional native stream handle that enables asynchronous operations. May be NULL.
-   * \param[in] per_iteration_output Array of OrtValue instances from each iteration. All OrtValue elements have the
-   *                                 same shape.
-   * \param[in] num_iteration_outputs The number of OrtValue* elements in the `per_iteration_output` array.
+   * \param[in] per_iteration_outputs Array of OrtValue instances from each iteration. All OrtValue elements have the
+   *                                  same shape.
+   * \param[in] num_per_iteration_outputs The number of OrtValue* elements in the `per_iteration_outputs` array.
    * \param[out] output The pre-allocated output buffer. Memory is allocated on the device for the EP running the
    *                    Loop node.
-   * \param[in] output_size_in_bytes The size in bytes of the `output` buffer.
+   * \param[in] output_size_in_bytes The size in bytes of the `output` buffer. It is guaranteed to be large enough
+   *                                 to hold the concatenated data of each element in `per_iteration_outputs`.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
   ORT_API2_STATUS(ConcatOutput, _In_ OrtLoopKernelHelper* this_ptr, _In_opt_ void* stream_handle,
-                  _In_ OrtValue* const* per_iteration_output, _In_ size_t num_iteration_outputs,
-                  _Out_writes_bytes_all_(output_size_in_bytes) void* output, _In_ size_t output_size_in_bytes);
+                  _In_reads_(num_per_iteration_outputs) const OrtValue* const* per_iteration_outputs,
+                  _In_ size_t num_per_iteration_outputs, _Out_writes_bytes_all_(output_size_in_bytes) void* output,
+                  _In_ size_t output_size_in_bytes);
 };
 
 struct OrtScanKernelHelper;

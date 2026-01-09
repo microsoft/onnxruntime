@@ -8,6 +8,7 @@
 
 #include "core/framework/error_code_helper.h"
 #include "core/providers/cpu/controlflow/utils.h"
+#include "core/session/ort_apis.h"
 
 namespace onnxruntime {
 
@@ -36,10 +37,12 @@ PluginEpIfKernelImpl::PluginEpIfKernelImpl(const OpKernelInfo& info) : kernel_(i
 /*static*/
 OrtStatus* ORT_API_CALL PluginEpIfKernelImpl::ComputeImpl(OrtKernelImpl* this_ptr,
                                                           OrtKernelContext* kernel_ctx) noexcept {
-  auto plugin_ep_kernel = static_cast<PluginEpIfKernelImpl*>(this_ptr);
+  API_IMPL_BEGIN
+  auto* plugin_ep_kernel = static_cast<PluginEpIfKernelImpl*>(this_ptr);
   ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.Compute(reinterpret_cast<OpKernelContext*>(kernel_ctx)));
 
   return nullptr;
+  API_IMPL_END
 }
 
 /*static*/
@@ -56,12 +59,12 @@ PluginEpLoopKernelImpl::PluginEpLoopKernelImpl(const OpKernelInfo& info, gsl::no
   Compute = ComputeImpl;
   Release = ReleaseImpl;
 
-  auto concat_output_func = [this](void* stream, std::vector<OrtValue>& per_iteration_output,
+  auto concat_output_func = [this](void* stream, std::vector<OrtValue>& per_iteration_outputs,
                                    void* output, size_t output_size_in_bytes) -> Status {
     std::vector<OrtValue*> value_ptrs;
 
-    value_ptrs.reserve(per_iteration_output.size());
-    std::transform(per_iteration_output.begin(), per_iteration_output.end(), std::back_inserter(value_ptrs),
+    value_ptrs.reserve(per_iteration_outputs.size());
+    std::transform(per_iteration_outputs.begin(), per_iteration_outputs.end(), std::back_inserter(value_ptrs),
                    [](OrtValue& value) -> OrtValue* { return &value; });
 
     return ToStatusAndRelease(helper_->ConcatOutput(helper_, stream, value_ptrs.data(), value_ptrs.size(),
@@ -78,10 +81,12 @@ PluginEpLoopKernelImpl::~PluginEpLoopKernelImpl() {
 /*static*/
 OrtStatus* ORT_API_CALL PluginEpLoopKernelImpl::ComputeImpl(OrtKernelImpl* this_ptr,
                                                             OrtKernelContext* kernel_ctx) noexcept {
-  auto plugin_ep_kernel = static_cast<PluginEpLoopKernelImpl*>(this_ptr);
+  API_IMPL_BEGIN
+  auto* plugin_ep_kernel = static_cast<PluginEpLoopKernelImpl*>(this_ptr);
   ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.Compute(reinterpret_cast<OpKernelContext*>(kernel_ctx)));
 
   return nullptr;
+  API_IMPL_END
 }
 
 /*static*/
@@ -123,10 +128,12 @@ PluginEpScanKernelImpl::~PluginEpScanKernelImpl() {
 /*static*/
 OrtStatus* ORT_API_CALL PluginEpScanKernelImpl::ComputeImpl(OrtKernelImpl* this_ptr,
                                                             OrtKernelContext* kernel_ctx) noexcept {
-  auto plugin_ep_kernel = static_cast<PluginEpScanKernelImpl*>(this_ptr);
+  API_IMPL_BEGIN
+  auto* plugin_ep_kernel = static_cast<PluginEpScanKernelImpl*>(this_ptr);
   ORT_API_RETURN_IF_STATUS_NOT_OK(plugin_ep_kernel->kernel_.Compute(reinterpret_cast<OpKernelContext*>(kernel_ctx)));
 
   return nullptr;
+  API_IMPL_END
 }
 
 /*static*/

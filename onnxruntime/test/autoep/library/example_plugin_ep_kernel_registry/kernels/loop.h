@@ -12,12 +12,13 @@ class LoopHelper : public OrtLoopKernelHelper {
 
   // Static functions assigned to the OrtLoopKernelHelper fields:
   static void ORT_API_CALL ReleaseImpl(_In_ OrtLoopKernelHelper* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL ConcatOutputImpl(_In_ OrtLoopKernelHelper* this_ptr,
-                                                  _In_opt_ void* stream_handle,
-                                                  _In_ OrtValue* const* per_iteration_output,
-                                                  _In_ size_t num_iteration_outputs,
-                                                  _Out_writes_bytes_all_(output_size_in_bytes) void* output,
-                                                  _In_ size_t output_size_in_bytes) noexcept;
+  static OrtStatus* ORT_API_CALL ConcatOutputImpl(
+      _In_ OrtLoopKernelHelper* this_ptr,
+      _In_opt_ void* stream_handle,
+      _In_reads_(num_per_iteration_outputs) const OrtValue* const* per_iteration_outputs,
+      _In_ size_t num_per_iteration_outputs,
+      _Out_writes_bytes_all_(output_size_in_bytes) void* output,
+      _In_ size_t output_size_in_bytes) noexcept;
 
  private:
   Ort::ConstKernelInfo info_;
