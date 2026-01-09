@@ -210,6 +210,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 
     for (const auto& node : nodes) {
       auto op_type = node.GetOperatorType();
+      auto domain = node.GetDomain();
 
       if (op_type == "Mul") {
         // Check that Mul has inputs/output of type float
@@ -242,7 +243,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 
         supported_nodes.push_back(node);  // Only support a single Mul for now.
         break;
-      } else if (op_type == "Custom_Mul") {
+      } else if (op_type == "Custom_Mul" && domain == "test") {
         supported_nodes.push_back(node);
       }
     }
