@@ -162,6 +162,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> k_buffer;
   IAllocatorUniquePtr<void> v_buffer;
   IAllocatorUniquePtr<void> rotary_buffer;
+  IAllocatorUniquePtr<void> position_ids_buffer;
   IAllocatorUniquePtr<void> fmha_buffer;
   IAllocatorUniquePtr<void> unpacked_qkv_buffer;
   IAllocatorUniquePtr<int> seq_lens_buffer;
@@ -249,24 +250,18 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
         !disable_memory_efficient_attention_ &&
         has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
 
+    // KV buffer for head expansion (when num_heads != kv_num_heads)
     size_t kv_buffer_bytes = (use_memory_efficient_attention && (parameters.num_heads != parameters.kv_num_heads))
                                  ? (sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.seqlen_present_kv_cache * parameters.head_size)
                                  : 0;
-    size_t rotary_buffer_bytes = use_memory_efficient_attention && do_rotary_
-                                     ? (sizeof(T) * 2 * parameters.batch_size * parameters.num_heads * parameters.sequence_length * parameters.head_size +
-                                        sizeof(int64_t) * parameters.batch_size * parameters.sequence_length)
-                                     : 0;
+    // FMHA workspace
     size_t fmha_buffer_bytes = (use_memory_efficient_attention && MemoryEfficientAttentionParams::need_workspace(parameters.head_size, sizeof(T) == sizeof(float)))
                                    ? (sizeof(float) * parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size)
                                    : 0;
-    size_t unpacked_qkv_bytes = use_memory_efficient_attention && parameters.is_packed_qkv
-                                    ? (sizeof(T) * parameters.batch_size * parameters.sequence_length * (parameters.num_heads + 2 * parameters.kv_num_heads) * parameters.head_size)
-                                    : 0;
+
     k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
     v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
-    rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
     fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, context->GetComputeStream());
-    unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
 #else
     constexpr bool use_memory_efficient_attention = false;
 #endif
@@ -277,23 +272,35 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
     data.v = reinterpret_cast<CudaT*>(v_buffer.get());
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
-
     data.disable_fused_kv = disable_fused_kv_;
+  }
+
+  // Centralized scratch buffer allocation using GQABufferRequirements
+  // This ensures allocation logic stays in sync with kernel usage
+  auto buffer_req = GQABufferRequirements::Compute<T>(
+      parameters,
+      use_flash_attention,
+      data.use_flash_attention_fast_decode,
+      data.use_memory_efficient_attention);
+
+  if (buffer_req.unpacked_qkv_bytes > 0) {
+    unpacked_qkv_buffer = GetScratchBuffer<void>(buffer_req.unpacked_qkv_bytes, context->GetComputeStream());
+    data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+  }
+  if (buffer_req.rotary_buffer_bytes > 0) {
+    rotary_buffer = GetScratchBuffer<void>(buffer_req.rotary_buffer_bytes, context->GetComputeStream());
     data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
   }
-
-  if (!data.use_flash_attention_fast_decode) {
-    size_t per_head_bytes = sizeof(T) * parameters.batch_size * parameters.sequence_length * parameters.head_size;
-    size_t unpacked_qkv_bytes = per_head_bytes * (parameters.num_heads + 2 * parameters.kv_num_heads);
-    unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, context->GetComputeStream());
-    data.unpacked_qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
-
-    if (use_flash_attention && parameters.do_rotary) {
-      size_t rotary_buffer_bytes = sizeof(T) * parameters.batch_size * parameters.num_heads * parameters.sequence_length * parameters.head_size * 2;
-      rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, context->GetComputeStream());
-      data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
-    }
+  if (buffer_req.position_ids_bytes > 0) {
+    position_ids_buffer = GetScratchBuffer<void>(buffer_req.position_ids_bytes, context->GetComputeStream());
+    data.position_ids_buffer = reinterpret_cast<int64_t*>(position_ids_buffer.get());
   }
+#ifndef NDEBUG
+  // Track allocated sizes for validation
+  data.unpacked_qkv_buffer_size = buffer_req.unpacked_qkv_bytes;
+  data.rotary_buffer_size = buffer_req.rotary_buffer_bytes;
+  data.position_ids_buffer_size = buffer_req.position_ids_bytes;
+#endif
 
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
@@ -327,8 +334,23 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
-  return QkvToContext<CudaT>(
-      device_prop, cublas, context->GetComputeStream(), parameters, data);
+  ORT_RETURN_IF_ERROR(QkvToContext<CudaT>(
+      device_prop, cublas, context->GetComputeStream(), parameters, data));
+
+#ifndef NDEBUG
+  // Validate buffer usage matches allocation exactly
+  ORT_ENFORCE(data.unpacked_qkv_max_used == data.unpacked_qkv_buffer_size,
+              "unpacked_qkv_buffer: used ", data.unpacked_qkv_max_used,
+              " bytes but allocated ", data.unpacked_qkv_buffer_size);
+  ORT_ENFORCE(data.rotary_max_used == data.rotary_buffer_size,
+              "rotary_buffer: used ", data.rotary_max_used,
+              " bytes but allocated ", data.rotary_buffer_size);
+  ORT_ENFORCE(data.position_ids_max_used == data.position_ids_buffer_size,
+              "position_ids_buffer: used ", data.position_ids_max_used,
+              " bytes but allocated ", data.position_ids_buffer_size);
+#endif
+
+  return Status::OK();
 }
 
 }  // namespace cuda

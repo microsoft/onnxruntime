@@ -865,6 +865,10 @@ Status FlashAttention(
         use_packed_for_fa = false;
         used_fused_packed_path = true;
 
+        // Track buffer usage: Only Q is stored in unpacked_qkv_buffer (fused path writes K/V to cache)
+        size_t q_bytes = static_cast<size_t>(batch_size) * sequence_length * num_heads * head_size * sizeof(T);
+        UpdateUnpackedQkvMaxUsed(data, q_bytes);
+
         // K and V are already in cache - no need to set key/value pointers
 
       } else {
@@ -889,6 +893,10 @@ Status FlashAttention(
           query = unpacked_q;
           use_packed_for_fa = false;
         }
+
+        // Track buffer usage: Q+K+V unpacked
+        size_t total_bytes = (q_size + 2 * k_size) * sizeof(T);
+        UpdateUnpackedQkvMaxUsed(data, total_bytes);
       }
     }
   }
@@ -998,6 +1006,11 @@ Status FlashAttention(
           ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(
               parameters, data, k_dst, value, is_new_kv_bnsh_format, stream, max_threads_per_block));
         }
+
+        // Track buffer usage: Q + K rotated in unpacked_qkv_buffer
+        size_t k_elements = static_cast<size_t>(batch_size) * sequence_length * kv_num_heads * head_size;
+        size_t total_bytes = (q_elements + k_elements) * sizeof(T);
+        UpdateUnpackedQkvMaxUsed(data, total_bytes);
       } else {
         // No RoPE - use original kernel
         ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(parameters, data, key, value, is_new_kv_bnsh_format, stream, max_threads_per_block));
@@ -1103,6 +1116,10 @@ Status EfficientAttention(
     query = reinterpret_cast<const void*>(q);
     key = reinterpret_cast<const void*>(k);
     value = reinterpret_cast<const void*>(v);
+
+    // Track buffer usage: Q+K+V unpacked
+    size_t total_bytes = (q_size + 2 * k_size) * sizeof(T);
+    UpdateUnpackedQkvMaxUsed(data, total_bytes);
   }
 
   const int64_t* position_ids = data.position_ids;
@@ -1143,6 +1160,16 @@ Status EfficientAttention(
     // No explicit K rotation needed here - handled by fused kernels.
 
     // key remains pointing to original source for use in fused kernel below
+
+    // Track rotary buffer usage: Q rotated (K rotation is fused in KV append)
+    size_t q_bytes = static_cast<size_t>(batch_size) * sequence_length * num_heads * head_size * sizeof(T);
+    size_t k_bytes = static_cast<size_t>(batch_size) * sequence_length * kv_num_heads * head_size * sizeof(T);
+    // Note: rotary_buffer layout is [Q_rotated, K_rotated] - no position_ids here
+    UpdateRotaryMaxUsed(data, q_bytes + k_bytes);
+
+    // Track position_ids_buffer usage
+    size_t pos_ids_bytes = static_cast<size_t>(batch_size) * sequence_length * sizeof(int64_t);
+    UpdatePositionIdsMaxUsed(data, pos_ids_bytes);
   }
 
   if (parameters.kv_share_buffer) {
@@ -1197,6 +1224,10 @@ Status EfficientAttention(
         ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(
             parameters, data, k_dst, value, is_new_kv_bnsh_format, stream, max_threads_per_block));
       }
+
+      // Track rotary buffer usage: Q + K rotated (no position_ids in rotary_buffer)
+      size_t k_elements = static_cast<size_t>(batch_size) * sequence_length * kv_num_heads * head_size;
+      UpdateRotaryMaxUsed(data, (q_elements + k_elements) * sizeof(T));
     } else {
       // No RoPE - use original kernel
       ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(
