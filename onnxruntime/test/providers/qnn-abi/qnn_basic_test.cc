@@ -1397,7 +1397,8 @@ TEST_F(QnnABIHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
   }
 }
 
-#if !BUILD_QNN_EP_STATIC_LIB
+// TODO: Test will be re-enabled for Linux once QNN API issue is resolved
+#if !BUILD_QNN_EP_STATIC_LIB && !defined(__linux__)
 // Tests that loading and unloading of an EP library in the same process does not cause a segfault.
 TEST_F(QnnABIHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
@@ -1423,7 +1424,7 @@ TEST_F(QnnABIHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
     EXPECT_NO_THROW(Ort::Session session(*ort_env, ort_model_path, so));
   }
 }
-#endif  // !BUILD_QNN_EP_STATIC_LIB
+#endif  // !BUILD_QNN_EP_STATIC_LIB && !defined(__linux__)
 
 #if defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 // Tests autoEP feature to automatically select an EP that supports the NPU.

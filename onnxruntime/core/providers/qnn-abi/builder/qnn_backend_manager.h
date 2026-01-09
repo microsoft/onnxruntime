@@ -16,6 +16,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -182,6 +183,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Ort::Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
                                  uint32_t rpc_control_latency,
                                  uint32_t rpc_polling_time);
+
+  Ort::Status SetPerThreadHtpPowerConfigs(const std::thread::id& thread_id, bool pre_run);
+
+  Ort::Status AddPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                                const PerThreadHtpPowerConfigs_t& htp_power_configs);
+
+  void RemovePerThreadHtpPowerConfigMapping(const std::thread::id& thread_id);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
@@ -350,6 +358,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
   Ort::Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
+  bool GetPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                         PerThreadHtpPowerConfigs_t& htp_power_configs);
+
  private:
   // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
   static_assert(std::is_pointer_v<Qnn_ContextHandle_t>);
@@ -493,6 +504,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
   const std::vector<OpPackage> op_packages_;
   bool skip_qnn_version_check_ = false;
+
+  // Mapping of thread id to on-run-start/end power configs
+  std::mutex per_thread_power_configs_mutex_;
+  std::unordered_map<std::thread::id, PerThreadHtpPowerConfigs_t> per_thread_power_configs_;
 
   const ApiPtrs api_ptrs_;
   const Ort::Logger& logger_;
