@@ -254,9 +254,9 @@ void RunModel(InferenceSession& session_object,
 
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
+    std::vector<int64_t> output_dims = {3, 3};
     for (auto& elem : fetches) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, values_mul_x,
-                           &elem);
+      AllocateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], output_dims, &elem);
     }
   }
 
@@ -3071,7 +3071,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
 TEST(InferenceSessionTests, BadDataTypeInInitializerIsHandled) {
   // model has an initializer with a bogus data type. Graph ctor should detect and throw.
-  auto model_uri = ORT_TSTR("testdata/msrc-31000000518082.onnx");
+  auto model_uri = ORT_TSTR("testdata/icm-31000000518082.onnx");
 
   SessionOptions so;
   so.session_logid = "TempTest.LoadModel";
@@ -3082,7 +3082,7 @@ TEST(InferenceSessionTests, BadDataTypeInInitializerIsHandled) {
 TEST(InferenceSessionTests, GraphResolveHandlesNodeWithSubgraphBeingRemoved) {
   // model has a subgraph with output that is not consumed. the node with the subgraph should get removed in
   // Graph::BuildConnections and Graph::Resolve should adjust its list of subgraphs to not access the removed subgraph.
-  auto model_uri = ORT_TSTR("testdata/msrc-31000000518483.onnx");
+  auto model_uri = ORT_TSTR("testdata/icm-31000000518483.onnx");
 
   SessionOptions so;
   so.session_logid = "TempTest.LoadModel";
