@@ -84,7 +84,6 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                         _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
                                                         _Out_ size_t num_domains) noexcept;
 
-  const OrtLogger& default_logger_;        // default logger for the EP factory
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
