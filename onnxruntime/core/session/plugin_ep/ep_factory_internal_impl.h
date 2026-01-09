@@ -95,7 +95,7 @@ class EpFactoryInternalImpl {
     *importer = nullptr;
     return nullptr;
   }
-  
+
   virtual OrtStatus* GetNumCustomOpDomains(_Out_ size_t* num_domains) const noexcept {
     *num_domains = 0;
     return nullptr;

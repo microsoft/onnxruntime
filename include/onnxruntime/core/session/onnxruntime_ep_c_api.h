@@ -1798,7 +1798,7 @@ struct OrtEpFactory {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
-  
+
   /** \brief Create an OrtExternalResourceImporterImpl for external resource import.
    *
    * This is used to create an external resource importer that enables zero-copy import of

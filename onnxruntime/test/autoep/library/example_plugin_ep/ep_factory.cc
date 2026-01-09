@@ -38,10 +38,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
   CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
-        
+
   GetNumCustomOpDomains = GetNumCustomOpDomainsImpl;
   GetCustomOpDomains = GetCustomOpDomainsImpl;
-
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
