@@ -88,6 +88,14 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
+  virtual OrtStatus* CreateExternalResourceImporterForDevice(
+      _In_ const OrtEpDevice* /*ep_device*/,
+      _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
+    // Default implementation does not support external resource import
+    *importer = nullptr;
+    return nullptr;
+  }
+  
   virtual OrtStatus* GetNumCustomOpDomains(_Out_ size_t* num_domains) const noexcept {
     *num_domains = 0;
     return nullptr;

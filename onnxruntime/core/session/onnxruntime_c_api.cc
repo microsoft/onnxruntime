@@ -38,6 +38,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
+#include "core/session/interop_api.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/inference_session.h"
@@ -3372,6 +3373,34 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForOutputs, _In_ const OrtSession* ort_session,
+                    _Out_writes_(num_values) const OrtEpDevice** outputs_ep_devices,
+                    _In_ size_t num_values) {
+  API_IMPL_BEGIN
+  if (ort_session == nullptr || outputs_ep_devices == nullptr || num_values == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to SessionGetEpDeviceForOutputs.");
+  }
+
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
+
+  InlinedVector<const OrtEpDevice*> ep_devices;
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->GetEpDeviceForOutputs(ep_devices));
+
+  auto num_found = ep_devices.size();
+  if (num_found > num_values) {
+    auto msg = MakeString("Number of outputs ", num_found, " exceeds the provided size of ", num_values);
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
+  }
+
+  for (size_t i = 0; i < num_values; ++i) {
+    outputs_ep_devices[i] = (i < num_found) ? ep_devices[i] : nullptr;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _In_opt_ const OrtKeyValuePairs* stream_options,
                     _Outptr_ OrtSyncStream** ort_stream) {
@@ -3536,6 +3565,11 @@ ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
   API_IMPL_END
 }
 
+// GetInteropApi - returns the Interop API struct
+ORT_API(const OrtInteropApi*, OrtApis::GetInteropApi) {
+  return OrtInteropAPI::GetInteropApi();
+}
+
 #else  // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
@@ -3618,6 +3652,19 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
                     _In_ size_t /*num_tensors*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CopyTensors is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(const OrtInteropApi*, OrtApis::GetInteropApi) {
+  fprintf(stderr, "The Interop API is not supported in a minimal build.\n");
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForOutputs, _In_ const OrtSession* /*ort_session*/,
+                    _Out_writes_(num_values) const OrtEpDevice** /*outputs_ep_devices*/,
+                    _In_ size_t /*num_values*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionGetEpDeviceForOutputs is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4241,6 +4288,9 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::KernelInfo_GetOperatorDomain,
     &OrtApis::KernelInfo_GetOperatorType,
     &OrtApis::KernelInfo_GetOperatorSinceVersion,
+
+    &OrtApis::GetInteropApi,
+    &OrtApis::SessionGetEpDeviceForOutputs,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
