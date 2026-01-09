@@ -1280,36 +1280,32 @@ TEST(AttentionTest, AttentionNoPastKeyValue) {
   int past_sequence_length = 0;  // No past state
 
   std::vector<float> q = {
-      0.548814f, 0.715189f, 0.602763f,  // batch 0, head 0, token 0
-      0.423655f, 0.645894f, 0.437587f,  // batch 0, head 0, token 1
-      0.963663f, 0.383442f, 0.791725f,  // batch 0, head 1, token 0
-      0.568045f, 0.925597f, 0.071036f   // batch 0, head 1, token 1
-  };
+      0.548814f, 0.715189f, 0.602763f,
+      0.423655f, 0.645894f, 0.437587f,
+      0.963663f, 0.383442f, 0.791725f,
+      0.568045f, 0.925597f, 0.071036f};
 
   std::vector<float> k = {
-      0.186193f, 0.944372f, 0.739551f,  // batch 0, head 0, token 0
-      0.227415f, 0.254356f, 0.058029f,  // batch 0, head 0, token 1
-      0.311796f, 0.696343f, 0.377752f,  // batch 0, head 1, token 0
-      0.024679f, 0.067250f, 0.679393f   // batch 0, head 1, token 1
-  };
+      0.186193f, 0.944372f, 0.739551f,
+      0.227415f, 0.254356f, 0.058029f,
+      0.311796f, 0.696343f, 0.377752f,
+      0.024679f, 0.067250f, 0.679393f};
 
   std::vector<float> v = {
-      0.070870f, 0.292794f, 0.152355f,  // batch 0, head 0, token 0
-      0.131289f, 0.604118f, 0.382808f,  // batch 0, head 0, token 1
-      0.967795f, 0.546885f, 0.274824f,  // batch 0, head 1, token 0
-      0.896761f, 0.406733f, 0.552078f   // batch 0, head 1, token 1
-  };
+      0.070870f, 0.292794f, 0.152355f,
+      0.131289f, 0.604118f, 0.382808f,
+      0.967795f, 0.546885f, 0.274824f,
+      0.896761f, 0.406733f, 0.552078f};
 
   ASSERT_EQ(q.size(), batch_size * q_num_heads * q_sequence_length * head_size);
   ASSERT_EQ(k.size(), batch_size * kv_num_heads * kv_sequence_length * head_size);
   ASSERT_EQ(v.size(), batch_size * kv_num_heads * kv_sequence_length * v_head_size);
 
   std::vector<float> expected_y = {
-      0.477184f, 0.407899f, 0.207834f,  // batch 0, head 0, token 0
-      0.521223f, 0.503569f, 0.469034f,  // batch 0, head 0, token 1
-      0.485670f, 0.410303f, 0.208993f,  // batch 0, head 1, token 0
-      0.487087f, 0.512371f, 0.461486f   // batch 0, head 1, token 1
-  };
+      0.477184f, 0.407899f, 0.207834f,
+      0.521223f, 0.503569f, 0.469034f,
+      0.485670f, 0.410303f, 0.208993f,
+      0.487087f, 0.512371f, 0.461486f};
 
   // Test with no past_key or past_value (empty vectors)
   // The empty vectors will cause AddOptionalInputEdge to be called, resulting in nullptr tensors
@@ -1334,36 +1330,44 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
   int past_sequence_length = 0;  // No past state
 
   std::vector<float> q = {
-      0.5f, 0.8f,  // batch 0, head 0, token 0
-      0.3f, 0.9f,  // batch 0, head 0, token 1
-      0.7f, 0.4f,  // batch 0, head 1, token 0
-      0.6f, 0.2f   // batch 0, head 1, token 1
-  };
+      0.5f, 0.8f,
+      0.3f, 0.9f,
+      0.7f, 0.4f,
+      0.6f, 0.2f};
 
   std::vector<float> k = {
-      0.1f, 0.7f,  // batch 0, head 0, token 0
-      0.4f, 0.6f,  // batch 0, head 0, token 1
-      0.8f, 0.3f,  // batch 0, head 1, token 0
-      0.2f, 0.9f   // batch 0, head 1, token 1
-  };
+      0.1f, 0.7f,
+      0.4f, 0.6f,
+      0.8f, 0.3f,
+      0.2f, 0.9f};
 
   std::vector<float> v = {
-      1.0f, 2.0f,  // batch 0, head 0, token 0
-      3.0f, 4.0f,  // batch 0, head 0, token 1
-      0.5f, 1.5f,  // batch 0, head 1, token 0
-      2.5f, 3.5f   // batch 0, head 1, token 1
-  };
+      1.0f, 2.0f,
+      3.0f, 4.0f,
+      0.5f, 1.5f,
+      2.5f, 3.5f};
+
+  std::vector<float> k_expected = {
+      0.1f, 0.7f,
+      0.8f, 0.3f,
+      0.4f, 0.6f,
+      0.2f, 0.9f};
+
+  std::vector<float> v_expected = {
+      1.0f, 2.0f,
+      0.5f, 1.5f,
+      3.0f, 4.0f,
+      2.5f, 3.5f};
 
   ASSERT_EQ(q.size(), batch_size * q_num_heads * q_sequence_length * head_size);
   ASSERT_EQ(k.size(), batch_size * kv_num_heads * kv_sequence_length * head_size);
   ASSERT_EQ(v.size(), batch_size * kv_num_heads * kv_sequence_length * v_head_size);
 
   std::vector<float> expected_y = {
-      0.747348f, 1.747348f,  // batch 0, head 0, token 0
-      2.731472f, 3.731472f,  // batch 0, head 0, token 1
-      0.720963f, 1.720963f,  // batch 0, head 1, token 0
-      2.755302f, 3.755302f   // batch 0, head 1, token 1
-  };
+      0.747348f, 1.747348f,
+      2.731472f, 3.731472f,
+      0.720963f, 1.720963f,
+      2.755302f, 3.755302f};
 
   // Expected present_key should be same as K since no past_key
   std::vector<float> expected_present_key = k;
