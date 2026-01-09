@@ -101,8 +101,10 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
-  virtual OrtStatus* GetCustomOpDomains(_Outptr_result_maybenull_ OrtCustomOpDomain** /*domains*/,
-                                        _In_ size_t /*num_domains*/) const noexcept {
+  virtual OrtStatus* GetCustomOpDomains(_Out_writes_all_(num_domains) OrtCustomOpDomain** domains,
+                                        _In_ size_t num_domains) const noexcept {
+    ORT_UNUSED_PARAMETER(domains);
+    ORT_UNUSED_PARAMETER(num_domains);
     return nullptr;
   }
 
