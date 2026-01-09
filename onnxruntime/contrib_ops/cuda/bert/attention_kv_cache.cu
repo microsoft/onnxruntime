@@ -161,9 +161,6 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                                                    tensor_out);
     }
   }
-#ifndef NDEBUG
-  CUDA_CALL(cudaStreamSynchronize(stream));
-#endif
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -224,9 +221,6 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                                                   tensor_out);
     }
   }
-#ifndef NDEBUG
-  CUDA_CALL(cudaStreamSynchronize(stream));
-#endif
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -298,9 +292,6 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
     }
   }
 
-#ifndef NDEBUG
-  CUDA_CALL(cudaStreamSynchronize(stream));
-#endif
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -686,9 +677,6 @@ Status LaunchConcatNewToPastKV(const int batch_size,
                                                                        reinterpret_cast<const float2*>(sin_cache),
                                                                        rotary_dim, position_ids, interleaved);
   }
-#ifndef NDEBUG
-  CUDA_CALL(cudaStreamSynchronize(stream));
-#endif
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -920,9 +908,6 @@ Status LaunchConcatKVInPlace(int batch_size,
                                                              is_past_kv_bnsh_format,
                                                              is_new_kv_bnsh_format);
   }
-#ifndef NDEBUG
-  CUDA_CALL(cudaStreamSynchronize(stream));
-#endif
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1140,9 +1125,6 @@ Status LaunchConcatKVInPlaceFused(int batch_size,
         is_past_kv_bnsh_format,
         is_new_kv_bnsh_format);
   }
-#ifndef NDEBUG
-  CUDA_CALL(cudaStreamSynchronize(stream));
-#endif
   return CUDA_CALL(cudaGetLastError());
 }
 

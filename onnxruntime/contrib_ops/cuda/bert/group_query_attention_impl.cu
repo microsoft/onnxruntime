@@ -569,7 +569,6 @@ Status LaunchUnpackQKVWithRoPEAndAppendKV(
     const int batch_size,
     const int max_seqlen,
     const int* past_seq_lens,
-    const int* total_seq_lens,
     const T* cos_cache,
     const T* sin_cache,
     const int rotary_dim,
@@ -589,6 +588,24 @@ Status LaunchUnpackQKVWithRoPEAndAppendKV(
     // Typically GQA enforces head_size % 8 == 0.
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Head size must be divisible by ", elements_per_vector, " for vectorized GQA kernel.");
   }
+
+  // Validate grid dimensions - CUDA limits gridDim.y to 65535
+  if (sequence_length > 65535) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Sequence length ", sequence_length,
+                           " exceeds CUDA grid dimension limit (65535) for fused UnpackQKV kernel.");
+  }
+
+#ifndef NDEBUG
+  // Debug-mode alignment assertions for vectorized memory access
+  assert(reinterpret_cast<uintptr_t>(packed_qkv) % 16 == 0 && "packed_qkv must be 16-byte aligned");
+  assert(reinterpret_cast<uintptr_t>(unpacked_q) % 16 == 0 && "unpacked_q must be 16-byte aligned");
+  assert(reinterpret_cast<uintptr_t>(k_cache) % 16 == 0 && "k_cache must be 16-byte aligned");
+  assert(reinterpret_cast<uintptr_t>(v_cache) % 16 == 0 && "v_cache must be 16-byte aligned");
+  if (cos_cache != nullptr) {
+    assert(reinterpret_cast<uintptr_t>(cos_cache) % 16 == 0 && "cos_cache must be 16-byte aligned");
+    assert(reinterpret_cast<uintptr_t>(sin_cache) % 16 == 0 && "sin_cache must be 16-byte aligned");
+  }
+#endif
 
   // QKV hidden dimension stride
   const int d = (num_heads + 2 * kv_num_heads) * head_size;
@@ -627,13 +644,13 @@ Status LaunchUnpackQKVWithRoPEAndAppendKV(
 // Explicit template instantiations
 template Status LaunchUnpackQKVWithRoPEAndAppendKV<half>(
     const half*, half*, half*, half*,
-    int, int, int, int, int, int, const int*, const int*,
+    int, int, int, int, int, int, const int*,
     const half*, const half*, int, const int64_t*, bool, bool,
     cudaStream_t, int);
 
 template Status LaunchUnpackQKVWithRoPEAndAppendKV<BFloat16>(
     const BFloat16*, BFloat16*, BFloat16*, BFloat16*,
-    int, int, int, int, int, int, const int*, const int*,
+    int, int, int, int, int, int, const int*,
     const BFloat16*, const BFloat16*, int, const int64_t*, bool, bool,
     cudaStream_t, int);
 
@@ -834,7 +851,6 @@ Status FlashAttention(
             batch_size,
             parameters.seqlen_present_kv_cache,
             data.past_seq_lens,
-            data.total_seq_lens,
             data.cos_cache,
             data.sin_cache,
             parameters.rotary_dim,
