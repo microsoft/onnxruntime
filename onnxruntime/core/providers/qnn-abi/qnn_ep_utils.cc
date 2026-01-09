@@ -648,6 +648,42 @@ bool OrtUnaryNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_a
   return true;
 }
 
+bool OrtClipNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
+                                     const OrtNode* redundant_clip_node,
+                                     const std::vector<const OrtNode*>& dq_nodes,
+                                     const std::vector<const OrtNode*>& q_nodes) const {
+  // Clip can have 1, 2, or 3 DQ inputs:
+  // - 1 DQ: only data input is quantized
+  // - 2 DQ: data and min or max are quantized
+  // - 3 DQ: data, min, and max are all quantized
+  const size_t num_dq_nodes = dq_nodes.size();
+  if (num_dq_nodes < 1 || num_dq_nodes > 3) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, static_cast<int>(num_dq_nodes))) {
+    return false;
+  }
+
+  int32_t dt_input = GetNodeIODataType(dq_nodes[0], ort_api, true, 0);
+  int32_t dt_output = GetNodeIODataType(q_nodes[0], ort_api, false, 0);
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
+
+  if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
+
+  return true;
+}
+
 // Implementation of Check() for OrtBinaryNodeGroupSelector
 bool OrtBinaryNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
                                        const OrtNode* redundant_clip_node,
@@ -1768,9 +1804,13 @@ void OrtSelectorManager::CreateSelectors() {
       {"Neg", {}},
       {"DepthToSpace", {}},
       {"SpaceToDepth", {}},
-      {"Clip", {}},
       {"LpNormalization", {}}};
   ort_selectors_.RegisterSelector(unary_ops, std::make_unique<OrtUnaryNodeGroupSelector>());
+
+  // Register clip ops
+  OrtOpVersionsAndSelector::OpVersionsMap clip_ops = {
+      {"Clip", {}}};
+  ort_selectors_.RegisterSelector(clip_ops, std::make_unique<OrtClipNodeGroupSelector>());
 
   // Register binary ops
   OrtOpVersionsAndSelector::OpVersionsMap binary_ops = {

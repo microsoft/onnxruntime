@@ -123,6 +123,21 @@ class OrtUnaryNodeGroupSelector : public OrtNodeGroupSelector {
   bool allow_4bit_;
 };
 
+class OrtClipNodeGroupSelector : public OrtNodeGroupSelector {
+ public:
+  explicit OrtClipNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
 // Selector for binary operations
 class OrtBinaryNodeGroupSelector : public OrtNodeGroupSelector {
  public:
