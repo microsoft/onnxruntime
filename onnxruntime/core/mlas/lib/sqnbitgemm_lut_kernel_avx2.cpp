@@ -646,9 +646,7 @@ TMACComputeGemm_avx2(
             );
         } else {
             // No matching kernel template found
-            // ORT_THROW("No matching kernel: has_scale=%d, kfactor=%d, bits=%d, actk=%d, has_zero_point=%d, one_scale=%d\n",
-            //         has_scale, kfactor, bits, actk, has_zero_point, one_scale);
-            ORT_THROW("Reached else case");
+            MLAS_THROW_EX(std::runtime_error, "No matching kernel found for T-MAC GEMM");
         }
     }
 

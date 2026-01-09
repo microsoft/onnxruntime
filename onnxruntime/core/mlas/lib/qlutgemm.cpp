@@ -37,7 +37,7 @@ MlasGetLutGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size, 
     if (tmac_kernel_configs.count(key)) {
         return tmac_kernel_configs[key];
     }
-    ORT_THROW("T-MAC kernel parameters not initialized for M=", M, ", N=", N, ", nbits=", nbits, ", block_size=", block_size, ", has_zero_point=", has_zero_point);
+    MLAS_THROW_EX(std::runtime_error, "T-MAC kernel parameters not initialized");
 }
 
 void MLASCALL
@@ -70,8 +70,7 @@ MlasInitLutGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
         params.act_group_size = 32;
     } else {
         // throw error
-        ORT_THROW("Unsupported activation group size: ", block_size);
-        ;
+        MLAS_THROW_EX(std::runtime_error, "Unsupported activation group size");
     }
     params.actk = params.act_group_size / params.g;
 
@@ -472,7 +471,7 @@ MlasIsLutGemmAvailable(
 size_t
 CalculateLutBufferSize(size_t n, size_t k, size_t m, const MlasTMACKernelParams& tmac_params)
 {
-    ORT_UNUSED_PARAMETER(n);
+    MLAS_UNREFERENCED_PARAMETER(n);
     constexpr size_t kAllockAligment = 64;
     const size_t lut_scales_size = k / tmac_params.act_group_size;
 
