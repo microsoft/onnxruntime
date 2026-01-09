@@ -1,6 +1,4 @@
 #include "performance_runner.h"
-#include "crypto.h"
-#include "encryption_key_manager.h"
 #include "model_utils.h"
 #include "profiling_utils.h"
 
@@ -334,21 +332,6 @@ std::pair<bool, CompilationResult> PerformanceRunner::InitializeSession(
             // Unencrypted model loading
             m_session = Ort::Session(m_env, actualModelPath.c_str(), sess_options);
         }
-#ifndef USE_WINML_FEATURES
-        else
-        {
-            std::vector<unsigned char> model_data; // Encrypted model data
-            auto model_key = EncryptionKeyManager::GetEncryptionKeyFromKeyId(m_model_key);
-            if (model_key == nullptr)
-            {
-                // Key ID is not found, use the key as is
-                model_key = m_model_key.c_str();
-            }
-            LoadEncryptedModelData(wstring_to_string(m_model_path), model_data);
-            Crypto::decrypt(model_key, model_data);
-            m_session = Ort::Session(m_env, model_data.data(), model_data.size(), sess_options);
-        }
-#endif
         auto compilation_end = std::chrono::high_resolution_clock::now();
 
         MemoryUsage memory_usage = GetMemoryUsage();

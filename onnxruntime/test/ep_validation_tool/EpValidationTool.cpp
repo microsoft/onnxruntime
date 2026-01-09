@@ -232,7 +232,7 @@ int wmain(int argc, const wchar_t* argv[])
 
         std::cout << "----- Dataset generation completed successfully." << std::endl;
     }
-    if (config.stage >= ExecutionStage::COMPILATION)
+    if (config.stage >= ExecutionStage::INFERENCE)
     {
         // Memory optimization: Scope-based memory management for NPU processing
         {

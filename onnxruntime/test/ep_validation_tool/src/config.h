@@ -21,7 +21,6 @@
 enum class ExecutionStage
 {
     DATAGEN = -1,
-    COMPILATION = 0,
     INFERENCE = 1,
     ACCURACY = 2
 };
