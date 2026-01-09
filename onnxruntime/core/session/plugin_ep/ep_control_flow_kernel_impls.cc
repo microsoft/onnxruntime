@@ -11,19 +11,17 @@
 
 namespace onnxruntime {
 
-static OrtStatus* ORT_API_CALL GetControlFlowKernelImpl(OrtKernelImpl* this_ptr, OrtKernelImpl** out) noexcept {
-  // This OrtKernelImpl* IS the underlying control flow OrtKernelImpl instance.
-  *out = this_ptr;
-  return nullptr;
-}
-
 //
 // PluginEpControlFlowKernelImpl
 //
 
 PluginEpControlFlowKernelImpl::PluginEpControlFlowKernelImpl() : OrtKernelImpl{} {
   ort_version_supported = ORT_API_VERSION;
-  GetControlFlowKernel = GetControlFlowKernelImpl;
+
+  // Indicate that this OrtKernelImpl was created by ORT.
+  // Without RTTI, this gives ORT some way to check that static casting a OrtKernelImpl to
+  // PluginEpControlFlowKernelImpl is valid.
+  creator = ORT_KERNEL_IMPL_CREATOR_ORT;
 }
 
 //
@@ -53,30 +51,28 @@ void ORT_API_CALL PluginEpIfKernelImpl::ReleaseImpl(OrtKernelImpl* this_ptr) noe
 // PluginEpLoopKernelImpl
 //
 
-PluginEpLoopKernelImpl::PluginEpLoopKernelImpl(const OpKernelInfo& info, OrtLoopConcatOutputFunc ort_concat_func,
-                                               void* ort_concat_func_state) : kernel_(info) {
+PluginEpLoopKernelImpl::PluginEpLoopKernelImpl(const OpKernelInfo& info, gsl::not_null<OrtLoopKernelHelper*> helper)
+    : kernel_(info), helper_(helper) {
   Compute = ComputeImpl;
   Release = ReleaseImpl;
 
-  // Bundle EP's function + state into a functor.
-  auto concat_output_func =
-      [ep_concat_func = ort_concat_func,
-       ep_concat_func_state = ort_concat_func_state](void* stream,
-                                                     std::vector<OrtValue>& per_iteration_output,
-                                                     void* output,
-                                                     size_t output_size_in_bytes) -> Status {
+  auto concat_output_func = [this](void* stream, std::vector<OrtValue>& per_iteration_output,
+                                   void* output, size_t output_size_in_bytes) -> Status {
     std::vector<OrtValue*> value_ptrs;
 
     value_ptrs.reserve(per_iteration_output.size());
     std::transform(per_iteration_output.begin(), per_iteration_output.end(), std::back_inserter(value_ptrs),
                    [](OrtValue& value) -> OrtValue* { return &value; });
 
-    return ToStatusAndRelease(ep_concat_func(ep_concat_func_state, stream,
-                                             value_ptrs.data(), value_ptrs.size(),
-                                             output, output_size_in_bytes));
+    return ToStatusAndRelease(helper_->ConcatOutput(helper_, stream, value_ptrs.data(), value_ptrs.size(),
+                                                    output, output_size_in_bytes));
   };
 
   kernel_.SetConcatOutputFunc(concat_output_func);
+}
+
+PluginEpLoopKernelImpl::~PluginEpLoopKernelImpl() {
+  helper_->Release(helper_);
 }
 
 /*static*/
@@ -97,29 +93,31 @@ void ORT_API_CALL PluginEpLoopKernelImpl::ReleaseImpl(OrtKernelImpl* this_ptr) n
 // PluginEpScanKernelImpl
 //
 
-PluginEpScanKernelImpl::PluginEpScanKernelImpl(const OpKernelInfo& info, OrtScanTransposeFunc ort_transpose_func,
-                                               void* ort_transpose_func_state) : kernel_(info) {
+PluginEpScanKernelImpl::PluginEpScanKernelImpl(const OpKernelInfo& info, gsl::not_null<OrtScanKernelHelper*> helper)
+    : kernel_(info), helper_(helper) {
   Compute = ComputeImpl;
   Release = ReleaseImpl;
 
   // Bundle EP's function + state into a functor.
-  auto transpose_func =
-      [ep_func = ort_transpose_func,
-       ep_func_state = ort_transpose_func_state](const gsl::span<const size_t>& permutations,
-                                                 const Tensor& input, Tensor& output, Stream* stream) -> Status {
+  auto transpose_func = [this](const gsl::span<const size_t>& permutation,
+                               const Tensor& input, Tensor& output, Stream* stream) -> Status {
     auto empty_tensor_deleter = [](void* /*data*/) -> void { /* do not delete Tensor (not owned) */ };
     const OrtValue ort_value_input(const_cast<Tensor*>(&input), DataTypeImpl::GetType<Tensor>(), empty_tensor_deleter);
     OrtValue ort_value_output(&output, DataTypeImpl::GetType<Tensor>(), empty_tensor_deleter);
     OrtSyncStream* ort_stream = reinterpret_cast<OrtSyncStream*>(stream);
 
-    return ToStatusAndRelease(ep_func(ep_func_state, permutations.data(), permutations.size(),
-                                      &ort_value_input, ort_stream, &ort_value_output));
+    return ToStatusAndRelease(helper_->Transpose(helper_, permutation.data(), permutation.size(),
+                                                 &ort_value_input, ort_stream, &ort_value_output));
   };
 
   scan::detail::DeviceHelpers device_helpers{};
   device_helpers.transpose_func = transpose_func;
 
   kernel_.SetDeviceHelpers(device_helpers);
+}
+
+PluginEpScanKernelImpl::~PluginEpScanKernelImpl() {
+  helper_->Release(helper_);
 }
 
 /*static*/

@@ -30,8 +30,6 @@ ORT_RUNTIME_CLASS(KernelDefBuilder);
 ORT_RUNTIME_CLASS(KernelDef);
 ORT_RUNTIME_CLASS(DataType);  // combination of ONNXType (e.g., Tensor, Map, Sequence) and ONNXTensorElementDataType
 ORT_RUNTIME_CLASS(SharedPrePackedWeightCache);
-ORT_RUNTIME_CLASS(ScanKernelConfig);
-ORT_RUNTIME_CLASS(LoopKernelConfig);
 
 /** \brief Struct that an EP implements for IDataTransfer to copy between devices it uses and CPU.
  *
@@ -283,6 +281,16 @@ struct OrtNodeComputeInfo {
   void(ORT_API_CALL* ReleaseState)(_In_ OrtNodeComputeInfo* this_ptr, _Frees_ptr_opt_ void* compute_state);
 };
 
+/**
+ * \brief Used to denote the creator of an OrtKernelImpl. Most OrtKernelImpl instances are created by
+ * EPs. However, OrtKernelImpl instances for control flow operators (e.g., If, Loop, and Scan) are created by ORT.
+ * \since Version 1.24.
+ */
+typedef enum OrtKernelImplCreator {
+  ORT_KERNEL_IMPL_CREATOR_EP = 0,
+  ORT_KERNEL_IMPL_CREATOR_ORT = 1,
+} OrtKernelImplCreator;
+
 struct OrtKernelImpl;
 typedef struct OrtKernelImpl OrtKernelImpl;
 
@@ -292,6 +300,7 @@ typedef struct OrtKernelImpl OrtKernelImpl;
  */
 struct OrtKernelImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
+  uint32_t creator;                ///< EP must set to ORT_KERNEL_IMPL_CREATOR_EP (0) if it created the OrtKernelImpl
 
   /** \brief Computation function called to execute the kernel on an EP.
    *
@@ -406,24 +415,6 @@ struct OrtKernelImpl {
                   _In_reads_(num_buffers) const void* const* buffer_data_ptrs,
                   _In_reads_(num_buffers) const size_t* buffer_data_sizes,
                   _In_ size_t num_buffers, _In_ int input_index);
-
-  /** \brief Function that returns the underlying control flow OrtKernelImpl instance that was originally
-   *         provided by ORT via a call to ::CreateIfKernel(), ::CreateLoopKernel(), or ::CreateScanKernel().
-   *
-   * Implementation of this function is required for an OrtKernelImpl instance (created by EP) that wraps
-   * an underlying control flow OrtKernelImpl instance provided by ORT for an If, Loop, or Scan operator.
-   *
-   * \param[in] this_ptr The top-level OrtKernelImpl instance (typically created by an EP).
-   * \param[out] out Output parameter that returns the OrtKernelImpl instance that was originally provided by ORT for
-   *                 a control flow operator like If, Loop, or Scan.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \note Implementation is only required for control flow operator kernels.
-   *
-   * \since Version 1.24.
-   */
-  ORT_API2_STATUS(GetControlFlowKernel, _In_ OrtKernelImpl* this_ptr, _Outptr_ OrtKernelImpl** out);
 };
 
 /** \brief Type definition for a function that creates an OrtKernelImpl instance for an operator kernel.
@@ -443,51 +434,81 @@ typedef OrtStatus*(ORT_API_CALL* OrtKernelCreateFunc)(_In_ void* kernel_create_f
                                                       _In_ const OrtKernelInfo* info,
                                                       _Outptr_result_maybenull_ OrtKernelImpl** kernel_out);
 
-/** \brief Type definition for a function that transposes an OrtValue instance. A function of this type is provided
- *          by an EP to ::CreateScanKernel(), which creates a OrtKernelImpl for a Scan operator.
- *
- * \param[in] state Opaque state provided by the EP.
- * \param[in] permutation An array of integers that defines how the input tensor's axes should be permuted.
- * \param[in] num_permutation_elems The number of integer elements in the `permutation` array.
- * \param[in] input The input OrtValue tensor to transpose.
- * \param[in] stream An optional OrtSyncStream instance to be used for asynchronous operations. May be NULL.
- * \param[out] output The pre-allocated output OrtValue instance into which to store the results of the
- *                    transpose operation. Must not be released as it is owned by ORT.
- *
- * \snippet{doc} snippets.dox OrtStatus Return Value
- *
- * \since Version 1.24.
- */
-typedef OrtStatus*(ORT_API_CALL* OrtScanTransposeFunc)(_In_ void* state,
-                                                       _In_reads_(num_permutation_elems) const size_t* permutation,
-                                                       _In_ size_t num_permutation_elems,
-                                                       _In_ const OrtValue* input,
-                                                       _In_opt_ OrtSyncStream* stream,
-                                                       _Inout_ OrtValue* output);
+struct OrtLoopKernelHelper;
+typedef struct OrtLoopKernelHelper OrtLoopKernelHelper;
 
-/** \brief Type definition for a function that concatenates OrtValue instances from each Loop iteration into a single
- *         output buffer. A function of this type is provided by an EP to ::CreateLoopKernel(), which creates a
- *         OrtKernelImpl for a Loop operator.
- *
- * \param[in] state Opaque state provided by the EP.
- * \param[in] stream_handle Optional native stream handle that enables asynchronous operations. May be NULL.
- * \param[in] per_iteration_output Array of OrtValue instances from each iteration. All OrtValue elements have the
- *                                 same shape.
- * \param[in] num_iteration_outputs The number of OrtValue* elements in the `per_iteration_output` array.
- * \param[out] output The pre-allocated output buffer. Memory is allocated on the device for the EP running the
- *                    Loop node.
- * \param[in] output_size_in_bytes The size in bytes of the `output` buffer.
- *
- * \snippet{doc} snippets.dox OrtStatus Return Value
- *
+/**
+ * \brief Contains helper functions for a Loop OrtKernelImpl created via ::CreateLoopKernel().
  * \since Version 1.24.
  */
-typedef OrtStatus*(ORT_API_CALL* OrtLoopConcatOutputFunc)(_In_ void* state,
-                                                          _In_opt_ void* stream_handle,
-                                                          _In_ OrtValue* const* per_iteration_output,
-                                                          _In_ size_t num_iteration_outputs,
-                                                          _Out_writes_bytes_all_(output_size_in_bytes) void* output,
-                                                          _In_ size_t output_size_in_bytes);
+struct OrtLoopKernelHelper {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
+
+  /** \brief Called by ORT to release the OrtLoopKernelHelper instance and its resources.
+   *
+   * \param[in] this_ptr The OrtLoopKernelHelper instance.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, Release, _In_ OrtLoopKernelHelper* this_ptr);
+
+  /** \brief Helper function that concatenates OrtValue instances from each loop iteration into a single
+   *         pre-allocated output buffer.
+   *
+   * \param[in] this_ptr The OrtLoopKernelHelper instance.
+   * \param[in] stream_handle Optional native stream handle that enables asynchronous operations. May be NULL.
+   * \param[in] per_iteration_output Array of OrtValue instances from each iteration. All OrtValue elements have the
+   *                                 same shape.
+   * \param[in] num_iteration_outputs The number of OrtValue* elements in the `per_iteration_output` array.
+   * \param[out] output The pre-allocated output buffer. Memory is allocated on the device for the EP running the
+   *                    Loop node.
+   * \param[in] output_size_in_bytes The size in bytes of the `output` buffer.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(ConcatOutput, _In_ OrtLoopKernelHelper* this_ptr, _In_opt_ void* stream_handle,
+                  _In_ OrtValue* const* per_iteration_output, _In_ size_t num_iteration_outputs,
+                  _Out_writes_bytes_all_(output_size_in_bytes) void* output, _In_ size_t output_size_in_bytes);
+};
+
+struct OrtScanKernelHelper;
+typedef struct OrtScanKernelHelper OrtScanKernelHelper;
+
+/**
+ * \brief Contains helper functions for a Scan OrtKernelImpl created via ::CreateScanKernel().
+ * \since Version 1.24.
+ */
+struct OrtScanKernelHelper {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
+
+  /** \brief Called by ORT to release the OrtScanKernelHelper instance and its resources.
+   *
+   * \param[in] this_ptr The OrtScanKernelHelper instance.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(void, Release, _In_ OrtScanKernelHelper* this_ptr);
+
+  /** \brief Helper function that transposes an OrtValue instance during execution of a Scan kernel.
+   *
+   * \param[in] this_ptr The OrtScanKernelHelper instance.
+   * \param[in] permutation An array of integers that defines how the input tensor's axes should be permuted.
+   * \param[in] num_permutation_elems The number of integer elements in the `permutation` array.
+   * \param[in] input The input OrtValue tensor to transpose.
+   * \param[in] stream An optional OrtSyncStream instance to be used for asynchronous operations. May be NULL.
+   * \param[out] output The pre-allocated output OrtValue instance into which to store the results of the
+   *                    transpose operation. Must not be released as it is owned by ORT.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(Transpose, _In_ OrtScanKernelHelper* this_ptr,
+                  _In_reads_(num_permutation_elems) const size_t* permutation, _In_ size_t num_permutation_elems,
+                  _In_ const OrtValue* input, _In_opt_ OrtSyncStream* stream, _Inout_ OrtValue* output);
+};
 
 /**
  * \brief The OrtEpApi struct provides functions that are relevant to the implementation of an execution provider.
@@ -1058,10 +1079,6 @@ struct OrtEpApi {
    *       This function allows an EP to create a properly configured kernel for an If operator that the EP can then add
    *       to its kernel registry.
    *
-   * \note Any EP-defined OrtKernelImpl instance that wraps a control flow OrtKernelImpl instance
-   *       created via this function must implement OrtKernelImpl::GetControlFlowKernel().
-   *       The OrtKernelImpl::GetControlFlowKernel() function allows ORT to access the underlying control flow kernel.
-   *
    * \param[in] kernel_info The OrtApi::OrtKernelInfo instance for an If node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the If node.
@@ -1079,15 +1096,11 @@ struct OrtEpApi {
    *       This function allows an EP to create a properly configured kernel for a Loop operator that the EP can then
    *       add to its kernel registry.
    *
-   * \note Any EP-defined OrtKernelImpl instance that wraps a control flow OrtKernelImpl instance
-   *       created via this function must implement OrtKernelImpl::GetControlFlowKernel().
-   *       The OrtKernelImpl::GetControlFlowKernel() function allows ORT to access the underlying control flow kernel.
-   *
    * \param[in] kernel_info The OrtApi::OrtKernelInfo instance for a Loop node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
-   * \param[in] concat_func Helper function provided by the EP that concatenates the output of each loop iteration
-   *                        using the EP's device memory.
-   * \param[in] concat_func_state Optional opaque state that wll be passed as the first argument to `concat_func`.
+   * \param[in] helper A OrtLoopKernelHelper instance that contains helper functions that ORT calls during kernel
+   *                   execution to operate on tensors allocated with the EP's device memory.
+   *                   ORT will call OrtLoopKernelHelper::Release() to release the helper and its resources.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the Loop node.
    *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
    *                        to ORT (see OrtKernelCreateFunc and ::KernelRegistry_AddKernel()).
@@ -1095,8 +1108,7 @@ struct OrtEpApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.24
    */
-  ORT_API2_STATUS(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info,
-                  _In_ OrtLoopConcatOutputFunc concat_func, _In_opt_ void* concat_func_state,
+  ORT_API2_STATUS(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtLoopKernelHelper* helper,
                   _Outptr_ OrtKernelImpl** kernel_out);
 
   /** \brief Creates an OrtKernelImpl instance for a Scan operator. Does not support opset versions older than 9.
@@ -1105,15 +1117,11 @@ struct OrtEpApi {
    *       This function allows an EP to create a properly configured kernel for a Scan operator that the EP can then
    *       add to its kernel registry.
    *
-   * \note Any EP-defined OrtKernelImpl instance that wraps a control flow OrtKernelImpl instance
-   *       created via this function must implement OrtKernelImpl::GetControlFlowKernel().
-   *       The OrtKernelImpl::GetControlFlowKernel() function allows ORT to access the underlying control flow kernel.
-   *
    * \param[in] kernel_info The OrtApi::OrtKernelInfo instance for a Scan node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
-   * \param[in] transpose_func Helper function provided by the EP that transposes an input OrtValue tensor and stores
-   *                           the transposed result in an output OrtValue tensor using the EP's device memory.
-   * \param[in] transpose_func_state Optional opaque state that wll be passed as the first argument to `transpose_func`.
+   * \param[in] helper A OrtScanKernelHelper instance that contains helper functions that ORT calls during kernel
+   *                   execution to operate on tensors allocated with the EP's device memory.
+   *                   ORT will call OrtScanKernelHelper::Release() to release the helper and its resources.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the Scan node.
    *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
    *                        to ORT (see OrtKernelCreateFunc and ::KernelRegistry_AddKernel()).
@@ -1121,8 +1129,7 @@ struct OrtEpApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.24
    */
-  ORT_API2_STATUS(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info,
-                  _In_ OrtScanTransposeFunc transpose_func, _In_opt_ void* transpose_func_state,
+  ORT_API2_STATUS(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtScanKernelHelper* helper,
                   _Outptr_ OrtKernelImpl** kernel_out);
 
   ORT_CLASS_RELEASE(KernelImpl);

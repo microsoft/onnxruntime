@@ -5,22 +5,20 @@
 
 #include "../../plugin_ep_utils.h"
 
-class Scan : public OrtKernelImpl {
- private:
-  struct PrivateTag {};
-
+class ScanHelper : public OrtScanKernelHelper {
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Scan>& kernel) noexcept;
-  Scan(const OrtKernelInfo* info, void* state, PrivateTag);
-  ~Scan();
+  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept;
+  ScanHelper(Ort::ConstKernelInfo info, void* state);
 
-  // Static functions assigned to the OrtKernelImpl fields:
-  static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
-  static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL GetControlFlowKernelImpl(OrtKernelImpl* this_ptr, OrtKernelImpl** out) noexcept;
+  // Static functions assigned to the OrtScanKernelHelper fields:
+  static void ORT_API_CALL ReleaseImpl(_In_ OrtScanKernelHelper* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL TransposeImpl(_In_ OrtScanKernelHelper* this_ptr,
+                                               _In_reads_(num_permutation_elems) const size_t* permutation,
+                                               _In_ size_t num_permutation_elems,
+                                               _In_ const OrtValue* input, _In_opt_ OrtSyncStream* stream,
+                                               _Inout_ OrtValue* output) noexcept;
 
  private:
-  const OrtKernelInfo* info_;
+  Ort::ConstKernelInfo info_;
   OrtDataTransferImpl* data_transfer_impl_;  // Custom state passed from OrtEp
-  OrtKernelImpl* control_flow_kernel_{};
 };

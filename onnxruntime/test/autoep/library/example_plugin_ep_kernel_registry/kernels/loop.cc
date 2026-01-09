@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include "utils.h"
+#include "../ep.h"
 
 // Defines a kernel creation function for Loop opset 21
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -17,7 +18,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
          .AddTypeConstraint("I", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
          .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
          .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    Loop)
+    LoopHelper)
 
 // Defines a kernel creation function for Loop opset 23
 ONNX_OPERATOR_KERNEL_EX(
@@ -30,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddTypeConstraint("I", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
          .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
          .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    Loop)
+    LoopHelper)
 
 // Defines a kernel creation function for Loop opset 24
 ONNX_OPERATOR_KERNEL_EX(
@@ -43,21 +44,53 @@ ONNX_OPERATOR_KERNEL_EX(
          .AddTypeConstraint("I", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
          .AddTypeConstraint("B", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL))
          .AddTypeConstraint("V", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))),
-    Loop)
+    LoopHelper)
 
-// Concatenates loop iteration outputs. Ignores native stream handle argument as this example EP kernel
-// uses CPU memory.
-// Based on the default implementation in CPU EP.
-static OrtStatus* ORT_API_CALL ConcatLoopOutput(void* state,
-                                                void* /*stream_handle*/,
-                                                OrtValue* const* per_iteration_output,
-                                                size_t num_iteration_outputs,
-                                                void* output,
-                                                size_t output_size_in_bytes) noexcept {
+/*static*/
+OrtStatus* LoopHelper::Create(const OrtKernelInfo* ort_kernel_info, void* state,
+                              /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  // An actual implementation can retrieve state from the Loop OrtKernelImpl (e.g., OrtDataTransferImpl, etc.).
-  Loop* loop_kernel = reinterpret_cast<Loop*>(state);
-  (void)loop_kernel;  // Note: Unused in this example.
+  const OrtEpApi& ep_api = Ort::GetEpApi();
+  Ort::ConstKernelInfo kernel_info(ort_kernel_info);
+
+  // Ask ORT to create a OrtKernelImpl for Loop.
+  auto loop_helper = std::make_unique<LoopHelper>(kernel_info, state);
+  RETURN_IF_ERROR(ep_api.CreateLoopKernel(kernel_info, loop_helper.get(), &kernel));
+  loop_helper.release();  // ORT owns this instance on successful call to CreateLoopKernel.
+
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+LoopHelper::LoopHelper(Ort::ConstKernelInfo info, void* state)
+    : OrtLoopKernelHelper{},  // Initialize all OrtLoopKernelHelper members to NULL/zero
+      info_{info},
+      data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
+  ort_version_supported = ORT_API_VERSION;
+  Release = ReleaseImpl;
+  ConcatOutput = ConcatOutputImpl;
+}
+
+/*static*/
+void ORT_API_CALL LoopHelper::ReleaseImpl(_In_ OrtLoopKernelHelper* this_ptr) noexcept {
+  delete static_cast<LoopHelper*>(this_ptr);
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL LoopHelper::ConcatOutputImpl(_In_ OrtLoopKernelHelper* this_ptr,
+                                                     _In_opt_ void* /*stream_handle*/,
+                                                     _In_ OrtValue* const* per_iteration_output,
+                                                     _In_ size_t num_iteration_outputs,
+                                                     _Out_writes_bytes_all_(output_size_in_bytes) void* output,
+                                                     _In_ size_t output_size_in_bytes) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  // Concatenates loop iteration outputs. Ignores native stream handle argument as this example EP kernel
+  // uses CPU memory. Based on the default implementation in CPU EP.
+
+  // An actual implementation can retrieve state from the OrtLoopKernelHelper (e.g., OrtDataTransferImpl, etc.).
+  LoopHelper* loop_kernel_helper = static_cast<LoopHelper*>(this_ptr);
+  (void)loop_kernel_helper->info_;                // Unused in this example.
+  (void)loop_kernel_helper->data_transfer_impl_;  // Unused in this example.
 
   Ort::ConstValue first_output{per_iteration_output[0]};
   Ort::TensorTypeAndShapeInfo type_shape = first_output.GetTensorTypeAndShapeInfo();
@@ -82,60 +115,4 @@ static OrtStatus* ORT_API_CALL ConcatLoopOutput(void* state,
 
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
-}
-
-/*static*/
-OrtStatus* Loop::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Loop>& kernel) noexcept {
-  EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  const OrtEpApi& ep_api = Ort::GetEpApi();
-  auto kernel_unique_ptr = std::make_unique<Loop>(info, state, PrivateTag{});
-
-  // Ask ORT to create a OrtKernelImpl for Loop. The EP author provides a helper function
-  // for concatenation of loop outputs. We pass `this` as the concat function state, which
-  // allows retrieval of EP resources (e.g., allocators, data transfer, etc.).
-  void* concat_func_state = kernel_unique_ptr.get();
-  RETURN_IF_ERROR(ep_api.CreateLoopKernel(info, ConcatLoopOutput, concat_func_state,
-                                          &kernel_unique_ptr->control_flow_kernel_));
-
-  kernel = std::move(kernel_unique_ptr);
-  return nullptr;
-  EXCEPTION_TO_RETURNED_STATUS_END
-}
-
-Loop::Loop(const OrtKernelInfo* info, void* state, PrivateTag)
-    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
-      info_{info},
-      data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)},
-      control_flow_kernel_{nullptr} {
-  ort_version_supported = ORT_API_VERSION;
-  Compute = ComputeImpl;
-  Release = ReleaseImpl;
-  GetControlFlowKernel = GetControlFlowKernelImpl;
-}
-
-Loop::~Loop() {
-  Ort::GetEpApi().ReleaseKernelImpl(control_flow_kernel_);
-}
-
-/*static*/
-OrtStatus* ORT_API_CALL Loop::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
-  EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  Loop* loop_kernel = static_cast<Loop*>(this_ptr);
-  static_cast<void>(loop_kernel->info_);                // NOTE: Unused in this example.
-  static_cast<void>(loop_kernel->data_transfer_impl_);  // NOTE: Unused in this example.
-
-  return loop_kernel->control_flow_kernel_->Compute(loop_kernel->control_flow_kernel_, kernel_ctx);
-  EXCEPTION_TO_RETURNED_STATUS_END
-}
-
-/*static*/
-void ORT_API_CALL Loop::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
-  delete static_cast<Loop*>(this_ptr);
-}
-
-/*static*/
-OrtStatus* ORT_API_CALL Loop::GetControlFlowKernelImpl(OrtKernelImpl* this_ptr, OrtKernelImpl** out) noexcept {
-  Loop* loop_kernel = static_cast<Loop*>(this_ptr);
-  *out = loop_kernel->control_flow_kernel_;
-  return nullptr;
 }

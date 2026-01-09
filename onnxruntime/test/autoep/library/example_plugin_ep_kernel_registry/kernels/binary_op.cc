@@ -31,6 +31,7 @@ BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag)
       info_{info},
       data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
   ort_version_supported = ORT_API_VERSION;
+  creator = ORT_KERNEL_IMPL_CREATOR_EP;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
 
@@ -41,8 +42,7 @@ BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag)
 }
 
 /*static*/
-OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state,
-                            /*out*/ std::unique_ptr<BinaryOp>& result) noexcept {
+OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& result) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
 
@@ -58,7 +58,8 @@ OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state,
     return Ort::GetApi().CreateStatus(ORT_EP_FAIL, oss.str().c_str());
   }
 
-  result = std::make_unique<BinaryOp>(kernel_info, state, PrivateTag{});
+  auto binary_op = std::make_unique<BinaryOp>(kernel_info, state, PrivateTag{});
+  result = binary_op.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

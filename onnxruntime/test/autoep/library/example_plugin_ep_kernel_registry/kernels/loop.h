@@ -5,22 +5,21 @@
 
 #include "../../plugin_ep_utils.h"
 
-class Loop : public OrtKernelImpl {
- private:
-  struct PrivateTag {};
-
+class LoopHelper : public OrtLoopKernelHelper {
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Loop>& kernel) noexcept;
-  Loop(const OrtKernelInfo* info, void* state, PrivateTag);
-  ~Loop();
+  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept;
+  LoopHelper(Ort::ConstKernelInfo info, void* state);
 
-  // Static functions assigned to the OrtKernelImpl fields:
-  static OrtStatus* ORT_API_CALL ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept;
-  static void ORT_API_CALL ReleaseImpl(OrtKernelImpl* this_ptr) noexcept;
-  static OrtStatus* ORT_API_CALL GetControlFlowKernelImpl(OrtKernelImpl* this_ptr, OrtKernelImpl** out) noexcept;
+  // Static functions assigned to the OrtLoopKernelHelper fields:
+  static void ORT_API_CALL ReleaseImpl(_In_ OrtLoopKernelHelper* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL ConcatOutputImpl(_In_ OrtLoopKernelHelper* this_ptr,
+                                                  _In_opt_ void* stream_handle,
+                                                  _In_ OrtValue* const* per_iteration_output,
+                                                  _In_ size_t num_iteration_outputs,
+                                                  _Out_writes_bytes_all_(output_size_in_bytes) void* output,
+                                                  _In_ size_t output_size_in_bytes) noexcept;
 
  private:
-  const OrtKernelInfo* info_;
+  Ort::ConstKernelInfo info_;
   OrtDataTransferImpl* data_transfer_impl_;  // Custom state passed from OrtEp
-  OrtKernelImpl* control_flow_kernel_{};
 };

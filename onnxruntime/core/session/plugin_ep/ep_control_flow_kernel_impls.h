@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include <memory>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/cpu/controlflow/if.h"
@@ -18,6 +19,7 @@ namespace onnxruntime {
 /// </summary>
 struct PluginEpControlFlowKernelImpl : public OrtKernelImpl {
   PluginEpControlFlowKernelImpl();
+  virtual ~PluginEpControlFlowKernelImpl() {}
   virtual controlflow::IControlFlowKernel& GetIControlFlowKernel() = 0;
 };
 
@@ -48,8 +50,9 @@ class PluginEpIfKernelImpl final : public PluginEpControlFlowKernelImpl {
 /// </summary>
 class PluginEpLoopKernelImpl final : public PluginEpControlFlowKernelImpl {
  public:
-  PluginEpLoopKernelImpl(const OpKernelInfo& info, OrtLoopConcatOutputFunc ort_concat_func,
-                         void* ort_concat_func_state);
+  PluginEpLoopKernelImpl(const OpKernelInfo& info, gsl::not_null<OrtLoopKernelHelper*> helper);
+  ~PluginEpLoopKernelImpl();
+
   controlflow::IControlFlowKernel& GetIControlFlowKernel() override { return kernel_; }
 
   // Static functions assigned to the OrtKernelImpl fields:
@@ -58,6 +61,7 @@ class PluginEpLoopKernelImpl final : public PluginEpControlFlowKernelImpl {
 
  private:
   Loop kernel_;
+  gsl::not_null<OrtLoopKernelHelper*> helper_;
 };
 
 /// <summary>
@@ -68,8 +72,9 @@ class PluginEpLoopKernelImpl final : public PluginEpControlFlowKernelImpl {
 /// </summary>
 class PluginEpScanKernelImpl final : public PluginEpControlFlowKernelImpl {
  public:
-  PluginEpScanKernelImpl(const OpKernelInfo& info, OrtScanTransposeFunc ort_transpose_func,
-                         void* ort_transpose_func_state);
+  PluginEpScanKernelImpl(const OpKernelInfo& info, gsl::not_null<OrtScanKernelHelper*> helper);
+  ~PluginEpScanKernelImpl();
+
   controlflow::IControlFlowKernel& GetIControlFlowKernel() override { return kernel_; }
 
   // Static functions assigned to the OrtKernelImpl fields:
@@ -78,6 +83,7 @@ class PluginEpScanKernelImpl final : public PluginEpControlFlowKernelImpl {
 
  private:
   Scan<9> kernel_;
+  gsl::not_null<OrtScanKernelHelper*> helper_;
 };
 
 }  // namespace onnxruntime

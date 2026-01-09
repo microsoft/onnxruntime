@@ -157,18 +157,16 @@ class PluginEpOpKernel final : public controlflow::IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override {
     assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
 
-    if (kernel_impl_->ort_version_supported < 24 || kernel_impl_->GetControlFlowKernel == nullptr) {
-      // OrtKernelImpl does not define an implementation. This is an error because this function will only
-      // be called by ORT when necessary (for controlflow ops).
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtKernelImpl instance is missing an implementation of ",
-                             "OrtKernelImpl::GetControlFlowKernel");
+    if (kernel_impl_->creator != ORT_KERNEL_IMPL_CREATOR_ORT) {
+      // OrtKernelImpl was not created by ORT, which prevents casting OrtKernelImpl to PluginEpControlFlowKernelImpl
+      // and setting up subgraph execution info. The plugin EP may have tried to create their own OrtKernelImpl, which
+      // is not supported for control flow ops.
+      const auto& op_type = Info().node().OpType();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtKernelImpl instance for control flow operator ", op_type,
+                             "was not originally created by ORT via an OrtEpApi function.");
     }
 
-    OrtKernelImpl* cf_kernel_impl = nullptr;
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(kernel_impl_->GetControlFlowKernel(kernel_impl_, &cf_kernel_impl)));
-    ORT_RETURN_IF(cf_kernel_impl == nullptr, "OrtKernelImpl::GetControlFlowKernel() returned a NULL OrtKernelImpl");
-
-    auto& cf_kernel = static_cast<PluginEpControlFlowKernelImpl&>(*cf_kernel_impl);
+    auto& cf_kernel = static_cast<PluginEpControlFlowKernelImpl&>(*kernel_impl_);
     return cf_kernel.GetIControlFlowKernel().SetupSubgraphExecutionInfo(session_state, attribute_name,
                                                                         subgraph_session_state);
   }

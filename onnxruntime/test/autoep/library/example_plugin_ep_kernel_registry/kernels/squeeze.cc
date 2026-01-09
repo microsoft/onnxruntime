@@ -54,15 +54,18 @@ Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag)
       info_{info},
       data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
   ort_version_supported = ORT_API_VERSION;
+  creator = ORT_KERNEL_IMPL_CREATOR_EP;
   Compute = ComputeImpl;
   Release = ReleaseImpl;
 }
 
 /*static*/
-OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel) noexcept {
+OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
-  kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
+  auto squeeze_kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
+
+  kernel = squeeze_kernel.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
