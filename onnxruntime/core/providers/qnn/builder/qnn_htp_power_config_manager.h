@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License
+
+#pragma once
+
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 

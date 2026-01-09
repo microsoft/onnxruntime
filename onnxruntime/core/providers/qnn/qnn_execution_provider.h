@@ -82,10 +82,6 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
 
-  Status SetHtpPowerConfigs(const qnn::HtpPerformanceMode& power_mode,
-                            const uint32_t& rpc_control_latency,
-                            const uint32_t& rpc_polling_time);
-
  private:
   // Will return true if any power config options need to be updated
   bool GetPerThreadHtpPowerConfigs(qnn::PerThreadHtpPowerConfigs_t& per_thread_htp_power_configs,

@@ -1581,7 +1581,7 @@ void QNNExecutionProvider::CreateHtpPowerConfigId() const {
                                                   default_rpc_polling_time_,
                                                   default_rpc_control_latency_);
 
-    if (rt != Status::OK()) {
+    if (rt.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Unable to set HTP power configurations.";
     }
   } else {

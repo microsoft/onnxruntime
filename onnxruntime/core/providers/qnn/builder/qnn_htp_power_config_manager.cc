@@ -1,6 +1,9 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License
+
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
-#include "qnn_htp_power_config_manager.h"
+#include "core/providers/qnn/builder/qnn_htp_power_config_manager.h"
 
 #include <vector>
 
@@ -13,13 +16,14 @@ namespace power {
 HtpPowerConfigManager::HtpPowerConfigManager() {
   constexpr int kMaxNumConfigs = 3;
   power_configs_.reserve(kMaxNumConfigs);
-};
+}
+
 HtpPowerConfigManager::~HtpPowerConfigManager() {}
 
 Status HtpPowerConfigManager::AddRpcPollingTime(uint32_t rpc_polling_time) {
   ORT_RETURN_IF(rpc_polling_time > kMaxRpcPolling, "Cannot set RPC polling time to ",
                 std::to_string(rpc_polling_time),
-                ". Max allowable RPC pollng time is: ",
+                ". Max allowable RPC polling time is: ",
                 std::to_string(kMaxRpcPolling));
 
   ORT_RETURN_IF(rpc_polling_time_set_, "There is already a pending RPC polling time config");
@@ -93,10 +97,13 @@ Status HtpPowerConfigManager::AddHtpPerformanceMode(HtpPerformanceMode htp_perfo
   } else {
     LOGS_DEFAULT(VERBOSE) << "Updating htp performance mode to: "
                           << PerformanceModeToString(htp_performance_mode) << ".";
-    auto& htp_performance_cfg = power_configs_.emplace_back();
+
+    QnnHtpPerfInfrastructure_PowerConfig_t htp_performance_cfg{};
     ORT_RETURN_IF_ERROR(SetHtpPerformancePowerConfig(htp_performance_cfg,
                                                      htp_power_config_client_id,
                                                      htp_performance_mode));
+
+    power_configs_.emplace_back(std::move(htp_performance_cfg));
 
     last_set_htp_performance_mode_ = htp_performance_mode;
     htp_performance_mode_set_ = true;
@@ -117,7 +124,13 @@ Status HtpPowerConfigManager::SetPowerConfig(uint32_t htp_power_config_client_id
                   "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
     QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
 
-    std::array<const QnnHtpPerfInfrastructure_PowerConfig_t*, 2> perf_power_configs_ptr = {{power_configs_.data(), nullptr}};
+    std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr;
+
+    for (const auto& power_config : power_configs_) {
+      perf_power_configs_ptr.push_back(&power_config);
+    }
+    perf_power_configs_ptr.push_back(nullptr);
+
     status = htp_perf_infra.setPowerConfig(htp_power_config_client_id, perf_power_configs_ptr.data());
     ORT_RETURN_IF(QNN_SUCCESS != status, "SetPowerConfig failed.");
 
@@ -145,6 +158,7 @@ Status HtpPowerConfigManager::SetHtpPerformancePowerConfig(QnnHtpPerfInfrastruct
   // choose performance mode
   switch (htp_performance_mode) {
     case HtpPerformanceMode::kHtpBurst:
+    case HtpPerformanceMode::kHtpSustainedHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMinLatency;
       dcvs_v3.dcvsEnable = kDcvsDisable;
@@ -157,7 +171,6 @@ Status HtpPowerConfigManager::SetHtpPerformancePowerConfig(QnnHtpPerfInfrastruct
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
       break;
-    case HtpPerformanceMode::kHtpSustainedHighPerformance:
     case HtpPerformanceMode::kHtpHighPerformance:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepLowLatency;
