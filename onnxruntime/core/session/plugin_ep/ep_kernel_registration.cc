@@ -218,11 +218,9 @@ Status PluginEpOpKernel::Create(FuncManager& /*fn_manager*/, const OpKernelInfo&
 
   const auto& op_type = info.node().OpType();
   const auto& node_name = info.node().Name();
-  std::string_view ep_name = "(unknown ep)";
-
-  if (const auto* ep = info.GetExecutionProvider(); ep != nullptr) {
-    ep_name = ep->Type();
-  }
+  const auto* ep = info.GetExecutionProvider();
+  ORT_ENFORCE(ep != nullptr, "IExecutionProvider* retrieved from OpKernelInfo should never be nullptr");
+  const auto& ep_name = ep->Type();
 
   // Do some basic checks for the OrtKernelImpl provided by the EP. Other checks for missing function implementations
   // that are only required in certain situations (e.g., pre-packing) happen later as soon as we know they are required.

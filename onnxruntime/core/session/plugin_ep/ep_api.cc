@@ -748,7 +748,7 @@ ORT_API_STATUS_IMPL(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info, _In
     // Note: CPU EP always uses Scan<9> for all opsets >= 9.
     auto kernel_unique_ptr = std::make_unique<PluginEpScanKernelImpl>(*op_kernel_info, helper);
     *kernel_out = kernel_unique_ptr.release();
-  } else /*if (opset < 8)*/ {
+  } else {
     return OrtApis::CreateStatus(ORT_FAIL,
                                  "Kernel implementations for Scan older than opset version 9 are not supported");
   }
