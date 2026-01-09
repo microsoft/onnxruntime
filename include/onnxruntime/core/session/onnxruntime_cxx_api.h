@@ -237,6 +237,20 @@ inline const OrtCompileApi& GetCompileApi() {
 }
 
 /// <summary>
+/// This returns a reference to the ORT C Interop API. Used for external resource import with EPs.
+/// </summary>
+/// <returns>ORT C Interop API reference</returns>
+inline const OrtInteropApi& GetInteropApi() {
+  auto* api = GetApi().GetInteropApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("Interop API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
+/// <summary>
 /// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
 /// </summary>
 /// <returns>ORT C EP API reference</returns>
@@ -1610,6 +1624,7 @@ struct ConstSessionImpl : Base<T> {
   std::vector<ConstMemoryInfo> GetMemoryInfoForInputs() const;   ///< Wrapper for OrtApi::SessionGetMemoryInfoForInputs
   std::vector<ConstMemoryInfo> GetMemoryInfoForOutputs() const;  ///< Wrapper for OrtApi::SessionGetMemoryInfoForOutputs
   std::vector<ConstEpDevice> GetEpDeviceForInputs() const;       ///< Wrapper for OrtApi::SessionGetEpDeviceForInputs
+  std::vector<ConstEpDevice> GetEpDeviceForOutputs() const;      ///< Wrapper for OrtApi::SessionGetEpDeviceForOutputs
 
   /** \brief Returns a copy of input name at the specified index.
    *

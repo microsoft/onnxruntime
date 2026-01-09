@@ -206,10 +206,10 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   if (!disable_flash_attention_) {
     use_flash_attention = nullptr == attention_bias &&
                           parameters.head_size == parameters.v_head_size &&
-                          onnxruntime::flash::is_supported(device_prop,
-                                                           parameters.head_size,
-                                                           parameters.num_heads,
-                                                           parameters.num_heads);
+                          onnxruntime::flash::is_supported<T>(device_prop,
+                                                              parameters.head_size,
+                                                              parameters.num_heads,
+                                                              parameters.num_heads);
 
     // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
     if (use_flash_attention && key == nullptr && value == nullptr &&
