@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 4a7df7d71..022cf92aa 100644
+index 584c0419a..5d4ffff99 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -52,6 +52,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
@@ -10,9 +10,9 @@ index 4a7df7d71..022cf92aa 100644
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime" OFF)
  endif()
-@@ -399,14 +400,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
- 
- add_library(onnx_proto_object OBJECT ${ONNX_PROTO_SRCS})
+@@ -397,14 +398,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
+                                onnx/onnx-operators.in.proto
+                                onnx/onnx-data.in.proto)
  
 -file(GLOB_RECURSE __tmp_srcs "${ONNX_ROOT}/onnx/*.h" "${ONNX_ROOT}/onnx/*.cc")
 -file(GLOB_RECURSE onnx_gtests_src "${ONNX_ROOT}/onnx/test/cpp/*.h"
@@ -47,27 +47,29 @@ index 4a7df7d71..022cf92aa 100644
  
  set(LINKED_PROTOBUF_TARGET protobuf::libprotobuf)
  if(ONNX_USE_LITE_PROTO)
-@@ -417,19 +432,7 @@ endif()
- add_onnx_global_defines(onnx_proto_object)
- target_include_directories(onnx_proto_object PUBLIC
-   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
--if(MSVC)
--  # For disabling Protobuf related warnings
--  set(protobuf_warnings
--    /wd4146 # unary minus operator applied to unsigned type,
--            # result still unsigned
--    /wd4244 # 'argument': conversion from 'google::
--            # protobuf::uint64' to 'int', possible
--            # loss of data
--    /wd4267 # Conversion from 'size_t' to 'int',
--            # possible loss of data
--    /wd4141 # 'inline': used more than once
--  )
--endif()
-+
- add_library(onnx_proto)
- target_link_libraries(onnx_proto PUBLIC $<BUILD_INTERFACE:onnx_proto_object>)
- if(ONNX_ML)
+diff --git a/cmake/Utils.cmake b/cmake/Utils.cmake
+index 07f2b9071..388d9f7a3 100644
+--- a/cmake/Utils.cmake
++++ b/cmake/Utils.cmake
+@@ -31,18 +31,7 @@ endfunction()
+ 
+ function(add_onnx_compile_options target)
+   if(MSVC)
+-    # For disabling Protobuf related warnings
+-    set(protobuf_warnings
+-        /wd4146 # unary minus operator applied to unsigned type, result still
+-                # unsigned
+-        /wd4244 # 'argument': conversion from 'google::protobuf::uint64' to
+-                # 'int', possible loss of data
+-        /wd4267 # Conversion from 'size_t' to 'int', possible loss of data
+-        /wd4141 # 'inline': used more than once
+-        /wd4047 # '=': 'uintptr_t' differs in levels of indirection from 'void *'
+-    )
+     add_msvc_runtime_flag(${target})
+-    target_compile_options(${target} PUBLIC ${protobuf_warnings})
+     if(ONNX_WERROR)
+       target_compile_options(${target} PRIVATE "/WX")
+     endif()
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
 index 887151217..ac2e8c463 100644
 --- a/onnx/defs/nn/old.cc
