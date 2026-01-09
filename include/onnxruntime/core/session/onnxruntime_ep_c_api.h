@@ -1309,9 +1309,9 @@ struct OrtEpApi {
 
   /** \brief Creates an OrtKernelImpl instance for an If operator.
    *
-   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations,
-   *       This function allows an EP to create a properly configured kernel for an If operator that the EP can then add
-   *       to its kernel registry.
+   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations.
+   *       This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
+   *       the EP can add to its kernel registry.
    *
    * \param[in] kernel_info The ::OrtKernelInfo instance for an If node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
@@ -1326,9 +1326,9 @@ struct OrtEpApi {
 
   /** \brief Creates an OrtKernelImpl instance for a Loop operator.
    *
-   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations,
-   *       This function allows an EP to create a properly configured kernel for a Loop operator that the EP can then
-   *       add to its kernel registry.
+   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations.
+   *       This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
+   *       the EP can add to its kernel registry.
    *
    * \param[in] kernel_info The ::OrtKernelInfo instance for a Loop node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
@@ -1347,9 +1347,9 @@ struct OrtEpApi {
 
   /** \brief Creates an OrtKernelImpl instance for a Scan operator. Does not support opset versions older than 9.
    *
-   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations,
-   *       This function allows an EP to create a properly configured kernel for a Scan operator that the EP can then
-   *       add to its kernel registry.
+   * \note Control flow operators normally require access to ORT session internals to orchestrate subgraph operations.
+   *       This function allows an EP to create a properly configured OrtKernelImpl with access to ORT internals that
+   *       the EP can add to its kernel registry.
    *
    * \param[in] kernel_info The ::OrtKernelInfo instance for a Scan node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
