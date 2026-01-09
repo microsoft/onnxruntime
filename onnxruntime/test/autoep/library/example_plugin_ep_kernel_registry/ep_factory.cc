@@ -176,7 +176,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateEpImpl(OrtEpFactory* this_
                                                              const OrtHardwareDevice* const* /*devices*/,
                                                              const OrtKeyValuePairs* const* /*ep_metadata*/,
                                                              size_t num_devices,
-                                                             const OrtSessionOptions* /*session_options*/,
+                                                             const OrtSessionOptions* session_options,
                                                              const OrtLogger* logger,
                                                              OrtEp** ep) noexcept {
   auto* factory = static_cast<ExampleKernelEpFactory*>(this_ptr);
@@ -187,7 +187,14 @@ OrtStatus* ORT_API_CALL ExampleKernelEpFactory::CreateEpImpl(OrtEpFactory* this_
                                           "ExampleKernelEpFactory only supports selection for one device.");
   }
 
-  auto actual_ep = std::make_unique<ExampleKernelEp>(*factory, *logger);
+  std::string enable_prepack_weight_sharing;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.examplekernelep.enable_prepack_weight_sharing",
+                                                 "0", enable_prepack_weight_sharing));
+
+  ExampleKernelEp::Config config = {};
+  config.enable_prepack_weight_sharing = enable_prepack_weight_sharing == "1";
+
+  auto actual_ep = std::make_unique<ExampleKernelEp>(*factory, config, *logger);
   *ep = actual_ep.release();
 
   return nullptr;

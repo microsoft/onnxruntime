@@ -623,6 +623,38 @@ ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep) {
+  API_IMPL_BEGIN
+  if (info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtKernelInfo instance from which to obtain an OrtEp");
+  }
+
+  if (ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter in which to store the OrtEp instance");
+  }
+
+  auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  auto internal_ep = op_info->GetExecutionProvider();
+
+  if (internal_ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 "OrtKernelInfo does not have a valid reference to an execution provider instance");
+  }
+
+  const OrtEp* ort_ep = internal_ep->GetOrtEp();
+
+  if (ort_ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 "OrtKernelInfo is not associated with a plugin EP (OrtEp) instance.");
+  }
+
+  *ep = ort_ep;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -678,6 +710,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::GetTensorDataType,
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
     &OrtExecutionProviderApi::SharedPrePackedWeightCache_StoreWeightData,
+    &OrtExecutionProviderApi::KernelInfo_GetEp,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
