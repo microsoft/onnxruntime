@@ -887,6 +887,12 @@ typedef struct OrtInteropApi OrtInteropApi;
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
 
+struct OrtEpCatalogApi;
+typedef struct OrtEpCatalogApi OrtEpCatalogApi;
+
+struct OrtEpInfo;
+typedef struct OrtEpInfo OrtEpInfo;
+
 /** \brief The helper interface to get the right version of OrtApi
  *
  * Get a pointer to this structure through ::OrtGetApiBase
@@ -6785,6 +6791,21 @@ struct OrtApi {
                   _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                   _In_ size_t num_outputs);
 
+  /** \brief Get the OrtEpCatalogApi instance for execution provider discovery and acquisition.
+   *
+   * Returns the API for discovering and acquiring execution providers from MSIX packages on Windows.
+   * This API is intended for use by middleware components and applications that want to manage
+   * execution provider lifecycle independently of WindowsAppSDK.
+   *
+   * The API is loaded from a registered plugin DLL that implements the EP catalog functionality.
+   * If no plugin is registered, this function returns nullptr.
+   *
+   * \return A pointer to OrtEpCatalogApi, or nullptr if no plugin is registered.
+   *
+   * \since Version 1.24.
+   */
+  const OrtEpCatalogApi*(ORT_API_CALL* GetEpCatalogApi)(void);
+
   /// @}
 };
 
@@ -7797,6 +7818,157 @@ struct OrtInteropApi {
                   _In_ OrtExternalSemaphoreHandle* semaphore_handle,
                   _In_ OrtSyncStream* stream,
                   _In_ uint64_t value);
+
+  /// @}
+};
+
+/**
+ * \brief Ready state of an execution provider.
+ *
+ * Describes whether an execution provider is ready to use in the current process.
+ */
+typedef enum OrtEpReadyState {
+  /** The execution provider is ready to be used with ONNX Runtime in the current process. */
+  OrtEpReadyState_Ready = 0,
+
+  /** The execution provider is not ready but can be made ready via EnsureExecutionProvider. */
+  OrtEpReadyState_NotReady = 1,
+
+  /** The execution provider is not present on the system but can be acquired. */
+  OrtEpReadyState_NotPresent = 2
+} OrtEpReadyState;
+
+/**
+ * \brief Certification state of an execution provider.
+ */
+typedef enum OrtEpCertification {
+  /** Execution provider's certification state is unknown. */
+  OrtEpCertification_Unknown = 0,
+
+  /** Execution provider is certified for use with Windows ML. */
+  OrtEpCertification_Certified = 1,
+
+  /** Execution provider is not certified for use with Windows ML. */
+  OrtEpCertification_Uncertified = 2
+} OrtEpCertification;
+
+/**
+ * \brief Information about an available execution provider.
+ *
+ * Describes an execution provider that was discovered through package enumeration.
+ * This mirrors the Windows ML ExecutionProvider WinRT class properties.
+ */
+typedef struct OrtEpInfo {
+  /** \brief The name of the execution provider (e.g., "DmlExecutionProvider", "QNNExecutionProvider").
+   *
+   * This corresponds to the "registration_name" argument to RegisterExecutionProviderLibrary.
+   */
+  const char* name;
+
+  /** \brief The version string of the execution provider package. */
+  const char* version;
+
+  /** \brief The package family name for MSIX-packaged EPs, or NULL for in-proc/self-contained EPs. */
+  const char* package_family_name;
+
+  /** \brief The current ready state of the execution provider. */
+  OrtEpReadyState ready_state;
+
+  /** \brief The certification state of the execution provider. */
+  OrtEpCertification certification;
+
+  /** \brief The library path for registration, or NULL if not ready.
+   *
+   * Once the EP is in Ready state, this contains the path to pass to
+   * OrtApi::RegisterExecutionProviderLibrary.
+   */
+  const char* library_path;
+} OrtEpInfo;
+
+/**
+ * \brief The OrtEpCatalogApi provides functions for execution provider discovery and acquisition.
+ *
+ * This API enables middleware and applications to discover and acquire execution providers
+ * from MSIX packages on Windows. It handles package enumeration and dynamic dependency
+ * management, while registration is done through the standard OrtApi::RegisterExecutionProviderLibrary.
+ *
+ * The API is platform-specific and loaded from a plugin DLL. On Windows, the plugin is loaded
+ * from Microsoft.Windows.AI.MachineLearning.dll located next to onnxruntime.dll.
+ * On other platforms, GetEpCatalogApi() returns nullptr.
+ *
+ * Typical usage pattern:
+ *   1. Call FindAllProviders() to enumerate available EPs
+ *   2. For EPs not in Ready state, call EnsureReady() to acquire the package
+ *   3. Use the library_path from OrtEpInfo to call RegisterExecutionProviderLibrary()
+ *
+ * Example (error handling not shown):
+ *   const OrtEpCatalogApi* catalog = ort_api->GetEpCatalogApi();
+ *   if (catalog == nullptr) return;  // Not available on this platform
+ *
+ *   OrtEpInfo* eps = nullptr;
+ *   size_t count = 0;
+ *   catalog->FindAllProviders(&eps, &count);
+ *
+ *   for (size_t i = 0; i < count; i++) {
+ *     if (eps[i].ready_state != OrtEpReadyState_Ready) {
+ *       char* library_path = nullptr;
+ *       catalog->EnsureReady(eps[i].name, &library_path);
+ *       ort_api->RegisterExecutionProviderLibrary(env, eps[i].name, library_path);
+ *       ort_api->AllocatorFree(allocator, library_path);
+ *     } else {
+ *       ort_api->RegisterExecutionProviderLibrary(env, eps[i].name, eps[i].library_path);
+ *     }
+ *   }
+ *   catalog->ReleaseEpInfoArray(eps, count);
+ *
+ * \since Version 1.24.
+ */
+struct OrtEpCatalogApi {
+  /// \name Discovery
+  /// @{
+
+  /** \brief Find all execution providers compatible with the current hardware.
+   *
+   * Enumerates execution providers registered through Windows package extensions.
+   * Returns information about each EP including its ready state and library path
+   * (if ready).
+   *
+   * \param[out] ep_infos Output array of discovered execution providers. Caller must
+   *                      release with ReleaseEpInfoArray.
+   * \param[out] count Number of execution providers in the output array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(FindAllProviders, _Outptr_ OrtEpInfo** ep_infos, _Out_ size_t* count);
+
+  /** \brief Release an array of OrtEpInfo structures.
+   *
+   * \param[in] ep_infos The array to release (may be NULL).
+   * \param[in] count Number of elements in the array.
+   */
+  void(ORT_API_CALL* ReleaseEpInfoArray)(_Frees_ptr_opt_ OrtEpInfo* ep_infos, _In_ size_t count);
+
+  /// @}
+
+  /// \name Acquisition
+  /// @{
+
+  /** \brief Make an execution provider ready for use.
+   *
+   * Acquires the specified execution provider package using Windows dynamic dependencies.
+   * If the package is not installed, may attempt acquisition from Microsoft Store on
+   * consumer devices.
+   *
+   * On success, returns the library path that should be passed to
+   * OrtApi::RegisterExecutionProviderLibrary to complete registration.
+   *
+   * \param[in] ep_name The name of the execution provider to acquire.
+   * \param[out] library_path Output path to the EP library. Caller must free with OrtApi::AllocatorFree.
+   *                          May be NULL if caller doesn't need the path.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(EnsureReady, _In_ const char* ep_name, _Outptr_opt_result_maybenull_ char** library_path);
 
   /// @}
 };

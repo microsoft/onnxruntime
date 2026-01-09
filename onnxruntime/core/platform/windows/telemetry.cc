@@ -182,7 +182,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     "ProcessInfo",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
@@ -202,7 +202,7 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
                     "SessionCreationStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO));
 }
@@ -284,7 +284,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       "SessionCreation",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                      TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                       TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
@@ -360,7 +360,7 @@ void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
                     "CompileModelStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
@@ -386,7 +386,7 @@ void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
                     "CompileModelComplete",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
@@ -408,7 +408,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     "RuntimeError",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
@@ -425,7 +425,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     "RuntimeError",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
@@ -459,7 +459,7 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     "RuntimePerf",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
@@ -476,7 +476,7 @@ void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
                     "ExecutionProviderEvent",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     // Telemetry info
                     TraceLoggingUInt32(adapterLuid->LowPart, "adapterLuidLowPart"),
                     TraceLoggingUInt32(adapterLuid->HighPart, "adapterLuidHighPart"));
@@ -490,7 +490,7 @@ void WindowsTelemetry::LogDriverInfoEvent(const std::string_view device_class, c
                     "DriverInfo",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
@@ -533,7 +533,7 @@ void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string
                     "EpAutoSelection",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                     TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
@@ -554,7 +554,7 @@ void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const 
                       "ProviderOptions",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                      TraceLoggingKeyword(MICROSOFT_KEYWORD_CRITICAL_DATA),
                       TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info

@@ -49,6 +49,10 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+
+#ifdef _WIN32
+#include "core/platform/windows/windowsml_interop.h"
+#endif
 #include "core/session/utils.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -3345,6 +3349,17 @@ ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
   return OrtExecutionProviderApi::GetEpApi();
 }
 
+ORT_API(const OrtEpCatalogApi*, OrtApis::GetEpCatalogApi) {
+  // The EP Catalog API is loaded from a platform-specific plugin.
+  // On Windows, the plugin is WindowsML.dll located next to onnxruntime.dll.
+  // On other platforms, this returns nullptr.
+#ifdef _WIN32
+  return onnxruntime::windowsml::GetEpCatalogApi();
+#else
+  return nullptr;
+#endif
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession* ort_session,
                     _Out_writes_(num_values) const OrtEpDevice** inputs_ep_devices,
                     _In_ size_t num_values) {
@@ -3617,6 +3632,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
 
 ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
   fprintf(stderr, "The Execution Provider API is not supported in a minimal build.\n");
+  return nullptr;
+}
+
+ORT_API(const OrtEpCatalogApi*, OrtApis::GetEpCatalogApi) {
+  fprintf(stderr, "The EP Catalog API is not supported in a minimal build.\n");
   return nullptr;
 }
 
@@ -4291,6 +4311,9 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::GetInteropApi,
     &OrtApis::SessionGetEpDeviceForOutputs,
+
+    &OrtApis::GetEpCatalogApi,
+    // End of Version 24 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4327,6 +4350,7 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
+static_assert(offsetof(OrtApi, GetEpCatalogApi) / sizeof(void*) == 397, "Size of version 24 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.24.0",
