@@ -78,7 +78,6 @@ struct WebGpuContextConfig {
       0
 #endif
   };
-  bool enable_pix_capture{false};
 };
 
 class WebGpuContextFactory {
@@ -215,7 +214,13 @@ class WebGpuContext final {
   Status PopErrorScope();
 
   Status Run(ComputeContextBase& context, const ProgramBase& program);
-  void OnRunEnd();
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  std::unique_ptr<WebGpuPIXFrameGenerator> CreatePIXFrameGenerator() {
+    return std::make_unique<WebGpuPIXFrameGenerator>(instance_,
+                                                     Device());
+  }
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
  private:
   enum class TimestampQueryType {
@@ -334,10 +339,6 @@ class WebGpuContext final {
 
   // External vector to store captured commands, owned by EP
   std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
-
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 };
 
 }  // namespace webgpu

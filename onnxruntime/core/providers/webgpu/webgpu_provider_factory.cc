@@ -80,9 +80,22 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  // enable pix capture
+  if (std::string enable_pix_capture_str;
+      config_options.TryGetConfigEntry(kEnablePIXCapture, enable_pix_capture_str)) {
+    if (enable_pix_capture_str == kEnablePIXCapture_ON) {
+      webgpu_ep_config.enable_pix_capture = true;
+    } else if (enable_pix_capture_str == kEnablePIXCapture_OFF) {
+      webgpu_ep_config.enable_pix_capture = false;
+    } else {
+      ORT_THROW("Invalid enable pix capture: ", enable_pix_capture_str);
+    }
+  }
+
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP preferred layout: " << int(webgpu_ep_config.data_layout);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
 
   return webgpu_ep_config;
 }
@@ -216,19 +229,6 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
     }
   }
 
-  // enable pix capture
-
-  if (std::string enable_pix_capture_str;
-      config_options.TryGetConfigEntry(kEnablePIXCapture, enable_pix_capture_str)) {
-    if (enable_pix_capture_str == kEnablePIXCapture_ON) {
-      config.enable_pix_capture = true;
-    } else if (enable_pix_capture_str == kEnablePIXCapture_OFF) {
-      config.enable_pix_capture = false;
-    } else {
-      ORT_THROW("Invalid enable pix capture: ", enable_pix_capture_str);
-    }
-  }
-
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP storage buffer cache mode: " << config.buffer_cache_config.storage.mode;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP uniform buffer cache mode: " << config.buffer_cache_config.uniform.mode;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP query resolve buffer cache mode: " << config.buffer_cache_config.query_resolve.mode;
@@ -236,7 +236,6 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP power preference: " << config.power_preference;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Dawn backend type: " << config.backend_type;
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << config.enable_pix_capture;
 
   return config;
 }

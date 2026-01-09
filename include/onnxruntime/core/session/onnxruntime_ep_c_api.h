@@ -348,11 +348,11 @@ struct OrtKernelImpl {
    *                      the application for the session/environment (e.g., via CreateAndRegisterAllocator[V2]
    *                      or RegisterAllocator), or an allocator on the OrtEpDevice (read-only or default) otherwise.
    *                      The allocator remains valid throughout the lifetime of the OrtKernelImpl instance.
-   * \param[in] prepacked_weights_cache May be NULL. If not NULL, the kernel may choose to share a packed weight by
-   *                                    first storing it in the OrtSharedPrePackedWeightCache instance and then
-   *                                    receiving the actual shared weight data in the call to
-   *                                    OrtKernelImpl::SetSharedPrePackedWeight(). See the above description for
-   *                                    "sharing mode".
+   * \param[in] prepacked_weight_cache May be NULL. If not NULL, the kernel may choose to share a packed weight by
+   *                                   first storing it in the OrtSharedPrePackedWeightCache instance and then
+   *                                   receiving the actual shared weight data in the call to
+   *                                   OrtKernelImpl::SetSharedPrePackedWeight(). See the above description for
+   *                                   "sharing mode".
    * \param[out] is_packed Output parameter that the implementation sets to true if the kernel packed the tensor data.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -868,8 +868,8 @@ struct OrtEpApi {
   /** \brief Gets the kernel's opset version range that is supported.
    *
    * \param[in] kernel_def The OrtKernelDef instance.
-   * \param[out] version_start Output parameter set to the starting opset version that is supported.
-   * \param[out] version_end Output parameter set to the ending opset version (inclusive) that is supported.
+   * \param[out] start_version Output parameter set to the starting opset version that is supported.
+   * \param[out] end_version Output parameter set to the ending opset version (inclusive) that is supported.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -954,7 +954,7 @@ struct OrtEpApi {
    *
    * \note Subsequent calls with the same OrtSharedPrePackedWeightCache instance release and replace the old data.
    *
-   * \param[in] this_ptr The OrtKernelImpl instance.
+   * \param[in] prepacked_weight_cache The OrtSharedPrePackedWeightCache instance.
    * \param[in] buffer_data_ptrs An array of buffer data pointers that collectively hold the pre-packed data for a
    *                             single shared weight. Note that sometimes a single weight may have multiple pre-packed
    *                             buffers and it is up to the kernel implementation to determine how to split the data
@@ -971,6 +971,18 @@ struct OrtEpApi {
                   _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
                   _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
                   _In_ size_t num_buffers);
+
+  /** \brief Get the OrtEp instance to which the node is assigned from the OrtKernelInfo.
+   *
+   * \note Used within OrtKernelImpl implementations to obtain a reference to the OrtEp.
+   *
+   * \param[in] info The ::OrtKernelInfo instance.
+   * \param[out] ep Output parameter set to the OrtEp instance associated with the OrtKernelInfo.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
 };
 
 /**
@@ -1254,6 +1266,20 @@ struct OrtEp {
    */
   ORT_API2_STATUS(GetKernelRegistry, _In_ OrtEp* this_ptr,
                   _Outptr_result_maybenull_ const OrtKernelRegistry** kernel_registry);
+
+  /** \brief Gets whether the execution provider supports concurrent run calls made on the session.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] is_supported Whether concurrent runs are supported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional and it may be set to NULL.
+   *       If not implemented, ORT assumes that concurrent runs are supported.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(IsConcurrentRunSupported, _In_ OrtEp* this_ptr, _Outptr_ bool* is_supported);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

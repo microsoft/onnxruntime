@@ -1059,6 +1059,9 @@ struct AllocatorWithDefaultOptions : detail::AllocatorImpl<detail::Unowned<OrtAl
 struct Allocator : detail::AllocatorImpl<OrtAllocator> {
   explicit Allocator(std::nullptr_t) {}  ///< Convenience to create a class member and then replace with an instance
   Allocator(const Session& session, const OrtMemoryInfo*);
+
+  ///< Take ownership of a pointer created by C API
+  explicit Allocator(OrtAllocator* p) : AllocatorImpl<OrtAllocator>{p} {}
 };
 
 using UnownedAllocator = detail::AllocatorImpl<detail::Unowned<OrtAllocator>>;
@@ -2722,7 +2725,7 @@ struct KernelContext {
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
   Logger GetLogger() const;
-  OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
+  Ort::Allocator GetAllocator(const OrtMemoryInfo& memory_info) const;
   OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
   void ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const;
 
@@ -2779,6 +2782,11 @@ struct KernelInfoImpl : Base<T> {
   Logger GetLogger() const;
 
   KeyValuePairs GetConfigEntries() const;
+
+  std::string GetOperatorDomain() const;  ///< Wraps OrtApi::KernelInfo_GetOperatorDomain
+  std::string GetOperatorType() const;    ///< Wraps OrtApi::KernelInfo_GetOperatorType
+  int GetOperatorSinceVersion() const;    ///< Wraps OrtApi::KernelInfo_GetOperatorSinceVersion
+  const OrtEp* GetEp() const;             ///< Wraps OrtEpApi::KernelInfo_GetEp
 };
 
 }  // namespace detail
