@@ -142,6 +142,7 @@ if(onnxruntime_BUILD_SHARED_LIB)
   endif()
   target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
+
   target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
   if(UNIX)
