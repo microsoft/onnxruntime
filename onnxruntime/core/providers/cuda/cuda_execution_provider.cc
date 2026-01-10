@@ -203,6 +203,23 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(const CUDAAllocatorParam
   }
 }
 
+AllocatorPtr CUDAExecutionProvider::CreateCudaPinnedAllocator(const CUDAAllocatorParams& cuda_allocator_params) {
+  const auto* arena_cfg = cuda_allocator_params.arena_cfg;
+  AllocatorCreationInfo pinned_memory_info(
+      [](OrtDevice::DeviceId id) {
+        return std::make_unique<CUDAPinnedAllocator>(id, CUDA_PINNED);
+      },
+      cuda_allocator_params.device_id,
+      true,
+      {arena_cfg ? *arena_cfg
+                 : OrtArenaCfg(cuda_allocator_params.cuda_mem_threshold,
+                               static_cast<int>(cuda_allocator_params.arena_extend_strategy), -1, -1, -1, -1L)},
+      // stream-aware flag (intentionally set to false for this allocator)
+      false);
+
+  return CreateAllocator(pinned_memory_info);
+}
+
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t /*gpu_mem_limit*/,
                                                           ArenaExtendStrategy /*arena_extend_strategy*/, CUDAExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
                                                           OrtArenaCfg* /*default_memory_arena_cfg*/) {
