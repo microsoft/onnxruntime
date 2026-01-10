@@ -78,6 +78,12 @@ class DeviceStreamCollectionImpl {
 
   void SetDeviceStream(size_t idx, Stream* stream) {
     ORT_ENFORCE(idx < num_streams_);
+    if (stream_override_) {
+      if (idx == stream_override_->first) {
+        ORT_THROW("Cannot set device stream for index ", idx,
+                  " when there is an active stream override for the same index.");
+      }
+    }
     device_streams_[idx] = stream;
   }
 
@@ -91,7 +97,7 @@ class DeviceStreamCollectionImpl {
         return Status::OK();
       }
     }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No matching stream found to override");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No matching stream found to override");
   }
 
   void ResetStreamOverride() {
