@@ -199,3 +199,6 @@ repros/
 *.onnx
 !/test/**/*.onnx
 !/src/onnxruntime/python/datasets**/*.onnx
+!**/testdata/**/*.onnx
+!**/testdata/**/*.bin
+!/src/onnxruntime/python/tools/microbench/**/*.onnx
