@@ -222,6 +222,16 @@ std::unique_ptr<ONNX_NAMESPACE::GraphProto> GradientBuilderBase::SubgraphGradien
       "", config, logger_);
   ORT_THROW_IF_ERROR(builder.Build(nullptr, true));
 
+  std::vector<const NodeArg*> nodearg_gradient_outputs;
+  nodearg_gradient_outputs.reserve(subgraph->GetOutputs().size());
+  for (size_t i = 0; i < subgraph->GetOutputs().size(); i++) {
+    if (i < outputs.size())
+      nodearg_gradient_outputs.push_back(outputs[i]);
+    else
+      nodearg_gradient_outputs.push_back(subgraph->GetNodeArg(GradientName(gradient_outputs[i - outputs.size()])));
+  }
+  subgraph->SetOutputs(nodearg_gradient_outputs);
+
   adjust_func(subgraph.get());
 
   subgraph->SetGraphProtoSyncNeeded();
