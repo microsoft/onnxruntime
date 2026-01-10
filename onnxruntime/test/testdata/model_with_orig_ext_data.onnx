@@ -1,19 +1,0 @@
-	onnx-example:æ
-:
-X
-model_with_orig_ext_dataY"Pad*
-mode"constant 
-test-model*JBmodel_with_orig_ext_dataj(
-locationmodel_with_orig_ext_data.binpZ
-X
-
-
-Z&
-model_with_orig_ext_data
-
-
-b
-Y
-
-
-B

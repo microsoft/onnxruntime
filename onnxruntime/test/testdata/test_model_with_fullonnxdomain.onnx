@@ -1,18 +1,0 @@
-onnx-example"ai.onnx:j
-
-X1
-X2Y"Equal:ai.onnx
-test-modelZ
-X1
-
-
-Z
-X2
-
-
-b
-Y
-	
-
-B
-ai.onnx	

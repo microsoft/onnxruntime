@@ -1,40 +1,0 @@
-cast_chain_generator:Ô
-,
-XX_fp16Cast_X_to_fp16"Cast*	
-to
- 
-1
-X_fp16X_fp32Cast_X_to_fp32"Cast*	
-to 
-,
-YY_fp32Cast_Y_to_fp32"Cast*	
-to 
-"
-X_fp32
-Y_fp32t0_sumAdd"Add
-*
-t0_sumt1_castCast_1"Cast*	
-to
- 
-+
-t1_castt2_castCast_2"Cast*	
-to 
-+
-t2_castt3_castCast_3"Cast*	
-to 
-+
-t3_castt4_castCast_4"Cast*	
-to
- 
-&
-t4_castZOutputIdentity"IdentityCastChainGraphZ
-X
-	
-NZ
-Y
-	
-Nb
-Z
-	
-
-NB
