@@ -79,6 +79,19 @@ MlasGemmPackB(
 
 bool
 MLASCALL
+MlasGemvBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize
+    );
+
+
+bool
+MLASCALL
 MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,

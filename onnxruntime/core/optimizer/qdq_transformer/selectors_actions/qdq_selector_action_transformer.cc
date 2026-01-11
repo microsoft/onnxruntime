@@ -145,21 +145,34 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 nodes. DQ, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"1DQ"};
+  const std::string cpu_action_name{"1DQ_CPU"};
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
+  std::unique_ptr<Action> cpu_action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // Operators with DML QLinear kernel support (QLinearAveragePool, QLinearGlobalAveragePool, QLinearSigmoid)
   std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
-                                                          {"LeakyRelu", {}},
                                                           {"GlobalAveragePool", {}},
-                                                          {"Sigmoid", {}},
-                                                          {"Softmax", {}}},
+                                                          {"Sigmoid", {}}},
                                                          std::move(selector),
                                                          std::move(action));
+
+  // Operators without DML QLinear kernel support (CPU only).
+  // DML EP does not have QLinearLeakyRelu or QLinearSoftmax kernels.
+  // See https://github.com/microsoft/onnxruntime/issues/26531
+  std::vector<const char*> cpu_only_provider = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> cpu_selector = std::make_unique<QDQ::UnarySelector>(cpu_only_provider);
+  qdq_selector_action_registry.RegisterSelectorAndAction(cpu_action_name,
+                                                         {{"LeakyRelu", {}},
+                                                          {"Softmax", {}}},
+                                                         std::move(cpu_selector),
+                                                         std::move(cpu_action));
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+  qdq_selector_action_registry.RegisterAction(cpu_action_name, std::move(cpu_action));
 #endif
 }
 

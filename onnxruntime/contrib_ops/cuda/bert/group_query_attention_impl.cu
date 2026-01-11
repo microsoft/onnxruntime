@@ -47,6 +47,10 @@ limitations under the License.
 
 using namespace onnxruntime::cuda;
 
+using onnxruntime::contrib::GroupQueryAttentionParameters;
+using onnxruntime::contrib::LAYOUT_BNSH;
+using onnxruntime::contrib::cuda::GroupQueryAttentionData;
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -61,7 +65,7 @@ __global__ void repeat_seqlen(int32_t* seqlens_k, int32_t seqlen, int batch_size
 
 // Concat new to past in present. Supports past BSNH or past BNSH
 template <typename T>
-Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameters,
+Status LaunchConcatNewToPastKV(GroupQueryAttentionParameters& parameters,
                                GroupQueryAttentionData<T>& data,
                                const void* new_key,
                                const void* new_value,
@@ -100,7 +104,7 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
 
 // Concat new to kv buffer in place
 template <typename T>
-Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
+Status LaunchConcatKVInPlace(GroupQueryAttentionParameters& parameters,
                              GroupQueryAttentionData<T>& data,
                              const void* new_key,
                              const void* new_value,
@@ -196,7 +200,7 @@ __global__ void UngroupLarge(const T* kv_in,
 }
 
 // Ungroup kv or present kv for use in Memory Efficient kernel. If present kv is not null and is BNSH, transposes it.
-Status LaunchUngroup(contrib::GroupQueryAttentionParameters& parameters,
+Status LaunchUngroup(GroupQueryAttentionParameters& parameters,
                      float2* k_buff, float2* v_buff,
                      const float2* k_og, const float2* v_og,
                      const int buff_seqlen, const int og_seqlen,
@@ -403,7 +407,7 @@ template <typename T>
 Status FlashAttention(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
-    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data,
     float scale) {
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
@@ -493,7 +497,7 @@ template <typename T>
 Status EfficientAttention(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
-    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data,
     float scale) {
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
@@ -615,7 +619,8 @@ Status EfficientAttention(
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
-  p.is_half = sizeof(T) == 2;
+  p.is_bf16 = std::is_same<T, BFloat16>::value;
+  p.is_half = !p.is_bf16 && (sizeof(T) == 2);
   p.batch_size = batch_size;
   p.num_heads = num_heads;
   p.sequence_length = sequence_length;
@@ -657,7 +662,7 @@ Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& /*cublas*/,
     Stream* ort_stream,
-    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
@@ -697,7 +702,7 @@ template Status QkvToContext<BFloat16>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     Stream* ort_stream,
-    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<BFloat16>& data);
 
 template Status LaunchUnpackQKV<BFloat16, LAYOUT_BNSH>(
@@ -708,6 +713,3 @@ template Status LaunchUnpackQKV<BFloat16, LAYOUT_BNSH>(
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#undef OFFSET_BNSH
-#undef OFFSET_BSNH

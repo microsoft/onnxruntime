@@ -47,7 +47,7 @@ jobs:
           mkdir -p _site/docs/api
           mv java/build/docs/javadoc _site/docs/api/java
       - name: Upload new site
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: onnxruntime-java-apidocs
           path: _site

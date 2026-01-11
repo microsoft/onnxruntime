@@ -92,6 +92,20 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
   bool allow_4bit_;
 };
 
+class ClipNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit ClipNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
 // 2 DQ nodes providing input -> node -> Q
 class BinaryNodeGroupSelector : public NodeGroupSelector {
  public:

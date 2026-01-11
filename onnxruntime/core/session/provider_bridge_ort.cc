@@ -29,6 +29,7 @@
 #include "core/framework/run_options.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_proto_serializer.h"
@@ -1281,6 +1282,11 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::utils::HasExternalDataInMemory(ten_proto);
   }
 
+  Status Utils__ValidateExternalDataPath(const std::filesystem::path& base_path,
+                                         const std::filesystem::path& location) override {
+    return onnxruntime::utils::ValidateExternalDataPath(base_path, location);
+  }
+
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -1485,6 +1491,25 @@ struct ProviderHostImpl : ProviderHost {
   void GraphUtils__MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
                                                  const std::string& name, bool load_in_memory) override {
     graph_utils::MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_in_memory);
+  }
+
+  // ExternalDataInfo (wrapped)
+  void ExternalDataInfo__operator_delete(ExternalDataInfo* p) override { delete p; }
+  const PathString& ExternalDataInfo__GetRelPath(const ExternalDataInfo* p) const override {
+    return p->GetRelPath();
+  }
+  int64_t ExternalDataInfo__GetOffset(const ExternalDataInfo* p) const override {
+    return narrow<int64_t>(p->GetOffset());
+  }
+  size_t ExternalDataInfo__GetLength(const ExternalDataInfo* p) const override {
+    return p->GetLength();
+  }
+  const std::string& ExternalDataInfo__GetChecksum(const ExternalDataInfo* p) const override {
+    return p->GetChecksum();
+  }
+  Status ExternalDataInfo__Create(const ONNX_NAMESPACE::StringStringEntryProtos& input,
+                                  std::unique_ptr<ExternalDataInfo>& out) override {
+    return ExternalDataInfo::Create(input, out);
   }
 
   // Initializer (wrapped)

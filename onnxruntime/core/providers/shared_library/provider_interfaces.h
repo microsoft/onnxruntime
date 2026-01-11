@@ -38,6 +38,7 @@ struct ProviderHost;
 struct ProviderHostCPU;
 
 class ExternalDataInfo;
+
 class PhiloxGenerator;
 using ProviderType = const std::string&;
 class RandomGenerator;
@@ -999,6 +1000,9 @@ struct ProviderHost {
 
   virtual bool Utils__HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) = 0;
 
+  virtual Status Utils__ValidateExternalDataPath(const std::filesystem::path& base_path,
+                                                 const std::filesystem::path& location) = 0;
+
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -1135,6 +1139,15 @@ struct ProviderHost {
                                                          const std::string& name, bool load_inline) = 0;
 
   virtual Status GraphUtils__ConvertInMemoryDataToInline(Graph& graph, const std::string& name) = 0;
+
+  // ExternalDataInfo
+  virtual void ExternalDataInfo__operator_delete(ExternalDataInfo*) = 0;
+  virtual const PathString& ExternalDataInfo__GetRelPath(const ExternalDataInfo*) const = 0;
+  virtual int64_t ExternalDataInfo__GetOffset(const ExternalDataInfo*) const = 0;
+  virtual size_t ExternalDataInfo__GetLength(const ExternalDataInfo*) const = 0;
+  virtual const std::string& ExternalDataInfo__GetChecksum(const ExternalDataInfo*) const = 0;
+  virtual Status ExternalDataInfo__Create(const ONNX_NAMESPACE::StringStringEntryProtos& input,
+                                          std::unique_ptr<ExternalDataInfo>& out) = 0;
 
   // Initializer
   virtual Initializer* Initializer__constructor(ONNX_NAMESPACE::TensorProto_DataType data_type,
