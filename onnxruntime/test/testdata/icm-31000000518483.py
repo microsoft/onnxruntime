@@ -1,5 +1,4 @@
-import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, save_model
 
 # Add node with a subgraph that has no inputs or outputs.
 # Graph::BuildConnections should remove and the list of subgraphs in Graph::Resolve should be updated.
@@ -49,5 +48,6 @@ graph_proto = helper.make_graph(
 )
 
 model = helper.make_model(graph_proto)
+# model to repro issue is invalid. can't run checker.
 # onnx.checker.check_model(model, True)
-onnx.save(model, "msrc-31000000518483.onnx")
+save_model(model, "icm-31000000518483.onnx")
