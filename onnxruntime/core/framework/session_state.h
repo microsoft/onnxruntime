@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include <memory>
 #include <map>
-#include <unordered_map>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/flatbuffers.h"
@@ -99,7 +100,8 @@ class SessionState {
                const SessionOptions& sess_options,
                PrepackedWeightsContainer* prepacked_weights_container = nullptr,
                AllocatorMap* parent_allocators = nullptr,
-               AllocatorMap* parent_initializer_allocators = nullptr);
+               AllocatorMap* parent_initializer_allocators = nullptr,
+               const std::optional<std::function<concurrency::ThreadPool*()>> get_thread_pool_fn = std::nullopt);
 
   ~SessionState() {
   }
@@ -294,7 +296,17 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
-  concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
+  concurrency::ThreadPool* GetThreadPool() const noexcept {
+    // get_thread_pool_fn_ is allowed to return nullptr, so use `call_once` to enforce only calling it once.
+    std::call_once(got_thread_pool_flag_, [this] {
+      if (!thread_pool_ && get_thread_pool_fn_) {
+        thread_pool_ = (*get_thread_pool_fn_)();
+      }
+    });
+
+    return thread_pool_;
+  }
+
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
@@ -536,9 +548,13 @@ class SessionState {
 
   SubgraphSessionStateMap subgraph_session_states_;
 
-  // either threadpool could be nullptr
-  concurrency::ThreadPool* const thread_pool_{};
-  concurrency::ThreadPool* const inter_op_thread_pool_{};
+  // support lazy creation of the intra op threadpool by using a function that creates the threadpool on first call.
+  // multiple calls should be idempotent.
+  // thread_pool_ is set to the result of this on the first call to GetThreadPool, if it was not provided directly.
+  const std::optional<std::function<concurrency::ThreadPool*()>> get_thread_pool_fn_{};
+  mutable std::once_flag got_thread_pool_flag_;
+  mutable concurrency::ThreadPool* thread_pool_{};
+  concurrency::ThreadPool* const inter_op_thread_pool_{};  // nullptr unless parallel execution is enabled
 
   const DataTransferManager& data_transfer_mgr_;
 
