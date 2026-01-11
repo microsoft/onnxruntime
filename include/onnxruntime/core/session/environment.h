@@ -20,6 +20,7 @@
 #include "core/platform/threadpool.h"
 
 #include "core/session/abi_devices.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/plugin_ep/ep_library.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -51,11 +52,13 @@ class Environment {
     @param tp_options optional set of parameters controlling the number of intra and inter op threads for the global
     threadpools.
     @param create_global_thread_pools determine if this function will create the global threadpools or not.
+    @param config_entries Application-specified configuration entries.
   */
   static Status Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                        std::unique_ptr<Environment>& environment,
                        const OrtThreadingOptions* tp_options = nullptr,
-                       bool create_global_thread_pools = false);
+                       bool create_global_thread_pools = false,
+                       const OrtKeyValuePairs* config_entries = nullptr);
 
   /**
    * Set the global threading options for the environment, if no global thread pools have been created yet.
@@ -159,6 +162,17 @@ class Environment {
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
   Status GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator);
 
+  /// <summary>
+  /// Returns configuration entries set by the application on environment creation.
+  ///
+  /// Primarily used by EP libraries to retrieve environment-level configurations, but could be used
+  /// more generally to specify global settings.
+  ///
+  /// Refer to OrtApi::CreateEnvWithConfig().
+  /// </summary>
+  /// <returns></returns>
+  const OrtKeyValuePairs& GetConfigEntries() const;
+
   ~Environment();
 
  private:
@@ -166,7 +180,8 @@ class Environment {
 
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                     const OrtThreadingOptions* tp_options = nullptr,
-                    bool create_global_thread_pools = false);
+                    bool create_global_thread_pools = false,
+                    const OrtKeyValuePairs* config_entries = nullptr);
 
   Status RegisterAllocatorImpl(AllocatorPtr allocator);
   Status UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool error_if_not_found = true);
@@ -243,6 +258,8 @@ class Environment {
   DataTransferManager data_transfer_mgr_;  // plugin EP IDataTransfer instances
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  OrtKeyValuePairs config_entries_;  // Application-specified environment configuration entries
 };
 
 }  // namespace onnxruntime

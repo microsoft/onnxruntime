@@ -120,9 +120,11 @@ std::unordered_set<OrtAllocator*>::const_iterator FindExistingAllocator(const st
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
                            const OrtThreadingOptions* tp_options,
-                           bool create_global_thread_pools) {
+                           bool create_global_thread_pools,
+                           const OrtKeyValuePairs* config_entries) {
   environment = std::make_unique<Environment>();
-  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
+  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools,
+                                        config_entries);
   return status;
 }
 
@@ -242,10 +244,15 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                                const OrtThreadingOptions* tp_options,
-                               bool create_global_thread_pools) {
+                               bool create_global_thread_pools,
+                               const OrtKeyValuePairs* config_entries) {
   auto status = Status::OK();
 
   logging_manager_ = std::move(logging_manager);
+
+  if (config_entries != nullptr) {
+    config_entries_.CopyFromMap(config_entries->Entries());
+  }
 
   // create thread pools
   if (create_global_thread_pools) {
@@ -472,6 +479,10 @@ Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocat
   }
 
   return Status::OK();
+}
+
+const OrtKeyValuePairs& Environment::GetConfigEntries() const {
+  return config_entries_;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

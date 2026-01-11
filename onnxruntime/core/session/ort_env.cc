@@ -52,9 +52,11 @@ OrtEnv::~OrtEnv() {
 #endif
 }
 
-OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
-                            onnxruntime::common::Status& status,
-                            const OrtThreadingOptions* tp_options) {
+/*static*/
+OrtEnv* OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
+                                    onnxruntime::common::Status& status,
+                                    const OrtThreadingOptions* tp_options,
+                                    const OrtKeyValuePairs* config_entries) {
   std::lock_guard<std::mutex> lock(m_);
   if (!p_instance_) {
     std::unique_ptr<LoggingManager> lmgr;
@@ -76,12 +78,11 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
                                             LoggingManager::InstanceType::Default,
                                             &name);
 
+    const bool create_global_thread_pools = tp_options != nullptr;
     std::unique_ptr<onnxruntime::Environment> env;
-    if (!tp_options) {
-      status = onnxruntime::Environment::Create(std::move(lmgr), env);
-    } else {
-      status = onnxruntime::Environment::Create(std::move(lmgr), env, tp_options, true);
-    }
+    status = onnxruntime::Environment::Create(std::move(lmgr), env, tp_options,
+                                              create_global_thread_pools, config_entries);
+
     if (!status.IsOK()) {
       return nullptr;
     }
@@ -94,6 +95,7 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
   return p_instance_;
 }
 
+/*static*/
 void OrtEnv::Release(OrtEnv* env_ptr) {
   if (!env_ptr) {
     return;  // nothing to release
@@ -131,10 +133,26 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
   delete instance_to_delete;
 }
 
+/*static*/
+OrtEnv* OrtEnv::TryGetInstance() {
+  std::lock_guard<std::mutex> lock(m_);
+
+  if (!p_instance_) {
+    return nullptr;
+  }
+
+  ++ref_count_;
+  return p_instance_;
+}
+
 onnxruntime::logging::LoggingManager* OrtEnv::GetLoggingManager() const {
   return value_->GetLoggingManager();
 }
 
 void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager) {
   value_->SetLoggingManager(std::move(logging_manager));
+}
+
+const OrtKeyValuePairs& OrtEnv::GetConfigEntries() const {
+  return value_->GetConfigEntries();
 }

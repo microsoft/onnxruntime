@@ -768,4 +768,6 @@ ORT_API_STATUS_IMPL(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session
                     _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                     _In_ size_t num_outputs);
 
+// OrtEnv
+ORT_API_STATUS_IMPL(CreateEnvWithConfig, _In_ const OrtEnvCreateConfig* config, _Outptr_ OrtEnv** out);
 }  // namespace OrtApis

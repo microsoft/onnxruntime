@@ -1408,6 +1408,22 @@ struct OrtEpApi {
                   _Outptr_ OrtKernelImpl** kernel_out);
 
   ORT_CLASS_RELEASE(KernelImpl);
+
+  /** \brief Gets a new OrtKeyValuePairs instance containing all configuration entries set on the environment.
+   *
+   * \note An application may provide configuration options for EP libraries by using keys with the
+   *       prefix 'ep.<ep_name>.'. For example, the key 'ep.my_ep.some_ep_key' represents a key named 'some_ep_key'
+   *       that is meant to be consumed by an EP named 'my_ep'.
+   *
+   * \note Refer to onnxruntime_env_config_keys.h for common configuration entry keys and their supported values.
+   *
+   * \param[out] out Output parameter set to the OrtKeyValuePairs instance containing all configuration entries.
+   *                 Must be released via OrtApi::ReleaseKeyValuePairs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
 };
 
 /**

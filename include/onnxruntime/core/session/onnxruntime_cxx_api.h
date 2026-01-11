@@ -1185,6 +1185,9 @@ struct Env : detail::Base<OrtEnv> {
   Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
       OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
 
+  /// \brief Wraps OrtApi::CreateEnvWithConfig
+  Env(const OrtEnvCreateConfig* config);
+
   /// \brief C Interop Helper
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
