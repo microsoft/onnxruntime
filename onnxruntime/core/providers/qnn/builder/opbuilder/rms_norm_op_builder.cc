@@ -58,13 +58,10 @@ Status RMSNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   // Additional constraints for NPU backend
   bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   if (is_npu_backend) {
-    int32_t default_axis = -1;
+    int32_t axis = -1;
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
-
-    // Normalize negative axis
-    int32_t normalized_axis = default_axis < 0 ? static_cast<int32_t>(input_rank) + default_axis : default_axis;
-    ORT_RETURN_IF(static_cast<size_t>(normalized_axis) != input_rank - 1,
+    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
+    ORT_RETURN_IF(static_cast<size_t>(axis) != input_rank - 1,
                   "QNN RMSNorm for NPU backend only supports axis with last input dimension");
   }
 
@@ -108,13 +105,8 @@ Status RMSNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       beta_quant_param = QnnQuantParamsWrapper(quant_scale, zero_point);
     }
 
-    size_t beta_num_elements = 1;
-    for (uint32_t dim : beta_shape) {
-      beta_num_elements *= dim;
-    }
-    const size_t element_size = utils::GetElementSizeByType(beta_data_type);
-    std::vector<uint8_t> beta_data(beta_num_elements * element_size, 0);
-
+    const size_t beta_size_in_bytes = utils::GetQnnTensorDataSizeInBytes(beta_shape, beta_data_type);
+    std::vector<uint8_t> beta_data(beta_size_in_bytes, 0);
     const std::string beta_tensor_name = node_unit.Name() + "_beta_dummy";
     QnnTensorWrapper beta_tensor_wrapper(beta_tensor_name,
                                          QNN_TENSOR_TYPE_STATIC,
@@ -155,16 +147,13 @@ Status RMSNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape), "Cannot get shape of Input 0");
   const size_t input_rank = input_shape.size();
-  int32_t default_axis = -1;
+  int32_t axis = -1;
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-  ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
-
-  // Normalize negative axis to prevent underflow
-  int32_t normalized_axis = default_axis < 0 ? static_cast<int32_t>(input_rank) + default_axis : default_axis;
-  size_t axes_rank = input_rank - static_cast<size_t>(normalized_axis);
+  ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
+  size_t axes_rank = input_rank - static_cast<size_t>(axis);
   std::vector<uint32_t> axes(axes_rank, 0);
   std::vector<uint32_t> axes_shape{SafeInt<uint32_t>(axes_rank)};
-  axes[0] = static_cast<uint32_t>(normalized_axis);
+  axes[0] = static_cast<uint32_t>(axis);
   for (size_t i = 1; i < axes.size(); ++i) {
     axes[i] = axes[i - 1] + 1;
   }
