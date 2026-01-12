@@ -6912,6 +6912,43 @@ struct OrtApi {
   ORT_CLASS_RELEASE(DeviceEpIncompatibilityDetails);
 
   /// @}
+
+  /** \brief Get the EP Interop API instance.
+   *
+   * Get the Interop API instance to work with external resources. This API provides functions
+   * for importing external GPU memory and semaphores for zero-copy sharing between ORT inference
+   * and other GPU workloads.
+   *
+   * \return Interop API struct instance.
+   *
+   * \since Version 1.24.
+   */
+  const OrtInteropApi*(ORT_API_CALL* GetInteropApi)(void);
+
+  /** \brief Get the EP device assigned to each session output.
+   *
+   * Returns the OrtEpDevice assigned to each output of the session after graph partitioning.
+   * This allows validation that outputs are placed on the expected device for external resource sharing.
+   *
+   * The EP device for each output is determined by which execution provider will produce that output
+   * during inferencing. This information is useful for:
+   * - Validating that outputs will be placed on the expected device for external resource sharing
+   * - Deciding whether to use external memory handles for outputs
+   *
+   * \param[in] session The OrtSession instance to query.
+   * \param[out] outputs_ep_devices An array to be filled with the EP device for each output.
+   *                                The array must be allocated by the caller with space for
+   *                                OrtEpDevice* values for each output.
+   *                                The order is the same as returned by SessionGetOutputName.
+   * \param[in] num_outputs The number of outputs in the session. Must match SessionGetOutputCount.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
+                  _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
+                  _In_ size_t num_outputs);
 };
 
 /*
