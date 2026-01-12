@@ -206,11 +206,11 @@ MLASCALL
 MlasIsDynamicQGemmAvailable()
 {
 #if defined(USE_KLEIDIAI)
-  if(ArmKleidiAI::UseSME2) {
-    return ArmKleidiAI::UseSME2;
+  if(ArmKleidiAI::UseSME2 || (ArmKleidiAI::UseSME && (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0))) {
+    return true;
   }
   else {
-    return ArmKleidiAI::UseSME;
+    return false;
   }
 
 #else

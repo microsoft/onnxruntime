@@ -128,7 +128,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
                 #if(ENABLE_QMX_KERNELS)
                     if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
                     {
-                        KLEIDIAI_KERNEL_LOG("QGEMM: Using QMX Kernel");
+                        KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa");
                         kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa(
                             Shape.M, Shape.N, Shape.K, lhs, DataParams->PackedB,
                             DataParams->C,
@@ -150,7 +150,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
                     }
                 #else
                         KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa");
-                                kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(
+                                kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa(
                                     Shape.M, Shape.N, Shape.K, lhs, DataParams->PackedB,
                                     DataParams->C,
                                     Shape.N * sizeof(float),
