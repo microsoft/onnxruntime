@@ -232,39 +232,39 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithConfig, _In_ const OrtEnvCreateConfig* config, _Outptr_ OrtEnv** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  if (config == nullptr) {
+  if (options == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "CreateEnvWithConfig requires a valid (non-null) OrtEnvCreateConfig argument");
+                                 "CreateEnvWithOptions requires a valid (non-null) OrtEnvCreationOptions argument");
   }
 
   if (out == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "CreateEnvWithConfig requires a valid (non-null) output parameter into which to store "
-                                 "the new OrtEnv instance");
+                                 "CreateEnvWithOptions requires a valid (non-null) output parameter into which to "
+                                 "store the new OrtEnv instance");
   }
 
-  if (config->logging_severity_level < OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE ||
-      config->logging_severity_level > OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL) {
+  if (options->logging_severity_level < OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE ||
+      options->logging_severity_level > OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "CreateEnvWithConfig requires a OrtEnvCreateConfig argument "
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
                                  "with a valid logging severity level value from the OrtLoggingLevel enumeration");
   }
 
-  if (config->log_id == nullptr) {
+  if (options->log_id == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "CreateEnvWithConfig requires a OrtEnvCreateConfig argument "
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
                                  "with a valid (non-null) log identifier string");
   }
 
-  OrtLoggingLevel logging_severity_level = static_cast<OrtLoggingLevel>(config->logging_severity_level);
-  OrtEnv::LoggingManagerConstructionInfo lm_info(config->custom_logging_function,
-                                                 config->custom_logging_param,
+  OrtLoggingLevel logging_severity_level = static_cast<OrtLoggingLevel>(options->logging_severity_level);
+  OrtEnv::LoggingManagerConstructionInfo lm_info(options->custom_logging_function,
+                                                 options->custom_logging_param,
                                                  logging_severity_level,
-                                                 config->log_id);
+                                                 options->log_id);
   Status status;
-  *out = OrtEnv::GetOrCreateInstance(lm_info, status, config->threading_options, config->config_entries);
+  *out = OrtEnv::GetOrCreateInstance(lm_info, status, options->threading_options, options->config_entries);
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -4329,7 +4329,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::GetInteropApi,
     &OrtApis::SessionGetEpDeviceForOutputs,
 
-    &OrtApis::CreateEnvWithConfig,
+    &OrtApis::CreateEnvWithOptions,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

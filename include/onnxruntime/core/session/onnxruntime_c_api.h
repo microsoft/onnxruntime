@@ -1044,7 +1044,7 @@ typedef enum OrtCompiledModelCompatibility {
  *
  * \since Version 1.24.
  */
-typedef struct OrtEnvCreateConfig {
+typedef struct OrtEnvCreationOptions {
   uint32_t version;  ///< Must be set to ORT_API_VERSION
 
   /** \brief The logging severity level for the environment. Must be set to a value from OrtLoggingLevel.
@@ -1117,7 +1117,7 @@ typedef struct OrtEnvCreateConfig {
   // End of fields available in ORT 1.24
   //
 
-} OrtEnvCreateConfig;
+} OrtEnvCreationOptions;
 
 /** \brief The C API
  *
@@ -6866,19 +6866,19 @@ struct OrtApi {
                   _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                   _In_ size_t num_outputs);
 
-  /** \brief Create an OrtEnv instance with the given configuration.
+  /** \brief Create an OrtEnv instance with the given options.
    *
    * \note Invoking this function will return the same instance of the environment as that returned by a previous call
    *       to another env creation function; all arguments to this function will be ignored.
    *
-   * \param[in] config The OrtEnvCreateConfig instance representing the configuration of the environment.
+   * \param[in] options The OrtEnvCreationOptions instance that contains creation options.
    * \param[out] out Output parameter set to the new OrtEnv instance. Must be freed with OrtApi::ReleaseEnv.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24
    */
-  ORT_API2_STATUS(CreateEnvWithConfig, _In_ const OrtEnvCreateConfig* config, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out);
 };
 
 /*

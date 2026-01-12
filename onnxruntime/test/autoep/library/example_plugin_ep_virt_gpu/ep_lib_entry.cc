@@ -3,9 +3,7 @@
 
 #include <string_view>
 
-#define ORT_API_MANUAL_INIT
-#include "onnxruntime_cxx_api.h"
-#undef ORT_API_MANUAL_INIT
+#include "core/session/onnxruntime_env_config_keys.h"
 
 #include "../plugin_ep_utils.h"
 #include "ep_factory.h"
@@ -51,12 +49,15 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const 
   RETURN_IF_ERROR(ep_api->GetEnvConfigEntries(&c_kvps));
   Ort::KeyValuePairs env_configs(c_kvps);
 
-  // Note: environment configuration entries for a specific EP library are stored with the prefix:
-  // 'ep_lib.<lower_case_ep_lib_registration_name>.'.
-  // Here we extract a config that determines whether creating virtual hardware devices is allowed.
-  std::string config_key = "ep_lib.";
+  // Extract a config that determines whether creating virtual hardware devices is allowed.
+  // An application can allow an EP library to create virtual devices in two ways:
+  //  1. Use an EP library registration name that ends in the suffix ".virtual". If so, ORT will automatically
+  //     set the config key "allow_virtual_devices.<EP_LIB_REGISTRATION_NAME>" to "1" in the environment.
+  //  2. Directly set the config key "allow_virtual_devices.<EP_LIB_REGISTRATION_NAME>" to "1" when creating the
+  //     OrtEnv via OrtApi::CreateEnvWithOptions().
+  std::string config_key = kOrtEnv_AllowVirtualDevicesPrefix;
   config_key += GetLowercaseString(registration_name);
-  config_key += ".allow_virtual_devices";
+
   const char* config_value = env_configs.GetValue(config_key.c_str());
   const bool allow_virtual_devices = config_value != nullptr && strcmp(config_value, "1") == 0;
 

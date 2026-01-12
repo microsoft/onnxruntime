@@ -784,9 +784,9 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction loggin
   }
 }
 
-inline Env::Env(const OrtEnvCreateConfig* config) {
-  ThrowOnError(GetApi().CreateEnvWithConfig(config, &p_));
-  if (strcmp(config->log_id, "onnxruntime-node") == 0) {
+inline Env::Env(const OrtEnvCreationOptions* options) {
+  ThrowOnError(GetApi().CreateEnvWithOptions(options, &p_));
+  if (strcmp(options->log_id, "onnxruntime-node") == 0) {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
   } else {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));

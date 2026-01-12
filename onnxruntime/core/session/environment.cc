@@ -16,6 +16,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_env_config_keys.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
@@ -515,16 +516,6 @@ bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
          lib_registration_name.compare(lib_registration_name.size() - suffix.size(),
                                        suffix.size(), suffix) == 0;
 }
-
-void AddEnvConfigEntriesForEpLibrary(const std::string& lib_registration_name, OrtKeyValuePairs& config_entries) {
-  if (AreVirtualDevicesAllowed(lib_registration_name)) {
-    std::string key = "ep_lib.";
-    key += utils::GetLowercaseString(lib_registration_name);
-    key += ".allow_virtual_devices";
-
-    config_entries.Add(key, "1");
-  }
-}
 }  // namespace
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
@@ -605,10 +596,15 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   std::vector<EpFactoryInternal*> internal_factories = {};
   std::unique_ptr<EpLibrary> ep_library;
 
-  // Add environment configuration entries for the EP library.
-  // We do this before calling into the library's CreateEpFactories() entry function, so that configurations can
-  // be used to initialize the library's OrtEpFactory instances.
-  AddEnvConfigEntriesForEpLibrary(registration_name, config_entries_);
+  // An application can allow an EP library to create virtual devices by using an EP library registration name that
+  // ends in the suffix ".virtual". If so, ORT automatically sets the config key
+  // "allow_virtual_devices.<EP_LIB_REGISTRATION_NAME>" to "1" in the environment.
+  if (AreVirtualDevicesAllowed(registration_name)) {
+    std::string key = kOrtEnv_AllowVirtualDevicesPrefix;
+    key += utils::GetLowercaseString(registration_name);
+
+    config_entries_.Add(key.c_str(), "1");
+  }
 
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
   ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
