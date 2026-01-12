@@ -263,6 +263,7 @@ export class WebGpuBackend {
     this.kernelCustomData = new Map();
 
     // set up flags for logger
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
     configureLogger(env.logLevel!, !!env.debug);
 
     // TODO: set up flags
@@ -341,9 +342,11 @@ export class WebGpuBackend {
     let queryReadBuffer: GPUBuffer;
     if (this.queryType !== 'none') {
       this.commandEncoder.resolveQuerySet(
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
         this.querySet!,
         0,
         this.pendingDispatchNumber * 2,
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
         this.queryResolveBuffer!,
         0,
       );
@@ -356,6 +359,7 @@ export class WebGpuBackend {
       this.pendingQueries.set(queryReadBuffer, this.pendingKernels);
       this.pendingKernels = [];
       this.commandEncoder.copyBufferToBuffer(
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
         this.queryResolveBuffer!,
         0,
         queryReadBuffer,
@@ -827,7 +831,7 @@ export class WebGpuBackend {
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unnecessary-type-assertion
     (this.computePassEncoder as any).writeTimestamp(this.querySet, index);
   }
   setQueryType(): void {

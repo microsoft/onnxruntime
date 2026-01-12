@@ -10,6 +10,7 @@
     "@types/npmlog": "^4.1.4",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
+    "baseline-browser-mapping": "^2.9.13",
     "dir-compare": "^4.2.0",
     "esbuild": "^0.25.0",
     "esbuild-plugin-polyfill-node": "^0.3.0",
