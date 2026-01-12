@@ -482,8 +482,19 @@ Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocat
   return Status::OK();
 }
 
-const OrtKeyValuePairs& Environment::GetConfigEntries() const {
-  return config_entries_;
+OrtKeyValuePairs Environment::GetConfigEntries() const {
+  std::lock_guard<std::mutex> lock{config_entries_mutex_};
+  return config_entries_;  // copy
+}
+
+void Environment::InsertOrAssignConfigEntry(std::string key, std::string value) {
+  std::lock_guard<std::mutex> lock{config_entries_mutex_};
+  config_entries_.Add(std::move(key), std::move(value));
+}
+
+void Environment::RemoveConfigEntry(const std::string& key) {
+  std::lock_guard<std::mutex> lock{config_entries_mutex_};
+  config_entries_.Remove(key.c_str());
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -603,7 +614,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     std::string key = kOrtEnv_AllowVirtualDevicesPrefix;
     key += utils::GetLowercaseString(registration_name);
 
-    config_entries_.Add(key.c_str(), "1");
+    InsertOrAssignConfigEntry(std::move(key), "1");
   }
 
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
@@ -631,7 +642,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& regist
       std::string key = kOrtEnv_AllowVirtualDevicesPrefix;
       key += utils::GetLowercaseString(registration_name);
 
-      config_entries_.Remove(key.c_str());
+      RemoveConfigEntry(key);
     }
 
     // remove from map and global list of OrtEpDevice* before unloading so we don't get a leftover entry if

@@ -65,7 +65,8 @@ struct OrtEnv {
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;
   void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
 
-  const OrtKeyValuePairs& GetConfigEntries() const;
+  // Returns a copy of the environment's config entries.
+  OrtKeyValuePairs GetConfigEntries() const;
 
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
   ~OrtEnv();

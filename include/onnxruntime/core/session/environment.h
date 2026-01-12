@@ -163,7 +163,7 @@ class Environment {
   Status GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator);
 
   /// <summary>
-  /// Returns configuration entries set by the application on environment creation.
+  /// Returns a copy of the configuration entries set by the application on environment creation.
   ///
   /// Primarily used by EP libraries to retrieve environment-level configurations, but could be used
   /// more generally to specify global settings.
@@ -171,7 +171,7 @@ class Environment {
   /// Refer to OrtApi::CreateEnvWithOptions().
   /// </summary>
   /// <returns></returns>
-  const OrtKeyValuePairs& GetConfigEntries() const;
+  OrtKeyValuePairs GetConfigEntries() const;
 
   ~Environment();
 
@@ -189,6 +189,13 @@ class Environment {
                                    const OrtMemoryInfo& memory_info, OrtAllocatorType allocator_type,
                                    const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator,
                                    bool replace_existing);
+
+  // Inserts (or assigns) a config entry into `config_entries_`. Locks `config_entries_mutex_`.
+  void InsertOrAssignConfigEntry(std::string key, std::string value);
+
+  // Removes a config entry from `config_entries_`. Does nothing if the key does not exist.
+  // Locks `config_entries_mutex_`.
+  void RemoveConfigEntry(const std::string& key);
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
@@ -259,7 +266,11 @@ class Environment {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  OrtKeyValuePairs config_entries_;  // Application-specified environment configuration entries
+  // Application-specified environment configuration entries
+  // The environment may add or remove an entry on EP library registration and unregistration, respectively.
+  OrtKeyValuePairs config_entries_;
+
+  mutable std::mutex config_entries_mutex_;  // Should be locked when accessing config_entries_
 };
 
 }  // namespace onnxruntime

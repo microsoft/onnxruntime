@@ -778,7 +778,7 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
                                  "the new OrtKeyValuePairs instance");
   }
 
-  auto entries_unique_ptr = std::make_unique<OrtKeyValuePairs>(ort_env->GetConfigEntries());  // copy
+  auto entries_unique_ptr = std::make_unique<OrtKeyValuePairs>(ort_env->GetConfigEntries());
   *config_entries = entries_unique_ptr.release();
   return nullptr;
   API_IMPL_END

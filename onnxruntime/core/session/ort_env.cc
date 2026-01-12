@@ -152,6 +152,6 @@ void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingMana
   value_->SetLoggingManager(std::move(logging_manager));
 }
 
-const OrtKeyValuePairs& OrtEnv::GetConfigEntries() const {
+OrtKeyValuePairs OrtEnv::GetConfigEntries() const {
   return value_->GetConfigEntries();
 }
