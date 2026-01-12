@@ -476,7 +476,7 @@ TEST(MLOpTest, TreeEnsembleSingleTargetLogistic) {
   test.AddInput<float>("X", {1, 1}, {1.0f});
 
   // 1 / (1 + exp(-10.0)) = 0.9999546021312976
-  test.AddOutput<float>("Y", {1, 1}, {0.9999546f}, 1e-4f);
+  test.AddOutput<float>("Y", {1, 1}, {0.9999546f}, 1e-4);
 
   test.Run();
 }
