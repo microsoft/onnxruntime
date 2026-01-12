@@ -102,7 +102,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
     std::vector<Ort::ConstEpDevice> ep_devices;
 
     std::copy_if(all_ep_devices.begin(), all_ep_devices.end(), std::back_inserter(ep_devices),
-                 [&](Ort::ConstEpDevice& device) {
+                 [&ep_name](Ort::ConstEpDevice& device) {
                    return device.EpName() == ep_name;
                  });
 
