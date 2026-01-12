@@ -134,15 +134,14 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
 }
 
 /*static*/
-OrtEnv* OrtEnv::TryGetInstance() {
+OrtEnv::UniquePtr OrtEnv::TryGetInstance() {
   std::lock_guard<std::mutex> lock(m_);
 
-  if (!p_instance_) {
-    return nullptr;
+  if (p_instance_) {
+    ++ref_count_;
   }
 
-  ++ref_count_;
-  return p_instance_;
+  return OrtEnv::UniquePtr(p_instance_, OrtEnv::Release);
 }
 
 onnxruntime::logging::LoggingManager* OrtEnv::GetLoggingManager() const {

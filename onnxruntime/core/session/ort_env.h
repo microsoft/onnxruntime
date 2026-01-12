@@ -44,11 +44,13 @@ struct OrtEnv {
                                      const OrtThreadingOptions* tp_options = nullptr,
                                      const OrtKeyValuePairs* config_entries = nullptr);
 
+  using UniquePtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
+
   /// <summary>
   /// Gets the global OrtEnv instance. Returns nullptr if the instance has not yet been created.
   /// </summary>
   /// <returns>The OrtEnv instance or nullptr.</returns>
-  static OrtEnv* TryGetInstance();
+  static UniquePtr TryGetInstance();
 
   static void Release(OrtEnv* env_ptr);
 
@@ -75,7 +77,7 @@ struct OrtEnv {
   // Using a smart pointer like std::unique_ptr would complicate this specific
   // shutdown scenario, as it would attempt to deallocate the memory even if
   // Release() hasn't been called or if a leak is desired.
-  // Management is handled by GetInstance() and Release(), with ref_count_
+  // Management is handled by GetOrCreateInstance(), TryGetInstance(), and Release(), with ref_count_
   // tracking active users. It is set to nullptr when the last reference is released
   // (and not shutting down).
   static OrtEnv* p_instance_;

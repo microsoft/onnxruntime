@@ -766,7 +766,7 @@ ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl) {
 
 ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries) {
   API_IMPL_BEGIN
-  const OrtEnv* ort_env = OrtEnv::TryGetInstance();
+  OrtEnv::UniquePtr ort_env = OrtEnv::TryGetInstance();
 
   if (ort_env == nullptr) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtEnv instance does not exist");

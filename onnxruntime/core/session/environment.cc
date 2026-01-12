@@ -507,6 +507,24 @@ Status CreateDataTransferForFactory(OrtEpFactory& ep_factory,
 
   return Status::OK();
 }
+
+bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
+  constexpr std::string_view suffix{".virtual"};
+
+  return lib_registration_name.size() >= suffix.size() &&
+         lib_registration_name.compare(lib_registration_name.size() - suffix.size(),
+                                       suffix.size(), suffix) == 0;
+}
+
+void AddEnvConfigEntriesForEpLibrary(const std::string& lib_registration_name, OrtKeyValuePairs& config_entries) {
+  if (AreVirtualDevicesAllowed(lib_registration_name)) {
+    std::string key = "ep_lib.";
+    key += utils::GetLowercaseString(lib_registration_name);
+    key += ".allow_virtual_devices";
+
+    config_entries.Add(key, "1");
+  }
+}
 }  // namespace
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
@@ -586,6 +604,11 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 
   std::vector<EpFactoryInternal*> internal_factories = {};
   std::unique_ptr<EpLibrary> ep_library;
+
+  // Add environment configuration entries for the EP library.
+  // We do this before calling into the library's CreateEpFactories() entry function, so that configurations can
+  // be used to initialize the library's OrtEpFactory instances.
+  AddEnvConfigEntriesForEpLibrary(registration_name, config_entries_);
 
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
   ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
@@ -759,29 +782,6 @@ std::vector<const OrtHardwareDevice*> SortDevicesByType() {
 
   return sorted_devices;
 }
-
-bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
-  constexpr std::string_view suffix{".virtual"};
-
-  return lib_registration_name.size() >= suffix.size() &&
-         lib_registration_name.compare(lib_registration_name.size() - suffix.size(),
-                                       suffix.size(), suffix) == 0;
-}
-
-Status SetEpFactoryEnvironmentOptions(OrtEpFactory& factory, std::string_view lib_registration_name) {
-  // OrtEpFactory::SetEnvironmentOptions was added in ORT 1.24
-  if (factory.ort_version_supported < 24 || factory.SetEnvironmentOptions == nullptr) {
-    return Status::OK();
-  }
-
-  // We only set one option now but this can be generalized if necessary.
-  OrtKeyValuePairs options;
-  options.Add("allow_virtual_devices", AreVirtualDevicesAllowed(lib_registration_name) ? "1" : "0");
-
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(factory.SetEnvironmentOptions(&factory, &options)));
-
-  return Status::OK();
-}
 }  // namespace
 
 Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
@@ -807,8 +807,6 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
                 instance.library->RegistrationName());
 
     auto& factory = *factory_ptr;
-
-    ORT_RETURN_IF_ERROR(SetEpFactoryEnvironmentOptions(factory, instance.library->RegistrationName()));
 
     std::array<OrtEpDevice*, 8> ep_devices{nullptr};
     size_t num_ep_devices = 0;
