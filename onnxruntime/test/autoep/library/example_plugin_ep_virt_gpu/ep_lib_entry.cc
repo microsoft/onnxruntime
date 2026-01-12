@@ -15,17 +15,6 @@
 #define EXPORT_SYMBOL
 #endif
 
-static std::string GetLowercaseString(std::string str) {
-  // https://en.cppreference.com/w/cpp/string/byte/tolower
-  // The behavior of tolower from <cctype> is undefined if the argument is neither representable as unsigned char
-  // nor equal to EOF. To use tolower safely with a plain char (or signed char), the argument must be converted to
-  // unsigned char.
-  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return str;
-}
-
 extern "C" {
 //
 // Public symbols
