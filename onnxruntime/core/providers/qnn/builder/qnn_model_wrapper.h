@@ -32,6 +32,7 @@ struct TensorInfo {
 struct ModelSettings {
   bool offload_graph_io_quantization = false;
   bool htp_shared_memory = false;
+  bool htp_bf16_enable = false;
 };
 
 class QnnModelWrapper {
@@ -322,6 +323,36 @@ class QnnModelWrapper {
 
   void GetGraphInputOutputTensorWrapper(const std::vector<std::string>& names,
                                         std::vector<QnnTensorWrapper>& wrappers_list);
+
+  // BF16 conversion helper methods
+  bool IsBF16ConversionEnabled() const {
+    return model_settings_.htp_bf16_enable &&
+           (qnn_backend_type_ == QnnBackendType::HTP || qnn_backend_type_ == QnnBackendType::SERIALIZER);
+  }
+
+  bool ProcessBF16InputConversion(const std::string& qnn_node_name,
+                                  const std::vector<std::string>& input_names,
+                                  std::vector<std::string>& converted_input_names,
+                                  std::vector<QnnOpProperty>& cast_ops_to_add);
+
+  bool ProcessBF16OutputConversion(const std::string& qnn_node_name,
+                                   const std::vector<std::string>& output_names,
+                                   std::vector<std::string>& converted_output_names,
+                                   std::vector<std::pair<std::string, std::string>>& graph_output_cast_ops);
+
+  bool ApplyBF16ConversionForValidation(const std::vector<std::string>& input_names,
+                                        const std::vector<std::string>& output_names,
+                                        std::vector<std::string>& validation_input_names,
+                                        std::vector<std::string>& validation_output_names);
+
+  void RestoreFP32AfterValidation(const std::vector<std::string>& input_names,
+                                  const std::vector<std::string>& output_names);
+
+  bool CreateBF16CastTensor(const std::string& tensor_name,
+                            const std::vector<uint32_t>& shape,
+                            Qnn_TensorType_t tensor_type);
+
+  bool ProcessBF16Conversions(std::vector<QnnOpProperty>& final_ops);
 
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;

@@ -537,6 +537,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", true,
                                                                   provider_options_map);
 
+  model_settings_.htp_bf16_enable = ParseBoolOption("htp_bf16_enable", false, provider_options_map);
+
   if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
     LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
                        << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
