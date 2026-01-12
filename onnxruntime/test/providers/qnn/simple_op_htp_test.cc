@@ -128,6 +128,15 @@ TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
                  ExpectedEPNodeAssignment::All);
 }
 
+TEST_F(QnnCPUBackendTests, Concat_EmptyInput) {
+  RunOpTestOnCPU("Concat",
+                 {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                  TestInputDef<float>({1, 0, 4, 4}, false, {})},
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                 13,
+                 ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
@@ -1728,6 +1737,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QDQ_Supported) {
 // Check that QNN EP can support float32 HardSigmoid on HTP.
 // Enables running f32 ops using fp16 precision.
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
 
   RunOpTest<float>("HardSigmoid",
@@ -1753,6 +1763,8 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
 
 // Check that QNN EP can support float16 HardSigmoid on HTP
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
+
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
 
   RunFP16OpTest("HardSigmoid",
@@ -1805,6 +1817,7 @@ static GetTestModelFn BuildHardSigmoidFusionTestCase(TestInputDef<FloatType>& in
 // Test FP32 fusion of HardSigmoid into HardSwish on the HTP backend with the enable_htp_fp16_precision option enabled
 // to run it with fp16 precision.
 TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP32_as_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   ProviderOptions provider_options;
 
   provider_options["backend_type"] = "htp";
@@ -1828,6 +1841,8 @@ TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP32_as_FP16) {
 
 // Test FP16 fusion of HardSigmoid into HardSwish on the HTP backend.
 TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
+
   ProviderOptions provider_options;
 
   provider_options["backend_type"] = "htp";

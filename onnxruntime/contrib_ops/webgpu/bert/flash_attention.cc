@@ -400,6 +400,22 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const Tensor* cos_cache, const Tensor* sin_cache) {
   constexpr uint32_t tile_size = 64;
 
+  // Create present_key and present_value tensors if they are nullptr
+  Tensor internal_present_key;
+  Tensor internal_present_value;
+  if (present_key == nullptr) {
+    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+                                        parameters.total_sequence_length_, parameters.head_size_});
+    internal_present_key = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
+    present_key = &internal_present_key;
+  }
+  if (present_value == nullptr) {
+    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+                                        parameters.total_sequence_length_, parameters.head_size_});
+    internal_present_value = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
+    present_value = &internal_present_value;
+  }
+
   // Extract present_sequence_length directly from present_key tensor shape:
   // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
   const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
@@ -532,14 +548,12 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   return Status::OK();
 }
 
-bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
+bool CanApplyFlashAttention(const Tensor* bias,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   return !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
          bias == nullptr &&
          context.HasFeature(wgpu::FeatureName::Subgroups) &&
-         present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
-         present_value->SizeInBytes() > 0 &&
          ((context.AdapterInfo().vendor == std::string_view{"qualcomm"} && parameters.head_size_ % 8 == 0) || parameters.head_size_ % 4 == 0);
 }
 

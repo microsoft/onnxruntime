@@ -5,6 +5,7 @@
 
 #include "core/providers/webgpu/webgpu_utils.h"
 
+#include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
 
@@ -12,7 +13,14 @@ namespace onnxruntime {
 namespace webgpu {
 
 Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const bool need_split_k = NeedSplitK();
+  ShaderUsage output_usage = ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias;
+  if (need_split_k) {
+    // When Split-K is enabled, we will declare output as `atomic<i32>` to call atomic built-in
+    // functions on it, so we need below information to correctly compute the index on the output.
+    output_usage |= ShaderUsage::UseIndicesToOffset | ShaderUsage::UseShapeAndStride;
+  }
+  const ShaderVariableHelper& output = shader.AddOutput("output", output_usage);
 
   // Each thread compute 4*4 elements
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, 4, 1});
@@ -26,7 +34,7 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_, is_vec4_);
   }
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_, /*tile_inner*/ 32, need_split_k, split_dim_inner_));
   } else {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_));
   }
@@ -35,9 +43,15 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (need_handle_bias_) {
     c = &shader.AddInput("c", ShaderUsage::UseUniform);
   }
-  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, output_components_, c_is_scalar_);
+
+  const ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
+  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, output_components_, c_is_scalar_, /*activation_snippet*/ "", /*is_channels_last*/ false, need_split_k, output_var_type);
 
   return Status::OK();
+}
+
+bool GemmProgram::NeedSplitK() const {
+  return split_dim_inner_ > 1;
 }
 
 Status ApplyGemmPacked(const Tensor* a,
@@ -86,7 +100,44 @@ Status ApplyGemmPacked(const Tensor* a,
     c_is_scalar = c_shape.Size() == 1;
   }
 
-  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components, is_vec4};
+  ProgramOutput output(y, ProgramTensorMetadataDependency::TypeAndRank, output_components);
+  uint32_t dispatch_z = 1;
+  uint32_t split_dim_inner = 1;
+
+  const SplitKConfig& split_k_config = context.GetSplitKConfig();
+  // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
+  const bool output_is_vec4 = output_components == 4;
+  // The parameter `is_channel_last` is not used for GEMM.
+  const bool need_split_k = split_k_config.UseSplitK(
+      is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, /*is_gemm*/ true, /*is_channels_last*/ true, M, N, K);
+  if (need_split_k) {
+    const Tensor* bias = nullptr;
+    uint32_t output_components_in_fill_bias_program = 4;
+    if (need_handle_bias) {
+      bias = c;
+      output_components_in_fill_bias_program = c_components;
+    }
+    const TensorShape output_shape = TensorShape{M, N / output_components_in_fill_bias_program};
+
+    auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
+        bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, c_is_scalar, output_shape);
+    ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
+
+    // When Split-K is used, `bias` will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
+    // instead of here.
+    need_handle_bias = false;
+
+    // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
+    // number of splits along `dim_inner`.
+    split_dim_inner = split_k_config.GetSplitDimInner();
+    dispatch_z = (K + split_dim_inner - 1) / split_dim_inner;
+
+    // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
+    // built-in functions.
+    output.is_atomic = true;
+  }
+
+  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components, is_vec4, split_dim_inner};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, components},
@@ -101,9 +152,9 @@ Status ApplyGemmPacked(const Tensor* a,
   const uint32_t dispatch_x = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t dispatch_y = (M + TILE_SIZE - 1) / TILE_SIZE;
 
-  program.CacheHint(alpha, transA, transB, c_is_scalar)
-      .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
-      .SetDispatchGroupSize(dispatch_x, dispatch_y, 1u)
+  program.CacheHint(alpha, transA, transB, c_is_scalar, split_dim_inner)
+      .AddOutput(std::move(output))
+      .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddUniformVariables({{alpha},
                             {beta},
@@ -112,7 +163,7 @@ Status ApplyGemmPacked(const Tensor* a,
                             {K},          /*dim_inner */
                             {dispatch_x}, /* logical_dispatch_x */
                             {dispatch_y}, /* logical_dispatch_y */
-                            {1u}}         /* logical_dispatch_z */
+                            {dispatch_z}} /* logical_dispatch_z */
       );
 
   return context.RunProgram(program);

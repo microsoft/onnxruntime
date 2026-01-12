@@ -42,6 +42,13 @@ module.exports = {
         os: 'iOS 17.4',
       },
     },
+    simulator_ios_18_6: {
+      type: 'ios.simulator',
+      device: {
+        type: 'iPhone 16',
+        os: 'iOS 18.6',
+      },
+    },
     attached: {
       type: 'android.attached',
       device: {
@@ -62,6 +69,10 @@ module.exports = {
     },
     'ios.sim.release': {
       device: 'simulator',
+      app: 'ios.release',
+    },
+    'ios.sim_18_6.release': {
+      device: 'simulator_ios_18_6',
       app: 'ios.release',
     },
     'android.att.debug': {

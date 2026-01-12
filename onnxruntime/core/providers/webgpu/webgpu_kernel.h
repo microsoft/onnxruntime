@@ -44,7 +44,7 @@ class WebGpuKernel : public OpKernel {
   // @param context       The WebGPU compute context base providing access to the execution environment.
   // @param tensor        The constant tensor to potentially pre-process.
   // @param input_idx     The index of this input in the kernel's input list.
-  // @param alloc         The allocator to use for any new tensor allocations.
+  // @param alloc         The allocator to use for any new tensor allocations (prepack allocator).
   // @param is_packed     Output parameter. Set to true if the tensor was pre-packed/processed,
   //                      false otherwise. The default implementation sets this to false.
   //

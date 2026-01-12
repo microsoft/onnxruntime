@@ -57,6 +57,12 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
       data_type = initializer->data_type();
       // construct an initializer to gracefully handle typed or raw data in the TensorProto
       Initializer i(graph, *initializer, graph.ModelPath());
+
+      // Empty tensor is invalid for 'min' input - skip optimization to avoid null pointer dereference
+      if (i.size() == 0) {
+        return Status::OK();
+      }
+
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
           if (*i.data<float>() < 0.f) {

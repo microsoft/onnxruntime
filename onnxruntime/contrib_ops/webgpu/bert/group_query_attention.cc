@@ -20,28 +20,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
-  const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
-  const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  const auto& value = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  sh.MainFunctionBody() << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
-                        << "  let input_data = " << packed_qkv.GetByOffset("global_idx") << ";\n"
-                        << "  let index = " << packed_qkv.IndicesGet("packed_qkv_indices", "2") << ";\n"
-                        << "  if (index < uniforms.hidden_size) {\n"
-                        << "    " << query.SetByIndices("packed_qkv_indices", "input_data") << ";\n"
-                        << "  } else if (index < (uniforms.hidden_size + uniforms.kv_hidden_size)) {\n"
-                        << "    var key_indices = packed_qkv_indices;\n"
-                        << "   " << key.IndicesSet("key_indices", "2", "u32(index - uniforms.hidden_size)") << ";\n"
-                        << "   " << key.SetByIndices("key_indices", "input_data") << ";\n"
-                        << "  } else {\n"
-                        << "    var val_indices = packed_qkv_indices;\n"
-                        << "   " << value.IndicesSet("val_indices", "2", "u32(index - uniforms.hidden_size - uniforms.kv_hidden_size)") << ";\n"
-                        << "   " << value.SetByIndices("val_indices", "input_data") << ";\n"
-                        << "  }";
-  return Status::OK();
-}
-
 Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
@@ -61,20 +39,6 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
                              WGSL_TEMPLATE_VARIABLE(seqlens, seqlens),
                              WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache),
                              WGSL_TEMPLATE_VARIABLE(val, val));
-}
-
-Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val) {
-  SplitPackedQKVProgram program;
-  auto input_size = packedQKV->Shape().Size();
-  program
-      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddOutputs({{query, ProgramTensorMetadataDependency::None}, {key, ProgramTensorMetadataDependency::None}, {val, ProgramTensorMetadataDependency::None}})
-      .AddUniformVariables({
-          {static_cast<uint32_t>(params.hidden_size_)},
-          {static_cast<uint32_t>(params.kv_hidden_size_)},
-      })
-      .SetDispatchGroupSize((input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
-  return context.RunProgram(program);
 }
 
 // Split packed QKV with Q/K rotary embedding fusion
@@ -288,7 +252,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
-    will_use_flash_attention = CanApplyFlashAttention(nullptr, present_key, present_value, temp_params, context);
+    will_use_flash_attention = CanApplyFlashAttention(nullptr, temp_params, context);
   }
 
   if (parameters.is_packed_qkv_ && do_rotary_) {
@@ -318,7 +282,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
       kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
       vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-      ORT_RETURN_IF_ERROR(SplitPackedQKV(context, parameters, query, &qSplit, &kSplit, &vSplit));
+      ORT_RETURN_IF_ERROR(SplitPackedQKV(context, parameters, query, &qSplit, &kSplit, &vSplit, parameters.kv_hidden_size_));
       parameters.is_packed_qkv_ = false;
       parameters.qkv_format_ = Q_K_V_BSNH;
       query = &qSplit;

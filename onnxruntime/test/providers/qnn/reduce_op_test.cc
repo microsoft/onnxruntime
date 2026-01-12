@@ -331,6 +331,7 @@ TEST_F(QnnCPUBackendTests, ReduceL2Opset13) {
 // Failed QNN Opvalidation because of 5D input. It runs OK if bypass the op validation
 // Issue fixed in 2.30
 TEST_F(QnnHTPBackendTests, ReduceSumOpset11_5D_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   float fp32_abs_err = 3e-2f;
   bool enable_fp16 = true;
   RunReduceTest<float>("ReduceSum",

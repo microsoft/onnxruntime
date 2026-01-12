@@ -3724,9 +3724,14 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   std::vector<Graph*> all_subgraphs;
   FindAllSubgraphs(all_subgraphs);
 
+  const auto& model_path = GetModel().ModelPath();
+  PathString model_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, model_dir));
+  }
+
   auto put_weights_maybe_in_memory_func = [&](Graph& graph) -> Status {
     // if we have any initializers that are not in memory, put them there.
-    const auto& model_path = graph.ModelPath();
     auto& graph_proto = *graph.graph_proto_;
     for (int i = 0, lim = graph_proto.initializer_size(); i < lim; ++i) {
       auto& tensor_proto = *graph_proto.mutable_initializer(i);
@@ -3744,9 +3749,18 @@ Status Graph::ConvertInitializersIntoOrtValues() {
                                    "The model contains initializers with arbitrary in-memory references.",
                                    "This is an invalid model.");
           }
+        } else {
+          // Validate external data location
+          std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+          ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+          const auto& location = external_data_info->GetRelPath();
+          auto st = utils::ValidateExternalDataPath(model_dir, location);
+          if (!st.IsOK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "External data path validation failed for initializer: ", tensor_proto.name(),
+                                   ". Error: ", st.ErrorMessage());
+          }
         }
-        // ignore data on disk, that will be loaded either by EP or at session_state finalize
-        // ignore valid in-memory references
         continue;
       }
 

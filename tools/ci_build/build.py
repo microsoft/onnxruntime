@@ -561,7 +561,7 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(
-                    ["git", "clone", "-b", "2025.06.13", "https://github.com/microsoft/vcpkg.git", "--recursive"],
+                    ["git", "clone", "-b", "2025.08.27", "https://github.com/microsoft/vcpkg.git", "--recursive"],
                     cwd=build_dir,
                 )
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
@@ -882,6 +882,13 @@ def generate_build_tree(
                 raise BuildError(
                     "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
                 )
+    elif args.use_webgpu == "static_lib":
+        cmake_args += ["-Donnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=ON"]
+    else:
+        # Shared library build
+        cmake_args += ["-Donnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=OFF"]
+        if args.build_wasm:
+            raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
@@ -1029,7 +1036,7 @@ def generate_build_tree(
         if not (
             args.build_shared_lib
             and is_windows()
-            and args.cmake_generator == "Visual Studio 17 2022"
+            and args.cmake_generator in ("Visual Studio 17 2022", "Visual Studio 18 2026")
             and args.use_full_protobuf
         ):
             raise BuildError("Fuzz test has only be tested with build shared libs option using MSVC on windows")

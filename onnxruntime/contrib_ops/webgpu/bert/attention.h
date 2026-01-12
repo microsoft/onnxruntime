@@ -32,6 +32,17 @@ class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> 
   bool has_bias_;
 };
 
+class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
+ public:
+  SplitPackedQKVProgram() : Program{"SplitPackedQKV"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32},
+                                          {"hidden_size", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
+};
+
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
  public:
   AttentionProbsProgram(const std::string& kernel_name, bool feed_past_key, bool has_present_key,
@@ -53,7 +64,9 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
