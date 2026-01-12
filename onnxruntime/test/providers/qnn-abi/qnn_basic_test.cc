@@ -1209,6 +1209,7 @@ TEST_F(QnnABIHTPBackendTests, CastAddQDQS16) {
 
 // Test float32 model with FP16 precision
 TEST_F(QnnABIHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -1430,6 +1431,9 @@ TEST_F(QnnABIHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
 // Tests autoEP feature to automatically select an EP that supports the NPU.
 // Currently only works on Windows.
 TEST_F(QnnABIHTPBackendTests, AutoEp_PreferNpu) {
+  // V68 device (Makena) on win-arm64 doesn't support NPU device discovery with dxcore.dll,
+  // which is required by auto-EP.Expand commentComment on line R1471ResolvedCode has comments. Press enter to view.
+  QNN_SKIP_TEST_IF_AUTOEP_NPU_UNSUPPORTED();
   ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnABIExecutionProvider,
                                                                      ORT_TSTR("onnxruntime_providers_qnn_abi.dll")));
 

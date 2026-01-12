@@ -1237,7 +1237,7 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
-  # Expose QNN SDK headers to unit tests via an interface target 
+  # Expose QNN SDK headers to unit tests via an interface target
   if(onnxruntime_USE_QNN)
     add_library(qnn_sdk_headers_include INTERFACE)
     target_include_directories(qnn_sdk_headers_include INTERFACE
@@ -1245,7 +1245,7 @@ block()
       ${onnxruntime_QNN_HOME}/include/QNN)
     target_link_libraries(onnxruntime_provider_test PRIVATE qnn_sdk_headers_include)
   endif()
-  
+
   if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
     # The test_main.cc includes NvInfer.h where it has many deprecated declarations
     # simply ignore them for TensorRT EP build
