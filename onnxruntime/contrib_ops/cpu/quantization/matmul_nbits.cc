@@ -203,10 +203,11 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
   concurrency::ThreadPool* threadpool_ptr = nullptr;
 
-  // Only create threadpool for operations that can benefit from it
-  if (prefer_lut_gemm_ || compute_type_ == SQNBIT_CompInt8) {
+  // Only create threadpool for LUT GEMM path which can benefit from parallel packing
+  // TODO: Consider extending threadpool usage to non-LUT path (CompInt8) with appropriate tests
+  if (prefer_lut_gemm_) {
     OrtThreadPoolParams tpo;
-    tpo.thread_pool_size = 4;    // Use default (typically number of cores)
+    tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
     tpo.allow_spinning = false;  // Don't spin during model load
     tpo.auto_set_affinity = false;
 
