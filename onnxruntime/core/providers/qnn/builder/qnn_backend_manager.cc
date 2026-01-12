@@ -450,7 +450,6 @@ void QnnLogging(const char* format,
   }
 
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
-  
   // Map QNN log level to ORT severity
   logging::Severity severity = QnnBackendManager::MapQNNLogLevelToOrtSeverity(level);
   
