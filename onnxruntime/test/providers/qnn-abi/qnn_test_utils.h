@@ -1413,6 +1413,7 @@ class QnnABIHTPBackendTests : public ::testing::Test {
 
   // Some tests need the Ir backend, which is not always available.
   [[nodiscard]] BackendSupport IsIRBackendSupported() const;
+
  public:
   // Returns true if platform attributes are available.
   static bool HasPlatformAttributes() {
@@ -1455,7 +1456,7 @@ class QnnABIHTPBackendTests : public ::testing::Test {
   }
 
   static std::optional<QnnABIHTPBackendTests::QnnPlatformAttributes> cached_platform_attrs_;  // Set by the first test using this fixture.
-  static BackendSupport cached_htp_support_;  // Set by the first test using this fixture.
+  static BackendSupport cached_htp_support_;                                                  // Set by the first test using this fixture.
   static BackendSupport cached_ir_support_;
 };
 

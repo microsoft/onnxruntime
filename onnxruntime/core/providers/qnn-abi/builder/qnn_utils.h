@@ -214,6 +214,15 @@ Ort::Status GetQuantParams(float rmin,
 
 double Dequantize(int32_t offset, float scale, const double quant_value);
 
+// Dequantizes the given quantized data using the provided quantization parameters (scales and offsets).
+// Supports both per-tensor and per-channel quantization. Must provide an axis argument
+// for per-channel quantization.
+// The provided offsets must use the QNN convention where offset = -zero_point.
+Ort::Status DequantizePerChannel(gsl::span<const uint8_t> quant_bytes, gsl::span<const uint32_t> shape,
+                                 gsl::span<const float> scales, gsl::span<const int32_t> offsets,
+                                 /*out*/ gsl::span<float> data, Qnn_DataType_t data_type,
+                                 std::optional<int64_t> axis = std::nullopt);
+
 Ort::Status Quantize(const double double_value,
                      const float scale,
                      const int32_t zero_point,
@@ -501,6 +510,28 @@ Ort::Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t
  * @return the current timestamp in microseconds
  */
 uint64_t GetTimeStampInUs();
+
+// Checks if bias scale matches the expected scale (weights_scale * activation_scale)
+// Returns true if they match within a tolerance, false otherwise
+bool CheckBiasScaleMatch(float bias_scale, float weights_scale, float activation_scale,
+                         float tolerance = 1e-5f);
+
+// Requantizes a static bias tensor with new quantization parameters
+// This function:
+// 1. Dequantizes the bias tensor to float using current parameters
+// 2. Calculates new bias_scale[i] = weights_scale[i] * activation_scale for each channel
+// 3. Quantizes back to the target data type with new parameters
+Ort::Status RequantizeBiasTensor(const std::vector<uint8_t>& original_bias_data,
+                                 const std::vector<uint32_t>& bias_shape,
+                                 gsl::span<const float> current_scales,
+                                 gsl::span<const int32_t> current_offsets,
+                                 gsl::span<const float> weights_scales,
+                                 float activation_scale,
+                                 Qnn_DataType_t data_type,
+                                 /*out*/ std::vector<uint8_t>& requantized_bias_data,
+                                 /*out*/ std::vector<float>& new_scales,
+                                 /*out*/ std::vector<int32_t>& new_offsets,
+                                 std::optional<int64_t> axis = std::nullopt);
 
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                                                             \
   case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_##TYPE: {                                      \
