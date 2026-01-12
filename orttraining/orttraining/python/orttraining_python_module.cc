@@ -173,7 +173,8 @@ static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
-  std::unique_ptr<OrtEnv> ort_env(OrtEnv::GetInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr));
+  std::unique_ptr<OrtEnv> ort_env(OrtEnv::GetOrCreateInstance(lm_info, status,
+                                                              use_global_tp ? &global_tp_options : nullptr));
   if (!status.IsOK()) return status;
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
