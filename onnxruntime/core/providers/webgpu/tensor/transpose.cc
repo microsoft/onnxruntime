@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/span_utils.h"
 #include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/tensor/transpose.h"
@@ -131,7 +132,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
   // permutation equivalent to {0, 2, 3, 1}.
   //
   // TODO: Extend support to 2D and 3D transpositions.
-  if (permutations == gsl::span<const size_t>{{0, 2, 3, 1}}) {
+  if (permutations == AsSpan<const size_t>({0, 2, 3, 1})) {
     const uint32_t channel_output = onnxruntime::narrow<uint32_t>(input_shape[0]);
     const uint32_t channel_input = onnxruntime::narrow<uint32_t>(input_shape[1]);
     const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(input_shape[2]);
