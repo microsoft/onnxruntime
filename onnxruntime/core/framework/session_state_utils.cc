@@ -133,6 +133,12 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // 2. load initializer into CPU memory - deserialized_value,
       //    we will use mmap so no need to allocate memory on CPU in advance
       // 3. copy tensor from CPU to device - deserialized_value -> tensor -> ort_value
+      if (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD) {
+        ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path, tensor_proto,
+                                                             ort_value,
+                                                             &prepacked_for_graph));
+        return common::Status::OK();
+      }
       ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
 
       OrtValue deserialized_value;
