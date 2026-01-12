@@ -59,9 +59,9 @@ macro(setup_cuda_compiler)
     message(FATAL_ERROR "CUDA version ${CMAKE_CUDA_COMPILER_VERSION} must be at least ${CUDA_REQUIRED_VERSION}")
   endif()
 
-  # For CUDA 13+, explicitly set the compiler front-end to Clang on Windows to handle
+  # For CUDA 13+, explicitly set the compiler front-end to Clang to handle
   # MSVC-specific pragmas correctly in device code.
-  if(WIN32 AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND NOT DEFINED CMAKE_CUDA_COMPILER_FRONTEND_VARIANT)
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND NOT DEFINED CMAKE_CUDA_COMPILER_FRONTEND_VARIANT)
     message(STATUS "Setting CUDA compiler front-end to Clang by default for CUDA 13+.")
     set(CMAKE_CUDA_COMPILER_FRONTEND_VARIANT "CLANG")
   endif()
