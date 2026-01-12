@@ -58,7 +58,6 @@ TEST(EnvCreation, CreateEnvWithOptions) {
                                                              "the OrtLoggingLevel enumeration"));
   }
 
-#if !defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
   // Create an OrtEnv with configuration entries. Use the CXX API.
 
   ortenv_teardown();  // Release current OrtEnv as we need to recreate it.
@@ -88,6 +87,4 @@ TEST(EnvCreation, CreateEnvWithOptions) {
 
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();  // Restore OrtEnv
-
-#endif  // !defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 }

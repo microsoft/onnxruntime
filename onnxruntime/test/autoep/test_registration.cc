@@ -170,7 +170,6 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
     ort_env->UnregisterExecutionProviderLibrary(registration_name_for_virtual_devices.c_str());
   }
 
-#if !defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
   // Test using OrtApi::CreateEnvWithOptions to explicitly set a config that enables virtual devices.
   // The EP should return a OrtEpDevice for a virtual GPU.
 
@@ -210,8 +209,6 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
 
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();  // Restore OrtEnv
-
-#endif  // !defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 }
 }  // namespace test
 }  // namespace onnxruntime

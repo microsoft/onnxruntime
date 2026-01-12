@@ -250,7 +250,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithOptions, _In_ const OrtEnvCreationOpti
   if (options->version < 24) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "CreateEnvWithOptions requires a OrtEnvCreationOptions argument with the version set "
-                                 " equal to ORT_API_VERSION");
+                                 "equal to ORT_API_VERSION");
   }
 
   if (options->logging_severity_level < OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE ||
