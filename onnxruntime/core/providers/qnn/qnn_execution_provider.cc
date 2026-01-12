@@ -1573,7 +1573,7 @@ void QNNExecutionProvider::CreateHtpPowerConfigId() const {
 
   Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id_, core_id, htp_power_config_id);
 
-  if (rt == Status::OK()) {
+  if (rt.IsOK()) {
     htp_power_config_id_ = htp_power_config_id;
 
     rt = qnn_backend_manager_->SetHtpPowerConfigs(htp_power_config_id,
@@ -1581,7 +1581,7 @@ void QNNExecutionProvider::CreateHtpPowerConfigId() const {
                                                   default_rpc_polling_time_,
                                                   default_rpc_control_latency_);
 
-    if (rt.IsOK()) {
+    if (!rt.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Unable to set HTP power configurations.";
     }
   } else {
