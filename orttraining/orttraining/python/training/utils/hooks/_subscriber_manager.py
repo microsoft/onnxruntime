@@ -120,7 +120,7 @@ class SubscriberManager:
 
         try:
             # Put the import here to avoid the module level dependency on onnxruntime.training.ortmodule
-            from onnxruntime.training.ortmodule import ORTModule
+            from onnxruntime.training.ortmodule import ORTModule  # noqa: PLC0415
 
             if isinstance(module, ORTModule):
                 module = module.module
@@ -161,7 +161,7 @@ class SubscriberManager:
 
             # Be noted, the first run anyway will run in PyTorch.
             if module not in self._run_ctx.global_states.module_to_module_index:
-                import warnings
+                import warnings  # noqa: PLC0415
 
                 warnings.warn(
                     "Initialize global states for the first time, this should only happen once for each outmost module."

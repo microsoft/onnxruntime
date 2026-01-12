@@ -60,7 +60,7 @@ int EMSCRIPTEN_KEEPALIVE OrtGetLastError(int* error_code, const char** error_mes
  * create an instance of ORT session options.
  * assume that all enum type parameters, such as graph_optimization_level, execution_mode, and log_severity_level,
  * are checked and set properly at JavaScript.
- * @param graph_optimization_level disabled, basic, extended, or enable all
+ * @param graph_optimization_level disabled, basic, extended, layout, or enable all
  * @param enable_cpu_mem_arena enable or disable cpu memory arena
  * @param enable_mem_pattern enable or disable memory pattern
  * @param execution_mode sequential or parallel execution mode

@@ -60,8 +60,7 @@ TEST(CApiTest, model_from_array) {
   create_session(so);
 
 #ifdef USE_CUDA
-  OrtCUDAProviderOptionsV2* options;
-  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  Ort::CUDAProviderOptions options;
   so.AppendExecutionProvider_CUDA_V2(*options);
   create_session(so);
 #endif

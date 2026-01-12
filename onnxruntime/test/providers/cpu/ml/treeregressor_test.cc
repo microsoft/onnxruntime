@@ -844,5 +844,46 @@ TEST(MLOpTest, TreeRegressorTrueNodeBeforeNode) {
   test.Run();
 }
 
+TEST(MLOpTest, TreeRegressorBranchEq) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  // tree
+  int64_t n_targets = 1;
+  std::vector<int64_t> nodes_featureids = {0, 0, 0, 0, 0};
+  std::vector<std::string> nodes_modes = {"BRANCH_EQ", "LEAF", "BRANCH_EQ", "LEAF", "LEAF"};
+  std::vector<float> nodes_values = {0.0, -1.0, 1.0, -1.0, -1.0};
+  std::vector<int64_t> nodes_treeids = {0, 0, 0, 0, 0};
+  std::vector<int64_t> nodes_nodeids = {0, 1, 2, 3, 4};
+  std::vector<int64_t> nodes_falsenodeids = {2, -1, 3, -1, -1};
+  std::vector<int64_t> nodes_truenodeids = {1, -1, 4, -1, -1};
+
+  std::string post_transform = "NONE";
+  std::vector<int64_t> target_ids = {0, 1, 2};
+  std::vector<int64_t> target_nodeids = {1, 3, 4};
+  std::vector<int64_t> target_treeids = {0, 0, 0};
+  std::vector<float> target_weights = {10.0, 20.0, 30.0};
+
+  // add attributes
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_treeids", nodes_treeids);
+  test.AddAttribute("nodes_nodeids", nodes_nodeids);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_values", nodes_values);
+  test.AddAttribute("nodes_modes", nodes_modes);
+  test.AddAttribute("target_treeids", target_treeids);
+  test.AddAttribute("target_nodeids", target_nodeids);
+  test.AddAttribute("target_ids", target_ids);
+  test.AddAttribute("target_weights", target_weights);
+  test.AddAttribute("n_targets", n_targets);
+
+  // fill input data
+  std::vector<float> X = {-1.0, 0.0, 0.5, 1.0, 1.5};
+  std::vector<float> Y = {20.0, 10.0, 20.0, 30.0, 20.0};
+  test.AddInput<float>("X", {5, 1}, X);
+  test.AddOutput<float>("Y", {5, 1}, Y);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -39,9 +39,9 @@ class TestQuantIssues(unittest.TestCase):
             # The file does seem to be the same location in every CI job.
             raise unittest.SkipTest("unable to find {onnx_path!r}")
 
-        import numpy as np
+        import numpy as np  # noqa: PLC0415
 
-        import onnxruntime.quantization as oq
+        import onnxruntime.quantization as oq  # noqa: PLC0415
 
         class Mock:
             def __init__(self):

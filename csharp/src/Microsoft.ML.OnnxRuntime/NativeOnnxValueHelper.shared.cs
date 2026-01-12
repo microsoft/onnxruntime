@@ -150,6 +150,45 @@ namespace Microsoft.ML.OnnxRuntime
             else
                 return StringToZeroTerminatedUtf8(str);
         }
+
+        /// <summary>
+        /// Converts a null-terminated path string that is pointed to by the given IntPtr handle into
+        /// a C# UTF-16 string.
+        /// </summary>
+        /// <remarks>A path string on Windows is utf-16, but utf-8 on other operating systems.</remarks>
+        /// <param name="strPtr"></param>
+        /// <returns></returns>
+        internal static string StringFromNativePathString(IntPtr strPtr)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                if (strPtr == IntPtr.Zero)
+                {
+                    return string.Empty;
+                }
+
+                // Get length of utf16 string by checking for two 0 bytes in a row.
+                int length = 0;
+                while (Marshal.ReadInt16(strPtr, length * 2) != 0)
+                {
+                    length += 1;
+                }
+
+                if (length == 0)
+                {
+                    return string.Empty;
+                }
+
+                unsafe
+                {
+                    return System.Text.Encoding.Unicode.GetString((byte*)strPtr, length * 2);
+                }
+            }
+            else
+            {
+                return StringFromNativeUtf8(strPtr);
+            }
+        }
     }
 
     // Guards an array of disposable objects on stack and disposes them in reverse order
@@ -334,23 +373,21 @@ namespace Microsoft.ML.OnnxRuntime
                                     IntPtr handle,
                                     Func<IntPtr, IntPtr[], IntPtr[], UIntPtr, IntPtr> updateFunc)
         {
-            var keyStrings = providerOptions.Keys.ToArray();
-            var valStrings = providerOptions.Values.ToArray();
-
             MarshaledStringArray keys = default;
             MarshaledStringArray values = default;
             try
             {
-                keys = new MarshaledStringArray(keyStrings);
-                values = new MarshaledStringArray(valStrings);
+                keys = new MarshaledStringArray(providerOptions.Keys);
+                values = new MarshaledStringArray(providerOptions.Values);
 
-                var nativeKeys = new IntPtr[keyStrings.Length];
+                var nativeKeys = new IntPtr[providerOptions.Count];
                 keys.Fill(nativeKeys);
 
-                var nativeVals = new IntPtr[valStrings.Length];
+                var nativeVals = new IntPtr[providerOptions.Count];
                 values.Fill(nativeVals);
 
-                NativeApiStatus.VerifySuccess(updateFunc(handle, nativeKeys, nativeVals, (UIntPtr)providerOptions.Count));
+                NativeApiStatus.VerifySuccess(updateFunc(handle, nativeKeys, nativeVals,
+                    (UIntPtr)providerOptions.Count));
             }
             finally
             {

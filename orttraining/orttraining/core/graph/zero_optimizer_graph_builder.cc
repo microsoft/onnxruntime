@@ -125,8 +125,8 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         ORT_ENFORCE(dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
         // Find the initializer partition to read out.
-        auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-        const float* initializer_data = initializer->data<float>();
+        auto initializer = Initializer{graph, *tensor_proto, graph.ModelPath()};
+        const float* initializer_data = initializer.data<float>();
 
         // Create new initializer tensor proto.
         ONNX_NAMESPACE::TensorProto initializer_partition;

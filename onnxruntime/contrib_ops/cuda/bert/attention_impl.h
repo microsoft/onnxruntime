@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
 #include <gsl/gsl>
@@ -20,6 +21,12 @@ namespace contrib {
 namespace cuda {
 
 constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
+
+// longlong4 is deprecated in cuda 13.
+// LongLong4 is similar to longlong4_32a, except this is also visible in Host compiler (longlong4_32a is only visible to nvcc);
+typedef struct __align__(32) {
+  long long int x, y, z, w;
+} LongLong4;
 
 // A cache for cumulated sequence length. It will be initialized in the first request, then become read-only after that.
 struct CumulatedSequenceLengthCache {
@@ -96,6 +103,10 @@ Status LaunchTransCtx(cudaStream_t stream,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
+Status LaunchTransCtx(cudaStream_t stream,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const BFloat16* input, BFloat16* output);
+
 // BxSxMxNxH or SxBxMxNxH (reversed_bs is true) => MxBxNxSxH
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
@@ -107,11 +118,19 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
                       int total_matrix_count = -1);
 
+Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const BFloat16* input, BFloat16* output,
+                      int total_matrix_count = -1);
+
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const float* input, float* output, cudaStream_t stream, const int max_threads_per_block);
 
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const half* input, half* output, cudaStream_t stream, const int max_threads_per_block);
+
+Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const BFloat16* input, BFloat16* output, cudaStream_t stream, const int max_threads_per_block);
 
 template <typename T>
 Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
@@ -131,14 +150,14 @@ Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, i
 template <typename T>
 Status LaunchStridedCopy(
     cudaStream_t stream,
-    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
-    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    const T* in, int4 in_shape, LongLong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, LongLong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
     int max_threads_per_block);
 
 template <typename T>
 Status LaunchStridedCopy(cudaStream_t stream,
-                         const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
-                         T* out, longlong4 out_strides,                     // coord (b,n,s,h)
+                         const T* in, int4 in_shape, LongLong4 in_strides,  // coord (b,n,s,h)
+                         T* out, LongLong4 out_strides,                     // coord (b,n,s,h)
                          int max_threads_per_block);
 
 }  // namespace cuda

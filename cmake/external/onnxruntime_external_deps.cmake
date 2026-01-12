@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 message(STATUS "Loading Dependencies URLs ...")
 
 include(external/helper_functions.cmake)
@@ -17,7 +20,7 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
 
     if(ONNXRUNTIME_DEP_URL MATCHES "^https://")
       # Search a local mirror folder
-      string(REGEX REPLACE "^https://" "${REPO_ROOT}/mirror/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
+      string(REGEX REPLACE "^https://" "${onnxruntime_CMAKE_DEPS_MIRROR_DIR}/" LOCAL_URL "${ONNXRUNTIME_DEP_URL}")
 
       if(EXISTS "${LOCAL_URL}")
         cmake_path(ABSOLUTE_PATH LOCAL_URL)
@@ -183,7 +186,8 @@ endif()
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
   set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
-                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch)
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_s390x.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -221,11 +225,6 @@ onnxruntime_fetchcontent_makeavailable(Protobuf)
 if(Protobuf_FOUND)
   message(STATUS "Using protobuf from find_package(or vcpkg). Protobuf version: ${Protobuf_VERSION}")
 else()
-  if(protobuf_SOURCE_DIR)
-    if(onnxruntime_USE_WEBGPU)
-      set(DAWN_PROTOBUF_DIR ${protobuf_SOURCE_DIR})
-    endif()
-  endif()
   # Adjust warning flags
   if (TARGET libprotoc)
     if (NOT MSVC)
@@ -315,35 +314,32 @@ onnxruntime_fetchcontent_makeavailable(nlohmann_json)
 if (onnxruntime_ENABLE_CPUINFO)
   # Adding pytorch CPU info library
   # TODO!! need a better way to find out the supported architectures
-  list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
-  if (APPLE)
+  set(CPUINFO_SUPPORTED FALSE)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo.
+    if (onnxruntime_USE_XNNPACK)
+      set(CPUINFO_SUPPORTED TRUE)
+    endif()
+  elseif (APPLE)
+    list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
     if (CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
       set(CPUINFO_SUPPORTED TRUE)
-    elseif (onnxruntime_BUILD_APPLE_FRAMEWORK)
-      # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
-      # but that would not work for universal static libraries
-      message(FATAL_ERROR "universal binary is not supported for apple framework")
-    endif()
-  else()
-    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
-    # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
-    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_USE_XNNPACK)
-      set(CPUINFO_SUPPORTED FALSE)
     else()
-      set(CPUINFO_SUPPORTED TRUE)
+      message(WARNING "cpuinfo is not supported when CMAKE_OSX_ARCHITECTURES has more than one value.")
     endif()
-    if (WIN32)
+  elseif (WIN32)
+    set(CPUINFO_SUPPORTED TRUE)
+  else()
+    if (onnxruntime_target_platform MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       set(CPUINFO_SUPPORTED TRUE)
-    elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
-      message(WARNING
-        "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
-        "cpuinfo not included."
-      )
-      set(CPUINFO_SUPPORTED FALSE)
+    else()
+      message(WARNING "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo.")
     endif()
   endif()
-else()
-  set(CPUINFO_SUPPORTED FALSE)
+
+  if(NOT CPUINFO_SUPPORTED)
+    message(WARNING "onnxruntime_ENABLE_CPUINFO was set but cpuinfo is not supported.")
+  endif()
 endif()
 
 if (CPUINFO_SUPPORTED)
@@ -354,33 +350,38 @@ if (CPUINFO_SUPPORTED)
 
   # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved)
   # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_XNNPACK)
+  else()
+    add_compile_definitions(CPUINFO_SUPPORTED)
   endif()
-
 
   set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
   if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-      message(STATUS "Applying a patch for Windows ARM64/ARM64EC in cpuinfo")
-      onnxruntime_fetchcontent_declare(
-        pytorch_cpuinfo
-        URL ${DEP_URL_pytorch_cpuinfo}
-        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        EXCLUDE_FROM_ALL
-        PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
-        FIND_PACKAGE_ARGS NAMES cpuinfo
-      )
+    message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
+    onnxruntime_fetchcontent_declare(
+      pytorch_cpuinfo
+      URL ${DEP_URL_pytorch_cpuinfo}
+      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+      EXCLUDE_FROM_ALL
+      PATCH_COMMAND
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
+        # https://github.com/pytorch/cpuinfo/pull/324
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
+        # https://github.com/pytorch/cpuinfo/pull/348
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
+      FIND_PACKAGE_ARGS NAMES cpuinfo
+    )
   else()
-      onnxruntime_fetchcontent_declare(
-        pytorch_cpuinfo
-        URL ${DEP_URL_pytorch_cpuinfo}
-        URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-        EXCLUDE_FROM_ALL
-        FIND_PACKAGE_ARGS NAMES cpuinfo
-      )
+    onnxruntime_fetchcontent_declare(
+      pytorch_cpuinfo
+      URL ${DEP_URL_pytorch_cpuinfo}
+      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+      EXCLUDE_FROM_ALL
+      FIND_PACKAGE_ARGS NAMES cpuinfo
+    )
   endif()
   set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
   onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CPUINFO_PROJ})
@@ -441,7 +442,7 @@ if(onnxruntime_USE_VCPKG)
   find_package(flatbuffers REQUIRED)
 else()
 # We do not need to build flatc for iOS or Android Cross Compile
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "tvOS" OR CMAKE_SYSTEM_NAME STREQUAL "visionOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
@@ -567,7 +568,7 @@ if (onnxruntime_USE_XNNPACK)
      ENDIF()
      ADD_LIBRARY(xnnpack STATIC IMPORTED)
      find_library(xnnpack_LIBRARY NAMES XNNPACK)
-     find_library(microkernels_prod_LIBRARY NAMES microkernels-prod)
+     find_library(microkernels_prod_LIBRARY NAMES xnnpack-microkernels-prod)
      find_package(unofficial-pthreadpool CONFIG REQUIRED)
 
      target_include_directories(xnnpack INTERFACE "${XNNPACK_HDR}")
@@ -580,8 +581,7 @@ endif()
 
 set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
                                    onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface
-                                   flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date
-                                   ${ONNXRUNTIME_CLOG_TARGET_NAME} Eigen3::Eigen)
+                                   flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date Eigen3::Eigen)
 
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
@@ -592,10 +592,6 @@ if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
     target_compile_definitions(onnx PUBLIC "__ONNX_NO_DOC_STRINGS")
   endif()
-endif()
-
-if (onnxruntime_RUN_ONNX_TESTS)
-  add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
 if(onnxruntime_ENABLE_DLPACK)
@@ -641,20 +637,28 @@ if (onnxruntime_USE_WEBGPU)
     #
     set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
-    set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
+    set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
     set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-        set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
+      if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+        set(DAWN_BUILD_MONOLITHIC_LIBRARY SHARED CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
 
         if (onnxruntime_USE_EXTERNAL_DAWN)
-          message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
+          message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_SHARED_LIBRARY cannot be enabled at the same time.")
         endif()
       else()
         # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
         set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+        # use the same protobuf/abseil for ORT and Dawn when static linking
+        if(abseil_cpp_SOURCE_DIR)
+          set(DAWN_ABSEIL_DIR ${abseil_cpp_SOURCE_DIR})
+        endif()
+        if(protobuf_SOURCE_DIR)
+          set(DAWN_PROTOBUF_DIR ${protobuf_SOURCE_DIR})
+        endif()
       endif()
 
       if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
@@ -711,7 +715,9 @@ if (onnxruntime_USE_WEBGPU)
         set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
       endif()
     endif()
+
     if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      set(DAWN_FETCH_DEPENDENCIES OFF CACHE BOOL "" FORCE)
       # use the custom dawn source path if provided
       #
       # specified as:
@@ -722,37 +728,43 @@ if (onnxruntime_USE_WEBGPU)
         EXCLUDE_FROM_ALL
       )
     else()
+      set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
       set(ONNXRUNTIME_Dawn_PATCH_COMMAND
-          # The dawn.patch contains the following changes:
+          # The dawn_destroy_buffer_on_destructor.patch contains the following changes:
           #
           # - (private) Allow WGPUBufferImpl class to destroy the buffer in the destructor
           #   In native implementation, wgpuBufferRelease will trigger the buffer destroy (if refcount decreased to 0). But
           #   in emwgpu implementation, the buffer destroy won't happen. This change adds a destructor to the buffer class
           #   to destroy the buffer when the refcount is 0 for non-external buffers.
           #
-          # - (private) Remove hard-coded CMAKE_OSX_DEPLOYMENT_TARGET in Dawn's CMake files
-          #   https://github.com/microsoft/onnxruntime/pull/23729
-          #
-          # - (private) Reduce unsafe buffer usage warning in aligned_storage.h
-          #   https://github.com/microsoft/onnxruntime/pull/24308
-          #   The patch disables the UNSAFE_BUFFER_USAGE warning around the AlignedStorage struct in aligned_storage.h. This is done
-          #   by using TINT_BEGIN_DISABLE_WARNING and TINT_END_DISABLE_WARNING macros, which helps in warnings related to unsafe buffer usage
-          #   usage when compiling the code, making the build process cleaner and faster.
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch &&
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_destroy_buffer_on_destructor.patch &&
 
           # The dawn_force_enable_f16_nvidia_vulkan.patch contains the following changes:
           #
           # - (private) Force enable f16 support for NVIDIA Vulkan
           #   Dawn disabled f16 support for NVIDIA Vulkan by default because of crashes in f16 CTS tests (crbug.com/tint/2164).
           #   Since the crashes are limited to specific GPU models, we patched Dawn to remove the restriction.
+          #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_force_enable_f16_nvidia_vulkan.patch &&
 
-          # The dawn_fix_copy_dxil_dll.patch contains the following changes:
+          # The dawn_binskim.patch contains the following changes:
           #
-          # - (private) Fix copy of dxil.dll in Dawn
-          #   The patch ensures the copy of dxil.dll to be done after the build step of `dxcompiler` target.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_fix_copy_dxil_dll.patch)
+          # - (private) Fulfill the BinSkim requirements
+          #   Some build warnings are not allowed to be disabled in project level.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
+
+          # The uniform_and_storage_buffer_16_bit_access.patch contains the following changes:
+          #
+          # - (private) Android devices don't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+          #   in the uniform and converting to fp16 before using.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch &&
+
+          # The safari_polyfill.patch contains the following changes:
+          #
+          # - (private) Fix compatibility issues with Safari. Contains the following changes:
+          #   - Polyfill for `device.AdapterInfo` (returns `undefined` in Safari v26.0)
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn
@@ -767,7 +779,7 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)
@@ -779,6 +791,27 @@ if (onnxruntime_USE_WEBGPU)
 
   if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES webgpu_glfw glfw)
+  endif()
+
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+    if(onnxruntime_USE_VCPKG)
+      find_package(unofficial-duktape CONFIG REQUIRED)
+      add_library(duktape_static ALIAS unofficial::duktape::duktape)
+    else()
+      onnxruntime_fetchcontent_declare(
+        duktape
+        URL ${DEP_URL_duktape}
+        URL_HASH SHA1=${DEP_SHA1_duktape}
+        EXCLUDE_FROM_ALL
+      )
+      onnxruntime_fetchcontent_makeavailable(duktape)
+
+      if(NOT TARGET duktape_static)
+        add_library(duktape_static STATIC "${duktape_SOURCE_DIR}/src/duktape.c")
+        target_compile_features(duktape_static PRIVATE c_std_99)
+        target_include_directories(duktape_static INTERFACE $<BUILD_INTERFACE:${duktape_SOURCE_DIR}/src>)
+      endif()
+    endif()
   endif()
 endif()
 
@@ -804,6 +837,14 @@ if(onnxruntime_USE_COREML)
   # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
   FetchContent_Populate(coremltools)
 
+endif()
+
+if(onnxruntime_USE_KLEIDIAI)
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
+
+  onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
 endif()
 
 set(onnxruntime_LINK_DIRS)

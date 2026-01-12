@@ -12,7 +12,7 @@ namespace cuda {
 
 static const int NONZERO_THREADS_PER_BLOCK = GridDim::maxThreadsPerBlock;
 
-//TODO:check overflow
+// TODO:check overflow
 int NonZeroCalcBlockCount(int64_t x_size) {
   return static_cast<int>(CeilDiv(x_size, NONZERO_THREADS_PER_BLOCK));
 }
@@ -70,7 +70,6 @@ __global__ void NonZeroOutputPositionsKernel(
   }
 }
 
-
 constexpr int MAX_DIMS = 16;
 
 template <typename InputT, int THREADS_PER_BLOCK>
@@ -92,7 +91,7 @@ __global__ void UnRolledNonZeroOutputPositionsKernel(
   if (index < x_size && bool(x[index])) {
     int remain = (int)index, dim = 0;
     int rp = result_position;
-    #pragma unroll
+#pragma unroll
     for (int axis = 0; axis < MAX_DIMS; ++axis) {
       if (axis == x_rank) {
         break;
@@ -119,12 +118,12 @@ cudaError_t NonZeroOutputPositions(
   int num_blocks = NonZeroCalcBlockCount(x_size);
   if (x_rank > MAX_DIMS) {
     NonZeroOutputPositionsKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK, 0, stream>>>(
-      x, x_size, x_rank, x_strides,
-      prefix_counts, nonzero_elements, results);
+        x, x_size, x_rank, x_strides,
+        prefix_counts, nonzero_elements, results);
   } else {
     UnRolledNonZeroOutputPositionsKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK, 0, stream>>>(
-      x, x_size, x_rank, x_strides,
-      prefix_counts, nonzero_elements, results);
+        x, x_size, x_rank, x_strides,
+        prefix_counts, nonzero_elements, results);
   }
   return cudaSuccess;
 }

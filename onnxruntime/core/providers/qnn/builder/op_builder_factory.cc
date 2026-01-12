@@ -65,6 +65,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("GridSample", *this);
 
     CreateSimpleOpBuilder("LpNormalization", *this);
+
+    CreateSimpleOpBuilder("ScatterElements", *this);
   }
 
   {
@@ -167,6 +169,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateReciprocalOpBuilder("Reciprocal", *this);
+  }
+
+  {
     CreatePadOpBuilder("Pad", *this);
   }
 
@@ -183,7 +189,39 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateMeanOpBuilder("Mean", *this);
+  }
+
+  {
     CreateLSTMOpBuilder("LSTM", *this);
+  }
+
+  {
+    CreateCumSumOpBuilder("CumSum", *this);
+  }
+
+  {
+    CreateRandomUniformLikeOpBuilder("RandomUniformLike", *this);
+  }
+
+  {
+    CreateGatherNDOpBuilder("GatherND", *this);
+  }
+
+  {
+    CreateModOpBuilder("Mod", *this);
+  }
+
+  {
+    CreateThresholdedReluOpBuilder("ThresholdedRelu", *this);
+  }
+
+  {
+    CreateSTFTOpBuilder("STFT", *this);
+  }
+
+  {
+    CreateInverseOpBuilder("Inverse", *this);
   }
 }
 

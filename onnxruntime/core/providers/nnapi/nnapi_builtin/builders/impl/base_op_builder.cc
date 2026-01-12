@@ -7,45 +7,6 @@
 namespace onnxruntime {
 namespace nnapi {
 
-namespace {
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit) {
-  const auto is_ext_initializer =
-      [&](const NodeArg& node_arg) {
-        const auto& input_name(node_arg.Name());
-        const auto initializer = initializers.find(input_name);
-        if (initializer == initializers.end())
-          return false;
-
-        const auto& tensor = *initializer->second;
-        if (tensor.has_data_location() &&
-            tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-          LOGS_DEFAULT(VERBOSE) << "Initializer [" << input_name
-                                << "] with external data location are not currently supported";
-          return true;
-        }
-
-        return false;
-      };
-
-  const auto& inputs = node_unit.Inputs();
-  for (const auto& input : inputs) {
-    if (is_ext_initializer(input.node_arg))
-      return true;
-
-    if (!input.quant_param)
-      continue;
-
-    if (is_ext_initializer(input.quant_param->scale))
-      return true;
-
-    if (input.quant_param->zero_point && is_ext_initializer(*input.quant_param->zero_point))
-      return true;
-  }
-
-  return false;
-}
-}  // namespace
-
 // Add operator related
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -84,10 +45,6 @@ bool BaseOpBuilder::IsOpSupported(const GraphViewer& graph_viewer, const NodeUni
     return false;
 
   if (!HasSupportedInputOutputs(graph_viewer, node_unit, params))
-    return false;
-
-  // We do not support external initializers for now
-  if (HasExternalInitializer(graph_viewer.GetAllInitializedTensors(), node_unit))
     return false;
 
   if (!HasSupportedOpSet(node_unit))

@@ -195,7 +195,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_nbits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant_config = matmul_nbits_quantizer.DefaultWeightOnlyQuantConfig(
@@ -260,7 +260,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_nbits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
 
         algo_config = None
         if algorithm == "RTN":
@@ -274,7 +274,10 @@ class TestOpMatMul4Bits(unittest.TestCase):
             algo_config = matmul_nbits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
-        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)
+        bits = 4
+        quant = matmul_nbits_quantizer.MatMulNBitsQuantizer(
+            model, bits, block_size, is_symmetric, algo_config=algo_config
+        )
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 
@@ -292,9 +295,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
             else:
                 raise exception
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_matmul_int4_symmetric(self):
         np.random.seed(13)
 
@@ -303,18 +303,12 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test(model_fp32_path, data_reader, 32, True)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_matmul_int4_offsets(self):
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test(model_fp32_path, data_reader, 32, False)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_gather_int4_symmetric(self):
         np.random.seed(13)
 
@@ -324,9 +318,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
         # cover rounding error
         self.quant_test(model_fp32_path, data_reader, 32, True, op_types_to_quantize=("Gather",), rtol=0.2, atol=0.5)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_gather_int4_offsets(self):
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("gather_fp32_offset.onnx").absolute())
         self.construct_model_gather(model_fp32_path, False, TensorProto.FLOAT16, TensorProto.INT64)
@@ -334,9 +325,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
         # cover rounding error
         self.quant_test(model_fp32_path, data_reader, 32, False, op_types_to_quantize=("Gather",), rtol=0.2, atol=0.5)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_matmul_int4_symmetric_qdq(self):
         np.random.seed(13)
 
@@ -345,18 +333,12 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test(model_fp32_path, data_reader, 32, True, quant_utils.QuantFormat.QDQ)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_matmul_int4_offsets_qdq(self):
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test(model_fp32_path, data_reader, 32, False, quant_utils.QuantFormat.QDQ)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_matmul_int4_using_rtn_algo(self):
         if not find_spec("neural_compressor"):
             self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
@@ -367,9 +349,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test_with_algo("RTN", model_fp32_path, data_reader, 32, False)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_matmul_int4_using_gptq_algo(self):
         if not find_spec("neural_compressor"):
             self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
@@ -380,9 +359,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test_with_algo("GPTQ", model_fp32_path, data_reader, 32, False)
 
-    @unittest.skipIf(
-        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
-    )
     def test_quantize_matmul_int4_using_hqq_algo(self):
         if not find_spec("torch"):
             self.skipTest("skip test_hqq_quant since torch is not installed")

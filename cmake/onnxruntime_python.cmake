@@ -69,6 +69,20 @@ endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
+message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+
+# Query Py_GIL_DISABLED (PEP 703)
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -c
+          "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED') or '0')"
+  RESULT_VARIABLE _py_result
+  OUTPUT_VARIABLE _py_gil_disabled
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if (_py_result EQUAL 0 AND _py_gil_disabled STREQUAL "1")
+  message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
+endif()
+
 if(MSVC)
   # The following source file is only needed for the EPs that use delayloading. Namely, DML and WebGPU.
   target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
@@ -103,10 +117,6 @@ if(onnxruntime_USE_CUDA)
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
-endif()
-if(onnxruntime_USE_ROCM)
-  target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -182,14 +192,19 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
 )
 
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-
+if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
+endif()
+if(WIN32)
+  # onnxruntime_pybind11_state is a DLL
+  target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc")
+endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
@@ -534,6 +549,7 @@ set(onnxruntime_mobile_util_srcs
     ${REPO_ROOT}/tools/python/util/pytorch_export_helpers.py
     ${REPO_ROOT}/tools/python/util/reduced_build_config_parser.py
     ${REPO_ROOT}/tools/python/util/update_onnx_opset.py
+    ${REPO_ROOT}/tools/python/remove_initializer_from_input.py
 )
 file(GLOB onnxruntime_ort_format_model_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/ort_format_model/*.py
@@ -736,6 +752,21 @@ if (onnxruntime_USE_OPENVINO)
   )
 endif()
 
+if (onnxruntime_USE_MIGRAPHX)
+  if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    add_custom_command(
+            TARGET onnxruntime_pybind11_state POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            ${MIGRAPHX_LIB_FILES}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/)
+    add_custom_command(
+            TARGET onnxruntime_pybind11_state POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            ${HIPSDK_LIB_FILES}
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/)
+  endif()
+endif()
+
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -755,7 +786,6 @@ endif()
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-                                  AND NOT onnxruntime_USE_ROCM
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -943,13 +973,33 @@ if (onnxruntime_USE_TENSORRT)
 endif()
 
 if (onnxruntime_USE_NV)
+  if (WIN32 OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+      file(GLOB NV_LIB_FILES LIST_DIRECTORIES false "${TENSORRT_RTX_ROOT}/lib/tensorrt_*.dll"
+                                             "${TENSORRT_RTX_ROOT}/bin/tensorrt_*.dll"
+                                             "${TENSORRT_RTX_ROOT}/lib/libtensorrt_*.so"
+                                             "${TENSORRT_RTX_ROOT}/bin/libtensorrt_*.so")
+    message(STATUS "NV lib files: " ${NV_LIB_FILES})
+  endif()
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
+        ${NV_LIB_FILES}
         $<TARGET_FILE:onnxruntime_providers_nv_tensorrt_rtx>
         $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
+  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/LICENSE.txt")
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/LICENSE.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_LICENSE.txt
+    )
+  endif()
+  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/Acknowledgements.txt")
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/Acknowledgements.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_Acknowledgements.txt
+    )
+  endif()
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
@@ -1005,16 +1055,6 @@ if (onnxruntime_USE_CANN)
     )
 endif()
 
-if (onnxruntime_USE_ROCM)
-    add_custom_command(
-      TARGET onnxruntime_pybind11_state POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-          $<TARGET_FILE:onnxruntime_providers_rocm>
-          $<TARGET_FILE:onnxruntime_providers_shared>
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-    )
-endif()
-
 if (onnxruntime_USE_DML)
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB})
@@ -1064,18 +1104,10 @@ if (onnxruntime_USE_QNN)
         ${QNN_LIB_FILES}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:ep_weight_sharing_ctx_gen>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-  if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+  if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-          "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf"
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/Qualcomm_LICENSE.pdf
     )
   endif()
 endif()
@@ -1104,7 +1136,7 @@ if (onnxruntime_USE_WEBGPU)
       )
     endif()
   endif()
-  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy

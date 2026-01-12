@@ -81,7 +81,7 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'all';
+    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'layout' | 'all';
 
     /**
      * Whether enable CPU memory arena.
@@ -245,7 +245,37 @@ export declare namespace InferenceSession {
   }
   export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgpu';
+
+    /**
+     * Specify the preferred layout when running layout sensitive operators.
+     *
+     * @default 'NCHW'
+     */
     preferredLayout?: 'NCHW' | 'NHWC';
+
+    /**
+     * Specify a list of node names that should be executed on CPU even when WebGPU EP is used.
+     */
+    forceCpuNodeNames?: readonly string[];
+
+    /**
+     * Specify the validation mode for WebGPU execution provider.
+     * - 'disabled': Disable all validation.
+     * When used in Node.js, disable validation may cause process crash if WebGPU errors occur. Be cautious when using
+     * this mode.
+     * When used in web, this mode is equivalent to 'wgpuOnly'.
+     * - 'wgpuOnly': Perform WebGPU internal validation only.
+     * - 'basic': Perform basic validation including WebGPU internal validation. This is the default mode.
+     * - 'full': Perform full validation. This mode may have performance impact. Use it for debugging purpose.
+     *
+     * @default 'basic'
+     */
+    validationMode?: 'disabled' | 'wgpuOnly' | 'basic' | 'full';
+
+    /**
+     * Specify an optional WebGPU device to be used by the WebGPU execution provider.
+     */
+    device?: TryGetGlobalType<'GPUDevice'>;
   }
 
   // #region WebNN options

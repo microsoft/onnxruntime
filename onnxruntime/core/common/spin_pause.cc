@@ -25,6 +25,7 @@ namespace concurrency {
 // Intrinsic to use in spin-loops
 void SpinPause() {
 #if (defined(_M_AMD64) || defined(__x86_64__)) && \
+    !defined(_M_ARM64EC) &&                       \
     !defined(__ANDROID__) &&                      \
     !defined(__APPLE__)
 

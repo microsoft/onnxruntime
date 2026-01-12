@@ -34,7 +34,7 @@ class TrtTable:
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from onnxruntime.quantization.CalTableFlatBuffers.KeyValue import KeyValue
+            from onnxruntime.quantization.CalTableFlatBuffers.KeyValue import KeyValue  # noqa: PLC0415
 
             obj = KeyValue()
             obj.Init(self._tab.Bytes, x)

@@ -329,6 +329,11 @@ cudnn_frontend::DataType_t CudnnFeTensor::GetDataType<half>() {
 }
 
 template <>
+cudnn_frontend::DataType_t CudnnFeTensor::GetDataType<BFloat16>() {
+  return cudnn_frontend::DataType_t::BFLOAT16;
+}
+
+template <>
 cudnn_frontend::DataType_t CudnnFeTensor::GetDataType<double>() {
   return cudnn_frontend::DataType_t::DOUBLE;
 }

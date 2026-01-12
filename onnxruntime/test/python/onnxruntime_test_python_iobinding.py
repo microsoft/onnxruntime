@@ -196,7 +196,7 @@ class TestIOBinding(unittest.TestCase):
     # Test I/O binding with onnx types like bfloat16 and float8, which are not supported in numpy.
     def test_bind_onnx_types_not_supported_by_numpy(self):
         try:
-            import torch
+            import torch  # noqa: PLC0415
         except ImportError:
             self.skipTest("Skipping since PyTorch is not installed.")
 

@@ -13,7 +13,8 @@ namespace onnxruntime {
 
 struct SelectionInfo {
   OrtEpFactory* ep_factory;
-  std::vector<const OrtHardwareDevice*> devices;
+  std::vector<const OrtEpDevice*> devices;
+  std::vector<const OrtHardwareDevice*> hardware_devices;
   std::vector<const OrtKeyValuePairs*> ep_metadata;
 };
 

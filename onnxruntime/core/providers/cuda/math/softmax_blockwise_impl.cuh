@@ -115,7 +115,7 @@ __device__ __forceinline__ AccumT blockReduce(AccumT* smem, AccumT val,
   AccumT blockVal = defaultVal;
 
   if (threadIdx.x == 0) {
-    #pragma unroll
+#pragma unroll
     for (int i = 0; i < GPU_WARP_SIZE; ++i) {
       blockVal = r(blockVal, smem[i]);
     }
@@ -158,7 +158,7 @@ __device__ __forceinline__ AccumT ilpReduce(int shift,
   for (; offset * ILP < (size - last); offset += blockDim.x) {
     *value = reinterpret_cast<LoadT*>(data)[offset];
 
-    #pragma unroll
+#pragma unroll
     for (int j = 0; j < ILP; ++j) {
       threadVal = r(threadVal, v[j]);
     }
@@ -213,7 +213,7 @@ __device__ __forceinline__ void WriteFpropResultsVectorized(int size,
   for (; offset * ILP < (size - last); offset += blockDim.x) {
     *in_value = reinterpret_cast<LoadT*>(input)[offset];
 
-    #pragma unroll
+#pragma unroll
     for (int j = 0; j < ILP; ++j) {
       out_v[j] = epilogue(in_v[j]);
     }
@@ -244,11 +244,11 @@ __device__ __forceinline__ void WriteFpropResults(int classes,
   for (; offset < classes - last; offset += blockDim.x * ILP) {
     scalar_t tmp[ILP];
 
-    #pragma unroll
+#pragma unroll
     for (int j = 0; j < ILP; ++j) {
       tmp[j] = input[offset + j * blockDim.x];
     }
-    #pragma unroll
+#pragma unroll
     for (int j = 0; j < ILP; ++j) {
       output[offset + j * blockDim.x] = epilogue(tmp[j]);
     }

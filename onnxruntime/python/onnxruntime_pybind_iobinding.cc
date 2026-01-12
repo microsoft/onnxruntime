@@ -43,7 +43,7 @@ void BindOutput(SessionIOBinding* io_binding, const std::string& name, const Ort
   }
 
   OrtValue ml_value;
-  OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+  OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
   Tensor::InitOrtValue(element_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
   auto status = io_binding->Get()->BindOutput(name, ml_value);
@@ -94,7 +94,7 @@ void addIoBindingMethods(pybind11::module& m) {
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, int32_t element_type, const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         auto ml_type = OnnxTypeToOnnxRuntimeTensorType(element_type);
         OrtValue ml_value;
-        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
         auto status = io_binding->Get()->BindInput(name, ml_value);
@@ -111,7 +111,7 @@ void addIoBindingMethods(pybind11::module& m) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
         auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
         OrtValue ml_value;
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);

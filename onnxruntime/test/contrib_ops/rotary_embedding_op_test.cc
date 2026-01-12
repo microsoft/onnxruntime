@@ -186,7 +186,7 @@ static void RunTests(const std::vector<float>& input_data,
 }
 
 // Interleaved = true, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
   int batch_size = 1;
   int sequence_length = 3;
   int num_heads = 2;
@@ -230,7 +230,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
 }
 
 // Interleaved = true, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
   int batch_size = 2;
   int sequence_length = 8;
   int num_heads = 4;
@@ -430,7 +430,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
 }
 
 // Interleaved = false, pos ids shape = (1)
-TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
   int batch_size = 2;
   int sequence_length = 8;
   int num_heads = 4;
@@ -630,7 +630,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
 }
 
 // Interleaved = false, pos ids shape = (batch_size, sequence_length)
-TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
   int batch_size = 1;
   int sequence_length = 2;
   int num_heads = 3;
@@ -677,7 +677,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
            interleaved);
 }
 
-TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
   int batch_size = 1;
   int sequence_length = 2;
   int num_heads = 1;
@@ -718,7 +718,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
            true /*use_fp16*/);
 }
 
-TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_Batching) {
+TEST(ContribOpRotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_Batching) {
   int batch_size = 1;
   int sequence_length = 3;
   int num_heads = 1;

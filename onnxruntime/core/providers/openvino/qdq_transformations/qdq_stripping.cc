@@ -14,6 +14,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -643,15 +644,11 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
                                   const onnxruntime::GraphViewer& src_graph,
                                   const std::string& initializer_name) {
   // Get the initializer from source graph
-  const auto& src_initializers = src_graph.GetAllInitializedTensors();
-  auto init_iter = src_initializers.find(initializer_name);
-
-  if (init_iter == src_initializers.end()) {
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (!src_graph.GetInitializedTensor(initializer_name, tensor_proto)) {
     // Initializer not found
     return;
   }
-
-  const auto* tensor_proto = init_iter->second;
 
   // Create TypeProto for the initializer
   auto type_proto = ONNX_NAMESPACE::TypeProto::Create();
@@ -680,13 +677,34 @@ static void AddInitializerAsInput(onnxruntime::Graph& dst_graph,
   }
 }
 
+// To check if the input parameters of a DQ or Q node are quantization parameters
+// Scale and Zero point parameters are quantization parameters
+static bool IsQuantizationParameter(const std::string& initializer_name,
+                                    const onnxruntime::GraphViewer& src_graph) {
+  // Check if this initializer is used as scale or zero_point in any DQ/Q node
+  for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
+    const auto* node = src_graph.GetNode(node_idx);
+    if (node->OpType() == "DequantizeLinear" || node->OpType() == "QuantizeLinear") {
+      const auto& input_defs = node->InputDefs();
+      // Check if this initializer is used as scale (input 1) or zero_point (input 2)
+      if (input_defs.size() >= 2 && input_defs[1]->Name() == initializer_name) {
+        return true;  // This is a scale parameter
+      }
+      if (input_defs.size() >= 3 && input_defs[2]->Name() == initializer_name) {
+        return true;  // This is a zero_point parameter
+      }
+    }
+  }
+  return false;
+}
+
 // Creates a new model without the DQ/Q operators in the src graph.
 Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
                                        const logging::Logger& logger,
                                        bool enable_ovep_weight_sharing,
                                        bool enable_ovep_qdq_optimizer,
                                        /*out*/ std::unique_ptr<onnxruntime::Model>& model,
-                                       /*out*/ sw& shared_weights) {
+                                       /*out*/ SharedContext& shared_context) {
   // NOTE: This function is a re-implementation of GraphViewerToProto() in core/graph/graph_proto_serializer.cc
   // with the following differences:
   //   - Uses onnxruntime::Graph APIs instead of onnx::GraphProto APIs.
@@ -789,86 +807,106 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   }
 
   //  Copy initializers to dst graph.
+  const auto& initializers = src_graph.GetAllInitializedTensors();
 
-  std::unordered_set<std::string> current_scope_initializer_set;
-
-  auto& initializers = src_graph.GetAllInitializedTensors();
+  InlinedHashSet<std::string> current_scope_initializer_set;
+  current_scope_initializer_set.reserve(initializers.size());
 
   // Sort initializers to maintain consistency in model proto created across inference requests
-  std::vector<std::string> const_inits;
-  for (auto& it : initializers) {
-    const_inits.push_back(it.first);
+
+  InlinedVector<InitializedTensorSet::const_iterator> all_inits;
+  all_inits.reserve(initializers.size());
+  for (auto it = initializers.cbegin(), end = initializers.cend(); it != end; ++it) {
+    all_inits.push_back(it);
   }
-  std::sort(const_inits.begin(), const_inits.end());
+  std::sort(all_inits.begin(), all_inits.end(), [](const auto& i1, const auto& i2) {
+    return i1->first < i2->first;
+  });
 
   // initialize map for creating metadata for initilizers with external weights
-  auto& metadata = shared_weights.metadata;
 
-  const auto& insert_metadata = [&metadata](const ONNX_NAMESPACE::TensorProto& proto) {
-    sw::Metadata::Map::key_type key{proto.name()};
-    sw::Metadata::Map::mapped_type value{};
-
+  const auto& add_shared_weight = [&shared_context](const ONNX_NAMESPACE::TensorProto& proto) {
     using mutable_proto_t = ONNX_NAMESPACE::TensorProto*;
     auto& mutable_proto = *const_cast<mutable_proto_t>(&proto);
     auto* entry_protos = mutable_proto.mutable_external_data();
+
+    std::string location = "";
+    size_t data_offset = 0, size = 0;
     for (int i = 0; i < entry_protos->size(); i++) {
       auto& string_entry_proto{entry_protos->at(i)};
       const auto& pb_key{*(string_entry_proto.mutable_key())};
       const auto& pb_value{*(string_entry_proto.mutable_value())};
       if (pb_key == "location") {
-        value.location = pb_value;
+        location = pb_value;
       } else if (pb_key == "offset") {
-        value.data_offset = std::stoul(pb_value);
+        data_offset = std::stoul(pb_value);
       } else if (pb_key == "length") {
-        value.size = std::stoul(pb_value);
+        size = std::stoul(pb_value);
       }
     }
-    value.element_type = proto.data_type();
-    value.dimensions.resize(proto.dims_size());
-    for (uint32_t index = 0; auto& dim : value.dimensions) {
-      dim = proto.dims()[index++];
-    }
 
-    metadata.emplace(key, std::move(value));
+    shared_context.AddExternalWeight(proto.name(), data_offset, size, location);
   };
 
-  // Handle constant initializers
-  for (auto& it : const_inits) {
-    const auto& initializer_tensor = *initializers.at(it);
+  // Handle initializers
+  for (const auto& it : all_inits) {
+    const auto& [name, init] = *it;
+    const auto& initializer_tensor = *init;
+
+    std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
+    ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
 
     // Check if the initializer has external data
-    if (initializer_tensor.has_data_location() &&
-        initializer_tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL &&
+    if (!init_with_data &&
+        utils::HasExternalData(initializer_tensor) &&
         enable_ovep_weight_sharing) {
-      insert_metadata(initializer_tensor);
+      // Only convert to input if it's not a quantization parameter
+      bool is_quant_param = IsQuantizationParameter(name, src_graph);
 
-      // Add initializer with external data as input
-      AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, it);
+      if (!is_quant_param) {
+        // This is actual weight data - so to convert to input for weight sharing
+        add_shared_weight(initializer_tensor);
+        AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, name);
+      } else {
+        // This is a quantization parameter - keep as initializer even if external
 
+        if (initializers_to_keep.count(name) > 0) {
+          dst_graph.AddInitializedTensor(initializer_tensor);
+        }
+      }
     } else {
       // Add as an initialized tensor if it does not have external data
-      if (initializers_to_keep.count(it))
-        dst_graph.AddInitializedTensor(*(initializers.at(it)));
+      if (initializers_to_keep.count(name) > 0) {
+        if (init_with_data) {
+          dst_graph.AddInitializedTensor(*init_with_data);
+        } else {
+          dst_graph.AddInitializedTensor(initializer_tensor);
+        }
+      }
     }
 
-    current_scope_initializer_set.insert(it);
+    current_scope_initializer_set.insert(name);
   }
 
-  // Handle outer-scope constant initializers
+  // Handle outer-scope initializers
   for (auto& node_idx : src_graph.GetNodesInTopologicalOrder()) {
     const auto& node = src_graph.GetNode(node_idx);
     for (const auto& input : node->InputDefs()) {
-      if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
+      if (current_scope_initializer_set.count(input->Name()) > 0) {
         continue;
       }
 
       if (src_graph.IsConstantInitializer(input->Name(), true)) {
         const auto& initializer_tensor = *src_graph.GetConstantInitializer(input->Name(), true);
+
+        std::unique_ptr<ONNX_NAMESPACE::TensorProto> init_with_data;
+        ORT_RETURN_IF_ERROR(utils::GetTensorProtoWithDataIfInMemory(initializer_tensor, init_with_data));
+
         // Check if the initializer has external data
-        if (initializer_tensor.has_data_location() &&
-            initializer_tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL &&
+        if (!init_with_data &&
+            utils::HasExternalData(initializer_tensor) &&
             enable_ovep_weight_sharing) {
-          insert_metadata(initializer_tensor);
+          add_shared_weight(initializer_tensor);
 
           // Add initializer as input if it has external data
           AddInitializerAsInput(dst_graph, accumulated_inputs, src_graph, input->Name());
@@ -876,7 +914,11 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
         } else {
           // Add as an initialized tensor if it does not have external data
           if (initializers_to_keep.count(input->Name())) {
-            dst_graph.AddInitializedTensor(*(src_graph.GetConstantInitializer(input->Name(), true)));
+            if (init_with_data) {
+              dst_graph.AddInitializedTensor(*init_with_data);
+            } else {
+              dst_graph.AddInitializedTensor(initializer_tensor);
+            }
           }
         }
 

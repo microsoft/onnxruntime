@@ -5,7 +5,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/allocator_utils.h"
 
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -13,8 +13,8 @@ namespace test {
 TEST(AllocatorTest, CPUAllocatorTest) {
   auto cpu_arena = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 
-  ASSERT_STREQ(cpu_arena->Info().name, CPU);
-  EXPECT_EQ(cpu_arena->Info().id, 0);
+  ASSERT_STREQ(cpu_arena->Info().name.c_str(), CPU);
+  EXPECT_EQ(cpu_arena->Info().device.Id(), 0);
 
   const auto expected_allocator_type = DoesCpuAllocatorSupportArenaUsage()
                                            ? OrtAllocatorType::OrtArenaAllocator

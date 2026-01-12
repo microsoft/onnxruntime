@@ -43,18 +43,24 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 5> supported_fallback
 };
 
 // Some ONNX ops are supported by decomposed WebNN ops.
+// This map defines the relationship between ONNX ops and their corresponding decomposed ONNX ops.
+// Use ONNX-to-ONNX op mapping to improve the search complexity for WebNN ops in the op_inputs_map.
 const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
-    {"ConvInteger", {"cast", "conv2d", "dequantizeLinear"}},
+    {"ConvInteger", {"Cast", "Conv", "DequantizeLinear"}},
+    {"DynamicQuantizeLinear",
+     {"Cast", "Clip", "Div", "Max", "Min", "QuantizeLinear", "ReduceMax", "ReduceMin", "Reshape", "Round", "Sub"}},
+    {"Einsum", {"MatMul", "Mul", "ReduceSum", "Reshape", "Transpose", "Trilu"}},
+    {"GatherBlockQuantized", {"DequantizeLinear", "Gather"}},
     {"GroupQueryAttention",
-     {"add", "cast", "concat", "constant", "cumulativeSum", "div", "expand", "lesser", "matmul", "reshape", "scatterND",
-      "softmax", "transpose", "where"}},
-    {"LRN", {"add", "averagePool2d", "div", "mul", "pad", "pow", "transpose"}},
-    {"MatMulInteger", {"cast", "dequantizeLinear", "matmul"}},
-    {"MatMulNBits", {"add", "dequantizeLinear", "matmul", "reshape", "transpose"}},
-    {"MultiHeadAttention", {"add", "cast", "concat", "constant", "div", "matmul", "reshape", "softmax", "transpose"}},
-    {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "slice", "split"}},
-    {"SimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
-    {"SkipSimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
+     {"Add", "Cast", "Concat", "CumSum", "Div", "Expand", "Less", "MatMul", "Reshape", "ScatterND",
+      "Softmax", "Transpose", "Where"}},
+    {"LRN", {"Add", "AveragePool", "Div", "Mul", "Pad", "Pow", "Transpose"}},
+    {"MatMulInteger", {"Cast", "DequantizeLinear", "MatMul"}},
+    {"MatMulNBits", {"Add", "DequantizeLinear", "MatMul", "Reshape", "Transpose"}},
+    {"MultiHeadAttention", {"Add", "Cast", "Concat", "Div", "MatMul", "Reshape", "Softmax", "Transpose"}},
+    {"RotaryEmbedding", {"Add", "Concat", "Gather", "Mul", "Reshape", "Slice", "Split"}},
+    {"SimplifiedLayerNormalization", {"Add", "Div", "Mul", "Pow", "ReduceMean", "Sqrt"}},
+    {"SkipSimplifiedLayerNormalization", {"Add", "Div", "Mul", "Pow", "ReduceMean", "Sqrt"}},
 };
 
 /**
@@ -103,11 +109,12 @@ struct WebnnOpInfo {
  *   and for items with the same length, they are sorted alphabetically.
  */
 const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
-    {"Cos", {"cos", {{0, "input"}}}},
     {"Abs", {"abs", {{0, "input"}}}},
+    {"Cos", {"cos", {{0, "input"}}}},
     {"Elu", {"elu", {{0, "input"}}}},
     {"Erf", {"erf", {{0, "input"}}}},
     {"Exp", {"exp", {{0, "input"}}}},
+    {"IsNaN", {"isNaN", {{0, "a"}}}},
     {"Log", {"log", {{0, "input"}}}},
     {"Neg", {"neg", {{0, "input"}}}},
     {"Pad", {"pad", {{0, "input"}}}},
@@ -122,10 +129,12 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Tanh", {"tanh", {{0, "input"}}}},
     {"Tile", {"tile", {{0, "input"}}}},
     {"Clip", {"clamp", {{0, "input"}}}},
+    {"Not", {"logicalNot", {{0, "a"}}}},
     {"Floor", {"floor", {{0, "input"}}}},
     {"Shape", {"slice", {{0, "input"}}}},
     {"Slice", {"slice", {{0, "input"}}}},
     {"Split", {"split", {{0, "input"}}}},
+    {"IsInf", {"isInfinite", {{0, "a"}}}},
     {"Sub", {"sub", {{0, "a"}, {1, "b"}}}},
     {"Add", {"add", {{0, "a"}, {1, "b"}}}},
     {"ArgMax", {"argMax", {{0, "input"}}}},
@@ -137,7 +146,6 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Mul", {"mul", {{0, "a"}, {1, "b"}}}},
     {"Pow", {"pow", {{0, "a"}, {1, "b"}}}},
     {"Concat", {"concat", {{0, "inputs"}}}},
-    {"Not", {"logicalNot", {{0, "input"}}}},
     {"Flatten", {"reshape", {{0, "input"}}}},
     {"LpPool", {"l2Pool2d", {{0, "input"}}}},
     {"Reshape", {"reshape", {{0, "input"}}}},
@@ -157,7 +165,6 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Softsign", {"softsign", {{0, "input"}}}},
     {"Unsqueeze", {"reshape", {{0, "input"}}}},
     {"Or", {"logicalOr", {{0, "a"}, {1, "b"}}}},
-    {"Einsum", {"matmul", {{0, "a"}, {1, "b"}}}},
     {"HardSwish", {"hardSwish", {{0, "input"}}}},
     {"LeakyRelu", {"leakyRelu", {{0, "input"}}}},
     {"MatMul", {"matmul", {{0, "a"}, {1, "b"}}}},
@@ -172,6 +179,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Greater", {"greater", {{0, "a"}, {1, "b"}}}},
     {"Reciprocal", {"reciprocal", {{0, "input"}}}},
     {"ReduceMean", {"reduceMean", {{0, "input"}}}},
+    {"Round", {"roundEven", {{0, "input"}}}},
     {"GlobalMaxPool", {"maxPool2d", {{0, "input"}}}},
     {"HardSigmoid", {"hardSigmoid", {{0, "input"}}}},
     {"ReduceProd", {"reduceProduct", {{0, "input"}}}},
@@ -187,7 +195,6 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"GatherND", {"gatherND", {{0, "input"}, {1, "indices"}}}},
     {"GreaterOrEqual", {"greaterOrEqual", {{0, "a"}, {1, "b"}}}},
     {"Conv", {"conv2d", {{0, "input"}, {1, "filter"}, {2, "bias"}}}},
-    {"DynamicQuantizeLinear", {"dynamicQuantizeLinear", {{0, "input"}}}},
     {"GatherElements", {"gatherElements", {{0, "input"}, {1, "indices"}}}},
     {"ScatterND", {"scatterND", {{0, "input"}, {1, "indices"}, {2, "updates"}}}},
     {"Where", {"where", {{0, "condition"}, {1, "trueValue"}, {2, "falseValue"}}}},
@@ -198,7 +205,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"DequantizeLinear", {"dequantizeLinear", {{0, "input"}, {1, "scale"}, {2, "zeroPoint"}}}},
     {"InstanceNormalization", {"instanceNormalization", {{0, "input"}, {1, "scale"}, {2, "bias"}}}},
     {"GRU", {"gru", {{0, "input"}, {1, "weight"}, {2, "recurrentWeight"}, {3, "bias"}, {5, "initialHiddenState"}}}},
-    {"BatchNormalization", {"batchNormalization", {{0, "input"}, {1, "scale"}, {2, "bias"}, {3, "input_mean"}, {4, "input_var"}}}},
+    {"BatchNormalization", {"batchNormalization", {{0, "input"}, {1, "scale"}, {2, "bias"}, {3, "mean"}, {4, "variance"}}}},
     {"LSTM", {"lstm", {{0, "input"}, {1, "weight"}, {2, "recurrentWeight"}, {3, "bias"}, {5, "initialHiddenState"}, {6, "initialCellState"}, {7, "peepholeWeight"}}}},
 };
 }  // namespace webnn

@@ -130,7 +130,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
 
       transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps, level, true));
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps,
                                                                             true /* skip_device_check*/));
 #else
@@ -145,7 +145,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // Quantization Aware Training. So, replace QDQ nodes with FakeQuant.
       transformers.emplace_back(std::make_unique<QDQFusion>(compatible_eps));
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
       // We are supposed to use the execution provider as an indicator,
       //  but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
@@ -180,8 +180,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             config.number_recompute_layers, compatible_eps));
       }
       if (config.propagate_cast_ops_config.level >= 0) {
-        const InlinedHashSet<std::string_view> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider,
-                                                                          onnxruntime::kRocmExecutionProvider};
+        const InlinedHashSet<std::string_view> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider};
         transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
                                                                      static_cast<size_t>(config.propagate_cast_ops_config.level),
                                                                      config.propagate_cast_ops_config.allow,
@@ -194,8 +193,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
                                                                               config.print_input_density));
-#if defined(USE_CUDA) || defined(USE_ROCM)
-        // Put this under CUDA/ROCM guard as it depends on PadAndUnflatten CUDA/ROCM kernel.
+#if defined(USE_CUDA)
+        // Put this under CUDA guard as it depends on PadAndUnflatten CUDA kernel.
         // Once we have a CPU kernel for PadAndUnflatten, we can remove the guard.
         transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
                                                                        config.print_input_density));
@@ -214,6 +213,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     } break;
 
     case TransformerLevel::Level3: {
+    } break;
+
+    case TransformerLevel::Level4: {
     } break;
 
     default:
@@ -258,17 +260,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   switch (level) {
     case TransformerLevel::Level1: {
       InlinedHashSet<std::string_view> l1_execution_providers = {};
-      InlinedHashSet<std::string_view> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider,
-                                                                        onnxruntime::kRocmExecutionProvider};
+      InlinedHashSet<std::string_view> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
       // transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
-      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
-      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
-      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_execution_providers));
+      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_execution_providers));
+      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_execution_providers));
+      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_execution_providers));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(l1_execution_providers, excluded_initializers));
@@ -293,6 +294,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
+    } break;
+
+    case TransformerLevel::Level4: {
+      // NOTE: Placeholder for adding level 4 transformers to handle unsupported datatype optimizations.
+      // For inference, FuseInitializersTransformer is used to fuse FP16 initializers with FP32 nodes.
+      // For training, if it is necessary to fuse FP16 initializers to FP32 nodes (e.g., to support platforms without FP16),
+      // add FuseInitializersTransformer to the training graph transformers list.
+      // For reference, see FuseFp16InitializerToFp32NodeTransformer in onnxruntime/core/optimizer/graph_transformer_utils.cc.
     } break;
 
     default:

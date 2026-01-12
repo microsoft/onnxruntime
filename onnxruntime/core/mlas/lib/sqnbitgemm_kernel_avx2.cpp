@@ -602,7 +602,8 @@ SQ8BitGemmKernel_BlkSum_CompInt8_avx2(
     const float* Bias,
     size_t ldc,
     const float* ABlockSum,
-    const float* QuantBBlkSum
+    const float* QuantBBlkSum,
+    const float* /*QuantBBlkSum2*/
 )
 {
     if (BlkLen == 16) {

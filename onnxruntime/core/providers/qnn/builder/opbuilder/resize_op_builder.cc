@@ -173,33 +173,37 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                       "QNN EP: Resize does not support nearest_mode ", nearest_mode.c_str());
 
     if (is_npu_backend) {
-      // QNN only supports the following nearest_mode values on HTP:
-      // - QNN 2.19: "round_prefer_floor" via QNN's Resize operator
-      // - QNN 2.20 (API version 2.14): "round_prefer_ceil" via QNN's Resize operator
-      // - "floor" via QNN's ResizeNearestNeighbor operator
-#if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 14
-      ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_ceil" || nearest_mode == "floor",
-                        "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
-#else
-      ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_floor" || nearest_mode == "floor",
-                        "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
-#endif
-
-      // Use ResizeNearestNeighbor for rank-4 inputs.
+      // For better performance with HTP backend, use QNN's ResizeNearestNeighbor for rank-4 input.
       const bool use_resize_nn_op = input_rank == 4;
 
-      // If HTP uses ResizeNearestNeighbor ("floor"), then the "pytorch_half_pixel" coordinate_transformation_mode
-      // is not supported.
-      ORT_RETURN_IF(!use_resize_nn_op && nearest_mode == "floor" && transformation_mode == "pytorch_half_pixel",
-                    "QNN EP: Resize on the NPU does not support the combination of nearest_mode == 'floor' ",
-                    " and coordinate_transformation_mode == 'pytorch_half_pixel'.");
-
+      if (!use_resize_nn_op) {
+        // QNN only supports the following nearest_mode values on HTP:
+        // - QNN 2.19: "round_prefer_floor" via QNN's Resize operator
+        // - QNN 2.20 (API version 2.14): "round_prefer_ceil" via QNN's Resize operator
 #if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 14
-      // QNN's Resize only supports "round_prefer_ceil" if transformation_mode is "align_corners".
-      ORT_RETURN_IF(!use_resize_nn_op && transformation_mode != "align_corners",
-                    "QNN EP: Resize on the NPU only supports 'round_prefer_ceil' if "
-                    "transformation mode is 'align_corners'");
+        ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_ceil" || nearest_mode == "floor",
+                          "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
+
+        // QNN HTP Resize only supports "round_prefer_ceil" if transformation_mode is "align_corners".
+        ORT_RETURN_IF(nearest_mode == "round_prefer_ceil" && transformation_mode != "align_corners",
+                      "QNN EP: Resize on the NPU only supports 'round_prefer_ceil' if "
+                      "transformation mode is 'align_corners'");
+#else
+        ORT_RETURN_IF_NOT(nearest_mode == "round_prefer_floor" || nearest_mode == "floor",
+                          "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
 #endif
+        // If HTP uses Resize ("floor"), then the transformation_mode "pytorch_half_pixel" is not supported.
+        ORT_RETURN_IF(nearest_mode == "floor" && transformation_mode == "pytorch_half_pixel",
+                      "QNN EP: Resize on the NPU does not support the combination of nearest_mode == 'floor' ",
+                      " and transformation_mode == 'pytorch_half_pixel'.");
+      } else {
+        // If HTP uses ResizeNearestNeighbor "ceil" or "round_prefer_floor", then the
+        // transformation_mode "asymmetric" is not supported.
+        // This is verified in unit test but not be documented in QNN SDK.
+        ORT_RETURN_IF((nearest_mode == "ceil" || nearest_mode == "round_prefer_floor") && transformation_mode == "asymmetric",
+                      "QNN EP: ResizeNearestNeighbor on the NPU does not support the combination of ",
+                      "nearest_mode == 'ceil' or 'round_prefer_floor' and transformation_mode == 'asymmetric'.");
+      }
     }
   }
 

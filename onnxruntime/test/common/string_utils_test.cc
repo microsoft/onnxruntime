@@ -15,6 +15,8 @@ namespace test {
 namespace {
 template <typename T>
 void TestSuccessfulParse(const std::string& input, const T& expected_value) {
+  SCOPED_TRACE(MakeString("Input: \"", input, "\", expected_value: ", expected_value));
+
   T value;
   ASSERT_TRUE(TryParseStringWithClassicLocale(input, value));
   EXPECT_EQ(value, expected_value);
@@ -22,6 +24,8 @@ void TestSuccessfulParse(const std::string& input, const T& expected_value) {
 
 template <typename T>
 void TestFailedParse(const std::string& input) {
+  SCOPED_TRACE(MakeString("Input: \"", input, "\""));
+
   T value;
   EXPECT_FALSE(TryParseStringWithClassicLocale(input, value));
 }
@@ -31,6 +35,7 @@ TEST(StringUtilsTest, TryParseStringWithClassicLocale) {
   TestSuccessfulParse("-1", -1);
   TestSuccessfulParse("42", 42u);
   TestSuccessfulParse("2.5", 2.5f);
+  TestSuccessfulParse("0x100", uint32_t{0x100});
 
   // out of range
   TestFailedParse<int16_t>("32768");

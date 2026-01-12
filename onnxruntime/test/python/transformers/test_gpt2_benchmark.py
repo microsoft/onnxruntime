@@ -21,7 +21,7 @@ else:
 
 class TestGpt2(unittest.TestCase):
     def setUp(self):
-        from onnxruntime import get_available_providers
+        from onnxruntime import get_available_providers  # noqa: PLC0415
 
         self.test_cuda = "CUDAExecutionProvider" in get_available_providers()
 

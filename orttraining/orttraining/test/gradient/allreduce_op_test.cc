@@ -12,7 +12,7 @@
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/models/runner/training_runner.h"
 
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"

@@ -85,6 +85,10 @@ TEST(GatherNDOpTest, int64_t) {
   RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 1, 1}, {1, 0}, {2, 1, 2, 2},
                    {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
 
+  if (DefaultQnnExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because QNN CPU does not support negative indices being inputs.";
+  }
+
   // with negative indices
   RunTest<int64_t>({2, 2, 2}, {0LL, 1LL, 2LL, 3LL, 4LL, 5LL, 6LL, 7LL}, {2, 1, 1}, {-1, 0}, {2, 1, 2, 2},
                    {4LL, 5LL, 6LL, 7LL, 0LL, 1LL, 2LL, 3LL});
@@ -96,6 +100,10 @@ TEST(GatherNDOpTest, float) {
   }
 
   RunTest<float>({2, 2}, {0.0f, 0.1f, 0.2f, 0.3f}, {2, 1}, {1LL, 0LL}, {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
+
+  if (DefaultQnnExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because QNN CPU does not support negative indices being inputs.";
+  }
 
   // with negative indices
   RunTest<float>({2, 2}, {0.0f, 0.1f, 0.2f, 0.3f}, {2, 1}, {-1LL, 0LL}, {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});

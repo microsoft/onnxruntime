@@ -6,7 +6,7 @@
 #include <cassert>
 #include <cstring>
 
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -45,6 +45,16 @@ void SwapByteOrderCopy(size_t element_size_in_bytes,
     ReverseCopy(source_element_bytes.data(),
                 source_element_bytes.data() + source_element_bytes.size_bytes(),
                 dest_element_bytes.data());
+  }
+}
+
+void SwapByteOrderInplace(size_t element_size_in_bytes, gsl::span<std::byte> bytes) {
+  ORT_ENFORCE(element_size_in_bytes > 0, "Expecting a positive element size");
+  ORT_ENFORCE(bytes.size_bytes() % element_size_in_bytes == 0, "Expecting a match");
+  if (element_size_in_bytes > 1) {
+    for (size_t offset = 0, lim = bytes.size_bytes(); offset < lim; offset += element_size_in_bytes) {
+      std::reverse(bytes.begin() + offset, bytes.begin() + offset + element_size_in_bytes);
+    }
   }
 }
 

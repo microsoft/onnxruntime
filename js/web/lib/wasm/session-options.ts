@@ -14,6 +14,8 @@ const getGraphOptimzationLevel = (graphOptimizationLevel: string | unknown): num
       return 1;
     case 'extended':
       return 2;
+    case 'layout':
+      return 3;
     case 'all':
       return 99;
     default:
@@ -70,9 +72,10 @@ const appendEpOption = (epOptions: Array<[number, number]>, key: string, value: 
 
 const setExecutionProviders = async (
   sessionOptionsHandle: number,
-  executionProviders: readonly InferenceSession.ExecutionProviderConfig[],
+  sessionOptions: InferenceSession.SessionOptions,
   allocs: number[],
 ): Promise<void> => {
+  const executionProviders = sessionOptions.executionProviders!;
   for (const ep of executionProviders) {
     let epName = typeof ep === 'string' ? ep : ep.name;
     const epOptions: Array<[number, number]> = [];
@@ -91,21 +94,46 @@ const setExecutionProviders = async (
         }
         break;
       case 'webgpu':
-        if (BUILD_DEFS.USE_WEBGPU_EP) {
+        if (!BUILD_DEFS.DISABLE_WEBGPU) {
           epName = 'WebGPU';
           let customDevice: GPUDevice | undefined;
 
           if (typeof ep !== 'string') {
-            const customOptions = ep as unknown as { device: GPUDevice };
-            if (customOptions.device) {
-              if (typeof GPUDevice !== 'undefined' && customOptions.device instanceof GPUDevice) {
-                customDevice = customOptions.device;
+            const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
+
+            // set custom GPU device
+            if (webgpuOptions.device) {
+              if (typeof GPUDevice !== 'undefined' && webgpuOptions.device instanceof GPUDevice) {
+                customDevice = webgpuOptions.device;
               } else {
                 throw new Error('Invalid GPU device set in WebGPU EP options.');
               }
             }
 
-            // TODO: handle more options
+            // set graph capture option from session options
+            const { enableGraphCapture } = sessionOptions;
+            if (typeof enableGraphCapture === 'boolean' && enableGraphCapture) {
+              appendEpOption(epOptions, 'enableGraphCapture', '1', allocs);
+            }
+
+            // set layout option
+            if (typeof webgpuOptions.preferredLayout === 'string') {
+              appendEpOption(epOptions, 'preferredLayout', webgpuOptions.preferredLayout, allocs);
+            }
+
+            // set force CPU fallback nodes
+            if (webgpuOptions.forceCpuNodeNames) {
+              const names = Array.isArray(webgpuOptions.forceCpuNodeNames)
+                ? webgpuOptions.forceCpuNodeNames
+                : [webgpuOptions.forceCpuNodeNames];
+
+              appendEpOption(epOptions, 'forceCpuNodeNames', names.join('\n'), allocs);
+            }
+
+            // set validation mode
+            if (webgpuOptions.validationMode) {
+              appendEpOption(epOptions, 'validationMode', webgpuOptions.validationMode, allocs);
+            }
           }
 
           const info = getInstance().webgpuRegisterDevice!(customDevice);
@@ -209,7 +237,7 @@ export const setSessionOptions = async (options?: InferenceSession.SessionOption
     }
 
     if (sessionOptions.executionProviders) {
-      await setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
+      await setExecutionProviders(sessionOptionsHandle, sessionOptions, allocs);
     }
 
     if (sessionOptions.enableGraphCapture !== undefined) {

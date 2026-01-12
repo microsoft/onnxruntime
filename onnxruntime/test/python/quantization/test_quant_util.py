@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy
 import onnx
+from ml_dtypes import int4, uint4
 from onnx import TensorProto, helper, numpy_helper
 
 from onnxruntime.quantization.quant_utils import (
@@ -127,7 +128,8 @@ class TestQuantUtil(unittest.TestCase):
                 src_int = src_float.astype(numpy.int8 if signed else numpy.uint8)
 
                 actual_packed_vals = bytes(pack_bytes_to_4bit(src_int.tobytes()))
-                expected_packed_vals = onnx.helper.pack_float32_to_4bit(src_float, signed).tobytes()
+                src_4bit = src_float.astype(int4 if signed else uint4)
+                expected_packed_vals = bytes(pack_bytes_to_4bit(src_4bit.tobytes()))
                 self.assertEqual(actual_packed_vals, expected_packed_vals)
 
     def test_quantize_data_4bit(self):
@@ -147,10 +149,9 @@ class TestQuantUtil(unittest.TestCase):
             with self.subTest(onnx_type=onnx_type, symmetric=symmetric):
                 zero_point, scale, data_quant = quantize_data(data_float, onnx_type, symmetric)
                 is_signed = onnx_type == onnx.TensorProto.INT4
-                np_int_type = numpy.int8 if is_signed else numpy.uint8
+                np_int_type = int4 if is_signed else uint4
                 qmin = numpy.array(-8 if is_signed else 0, dtype=np_int_type)
                 qmax = numpy.array(7 if is_signed else 15, dtype=np_int_type)
-
                 self.assertEqual(zero_point.dtype, np_int_type)
                 self.assertEqual(scale.dtype, data_float.dtype)
 

@@ -27,9 +27,10 @@
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/common/float8.h"
+#include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/float4.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
 #include "core/common/path_string.h"
@@ -77,6 +78,8 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_FLOAT8E5M2FNUZ = 20,
   TensorProto_DataType_UINT4 = 21,
   TensorProto_DataType_INT4 = 22,
+  TensorProto_DataType_FLOAT4E2M1 = 23,
+  TensorProto_DataType_FLOAT8E8M0 = 24,
 };
 
 enum TensorProto_DataLocation : int {
@@ -95,7 +98,9 @@ enum Version : int {
   IR_VERSION_2020_5_8 = 7,
   IR_VERSION_2021_7_31 = 8,
   IR_VERSION_2023_5_5 = 9,
-  IR_VERSION = 10
+  IR_VERSION_2024_3_25 = 10,
+  IR_VERSION_2025_05_12 = 11,
+  IR_VERSION = 12
 };
 
 enum OperatorStatus : int {
@@ -295,7 +300,6 @@ constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
-constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNvTensorRTRTXExecutionProvider = "NvTensorRTRTXExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
@@ -310,13 +314,10 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
-
-std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
@@ -326,6 +327,12 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
                                                    const logging::Logger& logger);
 
 std::string GetEnvironmentVar(const std::string& var_name);
+inline std::string GetEnvironmentVar(std::string_view var_name) {
+  return GetEnvironmentVar(std::string{var_name});
+}
+inline std::string GetEnvironmentVar(const char* var_name) {
+  return GetEnvironmentVar(std::string{var_name});
+}
 
 namespace profiling {
 
@@ -388,6 +395,12 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() {
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float4E2M1x2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1; }
+#endif
+
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
@@ -418,7 +431,36 @@ inline std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewe
   return g_host->Utils__MakeComputeCapability(graph_viewer, group, generate_metadef_name,
                                               execution_provider_name, drop_constant_initializers);
 }
+
+inline Status GetTensorProtoWithDataIfInMemory(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto, std::unique_ptr<ONNX_NAMESPACE::TensorProto>& result) {
+  return g_host->Utils__GetTensorProtoWithDataIfInMemory(tensor_proto, result);
+}
+
+inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  return g_host->Utils__HasExternalDataInMemory(ten_proto);
+}
+
+inline Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
+                                       const std::filesystem::path& location) {
+  return g_host->Utils__ValidateExternalDataPath(base_dir, location);
+}
+
 }  // namespace utils
+
+namespace graph_utils {
+inline NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  return g_host->GraphUtils__AddInitializerWithExternalData(graph, new_initializer);
+}
+inline void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                          bool load_inline = false) {
+  g_host->GraphUtils__MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_inline);
+}
+
+inline Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
+  return g_host->GraphUtils__ConvertInMemoryDataToInline(graph, name);
+}
+}  // namespace graph_utils
 
 namespace QDQ {
 inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
@@ -434,6 +476,18 @@ void InitProviderOrtApi();
 // This is a replacement for Env::Default(). Returns a reference to the default ORT Environment.
 inline Env& GetDefaultEnv() {
   return g_host->Env__Default();
+}
+
+template <class T>
+inline const T* Initializer::data() const {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<const T*>(g_host->Initializer__data(*this_ptr_, data_type));
+}
+
+template <class T>
+inline T* Initializer::data() {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<T*>(g_host->Initializer__mutable_data(*this_ptr_, data_type));
 }
 
 }  // namespace onnxruntime

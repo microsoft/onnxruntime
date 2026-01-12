@@ -37,7 +37,7 @@ def wrap_custom_export_function(original_func: Callable) -> Callable:
     runtime_pytorch_version = get_runtime_pytorch_version()
 
     if runtime_pytorch_version >= version.parse("1.13"):
-        from torch.onnx._internal import jit_utils
+        from torch.onnx._internal import jit_utils  # noqa: PLC0415
 
         def _export_with_ctx(graph_context: jit_utils.GraphContext, *args, **kwargs):
             return original_func(graph_context, graph_context.original_node, *args, **kwargs)
@@ -45,7 +45,7 @@ def wrap_custom_export_function(original_func: Callable) -> Callable:
         return _export_with_ctx
 
     elif runtime_pytorch_version >= version.parse("1.11"):
-        from torch.onnx import SymbolicContext
+        from torch.onnx import SymbolicContext  # noqa: PLC0415
 
         def _export_with_ctx(ctx: SymbolicContext, graph, *args, **kwargs):
             node = ctx.cur_node
@@ -69,7 +69,7 @@ class CustomOpSymbolicRegistry:
 
     @classmethod
     def register_all(cls, onnx_opset_version):
-        from torch.onnx import register_custom_op_symbolic
+        from torch.onnx import register_custom_op_symbolic  # noqa: PLC0415
 
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
@@ -297,7 +297,7 @@ def numpy_T(g, self):  # noqa: N802
 def squeeze(g, self, dim=None):
     # Current _infer_If does not correctly infer shapes from its then- and else- branches, and will
     # cause error in shape inference of following nodes, here we choose to export it as `Squeeze.`
-    from torch.onnx.symbolic_opset11 import squeeze as squeeze_with_if
+    from torch.onnx.symbolic_opset11 import squeeze as squeeze_with_if  # noqa: PLC0415
 
     if dim is None:
         return squeeze_with_if(g, self, dim)
@@ -454,7 +454,7 @@ def permute_and_reshape_tensor(
             if need_permute(perm):
                 new_tensor = sym_help._unsqueeze_helper(g, tensor, [-1])
                 pos = batch_length if is_lhs else len(perm)
-                perm = perm[:pos] + [len(perm)] + perm[pos:]
+                perm = perm[:pos] + [len(perm)] + perm[pos:]  # noqa: RUF005
                 new_tensor = g.op("Transpose", new_tensor, perm_i=perm)
             else:
                 new_tensor = sym_help._unsqueeze_helper(g, tensor, [batch_length if is_lhs else -1])
@@ -498,7 +498,7 @@ def permute_and_reshape_tensor(
             if not matmul_output_axes:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([1], dtype=torch.int64)))
                 pos = batch_length if is_lhs else len(perm)
-                perm = perm[:pos] + [new_axis] + perm[pos:]
+                perm = perm[:pos] + [new_axis] + perm[pos:]  # noqa: RUF005
             new_tensor = reshape_tensor(g, tensor, shape_tensors)
             if need_permute(perm):
                 new_tensor = g.op("Transpose", new_tensor, perm_i=perm)
@@ -761,7 +761,7 @@ def group_norm(g, input, num_groups, weight, bias, eps, cudnn_enabled):
     # Torch's group_norm's weight and bias are optional, its gradient has a bool[3] augment to indicate
     # whether to compute the gradient for input, weight, bias. For simplicity of the gradient graph builder,
     # we support only the case that weight and bias are not None.
-    from torch.onnx.symbolic_opset9 import group_norm as group_norm_generic
+    from torch.onnx.symbolic_opset9 import group_norm as group_norm_generic  # noqa: PLC0415
 
     if weight is None or sym_help._is_none(weight) or bias is None or sym_help._is_none(bias):
         return group_norm_generic(g, input, num_groups, weight, bias, eps, cudnn_enabled)
@@ -872,7 +872,7 @@ def convolution(
     cudnn_enabled,
     allow_tf32=None,
 ):
-    from torch.onnx.symbolic_opset9 import _convolution
+    from torch.onnx.symbolic_opset9 import _convolution  # noqa: PLC0415
 
     input_casted = (
         g.op("Cast", input, to_i=torch.onnx.TensorProtoDataType.FLOAT)
@@ -925,7 +925,7 @@ def convolution_mode(
     dilation,
     groups,
 ):
-    from torch.onnx.symbolic_opset9 import _convolution_mode
+    from torch.onnx.symbolic_opset9 import _convolution_mode  # noqa: PLC0415
 
     input_casted = (
         g.op("Cast", input, to_i=torch.onnx.TensorProtoDataType.FLOAT)
@@ -960,7 +960,7 @@ def convolution_mode(
 @register_symbolic("softmax")
 @parse_args("v", "i", "none")
 def softmax(g, input, dim, dtype=None):
-    from torch.onnx import _type_utils
+    from torch.onnx import _type_utils  # noqa: PLC0415
 
     casted_input = input
     need_cast_for_compute = dtype and dtype.node().kind() != "prim::Constant"

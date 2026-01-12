@@ -50,6 +50,9 @@ struct ModelLoadCanceled : std::runtime_error {
 struct ModelRequiresCompilation : std::runtime_error {
   explicit ModelRequiresCompilation(const std::string& what) : std::runtime_error(what) {}
 };
+struct NotFound : std::runtime_error {
+  explicit NotFound(const std::string& what) : std::runtime_error(what) {}
+};
 
 void RegisterExceptions(pybind11::module& m);
 

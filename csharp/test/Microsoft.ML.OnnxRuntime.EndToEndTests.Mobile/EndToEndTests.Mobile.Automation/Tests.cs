@@ -40,6 +40,8 @@ namespace EndToEndTests.Mobile.Automation
             var serializedResultSummary = _app.Invoke(_getResultsBackdoorMethodName)?.ToString();
             Assert.IsNotEmpty(serializedResultSummary, "Test results were not returned");
 
+            // Fix security issue (overflow with too much nesting): GHSA-5crp-9r3c-p9vr
+            JsonConvert.DefaultSettings = () => new JsonSerializerSettings { MaxDepth = 128 };
             var testSummary = JsonConvert.DeserializeObject<TestResultSummary>(serializedResultSummary);
             Assert.AreEqual(testSummary.Failed, 0, $"{testSummary.Failed} tests failed");
 

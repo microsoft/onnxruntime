@@ -182,13 +182,24 @@
 
     # Since CUDA 12.8, compiling diagnostics become stricter
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--relocatable-device-code=true>")
-      set_target_properties(${target} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>")
+
       if (MSVC)
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>")
       endif()
       # skip diagnosis error caused by cuda header files
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+    endif()
+
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+      if (UNIX)
+        # Suppress -Wattributes warning from protobuf headers with nvcc on Linux
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-attributes>")
+      endif()
+
+      if (MSVC)
+          target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
+      endif()
     endif()
 
     if (UNIX)
@@ -211,6 +222,7 @@
 
     if(MSVC)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
     endif()
 
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
@@ -241,18 +253,6 @@
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 
-    if (onnxruntime_USE_TRITON_KERNEL)
-      # compile triton kernel, generate .a and .h files
-      include(onnxruntime_compile_triton_kernel.cmake)
-      compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
-      add_dependencies(${target} onnxruntime_triton_kernel)
-      target_compile_definitions(${target} PRIVATE USE_TRITON_KERNEL)
-      target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
-      target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
-      # lib cuda needed by cuLaunchKernel
-      target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
-    endif()
-
     include(cutlass)
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
     target_link_libraries(${target} PRIVATE Eigen3::Eigen)
@@ -264,6 +264,11 @@
     if("90" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
       target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
+      if (MSVC)
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
+      endif()
     endif()
 
     if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling

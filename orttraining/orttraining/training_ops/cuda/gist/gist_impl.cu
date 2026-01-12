@@ -34,13 +34,12 @@ __global__ void _GistPack1EncoderKernel(
     uint8_t* output_data,
     const size_t factor,
     const CUDA_LONG N) {
-
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N); // id of Y (compressed tensor)
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);  // id of Y (compressed tensor)
   uint8_t out = 0x0;
   uint8_t bit_out = 0x0;
   size_t begin = id * factor;
   size_t end = id * factor + factor;
-  for(size_t idx = begin; idx < end; idx++){
+  for (size_t idx = begin; idx < end; idx++) {
     bool bit = (input_data[idx] > (T)0);
     int nidxshift = idx % factor;
     bit_out = bit ? (0x80 >> nidxshift) : 0;
@@ -54,7 +53,7 @@ __global__ void _GistPack1DecoderKernel(
     T* output_data,
     const size_t factor,
     const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N); // id of Y (uncompressed tensor)
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);  // id of Y (uncompressed tensor)
   int nidx = id / factor;
   int nidxshift = id % factor;
   uint8_t mask = 0x80 >> nidxshift;
@@ -67,7 +66,6 @@ __global__ void _GistPack8EncoderKernel(
     const T* input_data,
     uint8_t* output_data,
     const CUDA_LONG N) {
-
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
   T X = input_data[id];
@@ -85,7 +83,7 @@ __global__ void _GistPack8EncoderKernel(
   uint32_t pack_e_size = 5;
   uint32_t pack_m_size = 2;
   uint8_t bias = 127;
-  switch(sizeof(T)){
+  switch (sizeof(T)) {
     case 4:
       m_size = 23;
       e_size = 8;
@@ -115,16 +113,15 @@ __global__ void _GistPack8EncoderKernel(
   uint32_t pack_e = e >> pack_e_shift;
   uint32_t pack_m = m >> pack_m_shift;
   uint32_t m_residual = m & m_residual_mask;
-  if(m_residual > 0){ // round up
-    if(pack_m == 0x3){
-      pack_e +=1; // increase exponent
+  if (m_residual > 0) {  // round up
+    if (pack_m == 0x3) {
+      pack_e += 1;  // increase exponent
       pack_m = 0;
-    }
-    else{
-      pack_m +=1; // increase mantissa
+    } else {
+      pack_m += 1;  // increase mantissa
     }
   }
-  if (pack_e >= 0x1f) { //NaN values
+  if (pack_e >= 0x1f) {  // NaN values
     pack_e = 0;
   }
   output_data[id] = (s << (pack_e_size + pack_m_size)) | (pack_e << pack_m_size) | pack_m;
@@ -149,7 +146,7 @@ __global__ void _GistPack8DecoderKernel(
   uint32_t e_size = 8;
   uint32_t bias = 127;
 
-  switch(sizeof(T)){
+  switch (sizeof(T)) {
     case 4:
       m_size = 23;
       e_size = 8;
@@ -162,14 +159,14 @@ __global__ void _GistPack8DecoderKernel(
       break;
   }
   uint32_t pack_e_shift = e_size - pack_e_size;
-  uint32_t s = i >> (pack_e_size+ pack_m_size);
+  uint32_t s = i >> (pack_e_size + pack_m_size);
   uint32_t pack_e = i & pack_e_mask;
   pack_e >>= pack_m_size;
   uint32_t pack_m = i & pack_m_mask;
   uint32_t unpack_e = pack_e << (pack_e_shift + m_size);
   unpack_e += bias;
-  uint32_t unpack_m = pack_m << (m_size -pack_m_size);
-  uint32_t unpack = (s << (m_size+e_size)) | unpack_e | unpack_m;
+  uint32_t unpack_m = pack_m << (m_size - pack_m_size);
+  uint32_t unpack = (s << (m_size + e_size)) | unpack_e | unpack_m;
 
   output_data[id] = (T)__uint_as_float((unsigned int)unpack);
 }
@@ -240,7 +237,6 @@ __global__ void _GistPackMsfp15EncoderKernel(
     }
   }
 
-
   // If inf/nan is found, zero out values
   if (shared_exp >= 0xff) {
     for (size_t i = 0; i < tile_size; i++) {
@@ -252,7 +248,6 @@ __global__ void _GistPackMsfp15EncoderKernel(
 
     return;
   }
-
 
   // Copy of shared exponent for packing
   uint32_t pack_shared_exp = shared_exp;
@@ -297,19 +292,19 @@ __global__ void _GistPackMsfp15EncoderKernel(
     // Store {exponent bit, mantissa} in output
     uint8_t exp_bit = (pack_shared_exp % 2) << pack_e_shift;
     pack_shared_exp = pack_shared_exp >> 1;
-    output_data[in_i] = (uint8_t) (exp_bit | (sign >> (s_shift - pack_s_shift)) | mantissa);
+    output_data[in_i] = (uint8_t)(exp_bit | (sign >> (s_shift - pack_s_shift)) | mantissa);
   }
 }
 
 template <typename T>
 __global__ void _GistPackMsfp15DecoderKernel(
-  const uint8_t* input_data,
-  T* output_data,
-  const CUDA_LONG num_threads,
-  const CUDA_LONG pre_axis_size,
-  const CUDA_LONG axis_size,
-  const CUDA_LONG num_tiles,
-  const CUDA_LONG tile_size) {
+    const uint8_t* input_data,
+    T* output_data,
+    const CUDA_LONG num_threads,
+    const CUDA_LONG pre_axis_size,
+    const CUDA_LONG axis_size,
+    const CUDA_LONG num_tiles,
+    const CUDA_LONG tile_size) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, num_threads);
 
   // Quantization parameters
@@ -346,7 +341,7 @@ __global__ void _GistPackMsfp15DecoderKernel(
     // Get sign bit
     uint32_t sign = X & pack_s_mask;
     // Get mantissa
-    uint32_t mantissa = (uint32_t) (X & pack_m_mask);
+    uint32_t mantissa = (uint32_t)(X & pack_m_mask);
 
     if (mantissa == 0) {
       output_data[in_i] = 0.0;
@@ -364,7 +359,7 @@ __global__ void _GistPackMsfp15DecoderKernel(
       mantissa = mantissa & ((1 << 23) - 1);
 
       // Reconstruct float number
-      uint32_t output =  (sign << (s_shift - pack_s_shift)) | (exp << e_shift) | mantissa;
+      uint32_t output = (sign << (s_shift - pack_s_shift)) | (exp << e_shift) | mantissa;
       output_data[in_i] = (float)__uint_as_float(output);
     }
   }
@@ -464,7 +459,6 @@ void GistPackMsfp15EncoderImpl(
     const size_t pre_axis_size,
     const size_t axis_size,
     const size_t tile_size) {
-
   assert(axis_size % tile_size == 0);
   const int num_tiles = static_cast<int>(axis_size / tile_size);
 
@@ -472,25 +466,23 @@ void GistPackMsfp15EncoderImpl(
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
   _GistPackMsfp15EncoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-    input_data,
-    output_data,
-    (CUDA_LONG)threads,
-    (CUDA_LONG)pre_axis_size,
-    (CUDA_LONG)axis_size,
-    (CUDA_LONG)num_tiles,
-    (CUDA_LONG)tile_size
-  );
+      input_data,
+      output_data,
+      (CUDA_LONG)threads,
+      (CUDA_LONG)pre_axis_size,
+      (CUDA_LONG)axis_size,
+      (CUDA_LONG)num_tiles,
+      (CUDA_LONG)tile_size);
 }
 
 template <typename T>
 void GistPackMsfp15DecoderImpl(
-  cudaStream_t stream,
-  const uint8_t* input_data,
-  T* output_data,
-  const size_t pre_axis_size,
-  const size_t axis_size,
-  const size_t tile_size) {
-
+    cudaStream_t stream,
+    const uint8_t* input_data,
+    T* output_data,
+    const size_t pre_axis_size,
+    const size_t axis_size,
+    const size_t tile_size) {
   assert(axis_size % tile_size == 0);
   const int num_tiles = static_cast<int>(axis_size / tile_size);
 
@@ -498,14 +490,13 @@ void GistPackMsfp15DecoderImpl(
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(threads) / GridDim::maxThreadsPerBlock));
   _GistPackMsfp15DecoderKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-    input_data,
-    output_data,
-    (CUDA_LONG)threads,
-    (CUDA_LONG)pre_axis_size,
-    (CUDA_LONG)axis_size,
-    (CUDA_LONG)num_tiles,
-    (CUDA_LONG)tile_size
-  );
+      input_data,
+      output_data,
+      (CUDA_LONG)threads,
+      (CUDA_LONG)pre_axis_size,
+      (CUDA_LONG)axis_size,
+      (CUDA_LONG)num_tiles,
+      (CUDA_LONG)tile_size);
 }
 
 #define SPECIALIZED_IMPL_BIN_ENC(T) \

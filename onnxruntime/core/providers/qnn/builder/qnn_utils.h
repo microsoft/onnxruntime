@@ -90,7 +90,11 @@ std::ostream& operator<<(std::ostream& out, const QnnOpConfigWrapper& op_conf_wr
 Status GetQnnDataType(const bool is_quantized_tensor, const ONNX_NAMESPACE::TypeProto* type_proto,
                       Qnn_DataType_t& tensor_data_type);
 
-const std::string& GetNodeName(const NodeUnit& node_unit);
+// Returns an unique name string based on a base string and an optional suffix.
+std::string GetUniqueName(const std::string& base, std::string_view suffix = {});
+
+// Returns an unique name string from its name or op type and index, plus an optional suffix.
+std::string GetUniqueName(const NodeUnit& node_unit, std::string_view suffix = {});
 
 bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false);
 
@@ -181,6 +185,15 @@ Status GetQuantParams(float rmin,
 
 double Dequantize(int32_t offset, float scale, const double quant_value);
 
+// Dequantizes the given quantized data using the provided quantization parameters (scales and offsets).
+// Supports both per-tensor and per-channel quantization. Must provide an axis argument
+// for per-channel quantization.
+// The provided offsets must use the QNN convention where offset = -zero_point.
+Status DequantizePerChannel(gsl::span<const uint8_t> quant_bytes, gsl::span<const uint32_t> shape,
+                            gsl::span<const float> scales, gsl::span<const int32_t> offsets,
+                            /*out*/ gsl::span<float> data, Qnn_DataType_t data_type,
+                            std::optional<int64_t> axis = std::nullopt);
+
 Status Quantize(const double double_value,
                 const float scale,
                 const int32_t zero_point,
@@ -207,6 +220,21 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
                     /*out*/ gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type,
                     std::optional<int64_t> axis = std::nullopt);
 
+// Quantizes the given float data using the provided Low Power Block Quantization parameters
+// (float channel_scales, int block_scales and offsets)
+// The provided offsets must use the QNN convention where offset = -zero_point.
+Status LowPowerBlockQuantizeData(gsl::span<const float> data,
+                                 gsl::span<const uint32_t> data_shape,
+                                 gsl::span<const float> channel_scales,
+                                 gsl::span<const uint8_t> block_scales,
+                                 gsl::span<const int32_t> offsets,
+                                 /*out*/ gsl::span<uint8_t> quant_bytes,
+                                 Qnn_DataType_t data_type,
+                                 int64_t data_axis,
+                                 int64_t block_scales_axis,
+                                 size_t channel_block_size,
+                                 gsl::span<const uint32_t> block_scales_shape);
+
 // Quantizes (per-tensor) the given float data using the provided scale and offset.
 // The provided offset must use the QNN convention where offset = -zero_point.
 template <typename QuantType>
@@ -227,6 +255,46 @@ inline Status QuantizeData(gsl::span<const float> data, float scale, int32_t off
     float_val = std::max(float_val, clip_min);
     float_val = std::min(float_val, clip_max);
     output[i] = static_cast<QuantType>(float_val);
+  }
+  return Status::OK();
+}
+
+// Define a specialized struct for Int4 quantization traits
+// This allows us to use template specialization for Int4 quantization while
+// maintaining a consistent interface with other quantization types
+struct Int4QuantTraits {
+  // The storage type used for Int4 values (int8_t is used since QNN expects
+  // Int4 values to be stored in 8-bit containers with the upper 4 bits unused)
+  using StorageType = int8_t;
+
+  // Clipping range for Int4 values:
+  // - For signed Int4, the range is [-8, 7]
+  // - We use these constants to ensure quantized values stay within valid range
+  static constexpr double clip_min = -8.0;
+  static constexpr double clip_max = 7.0;
+};
+
+// Template specialization for Int4 quantization
+// Quantizes (per-tensor) the given float data using the provided scale and offset.
+// The provided offset must use the QNN convention where offset = -zero_point.
+template <>
+inline Status QuantizeData<Int4QuantTraits>(gsl::span<const float> data, float scale, int32_t offset,
+                                            /*out*/ gsl::span<uint8_t> quant_bytes) {
+  const size_t num_elems = data.size();
+  const size_t expected_output_bytes = sizeof(int8_t) * num_elems;
+  ORT_RETURN_IF_NOT(expected_output_bytes == quant_bytes.size(),
+                    "Output buffer is not large enough to hold quantized bytes.");
+  const double clip_min = static_cast<double>(Int4QuantTraits::clip_min);
+  const double clip_max = static_cast<double>(Int4QuantTraits::clip_max);
+
+  int8_t* output = reinterpret_cast<int8_t*>(quant_bytes.data());
+  for (size_t i = 0; i < num_elems; ++i) {
+    const double scale_dbl = static_cast<double>(scale);
+    const double offset_dbl = static_cast<double>(offset);
+    double float_val = std::nearbyint(static_cast<double>(data[i]) / scale_dbl) - offset_dbl;
+    float_val = std::max(float_val, clip_min);
+    float_val = std::min(float_val, clip_max);
+    output[i] = static_cast<int8_t>(float_val);
   }
   return Status::OK();
 }
@@ -372,7 +440,9 @@ Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
 Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
                              std::vector<uint32_t>& data_shape,
                              const onnx::TensorProto& initializer,
-                             std::vector<uint8_t>& transposed_data);
+                             std::vector<uint8_t>& transposed_data,
+                             const logging::Logger& logger,
+                             bool skip_output_data_copy = false);
 
 Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                        const std::string& convert_input_name,
@@ -384,6 +454,44 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                        const std::vector<uint32_t>& output_shape,
                        bool output_symmetric,
                        bool do_op_validation);
+
+/**
+ * Get permutation to transpose given axis to the last one.
+ *
+ * @param[in] axis the current axis to be transposed
+ * @param[in] rank the expected rank for permutation
+ * @param[out] perm the permutation for transpose
+ * @return execution status of this function
+ */
+Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
+/**
+ * Get the current timestamp in microseconds
+ *
+ * @return the current timestamp in microseconds
+ */
+uint64_t GetTimeStampInUs();
+
+// Checks if bias scale matches the expected scale (weights_scale * activation_scale)
+// Returns true if they match within a tolerance, false otherwise
+bool CheckBiasScaleMatch(float bias_scale, float weights_scale, float activation_scale,
+                         float tolerance = 1e-5f);
+
+// Requantizes a static bias tensor with new quantization parameters
+// This function:
+// 1. Dequantizes the bias tensor to float using current parameters
+// 2. Calculates new bias_scale[i] = weights_scale[i] * activation_scale for each channel
+// 3. Quantizes back to the target data type with new parameters
+Status RequantizeBiasTensor(const std::vector<uint8_t>& original_bias_data,
+                            const std::vector<uint32_t>& bias_shape,
+                            gsl::span<const float> current_scales,
+                            gsl::span<const int32_t> current_offsets,
+                            gsl::span<const float> weights_scales,
+                            float activation_scale,
+                            Qnn_DataType_t data_type,
+                            /*out*/ std::vector<uint8_t>& requantized_bias_data,
+                            /*out*/ std::vector<float>& new_scales,
+                            /*out*/ std::vector<int32_t>& new_offsets,
+                            std::optional<int64_t> axis = std::nullopt);
 
 }  // namespace utils
 }  // namespace qnn

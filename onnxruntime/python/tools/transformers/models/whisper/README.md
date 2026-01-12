@@ -75,6 +75,24 @@ $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --o
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp16 --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
 ```
 
+Export + Quantize for INT8 CUDA
+```
+# From source:
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision int8 --quantize_symmetric --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision int8 --quantize_symmetric --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+```
+
+Export + Quantize for INT8 CPU
+```
+# From source:
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision int8 --quantize_symmetric --provider cpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision int8 --quantize_symmetric --provider cpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
+```
+
 ## Exporting Whisper with Beam Search
 
 There are several ways to export Whisper with beam search.
@@ -143,13 +161,22 @@ $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --o
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
 ```
 
-Export + Quantize for INT8
+Export + Quantize for INT8 CUDA
 ```
 # From source:
-$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_embedding_layer
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_symmetric --use_gpu --provider cuda
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_embedding_layer
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_symmetric --use_gpu --provider cuda
+```
+
+Export + Quantize for INT8 CPU
+```
+# From source:
+$ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_symmetric --provider cpu
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_symmetric --provider cpu
 ```
 
 Note: INT8 CPU is not compatible with `--output_cross_qk`.

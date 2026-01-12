@@ -15,8 +15,7 @@ Abstract:
 --*/
 
 #include "test_util.h"
-#include "mlas.h"
-#include "core/framework/float16.h"
+#include "core/mlas/lib/mlasi.h"
 #include "core/mlas/lib/rotary_embedding.h"
 
 using namespace onnxruntime;

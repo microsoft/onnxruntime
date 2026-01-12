@@ -106,8 +106,9 @@ struct WinmlAdapterApi {
     * There is no inferencing or evaluation setup performed. Only ONNX load is done to reflect on the model's inputs/outputs and other properties.
     * This is used by WinML to support model reflection APIs.
     */
-  OrtStatus*(ORT_API_CALL* CreateModelFromPath)(_In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateModelFromPath)(
+    _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out
+  )NO_EXCEPTION;
 
   /**
     * CreateModelFromData
@@ -115,8 +116,9 @@ struct WinmlAdapterApi {
     * There is no inferencing or evaluation setup performed. Only ONNX load is done to reflect on the model's inputs/outputs and other properties.
     * This is used by WinML to support model reflection APIs.
     */
-  OrtStatus*(ORT_API_CALL* CreateModelFromData)(_In_opt_ void* data, _In_ size_t size, _Outptr_ OrtModel** out)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateModelFromData)(
+    _In_opt_ void* data, _In_ size_t size, _Outptr_ OrtModel** out
+  )NO_EXCEPTION;
 
   /**
     * CloneModel
@@ -140,8 +142,9 @@ struct WinmlAdapterApi {
     * This api gets the model name from the OrtModel.
     * This is used by WinML to support model reflection APIs.
     */
-  OrtStatus*(ORT_API_CALL* ModelGetName)(_In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetName)(
+    _In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len
+  )NO_EXCEPTION;
 
   /**
     * ModelSetName
@@ -277,8 +280,9 @@ struct WinmlAdapterApi {
     * SaveModel
     * This api save the model to the fiven file
     */
-  OrtStatus*(ORT_API_CALL* SaveModel)(_In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SaveModel)(
+    _In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len
+  )NO_EXCEPTION;
 
   // OrtSessionOptions methods
 
@@ -286,8 +290,9 @@ struct WinmlAdapterApi {
     * OrtSessionOptionsAppendExecutionProvider_CPU
     * This api is used to add the cpu EP to OrtSessionOptions so that WinML Gpu session are configures with CPU fallback.
     */
-  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_CPU)(_In_ OrtSessionOptions* options, int use_arena)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_CPU)(
+    _In_ OrtSessionOptions* options, int use_arena
+  )NO_EXCEPTION;
 
   /**
     * OrtSessionOptionsAppendExecutionProvider_DML
@@ -341,8 +346,9 @@ struct WinmlAdapterApi {
     * SessionRegisterCustomRegistry
     * This api is used to support custom operators as they were shipped in WinML RS5.
     */
-  OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry* registry)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(
+    _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry
+  )NO_EXCEPTION;
 
   /**
     * SessionLoadAndPurloinModel
@@ -389,8 +395,9 @@ struct WinmlAdapterApi {
     *
     * WinML uses this to determine that the correct number of threads was set correctly through OrtSessionOptions.
     */
-  OrtStatus*(ORT_API_CALL* SessionGetNumberOfIntraOpThreads)(_In_ OrtSession* session, _Out_ uint32_t* num_threads)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetNumberOfIntraOpThreads)(
+    _In_ OrtSession* session, _Out_ uint32_t* num_threads
+  )NO_EXCEPTION;
 
   /**
     * SessionGetIntrapOpThreadSpinning
@@ -398,8 +405,9 @@ struct WinmlAdapterApi {
     *
     * WinML uses this to determine that the intra op thread spin policy was set correctly through OrtSessionOptions
     */
-  OrtStatus*(ORT_API_CALL* SessionGetIntraOpThreadSpinning)(_In_ OrtSession* session, _Out_ bool* allow_spinning)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetIntraOpThreadSpinning)(
+    _In_ OrtSession* session, _Out_ bool* allow_spinning
+  )NO_EXCEPTION;
 
   /**
     * SessionGetNamedDimensionsOverrides
@@ -426,7 +434,8 @@ struct WinmlAdapterApi {
     *
     * WinML communicates directly with DML to perform this as an optimization.
     */
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ OrtExecutionProvider* dml_provider
+  OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(
+    _In_ OrtExecutionProvider* dml_provider
   )NO_EXCEPTION;
 
   /**
@@ -435,8 +444,9 @@ struct WinmlAdapterApi {
     *
     * WinML uses this when graphs are evaluated with DML, and their outputs remain on the GPU but need to be copied back to the CPU.
     */
-  OrtStatus*(ORT_API_CALL* DmlCopyTensor)(_In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlCopyTensor)(
+    _In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst
+  )NO_EXCEPTION;
 
   /**
     * GetProviderMemoryInfo
@@ -444,8 +454,9 @@ struct WinmlAdapterApi {
     *
     * WinML uses this to manage caller specified D3D12 inputs/outputs. It uses the memory info here to call DmlCreateGPUAllocationFromD3DResource.
     */
-  OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)
-    NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(
+    _In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info
+  )NO_EXCEPTION;
 
   /**
     * GetProviderAllocator

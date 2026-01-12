@@ -13,8 +13,8 @@
 
   # Header paths
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
-  if(OpenVINO_VERSION VERSION_LESS 2024.5)
-    message(FATAL_ERROR "OpenVINO 2024.5 and newer are supported. Please, use latest OpenVINO release")
+  if(OpenVINO_VERSION VERSION_LESS 2025.0)
+    message(FATAL_ERROR "OpenVINO 2025.0 and newer are supported. Please, use latest OpenVINO release")
   endif()
 
   if(OpenVINO_VERSION VERSION_GREATER_EQUAL 2024.4)
@@ -30,13 +30,13 @@
   endif()
 
   list(APPEND OPENVINO_LIB_LIST openvino::frontend::onnx openvino::runtime ${PYTHON_LIBRARIES})
-  if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}) AND onnxruntime_USE_OPENVINO_GPU)
-    add_definitions(-DIO_BUFFER_ENABLED=1)
-    list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS})
-  endif()
-
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
+
+  # Propagate leak check define if enabled at top level
+  if(onnxruntime_ENABLE_MEMLEAK_CHECKER)
+    target_compile_definitions(onnxruntime_providers_openvino PRIVATE ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  endif()
 
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx nlohmann_json::nlohmann_json)
   install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino/openvino_provider_factory.h
@@ -54,7 +54,12 @@
   endif()
   add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS} $ENV{OPENCL_INCS}/../../cl_headers/)
-  target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS} Eigen3::Eigen)
+  target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS} Eigen3::Eigen onnx_proto)
+
+  # ETW TraceLogging depends on Advapi32 on Windows
+  if(WIN32)
+    target_link_libraries(onnxruntime_providers_openvino advapi32)
+  endif()
 
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE FILE_NAME=\"onnxruntime_providers_openvino.dll\")
 

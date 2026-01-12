@@ -31,7 +31,7 @@ stages:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       OnnxruntimeArch: 'x64'
       OnnxruntimeNodejsBindingArch: 'x64'
-      PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
       ArtifactNamePrefix: ${{ parameters.ArtifactNamePrefix }}
       PackageJava: ${{ parameters.PackageJava }}
       PackageNodeJS: false

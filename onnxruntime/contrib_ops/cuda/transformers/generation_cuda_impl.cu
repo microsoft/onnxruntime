@@ -97,7 +97,11 @@ __global__ void LogitsProcessKernel(
 
     if (word_id >= vocab_size) {
       // Set any value within the padding region to the lowest value so that it isn't picked
+#if CUDA_VERSION >= 12090
+      next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
       next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
     } else {
       // RepetitionPenaltyLogitsProcessor
       if (repetition_penalty != 1.0f) {
@@ -135,27 +139,43 @@ __global__ void LogitsProcessKernel(
         }
 
         if (found) {
+#if CUDA_VERSION >= 12090
+          next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
           next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
           return;
         }
       }
 
       // VocabMaskLogitsProcessor
       if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
+#if CUDA_VERSION >= 12090
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
         next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
         return;
       }
 
       // PrefixVocabMaskLogitsProcessor
       int batch_id = batch_beam_index / num_beams;
       if (prefix_vocab_mask != nullptr && prefix_vocab_mask[batch_id * vocab_size + word_id] == 0) {
+#if CUDA_VERSION >= 12090
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
         next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
         return;
       }
 
       // MinLengthLogitsProcessor
       if (word_id == demote_token_id) {
+#if CUDA_VERSION >= 12090
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
+#else
         next_token_scores[index] = cub::FpLimits<T>::Lowest();
+#endif
       }
 
       // PresencePenaltyLogitsProcessor
@@ -1243,7 +1263,6 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                                                           current_length);
 }
 
-#ifndef USE_ROCM
 namespace {
 template <typename T, size_t size>
 struct TypeMapper : public V_vec_m_<T, size> {};
@@ -1258,7 +1277,6 @@ struct TypeMapper<int32_t, 4> {
   using Type = uint4;
 };
 }  // namespace
-#endif
 
 template <typename T>
 __global__ void KeyCacheExpansionKernel(const T* input,
@@ -1310,7 +1328,6 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
   tpb |= (tpb >> 16);
   tpb++;
 
-#ifndef USE_ROCM
   if ((head_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 block(tpb);
@@ -1328,16 +1345,13 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                                         max_seq_length,
                                                         equiv_head_size);
   } else {
-#endif
     const dim3 block(tpb);
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
                                                         key_cache_expanded,
                                                         beam_width,
                                                         max_seq_length,
                                                         head_size);
-#ifndef USE_ROCM
   }
-#endif
 }
 
 template void KeyCacheExpansionKernelLauncher(const float* key_cache,
@@ -1397,7 +1411,6 @@ void BufferExpansionKernelLauncher(const T* input,
                                    cudaStream_t stream) {
   const dim3 block(128);
 
-#ifndef USE_ROCM
   if ((chunk_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 grid(batch_size, beam_width, (chunk_size / 4 + block.x - 1) / block.x);
@@ -1411,14 +1424,11 @@ void BufferExpansionKernelLauncher(const T* input,
                                                       reinterpret_cast<vec_type*>(output),
                                                       chunk_size / 2);
   } else {
-#endif
     const dim3 grid(batch_size, beam_width, (chunk_size + block.x - 1) / block.x);
     BufferExpansionKernel<<<grid, block, 0, stream>>>(input,
                                                       output,
                                                       chunk_size);
-#ifndef USE_ROCM
   }
-#endif
 }
 
 template void BufferExpansionKernelLauncher(const float* input,
@@ -1645,7 +1655,11 @@ __global__ void ForceDecodingIdsKernel(
 #pragma unroll
   for (int elem = 0; elem < ElementsPerThreads; elem++) {
     if (token_id < vocab_size) {
+#if CUDA_VERSION >= 12090
+      beam_scores[token_id] = ((token_id == id_wanted) ? 0.0f : ::cuda::std::numeric_limits<float>::lowest());
+#else
       beam_scores[token_id] = ((token_id == id_wanted) ? 0.0f : cub::FpLimits<float>::Lowest());
+#endif
     }
     token_id += (int)blockDim.x;
   }

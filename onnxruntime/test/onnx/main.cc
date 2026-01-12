@@ -7,6 +7,13 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+// For memory leak detection on Windows with Visual Studio in Debug mode
+#ifdef _WIN32
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
+
 #ifdef _WIN32
 #include "getopt.h"
 #elif defined(_AIX)
@@ -49,7 +56,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
+      "'openvino', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -68,6 +75,8 @@ void usage() {
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
       "\t    'high_power_saver', 'low_balanced', 'extreme_power_saver', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
+      "\t    [QNN only] [op_packages]: QNN UDO package, allowed format: \n"
+      "\t    op_packages|<op_type>:<op_package_path>:<interface_symbol_name>[:<target>],<op_type2>:<op_package_path2>:<interface_symbol_name2>[:<target2>]. \n"
       "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
       "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
       "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
@@ -75,7 +84,7 @@ void usage() {
       "\t    '0', '1', '2', '3', default is '0'.\n"
       "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
       "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
-      "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
+      "\t    Options are '0', '68', '69', '73', '75', '81'. Defaults to '0' (none). \n"
       "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
       "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
@@ -89,7 +98,7 @@ void usage() {
       "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
-      "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
       "\t-f: Enable EP context cache generation.\n"
       "\t-b: Disable EP context embed mode.\n"
@@ -219,7 +228,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
-  bool enable_rocm = false;
   bool enable_migraphx = false;
   bool enable_webgpu = false;
   bool enable_xnnpack = false;
@@ -310,8 +318,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_acl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
             enable_armnn = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
-            enable_rocm = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
           } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
@@ -348,6 +354,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
               break;
             case ORT_ENABLE_EXTENDED:
               graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
+            case ORT_ENABLE_LAYOUT:
+              graph_optimization_level = ORT_ENABLE_LAYOUT;
               break;
             case ORT_ENABLE_ALL:
               graph_optimization_level = ORT_ENABLE_ALL;
@@ -574,6 +583,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_performance_mode. select from: " + str);
           }
+        } else if (key == "op_packages") {
+          if (value.empty()) {
+            ORT_THROW("Please provide the valid op_packages.");
+          }
         } else if (key == "qnn_context_priority") {
           std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
           if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
@@ -591,7 +604,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
           }
         } else if (key == "htp_arch") {
-          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75", "81"};
           if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
             std::ostringstream str_stream;
             std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
@@ -612,7 +625,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           ORT_THROW(
               "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', "
               "'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode', "
-              "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', "
+              "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'op_packages', 'qnn_context_priority', "
               "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization']");
         }
 
@@ -729,17 +742,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "ArmNN is not supported in this build\n");
-      return -1;
-#endif
-    }
-    if (enable_rocm) {
-#ifdef USE_ROCM
-      OrtROCMProviderOptions rocm_options;
-      rocm_options.do_copy_in_default_stream = true;
-      // TODO: Support arena configuration for users of test runner
-      sf.AppendExecutionProvider_ROCM(rocm_options);
-#else
-      fprintf(stderr, "ROCM is not supported in this build");
       return -1;
 #endif
     }
@@ -900,7 +902,20 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
         ORT_TSTR("sce_none_weights_expanded"),
         ORT_TSTR("convtranspose_3d"),
-        ORT_TSTR("gather_elements_negative_indices")};
+        ORT_TSTR("gather_elements_negative_indices"),
+        ORT_TSTR("rotary_embedding_3d_input_expanded"),
+        ORT_TSTR("rotary_embedding_expanded"),
+        ORT_TSTR("rotary_embedding_interleaved_expanded"),
+        // QNN don't support fmod = 1
+        ORT_TSTR("mod_mixed_sign_float64"),
+        ORT_TSTR("mod_mixed_sign_float32"),
+        ORT_TSTR("mod_mixed_sign_float16"),
+        ORT_TSTR("mod_int64_fmod"),
+        // QNN lowers mod to cast -> a - b * floor(a/b) -> cast. Cast doesnt support these types
+        ORT_TSTR("mod_mixed_sign_int16"),
+        ORT_TSTR("mod_mixed_sign_int8"),
+        ORT_TSTR("mod_uint16"),
+        ORT_TSTR("mod_uint64")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 
@@ -962,6 +977,16 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+#ifdef _WIN32
+#if defined(_DEBUG) && !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+  tmpFlag |= _CRTDBG_LEAK_CHECK_DF;
+  tmpFlag |= _CRTDBG_ALLOC_MEM_DF;
+  _CrtSetDbgFlag(tmpFlag);
+  std::cout << "CRT Debug Memory Leak Detection Enabled." << std::endl;
+#endif
+#endif
+
   Ort::Env env{nullptr};
   int retval = -1;
   ORT_TRY {

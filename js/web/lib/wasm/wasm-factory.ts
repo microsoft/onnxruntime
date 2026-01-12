@@ -32,7 +32,7 @@ const isMultiThreadSupported = (): boolean => {
         2, 0, 26, 11,
       ]),
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -59,7 +59,7 @@ const isSimdSupported = (): boolean => {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 253, 186, 1, 26, 11,
       ]),
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -87,7 +87,7 @@ const isRelaxedSimdSupported = (): boolean => {
         15, 65, 3, 253, 15, 253, 147, 2, 11,
       ]),
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -121,6 +121,12 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
     throw new Error('WebAssembly SIMD is not supported in the current environment.');
   }
 
+  if (BUILD_DEFS.ENABLE_JSPI) {
+    if (!('Suspending' in WebAssembly)) {
+      throw new Error('WebAssembly JSPI is not supported in the current environment.');
+    }
+  }
+
   // check if multi-threading is supported
   const multiThreadSupported = isMultiThreadSupported();
   if (numThreads > 1 && !multiThreadSupported) {
@@ -151,7 +157,12 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
   const wasmPathOverride = (wasmPathOverrideFlag as URL)?.href ?? wasmPathOverrideFlag;
   const wasmBinaryOverride = flags.wasmBinary;
 
-  const [objectUrl, ortWasmFactory] = await importWasmModule(mjsPathOverride, wasmPrefixOverride, numThreads > 1);
+  const [objectUrl, ortWasmFactory] = await importWasmModule(
+    mjsPathOverride,
+    wasmPrefixOverride,
+    numThreads > 1,
+    !!wasmBinaryOverride || !!wasmPathOverride,
+  );
 
   let isTimeout = false;
 

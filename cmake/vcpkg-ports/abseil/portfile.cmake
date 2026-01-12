@@ -6,19 +6,11 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO abseil/abseil-cpp
     REF "${VERSION}"
-    SHA512 bd2cca8f007f2eee66f51c95a979371622b850ceb2ce3608d00ba826f7c494a1da0fba3c1427728f2c173fe50d59b701da35c2c9fdad2752a5a49746b1c8ef31
+    SHA512 4ee1a217203933382e728d354a149253a517150eee7580a0abecc69584b2eb200d91933ef424487e3a3fe0e8ab5e77b0288485cac982171b3585314a4417e7d4
     HEAD_REF master
     PATCHES absl_windows.patch
 )
 
-# With ABSL_PROPAGATE_CXX_STD=ON abseil automatically detect if it is being
-# compiled with C++14 or C++17, and modifies the installed `absl/base/options.h`
-# header accordingly. This works even if CMAKE_CXX_STANDARD is not set. Abseil
-# uses the compiler default behavior to update `absl/base/options.h` as needed.
-set(ABSL_USE_CXX17_OPTION "")
-if("cxx17" IN_LIST FEATURES)
-    set(ABSL_USE_CXX17_OPTION "-DCMAKE_CXX_STANDARD=17")
-endif()
 
 set(ABSL_STATIC_RUNTIME_OPTION "")
 if(VCPKG_TARGET_IS_WINDOWS AND VCPKG_CRT_LINKAGE STREQUAL "static")

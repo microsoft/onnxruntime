@@ -160,7 +160,7 @@ def make_pythonop_node(
             input_float_tuples.extend(list(arg))
             continue
 
-        from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation
+        from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectActivation  # noqa: PLC0415
 
         is_inspect_activation = func_full_qual_name == get_fully_qualified_class_name(_InspectActivation)
         if is_inspect_activation and isinstance(arg, str):

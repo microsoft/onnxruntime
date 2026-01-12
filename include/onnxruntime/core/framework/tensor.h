@@ -284,9 +284,9 @@ class Tensor final {
 
   /// <summary>
   /// The number of Tensor "storage" elements. A single storage element may contain multiple sub-elements for
-  /// sub-byte data types (e.g., int4).
+  /// sub-byte data types (e.g., int4/float4).
   ///
-  /// For element types smaller than 1 byte (e.g., int4), a single storage element stores multiple sub-byte elements.
+  /// For element types smaller than 1 byte (e.g., int4/float4), a single storage element stores multiple sub-byte elements.
   /// Example: Tensor<int4> of shape (4,) has 2 storage elements.
   ///
   /// For element types >= 1 byte, this function returns the product of the shape.

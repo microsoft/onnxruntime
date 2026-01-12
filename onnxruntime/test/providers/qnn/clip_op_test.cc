@@ -20,16 +20,18 @@ template <typename DataType>
 static void RunClipTest(const TestInputDef<DataType>& input_def,
                         const std::vector<TestInputDef<DataType>>& min_max_defs,
                         ExpectedEPNodeAssignment expected_ep_assignment,
-                        bool on_cpu_backend = true,
+                        const std::string& backend_name = "cpu",
                         int opset = 13,
                         bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-  provider_options["backend_type"] = on_cpu_backend ? "cpu" : "htp";
+  provider_options["backend_type"] = backend_name;
 
-  if (!on_cpu_backend && enable_fp16_precision) {
-    provider_options["enable_htp_fp16_precision"] = "1";
-  } else {
-    provider_options["enable_htp_fp16_precision"] = "0";
+  if (backend_name == "htp") {
+    if (enable_fp16_precision) {
+      provider_options["enable_htp_fp16_precision"] = "1";
+    } else {
+      provider_options["enable_htp_fp16_precision"] = "0";
+    }
   }
 
   RunQnnModelTest(BuildOpTestCase<DataType, DataType>("Clip", {input_def}, min_max_defs, {}),
@@ -76,25 +78,25 @@ TEST_F(QnnCPUBackendTests, Clip_5D_f32) {
 //
 
 // Test Clip with float32 on HTP
-TEST_F(QnnHTPBackendTests, Clip_f32) {
-  bool on_cpu_backend = false;
+// Fails with QNN SDK 2.35.0:
+// value pair (-4.54545403, -4.54687548) at index #3 don't match, which is -0.00142145 from -4.54545
+TEST_F(QnnHTPBackendTests, DISABLED_Clip_f32) {
   RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 12)),
                      {TestInputDef<float>({}, true, {-5.0f}),
                       TestInputDef<float>({}, true, {5.0f})},
                      ExpectedEPNodeAssignment::All,
-                     on_cpu_backend,
+                     "htp",
                      13,
                      false);
 }
 
 // Test Clip with int32 on HTP
 TEST_F(QnnHTPBackendTests, Clip_int32) {
-  bool on_cpu_backend = false;
   RunClipTest<int32_t>(TestInputDef<int32_t>({1, 1, 3, 2}, false, {1, 2, -5, 3, -10, 25}),
                        {TestInputDef<int32_t>({}, true, {-5}),
                         TestInputDef<int32_t>({}, true, {5})},
                        ExpectedEPNodeAssignment::All,
-                       on_cpu_backend);
+                       "htp");
 }
 
 // Runs a QDQ Clip model on the QNN (HTP) EP and the ORT CPU EP. Checks the graph node assignment and that inference
@@ -199,8 +201,146 @@ TEST_F(QnnHTPBackendTests, Clip_U8_Rank5) {
                   ExpectedEPNodeAssignment::All);
 }
 
+// Test QDQ Clip with quantized min input only (and missing max input)
+// This validates the pattern: DQ(data) + DQ(min) -> Clip -> Q(output)
+TEST_F(QnnHTPBackendTests, Clip_U8_QuantizedMin) {
+  GetTestModelFn model_fn = [](ModelTestBuilder& builder) {
+    const float min_value = 0.0f;
+    const float min_scale = 0.001f;
+    const uint8_t min_zp = 128;
+
+    uint8_t quantized_min = static_cast<uint8_t>(std::round(min_value / min_scale) + min_zp);
+    NodeArg* min_quantized = builder.MakeInitializer<uint8_t>({}, {quantized_min});
+    NodeArg* min_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(min_quantized, min_scale, min_zp, min_dq);
+
+    const float data_scale = 0.001f;
+    const uint8_t data_zp = 128;
+    std::vector<uint8_t> input_data(200);
+    // Use values 28-227 so ~half are below and half above zero
+    for (size_t i = 0; i < 200; i++) {
+      input_data[i] = static_cast<uint8_t>(28 + i);
+    }
+
+    NodeArg* data_quantized = builder.MakeInput<uint8_t>({200}, input_data);
+    NodeArg* data_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(data_quantized, data_scale, data_zp, data_dq);
+
+    // Clip with only min input (no max)
+    NodeArg* clip_output = builder.MakeIntermediate();
+    builder.AddNode("Clip", {data_dq, min_dq}, {clip_output});
+
+    NodeArg* output = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint8_t>(clip_output, data_scale, data_zp, output);
+  };
+
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  11,  // opset
+                  ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Clip with quantized max input only (and missing min input)
+// This validates the pattern: DQ(data) + DQ(max) -> Clip -> Q(output)
+TEST_F(QnnHTPBackendTests, Clip_U16_QuantizedMax) {
+  GetTestModelFn model_fn = [](ModelTestBuilder& builder) {
+    const float max_value = 0.0f;
+    const float max_scale = 0.001f;
+    const uint16_t max_zp = 32768;
+
+    uint16_t quantized_max = static_cast<uint16_t>(std::round(max_value / max_scale) + max_zp);
+    NodeArg* max_quantized = builder.MakeInitializer<uint16_t>({}, {quantized_max});
+    NodeArg* max_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint16_t>(max_quantized, max_scale, max_zp, max_dq);
+
+    const float data_scale = 0.001f;
+    const uint16_t data_zp = 32768;
+    std::vector<uint16_t> input_data(200);
+    for (size_t i = 0; i < 200; i++) {
+      input_data[i] = static_cast<uint16_t>(32768 - 100 + i);
+    }
+
+    NodeArg* data_quantized = builder.MakeInput<uint16_t>({200}, input_data);
+    NodeArg* data_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint16_t>(data_quantized, data_scale, data_zp, data_dq);
+
+    // Clip with only max input (no min) - provide empty input for min
+    NodeArg* clip_output = builder.MakeIntermediate();
+    builder.AddNode("Clip", {data_dq, builder.MakeEmptyInput(), max_dq}, {clip_output});
+
+    NodeArg* output = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint16_t>(clip_output, data_scale, data_zp, output);
+  };
+
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  21,  // opset
+                  ExpectedEPNodeAssignment::All);
+}
+
+// Test QDQ Clip with both quantized min and max inputs
+// This validates the pattern: DQ(data) + DQ(min) + DQ(max) -> Clip -> Q(output)
+TEST_F(QnnHTPBackendTests, Clip_U8_QuantizedMinMax) {
+  GetTestModelFn model_fn = [](ModelTestBuilder& builder) {
+    const float min_value = -0.05f;
+    const float min_scale = 0.001f;
+    const uint8_t min_zp = 128;
+
+    uint8_t quantized_min = static_cast<uint8_t>(std::round(min_value / min_scale) + min_zp);
+    NodeArg* min_quantized = builder.MakeInitializer<uint8_t>({}, {quantized_min});
+    NodeArg* min_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(min_quantized, min_scale, min_zp, min_dq);
+
+    const float max_value = 0.05f;
+    const float max_scale = 0.001f;
+    const uint8_t max_zp = 128;
+
+    uint8_t quantized_max = static_cast<uint8_t>(std::round(max_value / max_scale) + max_zp);
+    NodeArg* max_quantized = builder.MakeInitializer<uint8_t>({}, {quantized_max});
+    NodeArg* max_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(max_quantized, max_scale, max_zp, max_dq);
+
+    const float data_scale = 0.001f;
+    const uint8_t data_zp = 128;
+    std::vector<uint8_t> input_data(200);
+    for (size_t i = 0; i < 200; i++) {
+      input_data[i] = static_cast<uint8_t>(28 + i);
+    }
+
+    NodeArg* data_quantized = builder.MakeInput<uint8_t>({200}, input_data);
+    NodeArg* data_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(data_quantized, data_scale, data_zp, data_dq);
+
+    // Clip with both min and max inputs
+    NodeArg* clip_output = builder.MakeIntermediate();
+    builder.AddNode("Clip", {data_dq, min_dq, max_dq}, {clip_output});
+
+    NodeArg* output = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint8_t>(clip_output, data_scale, data_zp, output);
+  };
+
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All);
+}
+
 // Test FP16 Clip with min (FP16)
 TEST_F(QnnHTPBackendTests, Clip_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
+
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
 
@@ -233,6 +373,35 @@ TEST_F(QnnHTPBackendTests, Clip_FP16) {
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+#if defined(_M_ARM64)
+//
+// GPU tests:
+//
+
+// Test Clip with float32 on GPU
+TEST_F(QnnGPUBackendTests, Clip_fp32) {
+  RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 12)),
+                     {TestInputDef<float>({}, true, {-5.0f}),
+                      TestInputDef<float>({}, true, {5.0f})},
+                     ExpectedEPNodeAssignment::All,
+                     "gpu",
+                     13,
+                     false);
+}
+
+// Test Clip with int32 on GPU
+// Disable Reason : Doesn't work.
+TEST_F(QnnGPUBackendTests, DISABLED_Clip_int32) {
+  RunClipTest<int32_t>(TestInputDef<int32_t>({1, 1, 3, 2}, false, {1, 2, -5, 3, -10, 25}),
+                       {TestInputDef<int32_t>({}, true, {-5}),
+                        TestInputDef<int32_t>({}, true, {5})},
+                       ExpectedEPNodeAssignment::All,
+                       "gpu");
+}
+
+#endif  // defined(_M_ARM64) GPU tests
+
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

@@ -46,7 +46,7 @@ namespace Dml
               OrtMemoryInfo(
                   "DML",
                   OrtAllocatorType::OrtDeviceAllocator,
-                  OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, 0))),
+                  OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, 0))),
           m_device(device),
           m_heapProperties(heapProps),
           m_heapFlags(heapFlags),

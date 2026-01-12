@@ -198,7 +198,6 @@ bool IsMatMulInputTypeSupported(const Node& node) {
   // if no matching key is present, any data type is allowed
   static const InlinedHashMap<std::string_view, InlinedVector<std::string_view, 4>> k_supported_data_types{
       {kCudaExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
-      {kRocmExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
       {kCpuExecutionProvider, {"tensor(float)"}},
   };
 
@@ -276,14 +275,6 @@ Status ProcessNode(
       kMSDomain);
 
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
-#ifdef USE_ROCM
-  // forward the __backwardpass, if present
-  auto& attrs = node.GetAttributes();
-  if (attrs.count("__backwardpass")) {
-    matmul_scale_node.AddAttribute("__backwardpass", static_cast<int64_t>(attrs.at("__backwardpass").i()));
-  }
-#endif
-
   {
     InlinedVector<std::reference_wrapper<Node>> nodes_to_remove{node};
 

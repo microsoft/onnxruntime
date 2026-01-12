@@ -12,7 +12,7 @@
 
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -360,8 +360,6 @@ void RunTest(int64_t max_iterations,
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #if defined(USE_CUDA)
     execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif defined(USE_ROCM)
-    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
@@ -688,7 +686,7 @@ TEST(Loop, SubgraphTypeOverride) {
   Graph::ResolveOptions options;
   options.override_types = true;
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider}, &session_run_options, nullptr,
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}, &session_run_options, nullptr,
            ExecutionMode::ORT_SEQUENTIAL, options);
 }
 
@@ -828,7 +826,8 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
   test.AddOutput<float>("loop_scan_out", {1}, {1.0f});
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable OpenVino for floating nodes
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Test a combination of things:
@@ -1041,8 +1040,8 @@ TEST(Loop, IterationCountAsOutput) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-// test that when part of the subgraph run on CUDA/ROCm it executes successfully
+#if defined(USE_CUDA)
+// test that when part of the subgraph run on CUDA it executes successfully
 TEST(Loop, MixedExecutionProviders) {
   RunOptions options{};
   options.mixed_execution_providers = true;
@@ -1162,7 +1161,7 @@ TEST(Loop, SequenceAsLoopCarriedDependency) {
   test.AddSeqOutput("loop_var_0_final", seq_output);
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)

@@ -19,7 +19,7 @@ class TestBackend(unittest.TestCase):
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         res = rep.run(x)
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_allocation_plan_works_with_only_execute_path_to_fetches_option(self):
         """

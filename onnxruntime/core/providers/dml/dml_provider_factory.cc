@@ -65,6 +65,9 @@ struct DMLProviderFactory : IExecutionProviderFactory {
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
 
+  IDMLDevice* GetDMLDevice();
+  ID3D12CommandQueue* GetDMLCommandQueue();
+
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
@@ -99,6 +102,14 @@ std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
 
 void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
   metacommands_enabled_ = metacommands_enabled;
+}
+
+IDMLDevice* DMLProviderFactory::GetDMLDevice() {
+  return dml_device_.Get();
+}
+
+ID3D12CommandQueue* DMLProviderFactory::GetDMLCommandQueue() {
+  return cmd_queue_.Get();
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(const ConfigOptions& config_options,
@@ -292,6 +303,8 @@ static void SortHeterogenousDXCoreAdapterList(
   std::sort(adapter_infos.begin(), adapter_infos.end(), policy);
 }
 
+typedef HRESULT(WINAPI* PFN_DXCoreCreateAdapterFactory)(REFIID riid, void** ppvFactory);
+
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromDeviceOptions(
     const ConfigOptions& config_options,
     const OrtDmlDeviceOptions* device_options,
@@ -305,9 +318,25 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
   OrtDmlPerformancePreference preference = device_options->Preference;
   OrtDmlDeviceFilter filter = device_options->Filter;
 
+  // Load dxcore.dll. We do this manually so there's not a hard dependency on dxcore which is newer.
+  wil::unique_hmodule dxcore_lib{LoadLibraryExW(L"dxcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32)};
+  if (!dxcore_lib) {
+    ORT_THROW("Failed to load dxcore.dll. Expected on older Windows version that do not support dxcore.");
+  }
+
+  auto pfnDXCoreCreateAdapterFactory = reinterpret_cast<PFN_DXCoreCreateAdapterFactory>(
+      GetProcAddress(dxcore_lib.get(), "DXCoreCreateAdapterFactory"));
+
+  if (!pfnDXCoreCreateAdapterFactory) {
+    // this isn't expected to fail so ERROR not WARNING
+    ORT_THROW("Failed to get DXCoreCreateAdapterFactory function address.");
+  }
+
   // Create DXCore Adapter Factory
   ComPtr<IDXCoreAdapterFactory> adapter_factory;
-  ORT_THROW_IF_FAILED(::DXCoreCreateAdapterFactory(adapter_factory.GetAddressOf()));
+  if (FAILED(pfnDXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapter_factory)))) {
+    ORT_THROW("DXCore is not available on this platform. This is expected on older versions of Windows.");
+  }
 
   // Get all DML compatible DXCore adapters
   ComPtr<IDXCoreAdapterList> adapter_list;
@@ -694,6 +723,40 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(GetDMLDevice, _In_ OrtSessionOptions* options, _Out_ IDMLDevice** dmlDevice) {
+  API_IMPL_BEGIN
+
+  *dmlDevice = nullptr;
+#ifdef USE_DML 
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      if (auto dml_provider_factory = static_cast<onnxruntime::DMLProviderFactory*>(factory.get())) {
+        *dmlDevice = dml_provider_factory->GetDMLDevice();
+      }
+    }
+  }
+#endif  // USE_DML
+  return nullptr;
+API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(GetDMLCommandQueue, _In_ OrtSessionOptions* options, _Out_ ID3D12CommandQueue** dmlCommandQ) {
+  API_IMPL_BEGIN
+
+  *dmlCommandQ = nullptr;
+#ifdef USE_DML 
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      if (auto dml_provider_factory = static_cast<onnxruntime::DMLProviderFactory*>(factory.get())) {
+        *dmlCommandQ = dml_provider_factory->GetDMLCommandQueue();
+      }
+    }
+  }
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProvider_DML,
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
@@ -701,6 +764,8 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &FreeGPUAllocation,
   &GetD3D12ResourceFromAllocation,
   &OrtSessionOptionsAppendExecutionProvider_DML2,
+  &GetDMLDevice,
+  &GetDMLCommandQueue,
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {

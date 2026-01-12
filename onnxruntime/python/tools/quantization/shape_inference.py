@@ -16,7 +16,9 @@ import onnxruntime
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 
-from .quant_utils import add_pre_process_metadata
+from .fusions import ReplaceUpsampleWithResize
+from .onnx_model import ONNXModel
+from .quant_utils import add_pre_process_metadata, save_and_reload_model_with_shape_infer
 
 logger = logging.getLogger(__name__)
 
@@ -72,13 +74,23 @@ def quant_pre_process(
 
     with tempfile.TemporaryDirectory(prefix="pre.quant.") as quant_tmp_dir:
         temp_path = Path(quant_tmp_dir)
-        model = None
+        model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
+
+        # Since Upsample is deprecated after opset v10, and the model's opset will
+        # be upgraded to at least v11 during quantization, we need to replace Upsample
+        # with Resize first to avoid generating an invalid model.
+        ai_onnx_domain = [opset for opset in model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+        if len(ai_onnx_domain) == 1:
+            opset_version = ai_onnx_domain[0].version
+            if opset_version <= 10:
+                ReplaceUpsampleWithResize(ONNXModel(model), opset_version).apply()
+                model = onnx.version_converter.convert_version(model, 11)
+                model = save_and_reload_model_with_shape_infer(model)
 
         if not skip_symbolic_shape:
             logger.info("Performing symbolic shape inference...")
-            loaded_model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
             model = SymbolicShapeInference.infer_shapes(
-                loaded_model,
+                model,
                 int_max,
                 auto_merge,
                 guess_output_rank,

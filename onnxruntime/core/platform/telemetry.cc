@@ -40,19 +40,26 @@ void Telemetry::SetLanguageProjection(uint32_t projection) const {
 void Telemetry::LogProcessInfo() const {
 }
 
-void Telemetry::LogSessionCreationStart() const {
+void Telemetry::LogSessionCreationStart(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
-void Telemetry::LogEvaluationStop() const {
+void Telemetry::LogEvaluationStop(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
-void Telemetry::LogEvaluationStart() const {
+void Telemetry::LogEvaluationStart(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
 }
 
 void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                    const std::string& model_producer_version, const std::string& model_domain,
                                    const std::unordered_map<std::string, int>& domain_to_version_map,
+                                   const std::string& model_file_name,
                                    const std::string& model_graph_name,
+                                   const std::string& model_weight_type,
+                                   const std::string& model_graph_hash,
+                                   const std::string& model_weight_hash,
                                    const std::unordered_map<std::string, std::string>& model_metadata,
                                    const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                                    bool use_fp16, bool captureState) const {
@@ -62,12 +69,46 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(model_producer_version);
   ORT_UNUSED_PARAMETER(model_domain);
   ORT_UNUSED_PARAMETER(domain_to_version_map);
+  ORT_UNUSED_PARAMETER(model_file_name);
   ORT_UNUSED_PARAMETER(model_graph_name);
+  ORT_UNUSED_PARAMETER(model_weight_type);
+  ORT_UNUSED_PARAMETER(model_graph_hash);
+  ORT_UNUSED_PARAMETER(model_weight_hash);
   ORT_UNUSED_PARAMETER(model_metadata);
   ORT_UNUSED_PARAMETER(loadedFrom);
   ORT_UNUSED_PARAMETER(execution_provider_ids);
   ORT_UNUSED_PARAMETER(use_fp16);
   ORT_UNUSED_PARAMETER(captureState);
+}
+
+void Telemetry::LogCompileModelStart(uint32_t session_id,
+                                     const std::string& input_source,
+                                     const std::string& output_target,
+                                     uint32_t flags,
+                                     int graph_optimization_level,
+                                     bool embed_ep_context,
+                                     bool has_external_initializers_file,
+                                     const std::vector<std::string>& execution_provider_ids) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(input_source);
+  ORT_UNUSED_PARAMETER(output_target);
+  ORT_UNUSED_PARAMETER(flags);
+  ORT_UNUSED_PARAMETER(graph_optimization_level);
+  ORT_UNUSED_PARAMETER(embed_ep_context);
+  ORT_UNUSED_PARAMETER(has_external_initializers_file);
+  ORT_UNUSED_PARAMETER(execution_provider_ids);
+}
+
+void Telemetry::LogCompileModelComplete(uint32_t session_id,
+                                        bool success,
+                                        uint32_t error_code,
+                                        uint32_t error_category,
+                                        const std::string& error_message) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(success);
+  ORT_UNUSED_PARAMETER(error_code);
+  ORT_UNUSED_PARAMETER(error_category);
+  ORT_UNUSED_PARAMETER(error_message);
 }
 
 void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
@@ -79,10 +120,12 @@ void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& statu
   ORT_UNUSED_PARAMETER(line);
 }
 
-void Telemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const {
+void Telemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
+                               std::unordered_map<int64_t, long long> duration_per_batch_size) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(total_runs_since_last);
   ORT_UNUSED_PARAMETER(total_run_duration_since_last);
+  ORT_UNUSED_PARAMETER(duration_per_batch_size);
 }
 
 void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
@@ -95,6 +138,23 @@ void Telemetry::LogDriverInfoEvent(const std::string_view device_class,
   ORT_UNUSED_PARAMETER(device_class);
   ORT_UNUSED_PARAMETER(driver_names);
   ORT_UNUSED_PARAMETER(driver_versions);
+}
+
+void Telemetry::LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                                   const std::vector<std::string>& requested_execution_provider_ids,
+                                   const std::vector<std::string>& available_execution_provider_ids) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(selection_policy);
+  ORT_UNUSED_PARAMETER(requested_execution_provider_ids);
+  ORT_UNUSED_PARAMETER(available_execution_provider_ids);
+}
+
+void Telemetry::LogProviderOptions(const std::string& provider_id,
+                                   const std::string& provider_options_string,
+                                   bool captureState) const {
+  ORT_UNUSED_PARAMETER(provider_id);
+  ORT_UNUSED_PARAMETER(provider_options_string);
+  ORT_UNUSED_PARAMETER(captureState);
 }
 
 }  // namespace onnxruntime

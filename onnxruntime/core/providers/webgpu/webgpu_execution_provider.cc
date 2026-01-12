@@ -18,13 +18,17 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/run_options.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/common/parse_string.h"
 
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/external_data_loader.h"
 #include "core/providers/webgpu/webgpu_profiler.h"
+#include "core/providers/webgpu/tensor/cast.h"
 
 namespace onnxruntime {
 
@@ -123,7 +127,9 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 8, Cast);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 9, 12, Cast);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 18, Cast);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 19, Cast);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 19, 20, Cast);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Cast);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, Cast);
 
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, float, Clip);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, float, Clip);
@@ -223,6 +229,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Less);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 15, LessOrEqual);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, LessOrEqual);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 7, And);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Shape);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 14, Shape);
@@ -239,11 +246,16 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21,
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Squeeze);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Squeeze);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Squeeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Squeeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Squeeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, 23, Squeeze);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 24, Squeeze);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Unsqueeze);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Unsqueeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Unsqueeze);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Unsqueeze);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, Unsqueeze);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 9, 15, Where);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, Where);
@@ -343,6 +355,10 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13,
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, GatherElements);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, GatherElements);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, GatherND);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, GatherND);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, GatherND);
+
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 9, Slice);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 10, 10, Slice);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Slice);
@@ -367,7 +383,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCD
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, float, Range);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, int32_t, Range);
 
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, float, Einsum);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, Einsum);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 2, 10, Pad);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Pad);
@@ -405,7 +421,12 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterND);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterND);
 
-std::unique_ptr<KernelRegistry> RegisterKernels() {
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, ScatterElements);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 15, ScatterElements);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterElements);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterElements);
+
+std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = false) {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -451,11 +472,6 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED(6, 12, Tanh),
       KERNEL_CREATE_INFO(13, Tanh),
       KERNEL_CREATE_INFO(1, Not),
-
-      KERNEL_CREATE_INFO_VERSIONED(6, 8, Cast),
-      KERNEL_CREATE_INFO_VERSIONED(9, 12, Cast),
-      KERNEL_CREATE_INFO_VERSIONED(13, 18, Cast),
-      KERNEL_CREATE_INFO(19, Cast),
 
       // // activations
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, float, Clip)>,
@@ -504,6 +520,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(13, Less),
       KERNEL_CREATE_INFO_VERSIONED(12, 15, LessOrEqual),
       KERNEL_CREATE_INFO(16, LessOrEqual),
+      KERNEL_CREATE_INFO(7, And),
 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Shape)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 14, Shape)>,
@@ -520,7 +537,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Squeeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Squeeze)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Squeeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Squeeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Squeeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, 23, Squeeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 24, Squeeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceMax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, ReduceMax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, ReduceMax)>,
@@ -535,7 +555,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Unsqueeze)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Unsqueeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Unsqueeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, 22, Unsqueeze)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 23, Unsqueeze)>,
 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceMin)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, ReduceMin)>,
@@ -667,6 +689,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, GatherElements)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, GatherElements)>,
 
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, GatherND)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 12, GatherND)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, GatherND)>,
+
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 10, 10, Resize)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Resize)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 17, Resize)>,
@@ -688,7 +714,6 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Flatten)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Flatten)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, Flatten)>,
-
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 12, Tile)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, Tile)>,
 
@@ -704,7 +729,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, float, Range)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, int32_t, Range)>,
 
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, float, Einsum)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, Einsum)>,
 
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 2, 10, Pad)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Pad)>,
@@ -742,6 +767,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 15, ScatterND)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterND)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterND)>,
+
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, ScatterElements)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 15, ScatterElements)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterElements)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterElements)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -751,8 +781,16 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
     }
   }
 
+  // Register Cast kernels with conditional int64 support based on graph capture
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<6, 8>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<9, 12>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<13, 18>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<19, 20>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<21, 22>(enable_graph_capture)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateCastKernelInfo<23>(enable_graph_capture)));
+
 #ifndef DISABLE_CONTRIB_OPS
-  Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry);
+  Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
   ORT_ENFORCE(status.IsOK(), "Failed to register WebGPU contrib kernels: " + status.ErrorMessage());
 #endif
 
@@ -766,21 +804,40 @@ using namespace webgpu;
 WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
                                                  WebGpuContext& context,
                                                  WebGpuExecutionProviderConfig&& config)
-    : IExecutionProvider{kWebGpuExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)},
+    : IExecutionProvider{kWebGpuExecutionProvider, WebGpuDevice},
       context_id_{context_id},
       context_{context},
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
-      enable_graph_capture_{config.enable_graph_capture} {}
+      enable_graph_capture_{config.enable_graph_capture},
+      prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), false)} {
+  // If graph capture is enabled, create a dedicated buffer manager for graph mode
+  if (enable_graph_capture_) {
+    // Create buffer manager for graph capture mode with appropriate cache modes
+    graph_buffer_mgr_ = webgpu::BufferManagerFactory::Create(
+        context_,
+        webgpu::BufferCacheMode::Graph,
+        webgpu::BufferCacheMode::GraphSimple,
+        webgpu::BufferCacheMode::Disabled);
+  }
+
+  if (config.enable_pix_capture) {
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+    // set pix frame generator
+    pix_frame_generator_ = context_.CreatePIXFrameGenerator();
+#else
+    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
+  }
+}
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
-  AllocatorCreationInfo gpuBufferAllocatorCreationInfo([&](int) {
-    return std::make_unique<webgpu::GpuBufferAllocator>(context_);
-  },
-                                                       0, false);
-  auto preferred_allocators = std::vector<AllocatorPtr>{CreateAllocator(gpuBufferAllocatorCreationInfo)};
-  allocator_ = reinterpret_cast<webgpu::GpuBufferAllocator*>(preferred_allocators[0].get());
-  return preferred_allocators;
+  return {
+      // allocator for initializers
+      std::make_unique<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), true),
+      // default allocator
+      std::make_unique<webgpu::GpuBufferAllocator>(BufferManager(), false),
+  };
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapability(
@@ -820,6 +877,42 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       LOGS(*GetLogger(), INFO) << "Force CPU execution for node: " << node.Name();
       continue;
     }
+
+    //
+    // The following code checks if the node is really supported by webgpu EP
+    //
+
+#define FALLBACK_TO_CPU_IF_EXIST_INPUT(idx)           \
+  if (inputs.size() > idx && inputs[idx]->Exists()) { \
+    continue;                                         \
+  }
+
+#define FALLBACK_TO_CPU_IF_EXIST_OUTPUT(idx)            \
+  if (outputs.size() > idx && outputs[idx]->Exists()) { \
+    continue;                                           \
+  }
+
+    // Check for Attention
+    if (node.OpType() == "Attention" && node.Domain() == kMSDomain) {
+      const auto& inputs = node.InputDefs();
+      const auto& outputs = node.OutputDefs();
+
+      // Current implementation does not support mask_index(input[3]), past(input[4]) and past_seq_len(input[6])
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(3);
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(4);
+      FALLBACK_TO_CPU_IF_EXIST_INPUT(6);
+
+      // Current implementation does not support present(output[1])
+      FALLBACK_TO_CPU_IF_EXIST_OUTPUT(1);
+
+      // If attribute past_present_share_buffer is set, fallback to CPU
+      const auto& past_present_share_buffer = node.GetAttributes().find("past_present_share_buffer");
+      if (past_present_share_buffer != node.GetAttributes().end() &&
+          past_present_share_buffer->second.i() != 0) {
+        continue;
+      }
+    }
+
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }
@@ -839,13 +932,17 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 }
 
 std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels();
-
-  return registry;
+  if (enable_graph_capture_) {
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(true);
+    return registry;
+  } else {
+    static std::shared_ptr<KernelRegistry> registry = webgpu::RegisterKernels(false);
+    return registry;
+  }
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(context_);
+  return std::make_unique<webgpu::DataTransfer>(BufferManager());
 }
 
 #if defined(__wasm__)
@@ -854,7 +951,29 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 }
 #endif
 
+std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                                          std::string_view node_op_type,
+                                                                          DataLayout target_data_layout) const {
+  // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
+  if (node_domain == kOnnxDomain && node_op_type == "Resize") {
+    return target_data_layout != DataLayout::NHWC;
+  }
+
+  // WebGPU perfer NCHW for InstanceNormalization due to a better performance
+  if (node_domain == kOnnxDomain && node_op_type == "InstanceNormalization") {
+    return target_data_layout != DataLayout::NHWC;
+  }
+
+  return std::nullopt;
+}
+
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
+  // Release all resources associated with the captured graph
+  if (!captured_commands_.empty()) {
+    context_.ReleaseGraphResources(captured_commands_);
+  }
+  // The graph_buffer_mgr_ will be automatically cleaned up by unique_ptr
+
   WebGpuContextFactory::ReleaseContext(context_id_);
 }
 
@@ -864,14 +983,7 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   return profiler;
 }
 
-Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
-  if (allocator_ != nullptr) {
-    allocator_->OnSessionInitializationEnd();
-  }
-  return Status::OK();
-}
-
-Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     context_.PushErrorScope();
   }
@@ -880,29 +992,46 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_
     context_.StartProfiling();
   }
 
-  if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
-    ORT_NOT_IMPLEMENTED("graph capture not implemented");
+  if (IsGraphCaptureEnabled()) {
+    auto graph_annotation_str = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
+    int graph_annotation_id = 0;
+    if (graph_annotation_str.has_value()) {
+      ORT_ENFORCE(onnxruntime::TryParseStringWithClassicLocale<int>(*graph_annotation_str, graph_annotation_id),
+                  "Failed to parse the graph annotation id: ",
+                  *graph_annotation_str);
+    }
+
+    if (graph_annotation_id != -1 && IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
+      context_.CaptureBegin(&captured_commands_, *graph_buffer_mgr_);
+    }
+    m_current_graph_annotation_id = graph_annotation_id;
   }
+
   return Status::OK();
 }
 
-Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& /*run_options*/) {
-  if (IsGraphCaptureEnabled() && !IsGraphCaptured(0)) {
-    if (IsGraphCaptureAllowed()) {
-      ORT_NOT_IMPLEMENTED("graph capture not implemented");
-      // is_graph_captured_ = true;
+Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& /* run_options */) {
+  context_.Flush(BufferManager());
+
+  if (IsGraphCaptureEnabled() && !IsGraphCaptured(m_current_graph_annotation_id)) {
+    if (m_current_graph_annotation_id != -1 && IsGraphCaptureAllowed()) {
+      context_.CaptureEnd();
+      is_graph_captured_ = true;
+      ORT_RETURN_IF_ERROR(ReplayGraph(m_current_graph_annotation_id));
     } else {
       IncrementRegularRunCountBeforeGraphCapture();
     }
   }
 
-  context_.Flush();
-
   if (profiler_->Enabled()) {
     context_.CollectProfilingData(profiler_->Events());
   }
 
-  context_.OnRunEnd();
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  if (pix_frame_generator_) {
+    pix_frame_generator_->GeneratePIXFrame();
+  }
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();
@@ -915,14 +1044,22 @@ bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {
   return enable_graph_capture_;
 }
 
-bool WebGpuExecutionProvider::IsGraphCaptured(int) const {
-  return is_graph_captured_;
+bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
+  return is_graph_captured_ && graph_annotation_id != -1;
 }
 
-Status WebGpuExecutionProvider::ReplayGraph(int) {
-  ORT_ENFORCE(IsGraphCaptured(0));
-  ORT_ENFORCE(false);
+Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
+  ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
+  context_.Replay(captured_commands_, *graph_buffer_mgr_);
   return Status::OK();
+}
+
+webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
+  if (graph_buffer_mgr_) {
+    return *graph_buffer_mgr_;
+  } else {
+    return context_.BufferManager();
+  }
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureAllowed() const {

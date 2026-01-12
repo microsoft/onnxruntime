@@ -3,8 +3,7 @@ plugins {
 	id 'maven-publish'
 	id 'signing'
 	id 'jacoco'
-	id "com.diffplug.spotless" version "6.25.0"
-	id "net.linguica.maven-settings" version "0.5"
+	id "com.diffplug.spotless" version "7.2.1"
 }
 
 allprojects {
@@ -14,17 +13,9 @@ allprojects {
 }
 
 project.group = "com.microsoft.onnxruntime"
-version = rootProject.file('../VERSION_NUMBER').text.trim()
-
 // cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
-def useROCM = System.properties['USE_ROCM']
-
-def adoArtifact = project.findProperty('adoArtifact')
-def adoAccessToken = project.findProperty('adoAccessToken')
-// Only publish to ADO feed if all two properties are set
-def publishToAdo = adoArtifact != null && adoAccessToken != null
 
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def cmakeJavaDir = "${cmakeBuildDir}/java"
@@ -33,21 +24,14 @@ def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
-def mavenUser = System.properties['mavenUser']
-def mavenPwd = System.properties['mavenPwd']
-
 def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
-def mavenArtifactId = (useCUDA == null && useROCM == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
+def mavenArtifactId = (useCUDA == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
 
 def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
 def trainingDescription = 'ONNX Runtime Training is a training and inference package for ONNX ' +
 	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
-// We need to have a custom settings.xml so codeql can bypass the need for settings.security.xml
-mavenSettings {
-	userSettingsFileName = "${projectDir}/settings.xml"
-}
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_17
@@ -202,16 +186,27 @@ test {
 	systemProperties System.getProperties().subMap([
 		'ENABLE_TRAINING_APIS',
 		'JAVA_FULL_TEST',
+		'USE_ACL',
+		'USE_ARMNN',
+		'USE_AZURE',
+		'USE_CANN',
 		'USE_COREML',
 		'USE_CUDA',
 		'USE_DML',
 		'USE_DNNL',
+		'USE_MIGRAPHX',
+		'USE_NNAPI',
+		'USE_NV',
 		'USE_OPENVINO',
-		'USE_ROCM',
-		'USE_TENSORRT',
 		'USE_QNN',
-		'USE_XNNPACK',
+		'USE_RKNPU',
+		'USE_SNPE',
+		'USE_TENSORRT',
+		'USE_VITISAI',
+		'USE_VSINPU',
 		'USE_WEBGPU',
+		'USE_WEBNN',
+		'USE_XNNPACK',
 		])
 	testLogging {
 		events "passed", "skipped", "failed"
@@ -233,13 +228,9 @@ publishing {
 	publications {
 		maven(MavenPublication) {
 			groupId = project.group
-			if(publishToAdo) {
-				artifactId = 'onnxruntime_gpu'
-				artifact (adoArtifact)
-			} else {
-				artifactId = mavenArtifactId
-				from components.java
-			}
+			artifactId = mavenArtifactId
+			from components.java
+
 			version = project.version
 			pom {
 				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
@@ -270,29 +261,6 @@ publishing {
 			}
 		}
 	}
-	repositories {
-		if (publishToAdo) {
-			maven {
-				url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
-				name System.getenv('ADOFeedName')
-				authentication {
-					basic(BasicAuthentication)
-				}
-				credentials {
-					username  'aiinfra'
-					password "${project.findProperty('adoAccessToken')}"
-				}
-			}
-		} else {
-			maven {
-				url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
-				credentials {
-					username mavenUser
-					password mavenPwd
-				}
-			}
-		}
-	}
 }
 // Generates a task signMavenPublication that will
 // build all artifacts.
@@ -300,12 +268,17 @@ signing {
 	// Queries env vars:
 	// ORG_GRADLE_PROJECT_signingKey
 	// ORG_GRADLE_PROJECT_signingPassword but can be changed to properties
-		def signingKey = findProperty("signingKey")
-		def signingPassword = findProperty("signingPassword")
-		// Skip signing if no key is provided
-		if (signingKey != null && signingPassword != null) {
-			useInMemoryPgpKeys(signingKey, signingPassword)
-			sign publishing.publications.maven
-			sign publishing.publications.mavenAdo
-		}
+	def signingKey = findProperty("signingKey")
+	def signingPassword = findProperty("signingPassword")
+	// Skip signing if no key is provided
+	if (signingKey != null && signingPassword != null) {
+		useInMemoryPgpKeys(signingKey, signingPassword)
+		sign publishing.publications.maven
+	}
+}
+
+tasks.named('generatePomFileForMavenPublication') {
+	doFirst {
+		println "AGENT_LOG: Generating POM for version: ${project.version}"
+	}
 }

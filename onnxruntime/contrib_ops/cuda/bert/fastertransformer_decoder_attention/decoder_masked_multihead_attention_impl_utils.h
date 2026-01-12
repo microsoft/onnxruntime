@@ -151,7 +151,7 @@ inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParame
   // The extra memory needed if we are not using floats for the final logits.
   size_t logits_sz = 0;
 
-  if (sizeof(T) != 4) {
+  if constexpr (sizeof(T) != 4) {
     logits_sz = (((total_sequence_length + 3) / 4) * 4 * sizeof(T));
   }
 
@@ -165,8 +165,8 @@ inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParame
   size_t red_sz = rows_per_red * params.head_size * sizeof(T) / 2;
 
   size_t transpose_rotary_size = 0;
-  if (params.rotary_embedding_dim > 0) {
-    transpose_rotary_size = 2 * params.rotary_embedding_dim * sizeof(T);
+  if (params.rotary_dim > 0) {
+    transpose_rotary_size = 2 * params.rotary_dim * sizeof(T);
   }
 
   // The max.

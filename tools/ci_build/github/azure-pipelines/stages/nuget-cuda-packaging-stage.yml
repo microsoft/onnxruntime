@@ -30,7 +30,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-2022'
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
@@ -71,6 +71,18 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
+      inputs:
+        versionSpec: 3.12
+
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
+
+    - template: ../templates/set-version-number-variables-step.yml
 
     # Reconstruct the build dir
     - task: PowerShell@2
@@ -114,6 +126,7 @@ stages:
           -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"
           -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
           -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          -p:PackageVersion=$(OnnxRuntimeVersion)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: ../templates/win-esrp-dll.yml
@@ -121,11 +134,6 @@ stages:
         FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: ${{ parameters.DoEsrp }}
-
-    - task: UsePythonVersion@0
-      displayName: 'Use Python'
-      inputs:
-        versionSpec: 3.12
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

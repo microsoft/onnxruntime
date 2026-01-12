@@ -17,10 +17,16 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
 #include "core/common/common.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
+
+// This code are only relevant for CUDA architectures where the fpA_intB_gemv is intended to run (sm_75 and above).
+// Therefore, we conditionally compile this block only when __CUDA_ARCH__ >= 750.
+// This prevents compilation errors that half2 requires target sm_53 or higher.
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
 
 template <typename DetailsA>
 struct MathWrapper {
@@ -42,10 +48,6 @@ struct MathWrapper<FP16DetailsA> {
   __device__ __forceinline__ static Type2 mul2(Type2 const& a, Type2 const& b) {
     return __hmul2(a, b);
   }
-
-  // __device__ __forceinline__ static Type2 deq2(Type2 const& weight, Type2 const& scale, Type2 const& zero_point) {
-  //   return __hmul2(__hsub2(weight, zero_point), scale);
-  // }
 };
 
 template <>
@@ -227,11 +229,13 @@ __device__ __forceinline__ void fill(void* tile, T v) {
     reinterpret_cast<T*>(tile)[ii] = v;
   }
 }
+#endif  // (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
 
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
           bool EnableBias, bool ApplyAlphaInAdvance, typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* bias,
                        TypeA* out, float alpha, int m, int n, int k) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   // ArgType          ArgName          DataType           Shape                 Layout
   // input            act              fp16/bf16          [m, k]                RowMajor
   // input            act_scale        fp16/bf16          [1, k]                RowMajor
@@ -312,6 +316,7 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
     }
   }
   epilogue<Details, CtaM, CtaN, Threads, EnableBias, ApplyAlphaInAdvance>(out, n, tile_acc, bias, alpha);
+#endif
 }
 
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,

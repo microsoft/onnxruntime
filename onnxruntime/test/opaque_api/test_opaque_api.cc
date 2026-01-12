@@ -15,7 +15,7 @@
 #include "gtest/gtest.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -73,7 +73,7 @@ struct NonTensorTypeConverter<ExperimentalType> {
 
     // Create and populate Tensor
     TensorShape shape({1});
-    std::shared_ptr<IAllocator> allocator = std::make_shared<CPUAllocator>();
+    std::shared_ptr<IAllocator> allocator = CPUAllocator::DefaultInstance();
     std::unique_ptr<Tensor> tp(new Tensor(DataTypeImpl::GetType<std::string>(), shape, allocator));
     *tp->MutableData<std::string>() = input.Get<ExperimentalType>().str_;
 

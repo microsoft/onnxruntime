@@ -17,21 +17,23 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
+
 - name: docker_base_image
   type: string
 
 - name: cuda_version
   type: string
-  default: '12.2'
+  default: '12.8'
   values:
-   - 12.2
+   - 12.8
+   - 13.0
 
 stages:
 - stage: Linux_py_GPU_Wheels_${{ parameters.arch }}
   dependsOn: []
   jobs:
   - job: Linux_py_GPU_Wheels_${{ parameters.arch }}
-    timeoutInMinutes: 240
+    timeoutInMinutes: 360
     workspace:
       clean: all
     pool:
@@ -48,14 +50,14 @@ stages:
     variables:
       - name: extra_build_args
         ${{ if ne(parameters.extra_build_arg, '') }}:
-          value: -x ${{ parameters.extra_build_arg }}
+          value: '-x "${{ parameters.extra_build_arg }}"'
         ${{ if eq(parameters.extra_build_arg, '') }}:
           value: ''
       - template: ../templates/common-variables.yml
       - name: trt_version
-        ${{ if eq(parameters.cuda_version, '11.8') }}:
-          value: ${{ variables.linux_trt_version_cuda11 }}
-        ${{ if eq(parameters.cuda_version, '12.2') }}:
+        ${{ if eq(parameters.cuda_version, '13.0') }}:
+          value: ${{ variables.linux_trt_version_cuda13 }}
+        ${{ if eq(parameters.cuda_version, '12.8') }}:
           value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
       - checkout: self
@@ -78,19 +80,19 @@ stages:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
           arguments: -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+        env:
+          CUDA_VERSION: ${{ parameters.cuda_version }}
 
       - script: |
           set -e -x
-          mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }} 
+          mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }}
           mv $(Build.BinariesDirectory)/dist ./dist
           pushd dist
           find . -name \*.whl -exec unzip -qq -o {} \;
           rm -r onnxruntime
           popd
-          pushd ${{ parameters.cmake_build_type }} 
+          pushd ${{ parameters.cmake_build_type }}
           find . -name \*.whl -exec unzip -qq -o {} \;
           popd
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'Move files'
-
-

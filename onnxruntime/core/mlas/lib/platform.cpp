@@ -16,6 +16,12 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
 
 #include <thread>
 #include <mutex>
@@ -28,7 +34,15 @@ Abstract:
 #define POWER_10_ANDUP (POWER_10)
 #include <sys/systemcfg.h>
 #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
+#elif defined(__FreeBSD__)
+#include <machine/cpu.h>
+#include <sys/auxv.h>
 #endif
+#endif
+
+
+#if defined(MLAS_TARGET_S390X)
+#include <sys/auxv.h>
 #endif
 
 #if defined(MLAS_TARGET_ARM64)
@@ -285,6 +299,8 @@ Return Value:
     this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
     this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
+    this->DequantizeLinearS8Kernel = MlasDequantizeLinearS8Kernel;
+    this->DequantizeLinearU8Kernel = MlasDequantizeLinearU8Kernel;
 #ifndef __APPLE__
 #ifndef FORCE_GENERIC_ALGORITHMS
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
@@ -552,6 +568,17 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
+#if defined(MLAS_USE_ARM_NEON_NCHWC)
+    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
+    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
+    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
+    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
+    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;
+    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelNeon;
+    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelNeon;
+    this->NchwcBlockSize = MLAS_NEON_NCHWC_BLOCK_SIZE;
+#endif
+
     //
     // Check if the processor supports ASIMD dot product instructions.
     //
@@ -576,18 +603,51 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
-    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
+        this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
+        this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+        this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
+        this->MlasConvOverride = ArmKleidiAI::MlasConv;
+    }
+#endif
 
-#if defined(__linux__)
+#if defined(MLAS_USE_SVE)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+        this->ErfKernelRoutine = MlasSveErfKernel;
+        this->LogisticKernelRoutine = MlasSveLogisticKernel;
+        this->ReduceMaximumF32Kernel = MlasSveReduceMaximumF32Kernel;
+        this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+    }
+    else{
+        this->ErfKernelRoutine = MlasErfKernel;
+        this->LogisticKernelRoutine = MlasLogisticKernel;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    }
+#endif
+
     //
     // Check if the processor supports ASIMD I8MM instructions.
     //
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+
+    const bool HasI8MMInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM();
+    if (HasI8MMInstructions) {
+#if defined(__linux__)
+
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
-    }
 #endif
+    }
+
+    this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
+    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
@@ -611,6 +671,11 @@ Return Value:
     bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
 #elif defined(_AIX)
     bool HasP9Instructions = __power_9_andup();
+#elif defined(__FreeBSD__)
+    unsigned long hwcap2;
+    elf_aux_info(AT_HWCAP2, &hwcap2, sizeof(hwcap2));
+
+    bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
 #endif // __linux__
     if (HasP9Instructions) {
         this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
@@ -620,7 +685,7 @@ Return Value:
 #if defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
-#if defined(__linux__)
+#if defined(__linux__) || defined(__FreeBSD__)
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
 #elif defined(_AIX)
     bool HasP10Instructions = (__power_10_andup() && __power_mma_version() == MMA_V31);
@@ -634,6 +699,26 @@ Return Value:
 #endif
 
 #endif // MLAS_TARGET_POWER
+
+#if defined(MLAS_TARGET_S390X)
+    this->GemmFloatKernel = MlasSgemmKernel;
+    this->GemmDoubleKernel = MlasDgemmKernel;
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+    this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
+    this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
+    this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
+    this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
+
+    bool HasVXEInstructions = getauxval(AT_HWCAP) & HWCAP_S390_VXE;
+    if (HasVXEInstructions) {
+        this->GemmFloatKernel = MlasSgemmKernelZVECTOR;
+        this->GemmU8X8Dispatch = &MlasGemm8X8DispatchZVECTOR;
+
+        this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelZVECTOR;
+        this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelZVECTOR;
+    }
+#endif // MLAS_TARGET_S390X
 
 #if defined(MLAS_TARGET_LARCH64)
 
@@ -660,12 +745,19 @@ Return Value:
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelLasx;
         this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Lasx;
 
+        // add new sqn-lasx kernel
+        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchLasx;
+
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchLSX;
+        this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchLSX;
     }else if( cap_lsx ){
         this->GemmFloatKernel = MlasGemmFloatKernelLSX;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchLSX;
+        this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchLSX;
         this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4LSX;
         this->GemmDoubleKernel = MlasGemmDoubleKernelLSX;
         this->ConvNchwFloatKernel = MlasConvNchwFloatKernelLSX;

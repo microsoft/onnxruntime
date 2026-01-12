@@ -27,42 +27,14 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& op_type(node.OpType());
 
   emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
-  emscripten::val output = emscripten::val::object();
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
 
-  if (op_type == "Abs") {
-    output = model_builder.GetBuilder().call<emscripten::val>("abs", input, options);
-  } else if (op_type == "Ceil") {
-    output = model_builder.GetBuilder().call<emscripten::val>("ceil", input, options);
-  } else if (op_type == "Cos") {
-    output = model_builder.GetBuilder().call<emscripten::val>("cos", input, options);
-  } else if (op_type == "Erf") {
-    output = model_builder.GetBuilder().call<emscripten::val>("erf", input, options);
-  } else if (op_type == "Exp") {
-    output = model_builder.GetBuilder().call<emscripten::val>("exp", input, options);
-  } else if (op_type == "Floor") {
-    output = model_builder.GetBuilder().call<emscripten::val>("floor", input, options);
-  } else if (op_type == "Identity") {
-    output = model_builder.GetBuilder().call<emscripten::val>("identity", input, options);
-  } else if (op_type == "Log") {
-    output = model_builder.GetBuilder().call<emscripten::val>("log", input, options);
-  } else if (op_type == "Neg") {
-    output = model_builder.GetBuilder().call<emscripten::val>("neg", input, options);
-  } else if (op_type == "Reciprocal") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reciprocal", input, options);
-  } else if (op_type == "Sign") {
-    output = model_builder.GetBuilder().call<emscripten::val>("sign", input, options);
-  } else if (op_type == "Sin") {
-    output = model_builder.GetBuilder().call<emscripten::val>("sin", input, options);
-  } else if (op_type == "Sqrt") {
-    output = model_builder.GetBuilder().call<emscripten::val>("sqrt", input, options);
-  } else if (op_type == "Tan") {
-    output = model_builder.GetBuilder().call<emscripten::val>("tan", input, options);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "UnaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
-  }
+  const std::string_view webnn_op_type = GetWebNNOpType(op_type);
+  ORT_RETURN_IF(webnn_op_type.empty(), "Cannot get WebNN op type");
+
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
+      std::string(webnn_op_type).c_str(), input, options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
@@ -84,6 +56,7 @@ void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op
           "Log",
           "Neg",
           "Reciprocal",
+          "Round",
           "Sign",
           "Sin",
           "Sqrt",

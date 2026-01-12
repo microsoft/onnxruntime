@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/graph_utils.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 
 #include "core/common/logging/logging.h"

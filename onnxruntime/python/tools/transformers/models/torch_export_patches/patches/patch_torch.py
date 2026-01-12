@@ -68,7 +68,7 @@ def patch__check_input_constraints_for_graph(
 
 def patched_infer_size(a, b):
     """Patches ``torch._subclasses.fake_impls.infer_size``."""
-    from torch.fx.experimental.symbolic_shapes import guard_size_oblivious
+    from torch.fx.experimental.symbolic_shapes import guard_size_oblivious  # noqa: PLC0415
 
     dimsA = len(a)
     dimsB = len(b)
@@ -115,10 +115,10 @@ def patched_infer_size(a, b):
 
 def patched__broadcast_shapes(*_shapes):
     """Patches ``torch._refs._broadcast_shapes``."""
-    from functools import reduce
+    from functools import reduce  # noqa: PLC0415
 
-    from torch._prims_common import IntLike
-    from torch.fx.experimental.symbolic_shapes import guard_size_oblivious
+    from torch._prims_common import IntLike  # noqa: PLC0415
+    from torch.fx.experimental.symbolic_shapes import guard_size_oblivious  # noqa: PLC0415
 
     shapes = tuple((x,) if isinstance(x, IntLike) else x for x in filter(lambda x: x is not None, _shapes))
 
@@ -164,16 +164,16 @@ class patched_ShapeEnv:
         if a in tgt.free_symbols:
             return
 
-        import sympy
-        from torch._guards import TracingContext
-        from torch._logging import structured, trace_structured
-        from torch.fx.experimental.symbolic_shapes import (
+        import sympy  # noqa: PLC0415
+        from torch._guards import TracingContext  # noqa: PLC0415
+        from torch._logging import structured, trace_structured  # noqa: PLC0415
+        from torch.fx.experimental.symbolic_shapes import (  # noqa: PLC0415
             ValueRanges,
             _is_supported_equivalence,
         )
-        from torch.utils._sympy.functions import CeilToInt, FloorToInt
-        from torch.utils._sympy.solve import try_solve
-        from torch.utils._traceback import CapturedTraceback
+        from torch.utils._sympy.functions import CeilToInt, FloorToInt  # noqa: PLC0415
+        from torch.utils._sympy.solve import try_solve  # noqa: PLC0415
+        from torch.utils._traceback import CapturedTraceback  # noqa: PLC0415
 
         # Precondition: a == tgt
         assert isinstance(a, sympy.Symbol)

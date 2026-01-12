@@ -96,6 +96,18 @@ def _openvino_verify_device_type(device_read: str) -> str:
     return device_read
 
 
+def _webgpu_verify_library_kind(library_kind: str) -> str:
+    """Verifies the library kind for the WebGPU Execution Provider."""
+    choices = ["shared_lib", "static_lib"]
+    if library_kind not in choices:
+        print("\nYou have specified an invalid library kind for WebGPU EP.")
+        print(f"The invalid library kind was: {library_kind}")
+        print("Provide a library kind from the following options: ", choices)
+        print(f"Example: --use_webgpu {choices[0]}")
+        sys.exit("Incorrect build configuration")
+    return library_kind
+
+
 # --- Argument Grouping Functions ---
 
 
@@ -122,7 +134,21 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Use parallel build. Optional value specifies max jobs (0=num CPUs).",
     )
-    parser.add_argument("--target", help="Build a specific CMake target (e.g., winml_dll).")
+    parser.add_argument(
+        "--target",
+        nargs=1,
+        action="extend",
+        metavar="TARGET",
+        dest="targets",
+        help="Build a specific CMake target (e.g., winml_dll).",
+    )
+    parser.add_argument(
+        "--targets",
+        nargs="+",
+        action="extend",
+        default=[],
+        help="Build one or more specific CMake targets.",
+    )
     parser.add_argument(
         "--compile_no_warning_as_error",
         action="store_true",
@@ -146,7 +172,8 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--cmake_extra_defines",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra CMake definitions (-D<key>=<value>). Provide as <key>=<value>.",
     )
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake executable.")
@@ -159,6 +186,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
             "NMake Makefiles JOM",
             "Unix Makefiles",
             "Visual Studio 17 2022",
+            "Visual Studio 18 2026",
             "Xcode",
         ],
         default=None,  # Will be set later based on OS and WASM
@@ -171,6 +199,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
+    parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 
 
 def add_testing_args(parser: argparse.ArgumentParser) -> None:
@@ -188,6 +217,7 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
         help="Run onnx_test_runner against test data. Only used in ONNX Runtime's CI pipelines",
     )
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc executable.")
+    parser.add_argument("--cmake_deps_mirror_dir", help="Path to the local mirror of cmake dependencies.")
     parser.add_argument("--fuzz_testing", action="store_true", help="Enable Fuzz testing.")
     parser.add_argument(
         "--enable_symbolic_shape_infer_tests",
@@ -197,7 +227,7 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--skip_onnx_tests", action="store_true", help="Explicitly disable ONNX related tests.")
     parser.add_argument("--skip_winml_tests", action="store_true", help="Explicitly disable WinML related tests.")
     parser.add_argument("--skip_nodejs_tests", action="store_true", help="Explicitly disable Node.js binding tests.")
-    parser.add_argument("--test_all_timeout", default="10800", help="Timeout for onnxruntime_test_all (seconds).")
+    parser.add_argument("--ctest_timeout", default="10800", help="Timeout provided to CTest --timeout (seconds).")
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test.")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument("--code_coverage", action="store_true", help="Generate code coverage report (Android only).")
@@ -342,11 +372,13 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.8", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.21", help="Specify version of emsdk.")
+    parser.add_argument(
+        "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
+    )
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD.")
     parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD.")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threading.")
-    parser.add_argument("--enable_wasm_memory64", action="store_true", help="Enable WebAssembly 64-bit memory.")
     parser.add_argument("--disable_wasm_exception_catching", action="store_true", help="Disable exception catching.")
     parser.add_argument(
         "--enable_wasm_api_exception_catching",
@@ -367,7 +399,8 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--emscripten_settings",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra emscripten settings (-s <key>=<value>). Provide as <key>=<value>.",
     )
 
@@ -397,6 +430,7 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
     parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
+    parser.add_argument("--caller_framework", type=str, help="Name of the framework calling ONNX Runtime.")
 
     # Cross-compilation targets hosted on Windows
     parser.add_argument(
@@ -517,13 +551,22 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float8", "optional", "sparsetensor"],
+        choices=["float4", "float8", "optional", "sparsetensor"],
         help="Disable selected data types.",
     )
     parser.add_argument(
         "--disable_exceptions",
         action="store_true",
         help="Disable exceptions (requires --minimal_build).",
+    )
+
+
+def add_client_package_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for client package build package."""
+    parser.add_argument(
+        "--client_package_build",
+        action="store_true",
+        help="Create ORT package with default settings more appropriate for client/on-device workloads.",
     )
 
 
@@ -553,7 +596,8 @@ def add_csharp_binding_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--msbuild_extra_options",
         nargs="+",
-        action="append",
+        action="extend",
+        default=[],
         help="Extra MSBuild properties (/p:key=value). Provide as key=value.",
     )
 
@@ -603,16 +647,17 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         help="Enable CUDA kernel profiling (requires CUPTI in PATH).",
     )
 
-    # --- ROCm ---
-    rocm_group = parser.add_argument_group("ROCm Execution Provider")
-    rocm_group.add_argument("--use_rocm", action="store_true", help="Enable ROCm EP.")
-    rocm_group.add_argument("--rocm_version", help="ROCm stack version.")
-    rocm_group.add_argument("--rocm_home", help="Path to ROCm installation directory.")
-    # ROCm-specific profiling
-    rocm_group.add_argument(
-        "--enable_rocm_profiling",
-        action="store_true",
-        help="Enable ROCm kernel profiling.",
+    # --- CPU ---
+    cpu_group = parser.add_argument_group("CPU Execution Provider")
+    cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
+    # The following enables building ORT with NCHWc Neon ARM kernels.
+    # At the time of writing, it is turned OFF by default because its performance relative to "regular" NCHW kernels
+    # is not good at smaller thread counts. But its speed-up is non-negligible with higher thread counts on supporting
+    # ARM platforms.
+    # Once the gap is closed for smaller thread counts, it can be turned on by default.
+    # See https://github.com/microsoft/onnxruntime/pull/25580#issuecomment-3335056846 for benchmarking details.
+    cpu_group.add_argument(
+        "--enable_arm_neon_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels."
     )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
@@ -660,6 +705,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
+    trt_group.add_argument("--tensorrt_rtx_home", help="Path to TensorRT RTX installation directory.")
 
     # --- Nv ---
     nv_group = parser.add_argument_group("Nv Execution Provider")
@@ -730,6 +776,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group = parser.add_argument_group("MIGraphX Execution Provider")
     migx_group.add_argument("--use_migraphx", action="store_true", help="Enable MIGraphX EP.")
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
+    # --rocm_version and --rocm_home are deprecated. See https://github.com/microsoft/onnxruntime/issues/26801.
+    migx_group.add_argument("--rocm_version", help="ROCm stack version. This option is deprecated and has no effect.")
+    migx_group.add_argument(
+        "--rocm_home", help="Path to ROCm installation directory. This option is deprecated and has no effect."
+    )
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")
@@ -741,9 +792,21 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
     # --- WebGPU ---
     webgpu_group = parser.add_argument_group("WebGPU Execution Provider")
-    webgpu_group.add_argument("--use_webgpu", action="store_true", help="Enable WebGPU EP.")
+    webgpu_group.add_argument(
+        "--use_webgpu",
+        nargs="?",
+        const="static_lib",
+        type=_webgpu_verify_library_kind,
+        help="Enable WebGPU EP. Optionally specify 'static_lib' (default) or 'shared_lib'.",
+    )
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
+    )
+    webgpu_group.add_argument(
+        "--wgsl_template",
+        choices=["static", "dynamic"],
+        default="static",  # By default, use static WGSL template generation
+        help="Specify the generator for WebGPU WGSL template generation.",
     )
 
     # --- XNNPACK ---
@@ -765,9 +828,6 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ms_experimental", action="store_true", help="Build Microsoft experimental operators.")
     parser.add_argument(
         "--enable_msinternal", action="store_true", help="[MS Internal] Enable Microsoft internal build features."
-    )
-    parser.add_argument(
-        "--use_triton_kernel", action="store_true", help="Use Triton compiled kernels (requires Triton)."
     )
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
     parser.add_argument(
@@ -835,6 +895,7 @@ def parse_arguments() -> argparse.Namespace:
     add_dependency_args(parser)
     add_extension_args(parser)
     add_size_reduction_args(parser)
+    add_client_package_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)

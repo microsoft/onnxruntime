@@ -82,20 +82,13 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     target_include_directories(onnxruntime_training_runner PRIVATE ${NCCL_INCLUDE_DIRS})
   endif()
 
-  if (onnxruntime_USE_ROCM)
-    add_definitions(-DUSE_ROCM=1)
-    target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_ROCM_HOME}/include)
-  endif()
+
 
   check_cxx_compiler_flag(-Wno-maybe-uninitialized HAS_NO_MAYBE_UNINITIALIZED)
   if(UNIX AND NOT APPLE)
     if (HAS_NO_MAYBE_UNINITIALIZED)
       target_compile_options(onnxruntime_training_runner PUBLIC "-Wno-maybe-uninitialized")
     endif()
-  endif()
-
-  if (onnxruntime_USE_ROCM)
-    target_compile_options(onnxruntime_training_runner PUBLIC -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
   endif()
 
   set_target_properties(onnxruntime_training_runner PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -175,11 +168,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
 
   onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers::flatbuffers Boost::mp11 safeint_interface)
   target_include_directories(onnxruntime_training_bert PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
-
-  # ROCM provider sources are generated, need to add include directory for generated headers
-  if (onnxruntime_USE_ROCM)
-    target_include_directories(onnxruntime_training_bert PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime)
-  endif()
 
   target_link_libraries(onnxruntime_training_bert PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_training_bert PROPERTIES FOLDER "ONNXRuntimeTest")

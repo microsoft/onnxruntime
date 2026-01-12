@@ -10,7 +10,8 @@ LearningModelOutputs::LearningModelOutputs(winml_experimental::LearningModelBuil
     builder_(builder) {
 }
 
-winml_experimental::LearningModelBuilder LearningModelOutputs::Add(winml::ILearningModelFeatureDescriptor const& output
+winml_experimental::LearningModelBuilder LearningModelOutputs::Add(
+  winml::ILearningModelFeatureDescriptor const& output
 ) {
   // Perform model update inside the builder
   auto model = builder_.as<winml_experimentalp::LearningModelBuilder>()->UseModel();

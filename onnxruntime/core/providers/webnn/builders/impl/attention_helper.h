@@ -9,8 +9,8 @@ namespace webnn {
 /*
     ScaledDotProductAttention Subgraph: The basis for MultiHeadAttention and GroupQueryAttention
     inputs: query, key, value, scale, attention mask, and reshape_output_shape (for reshape)
-    Abbreviatios: B is batch_size, S is query sequence_length, kv_S is key/value sequence length,
-                  N is number of attention heads, H is head size, W is hidden_size
+    Abbreviations: B is batch_size, S is query sequence_length, kv_S is key/value sequence length,
+                   N is number of attention heads, H is head size, W is hidden_size
 
   query         key
     |            |

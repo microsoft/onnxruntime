@@ -77,7 +77,7 @@ class GradientGraphBuilderTest(unittest.TestCase):
             ort_session = onnxruntime.InferenceSession(str(gradient_graph_path))
         except ValueError:
             # Sometimes it is required to pass the available providers.
-            from onnxruntime.capi import _pybind_state as C
+            from onnxruntime.capi import _pybind_state as C  # noqa: PLC0415
 
             available_providers = C.get_available_providers()
             ort_session = onnxruntime.InferenceSession(str(gradient_graph_path), providers=available_providers)

@@ -1,0 +1,13 @@
+Comment out variable unused in onnxruntime
+
+--- a/Eigen/src/Core/arch/ZVector/PacketMath.h.orig	2025-10-21 10:24:49.410176124 +0000
++++ b/Eigen/src/Core/arch/ZVector/PacketMath.h	2025-10-21 10:25:06.010176124 +0000
+@@ -101,7 +101,7 @@
+ 
+ static EIGEN_DECLARE_CONST_FAST_Packet4f(ZERO, 0);     //{ 0.0, 0.0, 0.0, 0.0}
+ static EIGEN_DECLARE_CONST_FAST_Packet4i(MINUS1, -1);  //{ -1, -1, -1, -1}
+-static Packet4f p4f_MZERO = {0x80000000, 0x80000000, 0x80000000, 0x80000000};
++//static Packet4f p4f_MZERO = {0x80000000, 0x80000000, 0x80000000, 0x80000000};
+ #endif
+ 
+ static Packet4i p4i_COUNTDOWN = {0, 1, 2, 3};

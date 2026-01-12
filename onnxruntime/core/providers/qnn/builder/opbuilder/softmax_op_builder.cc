@@ -56,22 +56,6 @@ std::vector<uint32_t> FlattenShapeFromAxis(const std::vector<uint32_t>& input_sh
   return output_shape;
 }
 
-std::vector<uint32_t> GetTransposePermToUseLastAxis(uint32_t input_rank, uint32_t axis) {
-  assert(axis < input_rank);
-  std::vector<uint32_t> transpose_perm;
-  transpose_perm.reserve(input_rank);
-
-  for (uint32_t dim = 0; dim < input_rank; dim++) {
-    transpose_perm.push_back(dim);
-  }
-
-  // Swap axis dim with last dim.
-  transpose_perm[axis] = input_rank - 1;
-  transpose_perm[input_rank - 1] = axis;
-
-  return transpose_perm;
-}
-
 Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                        const NodeUnit& node_unit,
                                        const logging::Logger& logger,
@@ -108,7 +92,7 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     Given an input with shape=(3, 4, 5) and axis=0. Its behavior is to reshape the input to (1, 60), perform softmax,
     and then reshape back to (3, 4, 5).
     */
-    std::string reshape_output_name = input_name + "_ort_qnn_ep_reshape";
+    std::string reshape_output_name = utils::GetUniqueName(input_name, "_reshape");
     std::vector<uint32_t> reshape_output_shape = FlattenShapeFromAxis(input_info.shape, axis);
 
     // Input is dynamic, so add reshape node before input.
@@ -130,9 +114,11 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     input dimension.
     QNN EP is able to support arbitrary axis attribute by wrapping transposes around the operator.
     */
-    std::string transpose_output_name = input_name + "_ort_qnn_ep_transpose";
-    std::vector<uint32_t> transpose_perm = GetTransposePermToUseLastAxis(static_cast<uint32_t>(input_rank),
-                                                                         static_cast<uint32_t>(axis));
+    std::string transpose_output_name = utils::GetUniqueName(input_name, "_transpose");
+    std::vector<uint32_t> transpose_perm;
+    ORT_RETURN_IF_ERROR(utils::GetPermToLastAxis(static_cast<uint32_t>(axis),
+                                                 static_cast<uint32_t>(input_rank),
+                                                 transpose_perm));
 
     std::vector<uint32_t> transpose_output_shape = input_info.shape;
     transpose_output_shape[input_rank - 1] = input_info.shape[axis];
@@ -182,7 +168,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
   size_t output_rank = output_info.shape.size();
 
   if (opset_version < 13) {
-    std::string reshape_input_name = orig_output_name + "_ort_qnn_ep_reshape";
+    std::string reshape_input_name = utils::GetUniqueName(orig_output_name, "_reshape");
 
     std::vector<uint32_t> reshape_input_shape = FlattenShapeFromAxis(output_info.shape, axis);
     if (axis == 0) {
@@ -198,7 +184,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
     QnnTensorWrapper output_tensorwrapper(reshape_input_name, QNN_TENSOR_TYPE_NATIVE, output_info.qnn_data_type,
                                           output_info.quant_param.Copy(), std::vector<uint32_t>(reshape_input_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       GetQnnOpType(node_unit.OpType()),
                                                       std::move(input_names),
@@ -217,7 +203,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                                                          false,
                                                          is_graph_output));
   } else if (is_npu_backend && axis != static_cast<int32_t>(output_rank) - 1) {
-    std::string transpose_input_name = orig_output_name + "_ort_qnn_ep_transpose";
+    std::string transpose_input_name = utils::GetUniqueName(orig_output_name, "_transpose");
 
     std::vector<uint32_t> transpose_input_shape = output_info.shape;
     transpose_input_shape[output_rank - 1] = output_info.shape[axis];
@@ -234,7 +220,7 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
     QnnTensorWrapper output_tensorwrapper(transpose_input_name, QNN_TENSOR_TYPE_NATIVE, output_info.qnn_data_type,
                                           output_info.quant_param.Copy(), std::vector<uint32_t>(transpose_input_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       GetQnnOpType(node_unit.OpType()),
                                                       std::move(input_names),
@@ -243,8 +229,10 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                       "Failed to add node.");
 
     const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(orig_output_name);
-    std::vector<uint32_t> transpose_perm = GetTransposePermToUseLastAxis(static_cast<uint32_t>(output_rank),
-                                                                         static_cast<uint32_t>(axis));
+    std::vector<uint32_t> transpose_perm;
+    ORT_RETURN_IF_ERROR(utils::GetPermToLastAxis(static_cast<uint32_t>(axis),
+                                                 static_cast<uint32_t>(output_rank),
+                                                 transpose_perm));
 
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(),
                                                            transpose_input_name,

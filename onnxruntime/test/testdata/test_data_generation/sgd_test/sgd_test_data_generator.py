@@ -109,8 +109,8 @@ def generate_sgd_test_data(seed, _model_setup_func, data_func, train_step_count,
         "Parameters": p_dict,
         "Gradients": g_dict,
     }
-    import json
-    import os
+    import json  # noqa: PLC0415
+    import os  # noqa: PLC0415
 
     directory = device
     if not os.path.exists(directory):

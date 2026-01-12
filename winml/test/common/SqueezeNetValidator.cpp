@@ -148,7 +148,8 @@ void ModelValidator::FnsCandy16(
     /*auto outputTensorT = */ result.Outputs().Lookup(outputDataBindingName).as<TensorFloat16Bit>();
   } else {
     if (result.Outputs().Lookup(outputDataBindingName) != outputTensor) {
-      throw winrt::hresult_invalid_argument(L"Evaluation Results lookup don't match LearningModelBinding Output Tensor."
+      throw winrt::hresult_invalid_argument(
+        L"Evaluation Results lookup don't match LearningModelBinding Output Tensor."
       );
     }
 

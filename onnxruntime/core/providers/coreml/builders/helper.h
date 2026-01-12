@@ -48,5 +48,10 @@ bool CheckIsConstantInitializer(const NodeArg& node_arg, const GraphViewer& grap
 // This is to detect if the current system has Apple Neural Engine
 bool HasNeuralEngine();
 
+// See this issue, https://github.com/apple/coremltools/issues/1003
+// https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
+// root cause.
+bool CheckShapeForConvMemoryLimit(gsl::span<const int64_t> shape, const logging::Logger& logger);
+
 }  // namespace coreml
 }  // namespace onnxruntime

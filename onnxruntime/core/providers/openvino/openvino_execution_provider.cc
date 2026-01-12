@@ -12,14 +12,18 @@
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/ov_versions/capability.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
+#include "core/providers/openvino/exceptions.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "openvino/core/version.hpp"
 #ifdef USE_OVEP_NPU_MEMORY
 #include "core/providers/openvino/ov_allocator.h"
 #endif
+#include "ov_interface.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
+
+std::atomic<uint32_t> OpenVINOExecutionProvider::global_session_counter_{0};
 
 // Parking this code here for now before it's moved to the factory
 #if defined OPENVINO_CONFIG_HETERO || defined OPENVINO_CONFIG_MULTI || defined OPENVINO_CONFIG_AUTO
@@ -52,12 +56,18 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
 }
 #endif
 
-OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context)
+OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider},
       session_context_(info),
-      shared_context_{shared_context},
-      ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
+      ov_core_(OVCore::Get()),
+      shared_context_manager_(SharedContextManager::Get()),
+      ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger(), shared_context_manager_} {
   InitProviderOrtApi();
+#ifdef _WIN32
+  session_id_ = global_session_counter_.fetch_add(1) + 1;
+  // Trace all runtime options (includes both session and provider options)
+  OVTracing::Instance().LogAllRuntimeOptions(session_id_, session_context_);
+#endif
 }
 
 OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {
@@ -94,101 +104,104 @@ common::Status OpenVINOExecutionProvider::Compile(
   auto& logger = *GetLogger();
   Status status = Status::OK();
 
-  if (!fused_nodes.empty()) {
-    // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
-    const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
-    session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
-    session_context_.onnx_opset_version =
-        graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
-  }
-
-  // Temporary code to read metadata before it moves to the .bin
-  auto& metadata = shared_context_->shared_weights.metadata;
-  if (session_context_.so_share_ep_contexts && metadata.empty()) {
-    // Metadata is always read from model location, this could be a source or epctx model
-    fs::path metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    std::ifstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file >> metadata;
+  try {
+    if (session_context_.so_context_enable && session_context_.so_context_embed_mode && session_context_.so_share_ep_contexts) {
+      return Status(common::StatusCategory::ONNXRUNTIME, common::EP_FAIL,
+                    std::string("Invalid EP context configuration: ") + kOrtSessionOptionEpContextEmbedMode + " must be 0 if " + kOrtSessionOptionShareEpContexts + " is 1.");
     }
-  }
 
-  struct OpenVINOEPFunctionState {
-    AllocateFunc allocate_func = nullptr;
-    DestroyFunc destroy_func = nullptr;
-    AllocatorHandle allocator_handle = nullptr;
-    BackendManager& backend_manager;
-  };
+    if (!fused_nodes.empty()) {
+      // Assume these properties are constant for all the model subgraphs, otherwise move to SubGraphContext
+      const auto& graph_body_viewer_0 = fused_nodes[0].filtered_graph.get();
+      session_context_.onnx_model_path_name = graph_body_viewer_0.ModelPath().string();
+      session_context_.onnx_opset_version =
+          graph_body_viewer_0.DomainToVersionMap().at(kOnnxDomain);
+    }
 
-  for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
+    shared_context_ = ep_ctx_handle_.Initialize(fused_nodes, session_context_);
+    ORT_ENFORCE(shared_context_,
+                "Failed to create or retrieve SharedContext");
 
-    NodeComputeInfo compute_info;
-
-    // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
-    // For precompiled blob, directly load the model instead of compiling the model
-    // For original model, check if the user wants to export a model with pre-compiled blob
-
-    auto& backend_manager = backend_managers_.emplace_back(session_context_,
-                                                           *shared_context_,
-                                                           fused_node,
-                                                           graph_body_viewer,
-                                                           logger,
-                                                           ep_ctx_handle_);
-
-    compute_info.create_state_func =
-        [&backend_manager](ComputeContext* context, FunctionState* state) {
-          OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState{
-              .allocate_func = context->allocate_func,
-              .destroy_func = context->release_func,
-              .allocator_handle = context->allocator_handle,
-              .backend_manager = backend_manager};
-          *state = static_cast<FunctionState>(p);
-          return 0;
-        };
-
-    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
-      auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
-      try {
-        function_state->backend_manager.Compute(context);
-      } catch (const std::exception& ex) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
-      }
-      return Status::OK();
+    struct OpenVINOEPFunctionState {
+      AllocateFunc allocate_func = nullptr;
+      DestroyFunc destroy_func = nullptr;
+      AllocatorHandle allocator_handle = nullptr;
+      BackendManager& backend_manager;
     };
 
-    compute_info.release_state_func =
-        [](FunctionState state) {
-          if (state) {
-            OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
-            delete function_state;
-          }
-        };
+    for (const FusedNodeAndGraph& fused_node_graph : fused_nodes) {
+      const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+      const Node& fused_node = fused_node_graph.fused_node;
 
-    node_compute_funcs.push_back(std::move(compute_info));
+      NodeComputeInfo compute_info;
 
-    if (!status.IsOK()) {
-      break;
+      // During backend creation, we check if user wants to use precompiled blob onnx model or the original model
+      // For precompiled blob, directly load the model instead of compiling the model
+      // For original model, check if the user wants to export a model with pre-compiled blob
+
+      auto& backend_manager = backend_managers_.emplace_back(session_context_,
+                                                             *shared_context_,
+                                                             fused_node,
+                                                             graph_body_viewer,
+                                                             logger,
+                                                             ep_ctx_handle_);
+      compute_info.create_state_func =
+          [&backend_manager](ComputeContext* context, FunctionState* state) {
+            OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState{
+                .allocate_func = context->allocate_func,
+                .destroy_func = context->release_func,
+                .allocator_handle = context->allocator_handle,
+                .backend_manager = backend_manager};
+            *state = static_cast<FunctionState>(p);
+            return 0;
+          };
+
+      compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+        auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
+        try {
+          function_state->backend_manager.Compute(context);
+        } catch (const std::exception& ex) {
+          return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
+        }
+        return Status::OK();
+      };
+
+      compute_info.release_state_func =
+          [](FunctionState state) {
+            if (state) {
+              OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
+              delete function_state;
+            }
+          };
+
+      node_compute_funcs.push_back(std::move(compute_info));
     }
-  }
 
-  if (session_context_.so_share_ep_contexts) {
-    fs::path metadata_filename;
-    if (session_context_.so_context_file_path.empty()) {
-      metadata_filename = session_context_.onnx_model_path_name.parent_path() / "metadata.bin";
-    } else {
-      metadata_filename = session_context_.so_context_file_path.parent_path() / "metadata.bin";
-    }
+    // Export compiled blobs as EPContext nodes if context enable is set
+    if (session_context_.so_context_enable) {
+      auto backend_it = backend_managers_.begin();
+      bool is_first = true;
 
-    // Metadata is generated only for shared contexts
-    // If saving metadata then save it to the provided path or ose the original model path
-    // Multiple calls to Compile() will update the metadata and for the last call
-    //   the resulting file will contain the aggregated content
-    std::ofstream file(metadata_filename, std::ios::binary);
-    if (file) {
-      file << metadata;
+      for (const auto& fused_node_graph : fused_nodes) {
+        const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+
+        // Set include_embed_data to true only for the first backend manager
+        backend_it->TryExportCompiledBlobAsEPCtxNode(graph_body_viewer, is_first);
+
+        is_first = false;
+        ++backend_it;
+      }
+
+      // bit clunky ideally we should try to fold this into ep context handler
+      if (!session_context_.so_context_embed_mode) {
+        shared_context_->Serialize();
+        if (session_context_.so_stop_share_ep_contexts) {
+          shared_context_manager_->ClearActiveSharedContext();
+        }
+      }
     }
+  } catch (const ovep_exception& ex) {
+    status = ex;
   }
 
   return status;
@@ -238,10 +251,39 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
         LOGS_DEFAULT(WARNING) << "Supported types are 'Efficient' and 'Default' \n";
       }
       if (workload_type != "") {
-        LOGS_DEFAULT(INFO) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
+        LOGS_DEFAULT(VERBOSE) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
         for (auto& backend : backend_managers_) {
-          ov::CompiledModel& ov_compiled_model = backend.GetOVCompiledModel();
-          ov_compiled_model.set_property(ov::workload_type(workload_type));
+          ov::CompiledModel ov_compiled_model = backend.GetOVCompiledModel();
+          if (ov_compiled_model) {
+            ov_compiled_model.set_property(ov::workload_type(workload_type));
+          } else {
+            LOGS_DEFAULT(VERBOSE) << "Model is not compiled in OV as its dynamic";
+            ov::AnyMap map;
+            map["WORKLOAD_TYPE"] = workload_type;
+            if (session_context_.device_type == "NPU")
+              session_context_.load_config["NPU"] = std::move(map);
+            else
+              ORT_THROW(" WORKLOAD_TYPE property is supported only for NPU");
+          }
+        }
+      }
+    } else if (key == "kvcache_rewind") {
+      // Convert kvcache_rewind value to int64_t
+      int64_t index;
+      try {
+        index = std::stoll(value);
+      } catch (const std::exception& e) {
+        LOGS_DEFAULT(WARNING) << "Conversion for kvcache_rewind string value to int64_t index failed."
+                              << "Exception:" + std::string(e.what());
+        return Status::OK();
+      }
+
+      // Trigger KVCache Rewind for target Backend
+      for (auto& backend : backend_managers_) {
+        if (index >= 0) {
+          backend.RewindKVCache(static_cast<size_t>(index));
+        } else {
+          LOGS_DEFAULT(WARNING) << "kvcache_rewind index is < 0:\t" << index;
         }
       }
     } else {

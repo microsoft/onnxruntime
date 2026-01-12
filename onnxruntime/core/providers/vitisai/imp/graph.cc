@@ -15,7 +15,7 @@
 
 #include "vaip/node.h"
 #include "vaip/node_arg.h"
-
+#include "./tensor_proto.h"
 namespace vaip {
 
 struct NodeEdgeT {
@@ -177,7 +177,9 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
   auto graph_proto_subgraph = graph.ToGraphProto();
   *model_proto->mutable_graph() = *graph_proto_subgraph;
   auto& logger = logging::LoggingManager::DefaultLogger();
-  auto model = Model::Create(std::move(*model_proto), ToPathString(filename), nullptr, logger);
+  // Reading initializer data from an external data file below will access the data file based on the directory of the model_path
+  // parameter. Thus, the path to the original model must be used here to make reading initializer data from an external file work.
+  auto model = Model::Create(std::move(*model_proto), graph.ModelPath(), nullptr, logger);
   auto status = model->MainGraph().Resolve();
   vai_assert(status.IsOK(), "graph resolve error:" + status.ErrorMessage());
   if (initializer_size_threshold == std::numeric_limits<size_t>::max()) {
@@ -203,6 +205,29 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
   vai_assert(result, "model serialize to ostream error");
 }
 
+vaip_core::DllSafe<std::string> graph_save_string(const Graph& graph) {
+  auto model_proto = const_cast<onnxruntime::Model&>(graph.GetModel()).ToProto();
+  auto graph_proto_subgraph = graph.ToGraphProto();
+  *model_proto->mutable_graph() = *graph_proto_subgraph;
+  auto& logger = logging::LoggingManager::DefaultLogger();
+  auto model = Model::Create(std::move(*model_proto), graph.ModelPath(), nullptr, logger);
+  model_proto = model->ToProto();
+  auto& metadata = model->MetaData();
+  if (!metadata.empty()) {
+    auto metadata_props = model_proto->mutable_metadata_props();
+    metadata_props->Clear();
+    for (auto& m : metadata) {
+      auto prop = metadata_props->Add();
+      *prop->mutable_key() = m.first;
+      *prop->mutable_value() = m.second;
+    }
+  }
+  std::string graph_string;
+  bool result = model_proto->SerializeToString(graph_string);
+  vai_assert(result, "model serialize to string error");
+  return vaip_core::DllSafe(graph_string);
+}
+
 Node& graph_fuse(Graph& graph, const std::string& name,
                  const std::string& op_type,
                  const std::vector<size_t>& nodes,
@@ -223,12 +248,6 @@ Node& graph_fuse(Graph& graph, const std::string& name,
   indexed_subgraph->SetMetaDef(std::move(meta_def));
 
   auto& fused_node = graph.FuseSubGraph(*indexed_subgraph, name);
-  auto function_body = fused_node.GetFunctionBody();
-  if (function_body) {
-    auto proto = function_body->Body().ToGraphProto();
-    *proto->mutable_name() = name;
-    fused_node.AddAttribute("body", *proto);
-  }
   for (auto&& o : fused_node.OutputDefs()) {
     graph.UpdateProducerNode(o->Name(), fused_node.Index());
   }
@@ -260,7 +279,7 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
   }
   for (auto& node : original_graph.Nodes()) {
     auto* node_proto = graph_proto->add_node();
-    node->ToProto(*node_proto, false);
+    node->ToProto(*node_proto, true);
     for (auto output : node->OutputDefs()) {
       if (output->Exists()) {
         auto* value_info = graph_proto->mutable_value_info()->Add();
@@ -284,7 +303,14 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
       cloned_tensor->add_dims(dim);
       size = size * dim;
     }
-    if (size >= external_data_threshold) {
+    auto ORT_MEM_ADDR_tag = process_ext_address(*original_tensor);
+    if (!ORT_MEM_ADDR_tag.empty()) {
+      cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+      auto external_data = cloned_tensor->mutable_external_data();
+      auto p = external_data->Add();
+      *p->mutable_key() = "location";
+      *p->mutable_value() = std::string("<") + graph_ptr;
+    } else if (size >= external_data_threshold) {
       cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
       auto external_data = cloned_tensor->mutable_external_data();
       auto p = external_data->Add();

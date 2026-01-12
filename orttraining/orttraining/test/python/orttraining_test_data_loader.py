@@ -51,7 +51,7 @@ def generate_sample(desc, device=None):
 
 class OrtTestDataset(Dataset):
     def __init__(self, input_desc, seq_len, dataset_len, device):
-        import copy
+        import copy  # noqa: PLC0415
 
         self.input_desc_ = copy.deepcopy(input_desc)
         for input_desc in self.input_desc_:

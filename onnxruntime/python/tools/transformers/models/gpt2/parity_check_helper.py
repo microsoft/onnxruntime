@@ -66,7 +66,7 @@ def inference(model_path, dummy_inputs, outputs_path, use_gpu):
 def generate_outputs_files(model_path, dummy_inputs, outputs_path, use_gpu):
     dir_path = Path(outputs_path)
     if dir_path.exists() and dir_path.is_dir():
-        import shutil
+        import shutil  # noqa: PLC0415
 
         shutil.rmtree(outputs_path)
     dir_path.mkdir(parents=True, exist_ok=True)
@@ -81,7 +81,7 @@ def post_processing(outputs_path, outputs_path_other):
     record = {}
     if_close = {}
 
-    import glob
+    import glob  # noqa: PLC0415
 
     for filename in glob.glob(os.path.join(outputs_path, "*.tensorproto")):
         filename_other = os.path.join(outputs_path_other, Path(filename).name)

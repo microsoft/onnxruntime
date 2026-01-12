@@ -58,7 +58,7 @@ def main():
     for warmup_name, num_warmup_steps in num_warmup_step_data_dict.items():
         pt_model = SingleParameterModule(dimension_in, dimension_hidden).to(device)
 
-        import tempfile
+        import tempfile  # noqa: PLC0415
 
         fp = tempfile.NamedTemporaryFile()  # noqa: SIM115
 
@@ -83,7 +83,7 @@ def main():
                     fp.name,
                 )
 
-        import json
+        import json  # noqa: PLC0415
 
         json_file_name = f"warmup_linear_scheduler_warmupstep-{warmup_name}.json"
         with open(json_file_name, "w", encoding="utf-8") as f:
@@ -105,7 +105,7 @@ def main():
             new_adamw_optimizer.zero_grad()
             new_scheduler.step()
 
-        import json
+        import json  # noqa: PLC0415
 
         json_file_name = f"warmup_linear_scheduler_warmupstep-{warmup_name}_restored.json"
         with open(json_file_name, "w", encoding="utf-8") as f:

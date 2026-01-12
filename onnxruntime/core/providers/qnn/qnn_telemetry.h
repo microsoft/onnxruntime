@@ -12,7 +12,6 @@
 #include <functional>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "core/providers/qnn/ort_api.h"
@@ -59,9 +58,9 @@ class QnnTelemetry {
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
 
-  static void RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback);
+  static void RegisterInternalCallback(const EtwInternalCallback& callback);
 
-  static void UnregisterInternalCallback(const std::string& cb_key);
+  static void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
  private:
   QnnTelemetry();
@@ -73,7 +72,7 @@ class QnnTelemetry {
   static uint32_t global_register_count_;
   static bool enabled_;
 
-  static std::unordered_map<std::string, EtwInternalCallback> callbacks_;
+  static std::vector<const EtwInternalCallback*> callbacks_;
   static std::mutex callbacks_mutex_;
   static std::mutex provider_change_mutex_;
   static UCHAR level_;

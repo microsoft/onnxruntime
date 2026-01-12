@@ -69,7 +69,7 @@ __global__ void kDequantizeBlockwise(
     __syncthreads();
     LoadChar(loadchar).Load(&(quant_data[i]), qvals, valid_items_load, 128);
 
-    #pragma unroll NUM_PER_TH
+#pragma unroll NUM_PER_TH
     for (int j = 0; j < NUM_PER_TH; j++) {
       vals[j * 2] = ScalarMul(quant_map[qvals[j] >> 4], local_abs_max);
       vals[j * 2 + 1] = ScalarMul(quant_map[qvals[j] & 0x0F], local_abs_max);
@@ -140,18 +140,18 @@ Status DequantizeBnb4<BFloat16>(
     int block_size,
     int numel,
     cudaStream_t stream) {
-  #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 800
-    CallkDequantizeBlockwise<nv_bfloat16>(
-        reinterpret_cast<const nv_bfloat16*>(quant_map),
-        reinterpret_cast<nv_bfloat16*>(output),
-        quant_data,
-        reinterpret_cast<const nv_bfloat16*>(absmax),
-        block_size,
-        numel,
-        stream);
-  #else
-    CallkDequantizeBlockwise<BFloat16>(quant_map, output, quant_data, absmax, block_size, numel, stream);
-  #endif
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 800
+  CallkDequantizeBlockwise<nv_bfloat16>(
+      reinterpret_cast<const nv_bfloat16*>(quant_map),
+      reinterpret_cast<nv_bfloat16*>(output),
+      quant_data,
+      reinterpret_cast<const nv_bfloat16*>(absmax),
+      block_size,
+      numel,
+      stream);
+#else
+  CallkDequantizeBlockwise<BFloat16>(quant_map, output, quant_data, absmax, block_size, numel, stream);
+#endif
 
   return Status::OK();
 }

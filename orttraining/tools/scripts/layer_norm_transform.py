@@ -154,7 +154,7 @@ def main():
 
     # Use ORT to verify the converted model. Notice that you must use python package from the
     # training branch because training requires some extra ops.
-    import onnxruntime as ort
+    import onnxruntime as ort  # noqa: PLC0415
 
     # We convert model to accept variable-length batch size, so it can be any positive integer.
     batch = 3

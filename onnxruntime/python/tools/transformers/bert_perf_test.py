@@ -68,7 +68,7 @@ def create_session(
     log_severity=2,
     tuning_results_path=None,
 ):
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     onnxruntime.set_default_logger_severity(log_severity)
 
@@ -80,12 +80,9 @@ def create_session(
     if use_gpu:
         if provider == "dml":
             execution_providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-        elif provider == "rocm":
-            execution_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
         elif provider == "migraphx":
             execution_providers = [
                 "MIGraphXExecutionProvider",
-                "ROCMExecutionProvider",
                 "CPUExecutionProvider",
             ]
         elif provider == "cuda":
@@ -113,6 +110,8 @@ def create_session(
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
     elif graph_optimization_level == 2:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    elif graph_optimization_level == 3:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_LAYOUT
     elif graph_optimization_level == 99:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     else:
@@ -126,11 +125,8 @@ def create_session(
     if use_gpu:
         if provider == "dml":
             assert "DmlExecutionProvider" in session.get_providers()
-        elif provider == "rocm":
-            assert "ROCMExecutionProvider" in session.get_providers()
         elif provider == "migraphx":
             assert "MIGraphXExecutionProvider" in session.get_providers()
-            assert "ROCMExecutionProvider" in session.get_providers()
         elif provider == "cuda":
             assert "CUDAExecutionProvider" in session.get_providers()
         elif provider == "tensorrt":
@@ -422,9 +418,9 @@ def parse_arguments():
         "--opt_level",
         required=False,
         type=int,
-        choices=[0, 1, 2, 99],
+        choices=[0, 1, 2, 3, 99],
         default=99,
-        help="onnxruntime optimization level: 0 - disable all, 1 - basic, 2 - extended, 99 - enable all.",
+        help="onnxruntime optimization level: 0 - disable all, 1 - basic, 2 - extended, 3 - layout, 99 - enable all.",
     )
 
     parser.add_argument(

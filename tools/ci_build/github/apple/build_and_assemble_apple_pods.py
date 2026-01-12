@@ -5,13 +5,16 @@
 
 import argparse
 import logging
+import os
 import pathlib
+import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
 
 from c.assemble_c_pod_package import assemble_c_pod_package
-from package_assembly_utils import PackageVariant, get_ort_version
+from package_assembly_utils import get_ort_version
 
 from objectivec.assemble_objc_pod_package import assemble_objc_pod_package
 
@@ -50,13 +53,6 @@ def parse_args():
         help="The version string of the pod. The same version is used for all pods.",
     )
 
-    parser.add_argument(
-        "--variant",
-        choices=PackageVariant.release_variant_names(),
-        default=PackageVariant.Full.name,
-        help="Pod package variant.",
-    )
-
     parser.add_argument("--test", action="store_true", help="Run tests on the framework and pod package files.")
     parser.add_argument(
         "--skip-build",
@@ -88,10 +84,6 @@ def parse_args():
 
 
 def run(arg_list, cwd=None):
-    import os
-    import shlex
-    import subprocess
-
     log.info("Running subprocess in '%s'\n  %s", cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list]))
 
     return subprocess.run(arg_list, check=True, cwd=cwd)
@@ -104,7 +96,6 @@ def main():
     staging_dir = args.staging_dir.resolve()
 
     # build framework
-    package_variant = PackageVariant[args.variant]
     framework_info_file = build_dir / "xcframework_info.json"
 
     log.info("Building Apple framework.")
@@ -132,8 +123,6 @@ def main():
             str(framework_info_file),
             "--c_framework_dir",
             str(build_dir / "framework_out"),
-            "--variant",
-            package_variant.name,
             "--test_project_stage_dir",  # use a specific directory so it's easier to debug
             str(build_dir / "test_apple_packages_staging"),
         ]
@@ -154,7 +143,6 @@ def main():
             framework_info_file=framework_info_file,
             framework_dir=build_dir / "framework_out" / "onnxruntime.xcframework",
             public_headers_dir=build_dir / "framework_out" / "Headers",
-            package_variant=package_variant,
         )
 
         if args.test:
@@ -169,7 +157,6 @@ def main():
             staging_dir=objc_pod_staging_dir,
             pod_version=args.pod_version,
             framework_info_file=framework_info_file,
-            package_variant=package_variant,
         )
 
         if args.test:

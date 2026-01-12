@@ -17,18 +17,34 @@ template <typename TIdx,
           typename TRank,
           typename = std::enable_if_t<std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>>>
 std::string GetElementAt(std::string_view var, const TIdx& idx, TRank rank, bool is_f16 = false) {
-  // "std::string::rfind(str, 0) == 0" is equivalent to "std::string::starts_with(str)" before C++20.
-  if (var.rfind("uniforms.", 0) == 0) {
-    if (rank > 4) {
-      if constexpr (std::is_integral_v<TIdx>) {
-        if (is_f16) {
-          return MakeStringWithClassicLocale(var, "[", idx / 8, "][", (idx % 8) / 4, "][", (idx % 8) % 4, "]");
+  if (var.starts_with("uniforms.")) {
+    if (is_f16) {
+      if (rank > 8) {
+        // array<vec4<u32>, N>
+        if constexpr (std::is_integral_v<TIdx>) {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, "[", idx / 8, "][", (idx % 8) / 2, "])[", (idx % 8) % 2, "]");
         } else {
-          return MakeStringWithClassicLocale(var, "[", idx / 4, "][", idx % 4, "]");
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, "[(", idx, ") / 8][((", idx, ") % 8) / 2])[((", idx, ") % 8) % 2]");
+        }
+      } else if (rank > 2) {
+        // vecN<u32>
+        if constexpr (std::is_integral_v<TIdx>) {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, "[", idx / 2, "])[", idx % 2, "]");
+        } else {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, "[(", idx, ") / 2])[(", idx, ") % 2]");
         }
       } else {
-        if (is_f16) {
-          return MakeStringWithClassicLocale(var, "[(", idx, ") / 8][(", idx, ") % 8 / 4][(", idx, ") % 8 % 4]");
+        // u32
+        if constexpr (std::is_integral_v<TIdx>) {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, ")[", idx % 2, "]");
+        } else {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, ")[(", idx, ") % 2]");
+        }
+      }
+    } else {
+      if (rank > 4) {
+        if constexpr (std::is_integral_v<TIdx>) {
+          return MakeStringWithClassicLocale(var, "[", idx / 4, "][", idx % 4, "]");
         } else {
           return MakeStringWithClassicLocale(var, "[(", idx, ") / 4][(", idx, ") % 4]");
         }
@@ -53,6 +69,8 @@ struct ShaderUsage {
     UseSetByIndices = 512,                // use implementation of fn set_{name}_by_indices
     UseGet = 1024,                        // use implementation of fn get_{name}
     UseGetByIndices = 2048,               // use implementation of fn get_{name}_by_indices
+    UseGetByOffsetSegments = 4096,        // use implementation of fn get_{name}_by_offset
+    UseSetByOffsetSegments = 8192,        // use implementation of fn set_{name}_by_offset
     UseUniform = 32768,                   // use uniform for shape and stride
   } usage;
 
@@ -141,7 +159,7 @@ class ShaderIndicesHelper {
 // A helper class to make it easier to generate shader code related to a variable setting/getting and its indices calculation.
 class ShaderVariableHelper : public ShaderIndicesHelper {
  public:
-  ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims);
+  ShaderVariableHelper(std::string_view name, ProgramVariableDataType type, ShaderUsage usage, const TensorShape& dims, uint32_t segments, uint64_t maxStorageBufferBindingSize);
 
   ShaderVariableHelper(ShaderVariableHelper&&) = default;
   ShaderVariableHelper& operator=(ShaderVariableHelper&&) = default;
@@ -186,6 +204,9 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   std::string_view StorageType() const;
   std::string_view ValueType() const;
   std::string_view ElementType() const;
+
+  uint32_t segments_ = 1;
+  uint64_t max_storage_buffer_binding_size_ = 0;
 
   friend class ShaderHelper;
 };

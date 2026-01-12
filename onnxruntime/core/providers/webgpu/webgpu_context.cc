@@ -10,7 +10,7 @@
 #endif
 
 #if !defined(__wasm__)
-#if !defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if !defined(BUILD_DAWN_SHARED_LIBRARY)
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
@@ -37,37 +37,13 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture) {
-  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
+void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
+  std::call_once(init_flag_, [this, &config]() {
     if (device_ == nullptr) {
       // Create wgpu::Adapter
-#if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
-      // If we are using the D3D12 backend on Windows and the build does not use external Dawn, dxil.dll and dxcompiler.dll are required.
-      //
-      // Dawn will try to load them later, but if they are in the different directory to the executable, it may fail to find them.
-      // To avoid this issue, we try to load them from the same directory as current module (usually onnxruntime.dll).
-      auto runtime_path = Env::Default().GetRuntimePath();
-      if (!runtime_path.empty()) {
-        Status status;
-        void* module_handle = nullptr;
-
-        PathString dxil_path = runtime_path + ToPathString(L"dxil.dll");
-        status = Env::Default().LoadDynamicLibrary(dxil_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxil_path, module_handle);
-        }
-
-        PathString dxcompiler_path = runtime_path + ToPathString(L"dxcompiler.dll");
-        status = Env::Default().LoadDynamicLibrary(dxcompiler_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxcompiler_path, module_handle);
-        }
-      }
-#endif
-
       wgpu::RequestAdapterOptions req_adapter_options = {};
-      req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
-      req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
+      req_adapter_options.backendType = static_cast<wgpu::BackendType>(config.backend_type);
+      req_adapter_options.powerPreference = static_cast<wgpu::PowerPreference>(config.power_preference);
 
 #if !defined(__wasm__)
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
@@ -140,8 +116,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 
     // cache device queue
     device_queue_ = device_.GetQueue();
-    // cache adapter info
-    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
     // cache device limits
     ORT_ENFORCE(Device().GetLimits(&device_limits_));
     // cache device features
@@ -150,35 +124,42 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     for (size_t i = 0; i < supported_features.featureCount; i++) {
       device_features_.insert(supported_features.features[i]);
     }
+    // cache adapter info
+#if !defined(__wasm__)
+    if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+      adapter_info_.nextInChain = &subgroup_matrix_configs_;
+    }
+#endif
+    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                               buffer_cache_config.storage.mode,
-                                               buffer_cache_config.uniform.mode,
-                                               buffer_cache_config.query_resolve.mode);
+                                               config.buffer_cache_config.storage.mode,
+                                               config.buffer_cache_config.uniform.mode,
+                                               config.buffer_cache_config.query_resolve.mode);
+
+    // create initializer buffer manager. cache is always disabled for initializer buffer manager
+    initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled);
 
     // create program manager
-    program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
+    program_mgr_ = std::make_unique<ProgramManager>(*this);
+
+    // create split-k config
+    split_k_config_ = std::make_unique<SplitKConfig>(adapter_info_);
 
     // set query type
 #if !defined(__wasm__)
-    if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
+    if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
       query_type_ = TimestampQueryType::InsidePasses;
     } else
 #endif
-        if (device_.HasFeature(wgpu::FeatureName::TimestampQuery)) {
+        if (DeviceHasFeature(wgpu::FeatureName::TimestampQuery)) {
       query_type_ = TimestampQueryType::AtPasses;
     } else {
       query_type_ = TimestampQueryType::None;
-    }
-    if (enable_pix_capture) {
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-      // set pix frame generator
-      pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
-                                                                       Device());
-#else
-    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
     }
   });
 }
@@ -191,7 +172,7 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
+Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -199,22 +180,29 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     return Status::OK();
   }
 
+  // validate inputs and outputs are on WebGPU buffers
   if (ValidationMode() >= ValidationMode::Basic) {
     ORT_ENFORCE(std::all_of(inputs.begin(), inputs.end(), [](const ProgramInput& input) {
                   const auto* tensor = input.tensor;
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All inputs must be tensors on WebGPU buffers.");
+
+    if (program.IndirectDispatchTensor() != nullptr) {
+      ORT_ENFORCE(!inputs.empty() && inputs.back().tensor == program.IndirectDispatchTensor(),
+                  "The indirect dispatch tensor must be the last input. "
+                  "Ensure no call to program.AddInput() occurs after program.SetIndirectDispatchTensor().");
+    }
 
     ORT_ENFORCE(std::all_of(outputs.begin(), outputs.end(), [](const ProgramOutput& output) {
                   const auto* tensor = output.tensor;
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All outputs must be tensors on WebGPU buffers.");
   }
@@ -265,18 +253,37 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     }
   }
 
+  // "Segments" is a feature that allows big buffer to be used in shader.
+  //
+  // For example, if `maxStorageBufferBindingSize` is 128MB, a 200MB sized input buffer can be split into two segments
+  // (128MB + 72MB) to be bound to the shader. In this case, the input segment count is 2. There will be 2 input
+  // bindings in the shader for this input buffer.
+  //
+  // See https://github.com/microsoft/onnxruntime/pull/25962 for more information.
+
+  std::vector<uint32_t> inputs_segments;
+  std::vector<uint32_t> outputs_segments;
+  ORT_RETURN_IF_ERROR(program_mgr_->CalculateSegmentsForInputsAndOutputs(program, inputs_segments, outputs_segments));
+
   uint32_t x = program.DispatchGroupSizeX();
   uint32_t y = program.DispatchGroupSizeY();
   uint32_t z = program.DispatchGroupSizeZ();
-  ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
+
+  // Skip normalization for indirect dispatch since dimensions are determined by the indirect buffer
+  if (program.IndirectDispatchTensor() == nullptr) {
+    ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
+  } else {
+    ORT_ENFORCE(x == 0 && y == 0 && z == 0,
+                "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
+  }
 
   bool is_1d_dispatch = (y == 1 && z == 1);
 
-  auto key = CalculateProgramCacheKey(program, is_1d_dispatch);
+  auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
 
   if (is_profiling_) {
-    PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
-                                          context.KernelContext().GetOpType(),
+    PendingKernelInfo pending_kernel_info(context.NodeName(),
+                                          context.OpType(),
                                           program.Name(),
                                           key,
                                           inputs,
@@ -292,6 +299,8 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     std::vector<int> shape_uniform_ranks;
     auto status = program_mgr_->Build(program,
                                       metadata,
+                                      inputs_segments,
+                                      outputs_segments,
 #ifndef NDEBUG  // if debug build
                                       key,
 #endif
@@ -368,26 +377,57 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       continue;
     }
 
-    bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
-
-    size_t element_size = ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)];
+    // Calculate the size and alignment of the uniform variable.
+    //
     // https://www.w3.org/TR/WGSL/#alignof
-    size_t base_alignment = is_f16
-                                ? (length > 4 ? 16 : length > 2 ? 8
-                                                                : length * element_size)
-                                : (length > 2 ? 16 : length * element_size);
-    size_t struct_size = is_f16 && length <= 4 ? length * element_size : 16;
+    //
+    // For f16:
+    // - length > 8      : array<vec4<u32>, N>   (align 16) (size 16 * N, N = ceil(length / 8))
+    // - length == 7 or 8: vec4<u32>             (align 16) (size 16)
+    // - length == 5 or 6: vec3<u32>             (align 16) (size 12)
+    // - length == 3 or 4: vec2<u32>             (align 8)  (size 8)
+    // - length == 1 or 2: u32                   (align 4)  (size 4)
+    //
+    // For other types (i32, u32, f32):
+    // - length > 4      : array<vec4<T>, N>     (align 16) (size 16 * N, N = ceil(length / 4))
+    // - length == 4     : vec4<T>               (align 16) (size 16)
+    // - length == 3     : vec3<T>               (align 16) (size 12)
+    // - length == 2     : vec2<T>               (align 8)  (size 8)
+    // - length == 1     : T                     (align 4)  (size 4)
+    //
 
-    current_offset = (current_offset + base_alignment - 1) / base_alignment * base_alignment;
+    const bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
+
+    size_t variable_alignment = 4;  // default alignment for scalar types
+    size_t variable_size = 4;       // default size for scalar types
+
+    if (is_f16) {
+      if (length > 6) {
+        variable_alignment = 16;
+        variable_size = 16 * ((length + 7) / 8);
+      } else if (length > 4) {
+        variable_alignment = 16;
+        variable_size = 12;
+      } else if (length > 2) {
+        variable_alignment = 8;
+        variable_size = 8;
+      }
+    } else {
+      if (length > 3) {
+        variable_alignment = 16;
+        variable_size = 16 * ((length + 3) / 4);
+      } else if (length > 2) {
+        variable_alignment = 16;
+        variable_size = 12;
+      } else if (length > 1) {
+        variable_alignment = 8;
+        variable_size = 8;
+      }
+    }
+    current_offset = (current_offset + variable_alignment - 1) / variable_alignment * variable_alignment;
     uniform_and_offsets.emplace_back(uniform, current_offset);
 
-    // For non-float16 type, when length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
-    // N = ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N * SizeOf(vec4<i32|u32|f32>).
-    // For float16 type, when length > 4, the uniform variable is of type array<mat2x4<f16>,N>, where
-    // N = ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte length is N * SizeOf(mat2x4<f16>).
-    size_t element_per_struct = is_f16 ? 8 : 4;
-    current_offset +=
-        length > 4 ? (length + element_per_struct - 1) / element_per_struct * struct_size : length * element_size;
+    current_offset += variable_size;
   }
 
   // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
@@ -396,6 +436,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
   WGPUBuffer uniform_buffer = nullptr;
+  const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   if (uniform_buffer_total_size > 0) {
     std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
 
@@ -403,7 +444,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    uniform_buffer = buffer_mgr.Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
@@ -411,26 +452,31 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   WriteTimestamp(num_pending_dispatches_ * 2);
 
+  const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
+
   std::vector<WGPUBuffer> bind_buffers;
-  bind_buffers.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
-  for (const auto& input : inputs) {
-    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
+  std::vector<uint32_t> bind_buffers_segments;
+  bind_buffers.reserve(total_buffer_count);
+  bind_buffers_segments.reserve(total_buffer_count);
+  for (size_t i = 0; i < inputs.size(); i++) {
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(inputs[i].tensor->DataRaw())));
+    bind_buffers_segments.push_back(inputs_segments[i]);
   }
-  for (const auto& output : outputs) {
-    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
+  for (size_t i = 0; i < outputs.size(); i++) {
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(outputs[i].tensor->MutableDataRaw()));
+    bind_buffers_segments.push_back(outputs_segments[i]);
   }
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
+    bind_buffers_segments.push_back(1);  // uniform buffer defaults to 1 segment
   }
 
-  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
-
+  LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_segments, *program_artifact, x, y, z, program.IndirectDispatchTensor());
   if (uniform_buffer) {
-    buffer_mgr_->Release(uniform_buffer);
+    buffer_mgr.Release(uniform_buffer);
   }
 
   WriteTimestamp(num_pending_dispatches_ * 2 + 1);
-
   ++num_pending_dispatches_;
 
   if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
@@ -438,7 +484,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     EndComputePass();
   }
   if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
-    Flush();
+    Flush(buffer_mgr);
     num_pending_dispatches_ = 0;
   }
 
@@ -452,6 +498,9 @@ std::vector<const char*> WebGpuContext::GetEnabledAdapterToggles() const {
   constexpr const char* toggles[] = {
       "use_dxc",
       "allow_unsafe_apis",
+#if defined(DAWN_ENABLE_VULKAN)
+      "use_vulkan_memory_model",
+#endif
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
 }
@@ -508,7 +557,15 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxBindGroups = adapter_limits.maxBindGroups;
   required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
-  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxStorageBuffersPerShaderStage = adapter_limits.maxStorageBuffersPerShaderStage;
+
+  if (max_storage_buffer_binding_size_ == 0) {
+    // If not set by the user, use the adapter limit.
+    required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  } else {
+    required_limits.maxStorageBufferBindingSize = max_storage_buffer_binding_size_;
+  }
+
   required_limits.maxBufferSize = adapter_limits.maxBufferSize;
   required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
   required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
@@ -651,7 +708,7 @@ Status WebGpuContext::PopErrorScope() {
   return status;
 }
 
-void WebGpuContext::Flush() {
+void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   if (!current_command_encoder_) {
     return;
   }
@@ -682,31 +739,47 @@ void WebGpuContext::Flush() {
     pending_queries_.emplace_back(std::move(pending_kernels_), query_read_buffer);
     pending_kernels_.clear();
   }
-
   auto command_buffer = current_command_encoder_.Finish();
   device_queue_.Submit(1, &command_buffer);
-  BufferManager().RefreshPendingBuffers();
+  if (graph_capture_state_ != GraphCaptureState::Replaying) {
+    buffer_mgr.RefreshPendingBuffers(graph_capture_state_);
+  }
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
 }
 
-void WebGpuContext::OnRunEnd() {
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  if (pix_frame_generator_) {
-    pix_frame_generator_->GeneratePIXFrame();
-  }
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
-}
-
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                                           const std::vector<WGPUBuffer>& bind_buffers,
+                                          const std::vector<uint32_t>& bind_buffers_segments,
                                           const ProgramArtifact& program_artifact,
-                                          uint32_t x, uint32_t y, uint32_t z) {
+                                          uint32_t x, uint32_t y, uint32_t z,
+                                          const Tensor* indirect_dispatch_tensor) {
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
-  for (WGPUBuffer buffer : bind_buffers) {
-    bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+
+  const uint64_t kMaxBufferSize = device_limits_.maxStorageBufferBindingSize;
+  for (size_t buffer_idx = 0; buffer_idx < bind_buffers.size(); ++buffer_idx) {
+    WGPUBuffer buffer = bind_buffers[buffer_idx];
+    const uint32_t total_segments = bind_buffers_segments[buffer_idx];
+    // `total_segments` we used is calculated by tensor size, not actual buffer size. Because for bucketed buffer,
+    // the actual buffer size may be larger than the tensor size, an extreme case is that tensor size = 127MB, buffer size = 256MB,
+    // maxStorageBufferBindingSize = 128MB, in this case we only need to bind 1 segment instead of 2 segments because
+    // there is no data for the second segment.
+    if (total_segments > 1) {
+      uint64_t offset = 0;
+      uint64_t buffer_size = wgpuBufferGetSize(buffer);
+      for (uint32_t segment = 0; segment < total_segments; ++segment) {
+        uint64_t segment_size = std::min(kMaxBufferSize, buffer_size - offset);
+        bind_group_entries.push_back({nullptr, entry_index++, buffer, offset, segment_size, nullptr, nullptr});
+        offset += segment_size;
+      }
+    } else {
+      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+    }
   }
+
+  ORT_ENFORCE(entry_index < device_limits_.maxBindingsPerBindGroup, "Number of bind group entries (", entry_index,
+              ") exceeds device limit (", device_limits_.maxBindingsPerBindGroup, ").");
 
   WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();
   WGPUBindGroupDescriptor bind_group_desc{};
@@ -716,15 +789,111 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
 
   auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
+  if (graph_capture_state_ == GraphCaptureState::Capturing) {
+    WGPUBuffer indirect_buffer = nullptr;
+    if (indirect_dispatch_tensor != nullptr) {
+      indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
+    }
+    external_captured_commands_->push_back({program_artifact.compute_pipeline,
+                                            bind_group,
+                                            bind_group_layout,
+                                            {x, y, z},
+                                            indirect_buffer});
+  } else {
+    compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
+    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
 
-  // TODO support graph capture
+    if (indirect_dispatch_tensor != nullptr) {
+      // Use indirect dispatch
+      WGPUBuffer indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
+      compute_pass_encoder.DispatchWorkgroupsIndirect(indirect_buffer, 0);
+    } else {
+      // Use direct dispatch
+      compute_pass_encoder.DispatchWorkgroups(x, y, z);
+    }
 
-  compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
-  wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
-  compute_pass_encoder.DispatchWorkgroups(x, y, z);
+    wgpuBindGroupRelease(bind_group);
+    wgpuBindGroupLayoutRelease(bind_group_layout);
+  }
+}
 
-  wgpuBindGroupRelease(bind_group);
-  wgpuBindGroupLayoutRelease(bind_group_layout);
+void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager) {
+  LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
+  // Flush any pending commands before we change the status
+  Flush(buffer_manager);
+
+  external_captured_commands_ = captured_commands;
+
+  // Make sure the external vector is empty before we start capturing
+  if (external_captured_commands_) {
+    external_captured_commands_->clear();
+  }
+
+  // TODO: support profiling with graph capture.
+  ORT_ENFORCE(!is_profiling_, "profiling is not supported yet under graph capture mode");
+
+  graph_capture_state_ = GraphCaptureState::Capturing;
+}
+
+void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager) {
+  LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
+  graph_capture_state_ = GraphCaptureState::Replaying;
+  // Replay all captured commands from the provided vector
+  const size_t command_count = captured_commands.size();
+  for (size_t i = 0; i < command_count; ++i) {
+    auto& command = captured_commands[i];
+    const auto& compute_pass_encoder = GetComputePassEncoder();
+    WriteTimestamp(num_pending_dispatches_ * 2);
+    compute_pass_encoder.SetPipeline(command.compute_pipeline);
+    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
+
+    if (command.indirect_buffer != nullptr) {
+      // Use indirect dispatch
+      compute_pass_encoder.DispatchWorkgroupsIndirect(command.indirect_buffer, 0);
+    } else {
+      // Use direct dispatch
+      compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
+    }
+
+    WriteTimestamp(num_pending_dispatches_ * 2 + 1);
+    ++num_pending_dispatches_;
+    if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
+        (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
+      EndComputePass();
+    }
+    if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
+      Flush(buffer_manager);
+      num_pending_dispatches_ = 0;
+    }
+  }
+
+  // Flush any remaining commands
+  Flush(buffer_manager);
+
+  graph_capture_state_ = GraphCaptureState::Default;
+}
+
+void WebGpuContext::CaptureEnd() {
+  LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
+
+  graph_capture_state_ = GraphCaptureState::Default;
+  external_captured_commands_ = nullptr;
+}
+
+void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
+  LOGS_DEFAULT(VERBOSE) << "ReleaseGraphResources: Releasing " << captured_commands.size() << " captured command resources";
+
+  for (auto& command : captured_commands) {
+    if (command.bind_group != nullptr) {
+      wgpuBindGroupRelease(command.bind_group);
+      command.bind_group = nullptr;
+    }
+
+    if (command.bind_group_layout != nullptr) {
+      wgpuBindGroupLayoutRelease(command.bind_group_layout);
+      command.bind_group_layout = nullptr;
+    }
+  }
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
@@ -742,11 +911,11 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                          dawn_proc_table = config.dawn_proc_table
 #endif
   ]() {
-  // Step.1 - setup dawn proc table (only for non-WASM build)
+  // Setup dawn proc table (only for non-WASM build)
 
 #if !defined(__wasm__)
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
     ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
 #else
 #if !defined(USE_EXTERNAL_DAWN)
@@ -759,14 +928,20 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     dawnProcSetProcs(dawn_procs);
 #endif
 #endif
+  });
 
-    // Step.2 - Create wgpu::Instance
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (default_instance_ == nullptr) {
+    // Create wgpu::Instance
+    wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
-    instance_desc.capabilities.timedWaitAnyEnable = true;
+    instance_desc.requiredFeatures = required_instance_features;
+    instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
     default_instance_ = wgpu::CreateInstance(&instance_desc);
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
-  });
+  }
 
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
@@ -780,12 +955,14 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                 "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode, config.preserve_device));
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
+                                                                    device,
+                                                                    config.validation_mode,
+                                                                    config.preserve_device,
+                                                                    config.max_storage_buffer_binding_size));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
@@ -793,6 +970,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
   it->second.ref_count++;
+
+  // perform initialization
+  it->second.context->Initialize(config);
+
   return *it->second.context;
 }
 
@@ -820,6 +1001,11 @@ void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
   contexts_.clear();
   default_instance_ = nullptr;
+}
+
+WebGpuContext& WebGpuContextFactory::DefaultContext() {
+  WebGpuContextConfig config{};
+  return WebGpuContextFactory::CreateContext(config);
 }
 
 void CleanupWebGpuContexts() {

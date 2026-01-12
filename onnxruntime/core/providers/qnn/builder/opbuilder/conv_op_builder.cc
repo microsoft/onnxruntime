@@ -24,7 +24,6 @@ static Status GetOnnxConvType(const std::string& onnx_op_type, OnnxConvType& con
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unsupported ONNX convolution op type: ", onnx_op_type.c_str());
   }
-
   return Status::OK();
 }
 
@@ -94,7 +93,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   NodeAttrHelper node_helper(node_unit);
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
-  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER" && auto_pad != "VALID",
                 "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
   OnnxConvType conv_type = {};
@@ -111,7 +110,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     }
   }
 
-  // Validate that weight is signed type for per-channel quantization (required by QNN docs).
+  // Validate quantization axis for per-channel quantized weights.
   bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   if (is_npu_backend) {
     const auto& input_1 = inputs[1];  // weight
@@ -120,14 +119,6 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(input_1, is_per_axis_quant, quant_axis));
 
     if (is_per_axis_quant) {
-      int32_t elem_data_type = 0;
-      ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(input_1.node_arg, elem_data_type));
-
-      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
-                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
-                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16);
-      ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized per-channel");
-
       if (conv_type == OnnxConvType::kConvTranspose) {
         ORT_RETURN_IF_NOT(quant_axis == 1,
                           "ConvTranspose's input[1] must be use axis == 1 for per-channel quantization");
@@ -171,7 +162,7 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     return ProcessConv2D3DInputs(qnn_model_wrapper, node_unit, logger, input_names, do_op_validation);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Conv only supports 3D(rank 5), 2D (rank 4) or 1D (rank 3) inputs.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Conv only supports 3D (rank 5), 2D (rank 4) or 1D (rank 3) inputs.");
 }
 
 Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -199,7 +190,7 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
     TensorInfo input_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input_info));
 
-    std::string actual_name = input_info.is_initializer ? input1_name : input1_name + "_ort_qnn_ep_transpose";
+    std::string actual_name = input_info.is_initializer ? input1_name : utils::GetUniqueName(input1_name, "_transpose");
     input_names.push_back(actual_name);
 
     std::vector<uint32_t> actual_shape;
@@ -245,6 +236,12 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
                     "Non-constant Conv inputs only support per-tensor quantization");
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Add HWCN Transpose node after input: " << input1_name;
+
+      if (!qnn_model_wrapper.IsQnnTensorWrapperExist(input1_name)) {
+        QnnTensorWrapper weight_tensor_wrapper;
+        ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], weight_tensor_wrapper));
+        ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor_wrapper)), "Failed to add weight tensor.");
+      }
 
       if (conv_type == OnnxConvType::kConv) {
         ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddNchwToHwcnTranspose(node_unit.Index(),
@@ -309,8 +306,7 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
 
       // Pop Conv weight. Insert Convert op after Weight
       input_names.pop_back();
-      const std::string& conv_output_name = node_unit.Outputs()[0].node_arg.Name();
-      std::string convert_output_name = weight_input_name + "_convert_" + conv_output_name;
+      std::string convert_output_name = utils::GetUniqueName(weight_input_name, "_convert");
 
       ORT_RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
                                                  weight_input_name,
@@ -331,7 +327,209 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   const bool has_bias_input = num_inputs == 3;
   if (has_bias_input) {
-    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));
+    const auto& bias_input = inputs[2];
+    TensorInfo bias_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(bias_input, bias_info));
+
+    // For static quantized bias, handle requantization if needed
+    if (bias_info.is_initializer && bias_info.quant_param.IsQuantized()) {
+      // Get activation and weight quantization parameters
+      TensorInfo input0_info = {};
+      TensorInfo input1_info = {};
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input1_info));
+
+      if (input0_info.quant_param.IsQuantized() && input1_info.quant_param.IsQuantized()) {
+        // Get activation scale (must be per-tensor for Conv)
+        float activation_scale = 1.0f;
+        const auto& act_quant_params = input0_info.quant_param.Get();
+        if (act_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+          activation_scale = act_quant_params.scaleOffsetEncoding.scale;
+        } else if (act_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET) {
+          activation_scale = act_quant_params.bwScaleOffsetEncoding.scale;
+        }
+
+        // Get weight scales (per-tensor or per-channel)
+        std::vector<float> weights_scales;
+
+        if (input1_info.quant_param.IsPerTensor()) {
+          // Handle per-tensor quantization (encodings 0 and 2)
+          const auto& weight_quant_params = input1_info.quant_param.Get();
+
+          if (weight_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+            weights_scales.push_back(weight_quant_params.scaleOffsetEncoding.scale);
+          } else if (weight_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET) {
+            weights_scales.push_back(weight_quant_params.bwScaleOffsetEncoding.scale);
+          }
+        } else {
+          // Handle per-channel quantization (encodings 1 and 3)
+          const auto& weight_quant_params = input1_info.quant_param.Get();
+
+          if (weight_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+            if (weight_quant_params.axisScaleOffsetEncoding.scaleOffset != nullptr &&
+                weight_quant_params.axisScaleOffsetEncoding.numScaleOffsets > 0) {
+              for (size_t i = 0; i < weight_quant_params.axisScaleOffsetEncoding.numScaleOffsets; ++i) {
+                weights_scales.push_back(weight_quant_params.axisScaleOffsetEncoding.scaleOffset[i].scale);
+              }
+            }
+          } else if (weight_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
+            if (weight_quant_params.bwAxisScaleOffsetEncoding.scales != nullptr &&
+                weight_quant_params.bwAxisScaleOffsetEncoding.numElements > 0) {
+              for (size_t i = 0; i < weight_quant_params.bwAxisScaleOffsetEncoding.numElements; ++i) {
+                weights_scales.push_back(weight_quant_params.bwAxisScaleOffsetEncoding.scales[i]);
+              }
+            }
+          }
+        }
+
+        // Safety check to prevent crashes
+        ORT_RETURN_IF_NOT(!weights_scales.empty(), "No weight scales found for quantized weights");
+
+        // Check bias quantization type
+        if (bias_info.quant_param.IsPerTensor()) {
+          float bias_scale = 0.0f;
+          int32_t bias_offset = 0;
+          const auto& bias_quant_params = bias_info.quant_param.Get();
+          if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+            bias_scale = bias_quant_params.scaleOffsetEncoding.scale;
+            bias_offset = bias_quant_params.scaleOffsetEncoding.offset;
+          } else if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET) {
+            bias_scale = bias_quant_params.bwScaleOffsetEncoding.scale;
+            bias_offset = bias_quant_params.bwScaleOffsetEncoding.offset;
+          } else {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported bias quantization encoding for per-tensor quantization.");
+          }
+
+          // Check if bias_offset = 0 AND bias_scale = (weights_scale[0] * activation_scale)
+          if (bias_offset == 0 && utils::CheckBiasScaleMatch(bias_scale, weights_scales[0], activation_scale, 1e-5f)) {
+            // No change needed - scales match and offset is 0
+          } else {
+            LOGS(logger, VERBOSE) << "Requantizing per-tensor bias '" << bias_input.node_arg.Name()
+                                  << "' from scale=" << bias_scale << ", offset=" << bias_offset
+                                  << " to scale=" << (weights_scales[0] * activation_scale) << ", offset=0";
+            // Need to requantize the bias tensor
+            std::vector<uint8_t> original_bias_data;
+            ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*bias_info.initializer_tensor, original_bias_data));
+
+            std::vector<float> current_scales = {bias_scale};
+            std::vector<int32_t> current_offsets = {bias_offset};
+            std::vector<uint8_t> requantized_bias_data;
+            std::vector<float> new_scales;
+            std::vector<int32_t> new_offsets;
+
+            ORT_RETURN_IF_ERROR(utils::RequantizeBiasTensor(
+                original_bias_data, bias_info.shape, current_scales, current_offsets,
+                weights_scales, activation_scale, bias_info.qnn_data_type,
+                requantized_bias_data, new_scales, new_offsets));
+
+            // Create new tensor wrapper with requantized data
+            std::string bias_name = bias_input.node_arg.Name();
+            QnnQuantParamsWrapper new_quant_params(new_scales[0], new_offsets[0]);
+            QnnTensorWrapper bias_tensorwrapper(bias_name, QNN_TENSOR_TYPE_STATIC, bias_info.qnn_data_type,
+                                                std::move(new_quant_params), std::vector<uint32_t>(bias_info.shape),
+                                                std::move(requantized_bias_data));
+            ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(bias_tensorwrapper)), "Failed to add requantized bias tensor.");
+            input_names.push_back(bias_name);
+            return Status::OK();  // We've handled the bias, return early
+          }
+        } else {
+          // Handle per-channel bias
+          const auto& bias_quant_params = bias_info.quant_param.Get();
+
+          if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET ||
+              bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
+            // Extract scales and offsets based on encoding type
+            std::vector<float> current_scales;
+            std::vector<int32_t> current_offsets;
+            int32_t quant_axis = 0;
+            size_t num_channels = 0;
+
+            if (bias_quant_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
+              // Safety checks for AXIS_SCALE_OFFSET encoding
+              ORT_RETURN_IF_NOT(bias_quant_params.axisScaleOffsetEncoding.scaleOffset != nullptr,
+                                "Invalid bias quantization parameters: scaleOffset is null");
+              ORT_RETURN_IF_NOT(bias_quant_params.axisScaleOffsetEncoding.numScaleOffsets > 0,
+                                "Invalid bias quantization parameters: numScaleOffsets is zero");
+
+              num_channels = bias_quant_params.axisScaleOffsetEncoding.numScaleOffsets;
+              quant_axis = bias_quant_params.axisScaleOffsetEncoding.axis;
+              for (size_t i = 0; i < num_channels; ++i) {
+                current_scales.push_back(bias_quant_params.axisScaleOffsetEncoding.scaleOffset[i].scale);
+                current_offsets.push_back(bias_quant_params.axisScaleOffsetEncoding.scaleOffset[i].offset);
+              }
+            } else {  // QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET
+              // Safety checks for BW_AXIS_SCALE_OFFSET encoding
+              ORT_RETURN_IF_NOT(bias_quant_params.bwAxisScaleOffsetEncoding.scales != nullptr,
+                                "Invalid bias quantization parameters: scales is null");
+              ORT_RETURN_IF_NOT(bias_quant_params.bwAxisScaleOffsetEncoding.offsets != nullptr,
+                                "Invalid bias quantization parameters: offsets is null");
+              ORT_RETURN_IF_NOT(bias_quant_params.bwAxisScaleOffsetEncoding.numElements > 0,
+                                "Invalid bias quantization parameters: numElements is zero");
+
+              num_channels = bias_quant_params.bwAxisScaleOffsetEncoding.numElements;
+              quant_axis = bias_quant_params.bwAxisScaleOffsetEncoding.axis;
+              for (size_t i = 0; i < num_channels; ++i) {
+                current_scales.push_back(bias_quant_params.bwAxisScaleOffsetEncoding.scales[i]);
+                current_offsets.push_back(bias_quant_params.bwAxisScaleOffsetEncoding.offsets[i]);
+              }
+            }
+
+            // Check if all offsets are 0 and scales match expected values
+            bool all_offsets_zero = true;
+            bool all_scales_match = true;
+
+            for (size_t i = 0; i < num_channels; ++i) {
+              if (current_offsets[i] != 0) {
+                all_offsets_zero = false;
+              }
+
+              // Calculate expected scale for this channel
+              // Use the corresponding weight scale if available, otherwise use the first one
+              float weight_scale = (i < weights_scales.size()) ? weights_scales[i] : weights_scales[0];
+
+              if (!utils::CheckBiasScaleMatch(current_scales[i], weight_scale, activation_scale, 1e-5f)) {
+                all_scales_match = false;
+              }
+            }
+
+            if (all_offsets_zero && all_scales_match) {
+              // No change needed - scales match and offsets are 0
+            } else {
+              // Need to requantize per-channel bias
+              LOGS(logger, VERBOSE) << "Requantizing per-channel bias '" << bias_input.node_arg.Name()
+                                    << "' with " << num_channels << " channels";
+
+              // Get current bias data and requantize
+              std::vector<uint8_t> original_bias_data;
+              ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*bias_info.initializer_tensor, original_bias_data));
+
+              std::vector<uint8_t> requantized_bias_data;
+              std::vector<float> new_scales;
+              std::vector<int32_t> new_offsets;
+
+              ORT_RETURN_IF_ERROR(utils::RequantizeBiasTensor(
+                  original_bias_data, bias_info.shape, current_scales, current_offsets,
+                  weights_scales, activation_scale, bias_info.qnn_data_type,
+                  requantized_bias_data, new_scales, new_offsets,
+                  quant_axis));
+
+              // Create new tensor wrapper with requantized data
+              std::string bias_name = bias_input.node_arg.Name();
+              QnnQuantParamsWrapper new_quant_params(new_scales, new_offsets, quant_axis, false);
+              QnnTensorWrapper bias_tensorwrapper(bias_name, QNN_TENSOR_TYPE_STATIC, bias_info.qnn_data_type,
+                                                  std::move(new_quant_params), std::vector<uint32_t>(bias_info.shape),
+                                                  std::move(requantized_bias_data));
+              ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(bias_tensorwrapper)), "Failed to add requantized bias tensor.");
+              input_names.push_back(bias_name);
+              return Status::OK();  // We've handled the bias, return early
+            }
+          }
+        }
+      }
+    }
+
+    // Process bias normally (non-quantized or static non-quantized or scales already match)
+    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, bias_input, logger, input_names));
   }
 
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 16 && QNN_API_VERSION_MINOR <= 18)
@@ -345,7 +543,7 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input1_info));
 
     if (input0_info.quant_param.IsPerTensor(/*include_bw*/ true) && input1_info.quant_param.IsQuantized()) {
-      const std::string bias_name = qnn::utils::GetNodeName(node_unit) + "_implicit_bias_ort_qnn_ep";
+      const std::string bias_name = qnn::utils::GetUniqueName(node_unit, "_implicit_bias");
       std::vector<uint32_t> bias_shape = {input1_info.shape[0]};
       ORT_RETURN_IF_ERROR(AddZeroBiasInput(qnn_model_wrapper, input0_info.quant_param, input1_info.quant_param,
                                            std::move(bias_shape), bias_name, logger, input_names));
@@ -378,7 +576,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
 
     const std::string conv_input0_name = input0_info.is_initializer ? input0_name
-                                                                    : input0_name + "_ort_qnn_ep_reshape";
+                                                                    : utils::GetUniqueName(input0_name, "_reshape");
     input_names.push_back(conv_input0_name);
 
     if (!qnn_model_wrapper.IsQnnTensorWrapperExist(conv_input0_name)) {
@@ -427,7 +625,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
 
   //
   // Input 1: weight
-  // We need to first reshape the weight inorder to handle 1D convolutions with the Conv2d operator.
+  // We need to first reshape the weight in order to handle 1D convolutions with the Conv2d operator.
   // Next, we have to transpose the weight because ORT layout transformations do not change the weight layout.
   //
   {
@@ -435,7 +633,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
     TensorInfo input_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input_info));
 
-    std::string conv_weight_input_name = input_info.is_initializer ? input1_name : input1_name + "_ort_qnn_ep_transpose";
+    std::string conv_weight_input_name = input_info.is_initializer ? input1_name : utils::GetUniqueName(input1_name, "_transpose");
     input_names.push_back(conv_weight_input_name);
 
     // Create the shape after reshaping.
@@ -460,7 +658,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
     }
 
-    const std::string reshape_output = input1_name + "_ort_qnn_ep_reshape";
+    const std::string reshape_output = utils::GetUniqueName(input1_name, "_reshape");
     std::vector<uint8_t> unpacked_tensor;
     if (input_info.is_initializer) {
       //
@@ -512,6 +710,12 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       // Dynamic weight: Add nodes to reshape to 2D, and then transpose.
       ORT_RETURN_IF(input_info.quant_param.IsPerChannel(),
                     "Non-constant Conv inputs only support per-tensor quantization");
+
+      if (!qnn_model_wrapper.IsQnnTensorWrapperExist(input1_name)) {
+        QnnTensorWrapper weight_tensor_wrapper;
+        ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], weight_tensor_wrapper));
+        ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor_wrapper)), "Failed to add weight tensor.");
+      }
 
       bool is_graph_input = qnn_model_wrapper.IsGraphInput(input1_name);
       LOGS(logger, VERBOSE) << "Adding Reshape (to 2D) and HWCN Transpose node after input: " << input1_name;
@@ -667,16 +871,54 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     pads.assign(kernel_shape.size() * 2, 0);
     pads = node_helper.Get("pads", pads);
     auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
-    ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+    ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER" && auto_pad != "VALID",
                   "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
-    if (auto_pad != "NOTSET") {
+    std::vector<int64_t> output_shape_attribute_value = node_helper.Get("output_shape", std::vector<int64_t>());
+    bool has_output_shape_attr = !output_shape_attribute_value.empty();
+
+    if (conv_type == OnnxConvType::kConvTranspose && has_output_shape_attr) {
+      // Pads are auto generated using the formula:
+      // total_padding[i] = stride[i] * (input_size[i] - 1) + output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i]
+      // Then distributed using auto_pad rules.
+
+      LOGS(logger, VERBOSE) << "ConvTranspose with 'output_shape' attribute. Calculating pads since output_shape is specified, pad values are ignored";
+
+      // input_dims for calculation are (H, W, D...) excluding N, C
+      std::vector<uint32_t> input_dims(input_0_shape.begin() + 1, input_0_shape.end() - 1);
+
+      if (is_1d_conv) {  // Adjust input_dims and output_shape_attribute_value for 1D conv logic
+        input_dims.insert(input_dims.begin(), 1);
+        output_shape_attribute_value.insert(output_shape_attribute_value.begin(), 1);
+      }
+
+      pads.assign(kernel_shape.size() * 2, 0);  // Reset pads before filling
+      size_t rank = input_dims.size();
+
+      ORT_RETURN_IF_NOT(rank == output_shape_attribute_value.size(),
+                        "QNN EP: ConvTranspose 'output_shape' attribute rank mismatch "
+                        "with input dims for padding calculation.");
+
+      for (size_t dim = 0; dim < rank; ++dim) {
+        int64_t pad_head = 0;
+        int64_t pad_tail = 0;
+        AutoPadType pad_type = StringToAutoPadType(auto_pad);  // Use current auto_pad for distribution
+
+        auto total_pad = ComputeTotalPad(input_dims[dim], strides[dim], output_padding[dim],
+                                         kernel_shape[dim], dilations[dim], output_shape_attribute_value[dim]);
+        DistributePadding(pad_type, total_pad, pad_head, pad_tail);
+
+        pads[dim] = narrow<uint32_t>(pad_head);
+        pads[rank + dim] = narrow<uint32_t>(pad_tail);
+      }
+
+    } else if (auto_pad != "NOTSET") {  // Case: auto_pad is SAME_UPPER/LOWER/VALID, no output_shape attribute
       auto pad_type = StringToAutoPadType(auto_pad);
       // skip N, C, input0 shape NHWC
       std::vector<uint32_t> input_dims(input_0_shape.begin() + 1, input_0_shape.end() - 1);
       std::vector<uint32_t> output_dims(output_shape.begin() + 1, output_shape.end() - 1);
       if (is_1d_conv) {
-        // insert Hight = 1 for 1D
+        // insert Height = 1 for 1D
         input_dims.insert(input_dims.begin(), 1);
         output_dims.insert(output_dims.begin(), 1);
       }
@@ -713,7 +955,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       }
     }
 
-    ReArranagePads(pads);
+    ReArrangePads(pads);
     uint32_t pad_size = narrow<uint32_t>(pads.size() / 2);
     QnnParamWrapper pad_amount_paramwrapper(node_unit.Index(), node_unit.Name(), QNN_OP_CONV_2D_PARAM_PAD_AMOUNT,
                                             {pad_size, 2}, std::move(pads));
@@ -770,11 +1012,11 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
         output_shape[1],  // W
         output_shape[2],  // C
     };
-    const std::string conv_output_name = output_name + "_ort_qnn_ep_conv2d";
+    const std::string conv_output_name = utils::GetUniqueName(output_name, "_conv");
     QnnTensorWrapper output_tensorwrapper(conv_output_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type,
                                           output_quantize_param.Copy(), std::vector<uint32_t>(output_shape_2d));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       output_node_type,
                                                       std::move(input_names),
@@ -799,7 +1041,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, qnn_data_type,
                                           std::move(output_quantize_param), std::move(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       output_node_type,
                                                       std::move(input_names),

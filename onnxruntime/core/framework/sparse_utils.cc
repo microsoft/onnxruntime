@@ -79,9 +79,9 @@ Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Ten
 
   const bool is_string = src.IsDataTypeString();
 
-  if (is_string && dst_allocator->Info().device.Type() != OrtDevice::CPU) {
+  if (is_string && !dst_allocator->Info().device.UsesCpuMemory()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Unable to convert strings tensor to a sparse tensor that not on CPU");
+                           "Unable to convert strings tensor to a sparse tensor that is not on CPU");
   }
 
   const IDataTransfer* data_transfer = data_manager.GetDataTransfer(cpu_allocator->Info().device,

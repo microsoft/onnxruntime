@@ -8,10 +8,14 @@ namespace onnxruntime {
 namespace cuda {
 template <typename T>
 __global__ void _Clip(const T* input, T* output, const T* min, const T* max, T min_default, T max_default, size_t N) {
-  auto min_val = (min) ? *min : min_default; 
-  auto max_val = (max) ? *max : max_default; 
+  auto min_val = (min) ? *min : min_default;
+  auto max_val = (max) ? *max : max_default;
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  output[id] = (input[id] < min_val) ? min_val : ((input[id] > max_val) ? max_val : input[id]);
+
+  // output = Min(max, Max(input, min)). Note that min might be larger than max, so we need to compute in two steps.
+  auto value = input[id];
+  value = (value < min_val) ? min_val : value;
+  output[id] = (value > max_val) ? max_val : value;
 }
 
 template <typename T>
@@ -20,21 +24,21 @@ void ClipImpl(cudaStream_t stream, const T* input_data, T* output_data, const T*
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   union ConstAliasUnion {
-    const T *t;
-    const CudaT *cudaT;
-    ConstAliasUnion(const T* _t) { t = _t;}
+    const T* t;
+    const CudaT* cudaT;
+    ConstAliasUnion(const T* _t) { t = _t; }
   };
   union AliasUnion {
-    T *t;
-    CudaT *cudaT;
-    AliasUnion(T* _t) { t = _t;}
+    T* t;
+    CudaT* cudaT;
+    AliasUnion(T* _t) { t = _t; }
   };
   _Clip<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(((union ConstAliasUnion)input_data).cudaT,
                                                                           ((union AliasUnion)output_data).cudaT,
                                                                           ((union ConstAliasUnion)min).cudaT,
                                                                           ((union ConstAliasUnion)max).cudaT,
-                                                                          *((union AliasUnion)&min_default).cudaT,
-                                                                          *((union AliasUnion)&max_default).cudaT,
+                                                                          *((union AliasUnion) & min_default).cudaT,
+                                                                          *((union AliasUnion) & max_default).cudaT,
                                                                           count);
 }
 

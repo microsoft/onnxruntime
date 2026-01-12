@@ -152,8 +152,9 @@ Status CreateOrValidateOnQnn(
   ORT_RETURN_IF_ERROR(qnn_model_wrapper->MakeTensorWrapper(mul_input_other, fused_softmax_input));
   ORT_RETURN_IF_ERROR(qnn_model_wrapper->MakeTensorWrapper(softmax_output, fused_softmax_output));
 
+  const std::string node_name = onnxruntime::qnn::utils::GetUniqueName(*softmax);
   if (validate) {
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper->ValidateQnnNode(softmax->Name(),
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper->ValidateQnnNode(node_name,
                                                            QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                            QNN_OP_SOFTMAX,
                                                            {fused_softmax_input.GetQnnTensor()},
@@ -162,7 +163,7 @@ Status CreateOrValidateOnQnn(
   } else {
     ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensorWrapper(std::move(fused_softmax_input)), "Failed to add input");
     ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensorWrapper(std::move(fused_softmax_output)), "Failed to add output");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->CreateQnnNode(softmax->Name(),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper->CreateQnnNode(node_name,
                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                        QNN_OP_SOFTMAX,
                                                        {mul_input_other.node_arg.Name()},

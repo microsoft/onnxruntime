@@ -34,8 +34,6 @@ Example commands:
         python benchmark.py -e torchscript -g -p "fp16"
     Run ONNXRuntime and TorchScript on CPU for all models with quantization:
         python benchmark.py -e torchscript onnxruntime -p "int8" -o
-    Run OnnxRuntime with the ROCM provider and graph optimization script:
-        python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
     Run OnnxRuntime with bfloat16 fastmath mode kernels on aarch64 platforms with bfloat16 support:
         python benchmark.py --enable_arm64_bfloat16_fastmath_mlas_gemm
 
@@ -111,14 +109,13 @@ def run_onnxruntime(
     enable_arm64_bfloat16_fastmath_mlas_gemm,
     args,
 ):
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     results = []
     if (
         use_gpu
         and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers())
         and ("MIGraphXExecutionProvider" not in onnxruntime.get_available_providers())
-        and ("ROCMExecutionProvider" not in onnxruntime.get_available_providers())
         and ("DmlExecutionProvider" not in onnxruntime.get_available_providers())
     ):
         logger.error(
@@ -424,9 +421,9 @@ def run_pytorch(
 
 
 def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
-    from functools import wraps
+    from functools import wraps  # noqa: PLC0415
 
-    import tensorflow as tf
+    import tensorflow as tf  # noqa: PLC0415
 
     def run_func(func):
         @wraps(func)
@@ -464,7 +461,7 @@ def run_tensorflow(
 ):
     results = []
 
-    import tensorflow as tf
+    import tensorflow as tf  # noqa: PLC0415
 
     tf.config.threading.set_intra_op_parallelism_threads(num_threads)
 
@@ -513,7 +510,7 @@ def run_tensorflow(
 
                 logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")
 
-                import random
+                import random  # noqa: PLC0415
 
                 rng = random.Random()
                 values = [rng.randint(0, config.vocab_size - 1) for i in range(batch_size * sequence_length)]
@@ -571,7 +568,7 @@ def run_tensorflow(
                     results.append(result)
                 except RuntimeError as e:
                     logger.exception(e)
-                    from numba import cuda
+                    from numba import cuda  # noqa: PLC0415
 
                     device = cuda.get_current_device()
                     device.reset()
@@ -788,7 +785,7 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["migraphx", "rocm"]:
+    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["migraphx"]:
         logger.error("int8 is for CPU only")
         return
 

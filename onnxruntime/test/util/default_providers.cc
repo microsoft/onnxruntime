@@ -2,18 +2,20 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include "test/util/include/default_providers.h"
+
 #include <memory>
-#include "default_providers.h"
-#include "providers.h"
+
+#include "core/framework/session_options.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #ifdef USE_CUDA
-#include <core/providers/cuda/cuda_provider_options.h>
+#include "core/providers/cuda/cuda_provider_options.h"
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/session_options.h"
+#include "test/util/include/providers.h"
 
 namespace onnxruntime {
 
@@ -80,18 +82,7 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
 
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 #ifdef USE_MIGRAPHX
-  OrtMIGraphXProviderOptions params{
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      1,
-      "./compiled_model.mxr",
-      1,
-      "./compiled_model.mxr",
-      1};
-  return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
+  return MIGraphXProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -99,7 +90,7 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params) {
 #ifdef USE_MIGRAPHX
-  if (auto factory = MIGraphXProviderFactoryCreator::Create(params))
+  if (const auto factory = MIGraphXProviderFactoryCreator::Create(params); factory != nullptr)
     return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
@@ -228,20 +219,6 @@ std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_ar
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op) {
-#ifdef USE_ROCM
-  OrtROCMProviderOptions provider_options{};
-  provider_options.do_copy_in_default_stream = true;
-  provider_options.tunable_op_enable = test_tunable_op ? 1 : 0;
-  provider_options.tunable_op_tuning_enable = test_tunable_op ? 1 : 0;
-  provider_options.tunable_op_max_tuning_duration_ms = 0;
-  if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProvider();
-#endif
-  ORT_UNUSED_PARAMETER(test_tunable_op);
-  return nullptr;
-}
-
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
@@ -304,15 +281,31 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
-#ifdef USE_WEBGPU
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
   ConfigOptions config_options{};
   // Disable storage buffer cache
   ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
                                             webgpu::options::kBufferCacheMode_Disabled)
                   .IsOK());
+  if (!is_nhwc) {
+    // Enable NCHW support
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout,
+                                              webgpu::options::kPreferredLayout_NCHW)
+                    .IsOK());
+  }
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(is_nhwc);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(config_options);
   return nullptr;
 #endif
 }

@@ -31,12 +31,13 @@
 
 #pragma once
 
+#include "core/providers/cuda/curand_wrapper.h"
+
 #ifdef HAS_PYTORCH
 #include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <ATen/cuda/CUDAGraphsUtils.cuh>
 #endif
 
-#include <curand_kernel.h>
 #include <cmath>
 #include <cinttypes>
 #include <vector>

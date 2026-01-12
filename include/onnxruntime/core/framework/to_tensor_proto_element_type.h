@@ -10,8 +10,9 @@
 #include "core/graph/onnx_protobuf.h"
 #endif
 
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/framework/float4.h"
+#include "core/common/float8.h"
+#include "core/common/float16.h"
 #include "core/framework/int4.h"
 
 namespace onnxruntime {
@@ -98,6 +99,14 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float8E5
 }
 
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float4E2M1x2>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1;
+}
+#endif
+
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Int4x2>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT4;

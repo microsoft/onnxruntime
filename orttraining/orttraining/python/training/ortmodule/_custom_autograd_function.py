@@ -36,18 +36,18 @@ custom_autograd_function_enabler = Enabler()
 
 # Legacy API to enable the custom autograd, keep its name with default value for compatibility.
 def enable_custom_autograd_support(to_enable=True):
-    import atexit
+    import atexit  # noqa: PLC0415
 
-    from torch.onnx import register_custom_op_symbolic, unregister_custom_op_symbolic
+    from torch.onnx import register_custom_op_symbolic, unregister_custom_op_symbolic  # noqa: PLC0415
 
-    from onnxruntime.capi._pybind_state import (
+    from onnxruntime.capi._pybind_state import (  # noqa: PLC0415
         register_backward_runner,
         register_forward_runner,
         unregister_python_functions,
     )
-    from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
+    from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils  # noqa: PLC0415
 
-    from ._custom_autograd_function_exporter import _export
+    from ._custom_autograd_function_exporter import _export  # noqa: PLC0415
 
     if to_enable is True and custom_autograd_function_enabler.state is False:
         if custom_autograd_function_enabler.already_enabled is False:

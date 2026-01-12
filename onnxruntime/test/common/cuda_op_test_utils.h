@@ -35,5 +35,14 @@ inline bool NeedSkipIfCudaArchGreaterEqualThan(int max_cuda_architecture) {
   }
   return false;
 }
+
+inline bool CudaHasBF16Support() {
+  // only skip when CUDA ep is enabled.
+  if (DefaultCudaExecutionProvider().get() != nullptr) {
+    return HasCudaEnvironment(800);
+  }
+  return false;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -28,7 +28,7 @@ void Impl_MixedPrecisionScale(
     const SrcT* input_data,
     const float* scale_data,
     DstT* output_data,
-    size_t count){
+    size_t count) {
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _MixedPrecisionScale<SrcT, DstT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
@@ -39,12 +39,12 @@ void Impl_MixedPrecisionScale(
 }
 
 #define SPECIALIZE_MIXEDPRECISIONSCALE_IMPL(SrcT, DstT) \
-template void Impl_MixedPrecisionScale<SrcT, DstT>(     \
-    cudaStream_t stream,                          \
-    const SrcT* input_data,                             \
-    const float* scale_data,                            \
-    DstT* output_data,                                  \
-    size_t count);
+  template void Impl_MixedPrecisionScale<SrcT, DstT>(   \
+      cudaStream_t stream,                              \
+      const SrcT* input_data,                           \
+      const float* scale_data,                          \
+      DstT* output_data,                                \
+      size_t count);
 
 SPECIALIZE_MIXEDPRECISIONSCALE_IMPL(half, half)
 SPECIALIZE_MIXEDPRECISIONSCALE_IMPL(half, float)

@@ -6,15 +6,19 @@
 #include <cstdint>
 
 #include "core/common/status.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
-#include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
+#endif
+#include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
 constexpr int MatMulNBits_Input_B = 1;
@@ -25,34 +29,60 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+
+#if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
 using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
 
+constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
+constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
+
 template <typename T>
 void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
+  using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
+  KernelType cuda_kernel_type;
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    if (nbits_ == 8) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-    } else if (nbits_ == 4) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+    if (has_zero_points_) {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleAndZeros>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleAndZeros>>();
+      }
+    } else {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
+      }
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    if (nbits_ == 8) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-    } else if (nbits_ == 4) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+    if (has_zero_points_) {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleAndZeros>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleAndZeros>>();
+      }
+    } else {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+      }
     }
   }
 
-  using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
-  KernelType cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setQuant(nbits_, has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(block_size_);
+
+  auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+  gemmProfiler_->setAllocator(allocator);
 }
 
 template <typename T>
@@ -60,37 +90,38 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
   // Number of 16-bit elements after casting int8/int4 to fp16.
   int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
 
-  gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kHALF);
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kHALF);
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kBF16);
+  }
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
 }
 
 template <typename T>
-Status MatMulNBits<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc*/,
+Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
-  return Status::OK();
-}
-
-template <>
-Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                                       bool& is_packed,
-                                       PrePackedWeights* /*prepacked_weights*/) {
-  is_packed = false;
-  if (has_fpA_intB_gemm_) {
-    cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
-    if (input_idx == MatMulNBits_Input_B) {
-      ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream));
-      is_packed = true;
-    } else if (input_idx == MatMulNBits_Input_Scale) {
-      ORT_RETURN_IF_ERROR(PrePack_Scale(tensor, alloc, stream));
-      is_packed = true;
-    } else if (input_idx == MatMulNBits_Input_ZeroPoint) {
-      if (has_zero_points_) {
-        ORT_RETURN_IF_ERROR(PrePack_ZeroPoint(tensor, alloc, stream));
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
+    if (has_fpA_intB_gemm_) {
+      cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
+      if (input_idx == MatMulNBits_Input_B) {
+        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream));
+        is_prepacked_weight_ = true;
         is_packed = true;
+      } else if (input_idx == MatMulNBits_Input_Scale) {
+        ORT_RETURN_IF_ERROR(PrePack_Scale(tensor, alloc, stream));
+        is_prepacked_scale_ = true;
+        is_packed = true;
+      } else if (input_idx == MatMulNBits_Input_ZeroPoint) {
+        if (has_zero_points_) {
+          ORT_RETURN_IF_ERROR(PrePack_ZeroPoint(tensor, alloc, stream));
+          is_prepacked_zero_point_ = true;
+          is_packed = true;
+        }
       }
     }
   }
@@ -102,7 +133,7 @@ template <typename T>
 Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
                                  [[maybe_unused]] AllocatorPtr alloc,
                                  [[maybe_unused]] cudaStream_t stream) {
-  if constexpr (std::is_same_v<T, MLFloat16>) {
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     size_t n = static_cast<size_t>(N_);
     size_t k = static_cast<size_t>(K_);
 
@@ -126,28 +157,20 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
           stream, packed_transposed_weight, blob_data, n, k);
     }
 
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-
-    auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(packed_weight_bytes);
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(tranpose_weight_buffer.get(), packed_transposed_weight, packed_weight_bytes, cudaMemcpyDeviceToHost));
-
-    auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
-    bool force_interleave = false;
-
-    using onnxruntime::llm::kernels::cutlass_kernels::QuantType;
+    using onnxruntime::llm::kernels::weight_only::QuantType;
     QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
 
-    // TODO: Add a cuda kernle for preprocessing so that we can avoid copying the data back to CPU.
-    onnxruntime::llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
-        reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
-        reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
+    auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(32);
+    onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
+        stream,
+        sm_,
+        preprocessed_weight,
+        packed_transposed_weight,
+        permutation_map_buffer.get(),
         {static_cast<size_t>(k), static_cast<size_t>(n)},
-        quant_type,
-        force_interleave);
+        quant_type);
 
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_), cudaMemcpyHostToDevice));
-    CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
-
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
     DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
@@ -160,7 +183,7 @@ template <typename T>
 Status MatMulNBits<T>::PrePack_Scale([[maybe_unused]] const Tensor& tensor,
                                      [[maybe_unused]] AllocatorPtr alloc,
                                      [[maybe_unused]] cudaStream_t stream) {
-  if constexpr (std::is_same_v<T, MLFloat16>) {
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     size_t n = static_cast<size_t>(N_);
     size_t k = static_cast<size_t>(K_);
 
@@ -169,14 +192,15 @@ Status MatMulNBits<T>::PrePack_Scale([[maybe_unused]] const Tensor& tensor,
 
     fpA_intB_scale_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);  // Transient buffer.
 
-    typedef typename ToCudaType<T>::MappedType CudaT;
+    typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
     CudaT* transposed_scales = reinterpret_cast<CudaT*>(fpA_intB_scale_buffer_.get());
 
-    onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, n, k_blocks);
+    onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(
+        stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, n, k_blocks);
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
     DUMP_TENSOR_INIT();
-    DUMP_TENSOR_D("transposed_scales", transposed_scales, k_blocks, n);
+    DUMP_TENSOR_D("transposed_scales", transposed_scales, static_cast<int>(k_blocks), static_cast<int>(n));
   }
   return Status::OK();
 }
@@ -185,14 +209,14 @@ template <typename T>
 Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
                                          [[maybe_unused]] AllocatorPtr alloc,
                                          [[maybe_unused]] cudaStream_t stream) {
-  if constexpr (std::is_same_v<T, MLFloat16>) {
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     size_t n = static_cast<size_t>(N_);
     size_t k = static_cast<size_t>(K_);
 
     size_t k_blocks = (k + block_size_ - 1) / block_size_;
     size_t scale_bytes = n * k_blocks * sizeof(T);
 
-    typedef typename ToCudaType<T>::MappedType CudaT;
+    typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
     const CudaT* transposed_scales = reinterpret_cast<const CudaT*>(fpA_intB_scale_buffer_.get());
 
     fpA_intB_zero_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);  // Transient buffer.
@@ -222,20 +246,41 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
     DUMP_TENSOR_INIT();
-    DUMP_TENSOR_D("scaled_zero_points", scaled_zero_points, k_blocks, n);
+    DUMP_TENSOR_D("scaled_zero_points", scaled_zero_points, static_cast<int>(k_blocks), static_cast<int>(n));
   }
   return Status::OK();
 }
+#endif
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
-  const bool is_prepacked = has_fpA_intB_gemm_;
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    if (sm_ < 80) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "BFloat16 MatMulNBits is not supported on cuda device with compute capability < 8.0");
+    }
+  }
+
   const Tensor* a = ctx->Input<Tensor>(0);
-  const Tensor* b = is_prepacked ? nullptr : ctx->Input<Tensor>(1);
-  const Tensor* scales = is_prepacked ? nullptr : ctx->Input<Tensor>(2);
-  const Tensor* zero_points = is_prepacked ? nullptr : ctx->Input<Tensor>(3);
   const Tensor* reorder_idx = ctx->Input<Tensor>(4);
   const Tensor* bias = ctx->Input<Tensor>(5);
+
+#if USE_FPA_INTB_GEMM
+  const Tensor* b = is_prepacked_weight_ ? nullptr : ctx->Input<Tensor>(1);
+  const Tensor* scales = is_prepacked_scale_ ? nullptr : ctx->Input<Tensor>(2);
+  const Tensor* zero_points = is_prepacked_zero_point_ ? nullptr : ctx->Input<Tensor>(3);
+  const uint8_t* blob_data = is_prepacked_weight_ ? nullptr : b->Data<uint8_t>();
+  const auto* scales_data = is_prepacked_scale_ ? nullptr : scales->Data<T>();
+  const auto* zero_points_data = (is_prepacked_zero_point_ || zero_points == nullptr) ? nullptr : zero_points->DataRaw();
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
+#else
+  const Tensor* b = ctx->Input<Tensor>(1);
+  const Tensor* scales = ctx->Input<Tensor>(2);
+  const Tensor* zero_points = ctx->Input<Tensor>(3);
+  const uint8_t* blob_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<T>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+#endif
 
   if (bias != nullptr) {
     ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
@@ -245,11 +290,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
 
   const auto* a_data = a->Data<T>();
-  const uint8_t* blob_data = is_prepacked ? nullptr : b->Data<uint8_t>();
-  const auto* scales_data = is_prepacked ? nullptr : scales->Data<T>();
-  const auto* zero_points_data = (is_prepacked || zero_points == nullptr) ? nullptr : zero_points->DataRaw();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   constexpr bool transa = false;
   constexpr bool transb = true;
@@ -265,8 +306,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   cudaStream_t stream = static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle());
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+  typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
 
   int m = SafeInt<int>(helper.M());
   int n = SafeInt<int>(helper.N());
@@ -274,15 +314,31 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   DUMP_TENSOR_INIT();
 
-  if constexpr (std::is_same<T, MLFloat16>::value) {
+#if USE_FPA_INTB_GEMM
+  CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+
+  if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
     if (has_fpA_intB_gemm_) {
+      // We expect weight/scale/zero_point(optional) inputs are initializers and have been prepacked.
+      // User could disable it by setting ORT_FPA_INTB_GEMM=0 if those tensors cannot be prepacked (It is rare).
+      ORT_ENFORCE(is_prepacked_weight_ && is_prepacked_scale_ && (is_prepacked_zero_point_ || !has_zero_points_),
+                  "To use fpA_intB_gemm, prepacking must be done on weight, scale and zero point.");
+
       auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
 
-      DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
+#if ORT_LLM_VERBOSE > 1
+      std::cout << "Best tactic for m=" << m << ", n=" << n << ", k=" << k << "group_size=" << block_size_
+                << " is: " << bestTactic->toString() << std::endl;
+#endif
 
       if (bestTactic->enableCudaKernel) {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
-        KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+        KernelType cuda_kernel_type;
+        if constexpr (std::is_same<T, MLFloat16>::value) {
+          cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+        } else if constexpr (std::is_same<T, BFloat16>::value) {
+          cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+        }
 
         void const* pre_quant_scale_ptr = nullptr;
         bool apply_alpha_in_advance = false;
@@ -317,33 +373,22 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       return Status::OK();
     }
   }
+#endif
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
-    bool done = (nbits_ == 8) ? TryMatMul8Bits(
-                                    reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                                    reinterpret_cast<const CudaT*>(a_data),
-                                    blob_data,
-                                    reinterpret_cast<const CudaT*>(scales_data),
-                                    static_cast<const uint8_t*>(zero_points_data),
-                                    m,
-                                    n,
-                                    k,
-                                    SafeInt<int>(block_size_),
-                                    GetDeviceProp().sharedMemPerBlock,
-                                    stream)
-                              : TryMatMul4Bits(
-                                    reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                                    reinterpret_cast<const CudaT*>(a_data),
-                                    blob_data,
-                                    reinterpret_cast<const CudaT*>(scales_data),
-                                    static_cast<const uint8_t*>(zero_points_data),
-                                    m,
-                                    n,
-                                    k,
-                                    SafeInt<int>(block_size_),
-                                    GetDeviceProp().sharedMemPerBlock,
-                                    stream);
-    if (done) {
+    if (TryMatMulNBits(
+            nbits_,
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+            reinterpret_cast<const CudaT*>(a_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            static_cast<const uint8_t*>(zero_points_data),
+            m,
+            n,
+            k,
+            SafeInt<int>(block_size_),
+            GetDeviceProp().sharedMemPerBlock,
+            stream)) {
       return Status::OK();
     }
   }
@@ -438,10 +483,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  DUMP_TENSOR_D("DeQuantized", b_data, N_, K_padded);
+  DUMP_TENSOR_D("DeQuantized", b_data, static_cast<int>(N_), static_cast<int>(K_padded));
 
-  const CudaT alpha = ToCudaType<T>::FromFloat(1.f);
-  const CudaT zero = ToCudaType<T>::FromFloat(0.f);
+  const CudaT alpha = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(1.f);
+  const CudaT zero = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(0.f);
 
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -489,6 +534,18 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<MLFloat16>()}),
     MatMulNBits<MLFloat16>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    MatMulNBits,
+    kMSDomain,
+    1,
+    BFloat16,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<BFloat16>()}),
+    MatMulNBits<BFloat16>);
 
 }  // namespace cuda
 }  // namespace contrib

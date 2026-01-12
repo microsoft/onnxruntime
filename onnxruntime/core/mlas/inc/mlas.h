@@ -57,6 +57,9 @@ Abstract:
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC) || defined(MLAS_TARGET_ARM)
 #define MLAS_TARGET_ARM_ANY
 #endif
+#if defined(__s390x__)
+#define MLAS_TARGET_S390X
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
@@ -80,7 +83,7 @@ Abstract:
 // Define the support levels for the target architecture.
 //
 
-#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER) || defined (MLAS_TARGET_ZVECTOR)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
@@ -632,6 +635,62 @@ MlasGemm(
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
 
+/**
+ * @brief Parameters that define the shape of a dynamically quantized GEMM operation.
+ *
+ * The structure holds the dimensions of the matrices involved in the GEMM
+ * computation:
+ *   C = A * B
+ */
+struct MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS {
+    size_t M = 0;                  /**< Row size of matrix A */
+    size_t N = 0;                  /**< Column size of matrix B */
+    size_t K = 0;                  /**< Column size of matrix A and Row size of matrix B */
+};
+
+/**
+ * @brief Parameters that define the data buffers and layout for a dynamic quant GEMM.
+ *
+ * This structure provides the memory pointers and strides for matrices
+ * involved in a dynamically quantized GEMM operation, along with the packed B format.
+ */
+struct MLAS_GEMM_DYN_QUANT_DATA_PARAMS {
+    const float* A = nullptr;       /**< Pointer to input matrix A in FP32 format**/
+    size_t lda = 0;                 /**< Number of elements between adjecent rows in A*/
+    const void* PackedB = 0;        /**< Points to packed weight matrix B */
+    float *C = nullptr;             /**< Points to output Matric C */
+    size_t ldc = 0;                 /**<  Number of elements between adjecent rows in Matrix C*/
+    void* Workspace = nullptr;    /**< Workspace buffer for LHS Packing Allocation */
+    size_t WorkspaceSize = 0;    /**< Workspace buffer size */
+};
+
+void
+MLASCALL
+MlasDynamicQGemmBatch (
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+inline void
+MlasDynamicQGemm (
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool
+) {
+    MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool);
+}
+
+/**
+ * @brief Determines whether a dynamic quantized GEMM implementation is available on the current platform.
+ *
+ * MlasDynamicQGemm() and MlasDynamicQGemmBatch() should only be called if this function returns true.
+ */
+bool
+MLASCALL
+MlasIsDynamicQGemmAvailable();
+
 //
 // Symmetric QGEMM has limited buffer overrun.
 // Currently only supported in ARM64
@@ -685,6 +744,8 @@ MlasSymmQgemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     );
@@ -692,6 +753,7 @@ MlasGemmPackBSize(
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
@@ -749,6 +811,26 @@ MlasSymmQgemmPackB(
     int32_t ZeroPointA,
     void* PackedB
     );
+
+
+size_t
+MLASCALL
+MlasDynamicQgemmPackBSize(
+    size_t N,
+    size_t K
+);
+
+void
+MLASCALL
+MlasDynamicQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    const float* Scales,
+    const float* Bias,
+    void* PackedB
+);
+
 
 //
 // Convolution routines.
@@ -1020,6 +1102,7 @@ MlasComputeSoftmax(
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    float Sink,
     MLAS_THREADPOOL* ThreadPool
     );
 
@@ -1223,6 +1306,21 @@ MlasQuantizeLinearS4(
     int8_t ZeroPoint
     );
 
+//
+// Linear dequantization routines.
+//
+
+template<typename InputType>
+void
+MLASCALL
+MlasDequantizeLinear(
+    const InputType* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    InputType ZeroPoint
+    );
+
 /**
  * @brief Requantize a block of the intermediate buffer to the output buffer,
  *        optionally adding the supplied bias
@@ -1419,12 +1517,32 @@ MlasConvertHalfToFloatBuffer(
     size_t Count
 );
 
+#define MLAS_MIN_TENSOR_SIZE_FOR_HALF_TO_FLOAT_CONVERSION_IN_PARALLEL 128000
+
+void
+MLASCALL
+MlasConvertHalfToFloatBufferInParallel(
+    const MLAS_FP16* Source,
+    float* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
+);
+
 void
 MLASCALL
 MlasConvertFloatToHalfBuffer(
 const float* Source,
 MLAS_FP16* Destination,
 size_t Count
+);
+
+void
+MLASCALL
+MlasConvertFloatToHalfBufferInParallel(
+    const float* Source,
+    MLAS_FP16* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
 );
 
 /**
@@ -1997,3 +2115,14 @@ MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
 );
+
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+/**
+ * @brief Function to override the packing mechanism decision if kleidi ai is included
+ * @param enable     enable kleidiai packing (allow or disallow depending on true/false)
+ * @return
+*/
+void
+MLASCALL
+MlasGemmBatchPackUseKleidi(bool enable);
+#endif

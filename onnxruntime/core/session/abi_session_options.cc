@@ -63,18 +63,17 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::Pat
   ORT_RETURN_IF_ERROR(platform_env.GetSymbolFromLibrary(library_handle, "RegisterCustomOps",
                                                         (void**)&RegisterCustomOps));
 
-  // Call the exported RegisterCustomOps function and store the return value in a unique_ptr.
-  const std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> status(RegisterCustomOps(this, OrtGetApiBase()),
-                                                                             OrtApis::ReleaseStatus);
+  // Call the exported RegisterCustomOps function.
+  auto status = onnxruntime::ToStatusAndRelease(RegisterCustomOps(this, OrtGetApiBase()));
 
-  if (status) {  // A non-nullptr status indicates an error registering custom ops.
+  if (!status.IsOK()) {
     auto unload_status = platform_env.UnloadDynamicLibrary(library_handle);
     if (!unload_status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library "
                             << onnxruntime::PathToUTF8String(library_name) << ": " << unload_status;
     }
 
-    return onnxruntime::ToStatus(status.get());
+    return status;
   }
 
   // The internal onnxruntime::SessionOptions will manage the lifetime of library handles.
@@ -205,6 +204,9 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
     case ORT_ENABLE_EXTENDED:
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
       break;
+    case ORT_ENABLE_LAYOUT:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      break;
     case ORT_ENABLE_ALL:
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
       break;
@@ -273,6 +275,21 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions
                                       size);
 
   return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out) {
+  API_IMPL_BEGIN
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "options is nullptr");
+  }
+  auto& config_options = options->value.config_options.GetConfigOptionsMap();
+  auto kvps = std::make_unique<OrtKeyValuePairs>();
+  for (auto& kv : config_options) {
+    kvps->Add(kv.first.c_str(), kv.second.c_str());
+  }
+  *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
+  return nullptr;
   API_IMPL_END
 }
 

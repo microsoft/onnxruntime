@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/workspace.h"
 
@@ -28,7 +29,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
   int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
   half* actPtr = reinterpret_cast<half*>(workspace);
   void* weightPtr = nextWorkspacePtr(reinterpret_cast<int8_t*>(actPtr), m * k * sizeof(half));
-  half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), n * k * sizeof(float)));
+  half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), n * k * sizeof(half)));
   half* zerosPtr = reinterpret_cast<half*>(
       nextWorkspacePtr(reinterpret_cast<int8_t*>(inputScalesPtr), k * originalN * sizeof(half) / mGroupSize));
   half* biasesPtr = reinterpret_cast<half*>(
@@ -68,20 +69,19 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
   }
 }
 
-void WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
+size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
   // Quantized weights are packed in FP16 format (INT4*4 -> FP16, INT8*2 -> FP16)
   int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
   std::vector<size_t> workspaces = {
       maxM * k * sizeof(half),                       // A
-      k * n * sizeof(float),                         // B
+      k * n * sizeof(half),                          // B
       k * originalN * sizeof(half) / mGroupSize,     // scales
       k * originalN * sizeof(half) / mGroupSize,     // zeros
       originalN * sizeof(half),                      // biases
       maxM * originalN * sizeof(half),               // C
       mRunner->getWorkspaceSize(maxM, originalN, k)  // workspace
   };
-  size_t bytes = calculateTotalWorkspaceSize(workspaces.data(), workspaces.size());
-  setTmpWorkspaceSizeInBytes(bytes);
+  return calculateTotalWorkspaceSize(workspaces.data(), workspaces.size());
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
@@ -98,3 +98,4 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
 }
 
 }  // namespace onnxruntime::llm::kernels::weight_only
+#endif

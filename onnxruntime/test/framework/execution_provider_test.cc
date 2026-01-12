@@ -3,7 +3,7 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/graph/model.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "core/framework/model_metadef_id_generator.h"

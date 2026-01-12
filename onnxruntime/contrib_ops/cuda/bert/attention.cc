@@ -36,20 +36,24 @@ constexpr int kPresentOutputIndex = 1;
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
   kernel_options_ = this->GetAttentionKernelOptions();
 
-  disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
+  constexpr bool kIsFp16 = std::is_same<T, MLFloat16>::value;
+  constexpr bool kIsBf16 = std::is_same<T, BFloat16>::value;
+  constexpr bool kIs16bit = kIsFp16 || kIsBf16;
 
-  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
+  // We only support FP16 for TRT fused/flash/causal attention.
+  disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
+  enable_fused_causal_attention_ = kIsFp16 && kernel_options_->UseTrtCausalAttention();
 
-  enable_fused_causal_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtCausalAttention();
+  disable_memory_efficient_attention_ = kIsBf16 || !kernel_options_->UseEfficientAttention();
 
-  disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
-
-  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
+  disable_flash_attention_ = !kIs16bit || !kernel_options_->UseFlashAttention();
 }
 
 template <typename T>
@@ -112,10 +116,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                              nullptr == present &&
                              parameters.hidden_size == parameters.v_hidden_size &&
                              nullptr == mask_index &&
-                             onnxruntime::flash::is_supported(device_prop,
-                                                              parameters.head_size,
-                                                              parameters.num_heads,
-                                                              parameters.num_heads);
+                             onnxruntime::flash::is_supported<T>(device_prop,
+                                                                 parameters.head_size,
+                                                                 parameters.num_heads,
+                                                                 parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
   if (use_flash_attention && parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;
@@ -210,7 +214,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
       (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
-      has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
+      has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.v_head_size);
 
 #else
   constexpr bool use_memory_efficient_attention = false;

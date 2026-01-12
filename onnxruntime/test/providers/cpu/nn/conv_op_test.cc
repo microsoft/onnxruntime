@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/graph/constants.h"
 #include "gtest/gtest.h"
+#include "test/common/random_generator.h"
 #include "test/providers/provider_test_utils.h"
 
 using namespace std;
@@ -23,7 +24,7 @@ struct ConvOpAndTestAttributes {
 void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const vector<vector<float>>& inputs,
                 const vector<vector<int64_t>>& input_shapes,
-                const std::initializer_list<float>& expected_output,
+                const vector<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
                 bool weight_is_initializer = false,
                 optional<float> epsilon = optional<float>(),
@@ -339,6 +340,61 @@ TEST(ConvTest, Conv2D_2) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvTest, Conv2D_3) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<int64_t> X_shape = {2, 2, 3, 3};
+  vector<float> X = {1.f, 2.f, 3.f,
+                     4.f, 5.f, 6.f,
+                     7.f, 8.f, 9.f,
+
+                     10.f, 11.f, 12.f,
+                     13.f, 14.f, 15.f,
+                     16.f, 17.f, 18.f,
+
+                     1.f, 2.f, 3.f,
+                     7.f, 8.f, 9.f,
+                     4.f, 5.f, 6.f,
+
+                     13.f, 14.f, 15.f,
+                     10.f, 11.f, 12.f,
+                     16.f, 17.f, 18.f};
+
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<float> W = {1.f, 2.f, 3.f, 4.f, 2.f, 4.f, 6.f, 8.f};
+
+  vector<int64_t> Y_shape = {2, 2, 2, 2};
+  auto Y = {
+      37.f,
+      47.f,
+      67.f,
+      77.f,
+      254.f,
+      274.f,
+      314.f,
+      334.f,
+      58.f,
+      68.f,
+      55.f,
+      65.f,
+      230.f,
+      250.f,
+      296.f,
+      316.f,
+  };
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape, true);
+}
+
 TEST(ConvTest, Conv2D_Bias_1) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
@@ -478,6 +534,103 @@ TEST(ConvTest, Conv2D_AutoPad2) {
 
   // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Conv2D_MatMul_SplitK_No_Bias) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  // Define the matrix shapes to test a matmul-like convolution
+  constexpr int64_t M = 16;
+  constexpr int64_t K = 768;
+  constexpr int64_t N = 64;
+
+  vector<int64_t> X_shape = {1, K, M, 1};
+  vector<int64_t> W_shape = {N, K, 1, 1};
+  vector<int64_t> Y_shape = {1, N, M, 1};
+
+  // Fill X and W
+  RandomValueGenerator random{1234};
+  vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+
+  // Calculate expected output values
+  vector<float> expected_vals;
+  expected_vals.resize(M * N);
+  for (int m = 0; m < M; ++m) {
+    for (int n = 0; n < N; ++n) {
+      float sum = 0.0f;
+      for (int k = 0; k < K; ++k) {
+        int x_index = k * M + m;
+        int w_index = n * K + k;
+        sum += X[x_index] * W[w_index];
+      }
+      int y_index = n * M + m;
+      expected_vals[y_index] = sum;
+    }
+  }
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Conv2D_MatMul_SplitK_With_Bias) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  // Define the matrix shapes to test a matmul-like convolution
+  constexpr int64_t M = 16;
+  constexpr int64_t K = 768;
+  constexpr int64_t N = 64;
+
+  vector<int64_t> X_shape = {1, K, M, 1};
+  vector<int64_t> W_shape = {N, K, 1, 1};
+  vector<int64_t> Y_shape = {1, N, M, 1};
+  vector<int64_t> B_shape = {N};
+
+  // Fill X, W and B
+  RandomValueGenerator random{1234};
+  vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+  vector<float> B(random.Gaussian<float>(AsSpan(B_shape), 0.0f, 0.25f));
+
+  // Calculate expected output values
+  vector<float> expected_vals;
+  expected_vals.resize(M * N);
+  for (int m = 0; m < M; ++m) {
+    for (int n = 0; n < N; ++n) {
+      float sum = 0.0f;
+      for (int k = 0; k < K; ++k) {
+        int x_index = k * M + m;
+        int w_index = n * K + k;
+        sum += X[x_index] * W[w_index];
+      }
+      sum += B[n];
+      int y_index = n * M + m;
+      expected_vals[y_index] = sum;
+    }
+  }
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
 // Conv10

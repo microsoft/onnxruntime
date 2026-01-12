@@ -20,22 +20,23 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: false
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+        with:
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
+          cmake-version: '3.31.8'
+          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
       - name: Use Xcode ${{ env.XCODE_VERSION }}
         shell: bash
         run: |
           set -e -x
           XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer"
           sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
-
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
         shell: bash

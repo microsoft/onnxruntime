@@ -25,6 +25,7 @@ from .quant_utils import (
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
     save_and_reload_model_with_shape_infer,
+    update_opset_version,
 )
 from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 from .tensor_quant_overrides import TensorQuantOverridesHelper
@@ -672,7 +673,7 @@ def quantize_static(
     }
 
     if extra_options.get("SmoothQuant", False):
-        import importlib
+        import importlib  # noqa: PLC0415
 
         try:
             importlib.import_module("neural_compressor.adaptor.ox_utils.smooth_quant")
@@ -680,9 +681,7 @@ def quantize_static(
             logging.error(f"{e}.")
             raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
 
-        import copy
-
-        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant  # noqa: PLC0415
 
         def inc_dataloader():
             data_reader = copy.deepcopy(calibration_data_reader)
@@ -700,9 +699,18 @@ def quantize_static(
         nodes_to_exclude.extend([i.name for i in model.model.graph.node if i.name not in orig_nodes])
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
+    updated_model = update_opset_version(model, weight_type)
+    is_model_updated = updated_model is not model
+    if is_model_updated:
+        model = updated_model
+
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        if is_model_updated:
+            # Update model_input and avoid to use the original one
+            model_input = copy.deepcopy(model)
+
         if isinstance(model_input, onnx.ModelProto):
-            output_path = str(Path(quant_tmp_dir) / "model_input.onnx")
+            output_path = Path(quant_tmp_dir).joinpath("model_input.onnx").as_posix()
             onnx.save_model(
                 model_input,
                 output_path,
@@ -864,6 +872,8 @@ def quantize_dynamic(
     if "MatMulConstBOnly" not in extra_options:
         extra_options["MatMulConstBOnly"] = True
 
+    model = update_opset_version(model, weight_type)
+
     quantizer = ONNXQuantizer(
         model,
         per_channel,
@@ -929,7 +939,7 @@ def quantize(
         )
     else:
         # training package doesn't has quantize_matmul_4bits, avoid global import
-        from .matmul_nbits_quantizer import MatMulNBitsQuantizer, WeightOnlyQuantConfig
+        from .matmul_nbits_quantizer import MatMulNBitsQuantizer, WeightOnlyQuantConfig  # noqa: PLC0415
 
         if isinstance(quant_config, WeightOnlyQuantConfig):
             model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load(model_input)

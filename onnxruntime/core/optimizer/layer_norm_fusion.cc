@@ -70,7 +70,7 @@ static std::vector<int64_t> GetAxesFromReduceMeanNode(Node& reduce_mean_node, co
     const auto* axes = reduce_mean_node.InputDefs()[1];
     const auto* axes_const = graph.GetConstantInitializer(axes->Name(), true);
     if (axes_const != nullptr) {
-      Initializer initializer{*axes_const, graph.ModelPath()};
+      Initializer initializer{graph, *axes_const, graph.ModelPath()};
       auto span_axes = initializer.DataAsSpan<int64_t>();
       axes_values.insert(axes_values.end(), span_axes.begin(), span_axes.end());
     }
@@ -480,7 +480,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
     if (tensor_proto != nullptr &&
         tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      Initializer initializer{*tensor_proto, graph.ModelPath()};
+      Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
       layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
@@ -633,9 +633,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // if there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
-    bool is_gpu_ep = (pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
-                      pow_node.GetExecutionProviderType() == kRocmExecutionProvider) ||
-                     skip_device_check_;
+    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider || skip_device_check_;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
@@ -727,7 +725,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     const ONNX_NAMESPACE::TensorProto* tensor_proto =
         graph_utils::GetConstantInitializer(graph, add_node.MutableInputDefs()[1]->Name());
     if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      Initializer initializer{*tensor_proto, graph.ModelPath()};
+      Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
       layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);

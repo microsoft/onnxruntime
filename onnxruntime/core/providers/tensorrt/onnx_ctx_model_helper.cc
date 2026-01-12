@@ -298,6 +298,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            make_secure_path_checks,
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
+                                                           onnx_external_data_bytestream_,
+                                                           onnx_external_data_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            false /* serialize refitted engine to disk */,
                                                            detailed_build_log_);
@@ -367,6 +369,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            make_secure_path_checks,
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
+                                                           onnx_external_data_bytestream_,
+                                                           onnx_external_data_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            true /* serialize refitted engine to disk */,
                                                            detailed_build_log_);

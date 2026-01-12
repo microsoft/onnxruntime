@@ -98,7 +98,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
     bool IsAllocationInterface(const ::OrtMemoryInfo& info)
     {
-        return strcmp(info.name, onnxruntime::CPU) && !(info.mem_type == ::OrtMemType::OrtMemTypeCPUOutput || info.mem_type == ::OrtMemType::OrtMemTypeCPUInput);
+        return strcmp(info.name.c_str(), onnxruntime::CPU) && !(info.mem_type == ::OrtMemType::OrtMemTypeCPUOutput || info.mem_type == ::OrtMemType::OrtMemTypeCPUInput);
     }
 
     // Translate the data object stored in a tensor to the type which will be returned through
@@ -1774,7 +1774,9 @@ namespace Windows::AI::MachineLearning::Adapter
         }
 
         // tells caller whether this tensor is in CPU memory
-        return !strcmp(m_impl->Location().name, onnxruntime::CPU) || m_impl->Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || m_impl->Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput;
+        return !strcmp(m_impl->Location().name.c_str(), onnxruntime::CPU) 
+            || m_impl->Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput
+            || m_impl->Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput;
     }
 
     bool STDMETHODCALLTYPE TensorWrapper::IsDataInterface() const noexcept

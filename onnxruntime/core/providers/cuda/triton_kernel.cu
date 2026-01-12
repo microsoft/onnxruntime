@@ -130,8 +130,6 @@ void LoadOrtTritonKernel() {
   std::call_once(load_ort_triton_kernel_flag, TryToLoadKernel);
 }
 
-
-
 #ifdef USE_TRITON_KERNEL
 Status LaunchTritonKernel(cudaStream_t stream, size_t idx, int grid0, int grid1, int grid2,
                           void* args, size_t args_size) {
@@ -194,7 +192,6 @@ Status LaunchTritonKernel(cudaStream_t /*stream*/, size_t /*idx*/, int /*grid0*/
   return Status::OK();
 }
 #endif
-
 
 const TritonKernelMetaData* GetOrtTritonKernelMetadata(size_t idx) {
   if (idx >= ort_triton_kernel_metadata.size()) {

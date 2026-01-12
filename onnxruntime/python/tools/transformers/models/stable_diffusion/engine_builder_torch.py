@@ -53,7 +53,7 @@ class TorchEngineBuilder(EngineBuilder):
         self,
         framework_model_dir: str,
     ):
-        import torch
+        import torch  # noqa: PLC0415
 
         self.torch_device = torch.device("cuda", torch.cuda.current_device())
         self.load_models(framework_model_dir)

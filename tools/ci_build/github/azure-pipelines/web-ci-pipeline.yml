@@ -54,7 +54,7 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: false
-    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    PoolName: 'onnxruntime-Ubuntu2404-AMD-CPU'
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
     WASMTemplate: linux-wasm-ci.yml

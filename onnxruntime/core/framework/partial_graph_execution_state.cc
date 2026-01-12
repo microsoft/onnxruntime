@@ -79,7 +79,7 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
     execution_context_ = std::make_unique<StreamExecutionContext>(
         session_state,
         valid_streams,
-        execution_plan->notification_owners,
+        execution_plan->notification_owner_stream,
         execution_plan->num_barriers,
         device_streams,
         feed_mlvalue_idxs,

@@ -9,7 +9,6 @@ parameters:
   # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
   # the parent pipeline.
   TestDataArtifactSuffix: ''
-  Skipx86Tests: 'false'
   CudaVersion: ''
   SpecificArtifact: false
   BuildId: ''
@@ -17,7 +16,7 @@ parameters:
 stages:
 - stage: NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
-  - NuGet_Packaging_${{ parameters.StageSuffix }}
+  - Setup
   condition: succeeded()
   jobs:
   - job:  NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
@@ -43,6 +42,10 @@ stages:
         versionSpec: '3.12'
         addToPath: true
         architecture: x64
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
 
     - task: NuGetToolInstaller@0
       displayName: Use Nuget 6.10.x
@@ -62,17 +65,15 @@ stages:
         arguments: 'amd64'
         modifyEnvironment: true
 
-    - template: ../../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact'
-        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
+
+    - download: build
+      displayName: 'Download Nuget'
+      artifact: 'drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
+   
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
-        packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
+        packageFolder: '$(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
 
     - script: |
        mklink /D /J models C:\local\models
@@ -83,39 +84,18 @@ stages:
 
     - script: |
        @echo "Running Runtest.bat"
-       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net8.0 x64 $(NuGetPackageVersionNumber)
+       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Pipeline.Workspace)\build\drop-signed-nuget-${{ parameters.ArtifactSuffix }} net8.0 x64 $(NuGetPackageVersionNumber)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Run End to End Test (C#) .Net Core x64'
       env:
         PACKAGENAME: ${{ parameters.NugetPackageName }}
 
-    - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
-        - script: |
-           @echo "Running Runtest.bat"
-           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net8.0 x86 $(NuGetPackageVersionNumber)
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-          displayName: 'Run End to End Test (C#) .Net Core x86'
-          env:
-            PACKAGENAME: ${{ parameters.NugetPackageName }}
-
     # TODO: Add .Net Framework AnyCPU test task
 
     - script: |
        @echo "Running Runtest.bat"
-       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net462 x64 $(NuGetPackageVersionNumber)
+       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Pipeline.Workspace)\build\drop-signed-nuget-${{ parameters.ArtifactSuffix }} net462 x64 $(NuGetPackageVersionNumber)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Run End to End Test (C#) .NetFramework x64'
       env:
         PACKAGENAME: ${{ parameters.NugetPackageName }}
-
-    - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
-        - script: |
-           @echo "Running Runtest.bat"
-           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net462 x86 $(NuGetPackageVersionNumber)
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-          displayName: 'Run End to End Test (C#) .NetFramework x86'
-          enabled: false
-          env:
-            PACKAGENAME: ${{ parameters.NugetPackageName }}
-
-    - template: ../../templates/clean-agent-build-directory-step.yml

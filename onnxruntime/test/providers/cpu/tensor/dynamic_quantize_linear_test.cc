@@ -11,7 +11,8 @@ namespace test {
 // range = [-ve, +ve]
 TEST(QuantizeLinearOpTest, DynamicQuantizeLinear) {
   // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
+  if (DefaultDmlExecutionProvider().get() != nullptr ||
+      DefaultOpenVINOExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected equality of these values: 26 and 25";
   }
 

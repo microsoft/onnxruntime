@@ -79,7 +79,7 @@ class ConvActivationSelector : public NodeSelector {
       return std::nullopt;
     }
 
-    auto is_supported_non_cuda_rocm_ep_activation = [&graph_viewer](const Node& activation_node) {
+    auto is_supported_non_cuda_ep_activation = [&graph_viewer](const Node& activation_node) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}) ||
@@ -105,17 +105,13 @@ class ConvActivationSelector : public NodeSelector {
     // check EP type and activation
     if (node_ep == kCudaExecutionProvider) {
       return std::nullopt;
-    } else if (node_ep == kRocmExecutionProvider) {
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
-        return std::nullopt;
-      }
     } else if (node_ep.empty() || node_ep == kCpuExecutionProvider || node_ep == kJsExecutionProvider || node_ep == kWebGpuExecutionProvider) {
-      if (!is_supported_non_cuda_rocm_ep_activation(*next_node) &&
+      if (!is_supported_non_cuda_ep_activation(*next_node) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6})) {
         return std::nullopt;
       }
     } else {
-      if (!is_supported_non_cuda_rocm_ep_activation(*next_node)) {
+      if (!is_supported_non_cuda_ep_activation(*next_node)) {
         return std::nullopt;
       }
     }

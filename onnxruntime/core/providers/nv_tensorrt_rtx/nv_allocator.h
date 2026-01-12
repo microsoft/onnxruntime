@@ -13,10 +13,10 @@ namespace onnxruntime {
 class CUDAAllocator : public IAllocator {
  public:
   CUDAAllocator(OrtDevice::DeviceId device_id, const char* name)
-      : IAllocator(
-            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
-                          device_id, OrtMemTypeDefault)) {}
+      : IAllocator(OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+                                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                                           device_id),
+                                 OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 
@@ -53,11 +53,12 @@ class CUDAExternalAllocator : public CUDAAllocator {
 // TODO: add a default constructor
 class CUDAPinnedAllocator : public IAllocator {
  public:
-  CUDAPinnedAllocator(const char* name)
+  CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device always with id 0*/),
-                          0, OrtMemTypeCPUOutput)) {}
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                                    device_id),
+                          OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;

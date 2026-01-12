@@ -27,11 +27,12 @@
 #include "core/session/ort_apis.h"
 #include "core/platform/threadpool.h"
 
-// NOTE: OrtKernelContext is used by both custom ops and compiled kernels.
-// In a minimal build, ORT_EXTENDED_MINIMAL_BUILD is used to enable EPs like CoreML/NNAPI which use compiled kernels,
-// and ORT_MINIMAL_BUILD_CUSTOM_OPS is used to allow external custom op libraries to be used.
+// NOTE: OrtKernelContext/OrtKernelInfo are used by both custom ops and kernels for both plugin and provider-bridge EPs.
+// In a minimal build, ORT_EXTENDED_MINIMAL_BUILD is used to enable EPs like CoreML/NNAPI which use compiled kernels.
+// ORT_MINIMAL_BUILD_CUSTOM_OPS is used to allow external custom op libraries to be used.
+// Plugin EPs (with registered and compiled kernels) are enabled in non-minimal builds.
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-#define ENABLE_ORT_KERNEL_CONTEXT_API 1
+#define ENABLE_ORT_KERNEL_API 1
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -49,7 +50,9 @@ static constexpr uint32_t min_ort_version_with_compute_v2_support = 16;
 static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT8_TYPES) && !defined(DISABLE_FLOAT4_TYPES)
+#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv11()
+#elif !defined(DISABLE_FLOAT8_TYPES)
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv10()
 #else
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
@@ -71,16 +74,22 @@ struct OrtShapeInferContext {
     auto num_inputs = ctx_.getNumInputs();
     for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
       const auto* input_type = ctx_.getInputType(ith_input);
-      const auto& value_case = input_type->value_case();
-      ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType,
-                  "shape inference not yet supported for non-tensor types");
-      const auto& shape_proto = input_type->tensor_type().shape();
-      const auto& type_proto = input_type->tensor_type();
-      auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
-      auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
-      auto symbolic_dims = GetSymbolicDims(shape_proto);
-      input_type_shapes_.emplace_back(
-          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims).release());
+      if (input_type != nullptr) {
+        const auto& value_case = input_type->value_case();
+        ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType,
+                    "shape inference not yet supported for non-tensor types");
+        const auto& shape_proto = input_type->tensor_type().shape();
+        const auto& type_proto = input_type->tensor_type();
+        auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
+        auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
+        auto symbolic_dims = GetSymbolicDims(shape_proto);
+        input_type_shapes_.emplace_back(
+            OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, &tensor_shape, &symbolic_dims));
+      } else {
+        input_type_shapes_.emplace_back(
+            OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(
+                ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, nullptr, nullptr));
+      }
     }
   }
 
@@ -94,19 +103,21 @@ struct OrtShapeInferContext {
   onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* info) const {
     ORT_RETURN_IF_NOT(info, "Invalid shape info");
     ONNX_NAMESPACE::TensorShapeProto shape_proto;
-    const auto& symbolic_dims = info->dim_params;
-    const auto& integer_dims = info->shape.GetDims();
-    ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
-    for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
-      auto* dim_proto = shape_proto.add_dim();
-      if (symbolic_dims[ith].size() > 0) {
-        dim_proto->set_dim_param(symbolic_dims[ith]);
-      } else {
-        dim_proto->set_dim_value(integer_dims[ith]);
+    if (info->HasShape()) {
+      const auto& symbolic_dims = *info->GetDimParams();
+      const auto integer_dims = info->GetShape()->GetDims();
+      ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
+      for (size_t ith = 0, end = symbolic_dims.size(); ith < end; ith++) {
+        auto* dim_proto = shape_proto.add_dim();
+        if (symbolic_dims[ith].size() > 0) {
+          dim_proto->set_dim_param(symbolic_dims[ith]);
+        } else {
+          dim_proto->set_dim_value(integer_dims[ith]);
+        }
       }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
-    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->type);
+    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->GetElementType());
     return onnxruntime::Status::OK();
   }
 
@@ -133,29 +144,30 @@ struct OrtShapeInferContext {
 };
 #endif
 
-#if ENABLE_ORT_KERNEL_CONTEXT_API
+#if ENABLE_ORT_KERNEL_API
 template <typename T>
-static OrtStatusPtr ExecuteIfKernelContextApiEnabled(const T& fn) {
+static OrtStatusPtr ExecuteIfKernelApiEnabled(const T& fn) {
   API_IMPL_BEGIN
   return fn();
   API_IMPL_END
 }
 #else
 template <typename T>
-static OrtStatusPtr ExecuteIfKernelContextApiEnabled(const T&) {
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "OrtKernelContext API is not enabled in this build");
+static OrtStatusPtr ExecuteIfKernelApiEnabled(const T&) {
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "APIs for OrtKernelContext and OrtKernelInfo are not enabled in this build");
 }
 #endif
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
     return nullptr;
   });
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
     return nullptr;
   });
@@ -163,7 +175,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelC
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index,
                     _Out_ const OrtValue** out) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
     *out = reinterpret_cast<const OrtValue*>(ctx->GetInputMLValue(onnxruntime::narrow<int>(index)));
     return nullptr;
@@ -172,7 +184,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
                     _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     onnxruntime::TensorShape shape(dim_values, dim_count);
     auto* ctx = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
     *out = reinterpret_cast<OrtValue*>(ctx->OutputMLValue(onnxruntime::narrow<int>(index), shape));
@@ -182,7 +194,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context,
                     _Outptr_ void** out) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
     if (stream)
       *out = stream->GetHandle();
@@ -194,7 +206,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelContext* context,
                     _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
     onnxruntime::AllocatorPtr allocator = ctx->GetAllocator(mem_info->device);
     if (!allocator) {
@@ -209,7 +221,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelCon
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelContext* context,
                     _In_ int resource_version, _In_ int resource_id, _Outptr_ void** resource) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     *resource = {};
     const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
     auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
@@ -223,7 +235,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context,
                     _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     if (!context) {
       return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Invalid context");
     }
@@ -249,7 +261,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelCont
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContext* context,
                     _Outptr_ const OrtLogger** logger) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto& kernel_ctx_logger = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->Logger();
 
     *logger = kernel_ctx_logger.ToExternal();
@@ -257,11 +269,11 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContex
   });
 }
 
-// Enabled via ExecuteIfKernelContextApiEnabled due to KernelContext_GetLogger
+// Enabled via ExecuteIfKernelApiEnabled due to KernelContext_GetLogger
 ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
                     _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
                     _In_z_ const char* func_name) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
     const auto severity = static_cast<onnxruntime::logging::Severity>(log_severity_level);
     const auto log_data_type = onnxruntime::logging::DataType::SYSTEM;
@@ -288,10 +300,10 @@ ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, Or
   });
 }
 
-// Enabled via ExecuteIfKernelContextApiEnabled due to KernelContext_GetLogger
+// Enabled via ExecuteIfKernelApiEnabled due to KernelContext_GetLogger
 ORT_API_STATUS_IMPL(OrtApis::Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger,
                     _Out_ OrtLoggingLevel* out) {
-  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
     *out = static_cast<OrtLoggingLevel>(actual_logger.GetSeverity());
     return nullptr;
@@ -436,17 +448,14 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
       }
       case OrtOpAttrType::ORT_OP_ATTR_STRING: {
         const auto& s = attr->s();
-        if (len < s.size() + 1) {
+        if (len < s.size()) {
           ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
                                       "Size of data not large enough to hold the string.");
         } else {
           char* output_c = reinterpret_cast<char*>(data);
-          for (char c : s) {
-            *output_c++ = c;
-          }
-          *output_c = '\0';
+          memcpy(output_c, s.data(), s.size());
         }
-        *out = s.size() + 1;
+        *out = s.size();
         break;
       }
       case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {
@@ -479,7 +488,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ float* out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
     if (status.IsOK())
       return nullptr;
@@ -489,7 +498,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelI
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ int64_t* out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
     if (status.IsOK())
       return nullptr;
@@ -499,7 +508,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_int64, _In_ const OrtKernelI
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ char* out, _Inout_ size_t* size) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     std::string value;
     auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
     if (status.IsOK()) {
@@ -538,7 +547,7 @@ static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, s
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ float* out, _Inout_ size_t* size) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     std::vector<float> values;
     auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<float>(name, values);
     if (status.IsOK()) {
@@ -550,7 +559,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKe
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ int64_t* out, _Inout_ size_t* size) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     std::vector<int64_t> values;
     auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<int64_t>(name, values);
     if (status.IsOK()) {
@@ -562,7 +571,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKe
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_tensor, _In_ const OrtKernelInfo* info, _In_z_ const char* name,
                     _Inout_ OrtAllocator* allocator, _Outptr_ OrtValue** out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_kinfo = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
 
     // Get TensorProto attribute
@@ -583,43 +592,41 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_tensor, _In_ const OrtKernel
     onnxruntime::TensorShape tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(tensor_proto);
     const auto* type = onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
     onnxruntime::AllocatorPtr alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
-    auto tensorp = std::make_unique<onnxruntime::Tensor>(type, tensor_shape, std::move(alloc_ptr));
+    auto tensor = onnxruntime::Tensor{type, tensor_shape, std::move(alloc_ptr)};
 
     // Deserialize TensorProto into pre-allocated, empty Tensor.
     // TODO: here the TensorProto loses model path information, so it cannot be an external tensor.
     status = onnxruntime::utils::TensorProtoToTensor(onnxruntime::Env::Default(), std::filesystem::path(),
-                                                     tensor_proto, *tensorp);
+                                                     tensor_proto, tensor);
     if (!status.IsOK()) {
       return onnxruntime::ToOrtStatus(status);
     }
 
     // Initialize OrtValue from Tensor.
-    auto ml_tensor = onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>();
     auto value = std::make_unique<OrtValue>();
-    value->Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-
+    onnxruntime::Tensor::InitOrtValue(std::move(tensor), *value);
     *out = value.release();
     return nullptr;
   });
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     *out = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetInputCount();
     return nullptr;
   });
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     *out = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetOutputCount();
     return nullptr;
   });
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index,
-                    _Out_ char* out, _Inout_ size_t* size) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+                    _Out_opt_ char* out, _Inout_ size_t* size) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
     const auto input_defs = op_info->node().InputDefs();
 
@@ -634,9 +641,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* 
   });
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
-                    _Inout_ size_t* size) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index,
+                    _Out_opt_ char* out, _Inout_ size_t* size) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
     const auto output_defs = op_info->node().OutputDefs();
 
@@ -654,7 +661,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo*
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
                     _Outptr_ OrtTypeInfo** type_info) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
     const auto input_defs = op_info->node().InputDefs();
 
@@ -677,7 +684,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTypeInfo, _In_ const OrtKernelIn
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
                     _Outptr_ OrtTypeInfo** type_info) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
     const auto output_defs = op_info->node().OutputDefs();
 
@@ -700,16 +707,16 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelI
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, _In_ size_t index,
                     _Out_ int* is_constant, _Outptr_ const OrtValue** out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
     *is_constant = static_cast<int>(op_info->TryGetConstantInput(gsl::narrow_cast<int>(index), out));
     return nullptr;
   });
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out,
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
                     _Inout_ size_t* size) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
 
     auto status = CopyStringToOutputArg(op_info->node().Name(),
@@ -719,8 +726,49 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* i
   });
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorDomain, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                    _Inout_ size_t* size) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+
+    auto status = CopyStringToOutputArg(op_info->node().Domain(),
+                                        "Output buffer is not large enough for ::OrtKernelInfo's operator domain",
+                                        out, size);
+
+    return onnxruntime::ToOrtStatus(status);
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                    _Inout_ size_t* size) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+
+    auto status = CopyStringToOutputArg(op_info->node().OpType(),
+                                        "Output buffer is not large enough for ::OrtKernelInfo's operator type",
+                                        out, size);
+
+    return onnxruntime::ToOrtStatus(status);
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOperatorSinceVersion, _In_ const OrtKernelInfo* info,
+                    _Out_ int* since_version) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+
+    if (since_version == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Output parameter for ::OrtKernelInfo's since version is NULL");
+    }
+
+    *since_version = op_info->node().SinceVersion();
+    return nullptr;
+  });
+}
+
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     const auto* ep = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetExecutionProvider();
 
     if (ep == nullptr) {
@@ -741,13 +789,28 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
     onnxruntime::AllocatorPtr allocator = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAllocator(mem_type);
     if (!allocator) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
     }
     auto p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
     *out = p.release();
+    return nullptr;
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+    const auto& config_options_map = op_info->GetConfigOptions().GetConfigOptionsMap();
+
+    auto kvps = std::make_unique<OrtKeyValuePairs>();
+    for (const auto& kv : config_options_map) {
+      kvps->Add(kv.first.c_str(), kv.second.c_str());
+    }
+
+    *out = kvps.release();
     return nullptr;
   });
 }
@@ -762,7 +825,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetScratchBuffer, _In_ const OrtKerne
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
   onnxruntime::Stream* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
-  *out = AllocateBufferWithOptions(*allocator, count_or_bytes, false, stream, stream->GetWaitNotificationFn());
+  *out = AllocateBufferWithOptions(*allocator, count_or_bytes, false, stream);
   return nullptr;
 };
 
@@ -797,8 +860,7 @@ struct CustomOpKernel : OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     if (op_.version >= min_ort_version_with_compute_v2_support &&
         op_.KernelComputeV2) {
-      auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-      return ToStatus(status_ptr);
+      return ToStatusAndRelease(op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx)));
     } else {
       op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
       return Status::OK();

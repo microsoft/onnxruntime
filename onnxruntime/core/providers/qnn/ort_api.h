@@ -26,7 +26,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/run_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"

@@ -116,7 +116,7 @@ ONNX_NAMESPACE::TensorProto CreateInitializer(const std::string& name,
   }
 
   if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto(&tp);
+    utils::ConvertRawDataInTensorProto(tp);
   }
 
   return tp;
@@ -262,7 +262,7 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
     ONNX_NAMESPACE::TensorProto initializer;
     ASSERT_STATUS_OK(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader));
     if constexpr (endian::native != endian::little) {
-      utils::ConvertRawDataInTensorProto(&initializer);
+      utils::ConvertRawDataInTensorProto(initializer);
     }
     loaded_initializers.emplace_back(std::move(initializer));
     // also check that the loaded flatbuffer tensors have accurately written to the external_data_offset field

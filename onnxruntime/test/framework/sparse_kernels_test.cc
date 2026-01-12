@@ -17,7 +17,7 @@
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
 #include "asserts.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "file_util.h"
 #include "default_providers.h"
 
@@ -706,7 +706,7 @@ struct InsertIndices {
       std::vector<T> indices(indices_data.cbegin(), indices_data.cend());
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices.data()), indices.size() * sizeof(T));
       if constexpr (endian::native != endian::little) {
-        utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&indices_tp);
+        utils::ConvertRawDataInTensorProto(indices_tp);
       }
     }
   }

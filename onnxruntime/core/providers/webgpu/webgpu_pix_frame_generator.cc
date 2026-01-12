@@ -36,6 +36,7 @@ WebGpuPIXFrameGenerator::WebGpuPIXFrameGenerator(wgpu::Instance instance, wgpu::
   format = capabilities.formats[0];
 
   wgpu::SurfaceConfiguration config;
+  config.presentMode = capabilities.presentModes[0];
   config.device = device;
   config.format = format;
   config.width = kWidth;

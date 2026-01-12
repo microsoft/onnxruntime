@@ -31,7 +31,7 @@ class TensorRTEngineWrapperCreator:
         # Enable TRT plugins
         trt.init_libnvinfer_plugins(logger, "")
         if len(self.plugins):
-            import ctypes
+            import ctypes  # noqa: PLC0415
 
             ctypes.CDLL(self.plugins)
 

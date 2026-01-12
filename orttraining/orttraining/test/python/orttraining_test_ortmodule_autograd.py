@@ -1528,7 +1528,7 @@ def test_python_op_save_input_for_backward():
         loss.backward()
         return loss
 
-    import warnings
+    import warnings  # noqa: PLC0415
 
     for _ in range(10):
         with warnings.catch_warnings(record=True):

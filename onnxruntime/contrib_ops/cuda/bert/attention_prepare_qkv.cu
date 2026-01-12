@@ -150,7 +150,7 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
   LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                          batch_size, sequence_length, num_heads, qk_head_size,
                          data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
-                         3, parameters.do_rotary, parameters.rotary_embedding,
+                         3, parameters.do_rotary, parameters.rotary_dim,
                          parameters.past_sequence_length);
   return Status::OK();
 }
@@ -744,9 +744,11 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 #endif
 
   if (nullptr != data.gemm_buffer) {  // Attention operator
-    ORT_RETURN_IF_ERROR(PrepareQkv_Attention<T>(parameters, data, stream, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(PrepareQkv_Attention<T>(
+        parameters, data, stream, max_threads_per_block));
   } else {  // MultiHeadAttention operator
-    ORT_RETURN_IF_ERROR(PrepareQkv_MultiHeadAttention<T>(parameters, data, stream, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(PrepareQkv_MultiHeadAttention<T>(
+        parameters, data, stream, max_threads_per_block));
   }
 
   assert(data.qkv_format != AttentionQkvFormat::UNKNOWN);
@@ -763,6 +765,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 // Template Instantiation
 template bool NoQkvWorkspace<float>(contrib::AttentionParameters& parameters, AttentionData<float>& data);
 template bool NoQkvWorkspace<half>(contrib::AttentionParameters& parameters, AttentionData<half>& data);
+template bool NoQkvWorkspace<BFloat16>(contrib::AttentionParameters& parameters, AttentionData<BFloat16>& data);
 
 template Status PrepareQkv<float>(
     contrib::AttentionParameters& parameters,
@@ -773,6 +776,12 @@ template Status PrepareQkv<float>(
 template Status PrepareQkv<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+template Status PrepareQkv<BFloat16>(
+    contrib::AttentionParameters& parameters,
+    AttentionData<BFloat16>& data,
     cudaStream_t stream,
     int max_threads_per_block);
 

@@ -554,7 +554,7 @@ def main():
                         )
                         is_model_exported = False
 
-                        import onnxruntime as ort
+                        import onnxruntime as ort  # noqa: PLC0415
 
                         sess = ort.InferenceSession(onnx_path, providers=ort.get_available_providers())
                         result = sess.run(

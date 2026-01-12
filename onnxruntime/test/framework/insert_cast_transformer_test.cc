@@ -6,7 +6,7 @@
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "gtest/gtest.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"

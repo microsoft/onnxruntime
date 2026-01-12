@@ -21,7 +21,6 @@
 #include "contrib_ops/cuda/transformers/greedy_search_top_one.h"
 #include "core/providers/cuda/tensor/transpose.h"
 
-// the includes would be dummy for ROCm, we will ignore them for now
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
 #include "core/providers/cuda/nvtx_profile_context.h"
@@ -232,7 +231,7 @@ Status AddToFeeds(Stream* ort_stream,
     }
   }
   if (!buffer) {
-    buffer = IAllocator::MakeUniquePtr<char>(device_allocator, total_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+    buffer = IAllocator::MakeUniquePtr<char>(device_allocator, total_bytes, false, ort_stream);
   }
   char* gpu_data = buffer.get();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_data, pinned_data, total_bytes, cudaMemcpyHostToDevice, stream));

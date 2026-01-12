@@ -212,7 +212,7 @@ void LaunchSkipLayerNormKernel(
 #define CASE_NEXT_SIZE(next_size_value)                                         \
   case next_size_value: {                                                       \
     static_assert(next_size_value >= kSizes[0] && next_size_value <= kMaxSize); \
-    if constexpr (next_size_value >= 320) {                                 \
+    if constexpr (next_size_value >= 320) {                                     \
       if (can_unroll_vec8) {                                                    \
         constexpr int block_size = next_size_value / 8;                         \
         LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(8);                                 \

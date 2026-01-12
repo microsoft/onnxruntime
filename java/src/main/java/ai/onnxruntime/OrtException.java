@@ -81,11 +81,17 @@ public class OrtException extends Exception {
     /** The ONNX graph is invalid. */
     ORT_INVALID_GRAPH(10),
     /** The ORT execution provider failed. */
-    ORT_EP_FAIL(11);
+    ORT_EP_FAIL(11),
+    /** Model load was canceled. */
+    ORT_MODEL_LOAD_CANCELED(12),
+    /** Model requires compilation. */
+    ORT_MODEL_REQUIRES_COMPILATION(13),
+    /** Item was not found. */
+    ORT_NOT_FOUND(14);
 
     private final int value;
 
-    private static final OrtErrorCode[] values = new OrtErrorCode[12];
+    private static final OrtErrorCode[] values = new OrtErrorCode[15];
 
     static {
       for (OrtErrorCode ot : OrtErrorCode.values()) {

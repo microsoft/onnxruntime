@@ -238,7 +238,7 @@ class T5Helper:
         else:
             # Workaround when symbolic shape inference fails.
             # Need enable shape_infer_before_optimization in convert_to_onnx.py as well.
-            from float16 import convert_float_to_float16
+            from float16 import convert_float_to_float16  # noqa: PLC0415
 
             convert_float_to_float16(
                 onnx_model.model,
@@ -262,7 +262,7 @@ class T5Helper:
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
-        from fusion_options import FusionOptions
+        from fusion_options import FusionOptions  # noqa: PLC0415
 
         optimization_options = None
         if is_float16:

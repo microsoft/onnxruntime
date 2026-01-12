@@ -28,8 +28,9 @@ class BackendManager {
   void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
   SessionContext& GetSessionContext();
-  Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph);
-  ov::CompiledModel& GetOVCompiledModel();
+  void TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph, bool include_embed_data);
+  ov::CompiledModel GetOVCompiledModel();
+  void RewindKVCache(size_t index);
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
@@ -38,7 +39,11 @@ class BackendManager {
       const logging::Logger& logger) const;
 
   bool ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const;
+  std::unordered_set<std::string> IdentifyDynamicInputs(const onnxruntime::GraphViewer& subgraph,
+                                                        const std::vector<const NodeArg*>& graph_inputs) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
+  void ValidateInputShapes(const reshape_t& shapes,
+                           const std::vector<const NodeArg*>& graph_inputs) const;
 
   std::shared_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto);
@@ -49,6 +54,7 @@ class BackendManager {
 
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
   std::shared_ptr<IBackend> concrete_backend_;
+  std::mutex mutex_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   SubGraphContext subgraph_context_;
   EPCtxHandler& ep_ctx_handle_;
