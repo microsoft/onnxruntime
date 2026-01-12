@@ -5,13 +5,13 @@
 
 // This file contains well-known keys for OrtEnv configuration entries, which may be used to configure EPs or
 // other global settings.
-// Refer to OrtEnvCreateConfig::config_entries and OrtApi::CreateEnvWithConfig.
+// Refer to OrtEnvCreationOptions::config_entries and OrtApi::CreateEnvWithOptions.
 // This file does NOT specify all available keys as EPs may accept custom entries with the prefix "ep.<ep_name>.".
 
 // Key prefix for a boolean option that, when enabled, allows an EP factory to create virtual OrtHardwareDevice
 // instances via OrtEpApi::CreateHardwareDevice().
-// The full key has the form: "allow_virtual_devices.<EP_LIBRARY_REGISTRATION_NAME>"
-// all in lower case.
+//
+// The full key has the form: "allow_virtual_devices.<EP_LIBRARY_REGISTRATION_NAME>" all in lower case.
 //
 // Note: A virtual OrtHardwareDevice does not represent actual hardware on the device, and is identified via the
 // metadata entry "is_virtual" with a value of "1".
