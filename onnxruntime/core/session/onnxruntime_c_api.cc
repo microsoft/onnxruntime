@@ -4291,8 +4291,9 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::GetInteropApi,
     &OrtApis::SessionGetEpDeviceForOutputs,
-    &OrtApis::GetOrtHardwareDevices,
-    &OrtApis::GetHardwareDeviceEPIncompatibilityReasons,
+    &OrtApis::GetNumHardwareDevices,
+    &OrtApis::GetHardwareDevices,
+    &OrtApis::GetHardwareDeviceEpIncompatibilityDetails,
     &OrtApis::DeviceEpIncompatibilityDetails_GetReasonsBitmask,
     &OrtApis::DeviceEpIncompatibilityDetails_GetNotes,
     &OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode,
@@ -4375,30 +4376,58 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
 
-ORT_API_STATUS_IMPL(OrtApis::GetOrtHardwareDevices, _In_ const OrtEnv* env, _Outptr_ const OrtHardwareDevice* const** devices, _Out_ size_t* num_devices) {
+ORT_API_STATUS_IMPL(OrtApis::GetNumHardwareDevices, _In_ const OrtEnv* env, _Out_ size_t* num_devices) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   if (env == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env must not be null");
   }
-  if (devices == nullptr || num_devices == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "devices and num_devices must not be null");
+  if (num_devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "num_devices must not be null");
   }
 
   const auto& device_vector = env->GetEnvironment().GetSortedOrtHardwareDevices();
-  *devices = device_vector.data();
   *num_devices = device_vector.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(num_devices);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetNumHardwareDevices is not available in minimal build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetHardwareDevices, _In_ const OrtEnv* env,
+                    _Out_writes_(num_devices) const OrtHardwareDevice** devices,
+                    _In_ size_t num_devices) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (env == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env must not be null");
+  }
+  if (devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "devices must not be null");
+  }
+
+  const auto& device_vector = env->GetEnvironment().GetSortedOrtHardwareDevices();
+  size_t available_devices = device_vector.size();
+  size_t copy_count = std::min(num_devices, available_devices);
+
+  for (size_t i = 0; i < copy_count; ++i) {
+    devices[i] = device_vector[i];
+  }
+
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(env);
   ORT_UNUSED_PARAMETER(devices);
   ORT_UNUSED_PARAMETER(num_devices);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetOrtHardwareDevices is not available in minimal build");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetHardwareDevices is not available in minimal build");
 #endif
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetHardwareDeviceEPIncompatibilityReasons, _In_ const OrtEnv* env, _In_ const char* ep_name, _In_ const OrtHardwareDevice* hw, _Outptr_ OrtDeviceEpIncompatibilityDetails** details) {
+ORT_API_STATUS_IMPL(OrtApis::GetHardwareDeviceEpIncompatibilityDetails, _In_ const OrtEnv* env, _In_ const char* ep_name, _In_ const OrtHardwareDevice* hw, _Outptr_ OrtDeviceEpIncompatibilityDetails** details) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   // Validate all input parameters
@@ -4416,7 +4445,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetHardwareDeviceEPIncompatibilityReasons, _In_ con
   }
 
   std::unique_ptr<OrtDeviceEpIncompatibilityDetails> compat_details;
-  auto status = env->GetEnvironment().GetHardwareDeviceEPIncompatibilityReasons(ep_name, hw, compat_details);
+  auto status = env->GetEnvironment().GetHardwareDeviceEpIncompatibilityDetails(ep_name, hw, compat_details);
   if (!status.IsOK()) {
     return ToOrtStatus(status);
   }
@@ -4428,7 +4457,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetHardwareDeviceEPIncompatibilityReasons, _In_ con
   ORT_UNUSED_PARAMETER(ep_name);
   ORT_UNUSED_PARAMETER(hw);
   ORT_UNUSED_PARAMETER(details);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetHardwareDeviceEPIncompatibilityReasons is not available in minimal build");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetHardwareDeviceEpIncompatibilityDetails is not available in minimal build");
 #endif
   API_IMPL_END
 }

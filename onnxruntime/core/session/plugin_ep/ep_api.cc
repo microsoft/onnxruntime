@@ -677,23 +677,23 @@ ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outp
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(CreateDeviceEpIncompatibilityDetails, _In_ uint32_t reasons_bitmask,
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_Initialize, _Inout_ OrtDeviceEpIncompatibilityDetails* details,
+                    _In_ uint32_t reasons_bitmask,
                     _In_ int32_t error_code,
-                    _In_opt_z_ const char* notes,
-                    _Outptr_ OrtDeviceEpIncompatibilityDetails** details) {
+                    _In_opt_z_ const char* notes) {
   API_IMPL_BEGIN
   if (details == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details output parameter must not be null");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details parameter must not be null");
   }
 
-  auto compat_details = std::make_unique<OrtDeviceEpIncompatibilityDetails>();
-  compat_details->reasons_bitmask = reasons_bitmask;
-  compat_details->error_code = error_code;
+  details->reasons_bitmask = reasons_bitmask;
+  details->error_code = error_code;
   if (notes != nullptr) {
-    compat_details->notes = notes;
+    details->notes = notes;
+  } else {
+    details->notes.clear();
   }
 
-  *details = compat_details.release();
   return nullptr;
   API_IMPL_END
 }
@@ -844,7 +844,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::CreateLoopKernel,
     &OrtExecutionProviderApi::CreateScanKernel,
     &OrtExecutionProviderApi::ReleaseKernelImpl,
-    &OrtExecutionProviderApi::CreateDeviceEpIncompatibilityDetails,
+    &OrtExecutionProviderApi::DeviceEpIncompatibilityDetails_Initialize,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

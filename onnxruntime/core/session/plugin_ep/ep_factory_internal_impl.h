@@ -96,10 +96,9 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
-  virtual OrtStatus* GetHardwareDeviceIncompatibilityReasons(_In_ const OrtHardwareDevice* /*hw*/,
-                                                             _Outptr_ OrtDeviceEpIncompatibilityDetails** details) noexcept {
-    // Default implementation: return nullptr to indicate no incompatibility info provided (device assumed compatible)
-    *details = nullptr;
+  virtual OrtStatus* GetHardwareDeviceIncompatibilityDetails(_In_ const OrtHardwareDevice* /*hw*/,
+                                                             _Inout_ OrtDeviceEpIncompatibilityDetails* /*details*/) noexcept {
+    // Default implementation: leave details unchanged (device assumed compatible)
     return nullptr;
   }
 

@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
@@ -6795,29 +6795,49 @@ struct OrtApi {
   ORT_API2_STATUS(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
                   _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                   _In_ size_t num_outputs);
-  /** \brief Get the list of available hardware devices.
+  /** \brief Get the number of available hardware devices.
    *
-   * Enumerates hardware devices available on the system. Device discovery results
-   * are stored in the ORT environment.
+   * Returns the count of hardware devices discovered on the system.
+   * Use this to allocate an array before calling GetHardwareDevices().
    *
    * \param[in] env The OrtEnv instance where device discovery results are stored.
-   * \param[out] devices The OrtHardwareDevice instances that are available.
-   * \param[out] num_devices The number of OrtHardwareDevice instances returned.
+   * \param[out] num_devices The number of OrtHardwareDevice instances available.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(GetOrtHardwareDevices, _In_ const OrtEnv* env,
-                  _Outptr_ const OrtHardwareDevice* const** devices,
-                  _Out_ size_t* num_devices);
+  ORT_API2_STATUS(GetNumHardwareDevices, _In_ const OrtEnv* env, _Out_ size_t* num_devices);
 
-  /** \brief Check for known incompatibility reasons between hardware device and a specific execution provider.
+  /** \brief Get the list of available hardware devices.
    *
-   * This function checks for known incompatibility reasons between the specified hardware device
+   * Enumerates hardware devices available on the system.
+   * Populates a user-provided array with pointers to OrtHardwareDevice instances. The caller is responsible
+   * for allocating the array with sufficient space (use GetNumHardwareDevices() to get the count).
+   *
+   * The returned pointers reference internal ORT data structures that are discovered once at process
+   * startup and remain valid for the lifetime of the OrtEnv. The caller does not need to release these
+   * pointers, but should not use them after calling ReleaseEnv().
+   *
+   * \param[in] env The OrtEnv instance where device discovery results are stored.
+   * \param[out] devices User-allocated array to receive pointers to OrtHardwareDevice instances.
+   *                     The array must have space for at least num_devices elements.
+   * \param[in] num_devices The size of the user-allocated devices array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetHardwareDevices, _In_ const OrtEnv* env,
+                  _Out_writes_(num_devices) const OrtHardwareDevice** devices,
+                  _In_ size_t num_devices);
+
+  /** \brief Check for known incompatibility issues between hardware device and a specific execution provider.
+   *
+   * This function checks for known incompatibility issues between the specified hardware device
    * and a specific execution provider.
-   * If incompatibility reasons are returned, it indicates the device is not compatible.
-   * However, if no reasons are returned, it doesn't guarantee 100% compatibility for all models,
+   * If returned incompatibility details have non-zero reasons, it indicates the device is not compatible.
+   * However, if returned detail have reason == 0, it doesn't guarantee 100% compatibility for all models,
    * as models may have specific requirements.
    *
    * Note: This method should only be called when the OrtEnv has been initialized with execution
@@ -6833,7 +6853,7 @@ struct OrtApi {
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(GetHardwareDeviceEPIncompatibilityReasons, _In_ const OrtEnv* env,
+  ORT_API2_STATUS(GetHardwareDeviceEpIncompatibilityDetails, _In_ const OrtEnv* env,
                   _In_ const char* ep_name,
                   _In_ const OrtHardwareDevice* hw,
                   _Outptr_ OrtDeviceEpIncompatibilityDetails** details);

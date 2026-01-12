@@ -151,7 +151,7 @@ class Environment {
   /// @param hw The hardware device to check for incompatibility.
   /// @param details Output: Incompatibility details including reasons for incompatibility if any.
   /// @returns Status indicating success or failure.
-  Status GetHardwareDeviceEPIncompatibilityReasons(const std::string& ep_name,
+  Status GetHardwareDeviceEpIncompatibilityDetails(const std::string& ep_name,
                                                    const OrtHardwareDevice* hw,
                                                    std::unique_ptr<OrtDeviceEpIncompatibilityDetails>& details) const;
 
@@ -252,8 +252,6 @@ class Environment {
   std::unordered_set<EpFactoryInternal*> internal_ep_factories_;
 
   DataTransferManager data_transfer_mgr_;  // plugin EP IDataTransfer instances
-
-  mutable std::vector<const OrtHardwareDevice*> ort_hardware_devices_;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };

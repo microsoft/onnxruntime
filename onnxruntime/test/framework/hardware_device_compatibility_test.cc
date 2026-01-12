@@ -9,31 +9,44 @@
 #include "test/test_environment.h"
 #include "test/util/include/api_asserts.h"
 
+#include <vector>
+
 using namespace onnxruntime::test;
 
+namespace {
+// Helper to get hardware devices using the two-step API pattern
+void GetHardwareDevicesHelper(const OrtApi* api, OrtEnv* env,
+                              std::vector<const OrtHardwareDevice*>& devices) {
+  size_t num_devices = 0;
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_devices));
+  devices.resize(num_devices);
+  if (num_devices > 0) {
+    ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, devices.data(), num_devices));
+  }
+}
+}  // namespace
+
 // -----------------------------
-// GetHardwareDeviceEPIncompatibilityReasons C API unit tests
+// GetHardwareDeviceEpIncompatibilityDetails C API unit tests
 // -----------------------------
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullEnv) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, InvalidArguments_NullEnv) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
-  // Create env for GetOrtHardwareDevices
+  // Create env for GetHardwareDevices
   OrtEnv* env = nullptr;
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "EpIncompatTest", &env));
   EXPECT_NE(env, nullptr);
 
   // Get a valid hardware device first
-  const OrtHardwareDevice* const* hw_devices = nullptr;
-  size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
-  ASSERT_GT(num_hw_devices, 0u);
-  ASSERT_NE(hw_devices, nullptr);
+  std::vector<const OrtHardwareDevice*> hw_devices;
+  ASSERT_NO_FATAL_FAILURE(GetHardwareDevicesHelper(api, env, hw_devices));
+  ASSERT_GT(hw_devices.size(), 0u);
 
-  // env == nullptr for GetHardwareDeviceEPIncompatibilityReasons
+  // env == nullptr for GetHardwareDeviceEpIncompatibilityDetails
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  OrtStatus* st = api->GetHardwareDeviceEPIncompatibilityReasons(nullptr, "CPUExecutionProvider", hw_devices[0], &details);
+  OrtStatus* st = api->GetHardwareDeviceEpIncompatibilityDetails(nullptr, "CPUExecutionProvider", hw_devices[0], &details);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
@@ -41,7 +54,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullEnv
   api->ReleaseEnv(env);
 }
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullEpName) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, InvalidArguments_NullEpName) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -49,14 +62,13 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullEpN
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "EpIncompatTest", &env));
   EXPECT_NE(env, nullptr);
 
-  const OrtHardwareDevice* const* hw_devices = nullptr;
-  size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
-  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices;
+  ASSERT_NO_FATAL_FAILURE(GetHardwareDevicesHelper(api, env, hw_devices));
+  ASSERT_GT(hw_devices.size(), 0u);
 
   // ep_name == nullptr
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  OrtStatus* st = api->GetHardwareDeviceEPIncompatibilityReasons(env, nullptr, hw_devices[0], &details);
+  OrtStatus* st = api->GetHardwareDeviceEpIncompatibilityDetails(env, nullptr, hw_devices[0], &details);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
@@ -64,7 +76,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullEpN
   api->ReleaseEnv(env);
 }
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_EmptyEpName) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, InvalidArguments_EmptyEpName) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -72,14 +84,13 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_EmptyEp
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "EpIncompatTest", &env));
   EXPECT_NE(env, nullptr);
 
-  const OrtHardwareDevice* const* hw_devices = nullptr;
-  size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
-  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices;
+  ASSERT_NO_FATAL_FAILURE(GetHardwareDevicesHelper(api, env, hw_devices));
+  ASSERT_GT(hw_devices.size(), 0u);
 
   // ep_name == ""
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  OrtStatus* st = api->GetHardwareDeviceEPIncompatibilityReasons(env, "", hw_devices[0], &details);
+  OrtStatus* st = api->GetHardwareDeviceEpIncompatibilityDetails(env, "", hw_devices[0], &details);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
@@ -87,7 +98,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_EmptyEp
   api->ReleaseEnv(env);
 }
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullHardwareDevice) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, InvalidArguments_NullHardwareDevice) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -97,7 +108,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullHar
 
   // hw == nullptr
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  OrtStatus* st = api->GetHardwareDeviceEPIncompatibilityReasons(env, "CPUExecutionProvider", nullptr, &details);
+  OrtStatus* st = api->GetHardwareDeviceEpIncompatibilityDetails(env, "CPUExecutionProvider", nullptr, &details);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
@@ -105,7 +116,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullHar
   api->ReleaseEnv(env);
 }
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullDetailsOutput) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, InvalidArguments_NullDetailsOutput) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -113,13 +124,12 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullDet
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "EpIncompatTest", &env));
   EXPECT_NE(env, nullptr);
 
-  const OrtHardwareDevice* const* hw_devices = nullptr;
-  size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
-  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices;
+  ASSERT_NO_FATAL_FAILURE(GetHardwareDevicesHelper(api, env, hw_devices));
+  ASSERT_GT(hw_devices.size(), 0u);
 
   // details == nullptr
-  OrtStatus* st = api->GetHardwareDeviceEPIncompatibilityReasons(env, "CPUExecutionProvider", hw_devices[0], nullptr);
+  OrtStatus* st = api->GetHardwareDeviceEpIncompatibilityDetails(env, "CPUExecutionProvider", hw_devices[0], nullptr);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
@@ -127,7 +137,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, InvalidArguments_NullDet
   api->ReleaseEnv(env);
 }
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, UnregisteredEp_ReturnsInvalidArgument) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, UnregisteredEp_ReturnsInvalidArgument) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -135,14 +145,13 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, UnregisteredEp_ReturnsIn
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "EpIncompatTest", &env));
   EXPECT_NE(env, nullptr);
 
-  const OrtHardwareDevice* const* hw_devices = nullptr;
-  size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
-  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices;
+  ASSERT_NO_FATAL_FAILURE(GetHardwareDevicesHelper(api, env, hw_devices));
+  ASSERT_GT(hw_devices.size(), 0u);
 
   // Non-existent EP name should return INVALID_ARGUMENT
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  OrtStatus* st = api->GetHardwareDeviceEPIncompatibilityReasons(env, "NonExistentExecutionProvider", hw_devices[0], &details);
+  OrtStatus* st = api->GetHardwareDeviceEpIncompatibilityDetails(env, "NonExistentExecutionProvider", hw_devices[0], &details);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   EXPECT_THAT(api->GetErrorMessage(st), testing::HasSubstr("No valid factory found"));
@@ -151,7 +160,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, UnregisteredEp_ReturnsIn
   api->ReleaseEnv(env);
 }
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, CpuEp_ReturnsEmptyDetails) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, CpuEp_ReturnsEmptyDetails) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -159,14 +168,13 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, CpuEp_ReturnsEmptyDetail
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "EpIncompatTest", &env));
   EXPECT_NE(env, nullptr);
 
-  const OrtHardwareDevice* const* hw_devices = nullptr;
-  size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
-  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices;
+  ASSERT_NO_FATAL_FAILURE(GetHardwareDevicesHelper(api, env, hw_devices));
+  ASSERT_GT(hw_devices.size(), 0u);
 
-  // CPU EP doesn't implement GetHardwareDeviceIncompatibilityReasons, so should return empty details
+  // CPU EP doesn't implement GetHardwareDeviceIncompatibilityDetails, so should return empty details
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEPIncompatibilityReasons(env, "CPUExecutionProvider", hw_devices[0], &details));
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEpIncompatibilityDetails(env, "CPUExecutionProvider", hw_devices[0], &details));
   ASSERT_NE(details, nullptr);
 
   // Verify empty details
@@ -186,7 +194,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, CpuEp_ReturnsEmptyDetail
   api->ReleaseEnv(env);
 }
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, AccessorFunctions_NullDetails) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, AccessorFunctions_NullDetails) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -210,7 +218,7 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, AccessorFunctions_NullDe
   api->ReleaseStatus(st);
 }
 
-TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, AccessorFunctions_NullOutputPtr) {
+TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, AccessorFunctions_NullOutputPtr) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -218,14 +226,13 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, AccessorFunctions_NullOu
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "EpIncompatTest", &env));
   EXPECT_NE(env, nullptr);
 
-  const OrtHardwareDevice* const* hw_devices = nullptr;
-  size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
-  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices;
+  ASSERT_NO_FATAL_FAILURE(GetHardwareDevicesHelper(api, env, hw_devices));
+  ASSERT_GT(hw_devices.size(), 0u);
 
   // Get a valid details object first
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEPIncompatibilityReasons(env, "CPUExecutionProvider", hw_devices[0], &details));
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEpIncompatibilityDetails(env, "CPUExecutionProvider", hw_devices[0], &details));
   ASSERT_NE(details, nullptr);
 
   // Test accessor functions with null output pointers
@@ -249,22 +256,21 @@ TEST(GetHardwareDeviceEPIncompatibilityReasonsCapiTest, AccessorFunctions_NullOu
 }
 
 // -----------------------------
-// GetOrtHardwareDevices C API unit tests
+// GetNumHardwareDevices / GetHardwareDevices C API unit tests
 // -----------------------------
 
-TEST(GetOrtHardwareDevicesCapiTest, InvalidArguments_NullEnv) {
+TEST(GetHardwareDevicesCapiTest, GetNumHardwareDevices_InvalidArguments_NullEnv) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
-  const OrtHardwareDevice* const* devices = nullptr;
   size_t num_devices = 0;
-  OrtStatus* st = api->GetOrtHardwareDevices(nullptr, &devices, &num_devices);
+  OrtStatus* st = api->GetNumHardwareDevices(nullptr, &num_devices);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
 }
 
-TEST(GetOrtHardwareDevicesCapiTest, InvalidArguments_NullDevices) {
+TEST(GetHardwareDevicesCapiTest, GetNumHardwareDevices_InvalidArguments_NullNumDevices) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -272,25 +278,7 @@ TEST(GetOrtHardwareDevicesCapiTest, InvalidArguments_NullDevices) {
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "HwDevicesTest", &env));
   EXPECT_NE(env, nullptr);
 
-  size_t num_devices = 0;
-  OrtStatus* st = api->GetOrtHardwareDevices(env, nullptr, &num_devices);
-  ASSERT_NE(st, nullptr);
-  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
-  api->ReleaseStatus(st);
-
-  api->ReleaseEnv(env);
-}
-
-TEST(GetOrtHardwareDevicesCapiTest, InvalidArguments_NullNumDevices) {
-  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  ASSERT_NE(api, nullptr);
-
-  OrtEnv* env = nullptr;
-  EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "HwDevicesTest", &env));
-  EXPECT_NE(env, nullptr);
-
-  const OrtHardwareDevice* const* devices = nullptr;
-  OrtStatus* st = api->GetOrtHardwareDevices(env, &devices, nullptr);
+  OrtStatus* st = api->GetNumHardwareDevices(env, nullptr);
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
   api->ReleaseStatus(st);
@@ -298,7 +286,18 @@ TEST(GetOrtHardwareDevicesCapiTest, InvalidArguments_NullNumDevices) {
   api->ReleaseEnv(env);
 }
 
-TEST(GetOrtHardwareDevicesCapiTest, ReturnsDevices) {
+TEST(GetHardwareDevicesCapiTest, GetHardwareDevices_InvalidArguments_NullEnv) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  const OrtHardwareDevice* devices[1] = {nullptr};
+  OrtStatus* st = api->GetHardwareDevices(nullptr, devices, 1);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+}
+
+TEST(GetHardwareDevicesCapiTest, GetHardwareDevices_InvalidArguments_NullDevices) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
 
@@ -306,17 +305,37 @@ TEST(GetOrtHardwareDevicesCapiTest, ReturnsDevices) {
   EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "HwDevicesTest", &env));
   EXPECT_NE(env, nullptr);
 
-  const OrtHardwareDevice* const* devices = nullptr;
+  OrtStatus* st = api->GetHardwareDevices(env, nullptr, 1);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  api->ReleaseEnv(env);
+}
+
+TEST(GetHardwareDevicesCapiTest, ReturnsDevices) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtEnv* env = nullptr;
+  EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "HwDevicesTest", &env));
+  EXPECT_NE(env, nullptr);
+
+  // Get number of devices first
   size_t num_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &devices, &num_devices));
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_devices));
 
   // Should return at least one device (CPU)
   EXPECT_GT(num_devices, 0u);
-  EXPECT_NE(devices, nullptr);
+
+  // Allocate array and get devices
+  std::vector<const OrtHardwareDevice*> devices(num_devices);
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, devices.data(), num_devices));
 
   // Verify we can access device properties via C API accessor functions
   for (size_t i = 0; i < num_devices; ++i) {
     const OrtHardwareDevice* device = devices[i];
+    ASSERT_NE(device, nullptr);
     // Device type should be valid (CPU, GPU, or NPU)
     OrtHardwareDeviceType device_type = api->HardwareDevice_Type(device);
     EXPECT_TRUE(device_type == OrtHardwareDeviceType_CPU ||

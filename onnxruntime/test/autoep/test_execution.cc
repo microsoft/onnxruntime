@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <vector>
 // #include <absl/base/config.h>
 #include <gsl/gsl>
 #include <gtest/gtest.h>
@@ -550,7 +551,7 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Scan) {
   }
 }
 
-// Tests the GetHardwareDeviceEPIncompatibilityReasons C API with the example plugin EP.
+// Tests the GetHardwareDeviceEpIncompatibilityDetails C API with the example plugin EP.
 // The example plugin EP supports CPU devices, so this test verifies that a CPU device
 // is reported as compatible (reasons_bitmask == 0).
 TEST(OrtEpLibrary, PluginEp_CpuDevice_ReturnsCompatible) {
@@ -564,10 +565,11 @@ TEST(OrtEpLibrary, PluginEp_CpuDevice_ReturnsCompatible) {
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
 
   // Get all hardware devices
-  const OrtHardwareDevice* const* hw_devices = nullptr;
   size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_hw_devices));
   ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices(num_hw_devices);
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, hw_devices.data(), num_hw_devices));
 
   // Find a CPU device using the public accessor
   const OrtHardwareDevice* cpu_device = nullptr;
@@ -581,7 +583,7 @@ TEST(OrtEpLibrary, PluginEp_CpuDevice_ReturnsCompatible) {
 
   // Check compatibility - ExampleEP supports CPU, so should return no incompatibility reasons
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEPIncompatibilityReasons(env, Utils::example_ep_info.registration_name.c_str(),
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEpIncompatibilityDetails(env, Utils::example_ep_info.registration_name.c_str(),
                                                                      cpu_device, &details));
   ASSERT_NE(details, nullptr);
 
@@ -597,7 +599,7 @@ TEST(OrtEpLibrary, PluginEp_CpuDevice_ReturnsCompatible) {
   api->ReleaseDeviceEpIncompatibilityDetails(details);
 }
 
-// Tests the GetHardwareDeviceEPIncompatibilityReasons C API with the example plugin EP.
+// Tests the GetHardwareDeviceEpIncompatibilityDetails C API with the example plugin EP.
 // The example plugin EP only supports CPU devices, so this test verifies that a GPU device
 // is reported as incompatible (reasons_bitmask != 0).
 TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
@@ -611,10 +613,11 @@ TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
 
   // Get all hardware devices
-  const OrtHardwareDevice* const* hw_devices = nullptr;
   size_t num_hw_devices = 0;
-  ASSERT_ORTSTATUS_OK(api->GetOrtHardwareDevices(env, &hw_devices, &num_hw_devices));
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_hw_devices));
   ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices(num_hw_devices);
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, hw_devices.data(), num_hw_devices));
 
   // Find a GPU device using the public accessor
   const OrtHardwareDevice* gpu_device = nullptr;
@@ -632,7 +635,7 @@ TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
 
   // Check compatibility - ExampleEP only supports CPU, so GPU should return incompatibility reasons
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
-  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEPIncompatibilityReasons(env, Utils::example_ep_info.registration_name.c_str(),
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEpIncompatibilityDetails(env, Utils::example_ep_info.registration_name.c_str(),
                                                                      gpu_device, &details));
   ASSERT_NE(details, nullptr);
 
