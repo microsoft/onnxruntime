@@ -200,8 +200,7 @@ export const init = async (
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const webGpuBackendImpl = require('./backend-webgpu').WebGpuBackend;
     const backend = new webGpuBackendImpl();
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-    await backend.initialize(env, gpuAdapter!);
+    await backend.initialize(env, gpuAdapter);
 
     jsepInit('webgpu', [
       // backend

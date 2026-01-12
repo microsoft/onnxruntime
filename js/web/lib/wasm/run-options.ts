@@ -41,10 +41,8 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
     }
 
     runOptionsHandle = wasm._OrtCreateRunOptions(
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-      runOptions.logSeverityLevel!,
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-      runOptions.logVerbosityLevel!,
+      runOptions.logSeverityLevel,
+      runOptions.logVerbosityLevel,
       !!runOptions.terminate!,
       tagDataOffset,
     );

@@ -109,8 +109,7 @@ if (isProxyWorker) {
         case 'init-wasm':
           initializeWebAssembly(message!.wasm).then(
             () => {
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-              initRuntime(message!).then(
+              initRuntime(message).then(
                 () => {
                   postMessage({ type });
                 },
