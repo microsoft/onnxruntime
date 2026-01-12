@@ -38,6 +38,13 @@ struct OrtArenaCfg {
   int max_dead_bytes_per_chunk;           // use -1 to allow ORT to choose the default
   int initial_growth_chunk_size_bytes;    // use -1 to allow ORT to choose the default
   int64_t max_power_of_two_extend_bytes;  // use -1 to allow ORT to choose the default
+  // Use CudaMemPool based arena if available (starting with cuda 11.2)
+  int use_cuda_mempool = -1;
+  // Amount of reserved memory in bytes to hold onto before trying
+  // to release memory back to the OS.
+  uint64_t cuda_mempool_release_threshold = 0;
+  // Bytes to keep on shrink for CudaMemPool, 0 is to attempt to release all, allocated space not affected.
+  size_t cuda_mempool_bytes_to_keep_on_shrink = 0;
 
   bool IsValid() {
     return arena_extend_strategy >= -1 && arena_extend_strategy <= 1 &&
@@ -55,6 +62,9 @@ struct OrtArenaCfg {
     static constexpr const char* InitialGrowthChunkSizeBytes = "arena.initial_growth_chunk_size_bytes";
     static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
     static constexpr const char* MaxMem = "arena.max_mem";
+    static constexpr const char* UseCudaMemPool = "arena.use_cuda_mempool";
+    static constexpr const char* CudaMempoolReleaseThreshold = "arena.cuda_mempool_release_threshold";
+    static constexpr const char* CudaMempoolBytesToKeepOnShrink = "arena.cuda_mempool_bytes_to_keep_on_shrink";
   };
 
   static onnxruntime::common::Status FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg);
@@ -347,5 +357,14 @@ void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);
 void* AllocatorDefaultAllocAligned(size_t size, size_t alignment);
 void AllocatorDefaultFreeAligned(void* p, size_t alignment);
+
+class IArena : public IAllocator {
+ public:
+  using IAllocator::IAllocator;
+  virtual Status Shrink() = 0;
+  // Only implemented when IsStreamAware() returns true
+  virtual void ReleaseStreamBuffers(Stream* /*stream*/) {}
+  static IArena* SafeArenaCast(IAllocator* allocator);
+};
 
 }  // namespace onnxruntime

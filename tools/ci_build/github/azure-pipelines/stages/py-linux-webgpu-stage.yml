@@ -1,0 +1,83 @@
+parameters:
+- name: arch
+  type: string
+
+- name: machine_pool
+  type: string
+
+- name: extra_build_arg
+  type: string
+  default: ''
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: docker_base_image
+  type: string
+
+stages:
+- stage: Linux_py_webgpu_Wheels_${{ parameters.arch }}
+  dependsOn: []
+  jobs:
+  - job: Linux_py_webgpu_Wheels_${{ parameters.arch }}
+    timeoutInMinutes: 240
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)/dist
+        artifactName: onnxruntime_webgpu
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)/${{ parameters.cmake_build_type }}
+        artifactName: linux_webgpu_wheel_${{ parameters.arch }}
+    variables:
+      - name: extra_build_args
+        ${{ if ne(parameters.extra_build_arg, '') }}:
+          value: -x ${{ parameters.extra_build_arg }}
+        ${{ if eq(parameters.extra_build_arg, '') }}:
+          value: ''
+      - template: ../templates/common-variables.yml
+    steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
+          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimewebgpu
+
+      - task: Bash@3
+        displayName: 'Build Python Wheel'
+        inputs:
+          targetType: filePath
+          filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+          arguments: -i onnxruntimewebgpu -d "WEBGPU" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+
+      - script: |
+          set -e -x
+          mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }}
+          mv $(Build.BinariesDirectory)/dist ./dist
+          pushd dist
+          find . -name \*.whl -exec unzip -qq -o {} \;
+          rm -r onnxruntime
+          popd
+          pushd ${{ parameters.cmake_build_type }}
+          find . -name \*.whl -exec unzip -qq -o {} \;
+          popd
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'Move files'

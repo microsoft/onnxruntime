@@ -48,24 +48,31 @@ parameters:
 - name: CudaVersion
   displayName: CUDA version
   type: string
-  default: '12.2'
+  default: '12.8'
   values:
-  - 12.2
+  - 12.8
+  - 13.0
 
 variables:
 - template: templates/common-variables.yml
 - name: ReleaseVersionSuffix
   value: ''
 - name: win_trt_home
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
     value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
 - name: win_cuda_home
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: $(Agent.TempDirectory)\v11.8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: $(Agent.TempDirectory)\v12.2
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: $(Agent.TempDirectory)\v12.8
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\v13.0
+# CMAKE_CUDA_ARCHITECTURES for Windows nuget packaging
+- name: CudaArchs
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: '75-real;86-real;89-real;90-virtual'
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
 
 resources:
   repositories:
@@ -125,6 +132,7 @@ extends:
         BuildId: ${{ parameters.BuildId }}
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+        CudaArchs: ${{ variables.CudaArchs }}
 
     - template: stages/download-java-tools-stage.yml
 

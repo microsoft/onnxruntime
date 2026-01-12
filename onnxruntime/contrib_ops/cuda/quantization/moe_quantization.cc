@@ -36,6 +36,9 @@ QMoE<T>::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), 
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
               "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
+
+  block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
+  ORT_ENFORCE(block_size_ == 0, "block_size is not implemented in qMoE for CUDA.");
 }
 
 template <typename T>
@@ -143,15 +146,21 @@ Status QMoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_scales_optional = context->Input<Tensor>(9);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(10);
 
+  const Tensor* fc1_zero_points = context->Input<Tensor>(11);
+  const Tensor* fc2_zero_points = context->Input<Tensor>(12);
+  const Tensor* fc3_zero_points = context->Input<Tensor>(13);
+  ORT_ENFORCE(fc1_zero_points == nullptr && fc2_zero_points == nullptr && fc3_zero_points == nullptr,
+              "Zero points are not yet implemented on CUDA for QMoE.");
+
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias_optional, fc1_scales,
-      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales,
-      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional,
+      fc1_experts_weights, fc1_experts_bias_optional, fc1_scales, fc1_zero_points,
+      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zero_points,
+      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional, fc3_zero_points,
       expert_weight_bits_ == 4 ? 2 : 1,
       activation_type_ == ort_fastertransformer::ActivationType::SwiGLU,
-      0));  // CUDA doesn't support block-wise quantization yet
+      block_size_));
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push

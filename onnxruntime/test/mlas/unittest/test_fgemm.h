@@ -56,7 +56,7 @@ class FgemmPackedContext<float, false> {
   }
 };
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
 template <>
 class FgemmPackedContext<double, false> {
  public:

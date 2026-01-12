@@ -45,8 +45,8 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
 /// <param name="new_initializer">TensorProto with external data contained in ort_value</param>
 /// <param name="ort_value">ort_value with data</param>
 /// <returns></returns>
-NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
-                                        OrtValue ort_value);
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                    OrtValue ort_value);
 
 /** Add a new initializer to 'graph'.
  * Checks that new_initializer does not already exist in 'graph' before adding it.
@@ -55,7 +55,7 @@ NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::Tens
  * @returns The NodeArg for the new initializer.
  * @remarks No matching graph input is created, so the initializer will be constant.
  */
-NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer, Tensor&& tensor);
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer, Tensor&& tensor);
 
 /** Add a new initializer to 'graph'.
  * The function unpacks data into a tensor and converts new_initializer to a TensorProto with external data in memory.
@@ -67,7 +67,7 @@ NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::Tens
  * @returns The NodeArg for the new initializer.
  *  @remarks No matching graph input is created, so the initializer will be constant.
  */
-NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
 /// <summary>
 /// If the initializer with the given name does not exist in the destination graph, but exists in the

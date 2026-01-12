@@ -31,7 +31,6 @@ def directory_setup_factory(tmp_path):
         java_artifact_dir = tmp_path / "java-artifact"
         win_dir = java_artifact_dir / "onnxruntime-java-win-x64"
         linux_dir = java_artifact_dir / "onnxruntime-java-linux-x64"
-        osx_dir = java_artifact_dir / "onnxruntime-java-osx-x86_64"
 
         # --- Main artifact directory (Windows) ---
         win_dir.mkdir(parents=True, exist_ok=True)
@@ -53,25 +52,13 @@ def directory_setup_factory(tmp_path):
             create_empty_file(linux_native_dir / "libonnxruntime_providers_cuda.so")
         (linux_dir / "_manifest" / "spdx_2.2").mkdir(parents=True, exist_ok=True)
 
-        # --- macOS and other platforms (for CPU test) ---
+        # --- Additional platforms (for CPU test) ---
         if package_type == "cpu":
-            osx_native_dir = osx_dir / "ai" / "onnxruntime" / "native" / "osx-x86_64"
-            osx_native_dir.mkdir(parents=True, exist_ok=True)
-            create_empty_file(osx_dir / "libcustom_op_library.dylib")
-            create_empty_file(osx_native_dir / "libonnxruntime.dylib")
-            create_empty_file(osx_native_dir / "libonnxruntime4j_jni.dylib")
-            (osx_dir / "_manifest" / "spdx_2.2").mkdir(parents=True, exist_ok=True)
-
-            # Add linux-aarch64 and osx-arm64 for CPU test
+            # Add linux-aarch64 for CPU test
             linux_aarch64_dir = java_artifact_dir / "onnxruntime-java-linux-aarch64"
             linux_aarch64_native_dir = linux_aarch64_dir / "ai" / "onnxruntime" / "native" / "linux-aarch64"
             linux_aarch64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(linux_aarch64_dir / "libcustom_op_library.so")
-
-            osx_arm64_dir = java_artifact_dir / "onnxruntime-java-osx-arm64"
-            osx_arm64_native_dir = osx_arm64_dir / "ai" / "onnxruntime" / "native" / "osx-arm64"
-            osx_arm64_native_dir.mkdir(parents=True, exist_ok=True)
-            create_empty_file(osx_arm64_dir / "libcustom_op_library.dylib")
 
         return tmp_path
 
@@ -134,9 +121,6 @@ def test_cpu_packaging(directory_setup_factory, version_string):
         # Linux libs
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime.so" in jar_contents
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime4j_jni.so" in jar_contents
-        # macOS libs
-        assert "ai/onnxruntime/native/osx-x86_64/libonnxruntime.dylib" in jar_contents
-        assert "ai/onnxruntime/native/osx-x86_64/libonnxruntime4j_jni.dylib" in jar_contents
         # GPU libs should NOT be present
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime_providers_cuda.so" not in jar_contents
 
@@ -144,14 +128,9 @@ def test_cpu_packaging(directory_setup_factory, version_string):
     with zipfile.ZipFile(testing_jar_path, "r") as zf:
         jar_contents = zf.namelist()
         assert "libcustom_op_library.so" in jar_contents
-        assert "libcustom_op_library.dylib" in jar_contents
 
     # 3. Verify the custom op libraries were removed from the source directories
     linux_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-x64"
-    osx_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-osx-x86_64"
     linux_aarch64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-aarch64"
-    osx_arm64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-osx-arm64"
     assert not (linux_dir / "libcustom_op_library.so").exists()
-    assert not (osx_dir / "libcustom_op_library.dylib").exists()
     assert not (linux_aarch64_dir / "libcustom_op_library.so").exists()
-    assert not (osx_arm64_dir / "libcustom_op_library.dylib").exists()

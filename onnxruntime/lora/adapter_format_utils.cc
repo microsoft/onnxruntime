@@ -6,7 +6,7 @@
 
 #include "core/framework/allocator.h"
 #include "core/common/common.h"
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 #include "core/framework/endian_utils.h"
 #include "core/common/span_utils.h"
 #include "core/framework/ortdevice.h"

@@ -6,11 +6,7 @@
 #include "fast_gelu.h"
 #include "core/providers/cuda/tensor/gelu_impl.h"
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
-#ifdef USE_ROCM
-#include "contrib_ops/rocm/bert/elementwise.h"
-#else
 #include "contrib_ops/cuda/bert/transformer_common.h"
-#endif
 
 namespace onnxruntime {
 namespace contrib {
@@ -36,10 +32,8 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
-#ifndef USE_ROCM
   const TransformerOptions* options = TransformerOptions::GetInstance();
   use_half2_ = !options->DisableHalf2();
-#endif
 }
 
 template <typename T>
@@ -57,13 +51,6 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-#ifdef USE_ROCM
-  return LaunchElementwiseKernel<functor::FastGeLU, CudaT>(
-      GetTuningContext(), context->GetComputeStream(),
-      reinterpret_cast<const CudaT*>(input->Data<T>()), static_cast<int>(input_length),
-      (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr, static_cast<int>(bias_length),
-      reinterpret_cast<CudaT*>(output->MutableData<T>()));
-#else
   return LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
                                      Stream(context),
                                      static_cast<int>(input_length),
@@ -72,7 +59,6 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
                                      (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
                                      reinterpret_cast<CudaT*>(output->MutableData<T>()),
                                      use_half2_);
-#endif
 }
 
 }  // namespace cuda

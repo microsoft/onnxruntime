@@ -588,6 +588,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_runtime_path.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
@@ -643,10 +644,6 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
-endif()
-
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -676,12 +673,11 @@ if(onnxruntime_USE_ARMNN)
 endif()
 
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
-    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
+    # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
-    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -694,6 +690,9 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
 
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
+endif()
+if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
 
 set(ONNXRUNTIME_TEST_LIBS
@@ -753,7 +752,7 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU)
+if(onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
@@ -1044,6 +1043,10 @@ if (MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
 
+  # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+  # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd4702")
+
   # Avoid this compile error in graph_transform_test.cc and qdq_transformer_test.cc:
   # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
   set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
@@ -1229,8 +1232,30 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
+  # Expose QNN SDK headers to unit tests via an interface target 
+  if(onnxruntime_USE_QNN)
+    add_library(qnn_sdk_headers_include INTERFACE)
+    target_include_directories(qnn_sdk_headers_include INTERFACE
+      ${onnxruntime_QNN_HOME}/include
+      ${onnxruntime_QNN_HOME}/include/QNN)
+    target_link_libraries(onnxruntime_provider_test PRIVATE qnn_sdk_headers_include)
+  endif()
+  
+  if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
+    # The test_main.cc includes NvInfer.h where it has many deprecated declarations
+    # simply ignore them for TensorRT EP build
+    set_property(TARGET onnxruntime_provider_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+  endif()
+
   # enable dynamic plugin EP usage
   target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+
+
+  if (MSVC)
+    # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+    # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+    target_compile_options(onnxruntime_provider_test PRIVATE "/wd4702")
+  endif()
 
   # TODO fix shorten-64-to-32 warnings
   # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
@@ -1513,9 +1538,54 @@ endif()
     target_link_libraries(onnxruntime_mocked_allocator PRIVATE ${GSL_TARGET})
     set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
+    # onnxruntime_runtime_path_test_shared_library
+    block()
+      set(onnxruntime_runtime_path_test_shared_library_src
+          "${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.h"
+          "${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.cc")
+
+      onnxruntime_add_shared_library(onnxruntime_runtime_path_test_shared_library
+                                     ${onnxruntime_runtime_path_test_shared_library_src})
+
+      if (CMAKE_SYSTEM_NAME MATCHES "AIX")
+        target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
+                              onnxruntime_common ${CMAKE_DL_LIBS})
+        set_target_properties(onnxruntime_runtime_path_test_shared_library PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
+      else()
+        target_link_libraries(onnxruntime_runtime_path_test_shared_library PRIVATE
+                              onnxruntime_common cpuinfo ${CMAKE_DL_LIBS})
+      endif()
+      target_include_directories(onnxruntime_runtime_path_test_shared_library PRIVATE ${ONNXRUNTIME_ROOT})
+
+      if(UNIX)
+        if (APPLE)
+          set(onnxruntime_runtime_path_test_shared_library_link_flags "-Xlinker -dead_strip")
+        elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+          string(CONCAT onnxruntime_runtime_path_test_shared_library_link_flags
+                 "-Xlinker --version-script=${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.lds "
+                 "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+        endif()
+      else()
+        set(onnxruntime_runtime_path_test_shared_library_link_flags
+            "-DEF:${TEST_SRC_DIR}/shared_lib/runtime_path_test_shared_library/runtime_path_test_shared_library.def")
+      endif()
+
+      set_property(TARGET onnxruntime_runtime_path_test_shared_library APPEND_STRING PROPERTY LINK_FLAGS
+                   ${onnxruntime_runtime_path_test_shared_library_link_flags})
+
+      set_target_properties(onnxruntime_runtime_path_test_shared_library PROPERTIES FOLDER "ONNXRuntimeTest")
+      source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_runtime_path_test_shared_library_src})
+    endblock()
+
     #################################################################
     # test inference using shared lib
-    set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
+    set(onnxruntime_shared_lib_test_LIBS
+        onnxruntime_mocked_allocator
+        onnxruntime_test_utils
+        onnxruntime_common
+        onnx_proto
+        onnxruntime_runtime_path_test_shared_library)
+
     if(NOT WIN32)
       if(onnxruntime_USE_SNPE)
         list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)
@@ -1569,6 +1639,10 @@ endif()
         "${TEST_SRC_DIR}/platform/android/cxa_demangle_test.cc"
       )
       target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+    endif()
+
+    if (CMAKE_SYSTEM_NAME MATCHES "AIX" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      set_target_properties(onnxruntime_shared_lib_test PROPERTIES ENABLE_EXPORTS 1)
     endif()
 
     if (IOS)
@@ -1973,28 +2047,31 @@ endif()
 
 # Build library that can be used with RegisterExecutionProviderLibrary and automatic EP selection
 # We need a shared lib build to use that as a dependency for the test library
-# Currently we only have device discovery on Windows so no point building the test app on other platforms.
-if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
+if (onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
+
+  #
   # example_plugin_ep
-  file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/*.h"
-                                                "${TEST_SRC_DIR}/autoep/library/*.cc")
+  #
+  file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.h"
+                                                "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.cc"
+                                                "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
-  target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
+  target_link_libraries(example_plugin_ep PRIVATE onnxruntime ${GSL_TARGET})
 
   if(UNIX)
     if (APPLE)
       set(ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG "-Xlinker -dead_strip")
     elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
       string(CONCAT ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG
-             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_plugin_ep_library.lds "
+             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_plugin_ep/example_plugin_ep_library.lds "
              "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
     endif()
   else()
     set(ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG
-        "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep_library.def")
+        "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep/example_plugin_ep_library.def")
   endif()
 
   set_property(TARGET example_plugin_ep APPEND_STRING PROPERTY LINK_FLAGS
@@ -2003,7 +2080,93 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
   set_target_properties(example_plugin_ep PROPERTIES FOLDER "ONNXRuntimeTest")
   source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_library_src})
 
+  #
+  # example_plugin_ep_virt_gpu
+  #
+  set(onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src
+          "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_lib_entry.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_factory.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_factory.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep.cc")
+  onnxruntime_add_shared_library_module(example_plugin_ep_virt_gpu ${onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src})
+  target_include_directories(example_plugin_ep_virt_gpu PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(example_plugin_ep_virt_gpu PRIVATE onnxruntime ${GSL_TARGET})
+
+  if(UNIX)
+    if (APPLE)
+	    set(ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG "-Xlinker -dead_strip")
+    elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      string(CONCAT ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_lib.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep_virt_gpu/ep_lib.def")
+  endif()
+
+  set_property(TARGET example_plugin_ep_virt_gpu APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_AUTOEP_EP_LIB_VIRT_GPU_LINK_FLAG})
+
+  set_target_properties(example_plugin_ep_virt_gpu PROPERTIES FOLDER "ONNXRuntimeTest")
+  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src})
+
+  #
+  # example_plugin_ep_kernel_registry
+  #
+  set(onnxruntime_autoep_test_example_plugin_ep_kernel_registry_src
+          "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_lib_entry.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_factory.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_factory.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_allocator.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_data_transfer.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_data_transfer.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_kernel_registration.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_kernel_registration.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/utils.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/squeeze.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/squeeze.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/relu.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/relu.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/scan.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/scan.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/loop.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/loop.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/if.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/if.cc")
+  onnxruntime_add_shared_library_module(example_plugin_ep_kernel_registry ${onnxruntime_autoep_test_example_plugin_ep_kernel_registry_src})
+  target_include_directories(example_plugin_ep_kernel_registry PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(example_plugin_ep_kernel_registry PRIVATE onnxruntime ${GSL_TARGET})
+
+  if(UNIX)
+    if (APPLE)
+	    set(ONNXRUNTIME_EXAMPLE_PLUGIN_EP_KERNEL_REGISTRY_LINK_FLAG "-Xlinker -dead_strip")
+    elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      string(CONCAT ONNXRUNTIME_EXAMPLE_PLUGIN_EP_KERNEL_REGISTRY_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_lib.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_EXAMPLE_PLUGIN_EP_KERNEL_REGISTRY_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_lib.def")
+  endif()
+
+  set_property(TARGET example_plugin_ep_kernel_registry APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_EXAMPLE_PLUGIN_EP_KERNEL_REGISTRY_LINK_FLAG})
+
+  set_target_properties(example_plugin_ep_kernel_registry PROPERTIES FOLDER "ONNXRuntimeTest")
+  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_example_plugin_ep_kernel_registry_src})
+
+  #
   # test library
+  #
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
                                         "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
@@ -2036,7 +2199,7 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
           TARGET onnxruntime_autoep_test
           SOURCES ${onnxruntime_autoep_test_SRC} ${onnxruntime_unittest_main_src}
           LIBS ${onnxruntime_autoep_test_LIBS}
-          DEPENDS ${all_dependencies} example_plugin_ep
+          DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
 endif()
 

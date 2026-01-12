@@ -57,6 +57,9 @@ Abstract:
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC) || defined(MLAS_TARGET_ARM)
 #define MLAS_TARGET_ARM_ANY
 #endif
+#if defined(__s390x__)
+#define MLAS_TARGET_S390X
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
@@ -80,7 +83,7 @@ Abstract:
 // Define the support levels for the target architecture.
 //
 
-#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER) || defined (MLAS_TARGET_ZVECTOR)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
@@ -631,6 +634,7 @@ MlasGemm(
 {
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
+
 /**
  * @brief Parameters that define the shape of a dynamically quantized GEMM operation.
  *
@@ -643,6 +647,7 @@ struct MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS {
     size_t N = 0;                  /**< Column size of matrix B */
     size_t K = 0;                  /**< Column size of matrix A and Row size of matrix B */
 };
+
 /**
  * @brief Parameters that define the data buffers and layout for a dynamic quant GEMM.
  *
@@ -677,6 +682,14 @@ MlasDynamicQGemm (
     MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool);
 }
 
+/**
+ * @brief Determines whether a dynamic quantized GEMM implementation is available on the current platform.
+ *
+ * MlasDynamicQGemm() and MlasDynamicQGemmBatch() should only be called if this function returns true.
+ */
+bool
+MLASCALL
+MlasIsDynamicQGemmAvailable();
 
 //
 // Symmetric QGEMM has limited buffer overrun.
@@ -1521,6 +1534,15 @@ MlasConvertFloatToHalfBuffer(
 const float* Source,
 MLAS_FP16* Destination,
 size_t Count
+);
+
+void
+MLASCALL
+MlasConvertFloatToHalfBufferInParallel(
+    const float* Source,
+    MLAS_FP16* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
 );
 
 /**

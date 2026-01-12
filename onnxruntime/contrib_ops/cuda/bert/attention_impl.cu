@@ -493,7 +493,8 @@ Status EfficientAttention(
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
-  p.is_half = sizeof(T) == 2;
+  p.is_bf16 = std::is_same<T, BFloat16>::value;
+  p.is_half = !p.is_bf16 && (sizeof(T) == 2);
   p.batch_size = parameters.batch_size;
   p.num_heads = parameters.num_heads;
   p.sequence_length = parameters.sequence_length;
@@ -787,8 +788,6 @@ Status UnfusedAttention(
   return result;
 }
 
-#ifndef USE_ROCM  // exclude the following from hipify since they are not used in ROCM EP
-
 template <typename T>
 Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
                            int sequence_length, int total_sequence_length,
@@ -859,7 +858,6 @@ template Status ConcatPastToPresent<half>(int batch_size, int num_heads, int qk_
                                           cudaStream_t stream,
                                           int max_threads_per_block,
                                           AttentionData<half>& data);
-#endif
 
 template <typename T>
 Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, int v_head_size,
@@ -920,7 +918,7 @@ Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, i
     constexpr bool is_new_kv_bnsh_format = true;
     ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(
         batch_size, num_heads, qk_head_size, parameters.max_sequence_length,
-        data.seqlens_k_total, nullptr, parameters.sequence_length, data.k, data.v, data.present_key, data.present_value,
+        nullptr, data.seqlens_k_total, parameters.sequence_length, data.k, data.v, data.present_key, data.present_value,
         is_past_kv_bnsh_format, is_new_kv_bnsh_format, stream, max_threads_per_block));
 
     data.k = data.present_key;

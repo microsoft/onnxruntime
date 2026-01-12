@@ -34,8 +34,6 @@ Example commands:
         python benchmark.py -e torchscript -g -p "fp16"
     Run ONNXRuntime and TorchScript on CPU for all models with quantization:
         python benchmark.py -e torchscript onnxruntime -p "int8" -o
-    Run OnnxRuntime with the ROCM provider and graph optimization script:
-        python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
     Run OnnxRuntime with bfloat16 fastmath mode kernels on aarch64 platforms with bfloat16 support:
         python benchmark.py --enable_arm64_bfloat16_fastmath_mlas_gemm
 
@@ -118,7 +116,6 @@ def run_onnxruntime(
         use_gpu
         and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers())
         and ("MIGraphXExecutionProvider" not in onnxruntime.get_available_providers())
-        and ("ROCMExecutionProvider" not in onnxruntime.get_available_providers())
         and ("DmlExecutionProvider" not in onnxruntime.get_available_providers())
     ):
         logger.error(
@@ -788,7 +785,7 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["migraphx", "rocm"]:
+    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["migraphx"]:
         logger.error("int8 is for CPU only")
         return
 

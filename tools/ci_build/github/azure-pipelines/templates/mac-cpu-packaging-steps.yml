@@ -1,9 +1,7 @@
 parameters:
 - name: MacosArch
   type: string
-  values:
-  - 'x86_64'
-  - 'arm64'
+  default: 'arm64'
 
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
@@ -21,11 +19,6 @@ steps:
       make install DESTDIR=$(Build.BinariesDirectory)/installed
   displayName: 'Build ${{ parameters.MacosArch }}'
 
-- ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
-    displayName: 'Running Tests'
-
 - task: ShellScript@2
   displayName: 'Copy build artifacts for zipping'
   inputs:
@@ -42,31 +35,13 @@ steps:
     archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).tgz'
     replaceExistingArchive: true
 
-- script: |
-    set -e -x
-    mkdir -p $(Build.ArtifactStagingDirectory)/testdata
-    cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
-  displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
-  condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
-
 - task: 1ES.PublishPipelineArtifact@1
   inputs:
     targetPath: '$(Build.ArtifactStagingDirectory)'
     artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
-- template: java-api-artifacts-package-and-publish-steps-posix.yml
-  parameters:
-    arch: 'osx-${{ parameters.MacosArch }}'
-    buildConfig: 'Release'
-    artifactName: 'onnxruntime-java-osx-${{ parameters.MacosArch }}'
-    libraryName: 'libonnxruntime.dylib'
-    nativeLibraryName: 'libonnxruntime4j_jni.dylib'
-
 - template: nodejs-artifacts-package-and-publish-steps-posix.yml
   parameters:
-      ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-          arch: x64
-      ${{ if eq(parameters.MacosArch, 'arm64') }}:
-          arch: arm64
+      arch: arm64
       os: 'darwin'
       artifactName: 'drop-onnxruntime-nodejs-osx-${{ parameters.MacosArch }}'

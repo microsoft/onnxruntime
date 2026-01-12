@@ -237,6 +237,20 @@ inline const OrtCompileApi& GetCompileApi() {
 }
 
 /// <summary>
+/// This returns a reference to the ORT C Interop API. Used for external resource import with EPs.
+/// </summary>
+/// <returns>ORT C Interop API reference</returns>
+inline const OrtInteropApi& GetInteropApi() {
+  auto* api = GetApi().GetInteropApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("Interop API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
+/// <summary>
 /// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
 /// </summary>
 /// <returns>ORT C EP API reference</returns>
@@ -644,6 +658,9 @@ ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelRegistry, GetEpApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
@@ -1056,6 +1073,9 @@ struct AllocatorWithDefaultOptions : detail::AllocatorImpl<detail::Unowned<OrtAl
 struct Allocator : detail::AllocatorImpl<OrtAllocator> {
   explicit Allocator(std::nullptr_t) {}  ///< Convenience to create a class member and then replace with an instance
   Allocator(const Session& session, const OrtMemoryInfo*);
+
+  ///< Take ownership of a pointer created by C API
+  explicit Allocator(OrtAllocator* p) : AllocatorImpl<OrtAllocator>{p} {}
 };
 
 using UnownedAllocator = detail::AllocatorImpl<detail::Unowned<OrtAllocator>>;
@@ -1441,6 +1461,12 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_VitisAI
   SessionOptionsImpl& AppendExecutionProvider_VitisAI(const std::unordered_map<std::string, std::string>& provider_options = {});
+
+  ///< Wraps OrtApi::AddFreeDimensionOverride
+  SessionOptionsImpl& AddFreeDimensionOverride(const char* dim_denotation, int64_t dim_value);
+
+  ///< Wraps OrtApi::AddFreeDimensionOverrideByName
+  SessionOptionsImpl& AddFreeDimensionOverrideByName(const char* dim_name, int64_t dim_value);
 };
 }  // namespace detail
 
@@ -1598,6 +1624,7 @@ struct ConstSessionImpl : Base<T> {
   std::vector<ConstMemoryInfo> GetMemoryInfoForInputs() const;   ///< Wrapper for OrtApi::SessionGetMemoryInfoForInputs
   std::vector<ConstMemoryInfo> GetMemoryInfoForOutputs() const;  ///< Wrapper for OrtApi::SessionGetMemoryInfoForOutputs
   std::vector<ConstEpDevice> GetEpDeviceForInputs() const;       ///< Wrapper for OrtApi::SessionGetEpDeviceForInputs
+  std::vector<ConstEpDevice> GetEpDeviceForOutputs() const;      ///< Wrapper for OrtApi::SessionGetEpDeviceForOutputs
 
   /** \brief Returns a copy of input name at the specified index.
    *
@@ -2713,7 +2740,7 @@ struct KernelContext {
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
   void* GetGPUComputeStream() const;
   Logger GetLogger() const;
-  OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
+  Ort::Allocator GetAllocator(const OrtMemoryInfo& memory_info) const;
   OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
   void ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const;
 
@@ -2768,6 +2795,13 @@ struct KernelInfoImpl : Base<T> {
 
   std::string GetNodeName() const;
   Logger GetLogger() const;
+
+  KeyValuePairs GetConfigEntries() const;
+
+  std::string GetOperatorDomain() const;  ///< Wraps OrtApi::KernelInfo_GetOperatorDomain
+  std::string GetOperatorType() const;    ///< Wraps OrtApi::KernelInfo_GetOperatorType
+  int GetOperatorSinceVersion() const;    ///< Wraps OrtApi::KernelInfo_GetOperatorSinceVersion
+  const OrtEp* GetEp() const;             ///< Wraps OrtEpApi::KernelInfo_GetEp
 };
 
 }  // namespace detail
@@ -3284,5 +3318,118 @@ struct Model : detail::ModelImpl<OrtModel> {
   explicit Model(const std::vector<DomainOpsetPair>& opsets);
 #endif
 };
+
+namespace detail {
+template <typename T>
+struct ConstKernelDefImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::KernelDef_GetOperatorType
+  const char* GetOperatorType() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetDomain
+  const char* GetDomain() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetSinceVersion
+  std::pair<int, int> GetSinceVersion() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetExecutionProvider
+  const char* GetExecutionProvider() const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetInputMemType
+  OrtMemType GetInputMemType(size_t input_index) const;
+
+  ///< Wraps OrtEpApi::KernelDef_GetOutputMemType
+  OrtMemType GetOutputMemType(size_t output_index) const;
+};
+}  // namespace detail
+
+using ConstKernelDef = detail::ConstKernelDefImpl<detail::Unowned<const OrtKernelDef>>;
+
+struct KernelDef : detail::ConstKernelDefImpl<OrtKernelDef> {
+  using Base = detail::ConstKernelDefImpl<OrtKernelDef>;
+  using Base::Base;
+
+  explicit KernelDef(std::nullptr_t) {}
+  explicit KernelDef(OrtKernelDef* p) : detail::ConstKernelDefImpl<OrtKernelDef>{p} {}
+
+  ConstKernelDef GetConst() const { return ConstKernelDef{this->p_}; }
+};
+
+/** \brief Builder for OrtKernelDef.
+ *
+ * Used by plugin EPs to build a kernel definition.
+ */
+struct KernelDefBuilder : detail::Base<OrtKernelDefBuilder> {
+  KernelDefBuilder();                           ///< Wraps OrtEpApi::CreateKernelDefBuilder
+  explicit KernelDefBuilder(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used
+  explicit KernelDefBuilder(OrtKernelDefBuilder* ort_kernel_def_builder);
+
+  KernelDefBuilder& SetOperatorType(const char* op_type);
+  KernelDefBuilder& SetDomain(const char* domain);
+  KernelDefBuilder& SetSinceVersion(int since_version_start, int since_version_end);
+  KernelDefBuilder& SetExecutionProvider(const char* ep_name);
+  KernelDefBuilder& SetInputMemType(size_t input_index, OrtMemType mem_type);
+  KernelDefBuilder& SetOutputMemType(size_t output_index, OrtMemType mem_type);
+  KernelDefBuilder& AddTypeConstraint(const char* arg_name, const OrtDataType* data_type);
+  KernelDefBuilder& AddTypeConstraint(const char* arg_name, const std::vector<const OrtDataType*>& data_types);
+  KernelDefBuilder& AddInputOutputAlias(int input_index, int output_index);
+  KernelDefBuilder& AddInputOutputAliases(const std::vector<int>& input_indices,
+                                          const std::vector<int>& output_indices);
+  KernelDefBuilder& AddInputOutputMutableAlias(int input_index, int output_index);
+  KernelDefBuilder& AddInputOutputMutableAliases(const std::vector<int>& input_indices,
+                                                 const std::vector<int>& output_indices);
+
+  KernelDef Build();
+};
+
+/** \brief Registry for kernels supported by an EP.
+ *
+ * Used by plugin EPs to register definitions for supported kernels.
+ */
+struct KernelRegistry : detail::Base<OrtKernelRegistry> {
+  ///< Wrapper around OrtEpApi::CreateKernelRegistry
+  KernelRegistry();
+
+  ///< Create an empty object, must be assigned a valid one to be used
+  explicit KernelRegistry(std::nullptr_t) {}
+
+  ///< Take ownership of a pointer created with the C API.
+  explicit KernelRegistry(OrtKernelRegistry* ort_kernel_registry);
+
+  ///< Wraps KernelRegistry_AddKernel
+  Status AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,
+                   void* kernel_create_func_state);
+};
+
+namespace detail {
+template <typename T>
+struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  //< Wraps SharedPrePackedWeightCache_StoreWeightData
+  Status StoreWeightData(void** buffer_data_ptrs, size_t* buffer_sizes, size_t num_buffers);
+};
+}  // namespace detail
+
+/** \brief Convenience C++ wrapper class around a ::OrtSharedPrePackedWeightCache instance owned by ORT.
+ *
+ * An `OrtSharedPrePackedWeightCache*` instance is passed as an argument to OrtKernelImpl::PrePackWeight.
+ * Example use:
+ *   OrtStatus* MyKernel::PrePackWeightImpl(OrtKernelImpl*, ..., OrtSharedPrePackedWeightCache* c_cache, ...) {
+ *     ...
+ *     if (c_cache != nullptr) {
+ *       Ort::UnownedSharedPrePackedWeightCache cpp_cache(c_cache);
+ *       Ort::Status status = cpp_cache.StoreWeightData(...);
+ *     }
+ *     ...
+ *   }
+ *
+ * \remarks OrtSharedPrePackedWeightCache is always unowned, but mutable, for EpApi users.
+ */
+using UnownedSharedPrePackedWeightCache =
+    detail::SharedPrePackedWeightCacheImpl<Ort::detail::Unowned<OrtSharedPrePackedWeightCache>>;
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

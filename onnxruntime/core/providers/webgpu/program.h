@@ -7,7 +7,17 @@
 #include <vector>
 #include <iosfwd>
 
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4702: unreachable code
+#pragma warning(disable : 4702)
+#endif  // _MSC_VER
+
 #include <absl/strings/str_join.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif  // _MSC_VER
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -235,14 +245,17 @@ struct ProgramInput {
 struct ProgramOutput {
  private:
   struct AtomicTag {};
+  struct FlattenTag {};
 
  public:
   constexpr static const AtomicTag Atomic{};
+  constexpr static const FlattenTag Flatten{};
 
   ProgramOutput(Tensor* tensor);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, AtomicTag);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;

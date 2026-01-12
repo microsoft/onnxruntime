@@ -18,11 +18,13 @@ parameters:
     Extra parameters to pass to build.py. Don't put newlines in here.
   type: string
   default: ''
+
 - name: CudaVersion
   type: string
-  default: '12.2'
+  default: '12.8'
   values:
-    - 12.2
+    - 12.8
+    - 13.0
 
 - name: cmake_build_type
   type: string
@@ -47,7 +49,7 @@ stages:
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
       templateContext:
         sdl:
@@ -74,10 +76,10 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: win_trt_folder
-        ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: ${{ variables.win_trt_folder_cuda11 }}
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        ${{ if eq(parameters.CudaVersion, '12.8') }}:
           value: ${{ variables.win_trt_folder_cuda12 }}
+        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+          value: ${{ variables.win_trt_folder_cuda13 }}
       - name: trt_build_flag
         ${{ if eq(parameters.use_tensorrt, true) }}:
           value: '--use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"'
@@ -119,7 +121,7 @@ stages:
             --cmake_generator "$(VSGenerator)"
             --enable_pybind
             --enable_onnx_tests
-            --parallel 8 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
+            --parallel 8 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -173,6 +175,8 @@ stages:
 
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
     dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
+    # Skip this stage for Python 3.14 for now until onnx package support python 3.14.
+    condition: and(succeeded(), ne('${{ parameters.PYTHON_VERSION }}', '3.14'))
     jobs:
     - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
       workspace:
@@ -213,7 +217,7 @@ stages:
             TMPDIR: "$(Agent.TempDirectory)"
 
         - powershell: |
-            $ErrorActionPreference = "Stop"            
+            $ErrorActionPreference = "Stop"
             python -m pip uninstall -y onnxruntime onnxruntime-${{ parameters.EP_NAME }} -qq
             dir $(Build.ArtifactStagingDirectory)
             python -m pip --disable-pip-version-check install --no-index --find-links $(Build.ArtifactStagingDirectory) onnxruntime-${{ parameters.EP_NAME }}
@@ -221,6 +225,8 @@ stages:
             Copy-Item -Path $(Build.sourcesDirectory)/onnxruntime/test/python/onnx_backend_test_series.py -Destination $(Agent.TempDirectory)\ort_test_data
             Copy-Item -Recurse -Path $(Build.sourcesDirectory)/onnxruntime/test/testdata -Destination $(Agent.TempDirectory)\ort_test_data
             cd $(Agent.TempDirectory)\ort_test_data
+            python -m pip install psutil py-cpuinfo py3nvml
+            python -c "import onnxruntime; onnxruntime.print_debug_info()"
             python onnx_backend_test_series.py
           workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Run Python Tests'

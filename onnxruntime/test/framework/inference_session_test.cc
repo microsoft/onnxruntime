@@ -40,10 +40,6 @@
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_provider_factory.h"
-#include "core/providers/rocm/gpu_data_transfer.h"
-#endif
 #include "core/session/allocator_adapters.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
@@ -76,9 +72,6 @@ namespace onnxruntime {
 
 #ifdef USE_CUDA
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
-#endif
-#ifdef USE_ROCM
-ProviderInfo_ROCM& GetProviderInfo_ROCM();
 #endif
 
 class FuseAdd : public OpKernel {
@@ -217,7 +210,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   if (provider_type == kCpuExecutionProvider) {
     node.SetExecutionProviderType(provider_type);
   } else {
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
     node.SetExecutionProviderType(provider_type);
 #endif
   }
@@ -307,7 +300,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     // And it can't be used for copying buffer to buffer since the target buffer is still in mapped state.
     OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
     gpu_alloc = session_object.GetAllocator(mem_info);
-  } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+  } else if (allocation_provider == kCudaExecutionProvider) {
     gpu_alloc = gpu_provider->CreatePreferredAllocators()[0];
   }
   if (enable_graph_capture) {
@@ -367,7 +360,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
       AllocateMLValue<float>(cpu_alloc, expected_output_dims, &output_ml_value);
-    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
+    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
       AllocateMLValue<float>(gpu_alloc, expected_output_dims, &output_ml_value);
     } else {
       ORT_THROW("Unsupported provider");
@@ -388,39 +381,31 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   std::vector<float> expected_values_mul_y_2 = {174, 216, 258, 102, 128, 154, 30, 40, 50};
 
   // Now run
-  st = session_object.Run(run_options, *io_binding.get());
+  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
 
-  std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
-  ASSERT_TRUE(st.IsOK());
-
-  if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider)) ||
+  if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider)) ||
       (output_device && output_device->Type() == OrtDevice::GPU)) {
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
     // in this case we need to copy the tensor from cuda to cpu
     std::vector<OrtValue>& outputs = io_binding->GetOutputs();
     ASSERT_EQ(1u, outputs.size());
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_alloc);
+    Tensor cpu_tensor(element_type, shape, cpu_alloc);
 #ifdef USE_CUDA
-    st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
-#endif
-#ifdef USE_ROCM
-    st = GetProviderInfo_ROCM().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
+    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
 #endif
 #ifdef USE_WEBGPU
-    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
+    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
 #endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
-    ml_value.Init(cpu_tensor.release(),
-                  DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+    Tensor::InitOrtValue(std::move(cpu_tensor), ml_value);
     VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y);
 #endif
   } else {
-    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
+    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
       ASSERT_STATUS_OK(gpu_provider->Sync());
     }
     VerifyOutputs(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
@@ -643,9 +628,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
-#ifdef USE_ROCM
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
-#endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -681,7 +663,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)) || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
+#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING))
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
@@ -696,9 +678,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-#endif
-#ifdef USE_ROCM
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 #ifdef USE_WEBGPU
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
@@ -736,10 +715,6 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
       has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
                                          lines[i].find("cudaLaunch") != std::string::npos;
 #endif
-#ifdef USE_ROCM
-      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
-                                         lines[i].find("hipLaunch") != std::string::npos;
-#endif
 #ifdef USE_WEBGPU
       has_api_info = has_api_info || lines[i].find("Api") != std::string::npos;
 #endif
@@ -747,7 +722,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   }
 
 // Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
-#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || (defined(USE_WEBGPU) && !defined(__APPLE__))
+#if (defined(USE_WEBGPU) && !defined(__APPLE__))
   ASSERT_TRUE(has_api_info);
 #endif
 }
@@ -1046,17 +1021,10 @@ static void TestBindHelper(const std::string& log_str,
   InferenceSession session_object{so, GetEnvironment()};
   IExecutionProvider* gpu_provider{};
 
-  if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider || bind_provider_type == kWebGpuExecutionProvider) {
+  if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kWebGpuExecutionProvider) {
 #ifdef USE_CUDA
     {
       auto provider = DefaultCudaExecutionProvider();
-      gpu_provider = provider.get();
-      ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
-    }
-#endif
-#ifdef USE_ROCM
-    {
-      auto provider = DefaultRocmExecutionProvider();
       gpu_provider = provider.get();
       ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
     }
@@ -1181,11 +1149,9 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   ASSERT_TRUE(!st.IsOK());
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 #if USE_CUDA
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_ROCM
-constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
 #elif USE_WEBGPU
 constexpr const char* kGpuExecutionProvider = kWebGpuExecutionProvider;
 #endif
@@ -1675,8 +1641,6 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-#elif USE_ROCM
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1827,8 +1791,6 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-#elif USE_ROCM
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -2230,7 +2192,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   auto cuda_alloc = session_object.GetAllocator(mem_info);
 
   AllocatorStats alloc_stats;
-  static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+  cuda_alloc->GetStats(&alloc_stats);
 #ifdef ENABLE_TRAINING
   // In training builds, initializers are allocated using the Reserve() call which
   // will not cause an arena extension
@@ -2250,7 +2212,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
     RunOptions run_options_1;
     RunModel(session_object, run_options_1);
 
-    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+    cuda_alloc->GetStats(&alloc_stats);
 
     // The arena would have made 2 more extensions as part of servicing memory requests within Run()
     // 1) - To take the solitary feed to cuda memory
@@ -2274,7 +2236,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
                                                                  "gpu:0"));
     RunModel(session_object, run_options_2);
 
-    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+    cuda_alloc->GetStats(&alloc_stats);
 
     // The arena would have made no extensions in this Run() as the freed memory after the first Run()
     // will be re-used

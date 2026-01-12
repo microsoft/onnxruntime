@@ -1017,7 +1017,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
     tensor.add_float_data(1.0f);
     tensor.set_data_type(TensorProto_DataType_FLOAT);
     tensor.set_name("init_data");
-    graph_utils::AddInitializerWithExternalData(main_graph, tensor);
+    graph_utils::AddInitializerWithOrtValue(main_graph, tensor);
 
     // Main graph's inputs/outputs
     main_graph.SetInputs({&abs_data_in, &if_in});
@@ -1124,7 +1124,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
     tensor.add_int64_data(1);
     tensor.set_data_type(TensorProto_DataType_INT64);
     tensor.set_name("init_data");
-    graph_utils::AddInitializerWithExternalData(main_graph, tensor);
+    graph_utils::AddInitializerWithOrtValue(main_graph, tensor);
 
     // Main graph's inputs/outputs
     main_graph.SetInputs({&abs_data_in, &if_in});
@@ -1549,7 +1549,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   for (int i = 0; i < 64 * 3 * 7 * 7; ++i) conv_0_weight_tensor.add_float_data(0.234f);
   conv_0_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_0_weight_tensor.set_name("conv_0_weight");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_0_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_0_weight_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_1_weight_tensor;
   conv_1_weight_tensor.add_dims(64L);
@@ -1559,7 +1559,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   conv_1_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   for (int i = 0; i < 64 * 64; ++i) conv_1_weight_tensor.add_float_data(1.017f);
   conv_1_weight_tensor.set_name("conv_1_weight");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_1_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_1_weight_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_2_weight_tensor;
   conv_2_weight_tensor.add_dims(64L);
@@ -1569,7 +1569,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   for (int i = 0; i < 64 * 64 * 3 * 3; ++i) conv_2_weight_tensor.add_float_data(2.317f);
   conv_2_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_2_weight_tensor.set_name("conv_2_weight");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_2_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_2_weight_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_3_weight_tensor;
   conv_3_weight_tensor.add_dims(256L);
@@ -1579,7 +1579,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   for (int i = 0; i < 256 * 64; ++i) conv_3_weight_tensor.add_float_data(1.256f);
   conv_3_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_3_weight_tensor.set_name("conv_3_weight");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_3_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_3_weight_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_4_weight_tensor;
   conv_4_weight_tensor.add_dims(256L);
@@ -1589,7 +1589,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   for (int i = 0; i < 256 * 64; ++i) conv_4_weight_tensor.add_float_data(1.913f);
   conv_4_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_4_weight_tensor.set_name("conv_4_weight");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_4_weight_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_4_weight_tensor);
 
   auto& conv_0_weight = main_graph.GetOrCreateNodeArg("conv_0_weight", &conv_0_weight_type);
   auto& conv_1_weight = main_graph.GetOrCreateNodeArg("conv_1_weight", &conv_1_weight_type);
@@ -1602,35 +1602,35 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   conv_0_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_0_bias_tensor.set_name("conv_0_bias");
   for (int i = 0; i < 64; ++i) conv_0_bias_tensor.add_float_data(1.123f);
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_0_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_0_bias_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_1_bias_tensor;
   conv_1_bias_tensor.add_dims(64L);
   for (int i = 0; i < 64; ++i) conv_1_bias_tensor.add_float_data(2.234f);
   conv_1_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_1_bias_tensor.set_name("conv_1_bias");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_1_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_1_bias_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_2_bias_tensor;
   conv_2_bias_tensor.add_dims(64L);
   for (int i = 0; i < 64; ++i) conv_2_bias_tensor.add_float_data(0.121f);
   conv_2_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_2_bias_tensor.set_name("conv_2_bias");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_2_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_2_bias_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_3_bias_tensor;
   conv_3_bias_tensor.add_dims(256L);
   for (int i = 0; i < 256; ++i) conv_3_bias_tensor.add_float_data(1.201f);
   conv_3_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_3_bias_tensor.set_name("conv_3_bias");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_3_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_3_bias_tensor);
 
   ONNX_NAMESPACE::TensorProto conv_4_bias_tensor;
   conv_4_bias_tensor.add_dims(256L);
   for (int i = 0; i < 256; ++i) conv_4_bias_tensor.add_float_data(0.897f);
   conv_4_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
   conv_4_bias_tensor.set_name("conv_4_bias");
-  graph_utils::AddInitializerWithExternalData(main_graph, conv_4_bias_tensor);
+  graph_utils::AddInitializerWithOrtValue(main_graph, conv_4_bias_tensor);
 
   auto& conv_0_bias = main_graph.GetOrCreateNodeArg("conv_0_bias", &conv_0_bias_type);
   auto& conv_1_bias = main_graph.GetOrCreateNodeArg("conv_1_bias", &conv_1_bias_type);

@@ -46,7 +46,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | GatherElements | ai.onnx(11-12, 13+) | gatherElements | |
 | GatherND | ai.onnx(11, 12, 13+) | gatherND | Only supports 'batch_dims' == 0 |
 | Gelu | ai.onnx(20+) | gelu | |
-| Gemm | ai.onnx(7-8, 9-10, 11-12, 13+) | gemm | Only supports 1-D 'C' input |
+| Gemm | ai.onnx(7-8, 9-10, 11-12, 13+) | gemm | |
 | GlobalAveragePool | ai.onnx(7+) | averagePool2d | Only supports 4-D input |
 | GlobalMaxPool | ai.onnx(7+) | maxPool2d | Only supports 4-D input |
 | GlobalLpPool| ai.onnx(7+) | l2Pool2d | Only supports 4-D input, 'p' value is 2 |

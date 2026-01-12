@@ -43,7 +43,7 @@ Status GatherNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
   data_dim += indices_innerest_dim_;
 
   for (uint32_t i = 0; i < static_cast<uint32_t>(data.Rank() - data_dim); i++) {
-    shader.MainFunctionBody() << "  " << data.IndicesSet("data_indices", data_dim, output.IndicesGet("output_indices", indices.Rank() - 1 + i)) << "\n";
+    shader.MainFunctionBody() << "  " << data.IndicesSet("data_indices", data_dim + i, output.IndicesGet("output_indices", indices.Rank() - 1 + i)) << "\n";
   }
 
   shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", data.GetByIndices("data_indices"));

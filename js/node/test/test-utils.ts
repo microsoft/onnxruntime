@@ -88,7 +88,7 @@ export function warmup(): void {
     try {
       const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_int32.onnx'));
       await session.run({ input: new Tensor(new Float32Array(5), [1, 5]) }, { output: null }, {});
-    } catch (e) {}
+    } catch {}
   });
 }
 

@@ -9,7 +9,7 @@
 
 #include "gtest/gtest.h"
 
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "test/unittest_util/qdq_test_utils.h"
@@ -163,6 +163,7 @@ TEST_F(QnnHTPBackendTests, TestCastFloatToBoolHTP) {
 
 // Cast float16 to bool on HTP.
 TEST_F(QnnHTPBackendTests, TestCastFloat16ToBoolHTP) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   RunCastFP16HTPTest({3, 3},
                      ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
                      ExpectedEPNodeAssignment::All);

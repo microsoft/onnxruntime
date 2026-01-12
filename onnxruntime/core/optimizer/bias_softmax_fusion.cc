@@ -44,7 +44,7 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
 
   // check node is add and has single output
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
-      !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
+      !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return false;
   }
@@ -239,7 +239,7 @@ Status BiasSoftmaxFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
   // only support GPU execution provider
   auto& cep = GetCompatibleExecutionProviders();
-  if (cep.size() > 0 && cep.find(kCudaExecutionProvider) == cep.end() && cep.find(kRocmExecutionProvider) == cep.end())
+  if (cep.size() > 0 && cep.find(kCudaExecutionProvider) == cep.end())
     return Status::OK();
 
   for (auto node_index : node_topology_list) {

@@ -4,10 +4,12 @@
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
 #include "test/common/random_generator.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
 
 #include <thread>
@@ -20,6 +22,21 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 
 namespace test {
+
+// Helper function to check if GPU is Blackwell (SM 12.0+) or above
+// Returns true if requirement is met
+// Returns false if CUDA is unavailable or GPU is below SM 12.0
+static bool IsBlackwellOrAbove() {
+  constexpr int kBlackwellMinCapability = 1200;  // SM 12.0 = 12 * 100 + 0 * 10
+  int cuda_arch = GetCudaArchitecture();
+
+  // Check if CUDA is available
+  if (cuda_arch == -1) {
+    return false;
+  }
+
+  return cuda_arch >= kBlackwellMinCapability;
+}
 
 TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
   PathString model_name = ORT_TSTR("nv_execution_provider_test.onnx");
@@ -200,6 +217,48 @@ TEST_P(TypeTests, IOTypes) {
 
     auto io_binding = generate_io_binding(session_object);
     session_object.Run(run_options, io_binding);
+  }
+}
+
+TEST(NvExecutionProviderTest, TestSessionOutputs) {
+  /*
+   * Model #1:
+   *
+   * "input" ---> TopK ---
+   *                     |---> "scores"
+   *                     |--- Less ---> "Less_output_0"
+   *                     |--- Div ---> "Div_output_0"
+   *                     |--- Mod ---> "labels"
+   */
+  {
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+
+    auto model_path = ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 4);
+  }
+
+  /*
+   * Model #2:
+   *
+   * "X" ---> Dropout ---> MatMul ---> "Y"
+   *          ^     |
+   *          |     |
+   * "W" ------     ----> Can't be graph's output
+   *
+   */
+  {
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+
+    auto model_path = ORT_TSTR("testdata/node_output_not_used.onnx");
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    size_t output_count = session.GetOutputCount();
+    ASSERT_TRUE(output_count == 1);
   }
 }
 
@@ -396,6 +455,148 @@ TEST(NvExecutionProviderTest, DataTransfer) {
 
   // must release this before we unload the EP and the allocator is deleted
   device_tensor = Ort::Value();
+}
+
+TEST(NvExecutionProviderTest, FP8CustomOpModel) {
+  if (!IsBlackwellOrAbove()) {
+    GTEST_SKIP() << "Test requires SM 12.0+ GPU (Blackwell+)";
+  }
+
+  PathString model_name = ORT_TSTR("nv_execution_provider_fp8_quantize_dequantize_test.onnx");
+  clearFileIfExists(model_name);
+  std::string graph_name = "nv_execution_provider_fp8_quantize_dequantize_graph";
+
+  // Create a model with TRT_FP8QuantizeLinear -> TRT_FP8DequantizeLinear (FP16 -> FP8 -> FP16, per-tensor quantization)
+  CreateFP8CustomOpModel(model_name, graph_name);
+
+  // Verify the model file was created
+  ASSERT_TRUE(std::filesystem::exists(model_name));
+
+  // Create session and register execution provider explicitly
+  // This ensures custom ops are registered before model is loaded
+  SessionOptions so;
+  so.session_logid = "NvExecutionProviderTest.FP8CustomOpModel";
+  InferenceSession session_object{so, GetEnvironment()};
+
+  // Register TRTRTX EP - this will register custom ops
+  std::unique_ptr<IExecutionProvider> execution_provider = DefaultNvTensorRTRTXExecutionProvider();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+
+  // Load and initialize model
+  ASSERT_STATUS_OK(session_object.Load(model_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Create input data (FP16, shape [4, 64])
+  std::vector<MLFloat16> input_data(4 * 64);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = MLFloat16(static_cast<float>(i % 100) / 100.0f);
+  }
+
+  // Create input tensor
+  std::vector<int64_t> input_shape = {4, 64};
+  OrtValue input_tensor;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape(input_shape),
+                       input_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator),
+                       input_tensor);
+
+  // Prepare feeds
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", input_tensor));
+
+  // Prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Y");
+
+  // Run inference
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  // Verify output tensor is valid
+  ASSERT_EQ(fetches.size(), 1u);
+  ASSERT_TRUE(fetches[0].IsTensor());
+
+  const auto& output_tensor = fetches[0].Get<Tensor>();
+  auto output_shape = output_tensor.Shape();
+  ASSERT_EQ(output_shape.NumDimensions(), 2u);
+  ASSERT_EQ(output_shape[0], 4);
+  ASSERT_EQ(output_shape[1], 64);
+
+  // Verify output is FLOAT16
+  ASSERT_TRUE(output_tensor.IsDataType<MLFloat16>());
+
+  LOGS_DEFAULT(INFO) << "[NvExecutionProviderTest] TRT FP8 custom ops model run completed successfully";
+}
+
+TEST(NvExecutionProviderTest, FP4CustomOpModel) {
+  if (!IsBlackwellOrAbove()) {
+    GTEST_SKIP() << "Test requires SM 12.0+ GPU (Blackwell+)";
+  }
+
+  PathString model_name = ORT_TSTR("nv_execution_provider_fp4_dynamic_quantize_test.onnx");
+  clearFileIfExists(model_name);
+  std::string graph_name = "nv_execution_provider_fp4_dynamic_quantize_graph";
+
+  // Create a model with TRT_FP4DynamicQuantize node
+  CreateFP4CustomOpModel(model_name, graph_name);
+
+  // Verify the model file was created
+  ASSERT_TRUE(std::filesystem::exists(model_name));
+
+  // Create session and register execution provider explicitly
+  // This ensures custom ops are registered before model is loaded
+  SessionOptions so;
+  so.session_logid = "NvExecutionProviderTest.FP4CustomOpModel";
+  InferenceSession session_object{so, GetEnvironment()};
+
+  // Register TRTRTX EP - this will register custom ops
+  std::unique_ptr<IExecutionProvider> execution_provider = DefaultNvTensorRTRTXExecutionProvider();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+
+  // Load and initialize model
+  ASSERT_STATUS_OK(session_object.Load(model_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Create input data (FP16, shape [64, 64])
+  std::vector<MLFloat16> input_data(64 * 64);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = MLFloat16(static_cast<float>(i % 100) / 100.0f);
+  }
+
+  // Create input tensor
+  std::vector<int64_t> input_shape = {64, 64};
+  OrtValue input_tensor;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape(input_shape),
+                       input_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator),
+                       input_tensor);
+
+  // Prepare feeds
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", input_tensor));
+
+  // Prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("X_dequantized");
+
+  // Run inference
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  // Verify output tensor is valid
+  ASSERT_EQ(fetches.size(), 1u);
+  ASSERT_TRUE(fetches[0].IsTensor());
+
+  const auto& output_tensor = fetches[0].Get<Tensor>();
+  auto output_shape = output_tensor.Shape();
+  ASSERT_EQ(output_shape.NumDimensions(), 2u);
+  ASSERT_EQ(output_shape[0], 64);
+  ASSERT_EQ(output_shape[1], 64);
+
+  // Verify output is FLOAT16
+  ASSERT_TRUE(output_tensor.IsDataType<MLFloat16>());
+
+  LOGS_DEFAULT(INFO) << "[NvExecutionProviderTest] TRT FP4 dynamic quantize model run completed successfully";
 }
 
 #endif

@@ -87,6 +87,12 @@ static ONNX_NAMESPACE::TensorProto* tensor_proto_new(const std::string& name, co
   return tensor_proto.release();
 }
 
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_bool(const std::string& name, const std::vector<int64_t>& shape,
+                                                   const std::vector<uint8_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_i4(const std::string& name, const std::vector<int64_t>& shape,
                                                  const std::vector<int8_t>& data) {
   return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT4,

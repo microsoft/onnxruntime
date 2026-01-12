@@ -27,6 +27,13 @@ parameters:
 - name: Today
   type: string
 
+- name: CudaVersion
+  type: string
+  default: '12.8'
+  values:
+    - 13.0
+    - 12.8
+
 steps:
 - task: UsePythonVersion@0
   inputs:
@@ -69,6 +76,7 @@ steps:
 
 - template: set-winenv.yml
   parameters:
+    CudaVersion: ${{ parameters.CudaVersion }}
     EnvSetupScript: ${{parameters.EnvSetupScript}}
     DownloadCUDA: ${{parameters.DownloadCUDA}}
     DownloadTRT: ${{parameters.DownloadTRT}}
@@ -94,4 +102,3 @@ steps:
       (C:\ProgramData\chocolatey\bin\cl.exe -?) -match 'Compiler Version'
 
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
-

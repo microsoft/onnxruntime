@@ -305,6 +305,16 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
       use_override_shape{false},
       override_shape{} {}
 
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, ProgramOutput::FlattenTag, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      is_atomic{false},
+      use_override_shape{true},
+      override_shape{} {
+  override_shape = {(tensor->Shape().Size() + component - 1) / component};
+}
+
 ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
     : tensor{tensor},
       dependency{dependency},
@@ -362,6 +372,7 @@ ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x, uint32_t y, uint32_t 
 
 ProgramBase& ProgramBase::SetIndirectDispatchTensor(const Tensor* indirect_dispatch_tensor) {
   indirect_dispatch_tensor_ = indirect_dispatch_tensor;
+  AddInput({indirect_dispatch_tensor, ProgramTensorMetadataDependency::None});
   return *this;
 }
 

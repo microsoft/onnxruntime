@@ -55,6 +55,13 @@ parameters:
   type: number
   default: 0
 
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.8'
+  values:
+    - 12.8
+    - 13.0
 
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
@@ -85,6 +92,7 @@ jobs:
 
   - template: win-ci-prebuild-steps.yml
     parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
       EnvSetupScript: ${{parameters.EnvSetupScript}}
       ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
         DownloadCUDA: true
@@ -142,7 +150,7 @@ jobs:
       restoreSolution: '$(Build.SourcesDirectory)\packages.config'
       nugetConfigPath: '$(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\nuget.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
- 
+
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
       - powershell: |
           python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
@@ -160,7 +168,7 @@ jobs:
           Remove-Item "$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}" -Include "*.obj" -Recurse
         displayName: 'Build'
 
-  - script: 
+  - script:
       python tools\ValidateNativeDelegateAttributes.py
     displayName: 'Validate C# native delegates'
     workingDirectory: '$(Build.SourcesDirectory)\csharp'

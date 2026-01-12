@@ -19,7 +19,7 @@ PARENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." &> /dev/null && pwd)"
 source "$PARENT_DIR/install_dotnet.sh"
 
 if [ ! -d "/opt/conda/bin" ]; then
-    PYTHON_EXES=("/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp312-cp312/bin/python3.12")
+    PYTHON_EXES=("/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp312-cp312/bin/python3.12" "/opt/python/cp313-cp313/bin/python3.13"  "/opt/python/cp314-cp314/bin/python3.14")
 else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi

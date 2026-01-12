@@ -23,9 +23,9 @@ def check_distro_info():
         __my_distro__ = __my_system__
         __my_distro_ver__ = platform.release().lower()
 
-        if __my_distro_ver__ not in ["10", "11"]:
+        if __my_distro_ver__ not in ["10", "11", "2016server", "2019server", "2022server", "2025server"]:
             warnings.warn(
-                f"Unsupported Windows version ({__my_distro_ver__}). ONNX Runtime supports Windows 10 and above, only."
+                f"Unsupported Windows version ({__my_distro_ver__}). ONNX Runtime supports Windows 10 and above, or Windows Server 2016 and above."
             )
     elif __my_system__ == "linux":
         """Although the 'platform' python module for getting Distro information works well on standard OS images

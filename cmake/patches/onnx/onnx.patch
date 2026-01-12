@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 47995579..6cc439f6 100644
+index cc3ef140..f70312ba 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -57,6 +57,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
@@ -10,7 +10,7 @@ index 47995579..6cc439f6 100644
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime" OFF)
  endif()
-@@ -411,14 +412,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
+@@ -409,14 +410,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
  
  add_library(onnx_proto ${ONNX_PROTO_SRCS})
  
@@ -47,7 +47,7 @@ index 47995579..6cc439f6 100644
  
  # Hide all symbols we don't need
  set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
-@@ -440,19 +455,6 @@ add_onnx_global_defines(onnx_proto)
+@@ -438,19 +453,6 @@ add_onnx_global_defines(onnx_proto)
  target_include_directories(onnx_proto PUBLIC
    $<BUILD_INTERFACE:${ONNX_ROOT}>
    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
@@ -68,10 +68,10 @@ index 47995579..6cc439f6 100644
  if(CMAKE_SYSTEM_NAME STREQUAL "AIX")
    # whole-archive linker option not available on AIX.
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
-index 40635f97..44770774 100644
+index ad6dd0c1..50259f32 100644
 --- a/onnx/defs/nn/old.cc
 +++ b/onnx/defs/nn/old.cc
-@@ -4090,7 +4090,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+@@ -4091,7 +4091,6 @@ ONNX_OPERATOR_SET_SCHEMA(
      GroupNormalization,
      18,
      OpSchema()
@@ -80,7 +80,7 @@ index 40635f97..44770774 100644
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
 diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
-index ddd95454..34647987 100644
+index 7e9bc27f..4b87c5a5 100644
 --- a/onnx/defs/schema.h
 +++ b/onnx/defs/schema.h
 @@ -999,7 +999,7 @@ class OpSchemaRegistry final : public ISchemaRegistry {

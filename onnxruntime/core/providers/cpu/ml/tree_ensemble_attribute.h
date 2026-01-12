@@ -134,11 +134,6 @@ struct TreeEnsembleAttributesV5 {
     for (auto i : nodes_modes_i) {
       nodes_modes.push_back(static_cast<NODE_MODE_ONNX>(i));
     }
-#else
-    // GetVectorAttrsOrDefault is not part of the minimal build.
-    // As a result, TreeEnsemble v5 cannot be available in this build.
-    ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.");
-#endif
 
     aggregate_function = info.GetAttrOrDefault<int64_t>("aggregate_function", 1);
     leaf_targetids = info.GetAttrsOrDefault<int64_t>("leaf_targetids");
@@ -151,6 +146,11 @@ struct TreeEnsembleAttributesV5 {
     nodes_truenodeids = info.GetAttrsOrDefault<int64_t>("nodes_truenodeids");
     post_transform = info.GetAttrOrDefault<int64_t>("post_transform", 0);
     tree_roots = info.GetAttrsOrDefault<int64_t>("tree_roots");
+#else
+    // GetVectorAttrsOrDefault is not part of the minimal build.
+    // As a result, TreeEnsemble v5 cannot be available in this build.
+    ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.");
+#endif
   }
 
   void convert_to_v3(TreeEnsembleAttributesV3<ThresholdType>& output) const {

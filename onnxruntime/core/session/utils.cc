@@ -9,6 +9,8 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/provider_options.h"
+#include "core/platform/env.h"
+#include "core/platform/telemetry.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -100,6 +102,10 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
+  if (size == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "`size` argument is NULL");
+  }
+
   const size_t str_len = str.size();
   const size_t req_size = str_len + 1;
 
@@ -134,18 +140,29 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
 
-  // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
+  // Check EPContext model generation options when the input model is loaded from memory (no input model path).
   if (options && model_path == nullptr) {
     epctx::ModelGenOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
 
-    // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
-    // the user used the older SessionOptions' configuration entries to generate a compiled model.
-    if (ep_ctx_gen_options.enable && !ep_ctx_gen_options.HasOutputModelLocation()) {
-      return OrtApis::CreateStatus(ORT_FAIL,
-                                   "Inference session was configured with EPContext model generation enabled but "
-                                   "without a valid location (e.g., file or buffer) for the output model. "
-                                   "Please specify a valid ep.context_file_path via SessionOption configs "
-                                   "or use the OrtCompileApi to compile a model to a file or buffer.");
+    if (ep_ctx_gen_options.enable) {
+      auto* output_model_path = ep_ctx_gen_options.TryGetOutputModelPath();
+
+      // If the user does not provide an output model location, ORT normally generates an output model file path based
+      // on the input model's path (i.e., replace ".onnx" with "_ctx.onnx"). However, because there is no input model
+      // path, we require the application to explicitly set the output model's location.
+      //
+      // Note: This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
+      // the user used the older SessionOptions' configuration entries to generate a compiled model.
+      if (!ep_ctx_gen_options.HasOutputModelLocation() ||               // No output model location (file, buffer, etc.)
+          (output_model_path != nullptr && output_model_path->empty())  // Has an output file, but it is empty.
+      ) {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "Inference session with a model loaded from bytes was configured with EPContext "
+                                     "model generation enabled but without a valid location (e.g., file or buffer) "
+                                     "for the output model. Please specify a valid ep.context_file_path via "
+                                     "SessionOption configs or use the OrtCompileApi to compile a model to a "
+                                     "file or buffer.");
+      }
     }
   }
 
@@ -377,24 +394,56 @@ namespace onnxruntime {
 Status CompileModel(const Environment& env, const ModelCompilationOptions& model_compile_options) {
   ORT_RETURN_IF_ERROR(model_compile_options.Check());
 
+  const Telemetry& telemetry_provider = Env::Default().GetTelemetryProvider();
+
   std::unique_ptr<onnxruntime::InferenceSession> session;
   const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
 
+  Status status;
+
   if (model_compile_options.InputModelComesFromFile()) {
     const std::filesystem::path& input_model_path = model_compile_options.GetInputModelPath();
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
-                                                                         input_model_path.c_str(),
-                                                                         nullptr, 0, session)));
+    status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
+                                                              input_model_path.c_str(),
+                                                              nullptr, 0, session));
   } else {
-    ORT_RETURN_IF_ERROR(
-        ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
-                                                         model_compile_options.GetInputModelData(),
-                                                         model_compile_options.GetInputModelDataSize(),
-                                                         session)));
+    status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
+                                                              model_compile_options.GetInputModelData(),
+                                                              model_compile_options.GetInputModelDataSize(),
+                                                              session));
   }
 
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(InitializeSession(session_options, *session)));
-  return Status::OK();
+  if (!status.IsOK()) {
+    telemetry_provider.LogCompileModelComplete(
+        0,  // No session ID available
+        false,
+        static_cast<uint32_t>(status.Code()),
+        static_cast<uint32_t>(status.Category()),
+        status.ErrorMessage());
+    return status;
+  }
+
+  // Log start event now that we have the session ID and can get registered EP types
+  telemetry_provider.LogCompileModelStart(
+      session->GetCurrentSessionId(),
+      model_compile_options.GetInputSourceForTelemetry(),
+      model_compile_options.GetOutputTargetForTelemetry(),
+      model_compile_options.GetFlagsForTelemetry(),
+      model_compile_options.GetGraphOptimizationLevelForTelemetry(),
+      model_compile_options.GetEmbedEpContextForTelemetry(),
+      model_compile_options.HasExternalInitializersFileForTelemetry(),
+      session->GetRegisteredProviderTypes());
+
+  status = ToStatusAndRelease(InitializeSession(session_options, *session));
+
+  telemetry_provider.LogCompileModelComplete(
+      session->GetCurrentSessionId(),
+      status.IsOK(),
+      status.IsOK() ? 0 : static_cast<uint32_t>(status.Code()),
+      status.IsOK() ? 0 : static_cast<uint32_t>(status.Category()),
+      status.IsOK() ? "" : status.ErrorMessage());
+
+  return status;
 }
 
 Status LoadPluginOrProviderBridge(const std::string& registration_name,

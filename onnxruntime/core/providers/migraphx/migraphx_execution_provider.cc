@@ -267,6 +267,7 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT4E2M1:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2:
@@ -316,6 +317,9 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
       mgx_type = migraphx_shape_fp8e5m2fnuz_type;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1:
+      mgx_type = migraphx_shape_fp4x2_type;
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
       mgx_type = migraphx_shape_int8_type;
@@ -948,6 +952,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "QLinearAdd",
                                                     "QLinearConv",
                                                     "QLinearMatMul",
+                                                    "QLinearAveragePool",
+                                                    "QLinearGlobalAveragePool",
                                                     "QuantizeLinear",
                                                     "QuickGelu",
                                                     "DynamicQuantizeLinear",
@@ -1075,9 +1081,13 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   // dump onnx file if environment var is set
   if (dump_model_ops_) {
     std::string model_name = graph_viewer.Name() + ".onnx";
-    std::ofstream ofs(model_name);
+    std::ofstream ofs(model_name, std::ios::binary);
+    if (!ofs.is_open()) {
+      ORT_THROW("Failed to open file to dump ONNX model: " + model_name);
+    }
     ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
     ofs.close();
+    LOGS_DEFAULT(INFO) << "ONNX model dumped to " << model_name;
   }
 
   // This is a list of initializers that migraphx considers as constants.
@@ -1328,9 +1338,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
     if (dump_model_ops_) {
       std::string onnx_name = fused_node.Name() + ".onnx";
-      std::ofstream ofs(onnx_name);
+      std::ofstream ofs(onnx_name, std::ios::binary);
+      if (!ofs.is_open()) {
+        ORT_THROW("Failed to open file to dump ONNX model: " + onnx_name);
+      }
       ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
       ofs.close();
+      LOGS_DEFAULT(INFO) << "ONNX model dumped to " << onnx_name;
     }
 
     std::vector<std::string> input_names, output_names;
@@ -1358,7 +1372,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       }
 
       auto prog_output_shapes = prog.get_output_shapes();
-      for (std::size_t i = 0; i < output_names.size(); ++i) {
+      for (std::size_t i = 0; i < prog_output_shapes.size(); ++i) {
         auto out_len = prog_output_shapes[i].lengths();
         options.set_input_parameter_shape(output_names[i], out_len);
       }

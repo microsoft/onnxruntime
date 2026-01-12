@@ -6,10 +6,12 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/execution_provider.h"
 #include "vaip/my_ort.h"
 #include "vaip/dll_safe.h"
 #include "vaip/custom_op.h"
 #include <optional>
+#include <memory>
 void initialize_vitisai_ep();
 void deinitialize_vitisai_ep();
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::logging::Logger& logger, const onnxruntime::ProviderOptions& options);
@@ -40,3 +42,23 @@ using EventInfo = std::tuple<
 void profiler_collect(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events);
+std::unique_ptr<onnxruntime::IExecutionProvider>
+CreateExecutionProviderFromAnotherEp(const std::string& lib, const OrtSessionOptions& session_options,
+                                     std::unordered_map<std::string, std::string>& provider_options);
+
+/**
+ * Get compiled model compatibility information from execution providers.
+ * Returns a JSON string containing compatibility metadata, or an empty string if unavailable.
+ */
+std::string get_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const onnxruntime::GraphViewer& graph_viewer);
+
+/**
+ * Validate compiled model compatibility information against current runtime environment.
+ * The model_compatibility is output parameter for the compatibility result.
+ */
+Status validate_compiled_model_compatibility_info(
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+    const std::string& compatibility_info,
+    OrtCompiledModelCompatibility& model_compatibility);

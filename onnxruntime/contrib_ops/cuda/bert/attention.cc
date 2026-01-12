@@ -116,10 +116,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                              nullptr == present &&
                              parameters.hidden_size == parameters.v_hidden_size &&
                              nullptr == mask_index &&
-                             onnxruntime::flash::is_supported(device_prop,
-                                                              parameters.head_size,
-                                                              parameters.num_heads,
-                                                              parameters.num_heads);
+                             onnxruntime::flash::is_supported<T>(device_prop,
+                                                                 parameters.head_size,
+                                                                 parameters.num_heads,
+                                                                 parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
   if (use_flash_attention && parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;
@@ -214,7 +214,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
       (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
-      has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
+      has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.v_head_size);
 
 #else
   constexpr bool use_memory_efficient_attention = false;

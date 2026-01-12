@@ -6,27 +6,10 @@
 
 #include "common.h"
 #include "ort_instance_data.h"
+#include "ort_singleton_data.h"
 #include "onnxruntime_cxx_api.h"
 
-std::unique_ptr<Ort::Env> OrtInstanceData::ortEnv;
-std::unique_ptr<Ort::RunOptions> OrtInstanceData::ortDefaultRunOptions;
-std::mutex OrtInstanceData::ortEnvMutex;
-std::atomic<uint64_t> OrtInstanceData::ortEnvRefCount;
-std::atomic<bool> OrtInstanceData::ortEnvDestroyed;
-
 OrtInstanceData::OrtInstanceData() {
-  ++ortEnvRefCount;
-}
-
-OrtInstanceData::~OrtInstanceData() {
-  if (--ortEnvRefCount == 0) {
-    std::lock_guard<std::mutex> lock(ortEnvMutex);
-    if (ortEnv) {
-      ortDefaultRunOptions.reset(nullptr);
-      ortEnv.reset();
-      ortEnvDestroyed = true;
-    }
-  }
 }
 
 void OrtInstanceData::Create(Napi::Env env, Napi::Function inferenceSessionWrapperFunction) {
@@ -42,14 +25,8 @@ void OrtInstanceData::InitOrt(Napi::Env env, int log_level, Napi::Function tenso
 
   data->ortTensorConstructor = Napi::Persistent(tensorConstructor);
 
-  if (!ortEnv) {
-    std::lock_guard<std::mutex> lock(ortEnvMutex);
-    if (!ortEnv) {
-      ORT_NAPI_THROW_ERROR_IF(ortEnvDestroyed, env, "OrtEnv already destroyed.");
-      ortEnv.reset(new Ort::Env{OrtLoggingLevel(log_level), "onnxruntime-node"});
-      ortDefaultRunOptions.reset(new Ort::RunOptions{});
-    }
-  }
+  // Only the first time call to OrtSingletonData::GetOrCreateOrtObjects() will create the Ort::Env
+  OrtSingletonData::GetOrCreateOrtObjects(log_level);
 }
 
 const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env) {

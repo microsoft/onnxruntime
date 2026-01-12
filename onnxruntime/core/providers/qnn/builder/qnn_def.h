@@ -14,6 +14,11 @@
 
 namespace onnxruntime {
 namespace qnn {
+#if QNN_API_VERSION_MAJOR > 2 || \
+    (QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 29))
+#define QNN_SYSTEM_PROFILE_API_ENABLED
+#endif
+
 // QNN only support subset of POSIX of dlopen/dlsym/dladdr/dlerror/dlclose
 // except the following flags for dlopen, others should be done only
 // when we really need them
@@ -32,7 +37,24 @@ enum class ProfilingLevel : uint8_t {
   OFF = 0,
   BASIC,
   DETAILED,
+  OPTRACE,
   INVALID
+};
+
+enum class ProfilingMethodType : uint8_t {
+  UNKNOWN = 0,
+  EXECUTE,
+  FINALIZE,
+  EXECUTE_ASYNC,
+  CREATE_FROM_BINARY,
+  DEINIT,
+  CONTEXT_CREATE,
+  COMPOSE_GRAPHS,
+  EXECUTE_IPS,
+  GRAPH_COMPONENT,
+  LIB_LOAD,
+  APPLY_BINARY_SECTION,
+  CONTEXT_FINALIZE
 };
 
 // Defines performance modes available for HTP backend.
@@ -48,6 +70,19 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpBalanced,
   kHtpExtremePowerSaver,
 };
+
+typedef struct RpcPowerConfigs {
+  uint32_t rpc_control_latency = 0;
+  uint32_t rpc_polling_time = 0;
+} RpcPowerConfigs_t;
+
+typedef struct PerThreadHtpPowerConfigs {
+  std::optional<HtpPerformanceMode> pre_run_perf_mode;
+  std::optional<HtpPerformanceMode> post_run_perf_mode;
+  std::optional<RpcPowerConfigs_t> rpc_configs;
+
+  uint32_t power_config_id = 0;
+} PerThreadHtpPowerConfigs_t;
 
 enum class ContextPriority : uint8_t {
   LOW = 0,
@@ -73,6 +108,8 @@ enum class QnnBackendType : uint8_t {
   HTP_FP16,
   SERIALIZER,
 };
+
+bool IsIrBackend(QnnBackendType backend_type);
 
 bool IsCpuBackend(QnnBackendType backend_type);
 

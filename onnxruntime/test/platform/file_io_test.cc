@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 
 #include "core/common/span_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
 
 namespace onnxruntime {

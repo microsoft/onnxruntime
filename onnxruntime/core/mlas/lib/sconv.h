@@ -26,4 +26,20 @@ Abstract:
 #define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION 0x00000004
 #define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION 0x00000008
 
+//
+// Helper function to load input vector with bounds checking
+//
+static inline float32x4_t
+LoadInputVectorWithBounds(
+    const float* ptr,
+    const float* row_start,
+    const float* row_end
+)
+{
+    if (ptr >= row_start && (ptr + 3) < row_end) {
+        return MlasLoadFloat32x4(ptr);
+    }
+    return MlasBroadcastFloat32x4(0.0f);
+}
+
 #endif

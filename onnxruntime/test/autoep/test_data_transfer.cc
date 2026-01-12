@@ -3,9 +3,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
-
 #include <algorithm>
 #include <gsl/gsl>
 #include <gmock/gmock.h>
@@ -24,7 +21,7 @@ namespace test {
 
 TEST(OrtEpLibrary, DataTransfer) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
   Ort::ConstEpDevice ep_device(example_ep.get());
 
   auto device_memory_info = ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
@@ -73,5 +70,3 @@ TEST(OrtEpLibrary, DataTransfer) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32

@@ -7,7 +7,7 @@
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/int4.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"

@@ -439,5 +439,16 @@ uint16_t PackFloat32ToUint16AsFloat16(float value) {
   return sign_float16 | (exponent_float16 << 10) | mantissa_float16;
 }
 
+// Check if it can fallback to int32 if the input of WebNN op doesn't support int64.
+bool CanFallbackInt64ToInt32(const emscripten::val& wnn_limits,
+                             const std::string& webnn_op_type,
+                             const std::string& input_name) {
+  emscripten::val supported_data_types = wnn_limits[webnn_op_type][input_name]["dataTypes"];
+
+  return !supported_data_types.isUndefined() &&
+         !supported_data_types.call<emscripten::val>("includes", emscripten::val("int64")).as<bool>() &&
+         supported_data_types.call<emscripten::val>("includes", emscripten::val("int32")).as<bool>();
+}
+
 }  // namespace webnn
 }  // namespace onnxruntime

@@ -15,15 +15,15 @@ namespace epctx {
 
 ModelGenOptions::ModelGenOptions() = default;
 
+// This constructor is only used when using the older compilation approach that uses
+// session configuration options to enable and configure compilation (i.e., not OrtCompileApi).
+// This initializes ModelGenOptions from the session config options.
 ModelGenOptions::ModelGenOptions(const ConfigOptions& config_options) {
   enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
 
-  std::string output_model_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-  if (!output_model_path.empty()) {
-    output_model_location = std::filesystem::path(output_model_path);
-  } else {
-    output_model_location = std::monostate{};
-  }
+  // Note: the older compilation approach only supports compiling to an output file.
+  output_model_location = std::filesystem::path(
+      config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, ""));
 
   std::string external_initializers_file_path = config_options.GetConfigOrDefault(
       kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");

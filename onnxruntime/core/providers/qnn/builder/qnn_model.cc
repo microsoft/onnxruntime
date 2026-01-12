@@ -6,10 +6,12 @@
 #include <iostream>
 #include <fstream>
 #include <gsl/gsl>
+#include <thread>
 #include "QnnOpDef.h"
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_profile_serializer.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
@@ -105,7 +107,6 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
   // This name must be same with the EPContext node name
   const auto& graph_name = fused_node.Name();
   ORT_RETURN_IF_ERROR(SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
-
   QnnModelWrapper qnn_model_wrapper = QnnModelWrapper(graph_viewer, logger,
                                                       qnn_backend_manager_->GetQnnInterface(),
                                                       qnn_backend_manager_->GetQnnBackendHandle(),
@@ -114,10 +115,32 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       qnn_backend_manager_->GetQnnBackendType(),
                                                       model_settings);
   bool rt = true;
+
+  qnn::profile::ProfilingInfo profiling_info;
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  if (qnn_backend_manager_->ProfilingEnabled()) {
+    profiling_info.graph_name = graph_name;
+    profiling_info.start_time = qnn::utils::GetTimeStampInUs();
+  }
+#endif
+
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, graph_configs);
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  if (qnn_backend_manager_->ProfilingEnabled()) {
+    profiling_info.stop_time = qnn::utils::GetTimeStampInUs();
+    profiling_info.method_type = ProfilingMethodType::COMPOSE_GRAPHS;
+  }
+#endif
+
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }
+
+  // NOTE: This function returns immediately when profiling is disabled.
+  // Extracting profiling data can be expensive, but it is typically only enabled for debugging purposes
+  // and not in production. We can improve synchronization for event profiling if it becomes an issue.
+  ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo(profiling_info));
 
   std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_holder.size());
@@ -160,15 +183,35 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
 
 Status QnnModel::FinalizeGraphs(const logging::Logger& logger) {
   LOGS(logger, VERBOSE) << "FinalizeGraphs started.";
+
+  qnn::profile::ProfilingInfo profiling_info;
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  if (qnn_backend_manager_->ProfilingEnabled()) {
+    profiling_info.start_time = qnn::utils::GetTimeStampInUs();
+  }
+#endif
+
   Qnn_ErrorHandle_t status = qnn_backend_manager_->GetQnnInterface().graphFinalize(graph_info_->Graph(),
                                                                                    qnn_backend_manager_->GetQnnProfileHandle(),
                                                                                    nullptr);
+
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+  if (qnn_backend_manager_->ProfilingEnabled()) {
+    profiling_info.stop_time = qnn::utils::GetTimeStampInUs();
+    profiling_info.method_type = ProfilingMethodType::FINALIZE;
+    profiling_info.graph_name = graph_info_->Name();
+  }
+#endif
+
   if (QNN_GRAPH_NO_ERROR != status) {
     LOGS(logger, ERROR) << "Failed to finalize QNN graph. Error code: " << status;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to finalize QNN graph.");
   }
 
-  ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo());
+  // NOTE: This function returns immediately when profiling is disabled.
+  // Extracting profiling data can be expensive, but it is typically only enabled for debugging purposes
+  // and not in production. We can improve synchronization for event profiling if it becomes an issue.
+  ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo(profiling_info));
 
   LOGS(logger, VERBOSE) << "FinalizeGraphs completed.";
   return Status::OK();
@@ -180,14 +223,14 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   auto result = SetupTensors(qnn_input_infos_, graph_info_->InputTensors());
 
   if (Status::OK() != result) {
-    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name();
+    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name() + ". " + result.ErrorMessage();
     LOGS(logger, ERROR) << message;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   result = SetupTensors(qnn_output_infos_, graph_info_->OutputTensors(), false);
   if (Status::OK() != result) {
-    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name();
+    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name() + ". " + result.ErrorMessage();
     LOGS(logger, ERROR) << message;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
@@ -297,7 +340,18 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
     std::lock_guard<std::mutex> lock(graph_exec_mutex_);
 
     LOGS(logger, VERBOSE) << "Start execute QNN graph:" << graph_info_->Name();
+
+    qnn::profile::ProfilingInfo profiling_info;
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+    if (qnn_backend_manager_->ProfilingEnabled()) {
+      profiling_info.start_time = qnn::utils::GetTimeStampInUs();
+    }
+#endif
     auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
+
+    auto thread_id = std::this_thread::get_id();
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetPerThreadHtpPowerConfigs(thread_id, true));
+
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
                                                 static_cast<uint32_t>(qnn_inputs.size()),
@@ -305,11 +359,20 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
                                                 static_cast<uint32_t>(qnn_outputs.size()),
                                                 profile_backend_handle,
                                                 nullptr);
+#ifdef QNN_SYSTEM_PROFILE_API_ENABLED
+    if (qnn_backend_manager_->ProfilingEnabled()) {
+      profiling_info.stop_time = qnn::utils::GetTimeStampInUs();
+      profiling_info.method_type = ProfilingMethodType::EXECUTE;
+      profiling_info.graph_name = graph_info_->Name();
+    }
+#endif
+
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetPerThreadHtpPowerConfigs(thread_id, false));
 
     // NOTE: This function returns immediately when profiling is disabled.
     // Extracting profiling data can be expensive, but it is typically only enabled for debugging purposes
     // and not in production. We can improve synchronization for event profiling if it becomes an issue.
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo());
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo(profiling_info));
   }
 
   if (QNN_COMMON_ERROR_SYSTEM_COMMUNICATION == execute_status) {
