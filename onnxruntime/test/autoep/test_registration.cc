@@ -97,12 +97,12 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   const std::string& registration_name = "example_plugin_ep_virt_gpu";
   const std::string& ep_name = Utils::example_ep_virt_gpu_info.ep_name;
 
-  auto get_plugin_ep_devices = [&ep_name](Ort::Env& env) -> std::vector<Ort::ConstEpDevice> {
+  auto get_plugin_ep_devices = [&](Ort::Env& env) -> std::vector<Ort::ConstEpDevice> {
     std::vector<Ort::ConstEpDevice> all_ep_devices = env.GetEpDevices();
     std::vector<Ort::ConstEpDevice> ep_devices;
 
     std::copy_if(all_ep_devices.begin(), all_ep_devices.end(), std::back_inserter(ep_devices),
-                 [&ep_name](Ort::ConstEpDevice& device) {
+                 [&](Ort::ConstEpDevice& device) {
                    return device.EpName() == ep_name;
                  });
 
