@@ -613,20 +613,30 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
 }
 
-Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_name) {
+Status Environment::UnregisterExecutionProviderLibrary(const std::string& registration_name) {
   std::lock_guard<std::mutex> lock{mutex_};
 
-  if (ep_libraries_.count(ep_name) == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " was not registered.");
+  if (ep_libraries_.count(registration_name) == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", registration_name,
+                           " was not registered.");
   }
 
   auto status = Status::OK();
 
   ORT_TRY {
-    auto ep_info = std::move(ep_libraries_[ep_name]);
+    auto ep_info = std::move(ep_libraries_[registration_name]);
+
+    // Clean up environment config entry that may have been added for this EP library.
+    if (AreVirtualDevicesAllowed(registration_name)) {
+      std::string key = kOrtEnv_AllowVirtualDevicesPrefix;
+      key += utils::GetLowercaseString(registration_name);
+
+      config_entries_.Remove(key.c_str());
+    }
+
     // remove from map and global list of OrtEpDevice* before unloading so we don't get a leftover entry if
     // something goes wrong in any of the following steps..
-    ep_libraries_.erase(ep_name);
+    ep_libraries_.erase(registration_name);
 
     for (auto* data_transfer : ep_info->data_transfers) {
       ORT_RETURN_IF_ERROR(data_transfer_mgr_.UnregisterDataTransfer(data_transfer));
@@ -659,8 +669,8 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", ep_name, " with error: ",
-                               ex.what());
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", registration_name,
+                               " with error: ", ex.what());
     });
   }
 
