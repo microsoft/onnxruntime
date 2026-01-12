@@ -168,7 +168,7 @@ class Environment {
   /// Primarily used by EP libraries to retrieve environment-level configurations, but could be used
   /// more generally to specify global settings.
   ///
-  /// Refer to OrtApi::CreateEnvWithConfig().
+  /// Refer to OrtApi::CreateEnvWithOptions().
   /// </summary>
   /// <returns></returns>
   const OrtKeyValuePairs& GetConfigEntries() const;
