@@ -15,10 +15,25 @@ extern "C" void ortenv_teardown();
 TEST(EnvCreation, CreateEnvWithOptions) {
   const OrtApi& ort_api = Ort::GetApi();
 
+  // Basic error checking when user passes an invalid version for OrtEnvCreationOptions
+  {
+    OrtEnv* test_env = nullptr;
+    OrtEnvCreationOptions options{};
+    options.version = 0;  // Invalid!
+    options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
+    options.log_id = "test logger";
+
+    Ort::Status status{ort_api.CreateEnvWithOptions(&options, &test_env)};
+
+    ASSERT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+    ASSERT_THAT(status.GetErrorMessage(), testing::HasSubstr("version set equal to ORT_API_VERSION"));
+  }
+
   // Basic error checking when user passes an invalid log identifier to the API function
   {
     OrtEnv* test_env = nullptr;
     OrtEnvCreationOptions options{};
+    options.version = ORT_API_VERSION;
     options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
     options.log_id = nullptr;  // Invalid!
 
@@ -32,6 +47,7 @@ TEST(EnvCreation, CreateEnvWithOptions) {
   {
     OrtEnv* test_env = nullptr;
     OrtEnvCreationOptions options{};
+    options.version = ORT_API_VERSION;
     options.logging_severity_level = 100;  // Invalid!
     options.log_id = "EnvCreation.CreateEnvWithOptions";
 
@@ -53,6 +69,7 @@ TEST(EnvCreation, CreateEnvWithOptions) {
     env_configs.Add("some_key", "some_val");
 
     OrtEnvCreationOptions options{};
+    options.version = ORT_API_VERSION;
     options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE;
     options.log_id = "EnvCreation.CreateEnvWithOptions_2";
     options.config_entries = env_configs.GetConst();

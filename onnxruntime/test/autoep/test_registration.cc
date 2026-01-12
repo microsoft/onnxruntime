@@ -185,6 +185,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
     env_configs.Add(key.c_str(), "1");
 
     OrtEnvCreationOptions env_options{};
+    env_options.version = ORT_API_VERSION;
     env_options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
     env_options.log_id = "LoadUnloadPluginVirtGpuLibraryCxxApi";
     env_options.config_entries = env_configs.GetConst();

@@ -245,6 +245,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithOptions, _In_ const OrtEnvCreationOpti
                                  "store the new OrtEnv instance");
   }
 
+  // Both this API function and OrtEnvCreationOptions were added in ORT 1.24, so check that the user
+  // filled out the version correctly.
+  if (options->version < 24) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument with the version set "
+                                 " equal to ORT_API_VERSION");
+  }
+
   if (options->logging_severity_level < OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE ||
       options->logging_severity_level > OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,

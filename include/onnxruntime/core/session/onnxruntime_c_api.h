@@ -1069,7 +1069,7 @@ typedef struct OrtEnvCreationOptions {
 
   /** \brief Optional custom logging function. May be set to NULL.
    *
-   * \note The OrtEnvConfig::custom_logging_param is provided as the first argument to this logging function.
+   * \note The OrtEnvCreationOptions::custom_logging_param is provided as the first argument to this logging function.
    *       This allows passing custom state into the logging function.
    *
    * \note This function is only called when a message's severity meets or exceeds the set logging severity level.
@@ -1078,7 +1078,8 @@ typedef struct OrtEnvCreationOptions {
    */
   OrtLoggingFunction custom_logging_function;
 
-  /** \brief Optional state to pass as the first argument to OrtEnvConfig::custom_logger_function. May be set to NULL.
+  /** \brief Optional state to pass as the first argument to OrtEnvCreationOptions::custom_logger_function.
+   *         May be set to NULL.
    *
    * \since Version 1.24.
    */
