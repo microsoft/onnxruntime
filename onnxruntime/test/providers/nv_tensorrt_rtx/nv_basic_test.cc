@@ -233,8 +233,8 @@ TEST(NvExecutionProviderTest, TestSessionOutputs) {
   {
     Ort::SessionOptions session_options;
     session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
-    //topk_and_multiple_graph_outputs.onnx contains input with dynamic dimension N
-    //setting override to avoid shape mismatch
+    // topk_and_multiple_graph_outputs.onnx contains input with dynamic dimension N
+    // setting override to avoid shape mismatch
     session_options.AddFreeDimensionOverrideByName("N", 300);
 
     auto model_path = ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx");
