@@ -720,6 +720,11 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/include/onnxruntime/core/session
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${REPO_ROOT}/include/onnxruntime/core/session
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/include/onnxruntime/core/session
 )
 
 if (onnxruntime_BUILD_SHARED_LIB)
