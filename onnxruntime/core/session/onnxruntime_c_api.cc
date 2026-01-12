@@ -3426,12 +3426,15 @@ ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* ort_str
   std::unique_ptr<plugin_ep::Stream> ep_stream(reinterpret_cast<plugin_ep::Stream*>(stream));
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
-                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
-                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
-                    _In_opt_ OrtSyncStream* stream,
-                    _In_ size_t num_tensors) {
-  API_IMPL_BEGIN
+// Helper function for CopyTensors and CopyTensorsEx implementations
+static OrtStatus* CopyTensorsImpl(_In_ const OrtEnv* env,
+                                  _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                                  _In_reads_(num_tensors) OrtValue* const* dst_tensors,
+                                  _In_reads_opt_(num_tensors) const size_t* source_offsets,
+                                  _In_reads_opt_(num_tensors) const size_t* destination_offsets,
+                                  _In_reads_opt_(num_tensors) const size_t* sizes,
+                                  _In_opt_ OrtSyncStream* stream,
+                                  _In_ size_t num_tensors) {
   if (env == nullptr || src_tensors == nullptr || dst_tensors == nullptr || num_tensors == 0) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments provided to CopyTensors.");
   }
@@ -3472,17 +3475,42 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
   std::vector<IDataTransfer::SrcDstPair> pairs;
   pairs.reserve(num_tensors);
   for (size_t i = 0; i < num_tensors; ++i) {
-    pairs.push_back({
+    IDataTransfer::SrcDstPair pair{
         src_tensors[i]->Get<Tensor>(),
         *dst_tensors[i]->GetMutable<Tensor>(),
-        stream,
-    });
+        stream};
+    pair.source_offset = source_offsets ? source_offsets[i] : 0;
+    pair.destination_offset = destination_offsets ? destination_offsets[i] : 0;
+    pair.size = sizes ? sizes[i] : 0;
+    pairs.push_back(pair);
   }
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(data_transfer->CopyTensors(pairs));
 
   return nullptr;
+}
 
+ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
+                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
+                    _In_opt_ OrtSyncStream* stream,
+                    _In_ size_t num_tensors) {
+  API_IMPL_BEGIN
+  // Call helper function with nullptr for offsets and sizes
+  return CopyTensorsImpl(env, src_tensors, dst_tensors, nullptr, nullptr, nullptr, stream, num_tensors);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CopyTensorsEx, _In_ const OrtEnv* env,
+                    _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                    _In_reads_(num_tensors) OrtValue* const* dst_tensors,
+                    _In_reads_opt_(num_tensors) const size_t* source_offsets,
+                    _In_reads_opt_(num_tensors) const size_t* destination_offsets,
+                    _In_reads_opt_(num_tensors) const size_t* sizes,
+                    _In_opt_ OrtSyncStream* stream,
+                    _In_ size_t num_tensors) {
+  API_IMPL_BEGIN
+  return CopyTensorsImpl(env, src_tensors, dst_tensors, source_offsets, destination_offsets, sizes, stream, num_tensors);
   API_IMPL_END
 }
 
@@ -3618,6 +3646,19 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
                     _In_ size_t /*num_tensors*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CopyTensors is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CopyTensorsEx, _In_ const OrtEnv* /*env*/,
+                    _In_reads_(num_tensors) const OrtValue* const* /*src_tensors*/,
+                    _In_reads_(num_tensors) OrtValue* const* /*dst_tensors*/,
+                    _In_reads_opt_(num_tensors) const size_t* /*source_offsets*/,
+                    _In_reads_opt_(num_tensors) const size_t* /*destination_offsets*/,
+                    _In_reads_opt_(num_tensors) const size_t* /*sizes*/,
+                    _In_opt_ OrtSyncStream* /*stream*/,
+                    _In_ size_t /*num_tensors*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CopyTensorsEx is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4238,6 +4279,8 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::TensorTypeAndShape_HasShape,
     &OrtApis::KernelInfo_GetConfigEntries,
+
+    &OrtApis::CopyTensorsEx,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

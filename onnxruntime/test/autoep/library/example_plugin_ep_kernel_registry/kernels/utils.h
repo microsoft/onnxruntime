@@ -45,6 +45,7 @@ inline OrtStatus* CopyTensor(OrtDataTransferImpl& data_transfer_impl,
   std::array<OrtValue*, 1> dst_tensors = {dst_tensor};
 
   RETURN_IF_ERROR(data_transfer_impl.CopyTensors(&data_transfer_impl, src_tensors.data(), dst_tensors.data(),
+                                                 /*src_offsets*/ nullptr, /*dst_offsets*/ nullptr, /*sizes*/ nullptr,
                                                  /*streams*/ nullptr, src_tensors.size()));
 
   return nullptr;

@@ -31,14 +31,23 @@ class IDataTransfer {
 
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
 
+  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, size_t src_offset, size_t dst_offset, size_t size) const;
+
   virtual common::Status CopyTensorAsync(const Tensor& /*src*/, Tensor& /*dst*/, Stream& /*stream*/) const {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
+
+  virtual common::Status CopyTensorAsync(const Tensor& /*src*/, Tensor& /*dst*/, size_t /*src_offset*/, size_t /*dst_offset*/, size_t /*size*/, Stream& /*stream*/) const {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
   struct SrcDstPair {
     std::reference_wrapper<const Tensor> src;
     std::reference_wrapper<Tensor> dst;
-    Stream* src_stream;  // producer stream of src
+    Stream* src_stream;             // producer stream of src
+    size_t source_offset = 0;       // offset in source tensor (in bytes)
+    size_t destination_offset = 0;  // offset in destination tensor (in bytes)
+    size_t size = 0;                // number of bytes to copy (0 means copy entire tensor)
   };
 
   // batched copy. default implementation copies each entry sequentially, and returns on first failure.
@@ -62,5 +71,6 @@ class CPUDataTransfer : public IDataTransfer {
   using IDataTransfer::CopyTensor;
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
+  common::Status CopyTensor(const Tensor& src, Tensor& dst, size_t src_offset, size_t dst_offset, size_t size) const override;
 };
 }  // namespace onnxruntime

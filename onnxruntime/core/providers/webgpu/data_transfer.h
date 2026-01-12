@@ -20,6 +20,9 @@ class DataTransfer : public IDataTransfer {
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
+  // Copy tensor with offset and size support
+  common::Status CopyTensor(const Tensor& src, Tensor& dst, size_t src_offset, size_t dst_offset, size_t size) const override;
+
  private:
   const BufferManager& buffer_manager_;
 };

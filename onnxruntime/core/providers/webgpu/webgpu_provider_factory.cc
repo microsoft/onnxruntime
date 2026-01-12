@@ -317,6 +317,9 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
   static OrtStatus* CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
                                     const OrtValue** src_tensors,
                                     OrtValue** dst_tensors,
+                                    const size_t* source_offsets,
+                                    const size_t* destination_offsets,
+                                    const size_t* sizes,
                                     OrtSyncStream** /*streams*/,
                                     size_t num_tensors) noexcept {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
@@ -348,7 +351,13 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     for (size_t idx = 0; idx < num_tensors; ++idx) {
       const OrtValue* src_tensor = src_tensors[idx];
       OrtValue* dst_tensor = dst_tensors[idx];
-      auto status = impl.data_transfer_->CopyTensor(src_tensor->Get<Tensor>(), *dst_tensor->GetMutable<Tensor>());
+      size_t src_offset = source_offsets ? source_offsets[idx] : 0;
+      size_t dst_offset = destination_offsets ? destination_offsets[idx] : 0;
+      size_t copy_size = sizes ? sizes[idx] : 0;
+
+      common::Status status = impl.data_transfer_->CopyTensor(src_tensor->Get<Tensor>(), *dst_tensor->GetMutable<Tensor>(),
+                                                              src_offset, dst_offset, copy_size);
+
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }

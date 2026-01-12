@@ -14,7 +14,11 @@ bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_dev
 }
 
 common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
-  size_t bytes = src.SizeInBytes();
+  return CopyTensor(src, dst, 0, 0, 0);
+}
+
+common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst, size_t src_offset, size_t dst_offset, size_t size) const {
+  size_t bytes = size > 0 ? size : src.SizeInBytes();
   if (bytes > 0) {
     void const* src_data = src.DataRaw();
     void* dst_data = dst.MutableDataRaw();
@@ -26,14 +30,16 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
       if (src_device.Type() == OrtDevice::GPU) {
         // copy from GPU to GPU
         buffer_manager_.MemCpy(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                               static_cast<WGPUBuffer>(dst_data), bytes);
+                               static_cast<WGPUBuffer>(dst_data), bytes, src_offset, dst_offset);
       } else {
         // copy from CPU to GPU
-        buffer_manager_.Upload(const_cast<void*>(src_data), static_cast<WGPUBuffer>(dst_data), bytes);
+        buffer_manager_.Upload(const_cast<void*>(src_data),
+                               static_cast<WGPUBuffer>(dst_data), bytes, src_offset, dst_offset);
       }
     } else /* if (src_device.Type() == OrtDevice::GPU) */ {
       // copy from GPU to CPU
-      buffer_manager_.Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)), dst_data, bytes);
+      buffer_manager_.Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
+                               dst_data, bytes, src_offset, dst_offset);
     }
   }
 

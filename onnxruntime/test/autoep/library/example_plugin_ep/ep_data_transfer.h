@@ -23,6 +23,9 @@ struct ExampleDataTransfer : OrtDataTransferImpl, ApiPtrs {
   static OrtStatus* ORT_API_CALL CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
                                                  const OrtValue** src_tensors_ptr,
                                                  OrtValue** dst_tensors_ptr,
+                                                 const size_t* src_offsets,
+                                                 const size_t* dst_offsets,
+                                                 const size_t* sizes,
                                                  OrtSyncStream** streams_ptr,
                                                  size_t num_tensors) noexcept;
   static void ORT_API_CALL ReleaseImpl(OrtDataTransferImpl* this_ptr) noexcept;

@@ -138,6 +138,7 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
     }
 
     if (!device_tensors.empty()) {
+      // Test original CopyTensors (backward compatible)
       ASSERT_CXX_ORTSTATUS_OK(ort_env->CopyTensors(cpu_tensors, device_tensors, stream));
 
       // Stream support is still a work in progress.

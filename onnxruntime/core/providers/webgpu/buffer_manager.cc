@@ -450,11 +450,11 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
       default_cache_{CreateBufferCacheManager(BufferCacheMode::Disabled)} {
 }
 
-void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
+void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size, size_t src_offset, size_t dst_offset) const {
   // If the buffer is mapped, we can directly write to it.
-  void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
+  void* mapped_data = wgpuBufferGetMappedRange(dst, dst_offset, size);
   if (mapped_data) {
-    memcpy(mapped_data, src, size);
+    memcpy(mapped_data, static_cast<char*>(src) + src_offset, size);
     wgpuBufferUnmap(dst);
     return;
   }
@@ -468,17 +468,17 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   desc.mappedAtCreation = true;
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
-  mapped_data = staging_buffer.GetMappedRange();
-  memcpy(mapped_data, src, size);
+  void* staging_mapped_data = staging_buffer.GetMappedRange();
+  memcpy(staging_mapped_data, static_cast<char*>(src) + src_offset, size);
   staging_buffer.Unmap();
 
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
-  command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, buffer_size);
+  command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, dst_offset, buffer_size);
   context_.Flush(*this);
 }
 
-void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
+void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size, size_t src_offset, size_t dst_offset) const {
   ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
   EnforceBufferUnmapped(context_, src);
   EnforceBufferUnmapped(context_, dst);
@@ -486,13 +486,13 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
   auto buffer_size = NormalizeBufferSize(size);
   auto src_size = static_cast<size_t>(wgpuBufferGetSize(src));
   auto dst_size = static_cast<size_t>(wgpuBufferGetSize(dst));
-  ORT_ENFORCE(buffer_size <= src_size && buffer_size <= dst_size,
+  ORT_ENFORCE(src_offset + buffer_size <= src_size && dst_offset + buffer_size <= dst_size,
               "Source and destination buffers must have enough space for the copy operation. src_size=",
-              src_size, ", dst_size=", dst_size, ", copy_size=", buffer_size, ".");
+              src_size, ", dst_size=", dst_size, ", src_offset=", src_offset, ", dst_offset=", dst_offset, ", copy_size=", buffer_size, ".");
 
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
-  command_encoder.CopyBufferToBuffer(src, 0, dst, 0, buffer_size);
+  command_encoder.CopyBufferToBuffer(src, src_offset, dst, dst_offset, buffer_size);
 }
 
 WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) const {
@@ -533,7 +533,7 @@ void BufferManager::Release(WGPUBuffer buffer) const {
   GetCacheManager(buffer).ReleaseBuffer(buffer);
 }
 
-void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
+void BufferManager::Download(WGPUBuffer src, void* dst, size_t size, size_t src_offset, size_t dst_offset) const {
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
 
@@ -544,7 +544,7 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
-  command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
+  command_encoder.CopyBufferToBuffer(src, src_offset, staging_buffer, 0, buffer_size);
   context_.Flush(*this);
 
   // TODO: revise wait in whole project
@@ -554,7 +554,7 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   })) == Status::OK());
 
   auto mapped_data = staging_buffer.GetConstMappedRange();
-  memcpy(dst, mapped_data, size);
+  memcpy(static_cast<char*>(dst) + dst_offset, mapped_data, size);
   staging_buffer.Unmap();
 }
 
