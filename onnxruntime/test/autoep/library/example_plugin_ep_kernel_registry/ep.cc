@@ -66,7 +66,7 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetCapabilityImpl(OrtEp* this_ptr, cons
     for (const auto& node : all_nodes) {
       std::string op_type = node.GetOperatorType();
 
-      if (op_type == "Relu" || op_type == "Squeeze") {
+      if (op_type == "Relu" || op_type == "Squeeze" || op_type == "If" || op_type == "Loop" || op_type == "Scan") {
         candidate_nodes.push_back(node);
       } else if (op_type == "Mul" || op_type == "Sub") {
         std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();

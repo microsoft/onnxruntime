@@ -2134,7 +2134,13 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/relu.h"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/relu.cc"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.h"
-          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.cc")
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/scan.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/scan.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/loop.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/loop.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/if.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/if.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep_kernel_registry ${onnxruntime_autoep_test_example_plugin_ep_kernel_registry_src})
   target_include_directories(example_plugin_ep_kernel_registry PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
   target_link_libraries(example_plugin_ep_kernel_registry PRIVATE onnxruntime ${GSL_TARGET})

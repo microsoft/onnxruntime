@@ -918,7 +918,7 @@ Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, i
     constexpr bool is_new_kv_bnsh_format = true;
     ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(
         batch_size, num_heads, qk_head_size, parameters.max_sequence_length,
-        data.seqlens_k_total, nullptr, parameters.sequence_length, data.k, data.v, data.present_key, data.present_value,
+        nullptr, data.seqlens_k_total, parameters.sequence_length, data.k, data.v, data.present_key, data.present_value,
         is_past_kv_bnsh_format, is_new_kv_bnsh_format, stream, max_threads_per_block));
 
     data.k = data.present_key;
