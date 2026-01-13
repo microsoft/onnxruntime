@@ -278,7 +278,7 @@ TEST_F(QnnHTPBackendTests, Concat_EmptyInput) {
             ExpectedEPNodeAssignment::All);
 }
 
-// Test QDQ Concat with empty initializer
+// Test Concat with empty initializer
 TEST_F(QnnHTPBackendTests, Concat_EmptyInitializer) {
   RunOpTest("Concat",
             {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
