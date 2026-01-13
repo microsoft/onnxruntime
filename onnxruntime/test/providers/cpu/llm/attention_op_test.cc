@@ -697,6 +697,7 @@ TEST(AttentionTest, Attention4DAttnPastPresent) {
   );
 }
 
+// TODO(titaiwang, xadupre): Do we really need cross attention + causal mask test case?
 TEST(AttentionTest, Attention4DAttnIsCausal) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 3;           // Q.shape[1]
@@ -726,7 +727,7 @@ TEST(AttentionTest, Attention4DAttnIsCausal) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, false, true  // disable_cpu, disable_cuda, disable_dml
+            false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -786,6 +787,7 @@ TEST(AttentionTest, Attention4DAttnIsCausalBasicFloat16) {
   );
 }
 
+// TODO(titaiwang, xadupre): Do we really need cross attention + causal mask test case?
 TEST(AttentionTest, Attention4DAttnIsCausalBasicDifferentSequenceLength) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 1;           // Q.shape[1]
@@ -810,7 +812,7 @@ TEST(AttentionTest, Attention4DAttnIsCausalBasicDifferentSequenceLength) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, false, true  // disable_cpu, disable_cuda, disable_dml
+            false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
