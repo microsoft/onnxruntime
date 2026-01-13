@@ -96,6 +96,7 @@ public class MemorySegmentTest {
       }
     }
 
+    @Override
     public void close() {
       if (arenaClass != null) {
         try {
