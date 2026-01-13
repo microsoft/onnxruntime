@@ -37,6 +37,8 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
+  CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
+
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
   default_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU",
@@ -305,6 +307,28 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
     auto sync_stream = std::make_unique<StreamImpl>(factory, /*OrtEp**/ nullptr, stream_options);
     *stream = sync_stream.release();
   }
+
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDeviceImpl(
+    OrtEpFactory* this_ptr,
+    const OrtEpDevice* /*ep_device*/,
+    OrtExternalResourceImporterImpl** out_importer) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  if (out_importer == nullptr) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "out_importer cannot be nullptr");
+  }
+
+  // Create the external resource importer
+  // NOTE: For production multi-GPU EPs, you should capture ep_device in the importer
+  // to enable proper device validation and support multiple physical devices.
+  // This example EP only supports a single device, so we don't store it.
+  auto importer = std::make_unique<ExampleExternalResourceImporter>(factory);
+  *out_importer = importer.release();
 
   return nullptr;
 }

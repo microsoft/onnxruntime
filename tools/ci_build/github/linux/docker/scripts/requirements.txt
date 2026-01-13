@@ -12,4 +12,4 @@ protobuf==6.33.0
 packaging
 onnxscript==0.5.3; python_version < "3.14"
 onnx-ir==0.1.10; python_version < "3.14"
-onnx==1.19.1; python_version < "3.14"
+onnx==1.20.1; python_version < "3.14"
