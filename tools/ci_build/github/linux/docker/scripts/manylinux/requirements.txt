@@ -10,4 +10,4 @@ flatbuffers
 neural-compressor>=2.2.1
 triton==3.2.0; python_version < "3.14"
 triton==3.5.0; python_version >= "3.14"
-onnx==1.19.1; python_version < "3.14"
+onnx==1.20.1; python_version < "3.14"

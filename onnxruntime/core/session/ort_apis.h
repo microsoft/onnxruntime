@@ -761,4 +761,11 @@ ORT_API_STATUS_IMPL(KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, 
 ORT_API_STATUS_IMPL(KernelInfo_GetOperatorSinceVersion, _In_ const OrtKernelInfo* info,
                     _Out_ int* since_version);
 
+// Interop API
+ORT_API(const OrtInteropApi*, GetInteropApi);
+
+ORT_API_STATUS_IMPL(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
+                    _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
+                    _In_ size_t num_outputs);
+
 }  // namespace OrtApis

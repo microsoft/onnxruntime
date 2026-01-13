@@ -87,6 +87,13 @@ struct ForwardToFactoryImpl {
     return static_cast<TFactory*>(this_ptr)->SetEnvironmentOptions(options);
   }
 
+  static OrtStatus* ORT_API_CALL CreateExternalResourceImporterForDevice(
+      _In_ OrtEpFactory* this_ptr,
+      _In_ const OrtEpDevice* ep_device,
+      _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
+    return static_cast<TFactory*>(this_ptr)->CreateExternalResourceImporterForDevice(ep_device, importer);
+  }
+
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }
