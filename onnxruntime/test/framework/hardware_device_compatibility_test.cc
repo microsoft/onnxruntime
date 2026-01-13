@@ -327,7 +327,7 @@ TEST(GetHardwareDevicesCapiTest, GetHardwareDevices_InvalidArguments_ArrayTooSma
   ASSERT_GT(num_devices, 0u);
 
   // Try to get devices with an undersized array (pass a valid pointer but claim size is 0)
-  std::vector<const OrtHardwareDevice*> devices(1);  // Allocate at least 1 element to avoid nullptr
+  std::vector<const OrtHardwareDevice*> devices(1);                 // Allocate at least 1 element to avoid nullptr
   OrtStatus* st = api->GetHardwareDevices(env, devices.data(), 0);  // But claim size is 0
   ASSERT_NE(st, nullptr);
   EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
