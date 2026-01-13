@@ -14,6 +14,9 @@ namespace onnxruntime {
 class Environment;
 }
 
+// Managed pointer type for OrtEnv that calls OrtEnv::Release to release memory.
+using OrtEnvPtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
+
 struct OrtEnv {
  public:
   struct LoggingManagerConstructionInfo {
@@ -39,18 +42,16 @@ struct OrtEnv {
   /// <param name="tp_options">Optional threading options.</param>
   /// <param name="config_entries">Optional configuration entries.</param>
   /// <returns>The OrtEnv instance.</returns>
-  static OrtEnv* GetOrCreateInstance(const LoggingManagerConstructionInfo& lm_info,
-                                     onnxruntime::common::Status& status,
-                                     const OrtThreadingOptions* tp_options = nullptr,
-                                     const OrtKeyValuePairs* config_entries = nullptr);
-
-  using UniquePtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
+  static OrtEnvPtr GetOrCreateInstance(const LoggingManagerConstructionInfo& lm_info,
+                                       onnxruntime::common::Status& status,
+                                       const OrtThreadingOptions* tp_options = nullptr,
+                                       const OrtKeyValuePairs* config_entries = nullptr);
 
   /// <summary>
   /// Gets the global OrtEnv instance. Returns nullptr if the instance has not yet been created.
   /// </summary>
   /// <returns>The OrtEnv instance or nullptr.</returns>
-  static UniquePtr TryGetInstance();
+  static OrtEnvPtr TryGetInstance();
 
   static void Release(OrtEnv* env_ptr);
 
@@ -64,9 +65,6 @@ struct OrtEnv {
 
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;
   void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
-
-  // Returns a copy of the environment's config entries.
-  OrtKeyValuePairs GetConfigEntries() const;
 
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
   ~OrtEnv();

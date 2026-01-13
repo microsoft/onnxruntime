@@ -196,7 +196,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetOrCreateInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -206,7 +208,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel logging_level,
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetOrCreateInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -216,7 +220,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel log
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -227,7 +233,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -272,7 +280,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithOptions, _In_ const OrtEnvCreationOpti
                                                  logging_severity_level,
                                                  options->log_id);
   Status status;
-  *out = OrtEnv::GetOrCreateInstance(lm_info, status, options->threading_options, options->config_entries);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, options->threading_options, options->config_entries);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }

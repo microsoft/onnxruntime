@@ -21,6 +21,7 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
@@ -766,7 +767,7 @@ ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl) {
 
 ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries) {
   API_IMPL_BEGIN
-  OrtEnv::UniquePtr ort_env = OrtEnv::TryGetInstance();
+  OrtEnvPtr ort_env = OrtEnv::TryGetInstance();
 
   if (ort_env == nullptr) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtEnv instance does not exist");
@@ -778,7 +779,7 @@ ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entr
                                  "the new OrtKeyValuePairs instance");
   }
 
-  auto entries_unique_ptr = std::make_unique<OrtKeyValuePairs>(ort_env->GetConfigEntries());
+  auto entries_unique_ptr = std::make_unique<OrtKeyValuePairs>(ort_env->GetEnvironment().GetConfigEntries());
   *config_entries = entries_unique_ptr.release();
   return nullptr;
   API_IMPL_END
