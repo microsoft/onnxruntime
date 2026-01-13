@@ -3434,5 +3434,8 @@ struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
  */
 using UnownedSharedPrePackedWeightCache =
     detail::SharedPrePackedWeightCacheImpl<Ort::detail::Unowned<OrtSharedPrePackedWeightCache>>;
+
+///< Wraps OrtEpApi::GetEnvConfigEntries()
+Ort::KeyValuePairs GetEnvConfigEntries();
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

@@ -3788,4 +3788,11 @@ inline Status SharedPrePackedWeightCacheImpl<T>::StoreWeightData(void** buffer_d
                                                                       num_buffers)};
 }
 }  // namespace detail
+
+inline Ort::KeyValuePairs GetEnvConfigEntries() {
+  OrtKeyValuePairs* entries = nullptr;
+  Ort::ThrowOnError(GetEpApi().GetEnvConfigEntries(&entries));
+
+  return Ort::KeyValuePairs{entries};
+}
 }  // namespace Ort

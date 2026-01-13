@@ -76,9 +76,7 @@ TEST(EnvCreation, CreateEnvWithOptions) {
     Ort::Env tmp_env(&options);
 
     // Use EP API to retrieve environment configs and check contents
-    OrtKeyValuePairs* c_kvps = nullptr;
-    ASSERT_ORTSTATUS_OK(Ort::GetEpApi().GetEnvConfigEntries(&c_kvps));
-    Ort::KeyValuePairs env_configs_2(c_kvps);
+    Ort::KeyValuePairs env_configs_2 = Ort::GetEnvConfigEntries();
 
     auto configs_expected = env_configs.GetKeyValuePairs();
     auto configs_actual = env_configs_2.GetKeyValuePairs();

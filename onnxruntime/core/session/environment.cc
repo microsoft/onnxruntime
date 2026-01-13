@@ -483,17 +483,17 @@ Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocat
 }
 
 OrtKeyValuePairs Environment::GetConfigEntries() const {
-  std::lock_guard<std::mutex> lock{config_entries_mutex_};
+  std::shared_lock<std::shared_mutex> lock{config_entries_mutex_};
   return config_entries_;  // copy
 }
 
 void Environment::InsertOrAssignConfigEntry(std::string key, std::string value) {
-  std::lock_guard<std::mutex> lock{config_entries_mutex_};
+  std::lock_guard<std::shared_mutex> lock{config_entries_mutex_};
   config_entries_.Add(std::move(key), std::move(value));
 }
 
 void Environment::RemoveConfigEntry(const std::string& key) {
-  std::lock_guard<std::mutex> lock{config_entries_mutex_};
+  std::lock_guard<std::shared_mutex> lock{config_entries_mutex_};
   config_entries_.Remove(key.c_str());
 }
 
@@ -644,7 +644,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& regist
     if (AreVirtualDevicesAllowed(registration_name)) {
       num_virtual_ep_libraries_ -= 1;
 
-      if (num_virtual_ep_libraries_ <= 0) {
+      if (num_virtual_ep_libraries_ == 0) {
         RemoveConfigEntry(kOrtEnv_AllowVirtualDevices);
       }
     }

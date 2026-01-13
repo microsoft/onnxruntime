@@ -14,7 +14,7 @@ namespace onnxruntime {
 class Environment;
 }
 
-// Managed pointer type for OrtEnv that calls OrtEnv::Release to release memory.
+// Managed pointer type for OrtEnv that calls OrtEnv::Release as its deleter.
 using OrtEnvPtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
 
 struct OrtEnv {

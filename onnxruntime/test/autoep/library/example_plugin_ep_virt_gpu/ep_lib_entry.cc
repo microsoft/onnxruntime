@@ -22,6 +22,7 @@ extern "C" {
 EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
                                            const OrtLogger* default_logger,
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();
   const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
@@ -34,9 +35,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
                                  "Not enough space to return EP factory. Need at least one.");
   }
 
-  OrtKeyValuePairs* c_kvps = nullptr;
-  RETURN_IF_ERROR(ep_api->GetEnvConfigEntries(&c_kvps));
-  Ort::KeyValuePairs env_configs(c_kvps);
+  Ort::KeyValuePairs env_configs = Ort::GetEnvConfigEntries();
 
   // Extract a config that determines whether creating virtual hardware devices is allowed.
   // An application can allow an EP library to create virtual devices in two ways:
@@ -54,6 +53,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   *num_factories = 1;
 
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
