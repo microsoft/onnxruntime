@@ -24,7 +24,7 @@ PerformanceRunner::PerformanceRunner(
     : m_model_path(model_path),
       m_model_key(model_key),
       m_dataset_reader(dataset_reader),
-      m_env(ORT_LOGGING_LEVEL_WARNING, "ep_validtion_tool_winml"),
+      m_env(ORT_LOGGING_LEVEL_WARNING, "ep_validation_tool_winml"),
       m_session(nullptr),
       m_run_options(),
       m_compiled_model_path(compiled_model_path)
@@ -107,7 +107,7 @@ void PerformanceRunner::ConfigureExecutionProviders(
                 {
                     // Register the provider with ONNX Runtime
                     bool registered = provider.TryRegister();
-                    std::wcout << "  Registration status: " << (registered ? "SUCCEESS" : "FAILED") << std::endl;
+                    std::wcout << "  Registration status: " << (registered ? "SUCCESS" : "FAILED") << std::endl;
                 }
             }
         }

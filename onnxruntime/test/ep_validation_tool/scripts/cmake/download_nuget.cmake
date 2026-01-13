@@ -10,7 +10,7 @@ function(nugetDL PKG_NAME PKG_VERSION CONFIG_FILE OUT_DIR)
     # Find nuget.exe.
     find_program(NUGET_EXE NAMES nuget.exe)
     if (NUGET_EXE STREQUAL "NUGET_EXE-NOTFOUND")
-        message(FATAL "nuget.exe not found. Please add it to your PATH.")
+        message(FATAL_ERROR  "nuget.exe not found. Please add it to your PATH.")
     endif()
 
     # Create output dir.
