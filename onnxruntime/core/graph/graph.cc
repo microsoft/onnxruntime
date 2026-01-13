@@ -991,11 +991,17 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 void Node::AddAttributeProto(AttributeProto value) {
+  bool is_subgraph = (value.type() == ONNX_NAMESPACE::AttributeProto::GRAPH) || (value.type() == ONNX_NAMESPACE::AttributeProto::GRAPHS);
+  const std::string& name = value.name();
+
   utils::SetNodeAttribute(std::move(value), attributes_);
   if (graph_) {
     graph_->SetGraphResolveNeeded();
     graph_->SetGraphProtoSyncNeeded();
   }
+
+  if (is_subgraph)
+    CreateSubgraph(name);
 }
 
 #define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
@@ -1668,81 +1674,98 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+Status Graph::BuildConnectionsSubgraph(Node* node, Graph* subgraph, std::unordered_set<std::string>& outer_scope_node_args_consumed) {
+  std::unordered_set<std::string> node_args_consumed;
+  ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed));
+
+  for (auto& node_arg_name : node_args_consumed) {
+    auto node_arg = GetNodeArg(node_arg_name);
+
+    if (node_arg == nullptr) {
+      // it's a node arg from outside this graph's scope, so add that to the list we return
+      // so that we can add the dependency at the next level up. this happens if you have multiple
+      // levels of subgraphs between the graph with the original NodeArg and the subgraph with implicit usage.
+      ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
+
+      if (!parent_graph_) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_GRAPH,
+            "This is an invalid model. At top level graph without matching NodeArg that subgraph consumes. Name=",
+            node_arg_name,
+            " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
+      }
+
+      node_arg = parent_graph_->GetNodeArgIncludingParentGraphs(node_arg_name);
+
+      // make sure the node arg is found in the parent graph/s
+      if (!node_arg) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_GRAPH,
+            "This is an invalid model. Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
+            " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
+      }
+    } else {
+      // as we create a NodeArg instance for all Node inputs the value could be produced by this graph,
+      // or could be coming from outer scope. check the valid values for just this Graph using resolve_context_.
+      // if none are found, it's an outer scope value.
+      if (resolve_context_.IsLocalValue(node_arg_name) == false) {
+        ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
+      }
+    }
+
+    if (node == nullptr)
+      return Status::OK();
+
+    // add it to the Node's list of implicit inputs
+    auto& implicit_inputs = node->MutableDefinitions().implicit_input_defs;
+    int input_slot_index = static_cast<int>(node->GetDefinitions().input_defs.size());
+    auto iter = std::find(implicit_inputs.cbegin(), implicit_inputs.cend(), node_arg);
+    if (implicit_inputs.cend() == iter) {
+      implicit_inputs.push_back(node_arg);
+      input_slot_index += static_cast<int>(implicit_inputs.size() - 1);
+    } else {
+      input_slot_index += static_cast<int>(iter - implicit_inputs.cbegin());
+    }
+
+    auto entry = resolve_context_.output_args.find(node_arg_name);
+    if (entry != resolve_context_.output_args.end()) {
+      // Create relationship between this node (node), and the node providing the output (output_node).
+      Node& output_node = *entry->second.first;
+      AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
+
+      // If this Graph was built manually and the outputs were not manually set, remove the implicit input from
+      // the graph outputs if it is present there.
+      //
+      // Otherwise, if the Graph was loaded from a GraphProto or the outputs were manually set, honor the
+      // explicit graph outputs and leave as is.
+      if (!is_loaded_from_model_file_ && !graph_outputs_manually_set_) {
+        graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
+                             graph_outputs_.end());
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
 Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
-        std::unordered_set<std::string> node_args_consumed;
-        ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed));
-
-        for (auto& node_arg_name : node_args_consumed) {
-          auto node_arg = GetNodeArg(node_arg_name);
-
-          if (node_arg == nullptr) {
-            // it's a node arg from outside this graph's scope, so add that to the list we return
-            // so that we can add the dependency at the next level up. this happens if you have multiple
-            // levels of subgraphs between the graph with the original NodeArg and the subgraph with implicit usage.
-            ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
-
-            if (!parent_graph_) {
-              return ORT_MAKE_STATUS(
-                  ONNXRUNTIME, INVALID_GRAPH,
-                  "This is an invalid model. At top level graph without matching NodeArg that subgraph consumes. Name=",
-                  node_arg_name,
-                  " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
-            }
-
-            node_arg = parent_graph_->GetNodeArgIncludingParentGraphs(node_arg_name);
-
-            // make sure the node arg is found in the parent graph/s
-            if (!node_arg) {
-              return ORT_MAKE_STATUS(
-                  ONNXRUNTIME, INVALID_GRAPH,
-                  "This is an invalid model. Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
-                  " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
-            }
-          } else {
-            // as we create a NodeArg instance for all Node inputs the value could be produced by this graph,
-            // or could be coming from outer scope. check the valid values for just this Graph using resolve_context_.
-            // if none are found, it's an outer scope value.
-            if (resolve_context_.IsLocalValue(node_arg_name) == false) {
-              ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
-            }
-          }
-
-          // add it to the Node's list of implicit inputs
-          auto& implicit_inputs = node->MutableDefinitions().implicit_input_defs;
-          int input_slot_index = static_cast<int>(node->GetDefinitions().input_defs.size());
-          auto iter = std::find(implicit_inputs.cbegin(), implicit_inputs.cend(), node_arg);
-          if (implicit_inputs.cend() == iter) {
-            implicit_inputs.push_back(node_arg);
-            input_slot_index += static_cast<int>(implicit_inputs.size() - 1);
-          } else {
-            input_slot_index += static_cast<int>(iter - implicit_inputs.cbegin());
-          }
-
-          auto entry = resolve_context_.output_args.find(node_arg_name);
-          if (entry != resolve_context_.output_args.end()) {
-            // Create relationship between this node (node), and the node providing the output (output_node).
-            Node& output_node = *entry->second.first;
-            AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
-
-            // If this Graph was built manually and the outputs were not manually set, remove the implicit input from
-            // the graph outputs if it is present there.
-            //
-            // Otherwise, if the Graph was loaded from a GraphProto or the outputs were manually set, honor the
-            // explicit graph outputs and leave as is.
-            if (!is_loaded_from_model_file_ && !graph_outputs_manually_set_) {
-              graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
-                                   graph_outputs_.end());
-            }
-          }
-        }
+        ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(node, subgraph.get(), outer_scope_node_args_consumed));
       }
     }
   }
+
+#ifdef ENABLE_TRAINING
+  if (!resolve_context_.isolated_graph.empty())
+    for (auto subgraph : resolve_context_.isolated_graph) {
+      ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(nullptr, subgraph, outer_scope_node_args_consumed));
+    }
+#endif
 
   // now build connections within this Graph instance
   for (auto& node : Nodes()) {
@@ -3355,7 +3378,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
 }
 
 // Apply type-inference and type-checking to all inputs and initializers:
-common::Status Graph::TypeCheckInputsAndInitializers() {
+common::Status Graph::TypeCheckInputsAndInitializers(const ResolveOptions& options) {
   // Check that the type of every input is specified:
   for (auto* graph_input : GetInputs()) {
     if (nullptr == graph_input->Type()) {
@@ -3423,6 +3446,16 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       }
     }
   }
+
+#ifdef ENABLE_TRAINING
+  if (options.additional_graphs) {
+    for (auto g : *options.additional_graphs) {
+      ResolveOptions _options = options;
+      _options.additional_graphs = nullptr;
+      ORT_RETURN_IF_ERROR(g->TypeCheckInputsAndInitializers(_options));
+    }
+  }
+#endif
 
   return Status::OK();
 }
@@ -3565,6 +3598,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     }
   }
 
+#ifdef ENABLE_TRAINING
+  for (auto subgraph : resolve_context_.isolated_graph) {
+    ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+  }
+#endif
+
   ORT_RETURN_IF_ERROR(CleanUpShapeValuesFromDataPropagation());
 
   return Status::OK();
@@ -3637,7 +3676,7 @@ Status Graph::InitInputsInitializersOutputs() {
 }
 
 Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
-  ORT_RETURN_IF_ERROR(TypeCheckInputsAndInitializers());
+  ORT_RETURN_IF_ERROR(TypeCheckInputsAndInitializers(options));
 
   // type/shape inferencing on the nodes is done recursively as we need subgraph outputs
   // to be applied to Node outputs for the node containing the subgraph.
@@ -3666,6 +3705,15 @@ Status Graph::Resolve(const ResolveOptions& options) {
   // find all subgraphs including nested ones.
   std::vector<Graph*> all_subgraphs;
   FindAllSubgraphs(all_subgraphs);
+#ifdef ENABLE_TRAINING
+  if (options.additional_graphs != nullptr) {
+    all_subgraphs.insert(all_subgraphs.end(), options.additional_graphs->begin(), options.additional_graphs->end());
+    resolve_context_.isolated_graph.insert(resolve_context_.isolated_graph.end(), options.additional_graphs->begin(), options.additional_graphs->end());
+
+    for (auto g : *options.additional_graphs)
+      for (auto i = g->Nodes().begin(), e = g->Nodes().end(); i != e; i++);
+  }
+#endif
 
   bool subgraphs_need_resolve = std::any_of(all_subgraphs.cbegin(), all_subgraphs.cend(),
                                             [](const Graph* graph) {

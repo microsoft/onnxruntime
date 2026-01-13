@@ -208,7 +208,7 @@ class GraphAugmenter {
   // Augment the graph with new_graph_elements which defines new nodes, outputs, initializers.
   static common::Status AugmentGraph(Graph& graph,
                                      const GraphDefs& graph_element_defs,
-                                     const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr);
+                                     const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr, bool is_isolated = false);
 
   // Manually set the graph outputs
   static common::Status OverrideGraphOutputs(Graph& graph, const std::vector<std::string>& graph_outputs);
