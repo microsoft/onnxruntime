@@ -204,8 +204,8 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   // However, if present_key is not requested, we should avoid allocated more memory than needed but that mean
   // allocating one buffer per thread. That's why the implementation is not done.
   // The user should define a model with a present_key even if not used if past_key is not null.
-  ORT_ENFORCE((past_key == nullptr) == (present_key == nullptr),
-              "The implementation only supports past_key and present_key both null or both not null.");
+  ORT_ENFORCE(!((past_key != nullptr) && (present_key == nullptr)),
+              "The implementation does not support past_key provided and present_key being null.");
   const size_t past_chunk_length = static_cast<size_t>(parameters.past_sequence_length) * parameters.head_size;   // P x H
   const size_t q_input_chunk_length = static_cast<size_t>(parameters.q_sequence_length) * parameters.head_size;   // S x H
   const size_t k_input_chunk_length = static_cast<size_t>(parameters.kv_sequence_length) * parameters.head_size;  // L x H
@@ -529,8 +529,8 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                                                T* present_value,           // present value only (if not using present state)
                                                bool transpose_output,      // whether to transpose the output (0, 2, 1, 3)
                                                ThreadPool* tp) const {
-  ORT_ENFORCE((past_value == nullptr) == (present_value == nullptr),
-              "The implementation only supports past_value and present_value both null or both not null.");
+  ORT_ENFORCE(!((past_value != nullptr) && (present_value == nullptr)),
+              "The implementation does not support past_value provided and present_value being null.");
   const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;   // P x H_v
   const ptrdiff_t v_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;  // L x H_v
   const ptrdiff_t present_chunk_length = past_chunk_length + v_input_chunk_length;              // T x H_v

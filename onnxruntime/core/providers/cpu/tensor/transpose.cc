@@ -485,10 +485,17 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
     Transpose);
 
-// Opset 24
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     24,
+    24,
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
+    Transpose);
+
+// Opset 25
+ONNX_CPU_OPERATOR_KERNEL(
+    Transpose,
+    25,
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
     Transpose);
 

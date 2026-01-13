@@ -20,11 +20,13 @@ configuration:
               label: feature request
           - isNotLabeledWith:
               label: regression
+          - isNotLabeledWith:
+              label: no stale
           - noActivitySince:
               days: 30
         actions:
           - addReply:
-              reply: "Applying stale label due to no activity in 30 days"
+              reply: "Applying stale label due to no activity in 30 days. Please react to the issue by assigning it or labeling it as 'contributions welcome', 'documentation', 'feature request', 'regression', or 'no stale'."
           - addLabel:
               label: stale
       - description: Close open, unassigned issues labeled stale that have not been updated in the last 30 days
@@ -37,6 +39,8 @@ configuration:
           - isIssue
           - isOpen
           - isNotAssigned
+          - isNotLabeledWith:
+              label: no stale
           - noActivitySince:
               days: 30
         actions:
@@ -52,14 +56,3 @@ configuration:
         then:
           - removeLabel:
               label: stale
-      - description: Re-open stale issue if closed stale issue is commented on
-        if:
-          - payloadType: Issue_Comment
-          - and:
-              - not:
-                  isOpen
-              - hasLabel:
-                  label: stale
-        then:
-          - reopenIssue
-      
