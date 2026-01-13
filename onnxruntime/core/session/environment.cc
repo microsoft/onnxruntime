@@ -253,6 +253,13 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
   if (config_entries != nullptr) {
     config_entries_ = *config_entries;
+
+    const auto& config_map = config_entries_.Entries();
+
+    if (auto iter = config_map.find(kOrtEnvAllowVirtualDevices);
+        iter != config_map.end() && iter->second == "1") {
+      num_allow_virtual_device_uses_ = 1;
+    }
   }
 
   // create thread pools
@@ -613,11 +620,11 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   // "allow_virtual_devices" from the config entries when the last library is unregistered. In practice,
   // we expect only one such library to be registered for cross-compilation.
   if (AreVirtualDevicesAllowed(registration_name)) {
-    if (num_virtual_ep_libraries_ == 0) {
-      InsertOrAssignConfigEntry(kOrtEnv_AllowVirtualDevices, "1");
+    if (num_allow_virtual_device_uses_ == 0) {
+      InsertOrAssignConfigEntry(kOrtEnvAllowVirtualDevices, "1");
     }
 
-    num_virtual_ep_libraries_ += 1;
+    num_allow_virtual_device_uses_ += 1;
   }
 
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
@@ -642,10 +649,10 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& regist
 
     // Clean up environment config entry that may have been added to enable virtual devices.
     if (AreVirtualDevicesAllowed(registration_name)) {
-      num_virtual_ep_libraries_ -= 1;
+      num_allow_virtual_device_uses_ -= 1;
 
-      if (num_virtual_ep_libraries_ == 0) {
-        RemoveConfigEntry(kOrtEnv_AllowVirtualDevices);
+      if (num_allow_virtual_device_uses_ == 0) {
+        RemoveConfigEntry(kOrtEnvAllowVirtualDevices);
       }
     }
 

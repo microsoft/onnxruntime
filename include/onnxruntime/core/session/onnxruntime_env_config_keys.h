@@ -21,4 +21,4 @@
 //  - "0": Default. Creation of virtual devices is not allowed.
 //         This is the assumed default value if this key is not present in the environment's configuration entries.
 //  - "1": Creation of virtual devices is allowed.
-static const char* const kOrtEnv_AllowVirtualDevices = "allow_virtual_devices";
+static const char* const kOrtEnvAllowVirtualDevices = "allow_virtual_devices";

@@ -273,8 +273,13 @@ class Environment {
   mutable std::shared_mutex config_entries_mutex_;  // Should be locked when accessing config_entries_
 
   // Tracks the number of registered EP libraries that can create virtual devices.
-  // Only modified during library registration/unregistration.
-  size_t num_virtual_ep_libraries_{};
+  // It is incremented when an EP library is registered with a name that ends in ".virtual".
+  // It is decremented when that EP library is unregistered.
+  // If it reaches 0, the config entry "allow_virtual_devices" is removed.
+  //
+  // This starts at 1 if user created an OrtEnv with the config "allow_virtual_devices" set to "1"
+  // to prevent removal of the config entry in that case.
+  size_t num_allow_virtual_device_uses_{};
 };
 
 }  // namespace onnxruntime

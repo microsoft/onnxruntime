@@ -43,7 +43,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
   //     set the config key "allow_virtual_devices" to "1" in the environment.
   //  2. Directly set the config key "allow_virtual_devices" to "1" when creating the
   //     OrtEnv via OrtApi::CreateEnvWithOptions().
-  const char* config_value = env_configs.GetValue(kOrtEnv_AllowVirtualDevices);
+  const char* config_value = env_configs.GetValue(kOrtEnvAllowVirtualDevices);
   const bool allow_virtual_devices = config_value != nullptr && strcmp(config_value, "1") == 0;
 
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<EpFactoryVirtualGpu>(*ort_api, *ep_api, *model_editor_api,

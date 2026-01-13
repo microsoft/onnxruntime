@@ -178,7 +178,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   auto run_test = [&]() -> void {
     // Create OrtEnv with config entry to enable virtual devices.
     Ort::KeyValuePairs env_configs;
-    env_configs.Add(kOrtEnv_AllowVirtualDevices, "1");
+    env_configs.Add(kOrtEnvAllowVirtualDevices, "1");
 
     OrtEnvCreationOptions env_options{};
     env_options.version = ORT_API_VERSION;
