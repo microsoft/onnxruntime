@@ -229,6 +229,47 @@ ParQuantizeLinearStd(const float* Input,
 DEFINE_PAR_QUANT_LINEAR_STD_4BIT(ParQuantizeLinearStdS4, Int4x2, MlasQuantizeLinearS4)
 DEFINE_PAR_QUANT_LINEAR_STD_4BIT(ParQuantizeLinearStdU4, UInt4x2, MlasQuantizeLinearU4)
 
+// TODO: add MLAS kernels for 2-bit types and generalize DEFINE_PAR_QUANT_LINEAR_STD_4BIT macro
+// For 2-bit types, we need a generic implementation since MLAS kernels don't support 2-bit yet.
+// Define a generic quantization function that doesn't rely on MLAS.
+#define DEFINE_PAR_QUANT_LINEAR_STD_2BIT_GENERIC(FUNC_NAME, SUB_BYTE_TYPE)                                    \
+  inline void FUNC_NAME(const float* Input,                                                                   \
+                        SUB_BYTE_TYPE* Output,                                                                \
+                        size_t out_start,                                                                     \
+                        size_t out_end,                                                                       \
+                        float Scale,                                                                          \
+                        SUB_BYTE_TYPE ZeroPoint,                                                              \
+                        concurrency::ThreadPool* thread_pool) {                                               \
+    constexpr int32_t low = static_cast<int32_t>(SUB_BYTE_TYPE::min_val);                                     \
+    constexpr int32_t high = static_cast<int32_t>(SUB_BYTE_TYPE::max_val);                                    \
+    const int32_t zp = static_cast<int32_t>(ZeroPoint.GetElem(0));                                            \
+    size_t N = out_end - out_start;                                                                           \
+                                                                                                              \
+    constexpr std::ptrdiff_t block_size = 128;                                                                \
+    const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;                                      \
+    const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)),                             \
+                                 static_cast<double>(block_size * sizeof(SUB_BYTE_TYPE::UnpackedType)) / 4.0, \
+                                 static_cast<double>(block_size) * 2.0};                                      \
+                                                                                                              \
+    concurrency::ThreadPool::TryParallelFor(                                                                  \
+        thread_pool, num_blocks, unit_cost,                                                                   \
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {                                                       \
+          auto begin_idx = begin * block_size;                                                                \
+          auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);                          \
+                                                                                                              \
+          for (auto idx = begin_idx; idx < end_idx; ++idx) {                                                  \
+            size_t out_idx = out_start + idx;                                                                 \
+            int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[idx] / Scale)) + zp;                    \
+            SUB_BYTE_TYPE::UnpackedType quant_val =                                                           \
+                static_cast<SUB_BYTE_TYPE::UnpackedType>(std::min(high, std::max(low, ival)));                \
+            Output[out_idx >> 2].SetElem(out_idx & 0x3, quant_val);                                           \
+          }                                                                                                   \
+        });                                                                                                   \
+  }
+
+DEFINE_PAR_QUANT_LINEAR_STD_2BIT_GENERIC(ParQuantizeLinearStdS2, Int2x4)
+DEFINE_PAR_QUANT_LINEAR_STD_2BIT_GENERIC(ParQuantizeLinearStdU2, UInt2x4)
+
 // This implementation could be more efficient however the cast from float16 to other types
 // usually happens on GPU.
 template <typename OutputType>
