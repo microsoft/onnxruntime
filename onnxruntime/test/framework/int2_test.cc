@@ -1,10 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <vector>
 #include <cstdint>
+#include <filesystem>
 
 #include "core/framework/int2.h"
+#include "core/framework/data_types.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/platform/env.h"
 #include "test/test_environment.h"
 #include "gtest/gtest.h"
 
@@ -257,6 +262,53 @@ TEST(Int2_Tests, Int2x4_BitManipulation) {
   Int2x4 int2(0, 1, -1, -2);  // 0b00, 0b01, 0b11, 0b10
   // Expected: 0b10'11'01'00 = 0xB4
   EXPECT_EQ(static_cast<uint8_t>(int2.ToBits()), 0xB4);
+}
+
+// ==============================================
+// TypeProto / TypeFromProto smoke checks
+// ==============================================
+
+TEST(Int2_Tests, TensorTypeFromONNXEnum_Int2UInt2) {
+  auto* int2_type = DataTypeImpl::TensorTypeFromONNXEnum(ONNX_NAMESPACE::TensorProto_DataType_INT2);
+  auto* uint2_type = DataTypeImpl::TensorTypeFromONNXEnum(ONNX_NAMESPACE::TensorProto_DataType_UINT2);
+
+  ASSERT_NE(int2_type, nullptr);
+  ASSERT_NE(uint2_type, nullptr);
+  EXPECT_EQ(int2_type->GetElementType(), DataTypeImpl::GetType<Int2x4>());
+  EXPECT_EQ(uint2_type->GetElementType(), DataTypeImpl::GetType<UInt2x4>());
+}
+
+TEST(Int2_Tests, TypeFromProto_TensorProto_Int2) {
+  ONNX_NAMESPACE::TypeProto tp;
+  tp.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT2);
+  auto mltype = DataTypeImpl::TypeFromProto(tp);
+  ASSERT_NE(mltype, nullptr);
+  const auto* tensor_type = mltype->AsTensorType();
+  ASSERT_NE(tensor_type, nullptr);
+  EXPECT_EQ(tensor_type->GetElementType(), DataTypeImpl::GetType<Int2x4>());
+}
+
+TEST(Int2_Tests, TensorProtoRoundTrip_Int2) {
+  // Build a tiny TensorProto with raw_data containing 2 bytes (8 int2 elements packed)
+  ONNX_NAMESPACE::TensorProto proto;
+  proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT2);
+  proto.add_dims(8);
+  // pack values [1, -1, -2, 0, 1, -1, -2, 0]
+  std::array<int8_t, 8> values = {1, -1, -2, 0, 1, -1, -2, 0};
+  std::vector<Int2x4> packed(Int2x4::CalcNumInt2Quads(values.size()));
+  ASSERT_TRUE(Int2x4::Pack(gsl::make_span(packed), gsl::make_span(values)));
+  proto.set_raw_data(packed.data(), packed.size() * sizeof(Int2x4));
+
+  Tensor result;
+  // Use CreateTensorFromTensorProto which pre-allocates the tensor with proper shape
+  ORT_THROW_IF_ERROR(utils::CreateTensorFromTensorProto(onnxruntime::Env::Default(), std::filesystem::path{}, proto, result));
+  ASSERT_TRUE(result.IsDataType<Int2x4>());
+  const auto* data = result.Data<Int2x4>();
+  std::vector<int8_t> unpacked(values.size());
+  ASSERT_TRUE(Int2x4::Unpack(gsl::make_span(unpacked), gsl::make_span(data, packed.size())));
+  for (size_t i = 0; i < values.size(); ++i) {
+    EXPECT_EQ(unpacked[i], values[i]) << "Mismatch at index " << i;
+  }
 }
 
 TEST(Int2_Tests, UInt2x4_BitManipulation) {
