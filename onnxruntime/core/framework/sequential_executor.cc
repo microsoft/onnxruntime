@@ -176,8 +176,8 @@ class SessionScope {
         dump_context_{session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
-    bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
 
     session_start_ = std::chrono::high_resolution_clock::now();
     if (session_profiling_enabled) {
@@ -231,8 +231,8 @@ class SessionScope {
     }
 #endif
 
-    bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
 
     auto now = std::chrono::high_resolution_clock::now();
     if (session_profiling_enabled) {
@@ -355,8 +355,8 @@ class KernelScope {
     utils::DumpNodeInputs(dump_context_, kernel_context_, kernel_.Node(), session_state_, session_scope_.dump_analysis_);
 #endif
 
-    bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    bool run_profiling_enabled = session_scope_.run_profiler_ && session_scope_.run_profiler_->IsEnabled();
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = session_scope_.run_profiler_ && session_scope_.run_profiler_->IsEnabled();
 
     if (session_profiling_enabled || run_profiling_enabled) {
       auto& node = kernel.Node();
@@ -385,8 +385,8 @@ class KernelScope {
     node_compute_range_.End();
 #endif
 
-    bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    bool run_profiling_enabled = session_scope_.run_profiler_ && session_scope_.run_profiler_->IsEnabled();
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = session_scope_.run_profiler_ && session_scope_.run_profiler_->IsEnabled();
 
     if (session_profiling_enabled || run_profiling_enabled) {
       std::string output_type_shape_;

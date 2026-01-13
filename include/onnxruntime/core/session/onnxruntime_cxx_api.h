@@ -1290,6 +1290,13 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    * \param adapter The LoraAdapter to be used as the active adapter
    */
   RunOptions& AddActiveLoraAdapter(const LoraAdapter& adapter);
+
+  /** \brief Enable profiling for this run
+   *
+   * Wraps OrtApi::RunOptionsEnableProfiling
+   * \param profile_file_prefix The prefix for the profile file
+   */
+  RunOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
 };
 
 namespace detail {

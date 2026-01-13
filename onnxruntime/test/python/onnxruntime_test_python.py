@@ -1030,6 +1030,88 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue("]" in lines[-1])
 
         os.remove(profile_file)
+        print(f"Profiling file generated at: {profile_file}")
+
+    # 1. Verify that the profiling JSON generated via both SessionOptions and RunOptions
+    #    conforms to the Chrome Tracing format.
+    # 2. Verify that run-level profiling data is included in the session-level profiling data.
+    #    Note: Only validate events with cat="Session" or cat="Node". Events with cat="Api" or cat="Kernel" are excluded,
+    #    since some EP profilers may collect the same event in only one profiler.
+    def test_profiler_with_session_and_run_options(self):
+        # Enable profiling via SessionOptions
+        so = onnxrt.SessionOptions()
+        so.enable_profiling = True
+        sess = onnxrt.InferenceSession(
+            get_name("mul_1.onnx"),
+            sess_options=so,
+            providers=onnxrt.get_available_providers(),
+        )
+
+        # Enable profiling via RunOptions
+        run_options = onnxrt.RunOptions()
+        run_options.enable_profiling = True
+        run_options.profile_file_prefix = "ort-llm-profile"
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        sess.run([], {"X": x}, run_options=run_options)
+        session_profile_file = sess.end_profiling()
+
+        # Verify session profiling file and parse JSON
+        import json
+        tags = ["pid", "dur", "ts", "ph", "X", "name", "args"]
+        with open(session_profile_file) as f:
+            content = f.read()
+            lines = content.splitlines()
+            self.assertTrue("[" in lines[0])
+            for i in range(1, len(lines) - 1):
+                for tag in tags:
+                    self.assertTrue(tag in lines[i])
+            self.assertTrue("]" in lines[-1])
+            session_events = json.loads(content)
+        print(f"Session profiling file generated at: {session_profile_file}")
+
+        # Find and verify run profiling file with "ort-llm-profile" prefix
+        run_profile_files = [f for f in os.listdir(".") if f.startswith("ort-llm-profile") and f.endswith(".json")]
+        self.assertEqual(len(run_profile_files), 1, f"Expected exactly 1 run profiling file, found {len(run_profile_files)}: {run_profile_files}")
+
+        run_profile_file = run_profile_files[0]
+        with open(run_profile_file) as f:
+            content = f.read()
+            lines = content.splitlines()
+            self.assertTrue("[" in lines[0])
+            for i in range(1, len(lines) - 1):
+                for tag in tags:
+                    self.assertTrue(tag in lines[i])
+            self.assertTrue("]" in lines[-1])
+            run_events = json.loads(content)
+        print(f"Run profiling file generated at: {run_profile_file}")
+
+        # Build a dict of {name: dur} for session profile events
+        session_event_dict = {}
+        for event in session_events:
+            if isinstance(event, dict) and "name" in event and "dur" in event:
+                session_event_dict[event["name"]] = event["dur"]
+
+        # Filter run profile events with cat="Session" or cat="Node"
+        run_session_node_events = [
+            event for event in run_events
+            if isinstance(event, dict) and event.get("cat") in ["Session", "Node"]
+        ]
+        self.assertTrue(len(run_session_node_events) > 0, "Expected at least one event with cat='Session' or cat='Node' in run profile")
+
+        # Verify each run profile event (Session/Node) exists in session profile with matching dur
+        for event in run_session_node_events:
+            event_name = event.get("name")
+            event_dur = event.get("dur")
+            event_cat = event.get("cat")
+            self.assertIn(event_name, session_event_dict,
+                f"Event '{event_name}' (cat={event_cat}) in run profile not found in session profile")
+            self.assertEqual(event_dur, session_event_dict[event_name],
+                f"Event '{event_name}' (cat={event_cat}) dur mismatch: run={event_dur}, session={session_event_dict[event_name]}")
+
+        print(f"Verified {len(run_session_node_events)} events (cat=Session/Node) match between run and session profiles")
+        os.remove(run_profile_file)
+        os.remove(session_profile_file)
 
     def test_profiler_get_start_time_ns(self):
         def get_single_session_profiling_start_time():

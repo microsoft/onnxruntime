@@ -994,6 +994,11 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
   return *this;
 }
 
+inline RunOptions& RunOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
+  ThrowOnError(GetApi().RunOptionsEnableProfiling(p_, profile_file_prefix));
+  return *this;
+}
+
 inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
   ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
 }
