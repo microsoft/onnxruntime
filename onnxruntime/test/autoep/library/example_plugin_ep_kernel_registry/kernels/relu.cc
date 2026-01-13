@@ -20,7 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Relu)
 
 Relu::Relu(const OrtKernelInfo* info, void* /*state*/, PrivateTag)
-    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl members to NULL/zero
       info_{info} {
   ort_version_supported = ORT_API_VERSION;
   Compute = ComputeImpl;
@@ -28,10 +28,12 @@ Relu::Relu(const OrtKernelInfo* info, void* /*state*/, PrivateTag)
 }
 
 /*static*/
-OrtStatus* Relu::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) noexcept {
+OrtStatus* Relu::CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
-  kernel = std::make_unique<Relu>(info, state, PrivateTag{});
+  auto relu_kernel = std::make_unique<Relu>(info, state, PrivateTag{});
+
+  kernel = relu_kernel.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

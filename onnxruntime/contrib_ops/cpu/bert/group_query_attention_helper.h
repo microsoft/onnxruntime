@@ -351,7 +351,7 @@ Status CheckCustomAttentionInputs(const T* position_ids,
 
     if (pos_ids_shape[1] < parameters.sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "position_ids dimension 1 must be atleast sequence length, got ", pos_ids_shape[1]);
+                             "position_ids dimension 1 must be at least sequence length, got ", pos_ids_shape[1]);
     }
   }
 
