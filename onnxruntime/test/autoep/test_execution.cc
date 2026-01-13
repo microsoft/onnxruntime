@@ -384,7 +384,7 @@ TEST(OrtEpLibrary, KernelPluginEp_Inference) {
 
 // Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.
 // Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
-TEST(OrtEpLibrary, PluginEp_Create_OrtCustomOpDomain) {
+TEST(OrtEpLibrary, PluginEp_custom_op_inference_with_explicit_ep) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
@@ -395,6 +395,21 @@ TEST(OrtEpLibrary, PluginEp_Create_OrtCustomOpDomain) {
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   RunCustomMulModelWithPluginEp(session_options);
+}
+
+// Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.
+// Uses the PREFER_CPU policy to append the example plugin EP to the session.
+TEST(OrtEpLibrary, PluginEp_custom_op_inference_with_prefer_cpu) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  {
+    // PREFER_CPU pick our example EP over ORT CPU EP. TODO: Actually assert this.
+    Ort::SessionOptions session_options;
+    session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_CPU);
+    RunCustomMulModelWithPluginEp(session_options);
+  }
 }
 }  // namespace test
 }  // namespace onnxruntime
