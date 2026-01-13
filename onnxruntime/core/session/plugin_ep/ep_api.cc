@@ -656,27 +656,6 @@ ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ c
   API_IMPL_END
 }
 
-// Control flow kernel APIs
-ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out) {
-  API_IMPL_BEGIN
-  if (kernel_info == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "Must specify a non-null OrtKernelInfo instance to create an If OrtKernelImpl");
-  }
-
-  if (kernel_out == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "Must specify a non-null output parameter to hold the OrtKernelImpl for If");
-  }
-
-  const auto* op_kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(kernel_info);
-  auto kernel_unique_ptr = std::make_unique<PluginEpIfKernelImpl>(*op_kernel_info);
-
-  *kernel_out = kernel_unique_ptr.release();
-  return nullptr;
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_SetDetails, _Inout_ OrtDeviceEpIncompatibilityDetails* details,
                     _In_ uint32_t reasons_bitmask,
                     _In_ int32_t error_code,
@@ -694,6 +673,27 @@ ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_SetDetails, _Inout_ OrtDevice
     details->notes.clear();
   }
 
+  return nullptr;
+  API_IMPL_END
+}
+
+// Control flow kernel APIs
+ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out) {
+  API_IMPL_BEGIN
+  if (kernel_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtKernelInfo instance to create an If OrtKernelImpl");
+  }
+
+  if (kernel_out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter to hold the OrtKernelImpl for If");
+  }
+
+  const auto* op_kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(kernel_info);
+  auto kernel_unique_ptr = std::make_unique<PluginEpIfKernelImpl>(*op_kernel_info);
+
+  *kernel_out = kernel_unique_ptr.release();
   return nullptr;
   API_IMPL_END
 }
@@ -840,11 +840,11 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
     &OrtExecutionProviderApi::SharedPrePackedWeightCache_StoreWeightData,
     &OrtExecutionProviderApi::KernelInfo_GetEp,
+    &OrtExecutionProviderApi::DeviceEpIncompatibilityDetails_SetDetails,
     &OrtExecutionProviderApi::CreateIfKernel,
     &OrtExecutionProviderApi::CreateLoopKernel,
     &OrtExecutionProviderApi::CreateScanKernel,
     &OrtExecutionProviderApi::ReleaseKernelImpl,
-    &OrtExecutionProviderApi::DeviceEpIncompatibilityDetails_SetDetails,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

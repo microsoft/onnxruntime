@@ -313,27 +313,6 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDeviceImpl(
-    OrtEpFactory* this_ptr,
-    const OrtEpDevice* /*ep_device*/,
-    OrtExternalResourceImporterImpl** out_importer) noexcept {
-  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
-
-  if (out_importer == nullptr) {
-    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                        "out_importer cannot be nullptr");
-  }
-
-  // Create the external resource importer
-  // NOTE: For production multi-GPU EPs, you should capture ep_device in the importer
-  // to enable proper device validation and support multiple physical devices.
-  // This example EP only supports a single device, so we don't store it.
-  auto importer = std::make_unique<ExampleExternalResourceImporter>(factory);
-  *out_importer = importer.release();
-
-  return nullptr;
-}
-
 OrtStatus* ORT_API_CALL ExampleEpFactory::GetHardwareDeviceIncompatibilityDetailsImpl(
     OrtEpFactory* this_ptr,
     const OrtHardwareDevice* hw,
@@ -354,5 +333,26 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetHardwareDeviceIncompatibilityDetail
   }
 
   // Device is compatible - details are already initialized with default values by ORT
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDeviceImpl(
+    OrtEpFactory* this_ptr,
+    const OrtEpDevice* /*ep_device*/,
+    OrtExternalResourceImporterImpl** out_importer) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  if (out_importer == nullptr) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "out_importer cannot be nullptr");
+  }
+
+  // Create the external resource importer
+  // NOTE: For production multi-GPU EPs, you should capture ep_device in the importer
+  // to enable proper device validation and support multiple physical devices.
+  // This example EP only supports a single device, so we don't store it.
+  auto importer = std::make_unique<ExampleExternalResourceImporter>(factory);
+  *out_importer = importer.release();
+
   return nullptr;
 }
