@@ -7,6 +7,7 @@
 
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"  // For OrtExecutionProviderDevicePolicy
 
 namespace onnxruntime {
@@ -42,8 +43,8 @@ class ProviderPolicyContext {
 
   Status SelectEpsForSession(const Environment& env, const OrtSessionOptions& options, InferenceSession& sess);
   Status SelectEpDevices(const OrtSessionOptions& options, std::vector<const OrtEpDevice*>& execution_devices,
-                         std::vector<const OrtEpDevice*>& devices_selected, InferenceSession& sess,
-                         bool model_metadata_reference = true);
+                         std::vector<const OrtEpDevice*>& devices_selected, OrtKeyValuePairs* model_metadata,
+                         InferenceSession& sess);
   Status AddEpDefaultOptionsToSession(InferenceSession& sess, std::vector<const OrtEpDevice*> devices);
   void RemoveOrtCpuDevice(std::vector<const OrtEpDevice*>& devices);
   Status CreateExecutionProvider(const Environment& env, OrtSessionOptions& options, const OrtLogger& logger,
@@ -79,6 +80,8 @@ class PreferGpuEpPolicy : public IEpPolicySelector {
 };
 
 std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice*>& devices);
+
+OrtKeyValuePairs GetModelMetadataKeyValuePairs(const ModelMetadata& session);
 
 }  // namespace onnxruntime
 

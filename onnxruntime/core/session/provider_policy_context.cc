@@ -116,16 +116,10 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
   return sorted_devices;
 }
 
-OrtKeyValuePairs GetModelMetadata(const InferenceSession& session) {
+OrtKeyValuePairs GetModelMetadataKeyValuePairs(const ModelMetadata& model_metadata) {
   OrtKeyValuePairs metadata;
-  auto status_and_metadata = session.GetModelMetadata();
-
-  if (!status_and_metadata.first.IsOK()) {
-    return metadata;
-  }
 
   // use field names from onnx.proto
-  const auto& model_metadata = *status_and_metadata.second;
   metadata.Add("producer_name", model_metadata.producer_name);
   metadata.Add("producer_version", model_metadata.producer_version);
   metadata.Add("domain", model_metadata.domain);
@@ -140,6 +134,18 @@ OrtKeyValuePairs GetModelMetadata(const InferenceSession& session) {
   return metadata;
 }
 
+OrtKeyValuePairs GetModelMetadataFromSession(const InferenceSession& session) {
+  OrtKeyValuePairs metadata;
+  auto status_and_metadata = session.GetModelMetadata();
+
+  if (!status_and_metadata.first.IsOK()) {
+    return metadata;
+  }
+
+  const auto& model_metadata = *status_and_metadata.second;
+  return GetModelMetadataKeyValuePairs(model_metadata);
+}
+
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
                                                   InferenceSession& sess) {
@@ -151,7 +157,7 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
   // The list of devices selected by policies
   std::vector<const OrtEpDevice*> devices_selected;
 
-  ORT_RETURN_IF_ERROR(SelectEpDevices(options, execution_devices, devices_selected, sess, true));
+  ORT_RETURN_IF_ERROR(SelectEpDevices(options, execution_devices, devices_selected, nullptr, sess));
 
   // Log telemetry for auto EP selection
   {
@@ -249,13 +255,17 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
 }
 
 Status ProviderPolicyContext::SelectEpDevices(const OrtSessionOptions& options, std::vector<const OrtEpDevice*>& execution_devices,
-                                              std::vector<const OrtEpDevice*>& devices_selected, InferenceSession& sess,
-                                              bool model_metadata_reference) {
+                                              std::vector<const OrtEpDevice*>& devices_selected,
+                                              OrtKeyValuePairs* metadata_from_model,
+                                              InferenceSession& sess) {
   // Run the delegate if it was passed in lieu of any other policy
   if (options.value.ep_selection_policy.delegate) {
     OrtKeyValuePairs model_metadata;
-    if (model_metadata_reference) {
-      model_metadata = GetModelMetadata(sess);
+
+    if (metadata_from_model) {
+      model_metadata = *metadata_from_model;
+    } else {
+      model_metadata = GetModelMetadataFromSession(sess);
     }
     OrtKeyValuePairs runtime_metadata;  // TODO: where should this come from?
 

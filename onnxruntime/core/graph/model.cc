@@ -580,7 +580,7 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
 }
 
 template <typename T>
-static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
+Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
   const auto loader = [&model_proto](int fd) {
     return Model::Load(fd, model_proto);
   };

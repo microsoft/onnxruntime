@@ -21,6 +21,7 @@
 #include "core/session/ort_env.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/provider_policy_context.h"
+#include "core/graph/model.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/plugin_ep/ep_factory_internal.h"
@@ -128,8 +129,69 @@ bool IsDomainExisted(const std::string& domain_name, const std::vector<OrtCustom
     }
   }
   return false;
-};
+}
 }  // namespace
+
+Status static GetModelMetaData(const ORTCHAR_T* model_path,
+                               const void* model_data,
+                               size_t model_data_length,
+                               ModelMetadata& model_metadata) {
+  auto get_model_metadata = [&](ONNX_NAMESPACE::ModelProto& model_proto,
+                                ModelMetadata& model_metadata) -> void {
+    if (model_proto.has_producer_name()) {
+      model_metadata.producer_name = model_proto.producer_name();
+    }
+
+    if (model_proto.has_producer_version()) {
+      model_metadata.producer_version = model_proto.producer_version();
+    }
+
+    if (model_proto.has_doc_string()) {
+      model_metadata.description = model_proto.doc_string();
+    }
+
+    if (model_proto.has_graph() && model_proto.graph().has_doc_string()) {
+      model_metadata.graph_description = model_proto.graph().doc_string();
+    }
+
+    if (model_proto.has_domain()) {
+      model_metadata.domain = model_proto.domain();
+    }
+
+    if (model_proto.has_model_version()) {
+      model_metadata.version = model_proto.model_version();
+    }
+
+    std::unordered_map<std::string, std::string> metadata;
+    for (auto& prop : model_proto.metadata_props()) {
+      metadata[prop.key()] = prop.value();
+    }
+    model_metadata.custom_metadata_map = metadata;
+
+    if (model_proto.has_graph() && model_proto.graph().has_name()) {
+      model_metadata.graph_name = model_proto.graph().name();
+    }
+
+    return;
+  };
+
+  if (model_path != nullptr) {
+    ONNX_NAMESPACE::ModelProto model_proto;
+    onnxruntime::PathString path(model_path);
+    ORT_RETURN_IF_ERROR(LoadModel(path, model_proto));
+    get_model_metadata(model_proto, model_metadata);
+  } else if (model_data != nullptr && model_data_length > 0) {
+    ONNX_NAMESPACE::ModelProto model_proto;
+    const bool result = model_proto.ParseFromArray(model_data, static_cast<int>(model_data_length));
+    if (!result) {
+      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                    "Failed to load model because protobuf parsing failed.");
+    }
+    get_model_metadata(model_proto, model_metadata);
+  }
+
+  return Status::OK();
+}
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
   if (size == nullptr) {
@@ -244,8 +306,14 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
     // The list of devices selected by policies
     std::vector<const OrtEpDevice*> devices_selected;
+
+    ModelMetadata model_metadata;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(GetModelMetaData(model_path, model_data, model_data_length, model_metadata));
+    OrtKeyValuePairs model_metadata_key_value_pairs;
+    model_metadata_key_value_pairs = GetModelMetadataKeyValuePairs(model_metadata);
+
     ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpDevices(*options, execution_devices,
-                                                            devices_selected, *sess, false));
+                                                            devices_selected, &model_metadata_key_value_pairs, *sess));
 
     InlinedVector<OrtCustomOpDomain*> all_ep_custom_op_domains;
 
