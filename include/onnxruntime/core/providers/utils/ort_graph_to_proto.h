@@ -122,6 +122,7 @@
 #define INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_ORT_GRAPH_TO_PROTO_H_
 
 #include <functional>
+#include <optional>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "onnx/onnx_pb.h"
 
@@ -414,6 +415,13 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
     for (const auto& [value_name, value_info] : value_infos) {
       onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_value_info()->Add();
       ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(value_info, *value_info_proto));
+    }
+
+    // There might be some initializers in the original OrtGraph that are not added yet.
+    // Add those missing initializers and skip the ones that already in `initializer_value_infos`
+    std::vector<Ort::ConstValueInfo> ort_graph_initializers = ort_graph.GetInitializers();
+    for (const auto& initializer : ort_graph_initializers) {
+      initializer_value_infos.emplace(initializer.GetName(), initializer);
     }
 
     // Add initializers to GraphProto as TensorProto objects.
