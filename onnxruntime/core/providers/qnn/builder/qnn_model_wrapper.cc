@@ -93,7 +93,7 @@ Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
 }
 
 bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
-  // Keep a copy of tensor name sine it will be moved with the wrapper into model_tensors_map_
+  // Keep a copy of tensor name since it will be moved with the wrapper into model_tensors_map_
   std::string tensor_name = tensor_wrapper.GetName();
   if (tensor_name.length() == 0) {
     LOGS(logger_, ERROR) << "Invalid tensor encountered empty name.";
@@ -106,6 +106,17 @@ bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   }
 
   const Qnn_TensorType_t& qnn_tensor_type = tensor_wrapper.GetTensorType();
+
+  // Apply name override for graph I/O tensors if one exists.
+  if (qnn_tensor_type == QNN_TENSOR_TYPE_APP_WRITE || qnn_tensor_type == QNN_TENSOR_TYPE_APP_READ) {
+    auto it = tensor_name_overrides_.find(tensor_name);
+    if (it != tensor_name_overrides_.end()) {
+      tensor_wrapper.SetQnnTensorNameOverride(it->second);
+      LOGS(logger_, VERBOSE) << "Overriding QNN tensor name from '" << tensor_name
+                             << "' to '" << it->second << "'";
+    }
+  }
+
   // save created tensors for later lookup to populate graph node construction
   model_tensors_map_.emplace(tensor_name, std::move(tensor_wrapper));
 

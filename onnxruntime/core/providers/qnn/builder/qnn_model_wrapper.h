@@ -43,7 +43,8 @@ class QnnModelWrapper {
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
                   QnnBackendType qnn_backend_type,
-                  const ModelSettings& model_settings)
+                  const ModelSettings& model_settings,
+                  std::unordered_map<std::string, std::string> tensor_name_overrides = {})
       : graph_viewer_(graph_viewer),
         logger_(logger),
         qnn_interface_(qnn_interface),
@@ -51,7 +52,8 @@ class QnnModelWrapper {
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
         qnn_backend_type_(qnn_backend_type),
-        model_settings_(model_settings) {
+        model_settings_(model_settings),
+        tensor_name_overrides_(std::move(tensor_name_overrides)) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -349,6 +351,7 @@ class QnnModelWrapper {
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
+  std::unordered_map<std::string, std::string> tensor_name_overrides_;
 };  // QnnModelWrapper
 
 template <typename T>

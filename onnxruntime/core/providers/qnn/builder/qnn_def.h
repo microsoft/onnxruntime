@@ -278,6 +278,12 @@ class QnnTensorWrapper {
 
   const std::string& GetName() const { return tensor_name_; }
 
+  // Overrides the tensor name in QNN graph/DLC without changing the ORT lookup name.
+  void SetQnnTensorNameOverride(const std::string& name_override) {
+    tensor_name_override_ = name_override;
+    SetQnnTensorName(qnn_tensor_, tensor_name_override_.c_str());
+  }
+
   Qnn_TensorType_t GetTensorType() const { return GetQnnTensorType(qnn_tensor_); }
   Qnn_DataType_t GetTensorDataType() const { return GetQnnTensorDataType(qnn_tensor_); }
   uint32_t GetTensorRank() const { return static_cast<uint32_t>(dimensions_.size()); }
@@ -295,17 +301,20 @@ class QnnTensorWrapper {
  private:
   void SwapOther(QnnTensorWrapper&& other) noexcept {
     std::swap(tensor_name_, other.tensor_name_);
+    std::swap(tensor_name_override_, other.tensor_name_override_);
     std::swap(dimensions_, other.dimensions_);
     std::swap(client_buf_, other.client_buf_);
     std::swap(quant_params_, other.quant_params_);
     std::swap(qnn_tensor_, other.qnn_tensor_);
-    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+    const std::string& name_for_qnn = tensor_name_override_.empty() ? tensor_name_ : tensor_name_override_;
+    SetQnnTensorName(qnn_tensor_, name_for_qnn.c_str());
     SetQnnTensorDim(qnn_tensor_, dimensions_);
     SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
     SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
   }
 
   std::string tensor_name_;
+  std::string tensor_name_override_;
   std::vector<uint32_t> dimensions_;
   std::vector<uint8_t> client_buf_;
   Qnn_Tensor_t qnn_tensor_ = QNN_TENSOR_INIT;

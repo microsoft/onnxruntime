@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 
@@ -1563,6 +1564,147 @@ TEST(QnnSaverBackendTests, QnnSaver_OutputFiles) {
   // Check that QNN Saver output files exist.
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
+}
+
+// Test that DLC preserves original ONNX graph I/O names when offload_graph_io_quantization=1.
+TEST_F(QnnHTPBackendTests, QuantizedGraphInOutNamesPreserved) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  if (IsIRBackendSupported() == BackendSupport::UNSUPPORTED) {
+    GTEST_SKIP() << "QNN IR backend not available";
+  } else if (IsIRBackendSupported() == BackendSupport::SUPPORT_ERROR) {
+    FAIL() << "Failed to check IR backend";
+  }
+
+  const std::string expected_input_name = "input";
+  const std::string expected_output_name = "output";
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+  onnxruntime::Model model("QuantizedGraphInOutNamesPreserved", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logger);
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  input_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  input_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+  input_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+  auto& input_arg = graph.GetOrCreateNodeArg(expected_input_name, &input_type);
+
+  ONNX_NAMESPACE::TensorProto q_scale_tensor;
+  q_scale_tensor.set_name("q_scale");
+  q_scale_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  q_scale_tensor.add_float_data(0.00392156862f);
+  graph.AddInitializedTensor(q_scale_tensor);
+
+  ONNX_NAMESPACE::TensorProto q_zp_tensor;
+  q_zp_tensor.set_name("q_zp");
+  q_zp_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  q_zp_tensor.add_int32_data(0);
+  graph.AddInitializedTensor(q_zp_tensor);
+
+  ONNX_NAMESPACE::TypeProto uint8_type;
+  uint8_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  uint8_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  uint8_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  uint8_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+  uint8_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  auto& q_output = graph.GetOrCreateNodeArg("q_output", &uint8_type);
+  auto& q_scale_arg = graph.GetOrCreateNodeArg("q_scale", nullptr);
+  auto& q_zp_arg = graph.GetOrCreateNodeArg("q_zp", nullptr);
+
+  graph.AddNode("quantize", "QuantizeLinear", "", {&input_arg, &q_scale_arg, &q_zp_arg}, {&q_output});
+
+  auto& dq_sigmoid_in = graph.GetOrCreateNodeArg("dq_sigmoid_in", &input_type);
+  graph.AddNode("dq_sigmoid_in", "DequantizeLinear", "", {&q_output, &q_scale_arg, &q_zp_arg}, {&dq_sigmoid_in});
+
+  auto& sigmoid_output = graph.GetOrCreateNodeArg("sigmoid_out", &input_type);
+  graph.AddNode("sigmoid", "Sigmoid", "", {&dq_sigmoid_in}, {&sigmoid_output});
+
+  ONNX_NAMESPACE::TensorProto sigmoid_q_scale;
+  sigmoid_q_scale.set_name("sigmoid_q_scale");
+  sigmoid_q_scale.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  sigmoid_q_scale.add_float_data(1.0f / 256.0f);
+  graph.AddInitializedTensor(sigmoid_q_scale);
+
+  ONNX_NAMESPACE::TensorProto sigmoid_q_zp;
+  sigmoid_q_zp.set_name("sigmoid_q_zp");
+  sigmoid_q_zp.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  sigmoid_q_zp.add_int32_data(0);
+  graph.AddInitializedTensor(sigmoid_q_zp);
+
+  auto& sigmoid_q_scale_arg = graph.GetOrCreateNodeArg("sigmoid_q_scale", nullptr);
+  auto& sigmoid_q_zp_arg = graph.GetOrCreateNodeArg("sigmoid_q_zp", nullptr);
+  auto& sigmoid_q_output = graph.GetOrCreateNodeArg("sigmoid_q_out", &uint8_type);
+  graph.AddNode("q_sigmoid_out", "QuantizeLinear", "",
+                {&sigmoid_output, &sigmoid_q_scale_arg, &sigmoid_q_zp_arg}, {&sigmoid_q_output});
+
+  auto& output_arg = graph.GetOrCreateNodeArg(expected_output_name, &input_type);
+  graph.AddNode("dequantize", "DequantizeLinear", "",
+                {&sigmoid_q_output, &sigmoid_q_scale_arg, &sigmoid_q_zp_arg}, {&output_arg});
+
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_arg});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << "Graph resolve failed: " << status.ErrorMessage();
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  Ort::SessionOptions so;
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+
+  onnxruntime::ProviderOptions options;
+  options["offload_graph_io_quantization"] = "1";
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+  options["qnn_ir_backend_path"] = "QnnIr.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+  options["qnn_ir_backend_path"] = "libQnnIr.so";
+#endif
+
+  const std::filesystem::path dlc_output_dir = "dlc_io_names_test";
+  std::filesystem::remove_all(dlc_output_dir);
+
+  options["dump_qnn_ir_dlc"] = "1";
+  options["dump_qnn_ir_dlc_dir"] = dlc_output_dir.string();
+
+  so.AppendExecutionProvider("QNN", options);
+  Ort::Session session(*ort_env, model_data.data(), model_data.size(), so);
+
+  ASSERT_TRUE(std::filesystem::exists(dlc_output_dir)) << "DLC output directory was not created";
+
+  std::filesystem::path dlc_path;
+  for (const auto& entry : std::filesystem::directory_iterator(dlc_output_dir)) {
+    if (entry.path().extension() == ".dlc") {
+      dlc_path = entry.path();
+      break;
+    }
+  }
+  ASSERT_FALSE(dlc_path.empty()) << "No DLC file found in output directory";
+
+  std::ifstream dlc_file(dlc_path, std::ios::binary);
+  ASSERT_TRUE(dlc_file.is_open()) << "Failed to open DLC file: " << dlc_path;
+
+  std::string dlc_content((std::istreambuf_iterator<char>(dlc_file)),
+                          std::istreambuf_iterator<char>());
+  dlc_file.close();
+
+  EXPECT_NE(dlc_content.find(expected_input_name), std::string::npos)
+      << "Expected input name '" << expected_input_name << "' not found in DLC";
+  EXPECT_NE(dlc_content.find(expected_output_name), std::string::npos)
+      << "Expected output name '" << expected_output_name << "' not found in DLC";
+  EXPECT_EQ(dlc_content.find("q_output"), std::string::npos)
+      << "Intermediate name 'q_output' should not appear in DLC";
+  EXPECT_EQ(dlc_content.find("sigmoid_q_out"), std::string::npos)
+      << "Intermediate name 'sigmoid_q_out' should not appear in DLC";
+
+  std::filesystem::remove_all(dlc_output_dir);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
