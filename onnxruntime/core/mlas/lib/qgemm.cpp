@@ -19,7 +19,7 @@ Abstract:
 #include "qgemm.h"
 
 // TODO: When overrides are implemented, remove this
-#if defined(USE_KLEIDIAI)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -205,7 +205,7 @@ bool
 MLASCALL
 MlasIsDynamicQGemmAvailable()
 {
-#if defined(USE_KLEIDIAI)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
   if(ArmKleidiAI::UseSME2 || (ArmKleidiAI::UseSME && (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0))) {
     return true;
   }
@@ -228,7 +228,7 @@ MlasDynamicQGemmBatch (
 ) {
     assert(MlasIsDynamicQGemmAvailable());
 
-#if defined(USE_KLEIDIAI)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback
     ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
 #endif
@@ -352,7 +352,7 @@ MlasDynamicQgemmPackBSize(
     assert(MlasIsDynamicQGemmAvailable());
 
     size_t bytes = 0;
-#if defined(USE_KLEIDIAI)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback available
     //TODO: Insert Override
     bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
@@ -446,7 +446,7 @@ MlasDynamicQgemmPackB(
 {
     assert(MlasIsDynamicQGemmAvailable());
 
-#if defined(USE_KLEIDIAI)
+#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
     //No fallback
     ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
 #endif
