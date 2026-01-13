@@ -2712,12 +2712,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
-      .def("get_provider_graph_partitioning_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
+      .def("get_provider_graph_assignment_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
 #if !defined(ORT_MINIMAL_BUILD)
-        return sess->GetSessionHandle()->GetEpGraphPartitioningInfo();
+        return sess->GetSessionHandle()->GetEpGraphAssignmentInfo();
 #else
         ORT_UNUSED_PARAMETER(sess);
-        ORT_THROW("EP graph partitioning information is not supported in this build");
+        ORT_THROW("EP graph assignment information is not supported in this build");
 #endif
       },
            py::return_value_policy::reference_internal, R"pbdoc(Returns information on the subgraph/nodes assigned to execution providers in the session.)pbdoc")

@@ -1170,8 +1170,8 @@ struct EpAssignedNodeImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
-  const char* Name() const;
-  const char* OpType() const;
+  const char* GetName() const;
+  const char* GetOperatorType() const;
 };
 }  // namespace detail
 
@@ -1186,7 +1186,7 @@ struct EpAssignedSubgraphImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
-  const char* EpName() const;
+  const char* GetEpName() const;
   std::vector<ConstEpAssignedNode> GetNodes() const;
 };
 }  // namespace detail
@@ -1701,7 +1701,7 @@ struct ConstSessionImpl : Base<T> {
    *
    * \return A list of ConstEpAssignedSubgraph instances.
    */
-  std::vector<ConstEpAssignedSubgraph> GetEpGraphPartitioningInfo() const;
+  std::vector<ConstEpAssignedSubgraph> GetEpGraphAssignmentInfo() const;
 };
 
 template <typename T>

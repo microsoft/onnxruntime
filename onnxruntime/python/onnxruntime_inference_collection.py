@@ -219,9 +219,14 @@ class Session:
         "Return registered execution providers' configurations."
         return self._provider_options
 
-    def get_provider_graph_partitioning_info(self) -> Sequence[onnxruntime.OrtEpAssignedSubgraph]:
-        "Return a list of subgraphs, each with information on the executing provider and the nodes in the subgraph."
-        return self._sess.get_provider_graph_partitioning_info()
+    def get_provider_graph_assignment_info(self) -> Sequence[onnxruntime.OrtEpAssignedSubgraph]:
+        """
+        Get information about the subgraphs assigned to each execution provider and the nodes within.
+
+        Application must enable the recording of graph assignment information by setting the session configuration
+        for the key "session.record_ep_graph_assignment_info" to "1".
+        """
+        return self._sess.get_provider_graph_assignment_info()
 
     def set_providers(self, providers=None, provider_options=None) -> None:
         """

@@ -6790,10 +6790,12 @@ struct OrtApi {
   /** \brief Get information about the subgraphs assigned to each EP and the nodes within.
    *
    * Each returned OrtEpAssignedSubgraph instance contains details of the subgraph/nodes assigned to an execution provider,
-   * including the execution provider's name, and the name and operator type for every node.
+   * including the execution provider's name, and the name and operator type for every node. For compiling EPs,
+   * a subgraph contains one or more nodes. Alternatively, for EPs that use kernel registration (e.g., CPU EP), each
+   * registered kernel for a node is contained in its own subgraph (i.e., a subgraph contains one node).
    *
    * \note Application must enable the recording of graph partitioning information by enabling the session configuration
-   *       for the key "session.record_ep_graph_partitioning_info". Refer to onnxruntime_session_options_config_keys.h.
+   *       for the key "session.record_ep_graph_assignment_info". Refer to onnxruntime_session_options_config_keys.h.
    *       If the session configuration is not enabled, this function returns an empty result.
    *
    * \param[in] session The OrtSession instance to query.
@@ -6804,7 +6806,7 @@ struct OrtApi {
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
+  ORT_API2_STATUS(Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
                   _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
                   _Out_ size_t* num_ep_subgraphs);
 
@@ -6815,7 +6817,7 @@ struct OrtApi {
    *
    * \since Version 1.24.
    */
-  const char*(ORT_API_CALL* EpAssignedSubgraph_EpName)(_In_ const OrtEpAssignedSubgraph* ep_subgraph);
+  const char*(ORT_API_CALL* EpAssignedSubgraph_GetEpName)(_In_ const OrtEpAssignedSubgraph* ep_subgraph);
 
   /** \brief Get the list of nodes assigned to an execution provider.
    *
@@ -6837,7 +6839,7 @@ struct OrtApi {
    *
    * \since Version 1.24.
    */
-  const char*(ORT_API_CALL* EpAssignedNode_Name)(_In_ const OrtEpAssignedNode* ep_node);
+  const char*(ORT_API_CALL* EpAssignedNode_GetName)(_In_ const OrtEpAssignedNode* ep_node);
 
   /** \brief Get the operator type of the node assigned to an execution provider.
    *
@@ -6846,7 +6848,7 @@ struct OrtApi {
    *
    * \since Version 1.24.
    */
-  const char*(ORT_API_CALL* EpAssignedNode_OpType)(_In_ const OrtEpAssignedNode* ep_node);
+  const char*(ORT_API_CALL* EpAssignedNode_GetOperatorType)(_In_ const OrtEpAssignedNode* ep_node);
 };
 
 /*

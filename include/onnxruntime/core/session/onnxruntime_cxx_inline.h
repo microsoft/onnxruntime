@@ -749,8 +749,8 @@ inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardwar
 
 namespace detail {
 template <typename T>
-inline const char* EpAssignedSubgraphImpl<T>::EpName() const {
-  return GetApi().EpAssignedSubgraph_EpName(this->p_);
+inline const char* EpAssignedSubgraphImpl<T>::GetEpName() const {
+  return GetApi().EpAssignedSubgraph_GetEpName(this->p_);
 }
 
 template <typename T>
@@ -771,13 +771,13 @@ inline std::vector<ConstEpAssignedNode> EpAssignedSubgraphImpl<T>::GetNodes() co
 }
 
 template <typename T>
-inline const char* EpAssignedNodeImpl<T>::Name() const {
-  return GetApi().EpAssignedNode_Name(this->p_);
+inline const char* EpAssignedNodeImpl<T>::GetName() const {
+  return GetApi().EpAssignedNode_GetName(this->p_);
 }
 
 template <typename T>
-inline const char* EpAssignedNodeImpl<T>::OpType() const {
-  return GetApi().EpAssignedNode_OpType(this->p_);
+inline const char* EpAssignedNodeImpl<T>::GetOperatorType() const {
+  return GetApi().EpAssignedNode_GetOperatorType(this->p_);
 }
 }  // namespace detail
 
@@ -1782,10 +1782,10 @@ std::vector<ValueInfo> ConstSessionImpl<T>::GetOutputs() const {
 }
 
 template <typename T>
-inline std::vector<ConstEpAssignedSubgraph> ConstSessionImpl<T>::GetEpGraphPartitioningInfo() const {
+inline std::vector<ConstEpAssignedSubgraph> ConstSessionImpl<T>::GetEpGraphAssignmentInfo() const {
   size_t num_ep_subgraphs = 0;
   const OrtEpAssignedSubgraph* const* ep_subgraph_ptrs = nullptr;
-  ThrowOnError(GetApi().Session_GetEpGraphPartitioningInfo(this->p_, &ep_subgraph_ptrs, &num_ep_subgraphs));
+  ThrowOnError(GetApi().Session_GetEpGraphAssignmentInfo(this->p_, &ep_subgraph_ptrs, &num_ep_subgraphs));
 
   std::vector<ConstEpAssignedSubgraph> ep_subgraphs;
   if (num_ep_subgraphs > 0) {

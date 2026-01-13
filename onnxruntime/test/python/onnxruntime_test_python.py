@@ -1967,19 +1967,19 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(len(outputs), 1)
         self.assertTrue(np.allclose(outputs[0], expected_output))
 
-    def test_get_graph_provider_partitioning_info(self):
+    def test_get_graph_provider_assignment_info(self):
         """
         Tests querying for information about the nodes assigned to the CPU EP.
         """
 
         # Create session options that enables recording EP graph partitioning info.
         session_options = onnxrt.SessionOptions()
-        session_options.add_session_config_entry("session.record_ep_graph_partitioning_info", "1")
+        session_options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
 
         session = onnxrt.InferenceSession(get_name("add_mul_add.onnx"), sess_options=session_options)
 
         # Query session for information on each subgraph assigned to an EP.
-        ep_subgraphs = session.get_provider_graph_partitioning_info()
+        ep_subgraphs = session.get_provider_graph_assignment_info()
 
         # Check that all 3 nodes are assigned to CPU EP (each in its own subgraph)
         self.assertEqual(len(ep_subgraphs), 3)

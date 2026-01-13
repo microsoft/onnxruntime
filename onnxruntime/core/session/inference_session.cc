@@ -1288,10 +1288,10 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-static void RecordPartitionInfo(std::vector<std::unique_ptr<OrtEpAssignedSubgraph>>& partitioning_info,
-                                const Graph& graph,
-                                const ComputeCapability& capability,
-                                const std::string& ep_name) {
+static void RecordEpGraphPartitionAssignment(std::vector<std::unique_ptr<OrtEpAssignedSubgraph>>& ep_assigned_subgraphs,
+                                             const Graph& graph,
+                                             const ComputeCapability& capability,
+                                             const std::string& ep_name) {
   auto assigned_subgraph = std::make_unique<OrtEpAssignedSubgraph>();
   assigned_subgraph->ep_name = ep_name;
 
@@ -1311,7 +1311,7 @@ static void RecordPartitionInfo(std::vector<std::unique_ptr<OrtEpAssignedSubgrap
     }
   }
 
-  partitioning_info.push_back(std::move(assigned_subgraph));
+  ep_assigned_subgraphs.push_back(std::move(assigned_subgraph));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -1332,11 +1332,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   OnPartitionAssignmentFunction on_partition_assign_fn;
 #if !defined(ORT_MINIMAL_BUILD)
   bool record_ep_graph_partitioning =
-      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphPartitioningInfo, "0") == "1";
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
   if (record_ep_graph_partitioning) {
     on_partition_assign_fn = [this](const Graph& graph, const ComputeCapability& assigned_subgraph,
                                     const std::string& assigned_ep_type) {
-      RecordPartitionInfo(this->graph_partitioning_info_storage_, graph, assigned_subgraph, assigned_ep_type);
+      RecordEpGraphPartitionAssignment(this->ep_graph_assignment_info_storage_, graph, assigned_subgraph,
+                                       assigned_ep_type);
     };
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1490,8 +1491,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
 #if !defined(ORT_MINIMAL_BUILD)
   if (record_ep_graph_partitioning) {
-    for (std::unique_ptr<OrtEpAssignedSubgraph>& ep_subgraph : graph_partitioning_info_storage_) {
-      graph_partitioning_info_.push_back(ep_subgraph.get());
+    for (std::unique_ptr<OrtEpAssignedSubgraph>& ep_subgraph : ep_graph_assignment_info_storage_) {
+      ep_graph_assignment_info_.push_back(ep_subgraph.get());
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)

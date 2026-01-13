@@ -38,7 +38,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
-#include "core/session/ep_graph_partition_info.h"
+#include "core/session/ep_graph_assignment_info.h"
 #include "core/session/interop_api.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
@@ -873,7 +873,7 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
+ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
                     _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
                     _Out_ size_t* num_ep_subgraphs) {
   API_IMPL_BEGIN
@@ -887,10 +887,10 @@ ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphPartitioningInfo, _In_ const OrtS
   }
 
   auto inference_session = reinterpret_cast<const onnxruntime::InferenceSession*>(session);
-  const std::vector<const OrtEpAssignedSubgraph*>& partitioning_info = inference_session->GetEpGraphPartitioningInfo();
+  const std::vector<const OrtEpAssignedSubgraph*>& ep_assignment_info = inference_session->GetEpGraphAssignmentInfo();
 
-  *ep_subgraphs = partitioning_info.data();
-  *num_ep_subgraphs = partitioning_info.size();
+  *ep_subgraphs = ep_assignment_info.data();
+  *num_ep_subgraphs = ep_assignment_info.size();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(session);
@@ -901,7 +901,7 @@ ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphPartitioningInfo, _In_ const OrtS
   API_IMPL_END
 }
 
-ORT_API(const char*, OrtApis::EpAssignedSubgraph_EpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph) {
+ORT_API(const char*, OrtApis::EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph) {
 #if !defined(ORT_MINIMAL_BUILD)
   return ep_subgraph->ep_name.c_str();
 #else
@@ -935,7 +935,7 @@ ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssign
   API_IMPL_END
 }
 
-ORT_API(const char*, OrtApis::EpAssignedNode_Name, _In_ const OrtEpAssignedNode* ep_node) {
+ORT_API(const char*, OrtApis::EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node) {
 #if !defined(ORT_MINIMAL_BUILD)
   return ep_node->name.c_str();
 #else
@@ -945,7 +945,7 @@ ORT_API(const char*, OrtApis::EpAssignedNode_Name, _In_ const OrtEpAssignedNode*
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
-ORT_API(const char*, OrtApis::EpAssignedNode_OpType, _In_ const OrtEpAssignedNode* ep_node) {
+ORT_API(const char*, OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node) {
 #if !defined(ORT_MINIMAL_BUILD)
   return ep_node->op_type.c_str();
 #else
@@ -4375,11 +4375,11 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::GetInteropApi,
     &OrtApis::SessionGetEpDeviceForOutputs,
 
-    &OrtApis::Session_GetEpGraphPartitioningInfo,
-    &OrtApis::EpAssignedSubgraph_EpName,
+    &OrtApis::Session_GetEpGraphAssignmentInfo,
+    &OrtApis::EpAssignedSubgraph_GetEpName,
     &OrtApis::EpAssignedSubgraph_GetNodes,
-    &OrtApis::EpAssignedNode_Name,
-    &OrtApis::EpAssignedNode_OpType,
+    &OrtApis::EpAssignedNode_GetName,
+    &OrtApis::EpAssignedNode_GetOperatorType,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

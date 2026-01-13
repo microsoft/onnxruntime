@@ -30,7 +30,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
-#include "core/session/ep_graph_partition_info.h"
+#include "core/session/ep_graph_assignment_info.h"
 #include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
@@ -664,8 +664,8 @@ class InferenceSession {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  const std::vector<const OrtEpAssignedSubgraph*>& GetEpGraphPartitioningInfo() const {
-    return this->graph_partitioning_info_;
+  const std::vector<const OrtEpAssignedSubgraph*>& GetEpGraphAssignmentInfo() const {
+    return this->ep_graph_assignment_info_;
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -1064,8 +1064,8 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Enable partition info collection
-  std::vector<std::unique_ptr<OrtEpAssignedSubgraph>> graph_partitioning_info_storage_;
-  std::vector<const OrtEpAssignedSubgraph*> graph_partitioning_info_;
+  std::vector<std::unique_ptr<OrtEpAssignedSubgraph>> ep_graph_assignment_info_storage_;
+  std::vector<const OrtEpAssignedSubgraph*> ep_graph_assignment_info_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 

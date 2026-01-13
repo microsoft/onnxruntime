@@ -416,10 +416,10 @@ static const char* const kOrtSessionOptionsFailOnSuboptimalCompiledModel =
 // "sustained_high_performance". Default to "default".
 static const char* const kOrtEpDynamicOptionsQnnHtpPerformanceMode = "ep.dynamic.qnn_htp_performance_mode";
 
-// Enables the session to record partitioning information: the subgraphs/nodes assigned to execution providers.
-// When enabled, an application may call Session_GetEpGraphPartitioningInfo() to retrieve the information.
+// Enables the session to record information about the subgraphs/nodes assigned to execution providers.
+// When enabled, an application may call Session_GetEpGraphAssignmentInfo() to retrieve the information.
 //
 // Option values:
 // - "0": Recording of EP graph partitioning information is disabled. [DEFAULT]
 // - "1": Recording of EP graph partitioning information is enabled.
-static const char* const kOrtSessionOptionsRecordEpGraphPartitioningInfo = "session.record_ep_graph_partitioning_info";
+static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "session.record_ep_graph_assignment_info";

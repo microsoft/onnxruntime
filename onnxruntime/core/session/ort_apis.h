@@ -768,16 +768,13 @@ ORT_API_STATUS_IMPL(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session
                     _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                     _In_ size_t num_outputs);
 
-ORT_API_STATUS_IMPL(Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
+// APIs to get EP graph assignment info
+ORT_API_STATUS_IMPL(Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
                     _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
                     _Out_ size_t* num_ep_subgraphs);
-
-// OrtEpAssignedSubgraph accessors.
-ORT_API(const char*, EpAssignedSubgraph_EpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph);
+ORT_API(const char*, EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph);
 ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
                     _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
-
-// OrtEpAssignedNode accessors.
-ORT_API(const char*, EpAssignedNode_Name, _In_ const OrtEpAssignedNode* ep_node);
-ORT_API(const char*, EpAssignedNode_OpType, _In_ const OrtEpAssignedNode* ep_node);
+ORT_API(const char*, EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node);
+ORT_API(const char*, EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node);
 }  // namespace OrtApis

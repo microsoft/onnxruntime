@@ -228,27 +228,27 @@ void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_o
   // - Subgraph 1: Add assigned to CPU EP.
   // - Subgraph 2: Mul assigned to plugin EP.
   // - Subgraph 3: Add assigned to CPU EP.
-  std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphPartitioningInfo();
+  std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphAssignmentInfo();
   ASSERT_EQ(ep_subgraphs.size(), 3);
 
   for (Ort::ConstEpAssignedSubgraph ep_subgraph : ep_subgraphs) {
-    std::string ep_name = ep_subgraph.EpName();
+    std::string ep_name = ep_subgraph.GetEpName();
     ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name || ep_name == kCpuExecutionProvider);
 
     const std::vector<Ort::ConstEpAssignedNode> ep_nodes = ep_subgraph.GetNodes();
     ASSERT_GE(ep_nodes.size(), 1);  // All of these subgraphs just have one node.
 
     if (ep_name == kCpuExecutionProvider) {
-      std::string op_type = ep_nodes[0].OpType();
-      std::string node_name = ep_nodes[0].Name();
+      std::string op_type = ep_nodes[0].GetOperatorType();
+      std::string node_name = ep_nodes[0].GetName();
 
       ASSERT_EQ(op_type, "Add");
       ASSERT_TRUE(node_name == "add_0" || node_name == "add_1");
     } else {
       ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name);
 
-      std::string op_type = ep_nodes[0].OpType();
-      std::string node_name = ep_nodes[0].Name();
+      std::string op_type = ep_nodes[0].GetOperatorType();
+      std::string node_name = ep_nodes[0].GetName();
       ASSERT_EQ(op_type, "Mul");
       ASSERT_EQ(node_name, "mul_0");
     }
@@ -321,7 +321,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   Ort::SessionOptions session_options;
   std::unordered_map<std::string, std::string> ep_options;
 
-  session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphPartitioningInfo, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   RunPartiallySupportedModelWithPluginEp(session_options);
