@@ -133,7 +133,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'Onnxruntime-Linux-GPU-A10'
+      name: 'Onnxruntime-github-Linux-GPU-H100'
       os: linux
     variables:
     - template: ../templates/common-variables.yml
