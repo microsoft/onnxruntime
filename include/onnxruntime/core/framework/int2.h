@@ -77,8 +77,8 @@ struct Int2x4Base {
     const uint8_t shift = 2 * static_cast<uint8_t>(index);
     const std::byte clear_mask = ~(std::byte{0x3} << shift);
 
-    bits_ &= clear_mask;                                     // Clear 2-bit element to 0
-    bits_ |= static_cast<std::byte>((val & 0x3) << shift);   // Set 2-bit element to val
+    bits_ &= clear_mask;                                    // Clear 2-bit element to 0
+    bits_ |= static_cast<std::byte>((val & 0x3) << shift);  // Set 2-bit element to val
   }
 
   inline std::byte ToBits() const {
