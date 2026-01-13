@@ -578,10 +578,10 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Scan) {
     ASSERT_NO_FATAL_FAILURE(RunScanMulModel(session_options));
   }
 }
- 
+
 // Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.
 // Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
-TEST(OrtEpLibrary, PluginEp_custom_op_inference_with_explicit_ep) {
+TEST(OrtEpLibrary, PluginEp_Custom_Op_Inference_With_Explicit_Ep) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
@@ -596,7 +596,7 @@ TEST(OrtEpLibrary, PluginEp_custom_op_inference_with_explicit_ep) {
 
 // Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.
 // Uses the PREFER_CPU policy to append the example plugin EP to the session.
-TEST(OrtEpLibrary, PluginEp_custom_op_inference_with_prefer_cpu) {
+TEST(OrtEpLibrary, PluginEp_Custom_Op_Inference_With_Prefer_Cpu) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());

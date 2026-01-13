@@ -151,7 +151,7 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
   // The list of devices selected by policies
   std::vector<const OrtEpDevice*> devices_selected;
 
-  ORT_RETURN_IF_ERROR(SelectEpDevices(options, execution_devices, devices_selected, sess));
+  ORT_RETURN_IF_ERROR(SelectEpDevices(options, execution_devices, devices_selected, sess, true));
 
   // Log telemetry for auto EP selection
   {
@@ -249,10 +249,14 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
 }
 
 Status ProviderPolicyContext::SelectEpDevices(const OrtSessionOptions& options, std::vector<const OrtEpDevice*>& execution_devices,
-                                              std::vector<const OrtEpDevice*>& devices_selected, InferenceSession& sess) {
+                                              std::vector<const OrtEpDevice*>& devices_selected, InferenceSession& sess,
+                                              bool model_metadata_reference) {
   // Run the delegate if it was passed in lieu of any other policy
   if (options.value.ep_selection_policy.delegate) {
-    auto model_metadata = GetModelMetadata(sess);
+    OrtKeyValuePairs model_metadata;
+    if (model_metadata_reference) {
+      model_metadata = GetModelMetadata(sess);
+    }
     OrtKeyValuePairs runtime_metadata;  // TODO: where should this come from?
 
     std::vector<const OrtEpDevice*> delegate_devices(execution_devices.begin(), execution_devices.end());

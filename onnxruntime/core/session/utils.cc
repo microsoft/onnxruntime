@@ -101,8 +101,8 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-Status GetCustomOpDomainsFromOrtEpDevices(const OrtEpDevice& ep_device, InlinedVector<OrtCustomOpDomain*>& domains) {
-  // Get custom op domain provided by EP if any.
+Status GetCustomOpDomainsFromEpDevice(const OrtEpDevice& ep_device, InlinedVector<OrtCustomOpDomain*>& domains) {
+  // Get custom op domain provided by EP factory if any.
   // OrtEpFactory::GetNumCustomOpDomains and OrtEpFactory::GetCustomOpDomains were added in ORT 1.24.
   OrtEpFactory* ep_factory = ep_device.ep_factory;
   if (ep_factory &&
@@ -226,24 +226,32 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  if (options != nullptr && options->value.ep_selection_policy.enable) {
+  // Add custom domains if the selected ep from auto ep selection has custom domains to register.
+  // The custom domains should be registered before model load for ORT to validate the custom ops.
+  if (options != nullptr &&
+      options->provider_factories.empty() &&
+      options->value.ep_selection_policy.enable) {
     ProviderPolicyContext context;
 
-    // Get the list of devices from the environment and order them.
-    // Ordered by preference within each type. NPU -> GPU -> NPU
-    // TODO: Should environment.cc do the ordering?
+    // Following code calls the same ep selection functions that InitializeSession() calls as well
+    // to get `execution_devices` and `devices_selected`.
+    // Note: If the selection policy is delegate, the model metadata should be provided to the delegate function.
+    // However, the model metadata is not known at this point as ORT hasn't loaded the model yet. So the empty
+    // model metadata is provided for now.
+    // TODO: might need to fetch model metadata from model proto.
+
     std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
 
     // The list of devices selected by policies
     std::vector<const OrtEpDevice*> devices_selected;
     ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpDevices(*options, execution_devices,
-                                                            devices_selected, *sess));
+                                                            devices_selected, *sess, false));
 
     InlinedVector<OrtCustomOpDomain*> all_ep_custom_op_domains;
 
     for (const OrtEpDevice* ep_device : devices_selected) {
       InlinedVector<OrtCustomOpDomain*> domains;
-      ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromOrtEpDevices(*ep_device, domains));
+      ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
       const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
       for (auto domain : domains_span) {
@@ -612,8 +620,9 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
     }
 
+    // Add custom domains if EP factory has any.
     InlinedVector<OrtCustomOpDomain*> domains;
-    ORT_RETURN_IF_ERROR(GetCustomOpDomainsFromOrtEpDevices(*ep_device, domains));
+    ORT_RETURN_IF_ERROR(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
     const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
     for (auto domain : domains_span) {
