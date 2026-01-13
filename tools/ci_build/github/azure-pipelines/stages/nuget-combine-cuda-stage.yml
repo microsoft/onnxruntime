@@ -47,6 +47,8 @@ parameters:
 
 - name: CudaArchs
   type: string
+- name: win_cudnn_home
+  type: string
 
 stages:
 - template: nuget-linux-cuda-packaging-stage.yml
@@ -71,6 +73,7 @@ stages:
     PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     CudaArchs: ${{ parameters.CudaArchs }}
+    win_cudnn_home: ${{ parameters.win_cudnn_home }}
 
 - template: nuget-cuda-packaging-stage.yml
   parameters:
