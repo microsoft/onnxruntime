@@ -6,12 +6,13 @@ endif()
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO pytorch/cpuinfo
-    REF 877328f188a3c7d1fa855871a278eb48d530c4c0
-    SHA512 b6d5a9ce9996eee3b2f09f39115f7ae178fe4d4814cc35b049a59d04a82228e268aa52d073c307ccb56a427428622940e1c77f004c99851dfca0d3a5d803658b
+    REF 403d652dca4c1046e8145950b1c0997a9f748b57
+    SHA512 f7cd6dc44bd1120af610cae1337ed4c0f557ba78d2de9c73fed350fa3dfe9512643a1619ae55f5a540c6316a87d641856cca27297bb8766e48f39b7b7a59da1f
     HEAD_REF master
     PATCHES
         patch_cpuinfo_h_for_arm64ec.patch
-        patch_vcpkg_arm64ec_support.patch  # https://github.com/pytorch/cpuinfo/pull/324
+        patch_vcpkg_arm64ec_support.patch       # https://github.com/pytorch/cpuinfo/pull/324
+        win_arm_fp16_detection_fallback.patch   # https://github.com/pytorch/cpuinfo/pull/348
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS

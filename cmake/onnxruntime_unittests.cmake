@@ -644,10 +644,6 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
-endif()
-
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -677,12 +673,11 @@ if(onnxruntime_USE_ARMNN)
 endif()
 
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
-    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
+    # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
-    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -695,6 +690,9 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
 
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
+endif()
+if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
 
 set(ONNXRUNTIME_TEST_LIBS
@@ -754,7 +752,7 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_WEBGPU)
+if(onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
@@ -1045,6 +1043,10 @@ if (MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
 
+  # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+  # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd4702")
+
   # Avoid this compile error in graph_transform_test.cc and qdq_transformer_test.cc:
   # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
   set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
@@ -1126,7 +1128,7 @@ onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.pr
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
-onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
+onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto ${PROTOBUF_LIB})
 if (MSVC)
     # Cutlass code has an issue with the following:
     # warning C4100: 'magic': unreferenced formal parameter
@@ -1229,6 +1231,16 @@ block()
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
+
+  # Expose QNN SDK headers to unit tests via an interface target 
+  if(onnxruntime_USE_QNN)
+    add_library(qnn_sdk_headers_include INTERFACE)
+    target_include_directories(qnn_sdk_headers_include INTERFACE
+      ${onnxruntime_QNN_HOME}/include
+      ${onnxruntime_QNN_HOME}/include/QNN)
+    target_link_libraries(onnxruntime_provider_test PRIVATE qnn_sdk_headers_include)
+  endif()
+  
   if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
     # The test_main.cc includes NvInfer.h where it has many deprecated declarations
     # simply ignore them for TensorRT EP build
@@ -1237,6 +1249,13 @@ block()
 
   # enable dynamic plugin EP usage
   target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+
+
+  if (MSVC)
+    # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+    # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+    target_compile_options(onnxruntime_provider_test PRIVATE "/wd4702")
+  endif()
 
   # TODO fix shorten-64-to-32 warnings
   # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
@@ -2095,6 +2114,57 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_example_plugin_ep_virt_gpu_src})
 
   #
+  # example_plugin_ep_kernel_registry
+  #
+  set(onnxruntime_autoep_test_example_plugin_ep_kernel_registry_src
+          "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_lib_entry.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_factory.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_factory.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_allocator.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_data_transfer.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_data_transfer.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_kernel_registration.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_kernel_registration.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/utils.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/squeeze.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/squeeze.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/relu.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/relu.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/scan.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/scan.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/loop.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/loop.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/if.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/if.cc")
+  onnxruntime_add_shared_library_module(example_plugin_ep_kernel_registry ${onnxruntime_autoep_test_example_plugin_ep_kernel_registry_src})
+  target_include_directories(example_plugin_ep_kernel_registry PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(example_plugin_ep_kernel_registry PRIVATE onnxruntime ${GSL_TARGET})
+
+  if(UNIX)
+    if (APPLE)
+	    set(ONNXRUNTIME_EXAMPLE_PLUGIN_EP_KERNEL_REGISTRY_LINK_FLAG "-Xlinker -dead_strip")
+    elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      string(CONCAT ONNXRUNTIME_EXAMPLE_PLUGIN_EP_KERNEL_REGISTRY_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_lib.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_EXAMPLE_PLUGIN_EP_KERNEL_REGISTRY_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/ep_lib.def")
+  endif()
+
+  set_property(TARGET example_plugin_ep_kernel_registry APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_EXAMPLE_PLUGIN_EP_KERNEL_REGISTRY_LINK_FLAG})
+
+  set_target_properties(example_plugin_ep_kernel_registry PROPERTIES FOLDER "ONNXRuntimeTest")
+  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_example_plugin_ep_kernel_registry_src})
+
+  #
   # test library
   #
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
@@ -2129,7 +2199,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           TARGET onnxruntime_autoep_test
           SOURCES ${onnxruntime_autoep_test_SRC} ${onnxruntime_unittest_main_src}
           LIBS ${onnxruntime_autoep_test_LIBS}
-          DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu
+          DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
 endif()
 

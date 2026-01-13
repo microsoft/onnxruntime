@@ -22,10 +22,17 @@ namespace test {
 
 // --------- Helpers ---------
 
+// cuda errors are sticky and may affect subsequent API calls.
+// we want to clear the error if when supported check fails.
+void ClearCudaError() {
+  ORT_IGNORE_RETURN_VALUE(::cudaGetLastError());
+}
+
 static bool IsCudaMemPoolSupported() {
   int ort_cuda_rt_version = 0;
   cudaError_t cuda_status = cudaRuntimeGetVersion(&ort_cuda_rt_version);
   if (cuda_status != cudaSuccess) {
+    ClearCudaError();
     return false;
   }
 
@@ -36,6 +43,7 @@ static bool IsCudaMemPoolSupported() {
   int ort_cuda_driver_version = 0;
   cuda_status = cudaDriverGetVersion(&ort_cuda_driver_version);
   if (cuda_status != cudaSuccess) {
+    ClearCudaError();
     return false;
   }
 
@@ -65,9 +73,10 @@ static bool IsCudaMemPoolSupported() {
   cudaMemPool_t pool;
   auto cuda_error = cudaMemPoolCreate(&pool, &props);
   if (cuda_error != cudaSuccess) {
+    ClearCudaError();
     return false;
   }
-  cuda_error = cudaMemPoolDestroy(pool);
+  ORT_IGNORE_RETURN_VALUE(cudaMemPoolDestroy(pool));
 
   return true;
 }
@@ -80,7 +89,9 @@ static ::cudaStream_t NewCudaStream() {
 }
 
 static void DestroyCudaStream(::cudaStream_t s) {
-  if (s) (void)::cudaStreamDestroy(s);
+  if (s) {
+    EXPECT_EQ(cudaSuccess, ::cudaStreamDestroy(s));
+  }
 }
 
 static void TouchDevice(void* p, size_t bytes, ::cudaStream_t s, unsigned char value = 0xAB) {

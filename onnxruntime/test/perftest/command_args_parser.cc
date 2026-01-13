@@ -21,12 +21,27 @@
 #include "test_configuration.h"
 #include "strings_helper.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4127: conditional expression is constant
+#pragma warning(disable : 4127)
+// C4324: structure was padded due to alignment specifier
+// Usage of alignas causes some internal padding in places.
+#pragma warning(disable : 4324)
+// C4702: unreachable code
+#pragma warning(disable : 4702)
+#endif  // _MSC_VER
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
 #include "absl/flags/usage_config.h"
 #include "absl/flags/reflection.h"
 #include "absl/strings/str_split.h"
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif  // _MSC_VER
 
 static const onnxruntime::perftest::PerformanceTestConfig& DefaultPerformanceTestConfig() {
   static onnxruntime::perftest::PerformanceTestConfig default_config{};
@@ -42,7 +57,7 @@ ABSL_FLAG(std::string, F, "",
           "[Usage]: -f \"dimension_denotation1:override_value1\" -f \"dimension_denotation2:override_value2\" ...  or"
           " -f \"dimension_denotation1:override_value1 dimension_denotation2 : override_value2... \". Override value must > 0.");
 ABSL_FLAG(std::string, m, "duration", "Specifies the test mode. Value could be 'duration' or 'times'.");
-ABSL_FLAG(std::string, e, "cpu", "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.");
+ABSL_FLAG(std::string, e, "cpu", "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.");
 ABSL_FLAG(size_t, r, DefaultPerformanceTestConfig().run_config.repeated_times, "Specifies the repeated times if running in 'times' test mode.");
 ABSL_FLAG(size_t, t, DefaultPerformanceTestConfig().run_config.duration_in_seconds, "Specifies the seconds to run for 'duration' mode.");
 ABSL_FLAG(std::string, p, "", "Specifies the profile name to enable profiling and dump the profile data to the file.");
@@ -325,8 +340,6 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
       } else if (ep == "armnn") {
         test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
-      } else if (ep == "rocm") {
-        test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
       } else if (ep == "migraphx") {
         test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
       } else if (ep == "xnnpack") {

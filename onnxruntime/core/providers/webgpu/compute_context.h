@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/providers/webgpu/webgpu_external_header.h"
-
+#include <memory>
 #include <utility>
 
+#include "core/providers/webgpu/webgpu_external_header.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -24,7 +24,13 @@ namespace webgpu {
 class WebGpuContext;
 class BufferManager;
 
-class ComputeContext final {
+//
+// Class ComputeContextBase is designed to provide basic context information
+// for running a compute shader program.
+//
+// An instance of ComputeContextBase does not depend on OpKernelContext, which needs an execution frame to be created.
+//
+class ComputeContextBase {
  public:
   // Nested accessor class to provide controlled access to BufferManager
   class BufferManagerAccessor {
@@ -34,18 +40,31 @@ class ComputeContext final {
     friend class WebGpuContext;
 
    private:
-    static const webgpu::BufferManager& Get(const ComputeContext& context);
+    static const webgpu::BufferManager& Get(const ComputeContextBase& context);
   };
 
-  ComputeContext(OpKernelContext& kernel_context,
-                 const OpKernel& op_kernel,
-                 const WebGpuExecutionProvider& ep,
-                 WebGpuContext& webgpu_context);
+  ComputeContextBase(WebGpuContext& webgpu_context,
+                     const WebGpuExecutionProvider& ep,
+                     const OpKernel& op_kernel);
 
-  ~ComputeContext() = default;
+  ~ComputeContextBase() = default;
 
   //
-  // Get various information from the context.
+  // Get the node name.
+  //
+  inline decltype(auto) NodeName() const {
+    return op_kernel_.Node().Name();
+  }
+
+  //
+  // Get the operator type.
+  //
+  inline decltype(auto) OpType() const {
+    return op_kernel_.Node().OpType();
+  }
+
+  //
+  // Get various information from the WebGPU context.
   //
 
   inline const wgpu::AdapterInfo& AdapterInfo() const {
@@ -57,9 +76,6 @@ class ComputeContext final {
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
   }
-  inline bool IsGraphCaptureEnabled() const {
-    return ep_.IsGraphCaptureEnabled();
-  }
 #if !defined(__wasm__)
   inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
     return webgpu_context_.SubgroupMatrixConfigs();
@@ -67,17 +83,57 @@ class ComputeContext final {
 #endif
 
   //
-  // Get the kernel context.
+  // Get Split-K configuration.
   //
-  inline OpKernelContext& KernelContext() {
-    return kernel_context_;
+  inline const SplitKConfig& GetSplitKConfig() const {
+    return webgpu_context_.GetSplitKConfig();
+  }
+
+  //
+  // Get whether graph capture is enabled.
+  //
+  inline bool IsGraphCaptureEnabled() const {
+    return ep_.IsGraphCaptureEnabled();
   }
 
   //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {
-    return kernel_context_.Logger();
+    return *ep_.GetLogger();
+  }
+
+  //
+  // Run a compute shader program.
+  //
+  inline Status RunProgram(const ProgramBase& program) {
+    return webgpu_context_.Run(*this, program);
+  }
+
+ protected:
+  WebGpuContext& webgpu_context_;
+  const WebGpuExecutionProvider& ep_;
+  const OpKernel& op_kernel_;
+};
+
+//
+// Class ComputeContext provides all information a `ComputeContextBase` provides, and also
+// access to `OpKernelContext` for input and output tensors.
+//
+class ComputeContext final : public ComputeContextBase {
+ public:
+  ComputeContext(WebGpuContext& webgpu_context,
+                 const WebGpuExecutionProvider& ep,
+                 const OpKernel& op_kernel,
+                 OpKernelContext& kernel_context);
+
+  ~ComputeContext() = default;
+
+  //
+  // Get the kernel context.
+  //
+  inline OpKernelContext& KernelContext() {
+    return kernel_context_;
   }
 
   //
@@ -145,25 +201,8 @@ class ComputeContext final {
     return op_kernel_.Info().GetDataTransferManager().CopyTensor(src, dst);
   }
 
-  //
-  // Run a compute shader program.
-  //
-  inline Status RunProgram(const ProgramBase& program) {
-    return webgpu_context_.Run(*this, program);
-  }
-
-  //
-  // Get Split-K configuration.
-  //
-  // `split_k_config_` won't be initialized until the first call to this method.
-  //
-  const SplitKConfig& GetSplitKConfig();
-
  private:
-  WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
-  const OpKernel& op_kernel_;
-  const WebGpuExecutionProvider& ep_;
 };
 
 }  // namespace webgpu

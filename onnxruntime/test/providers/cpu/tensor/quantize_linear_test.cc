@@ -362,8 +362,8 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int32) {
                          0, 4, 16, 48,
                          0, 20, 80, 240});
   // Disable Tensorrt EP due to error, only activation types allowed as input to this layer.
-  // Disable CUDA, ROCm EP, there is no implementation for int32_t.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider});
+  // Disable CUDA EP, there is no implementation for int32_t.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCudaExecutionProvider});
 }
 
 // 1d zero & scale with uint8 broadcast axis -2 (-2 resolves to axis 0)

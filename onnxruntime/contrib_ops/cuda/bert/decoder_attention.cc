@@ -370,11 +370,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   return LaunchDecoderAttentionKernel(
       device_prop,
-#ifdef USE_ROCM
-      GetTuningContext(),
-#else
       UseTF32(),
-#endif
       context->GetComputeStream(),
       cublas,
       element_size,

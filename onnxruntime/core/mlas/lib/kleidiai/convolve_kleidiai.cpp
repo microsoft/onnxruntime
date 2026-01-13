@@ -332,8 +332,8 @@ static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(const size_t co, const
                                                           const float* weights, const float* bias,
                                                           MLAS_THREADPOOL* ThreadPool)
 {
-    //cache of prepacked kai rhs weights and biases
-    static std::unordered_map<RhsCacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
+    // Cache of prepacked kai rhs weights and biases. thread_local to prevent interference from parallel sessions.
+    thread_local std::unordered_map<RhsCacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
 
     RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, HashWeights(weights) };
 
@@ -474,8 +474,8 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     auto nhwc = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
 
-    //cache of computed lhs ptr offsets
-    static std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
+    // Cache of computed lhs ptr offsets.  thread_local to prevent interference from parallel sessions.
+    thread_local std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
 
     std::shared_ptr<const void*[]> lhs_ptrs;
     if (auto found = lhs_ptrs_cache.find(key); found != lhs_ptrs_cache.end()) {

@@ -56,7 +56,7 @@ struct OrtDevice {
   enum VendorIds : VendorId {
     // No vendor ID. Valid for DeviceType::CPU + MemType::DEFAULT or for generic allocators like WebGPU.
     NONE = 0x0000,
-    AMD = 0x1002,        // ROCm, MIGraphX EPs
+    AMD = 0x1002,        // MIGraphX EP
     NVIDIA = 0x10DE,     // CUDA/TensorRT
     ARM = 0x13B5,        // ARM GPU EP
     MICROSOFT = 0x1414,  // DML EP

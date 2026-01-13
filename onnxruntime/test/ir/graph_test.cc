@@ -2813,8 +2813,15 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   ASSERT_TRUE(graph.GetInitializedTensor("split_sizes", initializer_after));
   ASSERT_NE(initializer_after, nullptr);
   // Debug: verify it was externalized
+  ASSERT_FALSE(utils::HasExternalDataInMemory(*initializer_after))
+      << "We no longer externalize data in the Graph constructor.";
+
+  // Now externalize explicitly to trigger the bug scenario
+  ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues());
+  ASSERT_TRUE(graph.GetInitializedTensor("split_sizes", initializer_after));
+  ASSERT_NE(initializer_after, nullptr);
   ASSERT_TRUE(utils::HasExternalDataInMemory(*initializer_after))
-      << "Initializer was not externalized to in-memory external data";
+      << "The initializer should externalize now";
 
   // Mark the graph as needing resolve to force shape inference to run again
   graph.SetGraphResolveNeeded();

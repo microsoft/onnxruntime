@@ -10,6 +10,7 @@
 
 // onnx dependencies
 #include "onnx/onnx_pb.h"
+#include <algorithm>
 #include <fstream>
 
 using namespace onnxruntime;
@@ -81,6 +82,72 @@ static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>
   }
 }
 
+using PluginEpLibraryRegistrationHandle = std::unique_ptr<void, std::function<void(void*)>>;
+
+static PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
+                                                                 const std::string& ep_library_registration_name,
+                                                                 const std::basic_string<ORTCHAR_T>& ep_library_path) {
+  env.RegisterExecutionProviderLibrary(ep_library_registration_name.c_str(), ep_library_path);
+
+  auto unregister_ep_library = [&env, registration_name = ep_library_registration_name](void* p) {
+    if (p == nullptr) {
+      return;
+    }
+
+    ORT_TRY {
+      env.UnregisterExecutionProviderLibrary(registration_name.c_str());
+    }
+    ORT_CATCH(const Ort::Exception& e) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        std::cerr << "Failed to unregister EP library with name '" << registration_name << "': "
+                  << e.what() << std::endl;
+      });
+    }
+  };
+
+  // Set `handle_value` to something not equal to nullptr. The particular value doesn't really matter.
+  // We are just using the unique_ptr deleter to unregister the EP library.
+  void* const handle_value = reinterpret_cast<void*>(0x1);
+  return PluginEpLibraryRegistrationHandle{handle_value, unregister_ep_library};
+}
+
+static bool SetPluginEpSessionOptions(Ort::Env& env, Ort::SessionOptions& session_options,
+                                      const qnnctxgen::PluginEpConfig& config,
+                                      PluginEpLibraryRegistrationHandle& plugin_ep_library_registration_handle) {
+  auto lib_registration_handle = RegisterPluginEpLibrary(env, config.ep_library_registration_name,
+                                                         ToPathString(config.ep_library_path));
+
+  std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+  std::vector<Ort::ConstEpDevice> selected_ep_devices{};
+
+  if (!config.selected_ep_device_indices.empty()) {
+    for (const auto idx : config.selected_ep_device_indices) {
+      if (idx >= ep_devices.size()) {
+        std::cerr << "ERROR: Selected EP device index is out of range (max is " << ep_devices.size() - 1 << "): "
+                  << idx << std::endl;
+        return false;
+      }
+
+      selected_ep_devices.push_back(ep_devices[idx]);
+    }
+  } else {
+    std::copy_if(ep_devices.begin(), ep_devices.end(), std::back_inserter(selected_ep_devices),
+                 [&selected_ep_name = std::as_const(config.selected_ep_name)](Ort::ConstEpDevice ep_device) {
+                   return ep_device.EpName() == selected_ep_name;
+                 });
+  }
+
+  if (selected_ep_devices.empty()) {
+    std::cerr << "ERROR: No EP devices were selected" << std::endl;
+    return false;
+  }
+
+  session_options.AppendExecutionProvider_V2(env, selected_ep_devices, config.default_ep_options);
+  plugin_ep_library_registration_handle = std::move(lib_registration_handle);
+
+  return true;
+}
+
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
 #else
@@ -98,6 +165,7 @@ int real_main(int argc, char* argv[]) {
   Ort::Env env(logging_level, "ep_weight_sharing");
 
   ORT_TRY {
+    PluginEpLibraryRegistrationHandle plugin_ep_library_registration_handle{};
     Ort::SessionOptions so;
     so.SetLogId("ep_weight_sharing_ctx_gen_session_logger");
     // Set default session option to dump EPContext model with non-embed mode
@@ -136,7 +204,14 @@ int real_main(int argc, char* argv[]) {
     // The context binary file generated later includes all graphs from previous models
     {
       std::string provider_name_ = test_config.machine_config.provider_type_name;
-      if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
+
+      if (const auto& plugin_ep_config = test_config.machine_config.plugin_ep_config; plugin_ep_config.has_value()) {
+        if (!SetPluginEpSessionOptions(env, so, *plugin_ep_config, plugin_ep_library_registration_handle)) {
+          std::cerr << "ERROR: Failed to initialize session for plugin EP "
+                    << test_config.machine_config.plugin_ep_config->ep_library_path << std::endl;
+          return 1;
+        }
+      } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
         so.AppendExecutionProvider("QNN", provider_options);
 #else

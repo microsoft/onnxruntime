@@ -633,9 +633,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // if there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
-    bool is_gpu_ep = (pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
-                      pow_node.GetExecutionProviderType() == kRocmExecutionProvider) ||
-                     skip_device_check_;
+    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider || skip_device_check_;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)

@@ -13,7 +13,7 @@ namespace webgpu {
 
 class GemmProgram final : public Program<GemmProgram> {
  public:
-  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_components, bool c_is_scalar, int output_components, bool is_vec4 = false)
+  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_components, bool c_is_scalar, int output_components, bool is_vec4 = false, uint32_t split_dim_inner = 1)
       : Program{"Gemm"},
         transA_{transA},
         transB_{transB},
@@ -23,16 +23,22 @@ class GemmProgram final : public Program<GemmProgram> {
         c_components_(c_components),
         c_is_scalar_(c_is_scalar),
         output_components_(output_components),
-        is_vec4_(is_vec4) {}
+        is_vec4_(is_vec4),
+        split_dim_inner_(split_dim_inner) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  bool NeedSplitK() const;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"alpha", ProgramUniformVariableDataType::Float32},
       {"beta", ProgramUniformVariableDataType::Float32},
       {"dim_a_outer", ProgramUniformVariableDataType::Uint32},
       {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-      {"dim_inner", ProgramUniformVariableDataType::Uint32});
+      {"dim_inner", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
+      {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32});
 
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
@@ -48,6 +54,7 @@ class GemmProgram final : public Program<GemmProgram> {
   bool c_is_scalar_ = false;
   int output_components_;
   bool is_vec4_ = false;
+  uint32_t split_dim_inner_ = 1;
 };
 
 Status ApplyGemmPacked(const Tensor* a,

@@ -14,13 +14,17 @@ concurrency:
 jobs:
   build_android_packages:
     name: Build Android AAR Packages
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=react_build_android_packages-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     timeout-minutes: 120
     outputs:
       aar_path: ${{ runner.temp }}/.artifacts
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -38,8 +42,8 @@ jobs:
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
@@ -60,7 +64,7 @@ jobs:
           cp -r ${{ runner.temp }}/aar_out/Release/com ${{ runner.temp }}/artifacts
 
       - name: Upload Android AAR Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/artifacts
@@ -68,14 +72,18 @@ jobs:
   react_native_ci_android:
     name: React Native CI Android
     needs: build_android_packages
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=react_native_ci_android-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
     timeout-minutes: 90
     steps:
       - name: Set ANDROID_AVD_HOME environment variable
         run: echo "ANDROID_AVD_HOME=${{ runner.temp }}/android-avd" >> $GITHUB_ENV
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Use Python 3.12
         uses: actions/setup-python@v6
@@ -99,7 +107,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Download Android AAR artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/android-full-aar
@@ -162,7 +170,7 @@ jobs:
 
       - name: Upload Android Test Results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: android-test-results
           path: |
@@ -175,7 +183,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Use Xcode 15.3.0
         run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
@@ -191,8 +199,8 @@ jobs:
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
           cmake-version: '3.31.8'
           cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
           add-cmake-to-path: 'true'
@@ -206,7 +214,7 @@ jobs:
             --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
 
       - name: Upload iOS Pod Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
@@ -218,10 +226,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download iOS pod artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
@@ -236,8 +244,8 @@ jobs:
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
           cmake-version: '3.31.8'
           cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
           add-cmake-to-path: 'true'
@@ -278,7 +286,7 @@ jobs:
 
       - name: Upload iOS Test Results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ios-test-results
           path: |
