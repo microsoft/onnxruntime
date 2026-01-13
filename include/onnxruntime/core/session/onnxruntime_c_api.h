@@ -518,7 +518,7 @@ typedef enum OrtDeviceEpIncompatibilityReason {
   OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE = 1 << 0,
   OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE = 1 << 1,
   OrtDeviceEpIncompatibility_MISSING_DEPENDENCY = 1 << 2,
-  OrtDeviceEpIncompatibility_UNKNOWN = 1 << 30
+  OrtDeviceEpIncompatibility_UNKNOWN = 1 << 31
 } OrtDeviceEpIncompatibilityReason;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic

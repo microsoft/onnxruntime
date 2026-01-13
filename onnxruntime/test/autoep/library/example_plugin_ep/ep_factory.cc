@@ -346,7 +346,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetHardwareDeviceIncompatibilityDetail
   if (device_type != OrtHardwareDeviceType_CPU) {
     // Report that the device type is not supported
     uint32_t reasons = OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE;
-    return factory.ep_api.DeviceEpIncompatibilityDetails_Initialize(
+    return factory.ep_api.DeviceEpIncompatibilityDetails_SetDetails(
         details,
         reasons,
         static_cast<int32_t>(device_type),  // Use device type as the error code for testing

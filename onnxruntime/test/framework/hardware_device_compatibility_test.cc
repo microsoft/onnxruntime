@@ -313,6 +313,30 @@ TEST(GetHardwareDevicesCapiTest, GetHardwareDevices_InvalidArguments_NullDevices
   api->ReleaseEnv(env);
 }
 
+TEST(GetHardwareDevicesCapiTest, GetHardwareDevices_InvalidArguments_ArrayTooSmall) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtEnv* env = nullptr;
+  EXPECT_EQ(nullptr, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "HwDevicesTest", &env));
+  EXPECT_NE(env, nullptr);
+
+  // Get number of devices first
+  size_t num_devices = 0;
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_devices));
+  ASSERT_GT(num_devices, 0u);
+
+  // Try to get devices with an undersized array (pass a valid pointer but claim size is 0)
+  std::vector<const OrtHardwareDevice*> devices(1);  // Allocate at least 1 element to avoid nullptr
+  OrtStatus* st = api->GetHardwareDevices(env, devices.data(), 0);  // But claim size is 0
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  EXPECT_THAT(api->GetErrorMessage(st), testing::HasSubstr("num_devices is less than"));
+  api->ReleaseStatus(st);
+
+  api->ReleaseEnv(env);
+}
+
 TEST(GetHardwareDevicesCapiTest, ReturnsDevices) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);

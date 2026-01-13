@@ -668,10 +668,6 @@ Status Environment::GetHardwareDeviceEpIncompatibilityDetails(
 
   // ORT creates the details object with default values (compatible)
   details = std::make_unique<OrtDeviceEpIncompatibilityDetails>();
-  details->reasons_bitmask = 0;
-  details->error_code = 0;
-  details->notes = "";
-
   // If the factory implements GetHardwareDeviceIncompatibilityDetails, let it initialize the details
   if (matched_factory->GetHardwareDeviceIncompatibilityDetails != nullptr) {
     OrtStatusPtr status = matched_factory->GetHardwareDeviceIncompatibilityDetails(matched_factory, hw, details.get());

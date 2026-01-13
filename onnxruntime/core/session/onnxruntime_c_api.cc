@@ -4411,9 +4411,14 @@ ORT_API_STATUS_IMPL(OrtApis::GetHardwareDevices, _In_ const OrtEnv* env,
 
   const auto& device_vector = env->GetEnvironment().GetSortedOrtHardwareDevices();
   size_t available_devices = device_vector.size();
-  size_t copy_count = std::min(num_devices, available_devices);
 
-  for (size_t i = 0; i < copy_count; ++i) {
+  if (num_devices < available_devices) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "num_devices is less than the number of available hardware devices. "
+                                 "Use GetNumHardwareDevices() to get the required array size.");
+  }
+
+  for (size_t i = 0; i < available_devices; ++i) {
     devices[i] = device_vector[i];
   }
 

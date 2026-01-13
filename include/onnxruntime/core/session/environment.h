@@ -146,7 +146,7 @@ class Environment {
     return execution_devices_;
   }
 
-  /// Get hardware device incompatibility reasons for a specific EP.
+  /// Get hardware device incompatibility details for a specific EP.
   /// @param ep_name The name of the execution provider to check.
   /// @param hw The hardware device to check for incompatibility.
   /// @param details Output: Incompatibility details including reasons for incompatibility if any.

@@ -1408,13 +1408,14 @@ struct OrtEpApi {
                   _Outptr_ OrtKernelImpl** kernel_out);
 
   ORT_CLASS_RELEASE(KernelImpl);
-  /** \brief Initialize an OrtDeviceEpIncompatibilityDetails instance.
+  /** \brief Set the details of an OrtDeviceEpIncompatibilityDetails instance.
    *
-   * Used by execution provider factories to initialize incompatibility details in their
-   * GetHardwareDeviceIncompatibilityDetails implementation. ORT creates the object and passes it
-   * to the EP, which uses this function to set the incompatibility information.
+   * Used by execution provider factories to set incompatibility details in their
+   * GetHardwareDeviceIncompatibilityDetails implementation. ORT creates and initializes the object
+   * before passing it to the EP, so calling this function is optional. The EP uses this function
+   * to set incompatibility information when the device is not compatible.
    *
-   * \param[in,out] details The OrtDeviceEpIncompatibilityDetails instance to initialize.
+   * \param[in,out] details The OrtDeviceEpIncompatibilityDetails instance to update.
    * \param[in] reasons_bitmask Bitmask of OrtDeviceEpIncompatibilityReason values. (0 = no incompatibility).
    * \param[in] error_code Optional EP-specific error code (0 = no error).
    * \param[in] notes Optional human-readable notes. Can be null.
@@ -1423,7 +1424,7 @@ struct OrtEpApi {
    *
    * \since Version 1.24.
    */
-  ORT_API2_STATUS(DeviceEpIncompatibilityDetails_Initialize, _Inout_ OrtDeviceEpIncompatibilityDetails* details,
+  ORT_API2_STATUS(DeviceEpIncompatibilityDetails_SetDetails, _Inout_ OrtDeviceEpIncompatibilityDetails* details,
                   _In_ uint32_t reasons_bitmask,
                   _In_ int32_t error_code,
                   _In_opt_z_ const char* notes);
@@ -2038,14 +2039,14 @@ struct OrtEpFactory {
    *
    * This function allows an execution provider to check if a specific hardware device is compatible
    * with the execution provider. The EP can set specific incompatibility reasons via the
-   * OrtDeviceEpIncompatibilityDetails parameter using OrtEpApi::DeviceEpIncompatibilityDetails_Initialize.
+   * OrtDeviceEpIncompatibilityDetails parameter using OrtEpApi::DeviceEpIncompatibilityDetails_SetDetails.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] hw The hardware device to check for incompatibility.
-   * \param[in,out] details Pre-allocated incompatibility details object created by ORT.
-   *                        The EP should initialize this using OrtEpApi::DeviceEpIncompatibilityDetails_Initialize
-   *                        to set any incompatibility information. If the device is compatible, the EP can
-   *                        leave the object uninitialized (it defaults to no incompatibility).
+   * \param[in,out] details Pre-allocated incompatibility details object created and initialized by ORT.
+   *                        The EP can use OrtEpApi::DeviceEpIncompatibilityDetails_SetDetails to set
+   *                        incompatibility information. If the device is compatible, the EP can
+   *                        leave the object unchanged (it defaults to no incompatibility).
    *
    * \note Implementation of this function is optional.
    *       If not implemented, ORT will assume the device is compatible with this EP.

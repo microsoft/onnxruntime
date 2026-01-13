@@ -677,7 +677,7 @@ ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outp
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_Initialize, _Inout_ OrtDeviceEpIncompatibilityDetails* details,
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_SetDetails, _Inout_ OrtDeviceEpIncompatibilityDetails* details,
                     _In_ uint32_t reasons_bitmask,
                     _In_ int32_t error_code,
                     _In_opt_z_ const char* notes) {
@@ -844,7 +844,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::CreateLoopKernel,
     &OrtExecutionProviderApi::CreateScanKernel,
     &OrtExecutionProviderApi::ReleaseKernelImpl,
-    &OrtExecutionProviderApi::DeviceEpIncompatibilityDetails_Initialize,
+    &OrtExecutionProviderApi::DeviceEpIncompatibilityDetails_SetDetails,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
