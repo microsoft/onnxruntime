@@ -212,6 +212,7 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllTensorTypesIRv9();
   static const std::vector<MLDataType>& AllTensorTypesIRv10();
   static const std::vector<MLDataType>& AllTensorTypesIRv11();
+  static const std::vector<MLDataType>& AllTensorTypesIRv13();
 
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllFixedSizeTensorTypesIRv4();
