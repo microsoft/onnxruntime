@@ -224,7 +224,6 @@ class BaseOpBuilder : public IOpBuilder {
         {"InstanceNormalization", QNN_OP_INSTANCE_NORM},
         {"BatchNormalization", QNN_OP_BATCHNORM},
         {"LayerNormalization", QNN_OP_LAYER_NORM},
-        {"RMSNormalization", QNN_OP_RMS_NORM},
 
         {"LRN", QNN_OP_LRN},
 
