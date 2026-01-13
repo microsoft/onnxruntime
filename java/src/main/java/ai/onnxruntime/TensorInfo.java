@@ -293,8 +293,6 @@ public class TensorInfo implements ValueInfo {
    * @return The number of elements.
    */
   private static long elementCount(long[] shape) {
-    // Java side tensors must be less than Integer.MAX_VALUE,
-    // tensors created in native code can be larger, but are not usable in Java.
     // Tensors should not be able to be created which will overflow a 64-bit long.
     long output = 1;
     for (int i = 0; i < shape.length; i++) {
@@ -334,8 +332,9 @@ public class TensorInfo implements ValueInfo {
     // Zero length tensors are allowed to be returned.
     if ((!validateShape() && numElements != 0) || (numElements * type.size >= Integer.MAX_VALUE)) {
       throw new OrtException(
-          "This tensor is not representable in Java, it's too big - shape = "
-              + Arrays.toString(shape));
+          "This tensor is not representable in Java as an array or a java.nio.Buffer, it's too big - shape = "
+              + Arrays.toString(shape)
+              + ", using tensors this large requires Java 22's java.lang.foreign.MemorySegment.");
     }
     switch (type) {
       case BFLOAT16:

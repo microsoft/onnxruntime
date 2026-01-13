@@ -7,6 +7,7 @@ package ai.onnxruntime;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -33,81 +34,71 @@ final class MemorySegmentShim {
 
   static {
     Class<?> segmentClass;
-    MethodHandle tmpOfAddress;
-    MethodHandle tmpReinterpret;
-    MethodHandle tmpAddress;
-    MethodHandle tmpByteSize;
-    MethodHandle tmpIsNative;
-    MethodHandle tmpSet;
-    Object tmpLayout;
-    MethodHandles.Lookup lookup = MethodHandles.lookup();
     try {
       segmentClass = Class.forName("java.lang.foreign.MemorySegment");
-      Class<?> valueLayoutClass = Class.forName("java.lang.foreign.ValueLayout");
-      Class<?> floatValueLayoutClass = Class.forName("java.lang.foreign.ValueLayout$OfFloat");
-      // Attempt to lookup the Java 22 memory segment methods.
-      // The trailing .asType calls are to adapt the method handles to operate on values of type
-      // Object as the compiled code in this class does not have access to the concrete
-      // MemorySegment class, so the invokeExact calls would throw without the casts.
-      // The argument lists are (return type, argument types...) for static methods and
-      // (return type, receiver type, argument types...) for instance methods.
-      tmpOfAddress =
-          lookup
-              .findStatic(
-                  segmentClass, "ofAddress", MethodType.methodType(segmentClass, long.class))
-              .asType(MethodType.methodType(Object.class, long.class));
-      tmpReinterpret =
-          lookup
-              .findVirtual(
-                  segmentClass, "reinterpret", MethodType.methodType(segmentClass, long.class))
-              .asType(MethodType.methodType(Object.class, Object.class, long.class));
-      tmpAddress =
-          lookup
-              .findVirtual(segmentClass, "address", MethodType.methodType(long.class))
-              .asType(MethodType.methodType(long.class, Object.class));
-      tmpByteSize =
-          lookup
-              .findVirtual(segmentClass, "byteSize", MethodType.methodType(long.class))
-              .asType(MethodType.methodType(long.class, Object.class));
-      tmpIsNative =
-          lookup
-              .findVirtual(segmentClass, "isNative", MethodType.methodType(boolean.class))
-              .asType(MethodType.methodType(boolean.class, Object.class));
-      tmpSet =
-          lookup
-              .findVirtual(
-                  segmentClass,
-                  "set",
-                  MethodType.methodType(void.class, floatValueLayoutClass, long.class, float.class))
-              .asType(
-                  MethodType.methodType(
-                      void.class, Object.class, Object.class, long.class, float.class));
-      tmpLayout =
-          lookup.findStaticGetter(valueLayoutClass, "JAVA_FLOAT", floatValueLayoutClass).invoke();
-    } catch (IllegalAccessException
-        | NoSuchMethodException
-        | ClassNotFoundException
-        | NoSuchFieldException e) {
+    } catch (ClassNotFoundException e) {
       logger.fine("Running on Java 21 or earlier, MemorySegment not available");
       segmentClass = null;
-      tmpOfAddress = null;
-      tmpReinterpret = null;
-      tmpAddress = null;
-      tmpByteSize = null;
-      tmpIsNative = null;
-      tmpSet = null;
-      tmpLayout = null;
-    } catch (Throwable e) {
-      logger.severe(
-          "Failed to load float value layout, while other Java 22 features were available.");
-      segmentClass = null;
-      tmpOfAddress = null;
-      tmpReinterpret = null;
-      tmpAddress = null;
-      tmpByteSize = null;
-      tmpIsNative = null;
-      tmpSet = null;
-      tmpLayout = null;
+    }
+
+    MethodHandles.Lookup lookup = MethodHandles.lookup();
+    MethodHandle tmpOfAddress = null;
+    MethodHandle tmpReinterpret = null;
+    MethodHandle tmpAddress = null;
+    MethodHandle tmpByteSize = null;
+    MethodHandle tmpIsNative = null;
+    MethodHandle tmpSet = null;
+    Object tmpLayout = null;
+    if (segmentClass != null) {
+      try {
+        Class<?> valueLayoutClass = Class.forName("java.lang.foreign.ValueLayout");
+        Class<?> floatValueLayoutClass = Class.forName("java.lang.foreign.ValueLayout$OfFloat");
+        // Attempt to lookup the Java 22 memory segment methods.
+        // The trailing .asType calls are to adapt the method handles to operate on values of type
+        // Object as the compiled code in this class does not have access to the concrete
+        // MemorySegment class, so the invokeExact calls would throw without the casts.
+        // The argument lists are (return type, argument types...) for static methods and
+        // (return type, receiver type, argument types...) for instance methods.
+        tmpOfAddress =
+            lookup
+                .findStatic(
+                    segmentClass, "ofAddress", MethodType.methodType(segmentClass, long.class))
+                .asType(MethodType.methodType(Object.class, long.class));
+        tmpReinterpret =
+            lookup
+                .findVirtual(
+                    segmentClass, "reinterpret", MethodType.methodType(segmentClass, long.class))
+                .asType(MethodType.methodType(Object.class, Object.class, long.class));
+        tmpAddress =
+            lookup
+                .findVirtual(segmentClass, "address", MethodType.methodType(long.class))
+                .asType(MethodType.methodType(long.class, Object.class));
+        tmpByteSize =
+            lookup
+                .findVirtual(segmentClass, "byteSize", MethodType.methodType(long.class))
+                .asType(MethodType.methodType(long.class, Object.class));
+        tmpIsNative =
+            lookup
+                .findVirtual(segmentClass, "isNative", MethodType.methodType(boolean.class))
+                .asType(MethodType.methodType(boolean.class, Object.class));
+        tmpSet =
+            lookup
+                .findVirtual(
+                    segmentClass,
+                    "set",
+                    MethodType.methodType(
+                        void.class, floatValueLayoutClass, long.class, float.class))
+                .asType(
+                    MethodType.methodType(
+                        void.class, Object.class, Object.class, long.class, float.class));
+        tmpLayout =
+            lookup.findStaticGetter(valueLayoutClass, "JAVA_FLOAT", floatValueLayoutClass).invoke();
+      } catch (Throwable e) {
+        logger.log(
+            Level.SEVERE,
+            "Exception thrown while inspecting java.lang.foreign.MemorySegment methods",
+            e);
+      }
     }
     memorySegmentClass = segmentClass;
     ofAddress = tmpOfAddress;

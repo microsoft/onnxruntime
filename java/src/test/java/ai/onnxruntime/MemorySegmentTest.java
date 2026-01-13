@@ -116,10 +116,11 @@ public class MemorySegmentTest {
     Object notASegment = new Object();
     try {
       OnnxTensor tensor =
-              OnnxTensor.createTensorFromMemorySegment(env, notASegment, shape, OnnxJavaType.FLOAT);
+          OnnxTensor.createTensorFromMemorySegment(env, notASegment, shape, OnnxJavaType.FLOAT);
       Assertions.fail("Should have thrown.");
     } catch (IllegalArgumentException e) {
-      Assertions.assertTrue(e.getMessage().contains("Segment argument was not a java.lang.foreign.MemorySegment"));
+      Assertions.assertTrue(
+          e.getMessage().contains("Segment argument was not a java.lang.foreign.MemorySegment"));
     }
   }
 
@@ -155,7 +156,9 @@ public class MemorySegmentTest {
         Assertions.fail("Should have thrown an exception");
       } catch (OrtException e) {
         Assertions.assertTrue(
-            e.getMessage().contains("This tensor is not representable in Java, it's too big"));
+            e.getMessage()
+                .contains(
+                    "This tensor is not representable in Java as an array or a java.nio.Buffer, it's too big"));
       }
 
       Object refMemorySegment = bigTensor.getMemorySegmentRef().get();
