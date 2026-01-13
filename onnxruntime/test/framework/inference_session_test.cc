@@ -3070,7 +3070,6 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 #endif
 
 #ifdef ORT_ENABLE_STREAM
-
 struct TestNotification : public synchronize::Notification {
   explicit TestNotification(Stream& s) : Notification(s) {}
   void Activate() override {}

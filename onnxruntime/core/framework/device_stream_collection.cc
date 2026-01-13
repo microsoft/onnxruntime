@@ -97,7 +97,7 @@ class DeviceStreamCollectionImpl {
         return Status::OK();
       }
     }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No matching stream found to override");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No matching stream found to override from OrtRunOptions");
   }
 
   void ResetStreamOverride() {
