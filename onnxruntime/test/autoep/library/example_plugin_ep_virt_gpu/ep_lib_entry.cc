@@ -19,7 +19,7 @@ extern "C" {
 //
 // Public symbols
 //
-EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
+EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
                                            const OrtLogger* default_logger,
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
@@ -41,13 +41,10 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const 
   // Extract a config that determines whether creating virtual hardware devices is allowed.
   // An application can allow an EP library to create virtual devices in two ways:
   //  1. Use an EP library registration name that ends in the suffix ".virtual". If so, ORT will automatically
-  //     set the config key "allow_virtual_devices.<EP_LIB_REGISTRATION_NAME>" to "1" in the environment.
-  //  2. Directly set the config key "allow_virtual_devices.<EP_LIB_REGISTRATION_NAME>" to "1" when creating the
+  //     set the config key "allow_virtual_devices" to "1" in the environment.
+  //  2. Directly set the config key "allow_virtual_devices" to "1" when creating the
   //     OrtEnv via OrtApi::CreateEnvWithOptions().
-  std::string config_key = kOrtEnv_AllowVirtualDevicesPrefix;
-  config_key += GetLowercaseString(registration_name);
-
-  const char* config_value = env_configs.GetValue(config_key.c_str());
+  const char* config_value = env_configs.GetValue(kOrtEnv_AllowVirtualDevices);
   const bool allow_virtual_devices = config_value != nullptr && strcmp(config_value, "1") == 0;
 
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<EpFactoryVirtualGpu>(*ort_api, *ep_api, *model_editor_api,

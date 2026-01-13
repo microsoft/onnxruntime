@@ -269,8 +269,11 @@ class Environment {
   // Application-specified environment configuration entries
   // The environment may add or remove an entry on EP library registration and unregistration, respectively.
   OrtKeyValuePairs config_entries_;
-
   mutable std::mutex config_entries_mutex_;  // Should be locked when accessing config_entries_
+
+  // Tracks the number of registered EP libraries that can create virtual devices.
+  // Only modified during library registration/unregistration.
+  int32_t num_virtual_ep_libraries_{};
 };
 
 }  // namespace onnxruntime

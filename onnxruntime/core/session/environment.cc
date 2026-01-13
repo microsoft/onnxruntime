@@ -252,7 +252,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
   logging_manager_ = std::move(logging_manager);
 
   if (config_entries != nullptr) {
-    config_entries_.CopyFromMap(config_entries->Entries());
+    config_entries_ = *config_entries;
   }
 
   // create thread pools
@@ -607,14 +607,17 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   std::vector<EpFactoryInternal*> internal_factories = {};
   std::unique_ptr<EpLibrary> ep_library;
 
-  // An application can allow an EP library to create virtual devices by using an EP library registration name that
-  // ends in the suffix ".virtual". If so, ORT automatically sets the config key
-  // "allow_virtual_devices.<EP_LIB_REGISTRATION_NAME>" to "1" in the environment.
+  // An application can allow EP libraries to create virtual devices by using an EP library registration name that
+  // ends in the suffix ".virtual". If so, ORT automatically sets the config key "allow_virtual_devices" to "1"
+  // in the environment. We track the number of libraries that use virtual devices to be able to remove
+  // "allow_virtual_devices" from the config entries when the last library is unregistered. In practice,
+  // we expect only one such library to be registered for cross-compilation.
   if (AreVirtualDevicesAllowed(registration_name)) {
-    std::string key = kOrtEnv_AllowVirtualDevicesPrefix;
-    key += utils::GetLowercaseString(registration_name);
+    if (num_virtual_ep_libraries_ == 0) {
+      InsertOrAssignConfigEntry(kOrtEnv_AllowVirtualDevices, "1");
+    }
 
-    InsertOrAssignConfigEntry(std::move(key), "1");
+    num_virtual_ep_libraries_ += 1;
   }
 
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
@@ -637,12 +640,13 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& regist
   ORT_TRY {
     auto ep_info = std::move(ep_libraries_[registration_name]);
 
-    // Clean up environment config entry that may have been added for this EP library.
+    // Clean up environment config entry that may have been added to enable virtual devices.
     if (AreVirtualDevicesAllowed(registration_name)) {
-      std::string key = kOrtEnv_AllowVirtualDevicesPrefix;
-      key += utils::GetLowercaseString(registration_name);
+      num_virtual_ep_libraries_ -= 1;
 
-      RemoveConfigEntry(key);
+      if (num_virtual_ep_libraries_ <= 0) {
+        RemoveConfigEntry(kOrtEnv_AllowVirtualDevices);
+      }
     }
 
     // remove from map and global list of OrtEpDevice* before unloading so we don't get a leftover entry if

@@ -1186,7 +1186,7 @@ struct Env : detail::Base<OrtEnv> {
       OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
 
   /// \brief Wraps OrtApi::CreateEnvWithOptions
-  Env(const OrtEnvCreationOptions* options);
+  explicit Env(const OrtEnvCreationOptions* options);
 
   /// \brief C Interop Helper
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
