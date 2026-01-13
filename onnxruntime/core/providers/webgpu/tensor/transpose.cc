@@ -10,6 +10,16 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
+namespace {
+bool AreSpansEqual(gsl::span<const size_t> a, gsl::span<const size_t> b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+
+  return std::equal(a.begin(), a.end(), b.begin());
+}
+}  // namespace
+
 namespace onnxruntime {
 namespace webgpu {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -132,7 +142,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
   // permutation equivalent to {0, 2, 3, 1}.
   //
   // TODO: Extend support to 2D and 3D transpositions.
-  if (permutations == AsSpan<const size_t>({0, 2, 3, 1})) {
+  if (AreSpansEqual(permutations, AsSpan<const size_t>({0, 2, 3, 1}))) {
     const uint32_t channel_output = onnxruntime::narrow<uint32_t>(input_shape[0]);
     const uint32_t channel_input = onnxruntime::narrow<uint32_t>(input_shape[1]);
     const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(input_shape[2]);
