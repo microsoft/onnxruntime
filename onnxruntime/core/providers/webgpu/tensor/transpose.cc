@@ -18,6 +18,20 @@ bool AreSpansEqual(gsl::span<const size_t> a, gsl::span<const size_t> b) {
 
   return std::equal(a.begin(), a.end(), b.begin());
 }
+
+auto SqueezeShape(const gsl::span<const int64_t>& shape,
+                  const gsl::span<const size_t>& adjusted_perm,
+                  onnxruntime::TensorShapeVector& new_shape,
+                  onnxruntime::TensorShapeVector& new_perm) {
+  for (size_t i = 0; i < shape.size(); ++i) {
+    if (shape[i] != 1) {
+      new_shape.push_back(shape[i]);
+    }
+    if (shape[adjusted_perm[i]] != 1) {
+      new_perm.push_back(adjusted_perm[i]);
+    }
+  }
+};
 }  // namespace
 
 namespace onnxruntime {
@@ -66,20 +80,6 @@ Status OIHW2OHWIProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(src, src));
 }
-
-auto SqueezeShape(const gsl::span<const int64_t>& shape,
-                  const gsl::span<const size_t>& adjusted_perm,
-                  TensorShapeVector& new_shape,
-                  TensorShapeVector& new_perm) {
-  for (size_t i = 0; i < shape.size(); ++i) {
-    if (shape[i] != 1) {
-      new_shape.push_back(shape[i]);
-    }
-    if (shape[adjusted_perm[i]] != 1) {
-      new_perm.push_back(adjusted_perm[i]);
-    }
-  }
-};
 
 Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
