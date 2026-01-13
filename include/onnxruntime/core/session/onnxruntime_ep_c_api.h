@@ -1411,9 +1411,10 @@ struct OrtEpApi {
 
   /** \brief Gets a new OrtKeyValuePairs instance containing a copy of all configuration entries set on the environment.
    *
-   * \note An application may provide configuration options for EP libraries by using keys with the
-   *       prefix 'ep.<ep_name>.'. For example, the key 'ep.my_ep.some_ep_key' represents a key named 'some_ep_key'
-   *       that is meant to be consumed by an EP named 'my_ep'.
+   * \note An application provides environment-level configuration options for execution provider libraries by
+   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
+   *       the specific execution provider's documentation for valid keys and values.
    *
    * \note Refer to onnxruntime_env_config_keys.h for common configuration entry keys and their supported values.
    *
