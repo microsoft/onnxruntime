@@ -1106,13 +1106,13 @@ typedef struct OrtEnvCreationOptions {
    * \note Refer to onnxruntime_env_config_keys.h for common config entry keys and their supported values.
    *
    * \note An application provides environment-level configuration options for execution provider libraries by
-   *       using keys with the prefix 'ep.<ep_name>.'. Ex: the key 'ep.my_ep.some_ep_key' represents a key named
-   *       'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to the specific
-   *       execution provider's documentation for valid keys and values.
+   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
+   *       the specific execution provider's documentation for valid keys and values.
    *
    * \note An application may separately set session-level configuration options for execution providers via other APIs
    *       such as SessionOptionsAppendExecutionProvider_V2, which store configuration entries within OrtSessionOptions.
-   *       If an environment-level configuration conflicts with a session-level configuration with the same key, then
+   *       If an environment-level configuration conflicts with a session-level configuration, then
    *       precedence is determined by the execution provider library itself.
    *
    * \since Version 1.24.
