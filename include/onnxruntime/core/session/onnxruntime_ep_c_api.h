@@ -1409,7 +1409,7 @@ struct OrtEpApi {
 
   ORT_CLASS_RELEASE(KernelImpl);
 
-  /** \brief Gets a new OrtKeyValuePairs instance containing all configuration entries set on the environment.
+  /** \brief Gets a new OrtKeyValuePairs instance containing a copy of all configuration entries set on the environment.
    *
    * \note An application may provide configuration options for EP libraries by using keys with the
    *       prefix 'ep.<ep_name>.'. For example, the key 'ep.my_ep.some_ep_key' represents a key named 'some_ep_key'
