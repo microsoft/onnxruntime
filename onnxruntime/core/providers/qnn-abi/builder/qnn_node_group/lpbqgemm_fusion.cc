@@ -21,7 +21,7 @@ namespace qnn {
 
 static Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                          const OrtNodeUnit& scale_dql_node_unit,
-                                         const OrtNodeUnit& w_ql_node_unit,
+                                         const OrtNodeUnit* w_ql_node_unit,
                                          const OrtNodeUnit& w_dql_node_unit,
                                          const OrtNodeUnit& act_dql_node_unit,
                                          const OrtNodeUnit& gemm_node_unit,
@@ -70,24 +70,45 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
                                                         w_dql_parent_types,
                                                         node_to_node_unit,
                                                         node_unit_to_qnn_node_group);
-  if (p_w_ql_node_unit == nullptr) {
-    return nullptr;
+  if (p_w_ql_node_unit != nullptr) {
+    // Check if input of QuantizeLinear is constant initializer
+    if (!qnn_model_wrapper.IsConstantInput(p_w_ql_node_unit->Inputs()[0].name)) {
+      return nullptr;
+    }
+  } else {
+    // Check if input of DequantizeLinear is constant initializer
+    if (!qnn_model_wrapper.IsConstantInput(p_w_dql_node_unit->Inputs()[0].name)) {
+      return nullptr;
+    }
   }
 
-  // Check if input of QuantizeLinear is constant initializer
-  if (!qnn_model_wrapper.IsConstantInput(p_w_ql_node_unit->Inputs()[0].name)) {
-    return nullptr;
-  }
-
-  // Get DequantizeLinear contains per-block int scales and per-channel float scales
-  const std::array<std::string_view, 1> w_ql_parent_types = {"DequantizeLinear"};
-  const OrtNodeUnit* p_scale_dql_node_unit = GetParentOfType(qnn_model_wrapper,
-                                                             *p_w_ql_node_unit,
-                                                             w_ql_parent_types,
-                                                             node_to_node_unit,
-                                                             node_unit_to_qnn_node_group);
-  if (p_scale_dql_node_unit == nullptr) {
-    return nullptr;
+  const OrtNodeUnit* p_scale_dql_node_unit = nullptr;
+  if (p_w_ql_node_unit != nullptr) {
+    const std::array<std::string_view, 1> w_ql_parent_types = {"DequantizeLinear"};
+    p_scale_dql_node_unit = GetParentOfType(qnn_model_wrapper,
+                                            *p_w_ql_node_unit,
+                                            w_ql_parent_types,
+                                            node_to_node_unit,
+                                            node_unit_to_qnn_node_group);
+    if (p_scale_dql_node_unit == nullptr) {
+      return nullptr;
+    }
+  } else {
+    // Get DequantizeLinear contains per-block int scales and per-channel float scales
+    // DequantizeLinear connects to scale (input 1) of DequantizeLinear node
+    const auto& w_dql_input_0 = p_w_dql_node_unit->Inputs()[0];
+    if (!w_dql_input_0.quant_param.has_value() || w_dql_input_0.quant_param->scale == nullptr) {
+      return nullptr;
+    }
+    const std::string& scale_name = Ort::ConstValueInfo(w_dql_input_0.quant_param->scale).GetName();
+    p_scale_dql_node_unit = GetParentOfInputByName(qnn_model_wrapper,
+                                                   *p_w_dql_node_unit,
+                                                   scale_name,
+                                                   node_to_node_unit,
+                                                   node_unit_to_qnn_node_group);
+    if (p_scale_dql_node_unit == nullptr || p_scale_dql_node_unit->OpType() != "DequantizeLinear") {
+      return nullptr;
+    }
   }
 
   TensorInfo pc_scales_tensor_info = {};
@@ -112,7 +133,7 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
 
   if (!CreateOrValidateOnQnn(qnn_model_wrapper,
                              *p_scale_dql_node_unit,
-                             *p_w_ql_node_unit,
+                             p_w_ql_node_unit,
                              *p_w_dql_node_unit,
                              *p_act_dql_node_unit,
                              gemm_node_unit,
@@ -124,7 +145,7 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
   }
 
   return std::make_unique<LowPowerBlockQuantizedGemmFusion>(*p_scale_dql_node_unit,
-                                                            *p_w_ql_node_unit,
+                                                            p_w_ql_node_unit,
                                                             *p_w_dql_node_unit,
                                                             *p_act_dql_node_unit,
                                                             gemm_node_unit,
@@ -132,31 +153,38 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedGemmFusion::TryFusion(
 }
 
 LowPowerBlockQuantizedGemmFusion::LowPowerBlockQuantizedGemmFusion(const OrtNodeUnit& Scale_DQL_node_unit,
-                                                                   const OrtNodeUnit& W_QL_node_unit,
+                                                                   const OrtNodeUnit* W_QL_node_unit,
                                                                    const OrtNodeUnit& W_DQL_node_unit,
                                                                    const OrtNodeUnit& Act_DQL_node_unit,
                                                                    const OrtNodeUnit& Gemm_node_unit,
                                                                    const OrtNodeUnit& Output_QL_node_unit)
     : node_units_{&Scale_DQL_node_unit,
-                  &W_QL_node_unit,
+                  W_QL_node_unit,
                   &W_DQL_node_unit,
                   &Act_DQL_node_unit,
                   &Gemm_node_unit,
                   &Output_QL_node_unit} {
+  // Populate filtered_node_units_ immediately
+  for (size_t i = 0; i < node_units_.size(); ++i) {
+    if (node_units_[i] != nullptr) {
+      filtered_node_units_.push_back(node_units_[i]);
+    }
+  }
 }
 
 Ort::Status LowPowerBlockQuantizedGemmFusion::IsSupported(QnnModelWrapper& qmw, const Ort::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], *node_units_[2], *node_units_[3], *node_units_[4], *node_units_[5], logger, true);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], node_units_[1], *node_units_[2], *node_units_[3], *node_units_[4], *node_units_[5], logger, true);
 }
 
 Ort::Status LowPowerBlockQuantizedGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw, const Ort::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], *node_units_[2], *node_units_[3], *node_units_[4], *node_units_[5], logger, false);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], node_units_[1], *node_units_[2], *node_units_[3], *node_units_[4], *node_units_[5], logger, false);
 }
 
 gsl::span<const OrtNodeUnit* const> LowPowerBlockQuantizedGemmFusion::GetNodeUnits() const {
-  return node_units_;
+  return gsl::make_span(filtered_node_units_);
+  ;
 }
 
 const OrtNodeUnit* LowPowerBlockQuantizedGemmFusion::GetTargetNodeUnit() const {
@@ -184,7 +212,7 @@ Ort::Status UnpackWeightTensorData(const QnnModelWrapper& qnn_model_wrapper,
 
 Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                   const OrtNodeUnit& scale_dql_node_unit,
-                                  const OrtNodeUnit& w_ql_node_unit,
+                                  const OrtNodeUnit* p_w_ql_node_unit,
                                   const OrtNodeUnit& w_dql_node_unit,
                                   const OrtNodeUnit& act_dql_node_unit,
                                   const OrtNodeUnit& gemm_node_unit,
@@ -192,7 +220,6 @@ Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                   const Ort::Logger& logger,
                                   bool validate) {
   assert(scale_dql_node_unit.OpType() == "DequantizeLinear" &&
-         w_ql_node_unit.OpType() == "QuantizeLinear" &&
          w_dql_node_unit.OpType() == "DequantizeLinear" &&
          act_dql_node_unit.OpType() == "DequantizeLinear" &&
          gemm_node_unit.OpType() == "Gemm" &&
@@ -200,7 +227,6 @@ Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   const auto& node_name = utils::GetUniqueName(gemm_node_unit);
   const OrtNodeUnitIODef& act_dql_input_1_def = act_dql_node_unit.Inputs()[0];
   const OrtNodeUnitIODef& w_dql_input_1_def = w_dql_node_unit.Inputs()[0];
-  const OrtNodeUnitIODef& w_ql_input_1_def = w_ql_node_unit.Inputs()[0];
   const OrtNodeUnitIODef& output_def = output_ql_node_unit.Outputs()[0];
 
   // prepare input tensor
@@ -232,28 +258,24 @@ Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                     Ort::ConstValueInfo(per_block_int_scale_info).TypeInfo().GetTensorTypeAndShapeInfo().GetShape(),
                     block_scales_shape),
                 "Failed to get block_scales shape");
-  // Get attributes like axis, block_size from QuantizeLinear
+
+  // Get attributes like axis from DequantizeLinear
   OrtNodeAttrHelper scales_node_helper(scale_dql_node_unit.GetNode());
   auto block_scales_axis = scales_node_helper.Get("axis", static_cast<int64_t>(0));
 
   bool is_int4_type = false;
-  if (w_dql_input_1_def.quant_param->zero_point != nullptr) {
+  if (w_dql_input_1_def.quant_param.has_value() && w_dql_input_1_def.quant_param->zero_point != nullptr) {
     ONNXTensorElementDataType elem_data_type;
     RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(w_dql_input_1_def.quant_param->zero_point, elem_data_type));
     is_int4_type = (elem_data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) ||
                    (elem_data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
   }
 
-  std::string weight_tensor_name = w_ql_input_1_def.name;
-  const OrtValueInfo* weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
   std::vector<uint32_t> weight_shape;
-  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(
-                    Ort::ConstValueInfo(weight_tensor_proto).TypeInfo().GetTensorTypeAndShapeInfo().GetShape(),
-                    weight_shape),
-                "Failed to get weight shape");
+  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(w_dql_input_1_def.shape, weight_shape), "Failed to get weight shape");
 
-  // Get attributes like axis, block_size from QuantizeLinear
-  OrtNodeAttrHelper helper(w_ql_node_unit.GetNode());
+  // Get attributes like axis, block_size from DequantizeLinear
+  OrtNodeAttrHelper helper(w_dql_node_unit.GetNode());
   auto input_channel_axis = helper.Get("axis", static_cast<int64_t>(0));
   if (input_channel_axis < 0) {
     input_channel_axis = weight_shape.size() + input_channel_axis;
@@ -263,34 +285,51 @@ Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   size_t output_channel_axis = 0;  // Current LowPowerBlockQuantize() support output_channel_axis at index=0;
   weight_qparams = QnnQuantParamsWrapper(per_channel_float_scale, per_block_int_scale, weight_offset, output_channel_axis, block_size, is_int4_type);
 
-  std::vector<uint8_t> unpacked_tensor;
   Qnn_DataType_t weight_data_type = is_int4_type ? QNN_DATATYPE_SFIXED_POINT_4 : QNN_DATATYPE_SFIXED_POINT_8;
-  RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor, logger, validate));
+  QnnTensorWrapper weight_tensor;
+  std::string weight_tensor_name;
+  if (p_w_ql_node_unit != nullptr) {
+    std::vector<uint8_t> unpacked_tensor;
+    const OrtNodeUnitIODef& w_ql_input_1_def = p_w_ql_node_unit->Inputs()[0];
+    weight_tensor_name = w_ql_input_1_def.name;
+    const OrtValueInfo* weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
+    RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor, logger, validate));
 
-  // Quantize weight tensor
-  size_t weight_elements = unpacked_tensor.size() / sizeof(float);
-  auto float_data = gsl::make_span<const float>(reinterpret_cast<const float*>(unpacked_tensor.data()), weight_elements);
-  std::vector<uint8_t> quant_data(weight_elements);
+    // Quantize weight tensor
+    size_t weight_elements = unpacked_tensor.size() / sizeof(float);
+    auto float_data = gsl::make_span<const float>(reinterpret_cast<const float*>(unpacked_tensor.data()), weight_elements);
+    std::vector<uint8_t> quant_data(weight_elements);
 
-  // scale = per_channel_float_scale * per_block_int_scale
-  // weight_data_type = 4 but store in int8 buffer
-  RETURN_IF_ERROR(qnn::utils::LowPowerBlockQuantizeData(float_data,
-                                                        weight_shape,
-                                                        per_channel_float_scale,
-                                                        per_block_int_scale,
-                                                        weight_offset,
-                                                        quant_data,
-                                                        weight_data_type,
-                                                        output_channel_axis,
-                                                        block_scales_axis,
-                                                        block_size,
-                                                        block_scales_shape));
+    // scale = per_channel_float_scale * per_block_int_scale
+    // weight_data_type = 4 but store in int8 buffer
+    RETURN_IF_ERROR(qnn::utils::LowPowerBlockQuantizeData(float_data,
+                                                          weight_shape,
+                                                          per_channel_float_scale,
+                                                          per_block_int_scale,
+                                                          weight_offset,
+                                                          quant_data,
+                                                          weight_data_type,
+                                                          output_channel_axis,
+                                                          block_scales_axis,
+                                                          block_size,
+                                                          block_scales_shape));
 
-  // Get weight tensor type from input of w_dql_tensor or output_dql_tensor
-  Qnn_TensorType_t weight_tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
-  QnnTensorWrapper weight_tensor(weight_tensor_name, weight_tensor_type, QNN_DATATYPE_SFIXED_POINT_8,
-                                 std::move(weight_qparams), std::move(weight_shape),
-                                 std::move(quant_data));
+    Qnn_TensorType_t weight_tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
+    weight_tensor = QnnTensorWrapper(weight_tensor_name, weight_tensor_type, QNN_DATATYPE_SFIXED_POINT_8,
+                                     std::move(weight_qparams), std::move(weight_shape),
+                                     std::move(quant_data));
+  } else {
+    std::vector<uint8_t> unpacked_tensor;
+    weight_tensor_name = w_dql_input_1_def.name;
+    const OrtValueInfo* weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
+    RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor, logger, validate));
+
+    // Get weight tensor type from input of w_dql_tensor or output_dql_tensor
+    Qnn_TensorType_t weight_tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
+    weight_tensor = QnnTensorWrapper(weight_tensor_name, weight_tensor_type, QNN_DATATYPE_SFIXED_POINT_8,
+                                     std::move(weight_qparams), std::move(weight_shape),
+                                     std::move(unpacked_tensor));
+  }
 
   // Prepare Bias tensor;
   // Bias tensor is in FP32 and need to quantize to datatype of input 0 of Gemm
