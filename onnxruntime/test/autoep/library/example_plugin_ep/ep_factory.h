@@ -81,7 +81,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       OrtEpFactory* this_ptr,
       const OrtHardwareDevice* hw,
       OrtDeviceEpIncompatibilityDetails* details) noexcept;
-  
+
   static OrtStatus* ORT_API_CALL GetNumCustomOpDomainsImpl(OrtEpFactory* this_ptr,
                                                            _Out_ size_t* num_domains) noexcept;
 

@@ -101,7 +101,7 @@ class EpFactoryInternalImpl {
     // Default implementation: leave details unchanged (device assumed compatible)
     return nullptr;
   }
-  
+
   virtual OrtStatus* GetNumCustomOpDomains(_Out_ size_t* num_domains) const noexcept {
     *num_domains = 0;
     return nullptr;
