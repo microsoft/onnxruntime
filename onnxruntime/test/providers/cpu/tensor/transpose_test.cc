@@ -156,26 +156,27 @@ TEST(TransposeOpTest, TwoDim_Odd_UInt4) {
 
 // Test Int2 transpose with inner dimension % 4 == 0
 TEST(TransposeOpTest, TwoDim_Int2_Mod4_0) {
-  constexpr int8_t unused_val = 0;
-  // Shape (3, 4): 12 elements, 3 bytes needed
+  // Shape (3, 4): 12 elements, 3 bytes needed, no padding
   std::vector<int64_t> input_shape({3, 4});
-  // Input layout (row-major):
-  // Row 0: 1, -2, 1, 0
-  // Row 1: -1, 1, 0, -2
-  // Row 2: 0, 1, -1, -2
-  std::vector<Int2x4> input_vals = {Int2x4(1, -2, 1, 0), Int2x4(-1, 1, 0, -2), Int2x4(0, 1, -1, -2)};
+  // Input layout (row-major flattened):
+  // Row 0: 1, -1, -2, 1
+  // Row 1: -2, 1, -1, -2
+  // Row 2: 1, -1, 1, -2
+  // Flattened: [1, -1, -2, 1, -2, 1, -1, -2, 1, -1, 1, -2]
+  std::vector<Int2x4> input_vals = {Int2x4(1, -1, -2, 1), Int2x4(-2, 1, -1, -2), Int2x4(1, -1, 1, -2)};
 
   std::vector<int64_t> perm = {1, 0};
   // Transposed shape (4, 3): 12 elements, 3 bytes needed
-  // Transposed layout (column becomes row):
-  // Row 0: 1, -1, 0
-  // Row 1: -2, 1, 1
-  // Row 2: 1, 0, -1
-  // Row 3: 0, -2, -2
+  // Transposed layout:
+  // Row 0: 1, -2, 1
+  // Row 1: -1, 1, -1
+  // Row 2: -2, -1, 1
+  // Row 3: 1, -2, -2
+  // Flattened: [1, -2, 1, -1, 1, -1, -2, -1, 1, 1, -2, -2]
   std::vector<int64_t> expected_shape({4, 3});
-  std::vector<Int2x4> expected_vals = {Int2x4(1, -1, 0, -2), Int2x4(1, 1, 1, 0), Int2x4(-1, 0, -2, -2)};
+  std::vector<Int2x4> expected_vals = {Int2x4(1, -2, 1, -1), Int2x4(1, -1, -2, -1), Int2x4(1, 1, -2, -2)};
 
-  OpTester test("Transpose", 21);
+  OpTester test("Transpose", 25);
   test.AddAttribute("perm", perm);
   test.AddInput<Int2x4>("X", input_shape, input_vals);
   test.AddOutput<Int2x4>("Y", expected_shape, expected_vals);
@@ -185,30 +186,30 @@ TEST(TransposeOpTest, TwoDim_Int2_Mod4_0) {
 
 // Test Int2 transpose with inner dimension % 4 == 1
 TEST(TransposeOpTest, TwoDim_Int2_Mod4_1) {
-  constexpr int8_t unused_val = 0;
-  // Shape (4, 5): 20 elements, 5 bytes needed
-  std::vector<int64_t> input_shape({4, 5});
-  // Input layout (row-major):
-  // Row 0: 1, 0, -1, -2, 1
-  // Row 1: 0, 1, -2, -1, 0
-  // Row 2: -1, -2, 1, 0, -1
-  // Row 3: -2, 1, 0, 1, -2
-  std::vector<Int2x4> input_vals = {Int2x4(1, 0, -1, -2), Int2x4(1, 0), Int2x4(1, -2, -1, 0),
-                                    Int2x4(-1, -2, 1, 0), Int2x4(-1, -2), Int2x4(1, 0, 1, -2)};
+  // Shape (3, 5): 15 elements, 4 bytes needed, 1 padding
+  std::vector<int64_t> input_shape({3, 5});
+  // Input layout (row-major flattened):
+  // Row 0: 1, -1, -2, 1, -1
+  // Row 1: -2, 1, -1, -2, 1
+  // Row 2: -1, -2, 1, -1, -2
+  // Flattened: [1, -1, -2, 1, -1, -2, 1, -1, -2, 1, -1, -2, 1, -1, -2, 0(pad)]
+  std::vector<Int2x4> input_vals = {Int2x4(1, -1, -2, 1), Int2x4(-1, -2, 1, -1),
+                                    Int2x4(-2, 1, -1, -2), Int2x4(1, -1, -2, 0)};
 
   std::vector<int64_t> perm = {1, 0};
-  // Transposed shape (5, 4): 20 elements, 5 bytes needed
+  // Transposed shape (5, 3): 15 elements, 4 bytes needed
   // Transposed layout:
-  // Row 0: 1, 0, -1, -2
-  // Row 1: 0, 1, -2, 1
-  // Row 2: -1, -2, 1, 0
-  // Row 3: -2, -1, 0, 1
-  // Row 4: 1, 0, -1, -2
-  std::vector<int64_t> expected_shape({5, 4});
-  std::vector<Int2x4> expected_vals = {Int2x4(1, 0, -1, -2), Int2x4(0, 1, -2, 1), Int2x4(-1, -2, 1, 0),
-                                       Int2x4(-2, -1, 0, 1), Int2x4(1, 0, -1, -2)};
+  // Row 0: 1, -2, -1
+  // Row 1: -1, 1, -2
+  // Row 2: -2, -1, 1
+  // Row 3: 1, -2, -1
+  // Row 4: -1, 1, -2
+  // Flattened: [1, -2, -1, -1, 1, -2, -2, -1, 1, 1, -2, -1, -1, 1, -2, 0(pad)]
+  std::vector<int64_t> expected_shape({5, 3});
+  std::vector<Int2x4> expected_vals = {Int2x4(1, -2, -1, -1), Int2x4(1, -2, -2, -1),
+                                       Int2x4(1, 1, -2, -1), Int2x4(-1, 1, -2, 0)};
 
-  OpTester test("Transpose", 21);
+  OpTester test("Transpose", 25);
   test.AddAttribute("perm", perm);
   test.AddInput<Int2x4>("X", input_shape, input_vals);
   test.AddOutput<Int2x4>("Y", expected_shape, expected_vals);
@@ -218,32 +219,33 @@ TEST(TransposeOpTest, TwoDim_Int2_Mod4_1) {
 
 // Test Int2 transpose with inner dimension % 4 == 2
 TEST(TransposeOpTest, TwoDim_Int2_Mod4_2) {
-  constexpr int8_t unused_val = 0;
-  // Shape (3, 6): 18 elements, 5 bytes needed (ceil(18/4) = 5)
+  // Shape (3, 6): 18 elements, 5 bytes needed, 2 padding
   std::vector<int64_t> input_shape({3, 6});
-  // Input layout (row-major):
-  // Row 0: 1, 0, -1, -2, 1, 0
-  // Row 1: -1, 1, 0, -2, -1, 1
-  // Row 2: 0, -2, 1, -1, 0, -2
-  std::vector<Int2x4> input_vals = {Int2x4(1, 0, -1, -2), Int2x4(1, 0, -1, 1),
-                                    Int2x4(0, -2, -1, 1), Int2x4(0, -2, 1, -1),
-                                    Int2x4(0, -2, unused_val, unused_val)};
+  // Input layout (row-major flattened):
+  // Row 0: 1, -1, -2, 1, -1, -2
+  // Row 1: 1, -2, -1, 1, -2, -1
+  // Row 2: -1, 1, -2, -1, 1, -2
+  // Flattened: [1, -1, -2, 1, -1, -2, 1, -2, -1, 1, -2, -1, -1, 1, -2, -1, 1, -2, 0(pad), 0(pad)]
+  std::vector<Int2x4> input_vals = {Int2x4(1, -1, -2, 1), Int2x4(-1, -2, 1, -2),
+                                    Int2x4(-1, 1, -2, -1), Int2x4(-1, 1, -2, -1),
+                                    Int2x4(1, -2, 0, 0)};
 
   std::vector<int64_t> perm = {1, 0};
   // Transposed shape (6, 3): 18 elements, 5 bytes needed
   // Transposed layout:
-  // Row 0: 1, -1, 0
-  // Row 1: 0, 1, -2
-  // Row 2: -1, 0, 1
-  // Row 3: -2, -2, -1
-  // Row 4: 1, -1, 0
-  // Row 5: 0, 1, -2
+  // Row 0: 1, 1, -1
+  // Row 1: -1, -2, 1
+  // Row 2: -2, -1, -2
+  // Row 3: 1, 1, -1
+  // Row 4: -1, -2, 1
+  // Row 5: -2, -1, -2
+  // Flattened: [1, 1, -1, -1, -2, 1, -2, -1, -2, 1, 1, -1, -1, -2, 1, -2, -1, -2, 0(pad), 0(pad)]
   std::vector<int64_t> expected_shape({6, 3});
-  std::vector<Int2x4> expected_vals = {Int2x4(1, -1, 0, 0), Int2x4(1, -2, -1, 0),
-                                       Int2x4(1, -2, -2, -1), Int2x4(1, -1, 0, 0),
-                                       Int2x4(1, -2, unused_val, unused_val)};
+  std::vector<Int2x4> expected_vals = {Int2x4(1, 1, -1, -1), Int2x4(-2, 1, -2, -1),
+                                       Int2x4(-2, 1, 1, -1), Int2x4(-1, -2, 1, -2),
+                                       Int2x4(-1, -2, 0, 0)};
 
-  OpTester test("Transpose", 21);
+  OpTester test("Transpose", 25);
   test.AddAttribute("perm", perm);
   test.AddInput<Int2x4>("X", input_shape, input_vals);
   test.AddOutput<Int2x4>("Y", expected_shape, expected_vals);
@@ -253,26 +255,34 @@ TEST(TransposeOpTest, TwoDim_Int2_Mod4_2) {
 
 // Test Int2 transpose with inner dimension % 4 == 3
 TEST(TransposeOpTest, TwoDim_Int2_Mod4_3) {
-  constexpr int8_t unused_val = 0;
-  // Shape (4, 3): 12 elements, 3 bytes needed
-  std::vector<int64_t> input_shape({4, 3});
-  // Input layout (row-major):
-  // Row 0: 1, 0, -1
-  // Row 1: -2, 1, 0
-  // Row 2: -1, -2, 1
-  // Row 3: 0, -1, -2
-  std::vector<Int2x4> input_vals = {Int2x4(1, 0, -1, -2), Int2x4(1, 0, -1, -2), Int2x4(1, 0, -1, -2)};
+  // Shape (3, 7): 21 elements, 6 bytes needed, 3 padding
+  std::vector<int64_t> input_shape({3, 7});
+  // Input layout (row-major flattened):
+  // Row 0: 1, -1, -2, 1, -1, -2, 1
+  // Row 1: -2, 1, -1, -2, 1, -1, -2
+  // Row 2: 1, -2, 1, -1, -2, 1, -1
+  // Flattened: [1, -1, -2, 1, -1, -2, 1, -2, 1, -1, -2, 1, -1, -2, 1, -2, 1, -1, -2, 1, -1, 0, 0, 0]
+  std::vector<Int2x4> input_vals = {Int2x4(1, -1, -2, 1), Int2x4(-1, -2, 1, -2),
+                                    Int2x4(1, -1, -2, 1), Int2x4(-1, -2, 1, -2),
+                                    Int2x4(1, -1, -2, 1), Int2x4(-1, 0, 0, 0)};
 
   std::vector<int64_t> perm = {1, 0};
-  // Transposed shape (3, 4): 12 elements, 3 bytes needed
+  // Transposed shape (7, 3): 21 elements, 6 bytes needed
   // Transposed layout:
-  // Row 0: 1, -2, -1, 0
-  // Row 1: 0, 1, -2, -1
-  // Row 2: -1, 0, 1, -2
-  std::vector<int64_t> expected_shape({3, 4});
-  std::vector<Int2x4> expected_vals = {Int2x4(1, -2, -1, 0), Int2x4(0, 1, -2, -1), Int2x4(-1, 0, 1, -2)};
+  // Row 0: 1, -2, 1
+  // Row 1: -1, 1, -2
+  // Row 2: -2, -1, 1
+  // Row 3: 1, -2, -1
+  // Row 4: -1, 1, -2
+  // Row 5: -2, -1, 1
+  // Row 6: 1, -2, -1
+  // Flattened: [1, -2, 1, -1, 1, -2, -2, -1, 1, 1, -2, -1, -1, 1, -2, -2, -1, 1, 1, -2, -1, 0, 0, 0]
+  std::vector<int64_t> expected_shape({7, 3});
+  std::vector<Int2x4> expected_vals = {Int2x4(1, -2, 1, -1), Int2x4(1, -2, -2, -1),
+                                       Int2x4(1, 1, -2, -1), Int2x4(-1, 1, -2, -2),
+                                       Int2x4(-1, 1, 1, -2), Int2x4(-1, 0, 0, 0)};
 
-  OpTester test("Transpose", 21);
+  OpTester test("Transpose", 25);
   test.AddAttribute("perm", perm);
   test.AddInput<Int2x4>("X", input_shape, input_vals);
   test.AddOutput<Int2x4>("Y", expected_shape, expected_vals);
@@ -282,26 +292,27 @@ TEST(TransposeOpTest, TwoDim_Int2_Mod4_3) {
 
 // Test UInt2 transpose with inner dimension % 4 == 0
 TEST(TransposeOpTest, TwoDim_UInt2_Mod4_0) {
-  constexpr uint8_t unused_val = 0;
-  // Shape (3, 4): 12 elements, 3 bytes needed
+  // Shape (3, 4): 12 elements, 3 bytes needed, no padding
   std::vector<int64_t> input_shape({3, 4});
-  // Input layout (row-major):
-  // Row 0: 0, 1, 2, 3
-  // Row 1: 3, 2, 1, 0
-  // Row 2: 1, 3, 0, 2
-  std::vector<UInt2x4> input_vals = {UInt2x4(0, 1, 2, 3), UInt2x4(3, 2, 1, 0), UInt2x4(1, 3, 0, 2)};
+  // Input layout (row-major flattened):
+  // Row 0: 1, 2, 3, 1
+  // Row 1: 2, 3, 1, 2
+  // Row 2: 3, 1, 2, 3
+  // Flattened: [1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3]
+  std::vector<UInt2x4> input_vals = {UInt2x4(1, 2, 3, 1), UInt2x4(2, 3, 1, 2), UInt2x4(3, 1, 2, 3)};
 
   std::vector<int64_t> perm = {1, 0};
   // Transposed shape (4, 3): 12 elements, 3 bytes needed
   // Transposed layout:
-  // Row 0: 0, 3, 1
-  // Row 1: 1, 2, 3
-  // Row 2: 2, 1, 0
-  // Row 3: 3, 0, 2
+  // Row 0: 1, 2, 3
+  // Row 1: 2, 3, 1
+  // Row 2: 3, 1, 2
+  // Row 3: 1, 2, 3
+  // Flattened: [1, 2, 3, 2, 3, 1, 3, 1, 2, 1, 2, 3]
   std::vector<int64_t> expected_shape({4, 3});
-  std::vector<UInt2x4> expected_vals = {UInt2x4(0, 3, 1, 1), UInt2x4(2, 3, 2, 1), UInt2x4(0, 3, 0, 2)};
+  std::vector<UInt2x4> expected_vals = {UInt2x4(1, 2, 3, 2), UInt2x4(3, 1, 3, 1), UInt2x4(2, 1, 2, 3)};
 
-  OpTester test("Transpose", 21);
+  OpTester test("Transpose", 25);
   test.AddAttribute("perm", perm);
   test.AddInput<UInt2x4>("X", input_shape, input_vals);
   test.AddOutput<UInt2x4>("Y", expected_shape, expected_vals);
@@ -311,30 +322,30 @@ TEST(TransposeOpTest, TwoDim_UInt2_Mod4_0) {
 
 // Test UInt2 transpose with inner dimension % 4 == 1
 TEST(TransposeOpTest, TwoDim_UInt2_Mod4_1) {
-  constexpr uint8_t unused_val = 0;
-  // Shape (4, 5): 20 elements, 5 bytes needed
-  std::vector<int64_t> input_shape({4, 5});
-  // Input layout (row-major):
-  // Row 0: 0, 1, 2, 3, 0
-  // Row 1: 1, 2, 3, 0, 1
-  // Row 2: 2, 3, 0, 1, 2
-  // Row 3: 3, 0, 1, 2, 3
-  std::vector<UInt2x4> input_vals = {UInt2x4(0, 1, 2, 3), UInt2x4(0, 1), UInt2x4(2, 3, 0, 1),
-                                     UInt2x4(2, 3, 0, 1), UInt2x4(2, 3), UInt2x4(0, 1, 2, 3)};
+  // Shape (3, 5): 15 elements, 4 bytes needed, 1 padding
+  std::vector<int64_t> input_shape({3, 5});
+  // Input layout (row-major flattened):
+  // Row 0: 1, 2, 3, 1, 2
+  // Row 1: 3, 1, 2, 3, 1
+  // Row 2: 2, 3, 1, 2, 3
+  // Flattened: [1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 0(pad)]
+  std::vector<UInt2x4> input_vals = {UInt2x4(1, 2, 3, 1), UInt2x4(2, 3, 1, 2),
+                                     UInt2x4(3, 1, 2, 3), UInt2x4(1, 2, 3, 0)};
 
   std::vector<int64_t> perm = {1, 0};
-  // Transposed shape (5, 4): 20 elements, 5 bytes needed
+  // Transposed shape (5, 3): 15 elements, 4 bytes needed
   // Transposed layout:
-  // Row 0: 0, 1, 2, 3
-  // Row 1: 1, 2, 3, 0
-  // Row 2: 2, 3, 0, 1
-  // Row 3: 3, 0, 1, 2
-  // Row 4: 0, 1, 2, 3
-  std::vector<int64_t> expected_shape({5, 4});
-  std::vector<UInt2x4> expected_vals = {UInt2x4(0, 1, 2, 3), UInt2x4(1, 2, 3, 0), UInt2x4(2, 3, 0, 1),
-                                        UInt2x4(3, 0, 1, 2), UInt2x4(0, 1, 2, 3)};
+  // Row 0: 1, 3, 2
+  // Row 1: 2, 1, 3
+  // Row 2: 3, 2, 1
+  // Row 3: 1, 3, 2
+  // Row 4: 2, 1, 3
+  // Flattened: [1, 3, 2, 2, 1, 3, 3, 2, 1, 1, 3, 2, 2, 1, 3, 0(pad)]
+  std::vector<int64_t> expected_shape({5, 3});
+  std::vector<UInt2x4> expected_vals = {UInt2x4(1, 3, 2, 2), UInt2x4(1, 3, 3, 2),
+                                        UInt2x4(1, 1, 3, 2), UInt2x4(2, 1, 3, 0)};
 
-  OpTester test("Transpose", 21);
+  OpTester test("Transpose", 25);
   test.AddAttribute("perm", perm);
   test.AddInput<UInt2x4>("X", input_shape, input_vals);
   test.AddOutput<UInt2x4>("Y", expected_shape, expected_vals);
@@ -344,32 +355,33 @@ TEST(TransposeOpTest, TwoDim_UInt2_Mod4_1) {
 
 // Test UInt2 transpose with inner dimension % 4 == 2
 TEST(TransposeOpTest, TwoDim_UInt2_Mod4_2) {
-  constexpr uint8_t unused_val = 0;
-  // Shape (3, 6): 18 elements, 5 bytes needed
+  // Shape (3, 6): 18 elements, 5 bytes needed, 2 padding
   std::vector<int64_t> input_shape({3, 6});
-  // Input layout (row-major):
-  // Row 0: 0, 1, 2, 3, 0, 1
-  // Row 1: 2, 3, 0, 1, 2, 3
-  // Row 2: 1, 0, 3, 2, 1, 0
-  std::vector<UInt2x4> input_vals = {UInt2x4(0, 1, 2, 3), UInt2x4(0, 1, 2, 3),
-                                     UInt2x4(0, 1, 2, 3), UInt2x4(1, 0, 3, 2),
-                                     UInt2x4(1, 0, unused_val, unused_val)};
+  // Input layout (row-major flattened):
+  // Row 0: 1, 2, 3, 1, 2, 3
+  // Row 1: 2, 3, 1, 2, 3, 1
+  // Row 2: 3, 1, 2, 3, 1, 2
+  // Flattened: [1, 2, 3, 1, 2, 3, 2, 3, 1, 2, 3, 1, 3, 1, 2, 3, 1, 2, 0(pad), 0(pad)]
+  std::vector<UInt2x4> input_vals = {UInt2x4(1, 2, 3, 1), UInt2x4(2, 3, 2, 3),
+                                     UInt2x4(1, 2, 3, 1), UInt2x4(3, 1, 2, 3),
+                                     UInt2x4(1, 2, 0, 0)};
 
   std::vector<int64_t> perm = {1, 0};
   // Transposed shape (6, 3): 18 elements, 5 bytes needed
   // Transposed layout:
-  // Row 0: 0, 2, 1
-  // Row 1: 1, 3, 0
-  // Row 2: 2, 0, 3
-  // Row 3: 3, 1, 2
-  // Row 4: 0, 2, 1
-  // Row 5: 1, 3, 0
+  // Row 0: 1, 2, 3
+  // Row 1: 2, 3, 1
+  // Row 2: 3, 1, 2
+  // Row 3: 1, 2, 3
+  // Row 4: 2, 3, 1
+  // Row 5: 3, 1, 2
+  // Flattened: [1, 2, 3, 2, 3, 1, 3, 1, 2, 1, 2, 3, 2, 3, 1, 3, 1, 2, 0(pad), 0(pad)]
   std::vector<int64_t> expected_shape({6, 3});
-  std::vector<UInt2x4> expected_vals = {UInt2x4(0, 2, 1, 1), UInt2x4(3, 0, 2, 0),
-                                        UInt2x4(3, 3, 1, 2), UInt2x4(0, 2, 1, 1),
-                                        UInt2x4(3, 0, unused_val, unused_val)};
+  std::vector<UInt2x4> expected_vals = {UInt2x4(1, 2, 3, 2), UInt2x4(3, 1, 3, 1),
+                                        UInt2x4(2, 1, 2, 3), UInt2x4(2, 3, 1, 3),
+                                        UInt2x4(1, 2, 0, 0)};
 
-  OpTester test("Transpose", 21);
+  OpTester test("Transpose", 25);
   test.AddAttribute("perm", perm);
   test.AddInput<UInt2x4>("X", input_shape, input_vals);
   test.AddOutput<UInt2x4>("Y", expected_shape, expected_vals);
@@ -379,26 +391,34 @@ TEST(TransposeOpTest, TwoDim_UInt2_Mod4_2) {
 
 // Test UInt2 transpose with inner dimension % 4 == 3
 TEST(TransposeOpTest, TwoDim_UInt2_Mod4_3) {
-  constexpr uint8_t unused_val = 0;
-  // Shape (4, 3): 12 elements, 3 bytes needed
-  std::vector<int64_t> input_shape({4, 3});
-  // Input layout (row-major):
-  // Row 0: 0, 1, 2
-  // Row 1: 3, 0, 1
-  // Row 2: 2, 3, 0
-  // Row 3: 1, 2, 3
-  std::vector<UInt2x4> input_vals = {UInt2x4(0, 1, 2, 3), UInt2x4(0, 1, 2, 3), UInt2x4(0, 1, 2, 3)};
+  // Shape (3, 7): 21 elements, 6 bytes needed, 3 padding
+  std::vector<int64_t> input_shape({3, 7});
+  // Input layout (row-major flattened):
+  // Row 0: 1, 2, 3, 1, 2, 3, 1
+  // Row 1: 2, 3, 1, 2, 3, 1, 2
+  // Row 2: 3, 1, 2, 3, 1, 2, 3
+  // Flattened: [1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 0, 0, 0]
+  std::vector<UInt2x4> input_vals = {UInt2x4(1, 2, 3, 1), UInt2x4(2, 3, 1, 2),
+                                     UInt2x4(3, 1, 2, 3), UInt2x4(1, 2, 3, 1),
+                                     UInt2x4(2, 3, 1, 2), UInt2x4(3, 0, 0, 0)};
 
   std::vector<int64_t> perm = {1, 0};
-  // Transposed shape (3, 4): 12 elements, 3 bytes needed
+  // Transposed shape (7, 3): 21 elements, 6 bytes needed
   // Transposed layout:
-  // Row 0: 0, 3, 2, 1
-  // Row 1: 1, 0, 3, 2
-  // Row 2: 2, 1, 0, 3
-  std::vector<int64_t> expected_shape({3, 4});
-  std::vector<UInt2x4> expected_vals = {UInt2x4(0, 3, 2, 1), UInt2x4(1, 0, 3, 2), UInt2x4(2, 1, 0, 3)};
+  // Row 0: 1, 2, 3
+  // Row 1: 2, 3, 1
+  // Row 2: 3, 1, 2
+  // Row 3: 1, 2, 3
+  // Row 4: 2, 3, 1
+  // Row 5: 3, 1, 2
+  // Row 6: 1, 2, 3
+  // Flattened: [1, 2, 3, 2, 3, 1, 3, 1, 2, 1, 2, 3, 2, 3, 1, 3, 1, 2, 1, 2, 3, 0, 0, 0]
+  std::vector<int64_t> expected_shape({7, 3});
+  std::vector<UInt2x4> expected_vals = {UInt2x4(1, 2, 3, 2), UInt2x4(3, 1, 3, 1),
+                                        UInt2x4(2, 1, 2, 3), UInt2x4(2, 3, 1, 3),
+                                        UInt2x4(1, 2, 1, 2), UInt2x4(3, 0, 0, 0)};
 
-  OpTester test("Transpose", 21);
+  OpTester test("Transpose", 25);
   test.AddAttribute("perm", perm);
   test.AddInput<UInt2x4>("X", input_shape, input_vals);
   test.AddOutput<UInt2x4>("Y", expected_shape, expected_vals);
