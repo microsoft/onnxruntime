@@ -3053,6 +3053,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       DeviceStreamCollectionHolder device_stream_collection_holder(session_state_.get());
       if (run_options.sync_stream != nullptr) {
         if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+          // XXX: Not tested in Parallel execution mode and disabled at this time.
           LOGS(*session_logger_, WARNING) << "Setting sync stream is not supported in parallel execution mode.";
         } else {
           ORT_RETURN_IF_ERROR_SESSIONID_(

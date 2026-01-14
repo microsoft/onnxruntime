@@ -6792,11 +6792,9 @@ struct OrtApi {
    * The stream instance must be alive for the duration of the Run() call.
    *
    * \param[in] options
-   * \param[in] sync_stream The synchronization stream.
+   * \param[in] sync_stream The synchronization stream. Pass nullptr to clear previous setting.
    *
    * \since 1.24
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API_T(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
 

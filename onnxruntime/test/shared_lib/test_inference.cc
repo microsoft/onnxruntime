@@ -21,6 +21,7 @@
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/graph/constants.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_lite_custom_op.h"
@@ -4830,6 +4831,31 @@ TEST(CApiTest, ModelWithExternalDataOutsideModelDirectoryShouldFailToLoad) {
 
 #ifdef ORT_ENABLE_STREAM
 #if USE_CUDA
+
+namespace {
+struct TestCudaStreamOverrideUsed : onnxruntime::Stream {
+  TestCudaStreamOverrideUsed(onnxruntime::Stream* stream)
+      : onnxruntime::Stream(stream->GetHandle(), stream->GetDevice()), real_stream(stream) {}
+
+  std::unique_ptr<onnxruntime::synchronize::Notification> CreateNotification(size_t num_consumers) override {
+    return real_stream->CreateNotification(num_consumers);
+  }
+
+  TestCudaStreamOverrideUsed(const TestCudaStreamOverrideUsed&) = delete;
+  TestCudaStreamOverrideUsed& operator=(const TestCudaStreamOverrideUsed&) = delete;
+
+  void Flush() override {
+    flush_count++;
+    real_stream->Flush();
+  }
+
+  onnxruntime::Status CleanUpOnRunEnd() override { return real_stream->CleanUpOnRunEnd(); }
+
+  onnxruntime::Stream* real_stream;
+  size_t flush_count{0};
+};
+}  // namespace
+
 TEST(CApiTest, TestSyncStreamOverride) {
   constexpr const char* cuda_ep_name = "ORT Cuda";
   ort_env->RegisterExecutionProviderLibrary(cuda_ep_name, ORT_TSTR("onnxruntime_providers_cuda"));
@@ -4850,6 +4876,7 @@ TEST(CApiTest, TestSyncStreamOverride) {
 
   // Create a stream on CUDA Device
   const auto sync_stream = cuda_device.CreateSyncStream();
+  TestCudaStreamOverrideUsed cuda_override_stream(sync_stream);
 
   // Create session with CUDA EP using C++ public API in Ort:: namespace
   Ort::SessionOptions session_options;
@@ -4868,11 +4895,14 @@ TEST(CApiTest, TestSyncStreamOverride) {
   Ort::Value ort_inputs[] = {std::move(input_value)};
 
   Ort::RunOptions run_options;
-  run_options.SetSyncStream(sync_stream);
+  run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&cuda_override_stream));
 
   auto output_values = session.Run(run_options,
                                    input_names.data(), ort_inputs, std::size(ort_inputs),
                                    output_names.data(), output_names.size());
+
+  ASSERT_GT(cuda_override_stream.flush_count, 0U)
+      << "Expected the custom CUDA stream override to be used during session run.";
 
   ort_env->UnregisterExecutionProviderLibrary(cuda_ep_name);
 }

@@ -52,7 +52,11 @@ class DeviceStreamCollectionImpl {
 
   Status CleanUp(bool sync_streams) {
     if (sync_streams) {
-      for (auto& device_stream : device_streams_) {
+      for (size_t i = 0, lim = device_streams_.size(); i < lim; ++i) {
+        Stream* device_stream = device_streams_[i];
+        if (stream_override_ && i == stream_override_->first) {
+          device_stream = stream_override_->second;
+        }
         if (device_stream) {
           ORT_RETURN_IF_ERROR(device_stream->CleanUpOnRunEnd());
           if (is_main_graph_) {
@@ -126,6 +130,8 @@ class DeviceStreamCollectionImpl {
   InlinedVector<std::unique_ptr<Stream>> owned_streams_;
   // RunOptions allow specifying a stream override for a specific run.
   // if this is present, it would be used as a stream for a given stream_id
+  // we declare it sepately as the original stream in device_streams_ should stay
+  // intact for future runs as we cache it in SessionState.
   std::optional<std::pair<size_t, Stream*>> stream_override_;
   const AllocatorMap& allocators_;
   bool is_main_graph_ = false;

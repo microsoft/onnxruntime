@@ -3070,6 +3070,8 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 #endif
 
 #ifdef ORT_ENABLE_STREAM
+namespace {
+
 struct TestNotification : public synchronize::Notification {
   explicit TestNotification(Stream& s) : Notification(s) {}
   void Activate() override {}
@@ -3081,6 +3083,7 @@ struct TestOverrideStream : Stream {
     return std::make_unique<TestNotification>(*this);
   }
 };
+}  // namespace
 
 TEST(DeviceStreamCollection, TestOverride) {
   // We need an allocator map for the constructor, but it's not used in this test scenario.
@@ -3128,7 +3131,8 @@ TEST(DeviceStreamCollection, TestOverride) {
   TestOverrideStream other_stream(nullptr, other_device);
   ASSERT_FALSE(collection.SetStreamOverride(&other_stream).IsOK());
 }
-#endif
+
+#endif  // ORT_ENABLE_STREAM
 
 }  // namespace test
 }  // namespace onnxruntime
