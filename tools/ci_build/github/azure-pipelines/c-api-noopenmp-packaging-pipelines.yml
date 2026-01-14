@@ -55,7 +55,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.41.0.251128
+  default: 2.42.0.251225
 
 # Equals values from common-variables.yml. TODO: Single source of truth.
 - name: CudaVersion
@@ -70,6 +70,7 @@ parameters:
       win_cuda_home: '$(Agent.TempDirectory)\v12.8'
       win_trt_home: '$(Agent.TempDirectory)\TensorRT-10.14.1.48.Windows.win10.cuda-12.9'
       linux_trt_version: 10.14.1.48-1.cuda12.9
+      win_cudnn_home: ''
     cuda_13:
       major: "13"
       minor: "0"
@@ -78,6 +79,7 @@ parameters:
       win_cuda_home: '$(Agent.TempDirectory)\v13.0'
       win_trt_home: '$(Agent.TempDirectory)\TensorRT-10.14.1.48.Windows.win10.cuda-13.0'
       linux_trt_version: 10.14.1.48-1.cuda13.0
+      win_cudnn_home: '$(Agent.TempDirectory)\9.14.0.64_cuda13'
 
 resources:
   repositories:
