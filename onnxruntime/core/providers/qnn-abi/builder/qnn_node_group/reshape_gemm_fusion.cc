@@ -160,7 +160,7 @@ bool CheckShape(const QnnModelWrapper& qnn_model_wrapper, const OrtNode& reshape
 }
 
 Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnit& reshape_node_unit,
-                                  const OrtNodeUnit& gemm_node_unit, bool validate) {
+                                  const OrtNodeUnit& gemm_node_unit, const Ort::Logger& logger, bool validate) {
   assert(reshape_node_unit.OpType() == "Reshape" && gemm_node_unit.OpType() == "Gemm");
   const auto& node_name = utils::GetUniqueName(gemm_node_unit);
   const OrtNodeUnitIODef& input_def = reshape_node_unit.Inputs()[0];
@@ -195,7 +195,7 @@ Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const OrtN
   // Get weight tensor proto and perform 2D transpose
   const auto* weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
   // Transpose the weight tensor (2D matrix transpose)
-  RETURN_IF_ERROR(utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, weight_tensor_proto, unpacked_tensor));
+  RETURN_IF_ERROR(utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, weight_tensor_proto, unpacked_tensor, logger, validate));
   QnnTensorWrapper weight_tensor(weight_tensor_name, tensor_type, data_type, QnnQuantParamsWrapper(),
                                  std::move(weight_shape), std::move(unpacked_tensor));
   if (has_bias) {
@@ -294,13 +294,11 @@ ReshapeGemmFusion::ReshapeGemmFusion(const OrtNodeUnit& reshape_node_unit, const
 }
 
 Ort::Status ReshapeGemmFusion::IsSupported(QnnModelWrapper& qmw, const Ort::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(logger);
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], true);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], logger, true);
 }
 
 Ort::Status ReshapeGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw, const Ort::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(logger);
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], false);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], logger, false);
 }
 
 gsl::span<const OrtNodeUnit* const> ReshapeGemmFusion::GetNodeUnits() const {
