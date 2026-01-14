@@ -174,12 +174,10 @@ class MatMulIntegerBase : public OpKernel {
     }
 
     if (!AreScalesValid(*ctx.scale)) {
-      can_use_dynamic_quant_mlas_ = false;
       return false;
     }
 
     if (!IsBShapeSupportedForDynamicQuant(tensor.Shape())) {
-      can_use_dynamic_quant_mlas_ = false;
       return false;
     }
 
@@ -195,6 +193,12 @@ class MatMulIntegerBase : public OpKernel {
     if (IsBTransposed()) {
       std::swap(ctx.K, ctx.N);
       ctx.b_data = quantization::TransPoseInputData(ctx.b_data, ctx.transposed_buffer, alloc, ctx.N, ctx.K);
+    }
+
+    // KleidiAI dynamic-qgemm packing is not expected to handle degenerate shapes.
+    // If K==0 there is nothing to reduce over, and the RHS packer may dereference invalid memory.
+    if (ctx.K == 0 || ctx.N == 0) {
+      return false;
     }
 
     can_use_dynamic_quant_mlas_ = true;
@@ -262,9 +266,8 @@ class MatMulIntegerBase : public OpKernel {
       assert(b_zp_constant_tensor->IsDataType<uint8_t>() || b_zp_constant_tensor->IsDataType<int8_t>());
       const auto* zp_bytes = static_cast<const std::byte*>(b_zp_constant_tensor->DataRaw());
       const size_t zp_size_in_bytes = b_zp_constant_tensor->SizeInBytes();
-      can_use_dynamic_quant_mlas_ = std::none_of(zp_bytes, zp_bytes + zp_size_in_bytes,
-                                                 [](std::byte v) { return v != std::byte{0}; });
-      return can_use_dynamic_quant_mlas_;
+      return std::none_of(zp_bytes, zp_bytes + zp_size_in_bytes,
+                          [](std::byte v) { return v != std::byte{0}; });
     }
 
     const auto input_defs = Info().node().InputDefs();
@@ -272,8 +275,7 @@ class MatMulIntegerBase : public OpKernel {
     const bool b_zp_input_exists = b_zp_idx >= 0 &&
                                    static_cast<size_t>(b_zp_idx) < input_defs.size() &&
                                    input_defs[b_zp_idx]->Exists();
-    can_use_dynamic_quant_mlas_ = !b_zp_input_exists;
-    return can_use_dynamic_quant_mlas_;
+    return !b_zp_input_exists;
   }
   /*
   Heper method to check the validity of the scales tensor for Arm® KleidiAI™ dynamic qantization.
@@ -286,10 +288,7 @@ class MatMulIntegerBase : public OpKernel {
         std::any_of(bs.begin(), bs.end(),
                     [](float s) { return !std::isfinite(s) || s <= 0.0f; });
 
-    if (has_invalid) {
-      can_use_dynamic_quant_mlas_ = false;
-    }
-    return can_use_dynamic_quant_mlas_;
+    return !has_invalid;
   }
   /*
     Helper to promote a 1D tensor to 2D, for Arm® KleidiAI™ dynamic qantization, if necessary. Returns false if the tensor rank is 0.

@@ -490,6 +490,7 @@ TEST(MatMulIntegerToFloat, MatMulInteger_With_ZeroPoint) {
   test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27});
 }
 
+
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
 
 static bool HasArmSME() {
@@ -540,6 +541,7 @@ struct KleidiDynMatMulData {
   }
 };
 
+
 // 1. Bias provided as initializer -> Kleidi packs bias and skips runtime add.
 TEST(DynamicQuantizeMatMul, KleidiBiasInitializer) {
   if (!HasArmSME()) GTEST_SKIP();
@@ -554,7 +556,7 @@ TEST(DynamicQuantizeMatMul, KleidiBiasInitializer) {
   test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true /*initializer*/);
   test.AddInput<float>("bias", {data.N}, bias, true /*initializer*/);
   test.AddOutput<float>("Y", {data.M, data.N}, expected);
-  test.SetOutputAbsErr("Y", 0.2f);
+  test.SetOutputAbsErr("Y", 0.03f);
   test.Run();
 }
 
@@ -572,7 +574,7 @@ TEST(DynamicQuantizeMatMul, KleidiBiasRuntime) {
   test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
   test.AddInput<float>("bias", {data.N}, bias, false /*runtime*/);
   test.AddOutput<float>("Y", {data.M, data.N}, expected);
-  test.SetOutputAbsErr("Y", 0.2f);
+  test.SetOutputAbsErr("Y", 0.03f);
   test.Run();
 }
 
@@ -590,7 +592,7 @@ TEST(DynamicQuantizeMatMul, KleidiRejectsNonZeroZeroPoint) {
   test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp);
   test.AddOptionalInputEdge<float>();  // no bias
   test.AddOutput<float>("Y", {data.M, data.N}, expected);
-  test.SetOutputAbsErr("Y", 0.2f);
+  test.SetOutputAbsErr("Y", 0.03f);
   test.Run();  // succeeds, but exercises the “fallback” branch
 }
 
@@ -608,7 +610,7 @@ TEST(DynamicQuantizeMatMul, KleidiRejectsInvalidScale) {
   test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
   test.AddOptionalInputEdge<float>();
   test.AddOutput<float>("Y", {data.M, data.N}, expected);
-  test.SetOutputAbsErr("Y", 0.2f);
+  test.SetOutputAbsErr("Y", 0.03f);
   test.Run();
 }
 
@@ -642,7 +644,7 @@ TEST(DynamicQuantizeMatMul, KleidiRejectsUnsupportedBShape) {
 
   test.AddOptionalInputEdge<float>();
   test.AddOutput<float>("Y", {2, data.M, data.N}, expected);
-  test.SetOutputAbsErr("Y", 0.2f);
+  test.SetOutputAbsErr("Y", 0.03f);
   test.Run();
 }
 

@@ -31,6 +31,11 @@ ArmKleidiAI::MlasDynamicQgemmPackBSize(
     size_t N,
     size_t K
 ) {
+    // Degenerate shapes: there is nothing to pack.
+    if (N == 0 || K == 0) {
+        return 0;
+    }
+
     //Default to sme2_mopa but this may not awalys be the most optimal kernel variant to use
     auto nr = kai_get_nr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
     auto kr = kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
@@ -52,6 +57,11 @@ ArmKleidiAI::MlasDynamicQgemmPackB(
     const float* Bias,
     void* PackedB
 ) {
+    // Degenerate shapes: nothing to pack. Avoid calling into packers that may not tolerate K==0.
+    if (N == 0 || K == 0) {
+        return;
+    }
+
     // Default to sme2_mopa but this may not awalys be the most optimal kernel variant to use
     auto nr = kai_get_nr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
     auto kr = kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
@@ -104,7 +114,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     size_t n_step = UseSME2 ? kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa()
                             : kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa();
 
-    if (BatchSize == 0 || Shape.M == 0 || Shape.N == 0 ) {
+    if (BatchSize == 0 || Shape.M == 0 || Shape.N == 0 || Shape.K == 0) {
         return;
     }
 
@@ -112,7 +122,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     //to reverse the packing decision that was made for RHS.
 
     ORT_ENFORCE(DataParams != nullptr, "Dynamic QGEMM requires valid DataParams.");
-    ORT_ENFORCE(Shape.K > 0, "Dynamic QGEMM requires Shape.K to be non-zero.");
+   // ORT_ENFORCE(Shape.K > 0, "Dynamic QGEMM requires Shape.K to be non-zero.");
 
     for (size_t batch_idx = 0; batch_idx < BatchSize; ++batch_idx) {
         const auto& params = DataParams[batch_idx];

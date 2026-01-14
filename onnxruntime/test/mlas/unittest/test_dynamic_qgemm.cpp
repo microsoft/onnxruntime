@@ -9,6 +9,7 @@
 #include "core/mlas/inc/mlas.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 
 class MlasDynamicQgemmTestBase {
@@ -24,6 +25,12 @@ class MlasDynamicQgemmTestBase {
            MLAS_THREADPOOL* threadpool, bool require_threadpool, const char* run_tag) {
     if (require_threadpool && threadpool == nullptr)
       GTEST_SKIP() << "Dynamic QGEMM threading path requested but no MLAS thread pool is available.";
+
+    // The test harness assumes K>0 for generating/quantizing B (computes per-column min/max across K).
+    // When K==0, the buffers are size 0 and the min/max logic dereferences invalid memory.
+    if (K == 0) {
+      GTEST_SKIP() << "Skipping DynamicQGEMM test with K==0: test harness assumes K>0 for quantization setup.";
+    }
 
     // Setup buffers for holding various data
     float* A = buffer_a.GetBuffer(M * K * BatchSize);
@@ -106,7 +113,9 @@ class MlasDynamicQgemmTestBase {
 
     // Prepare kernel parameters
     MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS shape{M, N, K};
-    std::vector<uint8_t> packed_b_storage(BatchSize * MlasDynamicQgemmPackBSize(N, K));
+
+    const size_t packed_b_stride = MlasDynamicQgemmPackBSize(N, K);
+    std::vector<uint8_t> packed_b_storage(BatchSize * packed_b_stride);
     std::vector<MLAS_GEMM_DYN_QUANT_DATA_PARAMS> params(BatchSize);
 
     for (size_t b = 0; b < BatchSize; ++b) {
@@ -114,13 +123,20 @@ class MlasDynamicQgemmTestBase {
       params[b].lda = K;
       params[b].C = C + b * M * N;
       params[b].ldc = N;
-      // Pack b matrix using MlasDynamicQgemmPackBSize & MlasDynamicQgemmPackB
-      void* packed_b = packed_b_storage.data() + b * MlasDynamicQgemmPackBSize(N, K);
-      MlasDynamicQgemmPackB(N, K,
-                            Bq + b * K * N,
-                            b_scale_batches[b].data(),
-                            b_bias_batches[b].data(),
-                            packed_b);
+
+      // Pack b matrix using MlasDynamicQgemmPackBSize & MlasDynamicQgemmPackB.
+      // When packed_b_stride is 0 (e.g., degenerate shapes like K==0), avoid taking data()
+      // from a zero-sized vector as that may be null/invalid on some platforms.
+      void* packed_b = packed_b_stride == 0 ? nullptr : (packed_b_storage.data() + b * packed_b_stride);
+
+      if (packed_b_stride != 0) {
+        MlasDynamicQgemmPackB(N, K,
+                              Bq + b * K * N,
+                              b_scale_batches[b].data(),
+                              b_bias_batches[b].data(),
+                              packed_b);
+      }
+
       params[b].PackedB = packed_b;
     }
 
@@ -148,14 +164,37 @@ class MlasDynamicQgemmTestBase {
     // Validate results
     auto validate = [&](const char* tag) {
       SCOPED_TRACE(tag);
+
+      float max_diff = 0.0f;
+      size_t max_i = 0;
+
       for (size_t i = 0; i < M * N * BatchSize; ++i) {
-        float abs_c_ref = std::abs(CRef[i]);
-        float dynamic_rel_tol = (K <= 4) ? 0.05f : 0.03f;
-        float rel_tol = dynamic_rel_tol * std::max(abs_c_ref, 1.0f);
-        float abs_tol = 3.0f;
-        float allowed = std::max(rel_tol, abs_tol);
+        float abs_tol = 0.001f;
         float diff = std::abs(C[i] - CRef[i]);
-        ASSERT_LE(diff, allowed);
+
+        if (diff > max_diff) {
+          max_diff = diff;
+          max_i = i;
+        }
+
+        ASSERT_LE(diff, abs_tol);
+      }
+
+      // Optional: print max diff for understanding margin vs tolerance.
+      // Enable by setting MLAS_DYNQGEMM_REPORT_MAX_DIFF to any non-empty value.
+      if (const char* env = std::getenv("MLAS_DYNQGEMM_REPORT_MAX_DIFF"); env && *env) {
+        const size_t element_count = M * N * BatchSize;
+        std::cerr << "[DynamicQGEMM] tag=" << tag
+                  << " M=" << M << " N=" << N << " K=" << K << " B=" << BatchSize
+                  << " max_diff=" << max_diff << " at_i=" << max_i;
+
+        if (element_count > 0 && max_i < element_count) {
+          std::cerr << " C=" << C[max_i] << " CRef=" << CRef[max_i];
+        } else {
+          std::cerr << " (no element details; output is empty or index is out of range)";
+        }
+
+        std::cerr << std::endl;
       }
     };
 
@@ -225,6 +264,15 @@ class DynamicQgemmExecuteTest : public MlasTestFixture<TMlasTester> {
         for (size_t K : sizes)
           for (size_t B : batch_size)
             count += RegisterSingleTest(M, N, K, B);
+
+    // Zero-dimension probes: these should exercise the early-return behavior in implementations
+    // that treat M==0 or N==0 as a no-op.
+    count += RegisterSingleTest(0, 16, 16, 1);  // M==0
+    count += RegisterSingleTest(16, 0, 16, 1);  // N==0
+
+    // K==0 probe: included to observe behavior when the reduction dimension is zero.
+    count += RegisterSingleTest(16, 16, 0, 1);  // K==0
+
     return count;
   }
 
