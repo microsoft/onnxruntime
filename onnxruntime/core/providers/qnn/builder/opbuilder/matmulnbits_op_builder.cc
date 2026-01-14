@@ -21,7 +21,7 @@ namespace qnn {
 
     Inputs
       - A           :                 : (fp16/32) : [batch_size{1}, sequence_len, K]
-      - B           : Init            : (uint8)   : [N, K/block_size, blob_size(16)]
+      - B           : Init            : (uint8)   : [N, K/block_size, (block_size * bits) / 8]
       - scales      : Init            : (fp32)    : [N * K / block_size]
       - zero_points : (optional)Init  : (uint8)   : [N * K / (block_size * 2)]
       - bias        : (optional)Init  : [?]       : [?]
@@ -115,15 +115,17 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   const int64_t K = node_helper.Get("K", static_cast<int64_t>(1));
   const int64_t N = node_helper.Get("N", static_cast<int64_t>(1));
-  const int64_t num_blocks = (N * K) / block_size;
 
   ORT_RETURN_IF_NOT(bits == 4, "Invalid bits. Qnn Gpu Only Supports MatMulNBits with bits == 4");
   ORT_RETURN_IF_NOT(block_size == 32, "Invalid block_size. Qnn Gpu Only Supports MatMulNBits with block_size == 32");
+  ORT_RETURN_IF_NOT(((N * K) % block_size) == 0, "K must be divisible by block_size");
+
+  const int64_t num_blocks = (N * K) / block_size;
 
   const auto& inputs = node_unit.Inputs();
   // 1. input : Datatype should be float16 or float32
   // Float16 Dlc serialization failing, Skipping float16 support for this op builder
-  // TODO :: Add cast from float16 for float32 for scales to enable float16 support.
+  // TODO :: Add Float16 Support
   {
     const NodeUnitIODef& input_tensor = inputs[0];
     TensorInfo input_info{};

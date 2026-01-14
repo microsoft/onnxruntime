@@ -107,13 +107,11 @@ size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type) {
   // Unreachable
 }
 size_t GetQnnTensorDataSizeInBytes(size_t num_elements, Qnn_DataType_t element_type) {
-  SafeInt<size_t> total_bytes = num_elements;
+  SafeInt<size_t> safe_num_elements = num_elements;
   if (element_type == QNN_DATATYPE_SFIXED_POINT_4 || element_type == QNN_DATATYPE_UFIXED_POINT_4) {
-    total_bytes = (num_elements + 1) / 2;
-  } else {
-    total_bytes = num_elements * GetElementSizeByType(element_type);
+    return (safe_num_elements + 1) / 2;
   }
-  return total_bytes;
+  return (safe_num_elements * GetElementSizeByType(element_type));
 }
 
 size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {

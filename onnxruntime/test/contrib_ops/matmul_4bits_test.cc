@@ -585,7 +585,7 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
 #endif
 #endif
 
-#if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU) || defined(USE_QNN)
+#if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU)
 
 namespace {
 // Legacy test function.
@@ -635,12 +635,6 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728").IsOK());
     execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
 #endif
-#ifdef USE_QNN
-    ProviderOptions provider_options;
-    provider_options["backend_type"] = "gpu";
-    provider_options["offload_graph_io_quantization"] = "0";
-    execution_providers.push_back(QnnExecutionProviderWithOptions(provider_options));
-#endif
     RunTest<float>(opts, std::move(execution_providers));
   }
 }
@@ -671,33 +665,6 @@ TEST(MatMulNBits, Float16_Comprehensive) {
     }
   }
 }
-
-#if defined(USE_QNN) && defined(_M_ARM64)
-// QNN GPU Only support FP16 activations and Q4_0 weights.
-// Accumulation with larger channel accumulates more error. Set higher abs_error with respect to K.
-// M, N, K, block_size, has_zeropoint, zp_is_4bit = true, abs_error = 0.f, has_g_idx = false, has_bias = false
-// TODO : QNN GPU supports only symmetric quantization. ie. zero_points = 8 (UFXP4) and 0 (SFXP4)
-// Add symmetric quantization in gtest.
-TEST(MatMulNBits, Basic_M1_N128_K32_withZp) {
-  constexpr float abs_error = 0.03f;
-  RunTest<float>(1, 128, 512, 32, true, true, abs_error, false, false);
-}
-
-TEST(MatMulNBits, Basic_M1_N128_K32) {
-  constexpr float abs_error = 0.03f;
-  RunTest<float>(1, 128, 512, 32, false, true, abs_error, false, false);
-}
-
-TEST(MatMulNBits, Basic_M10_N128_K32_withZp) {
-  constexpr float abs_error = 0.03f;
-  RunTest<float>(10, 128, 512, 32, true, true, abs_error, false, false);
-}
-
-TEST(MatMulNBits, Basic_M10_N128_K32) {
-  constexpr float abs_error = 0.03f;
-  RunTest<float>(10, 128, 512, 32, false, true, abs_error, false, false);
-}
-#endif
 
 TEST(MatMulNBits, Float16_Large) {
 #ifdef USE_DML
@@ -847,6 +814,62 @@ TEST(MatMulNBits, BFloat16_Int4_NoZeroPoint) {
 #endif
 
 #endif  // defined(USE_CUDA) || defined(USE_DML)
+
+#if defined(USE_QNN) && defined(_M_ARM64)
+
+namespace {
+// QNN-EP Test Function
+// This has too many parameters of the same type that must be specified in the correct order.
+// Consider using the overload with a TestOptions parameter.
+void RunQnnEpTest(int64_t M, int64_t N, int64_t K, bool has_zeropoint = true, float abs_error = 0.f) {
+  TestOptions opts{};
+  opts.M = M;
+  opts.N = N;
+  opts.K = K;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.has_zero_point = has_zeropoint;
+  opts.zp_is_4bit = true;
+  opts.has_g_idx = false;
+  opts.has_bias = false;
+
+  if (abs_error > 0.f) {
+    opts.output_abs_error = abs_error;
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "gpu";
+  provider_options["offload_graph_io_quantization"] = "0";
+  execution_providers.push_back(QnnExecutionProviderWithOptions(provider_options));
+
+  RunTest<float>(opts, std::move(execution_providers));
+}
+}  // namespace
+
+// QNN GPU Only support FP16 activations and Q4_0 weights, with zero_points = 8
+// Accumulation with larger channel accumulates more error. Set higher abs_error with respect to K.
+TEST(MatMulNBits, Basic_M1_N128_K512_withZp) {
+  constexpr float abs_error = 0.03f;
+  RunQnnEpTest(1, 128, 512, true, abs_error);
+}
+
+TEST(MatMulNBits, Basic_M1_N128_K512) {
+  constexpr float abs_error = 0.03f;
+  RunQnnEpTest(1, 128, 512, false, abs_error);
+}
+
+TEST(MatMulNBits, Basic_M10_N128_K512_withZp) {
+  constexpr float abs_error = 0.03f;
+  RunQnnEpTest(10, 128, 512, true, abs_error);
+}
+
+TEST(MatMulNBits, Basic_M10_N128_K512) {
+  constexpr float abs_error = 0.03f;
+  RunQnnEpTest(10, 128, 512, false, abs_error);
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
 

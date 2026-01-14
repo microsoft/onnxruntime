@@ -175,8 +175,8 @@ class QnnQuantParamsWrapper {
   std::unique_ptr<char[]> blockwise_expansion_data_;
 
   // Stores BlockEncoding axis and scale offset data
-  uint32_t block_encoding_tensor_rank_;
-  uint32_t num_blocks_;
+  uint32_t block_encoding_tensor_rank_ = 0;
+  uint32_t num_blocks_ = 0;
   std::unique_ptr<char[]> block_encoding_axis_data_;
   std::unique_ptr<char[]> block_encoding_scale_offsets_data_;
 };
