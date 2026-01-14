@@ -662,7 +662,7 @@ class InferenceSession {
     return session_id_;
   }
 
-  void SetExecutionDevices(std::vector<const OrtEpDevice*>& execution_devices) {
+  void SetExecutionDevices(std::vector<const OrtEpDevice*> execution_devices) {
     execution_devices_ = std::move(execution_devices);
   }
 

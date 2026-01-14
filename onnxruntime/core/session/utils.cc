@@ -340,11 +340,11 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
     }
 
     if (!execution_devices.empty()) {
-      sess->SetExecutionDevices(execution_devices);
+      sess->SetExecutionDevices(std::move(execution_devices));
     }
 
     if (!devices_selected.empty()) {
-      sess->SetSelectedDevices(devices_selected);
+      sess->SetSelectedDevices(std::move(devices_selected));
     }
   }
 #endif
