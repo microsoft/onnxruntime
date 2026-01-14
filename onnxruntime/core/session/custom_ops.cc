@@ -1300,12 +1300,8 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     std::unordered_map<std::string, std::vector<const OrtCustomOp*>> domain_kernels;
     for (const auto* op : domain->custom_ops_) {
       // define kernel
-      auto it = domain_kernels.find(op->GetName(op));
-      if (it == domain_kernels.end()) {
-        domain_kernels[op->GetName(op)] = {op};
-      } else {
-        domain_kernels[op->GetName(op)].push_back(op);
-      }
+      const auto* name = op->GetName(op);
+      domain_kernels[name].push_back(op);
     }
 
     // Creation of the schemas, one per unique name.
@@ -1319,7 +1315,8 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       for (const auto* op : ops) {
         // define kernel
         auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
-        kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
+        const auto* op_name = op->GetName(op);
+        kernel_def_map[op_name].push_back(kernel_create_info.kernel_def.get());
         ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
         // If IsCompatible returns false, then all custom operators named
         // 'op->GetName(op)' are not compatible among themselves.

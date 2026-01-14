@@ -656,6 +656,27 @@ ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ c
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_SetDetails, _Inout_ OrtDeviceEpIncompatibilityDetails* details,
+                    _In_ uint32_t reasons_bitmask,
+                    _In_ int32_t error_code,
+                    _In_opt_z_ const char* notes) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details parameter must not be null");
+  }
+
+  details->reasons_bitmask = reasons_bitmask;
+  details->error_code = error_code;
+  if (notes != nullptr) {
+    details->notes = notes;
+  } else {
+    details->notes.clear();
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 // Control flow kernel APIs
 ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out) {
   API_IMPL_BEGIN
@@ -819,6 +840,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
     &OrtExecutionProviderApi::SharedPrePackedWeightCache_StoreWeightData,
     &OrtExecutionProviderApi::KernelInfo_GetEp,
+    &OrtExecutionProviderApi::DeviceEpIncompatibilityDetails_SetDetails,
     &OrtExecutionProviderApi::CreateIfKernel,
     &OrtExecutionProviderApi::CreateLoopKernel,
     &OrtExecutionProviderApi::CreateScanKernel,
