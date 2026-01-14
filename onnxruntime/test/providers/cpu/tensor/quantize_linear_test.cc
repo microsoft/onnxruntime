@@ -2216,14 +2216,14 @@ void QuantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
                                                std::vector<float>& x_,
                                                std::vector<float>& scale_,
                                                std::vector<int>& zero_point_,
-                                               std::vector<int>& y_) {
+                                               std::vector<int>& y_,
+                                               std::unique_ptr<IExecutionProvider> ep = nullptr) {
   OpTester test("QuantizeLinear", 21);
   std::vector<int64_t> scale_shape;
   std::vector<Tout> zero_point, y;
   std::vector<Tin> x, scale;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultCpuExecutionProvider());
-
+  eps.push_back(ep ? std::move(ep) : DefaultCpuExecutionProvider());
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
   bool use_zero_point = !zero_point_.empty();
 
@@ -2305,6 +2305,12 @@ TEST(QuantizeLinearOp21BlockedTest, SignedInt4_NoZeroPoint_FirstAxis) {
   QuantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3);
   QuantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, MLFloat16>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2);
   QuantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, MLFloat16>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3);
+#if defined(USE_WEBGPU)
+  QuantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, float>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, MLFloat16>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int4_Succeed<Int4x2, MLFloat16>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3, DefaultWebGpuExecutionProvider());
+#endif
 }
 
 TEST(QuantizeLinearOp21BlockedTest, SignedInt4_NoZeroPoint_FirstAxis_Cuda) {
@@ -2361,6 +2367,16 @@ TEST(QuantizeLinearOp21BlockedTest, SignedInt_NoZeroPoint_FirstAxis) {
   QuantizeLinearOp21BlockedTest_Int_Succeed<int8_t, MLFloat16>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3);
   QuantizeLinearOp21BlockedTest_Int_Succeed<int16_t, MLFloat16>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2);
   QuantizeLinearOp21BlockedTest_Int_Succeed<int16_t, MLFloat16>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3);
+#if defined(USE_WEBGPU)
+  QuantizeLinearOp21BlockedTest_Int_Succeed<int8_t, float>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int_Succeed<int8_t, float>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int_Succeed<int16_t, float>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int_Succeed<int16_t, float>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int_Succeed<int8_t, MLFloat16>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int_Succeed<int8_t, MLFloat16>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int_Succeed<int16_t, MLFloat16>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int_Succeed<int16_t, MLFloat16>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3, DefaultWebGpuExecutionProvider());
+#endif
 }
 
 TEST(QuantizeLinearOp21BlockedTest, SignedInt4_UseZeroPoint_FirstAxis) {
@@ -2865,6 +2881,12 @@ TEST(QuantizeLinearOp21BlockedTest, UnsignedInt4_UseZeroPoint_FirstAxis) {
   QuantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3);
   QuantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, MLFloat16>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2);
   QuantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, MLFloat16>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3);
+#if defined(USE_WEBGPU)
+  QuantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, float>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, MLFloat16>({4, 8, 2}, 0, 2, x, y_scale, zero_point, y_2, DefaultWebGpuExecutionProvider());
+  QuantizeLinearOp21BlockedTest_Int4_Succeed<UInt4x2, MLFloat16>({4, 8, 2}, 0, 3, x, y_scale, zero_point, y_3, DefaultWebGpuExecutionProvider());
+#endif
 }
 
 TEST(QuantizeLinearOp21BlockedTest, UnsignedInt4_UseZeroPoint_FirstAxis_Cuda) {

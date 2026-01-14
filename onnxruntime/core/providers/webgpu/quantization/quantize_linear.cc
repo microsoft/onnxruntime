@@ -372,7 +372,10 @@ Status QuantizeLinear::ComputeInternal(ComputeContext& context) const {
   int64_t y_scale_rank = y_scale->Shape().NumDimensions();
 
   bool packed = output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 ||
-                output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+                output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 ||
+                output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4 ||
+                output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+
   bool is_signed = output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
   int64_t axis = (axis_ >= 0) ? axis_ : axis_ + x_shape.NumDimensions();
 
@@ -412,7 +415,10 @@ const std::vector<MLDataType>& QuantizeLinearOutputConstraints() {
       DataTypeImpl::GetTensorType<int8_t>(),
       DataTypeImpl::GetTensorType<uint8_t>(),
       DataTypeImpl::GetTensorType<int16_t>(),
-      DataTypeImpl::GetTensorType<uint16_t>()};
+      DataTypeImpl::GetTensorType<uint16_t>(),
+      DataTypeImpl::GetTensorType<UInt4x2>(),
+      DataTypeImpl::GetTensorType<Int4x2>(),
+    };
   return types;
 }
 }  // namespace
@@ -440,7 +446,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     QuantizeLinear,
     kOnnxDomain,
-    19, 20,
+    19, 21,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", WebGpuSupportedFloatTypes())
@@ -450,18 +456,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     QuantizeLinear,
     kOnnxDomain,
-    21, 22,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", WebGpuSupportedFloatTypes())
-        .TypeConstraint("T2", WebGpuSupportedFloatTypes())
-        .TypeConstraint("T3", QuantizeLinearOutputConstraints()),
-    QuantizeLinear);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    QuantizeLinear,
-    kOnnxDomain,
-    23, 24,
+    22, 24,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", WebGpuSupportedFloatTypes())
