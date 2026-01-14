@@ -132,6 +132,7 @@ bool IsDomainExisted(const std::string& domain_name, const std::vector<OrtCustom
 }
 }  // namespace
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status static GetModelMetadata(const ORTCHAR_T* model_path,
                                const void* model_data,
                                size_t model_data_length,
@@ -194,6 +195,7 @@ Status static GetModelMetadata(const ORTCHAR_T* model_path,
 
   return Status::OK();
 }
+#endif
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
   if (size == nullptr) {
