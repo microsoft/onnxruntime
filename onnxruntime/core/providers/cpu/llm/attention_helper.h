@@ -102,19 +102,19 @@ inline Status ComputeOutputShapeForAttention(
   }
   parameters.total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;
 
-  ORT_ENFORCE(parameters.q_num_heads % parameters.kv_num_heads == 0, "q_num_heads % kv_num_heads == 0 is not verified");
+  ORT_ENFORCE(parameters.q_num_heads % parameters.kv_num_heads == 0, "q_num_heads must be a multiple of kv_num_heads. This is required for grouped/multi-query and multi-headed attention.");
   ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.total_sequence_length,
               "inconsistent total_sequence_length (between attn_mask and past_key and past_value)");
   ORT_ENFORCE(attn_mask == nullptr ||
                   attn_mask->Shape().NumDimensions() < 3 ||
                   attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 3] == 1 ||
-                  attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 3] == parameters.kv_num_heads,
-              "attn_mask must be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length) but is not compatible with kv_num_heads");
+                  attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 3] == parameters.q_num_heads,
+              "attn_mask must be broadcastable to (batch_size, q_num_heads, q_sequence_length, total_sequence_length) but is not compatible with q_num_heads");
   ORT_ENFORCE(attn_mask == nullptr ||
                   attn_mask->Shape().NumDimensions() < 4 ||
                   attn_mask->Shape()[0] == 1 ||
                   attn_mask->Shape()[0] == parameters.batch_size,
-              "attn_mask must be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length) but is not compatible with batch_size");
+              "attn_mask must be broadcastable to (batch_size, q_num_heads, q_sequence_length, total_sequence_length) but is not compatible with batch_size");
   ASSERT_TENSOR_DIMS(past_key, parameters.batch_size, parameters.kv_num_heads, parameters.past_sequence_length, parameters.head_size);
   ASSERT_TENSOR_DIMS(past_value, parameters.batch_size, parameters.kv_num_heads, parameters.past_sequence_length, parameters.v_head_size);
 
