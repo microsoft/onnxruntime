@@ -4354,7 +4354,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::DeviceEpIncompatibilityDetails_GetNotes,
     &OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode,
     &OrtApis::ReleaseDeviceEpIncompatibilityDetails,
-    &OrtApis::CreateEnvWithOptions,       
+    &OrtApis::CreateEnvWithOptions,
     &OrtApis::RunOptionsSetSyncStream,
 };
 

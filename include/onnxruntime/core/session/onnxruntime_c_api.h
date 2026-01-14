@@ -6998,19 +6998,6 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(DeviceEpIncompatibilityDetails);
 
-  /** \brief Sets OrtSyncStream for the run options
-   *
-   * OrtSyncStream is used to synchronize the execution of the model run for the device
-   * of the stream. It overrides the existing stream for the duration of the Run().
-   * The stream instance must be alive for the duration of the Run() call.
-   *
-   * \param[in] options
-   * \param[in] sync_stream The synchronization stream. Pass nullptr to clear previous setting.
-   *
-   * \since 1.24
-   */
-  ORT_API_T(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
-
   /// @}
 
   /** \brief Create an OrtEnv instance with the given options.
@@ -7026,6 +7013,19 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out);
+
+  /** \brief Sets OrtSyncStream for the run options
+   *
+   * OrtSyncStream is used to synchronize the execution of the model run for the device
+   * of the stream. It overrides the existing stream for the duration of the Run().
+   * The stream instance must be alive for the duration of the Run() call.
+   *
+   * \param[in] options
+   * \param[in] sync_stream The synchronization stream. Pass nullptr to clear previous setting.
+   *
+   * \since 1.24
+   */
+  ORT_API_T(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
 };
 
 /*
