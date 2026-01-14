@@ -6207,6 +6207,9 @@ struct OrtApi {
   /** \brief Get the node's parent OrtGraph instance.
    *
    * Can return NULL if the OrtNode was created without an owning graph.
+   * In another case, this API may also return NULL if `node` is obtained by calling Graph_GetParentNode()
+   * on an OrtGraph that is a subgraph of a control-flow op, and the parent graph has not been created yet,
+   * for example during ORT's GetCapability() when processing the innermost subgraph.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] graph Output parameter set to the node's OrtGraph. Can be set to NULL

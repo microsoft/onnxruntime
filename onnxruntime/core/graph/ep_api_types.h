@@ -191,6 +191,9 @@ struct EpNode : public OrtNode {
                       const char** opt_attribute_names) const override;
 
   // Gets this node's parent graph, which is the graph that directly contains this node.
+  // Note: This call may return NULL if this node is obtained by calling GetParentNode()
+  // on an EpGraph that is a subgraph of a control-flow op, and the parent graph has not been created yet,
+  // for example during ORT's GetCapability() when processing the innermost subgraph.
   Status GetGraph(const OrtGraph*& parent_graph) const override;
 
   //
@@ -271,7 +274,7 @@ struct EpGraph : public OrtGraph {
   /// <param name="graph_viewer"></param>
   /// <param name="result"></param>
   /// <param name="create_parent_node">If the `graph_viewer` is a subgraph of a control flow op,
-  ///                                  e.g. For/If/Scan op, and `create_parent_node` is set to true,
+  ///                                  e.g. Loop/If/Scan op, and `create_parent_node` is set to true,
   ///                                  then `result` EpGraph will create and own parent node's EpNode
   ///                                  instance. It's mainly used in EP's GetCapability() as it's
   ///                                  a bottom-up approach where inner-most subgraph will be constructed

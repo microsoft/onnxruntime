@@ -709,11 +709,19 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
     gsl::not_null<const Graph*> parent_graph = graph_viewer.GetGraph().ParentGraph();
     gsl::not_null<const Node*> parent_node = graph_viewer.ParentNode();
 
+    // If the subgraph of a control-flow op is created before its parent node (for example, when constructing
+    // the graph during ORT's GetCapability() in a bottom-up manner), the parent node must also be created.
     if (create_parent_node) {
       std::unique_ptr<EpNode> ep_node = nullptr;
 
       std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map_tmp;  // won't be used
-      ORT_RETURN_IF_ERROR(EpNode::Create(*parent_node, ep_graph.get(), value_infos_map_tmp, ep_node));
+
+      // At this point, the EpGraph that contains the parent node hasn't been created yet.
+      // It's not needed to create that EpGraph here, so just pass nullptr.
+      ORT_RETURN_IF_ERROR(EpNode::Create(*parent_node, /*ep_graph*/ nullptr, value_infos_map_tmp, ep_node));
+
+      // Note: Calling ep_parent_node.GetGraph() will return nullptr because
+      // ep_parent_node was created without an associated EpGraph pointer.
       ep_parent_node = std::move(ep_node);
     }
 
