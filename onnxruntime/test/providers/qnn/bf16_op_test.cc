@@ -63,6 +63,7 @@ static void RunBF16ModelTest(const GetTestModelFn& build_test_case,
                              float fp32_abs_err = 1e-2f) {
   // Silence unused function warning
   (void)RunBF16ModelTest;
+  ORT_UNUSED_PARAMETER(input_shape);
 
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
