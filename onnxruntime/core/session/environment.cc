@@ -16,6 +16,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_env_config_keys.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
@@ -120,9 +121,11 @@ std::unordered_set<OrtAllocator*>::const_iterator FindExistingAllocator(const st
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
                            const OrtThreadingOptions* tp_options,
-                           bool create_global_thread_pools) {
+                           bool create_global_thread_pools,
+                           const OrtKeyValuePairs* config_entries) {
   environment = std::make_unique<Environment>();
-  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
+  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools,
+                                        config_entries);
   return status;
 }
 
@@ -242,10 +245,22 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                                const OrtThreadingOptions* tp_options,
-                               bool create_global_thread_pools) {
+                               bool create_global_thread_pools,
+                               const OrtKeyValuePairs* config_entries) {
   auto status = Status::OK();
 
   logging_manager_ = std::move(logging_manager);
+
+  if (config_entries != nullptr) {
+    config_entries_ = *config_entries;
+
+    const auto& config_map = config_entries_.Entries();
+
+    if (auto iter = config_map.find(kOrtEnvAllowVirtualDevices);
+        iter != config_map.end() && iter->second == "1") {
+      num_allow_virtual_device_uses_ = 1;
+    }
+  }
 
   // create thread pools
   if (create_global_thread_pools) {
@@ -474,6 +489,21 @@ Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocat
   return Status::OK();
 }
 
+OrtKeyValuePairs Environment::GetConfigEntries() const {
+  std::shared_lock<std::shared_mutex> lock{config_entries_mutex_};
+  return config_entries_;  // copy
+}
+
+void Environment::InsertOrAssignConfigEntry(std::string key, std::string value) {
+  std::lock_guard<std::shared_mutex> lock{config_entries_mutex_};
+  config_entries_.Add(std::move(key), std::move(value));
+}
+
+void Environment::RemoveConfigEntry(const std::string& key) {
+  std::lock_guard<std::shared_mutex> lock{config_entries_mutex_};
+  config_entries_.Remove(key.c_str());
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 //
@@ -495,6 +525,14 @@ Status CreateDataTransferForFactory(OrtEpFactory& ep_factory,
   }
 
   return Status::OK();
+}
+
+bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
+  constexpr std::string_view suffix{".virtual"};
+
+  return lib_registration_name.size() >= suffix.size() &&
+         lib_registration_name.compare(lib_registration_name.size() - suffix.size(),
+                                       suffix.size(), suffix) == 0;
 }
 }  // namespace
 
@@ -576,6 +614,19 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   std::vector<EpFactoryInternal*> internal_factories = {};
   std::unique_ptr<EpLibrary> ep_library;
 
+  // An application can allow EP libraries to create virtual devices by using an EP library registration name that
+  // ends in the suffix ".virtual". If so, ORT automatically sets the config key "allow_virtual_devices" to "1"
+  // in the environment. We track the number of libraries that use virtual devices to be able to remove
+  // "allow_virtual_devices" from the config entries when the last library is unregistered. In practice,
+  // we expect only one such library to be registered for cross-compilation.
+  if (AreVirtualDevicesAllowed(registration_name)) {
+    if (num_allow_virtual_device_uses_ == 0) {
+      InsertOrAssignConfigEntry(kOrtEnvAllowVirtualDevices, "1");
+    }
+
+    num_allow_virtual_device_uses_ += 1;
+  }
+
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
   ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
                                                  internal_factories));
@@ -583,20 +634,31 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
 }
 
-Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_name) {
+Status Environment::UnregisterExecutionProviderLibrary(const std::string& registration_name) {
   std::lock_guard<std::mutex> lock{mutex_};
 
-  if (ep_libraries_.count(ep_name) == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " was not registered.");
+  if (ep_libraries_.count(registration_name) == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", registration_name,
+                           " was not registered.");
   }
 
   auto status = Status::OK();
 
   ORT_TRY {
-    auto ep_info = std::move(ep_libraries_[ep_name]);
+    auto ep_info = std::move(ep_libraries_[registration_name]);
+
+    // Clean up environment config entry that may have been added to enable virtual devices.
+    if (AreVirtualDevicesAllowed(registration_name)) {
+      num_allow_virtual_device_uses_ -= 1;
+
+      if (num_allow_virtual_device_uses_ == 0) {
+        RemoveConfigEntry(kOrtEnvAllowVirtualDevices);
+      }
+    }
+
     // remove from map and global list of OrtEpDevice* before unloading so we don't get a leftover entry if
     // something goes wrong in any of the following steps..
-    ep_libraries_.erase(ep_name);
+    ep_libraries_.erase(registration_name);
 
     for (auto* data_transfer : ep_info->data_transfers) {
       ORT_RETURN_IF_ERROR(data_transfer_mgr_.UnregisterDataTransfer(data_transfer));
@@ -629,8 +691,8 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", ep_name, " with error: ",
-                               ex.what());
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", registration_name,
+                               " with error: ", ex.what());
     });
   }
 
@@ -707,29 +769,6 @@ std::vector<const OrtHardwareDevice*> SortDevicesByType() {
 const std::vector<const OrtHardwareDevice*>& GetSortedHardwareDevices() {
   static const auto sorted_devices = SortDevicesByType();
   return sorted_devices;
-}
-
-bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
-  constexpr std::string_view suffix{".virtual"};
-
-  return lib_registration_name.size() >= suffix.size() &&
-         lib_registration_name.compare(lib_registration_name.size() - suffix.size(),
-                                       suffix.size(), suffix) == 0;
-}
-
-Status SetEpFactoryEnvironmentOptions(OrtEpFactory& factory, std::string_view lib_registration_name) {
-  // OrtEpFactory::SetEnvironmentOptions was added in ORT 1.24
-  if (factory.ort_version_supported < 24 || factory.SetEnvironmentOptions == nullptr) {
-    return Status::OK();
-  }
-
-  // We only set one option now but this can be generalized if necessary.
-  OrtKeyValuePairs options;
-  options.Add("allow_virtual_devices", AreVirtualDevicesAllowed(lib_registration_name) ? "1" : "0");
-
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(factory.SetEnvironmentOptions(&factory, &options)));
-
-  return Status::OK();
 }
 }  // namespace
 
@@ -850,8 +889,6 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
                 instance.library->RegistrationName());
 
     auto& factory = *factory_ptr;
-
-    ORT_RETURN_IF_ERROR(SetEpFactoryEnvironmentOptions(factory, instance.library->RegistrationName()));
 
     std::array<OrtEpDevice*, 8> ep_devices{nullptr};
     size_t num_ep_devices = 0;
