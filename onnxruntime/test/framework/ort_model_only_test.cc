@@ -43,7 +43,7 @@ std::filesystem::path ResolveTestPath(const std::filesystem::path& path) {
   }
 
   static const std::filesystem::path kSourceTestRoot =
-    std::filesystem::path{WIDEN(__FILE__)}.parent_path().parent_path();
+      std::filesystem::path{WIDEN(__FILE__)}.parent_path().parent_path();
   std::filesystem::path source_candidate = kSourceTestRoot / path;
   if (std::filesystem::exists(source_candidate)) {
     return source_candidate;

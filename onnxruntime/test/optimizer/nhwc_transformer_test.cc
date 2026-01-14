@@ -247,7 +247,6 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat) {
                     /*opset_version*/ 12,
                     /*per_sample_tolerance*/ 1e-6,
                     /*relative_per_sample_tolerance*/ 1e-6);
-
 }
 
 TEST(NhwcTransformerTests, ConvAveragePool) {
