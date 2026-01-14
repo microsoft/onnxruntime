@@ -2871,11 +2871,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   int input_order = 0;
   int output_order = 0;
 
-#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
-  // node arg to its consumer nodes
-  // It's only used in ORT_MINIMAL_BUILD, otherwise we use GetConsumerNodes() instead.
+  // node arg to its consumer nodes.
+  // Note: graph.GetConsumerNodes() is not available in minimal build, in order to use unified implementation across
+  //       all builds, this map is needed to determine if node arg is consumed by other nodes.
   std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes;
-#endif
 
   std::vector<std::string> initializers;
 
@@ -2933,9 +2932,6 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
         erased.insert(output);
       } else if (erased.find(output) == erased.end()) {
         auto has_consumer_nodes = [&](const std::string& node_arg_str) -> bool {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-          return graph.GetConsumerNodes(node_arg_str).size() > 0;
-#else
           // Same implementation as Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes()
           if (node_arg_to_consumer_nodes.empty()) {
             for (const auto& node : graph.Nodes()) {
@@ -2946,9 +2942,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
               });
             }
           }
-
           return node_arg_to_consumer_nodes.find(node_arg_str) != node_arg_to_consumer_nodes.end();
-#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
         };
 
         if (has_consumer_nodes(output->Name())) {
