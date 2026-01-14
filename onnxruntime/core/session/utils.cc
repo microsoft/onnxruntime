@@ -100,7 +100,6 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
   return Status::OK();
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status GetCustomOpDomainsFromEpDevice(const OrtEpDevice& ep_device, InlinedVector<OrtCustomOpDomain*>& domains_out) {
   InlinedVector<OrtCustomOpDomain*> domains{};
@@ -133,7 +132,6 @@ bool DoesDomainWithNameExist(const std::string& domain_name, const std::vector<O
   return false;
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 Status GetModelMetadata(const ORTCHAR_T* model_path,
                         const void* model_data,
                         size_t model_data_length,
@@ -194,7 +192,7 @@ Status GetModelMetadata(const ORTCHAR_T* model_path,
 
   return Status::OK();
 }
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
