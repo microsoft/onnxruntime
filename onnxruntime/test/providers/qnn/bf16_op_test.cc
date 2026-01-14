@@ -16,6 +16,9 @@ namespace test {
 // Helper function to create a simple Add model for BF16 testing
 static GetTestModelFn BuildBF16AddTestCase(const TestInputDef<float>& input1_def,
                                            const TestInputDef<float>& input2_def) {
+  // Silence unused function warning
+  (void)BuildBF16AddTestCase;
+
   return [input1_def, input2_def](ModelTestBuilder& builder) {
     NodeArg* input1 = MakeTestInput(builder, input1_def);
     NodeArg* input2 = MakeTestInput(builder, input2_def);
@@ -27,6 +30,9 @@ static GetTestModelFn BuildBF16AddTestCase(const TestInputDef<float>& input1_def
 // Helper function to create a simple MatMul model for BF16 testing
 static GetTestModelFn BuildBF16MatMulTestCase(const TestInputDef<float>& input1_def,
                                               const TestInputDef<float>& input2_def) {
+  // Silence unused function warning
+  (void)BuildBF16MatMulTestCase;
+
   return [input1_def, input2_def](ModelTestBuilder& builder) {
     NodeArg* input1 = MakeTestInput(builder, input1_def);
     NodeArg* input2 = MakeTestInput(builder, input2_def);
@@ -38,6 +44,9 @@ static GetTestModelFn BuildBF16MatMulTestCase(const TestInputDef<float>& input1_
 // Helper function to create a Conv model for BF16 testing
 static GetTestModelFn BuildBF16ConvTestCase(const TestInputDef<float>& input_def,
                                             const TestInputDef<float>& weights_def) {
+  // Silence unused function warning
+  (void)BuildBF16ConvTestCase;
+
   return [input_def, weights_def](ModelTestBuilder& builder) {
     NodeArg* input = MakeTestInput(builder, input_def);
     NodeArg* weights = MakeTestInput(builder, weights_def);
@@ -52,6 +61,9 @@ static void RunBF16ModelTest(const GetTestModelFn& build_test_case,
                              ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
                              int opset = 18,
                              float fp32_abs_err = 1e-2f) {
+  // Silence unused function warning
+  (void)RunBF16ModelTest;
+
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["htp_bf16_enable"] = "1";  // Enable BF16 mode
