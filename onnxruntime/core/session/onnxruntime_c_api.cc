@@ -2994,12 +2994,17 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   }
 
   // input order needs to be consistent with original graph's input order
-  for (auto it = subgraph_inputs.begin(), end = subgraph_inputs.end(); it != end; ++it) {
-    const auto& iter = original_inputs.find(it->first);
-    if (iter != original_inputs.end()) {
-      inputs.insert(std::pair<int, const NodeArg*>(iter->second, iter->first));
+  for (const auto& [node_arg, subgraph_input_order] : subgraph_inputs) {
+    const auto& original_input_it = original_inputs.find(node_arg);
+
+    if (original_input_it != original_inputs.end()) {
+      inputs.insert(std::make_pair(
+          original_input_it->second,  // input order from original graph
+          node_arg));
     } else {
-      inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+      inputs.insert(std::make_pair(
+          subgraph_input_order,  // input order from subgraph
+          node_arg));
     }
   }
 
