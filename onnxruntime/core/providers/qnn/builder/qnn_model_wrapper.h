@@ -19,6 +19,10 @@
 namespace onnxruntime {
 namespace qnn {
 
+// Forward declarations
+class QnnModelWrapper;
+class BF16ConversionGuard;
+
 // Stores information about an ONNX input or output tensor.
 // Filled out by QnnModelWrapper::GetTensorInfo()
 struct TensorInfo {
@@ -36,6 +40,9 @@ struct ModelSettings {
 };
 
 class QnnModelWrapper {
+  // Allow BF16ConversionGuard to access private RestoreFP32AfterValidation method
+  friend class BF16ConversionGuard;
+
  public:
   QnnModelWrapper(const GraphViewer& graph_viewer,
                   const logging::Logger& logger,
@@ -428,6 +435,41 @@ inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
   qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
   return Status::OK();
 }
+
+// RAII guard to ensure FP32 restoration after BF16 conversion for validation
+class BF16ConversionGuard {
+ public:
+  BF16ConversionGuard(QnnModelWrapper* wrapper,
+                      const std::vector<std::string>& input_names,
+                      const std::vector<std::string>& output_names)
+      : wrapper_(wrapper),
+        input_names_(input_names),
+        output_names_(output_names) {}
+
+  ~BF16ConversionGuard() {
+    if (wrapper_) {
+      try {
+        wrapper_->RestoreFP32AfterValidation(input_names_, output_names_);
+      } catch (...) {
+        // Destructors must not throw exceptions
+        // Silently catch any exceptions during cleanup
+      }
+    }
+  }
+
+  // Prevent copying
+  BF16ConversionGuard(const BF16ConversionGuard&) = delete;
+  BF16ConversionGuard& operator=(const BF16ConversionGuard&) = delete;
+
+  // Prevent moving to avoid double-cleanup issues
+  BF16ConversionGuard(BF16ConversionGuard&&) = delete;
+  BF16ConversionGuard& operator=(BF16ConversionGuard&&) = delete;
+
+ private:
+  QnnModelWrapper* wrapper_;
+  std::vector<std::string> input_names_;   // Store by value, not reference
+  std::vector<std::string> output_names_;  // Store by value, not reference
+};
 
 }  // namespace qnn
 }  // namespace onnxruntime
