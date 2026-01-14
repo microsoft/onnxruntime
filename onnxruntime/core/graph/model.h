@@ -374,7 +374,4 @@ class Model {
 
   CheckLoadCancellationFn check_load_cancellation_fn_;
 };
-
-template <typename T>
-Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto);
 }  // namespace onnxruntime

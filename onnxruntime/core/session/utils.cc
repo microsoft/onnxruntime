@@ -132,7 +132,7 @@ bool IsDomainExisted(const std::string& domain_name, const std::vector<OrtCustom
 }
 }  // namespace
 
-Status static GetModelMetaData(const ORTCHAR_T* model_path,
+Status static GetModelMetadata(const ORTCHAR_T* model_path,
                                const void* model_data,
                                size_t model_data_length,
                                ModelMetadata& model_metadata) {
@@ -162,7 +162,7 @@ Status static GetModelMetaData(const ORTCHAR_T* model_path,
       model_metadata.version = model_proto.model_version();
     }
 
-    std::unordered_map<std::string, std::string> metadata;
+    ModelMetaData metadata;
     for (auto& prop : model_proto.metadata_props()) {
       metadata[prop.key()] = prop.value();
     }
@@ -175,20 +175,22 @@ Status static GetModelMetaData(const ORTCHAR_T* model_path,
     return;
   };
 
+  ONNX_NAMESPACE::ModelProto model_proto;
+
   if (model_path != nullptr) {
-    ONNX_NAMESPACE::ModelProto model_proto;
-    onnxruntime::PathString path(model_path);
-    ORT_RETURN_IF_ERROR(LoadModel(path, model_proto));
-    get_model_metadata(model_proto, model_metadata);
+    PathString path(model_path);
+    ORT_RETURN_IF_ERROR(Model::Load(path, model_proto));
   } else if (model_data != nullptr && model_data_length > 0) {
-    ONNX_NAMESPACE::ModelProto model_proto;
     const bool result = model_proto.ParseFromArray(model_data, static_cast<int>(model_data_length));
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
-    get_model_metadata(model_proto, model_metadata);
+  } else {
+    return Status::OK();
   }
+
+  get_model_metadata(model_proto, model_metadata);
 
   return Status::OK();
 }
@@ -297,18 +299,16 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
     // Following code calls the same ep selection functions that InitializeSession() calls as well
     // to get `execution_devices` and `devices_selected`.
-    // Note: If the selection policy is delegate, the model metadata should be provided to the delegate function.
-    // However, the model metadata is not known at this point as ORT hasn't loaded the model yet. So the empty
-    // model metadata is provided for now.
-    // TODO: might need to fetch model metadata from model proto.
 
     std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
 
     // The list of devices selected by policies
     std::vector<const OrtEpDevice*> devices_selected;
 
+    // If the selection policy is delegate, the model metadata as key-value paris should be provided to
+    // the delegate function
     ModelMetadata model_metadata;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(GetModelMetaData(model_path, model_data, model_data_length, model_metadata));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(GetModelMetadata(model_path, model_data, model_data_length, model_metadata));
     OrtKeyValuePairs model_metadata_key_value_pairs;
     model_metadata_key_value_pairs = GetModelMetadataKeyValuePairs(model_metadata);
 
