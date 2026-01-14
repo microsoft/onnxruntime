@@ -1282,8 +1282,7 @@ TEST(CastOpTest, Int2x4ToUInt8) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   // Negative values will be cast to their unsigned representation
   const std::vector<uint8_t> expected_uint8_output = {254, 1, 0, 255, 1, 254, 255, 0};
@@ -1297,8 +1296,7 @@ TEST(CastOpTest, Int2x4ToInt16) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   const std::vector<int16_t> expected_int16_output = {-2, 1, 0, -1, 1, -2, -1, 0};
 
@@ -1311,8 +1309,7 @@ TEST(CastOpTest, Int2x4ToInt32) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   const std::vector<int32_t> expected_int32_output = {-2, 1, 0, -1, 1, -2, -1, 0};
 
@@ -1325,8 +1322,7 @@ TEST(CastOpTest, Int2x4ToInt64) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   const std::vector<int64_t> expected_int64_output = {-2, 1, 0, -1, 1, -2, -1, 0};
 
@@ -1339,8 +1335,7 @@ TEST(CastOpTest, Int2x4ToFloat) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   const std::vector<float> expected_float_output = {-2.0f, 1.0f, 0.0f, -1.0f, 1.0f, -2.0f, -1.0f, 0.0f};
 
@@ -1353,8 +1348,7 @@ TEST(CastOpTest, Int2x4ToDouble) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   const std::vector<double> expected_double_output = {-2.0, 1.0, 0.0, -1.0, 1.0, -2.0, -1.0, 0.0};
 
@@ -1367,8 +1361,7 @@ TEST(CastOpTest, Int2x4ToBool) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(0, -1, 1, 0),
-      Int2x4(-2, 0, 1, -1)
-  };
+      Int2x4(-2, 0, 1, -1)};
 
   const bool bool_output[] = {false, true, true, false, true, false, true, true};
   const gsl::span<const bool> expected_bool_output_span(bool_output);
@@ -1382,8 +1375,7 @@ TEST(CastOpTest, Int2x4ToMLFloat16) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   const std::vector<MLFloat16> expected_float16_output =
       CastedValues<float, MLFloat16>(
@@ -1399,13 +1391,11 @@ TEST(CastOpTest, Int2x4ToString) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   const std::vector<std::string> expected_output = {
       "-2", "1", "0", "-1",
-      "1", "-2", "-1", "0"
-  };
+      "1", "-2", "-1", "0"};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::span<const Int2x4>(int2x4_input), gsl::span<const std::string>(expected_output), shape);
@@ -1429,8 +1419,8 @@ TEST(CastOpTest, UInt2x4ToUInt8) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
-      UInt2x4(0, 3, 1, 2),   // boundary and mid values
-      UInt2x4(3, 0, 2, 1)    // reversed order
+      UInt2x4(0, 3, 1, 2),  // boundary and mid values
+      UInt2x4(3, 0, 2, 1)   // reversed order
   };
 
   const std::vector<uint8_t> expected_uint8_output = {0, 3, 1, 2, 3, 0, 2, 1};
@@ -1444,8 +1434,7 @@ TEST(CastOpTest, UInt2x4ToInt8) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<int8_t> expected_int8_output = {0, 3, 1, 2, 3, 0, 2, 1};
 
@@ -1458,8 +1447,7 @@ TEST(CastOpTest, UInt2x4ToInt32) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<int32_t> expected_int32_output = {0, 3, 1, 2, 3, 0, 2, 1};
 
@@ -1472,8 +1460,7 @@ TEST(CastOpTest, UInt2x4ToFloat) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<float> expected_float_output = {0.0f, 3.0f, 1.0f, 2.0f, 3.0f, 0.0f, 2.0f, 1.0f};
 
@@ -1486,8 +1473,7 @@ TEST(CastOpTest, UInt2x4ToBool) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 1, 2, 0),
-      UInt2x4(3, 0, 0, 1)
-  };
+      UInt2x4(3, 0, 0, 1)};
 
   const bool bool_output[] = {false, true, true, false, true, false, false, true};
   const gsl::span<const bool> expected_bool_output_span(bool_output);
@@ -1501,13 +1487,11 @@ TEST(CastOpTest, UInt2x4ToString) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<std::string> expected_output = {
       "0", "3", "1", "2",
-      "3", "0", "2", "1"
-  };
+      "3", "0", "2", "1"};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::span<const UInt2x4>(uint2x4_input), gsl::span<const std::string>(expected_output), shape);
@@ -1518,14 +1502,12 @@ TEST(CastOpTest, Int2x4ToUInt2x4) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   // Reinterpret: -2 becomes 2, -1 becomes 3 (mask to 2 bits)
   const std::vector<UInt2x4> expected_uint2x4_output = {
       UInt2x4(2, 1, 0, 3),
-      UInt2x4(1, 2, 3, 0)
-  };
+      UInt2x4(1, 2, 3, 0)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(int2x4_input), gsl::make_span(expected_uint2x4_output), shape);
@@ -1536,14 +1518,12 @@ TEST(CastOpTest, UInt2x4ToInt2x4) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   // Sign-extend: 2 becomes -2, 3 becomes -1 (values >= 2 are negative in 2-bit signed)
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(0, -1, 1, -2),
-      Int2x4(-1, 0, -2, 1)
-  };
+      Int2x4(-1, 0, -2, 1)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(uint2x4_input), gsl::make_span(expected_int2x4_output), shape);
@@ -1709,8 +1689,7 @@ TEST(CastOpTest, Int8ToInt2x4) {
   // 127 = 0x7F, truncate to 0x03 = 3, sign-extend to -1
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(-2, -1, 0, -1),
-      Int2x4(-1, 0, 0, -1)
-  };
+      Int2x4(-1, 0, 0, -1)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(int8_input), gsl::make_span(expected_int2x4_output), shape);
@@ -1723,9 +1702,8 @@ TEST(CastOpTest, UInt8ToUInt2x4) {
 
   // values get truncated to lower 2 bits
   const std::vector<UInt2x4> expected_uint2x4_output = {
-      UInt2x4(0, 3, 0, 1),   // 20 (0x14) truncate to 0, 255 (0xFF) truncate to 3, etc.
-      UInt2x4(3, 0, 3, 3)
-  };
+      UInt2x4(0, 3, 0, 1),  // 20 (0x14) truncate to 0, 255 (0xFF) truncate to 3, etc.
+      UInt2x4(3, 0, 3, 3)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(uint8_input), gsl::make_span(expected_uint2x4_output), shape);
@@ -1738,8 +1716,8 @@ TEST(CastOpTest, Int32ToInt2x4) {
 
   // Truncate to 2 bits and sign-extend
   const std::vector<Int2x4> expected_int2x4_output = {
-      Int2x4(-2, -1, 0, 0),   // -10 -> -2, INT32_MAX -> -1, 0 -> 0, INT32_MIN -> 0
-      Int2x4(-1, -1, 0, -1)   // 3 -> -1, -5 -> -1, 4080 -> 0, 287 -> -1
+      Int2x4(-2, -1, 0, 0),  // -10 -> -2, INT32_MAX -> -1, 0 -> 0, INT32_MIN -> 0
+      Int2x4(-1, -1, 0, -1)  // 3 -> -1, -5 -> -1, 4080 -> 0, 287 -> -1
   };
 
   // WHEN, THEN
@@ -1792,8 +1770,7 @@ TEST(CastOpTest, FloatToInt2x4) {
   // 31.9 rounds to 32 -> 0 (truncate)
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(-2, -2, 0, -2),
-      Int2x4(-1, -1, 0, 0)
-  };
+      Int2x4(-1, -1, 0, 0)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(float_input), gsl::make_span(expected_int2x4_output), shape);
@@ -1822,8 +1799,7 @@ TEST(CastOpTest, BoolToInt2x4) {
 
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(0, 1, 1, 0),
-      Int2x4(0, 1, 1, 1)
-  };
+      Int2x4(0, 1, 1, 1)};
 
   // WHEN, THEN
   TestCastOpInt2(bool_input_span, gsl::make_span(expected_int2x4_output), shape);
@@ -1837,8 +1813,7 @@ TEST(CastOpTest, BoolToUInt2x4) {
 
   const std::vector<UInt2x4> expected_uint2x4_output = {
       UInt2x4(0, 1, 1, 0),
-      UInt2x4(0, 1, 1, 1)
-  };
+      UInt2x4(0, 1, 1, 1)};
 
   // WHEN, THEN
   TestCastOpInt2(bool_input_span, gsl::make_span(expected_uint2x4_output), shape);
@@ -1849,13 +1824,11 @@ TEST(CastOpTest, StringToInt2x4) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<std::string> string_input = {
       "-2", "1", "0", "-1",
-      "1", "-2", "-1", "0"
-  };
+      "1", "-2", "-1", "0"};
 
   const std::vector<Int2x4> expected_output{
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::span<const std::string>(string_input), gsl::span<const Int2x4>(expected_output), shape);
@@ -1866,13 +1839,11 @@ TEST(CastOpTest, StringToUInt2x4) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<std::string> string_input = {
       "0", "3", "1", "2",
-      "3", "0", "2", "1"
-  };
+      "3", "0", "2", "1"};
 
   const std::vector<UInt2x4> expected_output{
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::span<const std::string>(string_input), gsl::span<const UInt2x4>(expected_output), shape);
@@ -1922,8 +1893,7 @@ TEST(CastOpTest, Int2x4ToUInt16) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   // Negative values will be cast to their unsigned representation
   const std::vector<uint16_t> expected_uint16_output = {65534, 1, 0, UINT16_MAX, 1, 65534, UINT16_MAX, 0};
@@ -1937,8 +1907,7 @@ TEST(CastOpTest, Int2x4ToUInt32) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   // Negative values will be cast to their unsigned representation
   const std::vector<uint32_t> expected_uint32_output = {4294967294, 1, 0, UINT32_MAX, 1, 4294967294, UINT32_MAX, 0};
@@ -1952,8 +1921,7 @@ TEST(CastOpTest, Int2x4ToUInt64) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   // Negative values will be cast to their unsigned representation
   const std::vector<uint64_t> expected_uint64_output = {18446744073709551614ULL, 1, 0, UINT64_MAX,
@@ -1968,8 +1936,7 @@ TEST(CastOpTest, UInt2x4ToUInt16) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<uint16_t> expected_uint16_output = {0, 3, 1, 2, 3, 0, 2, 1};
 
@@ -1982,8 +1949,7 @@ TEST(CastOpTest, UInt2x4ToInt16) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<int16_t> expected_int16_output = {0, 3, 1, 2, 3, 0, 2, 1};
 
@@ -1996,8 +1962,7 @@ TEST(CastOpTest, UInt2x4ToUInt32) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<uint32_t> expected_uint32_output = {0, 3, 1, 2, 3, 0, 2, 1};
 
@@ -2010,8 +1975,7 @@ TEST(CastOpTest, UInt2x4ToUInt64) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<uint64_t> expected_uint64_output = {0, 3, 1, 2, 3, 0, 2, 1};
 
@@ -2024,8 +1988,7 @@ TEST(CastOpTest, UInt2x4ToInt64) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<int64_t> expected_int64_output = {0, 3, 1, 2, 3, 0, 2, 1};
 
@@ -2038,8 +2001,7 @@ TEST(CastOpTest, UInt2x4ToDouble) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<double> expected_double_output = {0.0, 3.0, 1.0, 2.0, 3.0, 0.0, 2.0, 1.0};
 
@@ -2052,8 +2014,7 @@ TEST(CastOpTest, UInt2x4ToMLFloat16) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<MLFloat16> expected_float16_output =
       CastedValues<float, MLFloat16>(
@@ -2069,8 +2030,7 @@ TEST(CastOpTest, Int2x4ToBFloat16) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   const std::vector<BFloat16> expected_bfloat16_output =
       CastedValues<float, BFloat16>(
@@ -2086,8 +2046,7 @@ TEST(CastOpTest, UInt2x4ToBFloat16) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   const std::vector<BFloat16> expected_bfloat16_output =
       CastedValues<float, BFloat16>(
@@ -2106,8 +2065,7 @@ TEST(CastOpTest, Int16ToInt2x4) {
   // Truncate to 2 bits and sign-extend
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(-2, -1, 0, 0),
-      Int2x4(-1, -1, 0, -1)
-  };
+      Int2x4(-1, -1, 0, -1)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(int16_input), gsl::make_span(expected_int2x4_output), shape);
@@ -2121,8 +2079,7 @@ TEST(CastOpTest, UInt16ToUInt2x4) {
   // Truncate to 2 bits
   const std::vector<UInt2x4> expected_uint2x4_output = {
       UInt2x4(0, 3, 0, 1),
-      UInt2x4(3, 0, 3, 3)
-  };
+      UInt2x4(3, 0, 3, 3)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(uint16_input), gsl::make_span(expected_uint2x4_output), shape);
@@ -2136,8 +2093,7 @@ TEST(CastOpTest, Int64ToInt2x4) {
   // Truncate to 2 bits and sign-extend
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(-2, -1, 0, 0),
-      Int2x4(-1, -1, 0, -1)
-  };
+      Int2x4(-1, -1, 0, -1)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(int64_input), gsl::make_span(expected_int2x4_output), shape);
@@ -2151,8 +2107,7 @@ TEST(CastOpTest, UInt64ToUInt2x4) {
   // Truncate to 2 bits
   const std::vector<UInt2x4> expected_uint2x4_output = {
       UInt2x4(0, 3, 0, 1),
-      UInt2x4(3, 0, 3, 3)
-  };
+      UInt2x4(3, 0, 3, 3)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(uint64_input), gsl::make_span(expected_uint2x4_output), shape);
@@ -2166,8 +2121,7 @@ TEST(CastOpTest, DoubleToInt2x4) {
   // Round then truncate to 2 bits and sign-extend
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(-2, -2, 0, -2),
-      Int2x4(-1, -1, 0, 0)
-  };
+      Int2x4(-1, -1, 0, 0)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(double_input), gsl::make_span(expected_int2x4_output), shape);
@@ -2181,8 +2135,7 @@ TEST(CastOpTest, DoubleToUInt2x4) {
   // Round then truncate to 2 bits (round-half-to-even rounding)
   const std::vector<UInt2x4> expected_uint2x4_output = {
       UInt2x4(0, 0, 1, 3),  // 2.5 rounds to 2 (even), truncated to 3 bits -> becomes 3 after truncation
-      UInt2x4(0, 3, 3, 0)
-  };
+      UInt2x4(0, 3, 3, 0)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(double_input), gsl::make_span(expected_uint2x4_output), shape);
@@ -2199,8 +2152,7 @@ TEST(CastOpTest, MLFloat16ToInt2x4) {
   // Truncate to 2 bits and sign-extend
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(-1, -1, -1, -1)
-  };
+      Int2x4(-1, -1, -1, -1)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(float16_input), gsl::make_span(expected_int2x4_output), shape);
@@ -2217,8 +2169,7 @@ TEST(CastOpTest, MLFloat16ToUInt2x4) {
   // Truncate to 2 bits
   const std::vector<UInt2x4> expected_uint2x4_output = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(0, 3, 3, 3)
-  };
+      UInt2x4(0, 3, 3, 3)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(float16_input), gsl::make_span(expected_uint2x4_output), shape);
@@ -2235,8 +2186,7 @@ TEST(CastOpTest, BFloat16ToInt2x4) {
   // Truncate to 2 bits and sign-extend
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(-1, -1, -1, -1)
-  };
+      Int2x4(-1, -1, -1, -1)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(bfloat16_input), gsl::make_span(expected_int2x4_output), shape);
@@ -2253,8 +2203,7 @@ TEST(CastOpTest, BFloat16ToUInt2x4) {
   // Truncate to 2 bits
   const std::vector<UInt2x4> expected_uint2x4_output = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(0, 3, 3, 3)
-  };
+      UInt2x4(0, 3, 3, 3)};
 
   // WHEN, THEN
   TestCastOpInt2(gsl::make_span(bfloat16_input), gsl::make_span(expected_uint2x4_output), shape);
@@ -2264,10 +2213,10 @@ TEST(CastOpTest, MLFloat16ToInt2x4BoundaryValues) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2};
   const MLFloat16 mlfloat16_array[4] = {
-      MLFloat16(static_cast<float>(-5)),    // Truncated to lower 2 bits
-      MLFloat16(static_cast<float>(4)),     // Truncated to lower 2 bits
-      MLFloat16(static_cast<float>(-0.6f)), // Should round to -1
-      MLFloat16(static_cast<float>(1.7f))   // Should round to 2 -> -2 (truncated)
+      MLFloat16(static_cast<float>(-5)),     // Truncated to lower 2 bits
+      MLFloat16(static_cast<float>(4)),      // Truncated to lower 2 bits
+      MLFloat16(static_cast<float>(-0.6f)),  // Should round to -1
+      MLFloat16(static_cast<float>(1.7f))    // Should round to 2 -> -2 (truncated)
   };
 
   // Values get truncated to lower 2 bits and sign-extended
@@ -2277,17 +2226,17 @@ TEST(CastOpTest, MLFloat16ToInt2x4BoundaryValues) {
 
   // WHEN, THEN
   TestCastOpInt2(gsl::span<const MLFloat16>(mlfloat16_array, 4), gsl::span<const Int2x4>(expected_int2x4),
-      shape);
+                 shape);
 }
 
 TEST(CastOpTest, MLFloat16ToUInt2x4BoundaryValues) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2};
   const MLFloat16 mlfloat16_array[4] = {
-      MLFloat16(static_cast<float>(-5)),   // Negative, truncated to lower 2 bits
-      MLFloat16(static_cast<float>(20)),   // Above max, truncated to lower 2 bits
-      MLFloat16(static_cast<float>(3.4f)), // Should round to 3
-      MLFloat16(static_cast<float>(5.7f))  // Should round to 6 -> 2 (truncated)
+      MLFloat16(static_cast<float>(-5)),    // Negative, truncated to lower 2 bits
+      MLFloat16(static_cast<float>(20)),    // Above max, truncated to lower 2 bits
+      MLFloat16(static_cast<float>(3.4f)),  // Should round to 3
+      MLFloat16(static_cast<float>(5.7f))   // Should round to 6 -> 2 (truncated)
   };
 
   // Values get truncated to lower 2 bits (no sign extension for unsigned)
@@ -2297,17 +2246,17 @@ TEST(CastOpTest, MLFloat16ToUInt2x4BoundaryValues) {
 
   // WHEN, THEN
   TestCastOpInt2(gsl::span<const MLFloat16>(mlfloat16_array, 4), gsl::span<const UInt2x4>(expected_uint2x4),
-      shape);
+                 shape);
 }
 
 TEST(CastOpTest, BFloat16ToUInt2x4BoundaryValues) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2};
   const BFloat16 bfloat16_array[4] = {
-      BFloat16(static_cast<float>(-5)),   // Negative, truncated to lower 2 bits
-      BFloat16(static_cast<float>(20)),   // Above max, truncated to lower 2 bits
-      BFloat16(static_cast<float>(3.4f)), // Should round to 3
-      BFloat16(static_cast<float>(5.7f))  // Should round to 6 -> 2 (truncated)
+      BFloat16(static_cast<float>(-5)),    // Negative, truncated to lower 2 bits
+      BFloat16(static_cast<float>(20)),    // Above max, truncated to lower 2 bits
+      BFloat16(static_cast<float>(3.4f)),  // Should round to 3
+      BFloat16(static_cast<float>(5.7f))   // Should round to 6 -> 2 (truncated)
   };
 
   // Values get truncated to lower 2 bits (no sign extension for unsigned)
@@ -2317,7 +2266,7 @@ TEST(CastOpTest, BFloat16ToUInt2x4BoundaryValues) {
 
   // WHEN, THEN
   TestCastOpInt2(gsl::span<const BFloat16>(bfloat16_array, 4), gsl::span<const UInt2x4>(expected_uint2x4),
-      shape);
+                 shape);
 }
 
 TEST(CastOpTest, Int32ToInt2x4EmptyTensor) {
@@ -2555,8 +2504,7 @@ TEST(CastOpTest, Int2x4ToFloat8E4M3FN) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   std::vector<Float8E4M3FN> expected_float8_output;
   const std::vector<float> expected_values = {-2.0f, 1.0f, 0.0f, -1.0f, 1.0f, -2.0f, -1.0f, 0.0f};
@@ -2573,8 +2521,7 @@ TEST(CastOpTest, UInt2x4ToFloat8E4M3FN) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   std::vector<Float8E4M3FN> expected_float8_output;
   const std::vector<float> expected_values = {0.0f, 3.0f, 1.0f, 2.0f, 3.0f, 0.0f, 2.0f, 1.0f};
@@ -2591,8 +2538,7 @@ TEST(CastOpTest, Int2x4ToFloat8E5M2) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int2x4> int2x4_input = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   std::vector<Float8E5M2> expected_float8_output;
   const std::vector<float> expected_values = {-2.0f, 1.0f, 0.0f, -1.0f, 1.0f, -2.0f, -1.0f, 0.0f};
@@ -2609,8 +2555,7 @@ TEST(CastOpTest, UInt2x4ToFloat8E5M2) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt2x4> uint2x4_input = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   std::vector<Float8E5M2> expected_float8_output;
   const std::vector<float> expected_values = {0.0f, 3.0f, 1.0f, 2.0f, 3.0f, 0.0f, 2.0f, 1.0f};
@@ -2633,8 +2578,7 @@ TEST(CastOpTest, Float8E4M3FNToInt2x4) {
 
   const std::vector<Int2x4> expected_int2x4_output = {
       Int2x4(-2, 1, 0, -1),
-      Int2x4(1, -2, -1, 0)
-  };
+      Int2x4(1, -2, -1, 0)};
 
   // WHEN, THEN
   TestCastOpInt2<Float8E4M3FN, Int2x4>(gsl::make_span(float8_input), gsl::make_span(expected_int2x4_output), shape);
@@ -2651,8 +2595,7 @@ TEST(CastOpTest, Float8E4M3FNToUInt2x4) {
 
   const std::vector<UInt2x4> expected_uint2x4_output = {
       UInt2x4(0, 3, 1, 2),
-      UInt2x4(3, 0, 2, 1)
-  };
+      UInt2x4(3, 0, 2, 1)};
 
   // WHEN, THEN
   TestCastOpInt2<Float8E4M3FN, UInt2x4>(gsl::make_span(float8_input), gsl::make_span(expected_uint2x4_output), shape);

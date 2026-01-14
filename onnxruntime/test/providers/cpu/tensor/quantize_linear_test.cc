@@ -620,8 +620,8 @@ static void GetExpectedInt2Quant(const float* input, Int2x4Base<Signed>* output,
 
     UnpackedType int_val = static_cast<UnpackedType>(float_val);
 
-    size_t i = n >> 2;      // n / 4
-    size_t j = n & 0x3;     // n % 4
+    size_t i = n >> 2;   // n / 4
+    size_t j = n & 0x3;  // n % 4
     output[i].SetElem(j, int_val);
   }
 }
@@ -633,11 +633,11 @@ TEST(QuantizeLinearOpTest, Int2) {
   std::vector<int64_t> dims{5};
   constexpr int8_t unused_val = 0;
   test.AddInput<float>("x", dims, {
-                                      -6.0f,   // Clamp to qmin (-2)
-                                      -4.0f,   // qmin
-                                      -1.0f,   // round to 0 with zp=0
-                                      0.0f,    // Zero-point
-                                      4.0f,    // Clamp to qmax (1)
+                                      -6.0f,  // Clamp to qmin (-2)
+                                      -4.0f,  // qmin
+                                      -1.0f,  // round to 0 with zp=0
+                                      0.0f,   // Zero-point
+                                      4.0f,   // Clamp to qmax (1)
                                   });
   test.AddInput<float>("scale", {}, {2.0f}, true);
   test.AddInput<Int2x4>("zero_point", {}, {Int2x4(0, unused_val, unused_val, unused_val)}, true);
