@@ -8,6 +8,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/ort_value.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
@@ -28,14 +29,14 @@ TEST(DataTransferManagerTest, BatchedTensorCopyBadSize) {
   AllocateMLValue<float>(allocator, shape_b, &dst_tensors[1]);
 
   DataTransferManager dtm;
-  dtm.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   std::vector<IDataTransfer::SrcDstPair> src_dst_pairs;
   src_dst_pairs.push_back({src_tensors[0].Get<Tensor>(), *dst_tensors[0].GetMutable<Tensor>(), nullptr});
   src_dst_pairs.push_back({src_tensors[1].Get<Tensor>(), *dst_tensors[1].GetMutable<Tensor>(), nullptr});
   auto status = dtm.CopyTensors(src_dst_pairs);
 
-  ASSERT_FALSE(status.IsOK());
+  ASSERT_STATUS_OK(status);
   ASSERT_THAT(status.ErrorMessage(), testing::HasSubstr("Tensor size mismatch"));
 }
 
