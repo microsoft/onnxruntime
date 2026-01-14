@@ -122,7 +122,9 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
 
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
-  const auto ort_model_path = ResolveInternalTestPathString(ORT_MODEL_FOLDER "mnist.internal_testing_ep.test_output.ort");
+  const auto ort_model_dir = ResolveInternalTestPath(std::filesystem::path{ORT_MODEL_FOLDER});
+  const std::basic_string<ORTCHAR_T> ort_model_path =
+      (ort_model_dir / ORT_TSTR("mnist.internal_testing_ep.test_output.ort")).native();
 
   //
   // First load the onnx format model and save as an ORT model.
