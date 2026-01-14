@@ -155,6 +155,8 @@ stages:
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
 
+    - bash: |
+        nvidia-smi
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
