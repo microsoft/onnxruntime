@@ -149,15 +149,27 @@ OrtKeyValuePairs GetModelMetadataFromSession(const InferenceSession& session) {
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
                                                   InferenceSession& sess) {
-  // Get the list of devices from the environment and order them.
-  // Ordered by preference within each type. NPU -> GPU -> NPU
-  // TODO: Should environment.cc do the ordering?
-  std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
+  std::vector<const OrtEpDevice*> execution_devices;
+
+  // Check if the sorted list of devices has cached in the session
+  if (!sess.GetExecutionDevices().empty()) {
+    execution_devices = sess.GetExecutionDevices();
+  } else {
+    // Get the list of devices from the environment and order them.
+    // Ordered by preference within each type. NPU -> GPU -> NPU
+    // TODO: Should environment.cc do the ordering?
+    execution_devices = OrderDevices(env.GetOrtEpDevices());
+  }
 
   // The list of devices selected by policies
   std::vector<const OrtEpDevice*> devices_selected;
 
-  ORT_RETURN_IF_ERROR(SelectEpDevices(options, execution_devices, devices_selected, nullptr, sess));
+  // Check if the list of devices has been selected and cached in the session
+  if (!sess.GetSelectedDevices().empty()) {
+    devices_selected = sess.GetSelectedDevices();
+  } else {
+    ORT_RETURN_IF_ERROR(SelectEpDevices(options, execution_devices, devices_selected, nullptr, sess));
+  }
 
   // Log telemetry for auto EP selection
   {
@@ -251,13 +263,22 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
     }
   }
 
+  if (sess.GetExecutionDevices().empty()) {
+    sess.SetExecutionDevices(execution_devices);
+  }
+
+  if (sess.GetSelectedDevices().empty()) {
+    sess.SetSelectedDevices(devices_selected);
+  }
+
   return Status::OK();
 }
 
-Status ProviderPolicyContext::SelectEpDevices(const OrtSessionOptions& options, std::vector<const OrtEpDevice*>& execution_devices,
+Status ProviderPolicyContext::SelectEpDevices(const OrtSessionOptions& options,
+                                              const std::vector<const OrtEpDevice*>& execution_devices,
                                               std::vector<const OrtEpDevice*>& devices_selected,
-                                              OrtKeyValuePairs* metadata_from_model,
-                                              InferenceSession& sess) {
+                                              const OrtKeyValuePairs* metadata_from_model,
+                                              const InferenceSession& sess) {
   // Run the delegate if it was passed in lieu of any other policy
   if (options.value.ep_selection_policy.delegate) {
     OrtKeyValuePairs model_metadata;

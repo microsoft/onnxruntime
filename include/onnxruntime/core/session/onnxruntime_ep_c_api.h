@@ -2019,7 +2019,7 @@ struct OrtEpFactory {
   /** \brief Returns the number of OrtCustomOpDomains that this factory provides.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[out] num_domains Output parameter set to the number of created OrtCustomOpDomain instances.
+   * \param[out] num_domains Output parameter set to the number of provided OrtCustomOpDomain instances.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -2036,14 +2036,14 @@ struct OrtEpFactory {
    * 2. The application either 1) calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
    *    the plugin EP's factory or 2) enables auto ep selection.
    * 3. 1) SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomains to the
-   *    session options or 2) ORT registers the OrtCustomOpDomains from the selected EP devices.
+   *    session options or 2) ORT registers the OrtCustomOpDomains provided by the selected EP devices.
    *
    * As a result, any session created from these session options will have these custom op domains registered
    * in ORT, ensuring that the custom ops are properly recognized and validated when the model is loaded.
    *
    * Plugin EPs can provide two types of custom ops:
    *  1. A full OrtCustomOp with a concrete kernel implementation
-   *    - This Example EP demonstrates this approach.
+   *    - A Plugin EP can supply an OrtCustomOp and a corresponding CustomKernel::Compute() implementation.
    *    - In GetCapability(), it calls EpGraphSupportInfo_AddSingleNode() to inform ORT
    *      that the custom node should NOT be fused or compiled. Instead, ORT should invoke
    *      the custom node's Compute() function at runtime.
@@ -2059,11 +2059,11 @@ struct OrtEpFactory {
    *
    * Note: The OrtCustomOpDomain instances must be valid while any session is using them.
            EP factory has the responsibility to release OrtCustomOpDomain instances it creates. It happens
-   *       automatically if using ORT C++ api.
+   *       automatically if using the C++ Ort::CustomOpDomain class.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[out] domains Pre-allocated array of `num_domains` elements by ORT that should be filled with
-                         OrtCustomOpDomain created by the EP. The `num_domains` is the value returned by
+   * \param[out] domains Array of `num_domains` elements pre-allocated by ORT that should be filled with
+                         OrtCustomOpDomain instances created by the EP. The `num_domains` is the value returned by
                          GetNumCustomOpDomains(). The implementation is expected to treat `domains` as a buffer.
    * \param[in] num_domains The size of the `domains` array pre-allocated by ORT.
    *
