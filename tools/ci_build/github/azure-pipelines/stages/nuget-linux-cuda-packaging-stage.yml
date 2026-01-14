@@ -68,8 +68,6 @@ stages:
     timeoutInMinutes: 180
     pool:
       name: 'onnxruntime-Ubuntu2404-AMD-CPU'
-      demands:
-        - ImageOverride -eq onnxruntime-ubuntu2204-CUDA-A10-Test
       os: linux
     variables:
     - template: ../templates/common-variables.yml
@@ -137,6 +135,8 @@ stages:
     pool:
       name: 'Onnxruntime-Linux-GPU-A10'
       os: linux
+      demands:
+        - ImageOverride -equals onnxruntime-ubuntu2204-CUDA-A10-Test
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
