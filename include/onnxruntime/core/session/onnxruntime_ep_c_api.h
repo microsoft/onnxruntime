@@ -2033,10 +2033,10 @@ struct OrtEpFactory {
    *
    * Workflow:
    * 1. The EP factory implements this function to supply a list of OrtCustomOpDomain instances.
-   * 2. The application calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
-   *    the plugin EP's factory.
-   * 3. SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomain list to the
-   *    session options.
+   * 2. The application either 1) calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
+   *    the plugin EP's factory or 2) enables auto ep selection.
+   * 3. 1) SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomains to the
+   *    session options or 2) ORT registers the OrtCustomOpDomains from the selected EP devices.
    *
    * As a result, any session created from these session options will have these custom op domains registered
    * in ORT, ensuring that the custom ops are properly recognized and validated when the model is loaded.
