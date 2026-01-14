@@ -252,7 +252,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool ProfilingEnabled() { return profiling_enabled_; }
 #endif
 
-  bool FileMappingIsEnabled() { return file_mapped_weights_enabled_; };
+  bool FileMappingIsEnabled() { return file_mapped_weights_enabled_; }
 
  private:
   typedef struct BufferInfo {

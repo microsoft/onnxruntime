@@ -7,6 +7,7 @@
 #ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
 
 #include <string>
+#include <unordered_map>
 
 #include <QnnContext.h>
 
@@ -18,7 +19,7 @@ namespace qnn {
 
 class WindowsFileMapper : public FileMappingCallbackInterface {
  public:
-  WindowsFileMapper(const logging::Logger& logger);
+  explicit WindowsFileMapper(const logging::Logger& logger);
   ~WindowsFileMapper() override;
   Status MapContextBin(const std::string& bin_filepath,
                        void** notify_param) override;

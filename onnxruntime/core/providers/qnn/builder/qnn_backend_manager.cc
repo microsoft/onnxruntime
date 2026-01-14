@@ -787,7 +787,7 @@ static Qnn_ErrorHandle_t DmaDataProvider(Qnn_ContextBinaryDataRequest_t request,
   if (pair->first == nullptr) {
     LOGS_DEFAULT(ERROR) << "DmaProvider: file mapper is null";
     return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
-  };
+  }
 
   return pair->first->MapDmaData(request, response, pair->second);
 }

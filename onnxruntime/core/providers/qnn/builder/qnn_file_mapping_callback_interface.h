@@ -33,7 +33,7 @@ class FileMappingCallbackInterface {
                                            void* notify_param) = 0;
 
   virtual Qnn_ErrorHandle_t MapRawData(Qnn_ContextBinaryDataRequest_t request,
-                                       Qnn_ContextBinaryRawDataResponse_t* _response,
+                                       Qnn_ContextBinaryRawDataResponse_t* response,
                                        void* notify_param) = 0;
   virtual Qnn_ErrorHandle_t ReleaseRawData(Qnn_ContextBinaryRawDataMem_t data_mem,
                                            void* notify_param) = 0;

@@ -75,8 +75,8 @@ Status WindowsFileMapper::MapContextBin(const std::string& bin_filepath,
   LOGS(*logger_, INFO) << "Created file mapping with handle (" << file_mapping_handle << ") for context bin:"
                        << bin_filepath;
 
-  auto inserted = context_bin_to_mapping_handle_map_[bin_filepath] = file_mapping_handle;
-  if (!inserted) {
+  auto inserted = context_bin_to_mapping_handle_map_.insert({bin_filepath, file_mapping_handle});
+  if (!inserted.second) {
     CloseHandles(file_handle, file_mapping_handle);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add file handle mapping for context bin: ",
                            bin_filepath);
@@ -123,7 +123,7 @@ Status WindowsFileMapper::ReleaseContextBin(const std::string& bin_filepath) {
     auto mapped_data = mapping_info.mapped_data;
 
     if (!mapped_data.empty()) {
-      LOGS(*logger_, WARNING) << "Attemping to remove context bin: " << bin_filepath
+      LOGS(*logger_, WARNING) << "Attempting to remove context bin: " << bin_filepath
                               << ", but data regions still need to be unmapped. "
                               << "Proceeding with unmapping.";
       CleanUpDataMappings(mapped_data);
@@ -325,7 +325,7 @@ Qnn_ErrorHandle_t WindowsFileMapper::MapRawData(Qnn_ContextBinaryDataRequest_t r
 }
 
 // Use LOGS_DEFAULT for all clean up functions below as they will be called during destruction of
-// QnnBackendManagerAt time of destruction. Usage of logger_ will not be available and will result
+// QnnBackendManager at time of destruction. Usage of logger_ will not be available and will result
 // in a seg fault
 Qnn_ErrorHandle_t WindowsFileMapper::ReleaseRawData(Qnn_ContextBinaryRawDataMem_t data_mem,
                                                     void* notify_param) {
