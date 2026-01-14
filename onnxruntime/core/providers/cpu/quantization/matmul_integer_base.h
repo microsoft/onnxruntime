@@ -27,7 +27,7 @@ class MatMulIntegerBase : public OpKernel {
 
     // only pack Matrix B
     if (input_idx == GetBIdx()) {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
       if (TryKleidiaiDynamicPrePack(tensor, input_idx, alloc, is_packed, prepacked_weights)) {
         return Status::OK();
       }
@@ -119,7 +119,7 @@ class MatMulIntegerBase : public OpKernel {
 
   bool can_use_dynamic_quant_mlas_{false};
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
   struct KleidiaiDynamicPackContext {
     const Tensor* scale{nullptr};
     const Tensor* bias{nullptr};
