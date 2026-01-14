@@ -27,7 +27,7 @@ class FileMappingCallbackInterface {
   virtual Status FreeContextBinMappingPointer(LPVOID bin_mapping_pointer) = 0;
 
   virtual Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
-                                       Qnn_ContextBinaryDmaDataResponse_t* _response,
+                                       Qnn_ContextBinaryDmaDataResponse_t* response,
                                        void* notify_param) = 0;
   virtual Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem,
                                            void* notify_param) = 0;
