@@ -6998,6 +6998,8 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(DeviceEpIncompatibilityDetails);
 
+  /// @}
+
   /** \brief Create an OrtEnv instance with the given options.
    *
    * \note Invoking this function will return the same instance of the environment as that returned by a previous call
