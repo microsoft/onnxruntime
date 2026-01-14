@@ -21,7 +21,7 @@ rm $ARTIFACT_DIR/onnxruntime-linux-x64-tensorrt-*.tgz
 # Rename cuda directory to gpu directory
 mkdir -p $ARTIFACT_DIR/onnxruntime-linux-x64-gpu
 tar zxvf $ARTIFACT_DIR/onnxruntime-linux-x64-cuda_*.tgz -C onnxruntime-linux-x64-gpu
-VERSION=`ls $ARTIFACT_DIR/onnxruntime-linux-x64-gpu | sed 's/onnxruntime-linux-x64-cuda_//'`
+VERSION=`ls $ARTIFACT_DIR/onnxruntime-linux-x64-gpu | sed 's/onnxruntime-linux-x64-cuda_[0-9]*-//'`
 mv $ARTIFACT_DIR/onnxruntime-linux-x64-gpu/* $ARTIFACT_DIR/onnxruntime-linux-x64-gpu/onnxruntime-linux-x64-gpu-$VERSION
 rm $ARTIFACT_DIR/onnxruntime-linux-x64-cuda_*.tgz
 
