@@ -161,6 +161,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetScatterElementsOpVersionsMa
   return {{"ScatterElements", {}}};
 }
 
+static const OpVersionsAndSelector::OpVersionsMap GetRMSNormalizationOpVersionsMap() {
+  return {{"RMSNormalization", {}}};
+}
+
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
   /* register selectors for miscellaneous ops */
@@ -310,6 +314,13 @@ void RegisterScatterElementsSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterRMSNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for RMSNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<RMSNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetRMSNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -332,6 +343,7 @@ void SelectorManager::CreateSelectors() {
   RegisterTopKSelector(qdq_selectors_);
   RegisterCumSumSelector(qdq_selectors_);
   RegisterScatterElementsSelector(qdq_selectors_);
+  RegisterRMSNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

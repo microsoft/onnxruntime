@@ -14,11 +14,16 @@ class ExampleKernelEpFactory;
 /// </summary>
 class ExampleKernelEp : public OrtEp {
  public:
-  ExampleKernelEp(ExampleKernelEpFactory& factory, const OrtLogger& logger);
+  struct Config {
+    bool enable_prepack_weight_sharing = false;
+  };
+
+  ExampleKernelEp(ExampleKernelEpFactory& factory, const Config& config, const OrtLogger& logger);
   ~ExampleKernelEp();
 
   const OrtApi& GetOrtApi() const { return ort_api_; }
   const OrtEpApi& GetEpApi() const { return ep_api_; }
+  const Config& GetConfig() const { return config_; }
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
@@ -34,5 +39,6 @@ class ExampleKernelEp : public OrtEp {
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
   std::string name_;
+  Config config_;
   const OrtLogger& logger_;
 };

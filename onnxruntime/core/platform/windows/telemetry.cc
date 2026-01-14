@@ -334,18 +334,67 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
   }
 }
 
-void WindowsTelemetry::LogCompileModel(uint32_t session_id) const {
+void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
+                                            const std::string& input_source,
+                                            const std::string& output_target,
+                                            uint32_t flags,
+                                            int graph_optimization_level,
+                                            bool embed_ep_context,
+                                            bool has_external_initializers_file,
+                                            const std::vector<std::string>& execution_provider_ids) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  std::string execution_provider_string;
+  bool first = true;
+  for (const auto& ep_id : execution_provider_ids) {
+    if (first) {
+      first = false;
+    } else {
+      execution_provider_string += ',';
+    }
+    execution_provider_string += ep_id;
+  }
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "CompileModelStart",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingString(input_source.c_str(), "inputSource"),
+                    TraceLoggingString(output_target.c_str(), "outputTarget"),
+                    TraceLoggingUInt32(flags, "flags"),
+                    TraceLoggingInt32(graph_optimization_level, "graphOptimizationLevel"),
+                    TraceLoggingBool(embed_ep_context, "embedEpContext"),
+                    TraceLoggingBool(has_external_initializers_file, "hasExternalInitializersFile"),
+                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+}
+
+void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
+                                               bool success,
+                                               uint32_t error_code,
+                                               uint32_t error_category,
+                                               const std::string& error_message) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "CompileModel",
+                    "CompileModelComplete",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingUInt32(session_id, "sessionId"));
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingBool(success, "success"),
+                    TraceLoggingUInt32(error_code, "errorCode"),
+                    TraceLoggingUInt32(error_category, "errorCategory"),
+                    TraceLoggingString(error_message.c_str(), "errorMessage"));
 }
 
 void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,

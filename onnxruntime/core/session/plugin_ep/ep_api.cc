@@ -24,6 +24,7 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
+#include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 #include "core/session/utils.h"
 
 using namespace onnxruntime;
@@ -582,6 +583,186 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo*
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
+                    _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
+                    _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
+                    _In_ size_t num_buffers) {
+  API_IMPL_BEGIN
+  if (prepacked_weight_cache == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a valid OrtPrePackedWeightsCache instance");
+  }
+
+  if (buffer_data_ptrs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of buffer data pointers");
+  }
+
+  if (buffer_data_sizes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of buffer data sizes");
+  }
+
+  if (num_buffers == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify at least one weight data buffer");
+  }
+
+  OrtStatus* status = nullptr;
+
+  ORT_TRY {
+    prepacked_weight_cache->SetBuffers(buffer_data_ptrs, buffer_data_sizes, num_buffers);
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      // This API function promises that ORT will take ownership of the data only if it returns successfully.
+      // If any exception occurred while filling out `prepacked_weight_cache`, we try to release ownership so that
+      // the caller retains ownership of all of the original data and can delete it.
+      prepacked_weight_cache->ReleaseAllData();
+      status = OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep) {
+  API_IMPL_BEGIN
+  if (info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtKernelInfo instance from which to obtain an OrtEp");
+  }
+
+  if (ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter in which to store the OrtEp instance");
+  }
+
+  auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  auto internal_ep = op_info->GetExecutionProvider();
+
+  if (internal_ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 "OrtKernelInfo does not have a valid reference to an execution provider instance");
+  }
+
+  const OrtEp* ort_ep = internal_ep->GetOrtEp();
+
+  if (ort_ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 "OrtKernelInfo is not associated with a plugin EP (OrtEp) instance.");
+  }
+
+  *ep = ort_ep;
+  return nullptr;
+  API_IMPL_END
+}
+
+// Control flow kernel APIs
+ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out) {
+  API_IMPL_BEGIN
+  if (kernel_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtKernelInfo instance to create an If OrtKernelImpl");
+  }
+
+  if (kernel_out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter to hold the OrtKernelImpl for If");
+  }
+
+  const auto* op_kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(kernel_info);
+  auto kernel_unique_ptr = std::make_unique<PluginEpIfKernelImpl>(*op_kernel_info);
+
+  *kernel_out = kernel_unique_ptr.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtLoopKernelHelper* helper,
+                    _Outptr_ OrtKernelImpl** kernel_out) {
+  API_IMPL_BEGIN
+  if (kernel_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtKernelInfo instance to create a Loop OrtKernelImpl");
+  }
+
+  if (helper == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtLoopKernelHelper instance to create a Loop OrtKernelImpl");
+  }
+
+  if (helper->Release == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtLoopKernelHelper must have a non-null OrtLoopKernelHelper::Release function");
+  }
+
+  if (helper->ConcatOutput == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtLoopKernelHelper must have a non-null OrtLoopKernelHelper::ConcatOutput function");
+  }
+
+  if (kernel_out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter to hold the OrtKernelImpl for Loop");
+  }
+
+  const auto* op_kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(kernel_info);
+  auto kernel_unique_ptr = std::make_unique<PluginEpLoopKernelImpl>(*op_kernel_info, helper);
+
+  *kernel_out = kernel_unique_ptr.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtScanKernelHelper* helper,
+                    _Outptr_ OrtKernelImpl** kernel_out) {
+  API_IMPL_BEGIN
+  if (kernel_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtKernelInfo instance to create a Scan OrtKernelImpl");
+  }
+
+  if (helper == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null OrtScanKernelHelper instance to create a Scan OrtKernelImpl");
+  }
+
+  if (helper->Release == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtScanKernelHelper must have a non-null OrtScanKernelHelper::Release function");
+  }
+
+  if (helper->Transpose == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtScanKernelHelper must have a non-null OrtScanKernelHelper::Transpose function");
+  }
+
+  if (kernel_out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Must specify a non-null output parameter to hold the OrtKernelImpl for Scan");
+  }
+
+  const auto* op_kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(kernel_info);
+  int opset = op_kernel_info->node().SinceVersion();
+
+  if (opset >= 9) {
+    // Note: CPU EP always uses Scan<9> for all opsets >= 9.
+    auto kernel_unique_ptr = std::make_unique<PluginEpScanKernelImpl>(*op_kernel_info, helper);
+    *kernel_out = kernel_unique_ptr.release();
+  } else {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 "Kernel implementations for Scan older than opset version 9 are not supported");
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl) {
+  if (kernel_impl != nullptr && kernel_impl->Release != nullptr) {
+    kernel_impl->Release(kernel_impl);
+  }
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -636,6 +817,12 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::KernelDef_GetOutputMemType,
     &OrtExecutionProviderApi::GetTensorDataType,
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
+    &OrtExecutionProviderApi::SharedPrePackedWeightCache_StoreWeightData,
+    &OrtExecutionProviderApi::KernelInfo_GetEp,
+    &OrtExecutionProviderApi::CreateIfKernel,
+    &OrtExecutionProviderApi::CreateLoopKernel,
+    &OrtExecutionProviderApi::CreateScanKernel,
+    &OrtExecutionProviderApi::ReleaseKernelImpl,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
