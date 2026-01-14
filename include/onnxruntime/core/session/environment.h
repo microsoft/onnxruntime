@@ -146,6 +146,17 @@ class Environment {
     return execution_devices_;
   }
 
+  /// Get hardware device incompatibility details for a specific EP.
+  /// @param ep_name The name of the execution provider to check.
+  /// @param hw The hardware device to check for incompatibility.
+  /// @param details Output: Incompatibility details including reasons for incompatibility if any.
+  /// @returns Status indicating success or failure.
+  Status GetHardwareDeviceEpIncompatibilityDetails(const std::string& ep_name,
+                                                   const OrtHardwareDevice* hw,
+                                                   std::unique_ptr<OrtDeviceEpIncompatibilityDetails>& details) const;
+
+  const std::vector<const OrtHardwareDevice*>& GetSortedOrtHardwareDevices() const;
+
   Status CreateSharedAllocator(const OrtEpDevice& ep_device,
                                OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator);
