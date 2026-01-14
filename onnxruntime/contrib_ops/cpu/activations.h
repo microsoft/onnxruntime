@@ -81,7 +81,7 @@ class QuickGelu : public OpKernel {
           if (alpha_ != 1.0f) {
             // TODO: Consider vectorizing this scalar multiplication.
             // It needs exposing a new API in MLAS to take in a scalar
-            // that will be used in the elementwise multiplcation.
+            // that will be used in the elementwise multiplication.
             // Estimate the cost-benefit tradeoff before proceeding
             // with that optimization.
             for (int64_t i = 0; i < count; i++) {
