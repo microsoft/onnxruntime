@@ -179,12 +179,10 @@ class SessionScope {
     const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
     const bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
 
-    session_start_ = std::chrono::high_resolution_clock::now();
     if (session_profiling_enabled) {
-      session_state_.Profiler().Start(session_start_);
-    }
-    if (run_profiling_enabled) {
-      run_profiler_->Start(session_start_);
+      session_start_ = session_state_.Profiler().Start();
+    } else if (run_profiling_enabled) {
+      session_start_ = run_profiler_->Start();
     }
 
     auto& logger = session_state_.Logger();
@@ -234,12 +232,10 @@ class SessionScope {
     const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
     const bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
 
-    auto now = std::chrono::high_resolution_clock::now();
     if (session_profiling_enabled) {
-      session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_, now);
-    }
-    if (run_profiling_enabled) {
-      run_profiler_->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_, now);
+      session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
+    } else if (run_profiling_enabled) {
+      run_profiler_->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
     }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -364,12 +360,10 @@ class KernelScope {
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
 
-      kernel_begin_time_ = std::chrono::high_resolution_clock::now();
       if (session_profiling_enabled) {
-        session_state_.Profiler().Start(kernel_begin_time_);
-      }
-      if (run_profiling_enabled) {
-        session_scope_.run_profiler_->Start(kernel_begin_time_);
+        kernel_begin_time_ = session_state_.Profiler().Start();
+      } else {
+        kernel_begin_time_ = session_scope_.run_profiler_->Start();
       }
 
       CalculateTotalInputSizes(&kernel_context, &kernel_,
@@ -405,20 +399,15 @@ class KernelScope {
            concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
       };
 
-      auto now = std::chrono::high_resolution_clock::now();
       if (session_profiling_enabled) {
         session_state_.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                         node_name_ + "_kernel_time",
                                                         kernel_begin_time_,
-                                                        now,
                                                         event_args);
-      }
-
-      if (run_profiling_enabled) {
+      } else if (run_profiling_enabled) {
         session_scope_.run_profiler_->EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                             node_name_ + "_kernel_time",
                                                             kernel_begin_time_,
-                                                            now,
                                                             event_args);
       }
     }

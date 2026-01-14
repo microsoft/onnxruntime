@@ -772,7 +772,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
 
   so.session_logid = "CheckRunProfilerWithRunOptions";
   // Note: NOT enabling session-level profiling
-  // so.enable_profiling = false;
+  so.enable_profiling = false;
 
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA

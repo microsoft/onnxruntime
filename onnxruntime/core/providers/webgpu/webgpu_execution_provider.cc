@@ -983,18 +983,12 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   return profiler;
 }
 
-std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetRunProfiler() {
-  auto profiler = std::make_unique<WebGpuProfiler>(context_);
-  tls_run_profiler_ = profiler.get();
-  return profiler;
-}
-
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     context_.PushErrorScope();
   }
 
-  // Session-level profiling handling if needed
+  // Start profiling if session-level or run-level profiling is enabled
   if (run_options.enable_profiling || (session_profiler_ && session_profiler_->Enabled())) {
     context_.StartProfiling();
   }
@@ -1030,20 +1024,8 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
   }
 
-  std::vector<WebGpuProfiler*> profilers;
-  if (session_profiler_ && session_profiler_->Enabled()) {
-    profilers.push_back(session_profiler_);
-  }
-
-  if (run_options.enable_profiling && tls_run_profiler_) {
-    if (tls_run_profiler_->Enabled()) {
-      profilers.push_back(tls_run_profiler_);
-    }
-    tls_run_profiler_ = nullptr;
-  }
-
-  if (!profilers.empty()) {
-    context_.CollectProfilingData(profilers);
+  if ((session_profiler_ && session_profiler_->Enabled()) || run_options.enable_profiling) {
+    context_.CollectProfilingData();
   }
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)

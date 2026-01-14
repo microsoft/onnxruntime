@@ -360,10 +360,6 @@ class IExecutionProvider {
     return {};
   }
 
-  virtual std::unique_ptr<profiling::EpProfiler> GetRunProfiler() {
-    return {};
-  }
-
   virtual DataLayout GetPreferredLayout() const {
     // EPs which prefer a different layout should override to return their preferred layout.
     return DataLayout::Default;

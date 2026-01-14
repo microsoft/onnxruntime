@@ -75,7 +75,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   int GetDeviceId() const override { return context_id_; }
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
-  std::unique_ptr<profiling::EpProfiler> GetRunProfiler() override;
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
@@ -89,10 +88,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   int context_id_;
   webgpu::WebGpuContext& context_;
-
   webgpu::WebGpuProfiler* session_profiler_{nullptr};
-  inline static thread_local webgpu::WebGpuProfiler* tls_run_profiler_{nullptr};
-
   DataLayout preferred_data_layout_;
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
