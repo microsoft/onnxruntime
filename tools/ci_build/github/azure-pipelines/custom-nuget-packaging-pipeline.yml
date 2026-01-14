@@ -3,11 +3,6 @@ parameters:
   type: string
   default: '12.8'
 
-- name: QnnSdk
-  displayName: QNN SDK Version
-  type: string
-  default: 2.41.0.251128
-
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
   type: boolean
@@ -31,7 +26,7 @@ parameters:
 - name: PackageName
   displayName: What is the package name? Override using an environment variable CustomPackageName.
   type: string
-  default: 'Microsoft.ML.OnnxRuntime.Flamingo'
+  default: 'Microsoft.ML.OnnxRuntime.Foundry'
 
 variables:
   - template: templates/common-variables.yml
@@ -107,7 +102,7 @@ extends:
           msbuildPlatform: x64
           packageName: x64-cuda
           CudaVersion: ${{ parameters.CudaVersion }}
-          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
+          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --parallel 4 --nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
           runTests: false
           buildJava: false
           java_artifact_id: onnxruntime_gpu
@@ -115,18 +110,26 @@ extends:
           SpecificArtifact: false
           BuildId: '0'
 
-      - template: templates/qnn-ep-win.yml
+      - template: templates/win-ci.yml
         parameters:
-          qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-          QnnSdk: ${{ parameters.QnnSdk }}
+          PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+          PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+          ort_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+          DoCompliance: false
+          DoEsrp: true
+          stage_name_suffix: CPU_arm64
+          buildArch: x64
+          msbuildPlatform: arm64
+          packageName: arm64
+          buildparameter: --arm64ec --buildasx --caller_framework WinAI
+          runTests: false
+          buildJava: false
+          buildNodejs: false
+
+      - template: templates/managed-nuget-for-foundry-local.yml
+        parameters:
           IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
           DoEsrp: true
-          ArtifactName: 'drop-nuget-qnn-arm64'
-          # Add --use_webgpu to enable WebGPU
-          StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
-          build_config: 'RelWithDebInfo'
-          PublishArchive: true
-          PublishNugetToFeed: false
 
       - template: templates/mac-cpu-packaging-pipeline.yml
         parameters:
@@ -135,7 +138,7 @@ extends:
           DoEsrp: true
 
       - stage: NugetPackaging
-        dependsOn: [Windows_Packaging_CUDA, OnnxRuntime_QNN_Nuget_Win_Arm64, MacOS_C_API_Package_Publish]
+        dependsOn: [Windows_Packaging_CUDA, Windows_Packaging_CPU_arm64, ManagedNugetPackaging, MacOS_C_API_Package_Publish]
         jobs:
         - job: CreateNugetPackage
           pool: 'Onnxruntime-Win2022-GPU-A10'
@@ -157,7 +160,7 @@ extends:
           - task: DownloadPipelineArtifact@0
             displayName: 'Download Pipeline Artifact - managed nuget'
             inputs:
-              artifactName: 'drop-signed-nuget-qnn'
+              artifactName: 'onnxruntime-managed-nuget'
               targetPath: '$(Build.BinariesDirectory)/managed-nuget'
 
           - task: DownloadPipelineArtifact@0
@@ -169,7 +172,7 @@ extends:
           - task: DownloadPipelineArtifact@0
             displayName: 'Download Pipeline Artifact - win-arm64'
             inputs:
-              artifactName: 'onnxruntime-win-arm64x-qnn'
+              artifactName: 'onnxruntime-win-arm64'
               targetPath: '$(Build.BinariesDirectory)/win-arm64'
 
           - task: DownloadPipelineArtifact@0
@@ -228,11 +231,11 @@ extends:
               targetType: 'inline'
               script: |
                 Expand-Archive -Path $(Build.BinariesDirectory)/win-x64/onnxruntime-win-x64-cuda*.zip -DestinationPath $(Build.BinariesDirectory)/win-x64
-                Expand-Archive -Path $(Build.BinariesDirectory)/win-arm64/onnxruntime-win-arm64x-qnn*.zip -DestinationPath $(Build.BinariesDirectory)/win-arm64
+                Expand-Archive -Path $(Build.BinariesDirectory)/win-arm64/onnxruntime-win-arm64*.zip -DestinationPath $(Build.BinariesDirectory)/win-arm64
                 $osx_arm64_archive = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
                 tar -xzf $osx_arm64_archive -C $(Build.BinariesDirectory)/osx-arm64 2>$null
                 $win_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-x64 -Filter onnxruntime-win-x64-cuda*)[0].FullName
-                $win_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-arm64 -Filter onnxruntime-win-arm64x-qnn*)[0].FullName
+                $win_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-arm64 -Filter onnxruntime-win-arm64*)[0].FullName
                 $osx_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
                 Write-Host "##vso[task.setvariable variable=win_x64;]$win_x64"
                 Write-Host "##vso[task.setvariable variable=win_arm64;]$win_arm64"

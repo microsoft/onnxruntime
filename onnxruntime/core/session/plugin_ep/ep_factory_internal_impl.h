@@ -88,6 +88,20 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
+  virtual OrtStatus* CreateExternalResourceImporterForDevice(
+      _In_ const OrtEpDevice* /*ep_device*/,
+      _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
+    // Default implementation does not support external resource import
+    *importer = nullptr;
+    return nullptr;
+  }
+
+  virtual OrtStatus* GetHardwareDeviceIncompatibilityDetails(_In_ const OrtHardwareDevice* /*hw*/,
+                                                             _Inout_ OrtDeviceEpIncompatibilityDetails* /*details*/) noexcept {
+    // Default implementation: leave details unchanged (device assumed compatible)
+    return nullptr;
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
 

@@ -628,17 +628,15 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
 
       for (size_t i = 0; i < pending_kernels.size(); i++) {
         const PendingKernelInfo& pending_kernel_info = pending_kernels[i];
-        const auto& inputs = pending_kernel_info.inputs;
-        const auto& outputs = pending_kernel_info.outputs;
+        const auto& input_shapes = pending_kernel_info.input_shapes;
+        const auto& output_shapes = pending_kernel_info.output_shapes;
 
         SS(shapes, 128);
-        for (size_t s = 0; s < inputs.size(); s++) {
-          const auto& input = inputs[s];
-          shapes << "inputs[" << s << "] = " << input.override_shape.ToString() << " ";
+        for (size_t s = 0; s < input_shapes.size(); s++) {
+          shapes << "inputs[" << s << "] = " << input_shapes[s].ToString() << " ";
         }
-        for (size_t s = 0; s < outputs.size(); s++) {
-          const auto& output = outputs[s];
-          shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
+        for (size_t s = 0; s < output_shapes.size(); s++) {
+          shapes << "outputs[" << s << "] = " << output_shapes[s].ToString() << " ";
         }
 
         if (gpu_timestamp_offset_ == 0) {

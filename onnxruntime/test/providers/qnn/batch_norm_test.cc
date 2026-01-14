@@ -365,6 +365,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm2D_U16U16S32) {
 
 // Test FP16 BatchNormalization on the HTP backend.
 TEST_F(QnnHTPBackendTests, BatchNorm_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
+
   constexpr int64_t num_channels = 2;
   std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
                                    -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
@@ -378,6 +380,7 @@ TEST_F(QnnHTPBackendTests, BatchNorm_FP16) {
 // Test FP32 BatchNormalization on the HTP backend with the enable_htp_fp16_precision option enabled
 // to run it with fp16 precision.
 TEST_F(QnnHTPBackendTests, BatchNorm_FP32_as_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   ProviderOptions provider_options;
 
   provider_options["backend_type"] = "htp";

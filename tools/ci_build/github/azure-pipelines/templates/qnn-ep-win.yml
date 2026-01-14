@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.41.0.251128'
+  QnnSdk: '2.42.0.251225'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
@@ -8,6 +8,7 @@ parameters:
   StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
   PublishArchive: false
   PublishNugetToFeed: true
+  AdditionalBuildArgs: ''
 
 stages:
 - stage: ${{ parameters.StageName }}
@@ -47,7 +48,7 @@ stages:
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      commonBuildArgs: '--skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
+      commonBuildArgs: '--skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags ${{ parameters.AdditionalBuildArgs}}'
 
     steps:
     - template: set-version-number-variables-step.yml
@@ -65,7 +66,7 @@ stages:
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
         arguments: ' --arm64 --buildasx --build_dir $(Build.BinariesDirectory)\arm64x --use_qnn --qnn_home $(QnnSDKRootDir) $(commonBuildArgs)'
-        
+
     - task: PythonScript@0
       displayName: 'Build arm64ecx project - the real arm64x'
       inputs:

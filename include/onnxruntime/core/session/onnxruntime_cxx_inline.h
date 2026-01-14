@@ -1661,6 +1661,19 @@ inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() co
 }
 
 template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForOutputs() const {
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstEpDevice> output_devices;
+  if (num_outputs > 0) {
+    output_devices.resize(num_outputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtEpDevice**>(output_devices.data()),
+                                                       num_outputs));
+  }
+  return output_devices;
+}
+
+template <typename T>
 inline uint64_t ConstSessionImpl<T>::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(this->p_, &out));
@@ -2840,6 +2853,50 @@ inline KeyValuePairs KernelInfoImpl<T>::GetConfigEntries() const {
   OrtKeyValuePairs* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelInfo_GetConfigEntries(this->p_, &out));
   return KeyValuePairs{out};
+}
+
+template <typename T>
+inline std::string KernelInfoImpl<T>::GetOperatorDomain() const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorDomain(this->p_, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorDomain(this->p_, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline std::string KernelInfoImpl<T>::GetOperatorType() const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorType(this->p_, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorType(this->p_, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline int KernelInfoImpl<T>::GetOperatorSinceVersion() const {
+  int out = 0;
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorSinceVersion(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline const OrtEp* KernelInfoImpl<T>::GetEp() const {
+  const OrtEp* ep = nullptr;
+  Ort::ThrowOnError(GetEpApi().KernelInfo_GetEp(this->p_, &ep));
+  return ep;
 }
 
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
