@@ -163,7 +163,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
   Status Compute(OpKernelContext* context) const override;
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
   bool SupportsKleidiaiDynamicQuant() const override {
     if (!MlasIsDynamicQGemmAvailable()) {
       return false;
@@ -264,8 +264,8 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     }
   }
   // Guard against KleidiAI functions being called in non kleidi builds
-  // migrate to a suitable override function call for kelidiai dynamic qgemm function calls(TODO)
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+  // migrate to a suitable override function call for kelidiai dynamic qgemm function calls
+#if defined(USE_KLEIDIAI)
   else {
     MatMulComputeHelper helper;
     ORT_RETURN_IF_ERROR(helper.Compute(ctx->Input<Tensor>(IN_A)->Shape(),

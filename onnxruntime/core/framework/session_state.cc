@@ -1183,11 +1183,15 @@ const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedRange(
 Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      const auto& ep = node.GetExecutionProviderType();
-      if (!ep.empty() &&
-          ep != kCpuExecutionProvider && ep != kCudaExecutionProvider &&
-          ep != kDmlExecutionProvider &&
-          ep != kJsExecutionProvider && ep != kWebGpuExecutionProvider) {
+      const auto& ep_type = node.GetExecutionProviderType();
+      const IExecutionProvider* ep = execution_providers_.Get(ep_type);
+      const bool is_plugin_ep = ep != nullptr && ep->GetOrtEp() != nullptr;
+
+      if (!ep_type.empty() &&
+          ep_type != kCpuExecutionProvider && ep_type != kCudaExecutionProvider &&
+          ep_type != kDmlExecutionProvider &&
+          ep_type != kJsExecutionProvider && ep_type != kWebGpuExecutionProvider &&
+          !is_plugin_ep) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
         continue;
