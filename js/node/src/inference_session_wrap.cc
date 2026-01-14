@@ -216,7 +216,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       Napi::Object result = Napi::Object::New(env);
 
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
+        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
       }
       return scope.Escape(result);
     } else {
@@ -244,7 +244,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
       Napi::Object result = Napi::Object::New(env);
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_[i], OrtValueToNapiValue(env, std::move(outputs[i])));
+        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i])));
       }
       return scope.Escape(result);
     }

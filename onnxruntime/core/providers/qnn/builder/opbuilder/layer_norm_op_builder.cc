@@ -35,6 +35,15 @@ class LayerNormOpBuilder : public BaseOpBuilder {
 Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                          const NodeUnit& node_unit,
                                          const logging::Logger& logger) const {
+  bool is_cpu_backend = IsCpuBackend(qnn_model_wrapper.GetQnnBackendType());
+
+  // Disable LayerNorm for CPU backend when API version > 2.31
+  // This catches SDK version 2.42 which has API version 2.32
+  if (is_cpu_backend && (QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR > 31)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "LayerNorm is not supported on QNN CPU backend with QNN SDK version > 2.41 due to accuracy issues");
+  }
+
   // Also check output type is float for CPU.
   const auto& outputs = node_unit.Outputs();
   ORT_RETURN_IF(outputs.size() > 1, "QNN LayerNorm only support 1 output.");
