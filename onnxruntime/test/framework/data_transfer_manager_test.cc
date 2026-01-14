@@ -36,7 +36,7 @@ TEST(DataTransferManagerTest, BatchedTensorCopyBadSize) {
   src_dst_pairs.push_back({src_tensors[1].Get<Tensor>(), *dst_tensors[1].GetMutable<Tensor>(), nullptr});
   auto status = dtm.CopyTensors(src_dst_pairs);
 
-  ASSERT_STATUS_OK(status);
+  ASSERT_STATUS_NOT_OK(status);
   ASSERT_THAT(status.ErrorMessage(), testing::HasSubstr("Tensor size mismatch"));
 }
 
