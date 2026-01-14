@@ -12,8 +12,10 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/tensor.h"
+#include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_api.h"
+#include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 
 //
 // OrtSharedPrePackedWeightCache
@@ -54,13 +56,14 @@ namespace onnxruntime {
 /// <summary>
 /// OpKernel that wraps a OrtKernelImpl provided by a plugin EP.
 /// </summary>
-class PluginEpOpKernel final : public OpKernel {
+class PluginEpOpKernel final : public controlflow::IControlFlowKernel {
  private:
   // Prevents calling constructor directly without having to make it private (required by std::make_unique).
   struct PrivateTag {};
 
  public:
-  PluginEpOpKernel(const OpKernelInfo& info, PrivateTag) : OpKernel{info} {}  // must use ::Create()
+  PluginEpOpKernel(const OpKernelInfo& info, PrivateTag)
+      : controlflow::IControlFlowKernel{info} {}  // must use ::Create()
 
   static Status Create(FuncManager& fn_manager, const OpKernelInfo& info,
                        OrtKernelCreateFunc kernel_create_func, void* kernel_create_func_state,
@@ -149,6 +152,25 @@ class PluginEpOpKernel final : public OpKernel {
     return Status::OK();
   }
 
+  Status SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                    const std::string& attribute_name,
+                                    const SessionState& subgraph_session_state) override {
+    assert(kernel_impl_ != nullptr);  // Should be ensured by PluginEpOpKernel::Create().
+
+    if ((kernel_impl_->flags & OrtKernelImplFlags::kIsControlFlowKernelImpl) == 0) {
+      // This is not a control flow OrtKernelImpl created by ORT, which prevents casting OrtKernelImpl to
+      // PluginEpControlFlowKernelImpl and setting up subgraph execution info. The plugin EP may have tried to create
+      // their own OrtKernelImpl, which is not supported for control flow ops.
+      const auto& op_type = Info().node().OpType();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtKernelImpl instance for control flow operator ", op_type,
+                             " was not originally created by ORT via an OrtEpApi function.");
+    }
+
+    auto& cf_kernel = static_cast<PluginEpControlFlowKernelImpl&>(*kernel_impl_);
+    return cf_kernel.GetIControlFlowKernel().SetupSubgraphExecutionInfo(session_state, attribute_name,
+                                                                        subgraph_session_state);
+  }
+
  private:
   /// <summary>
   /// Gets the cached OrtAllocator for the given AllocatorPtr passed to PrePack().
@@ -193,7 +215,24 @@ Status PluginEpOpKernel::Create(FuncManager& /*fn_manager*/, const OpKernelInfo&
 
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(
       kernel_create_func(kernel_create_func_state, kernel_info, &op_kernel->kernel_impl_)));
-  ORT_RETURN_IF(op_kernel->kernel_impl_ == nullptr, "OrtKernelCreateFunc returned a NULL OrtKernelImpl");
+
+  const auto& op_type = info.node().OpType();
+  const auto& node_name = info.node().Name();
+  const auto* ep = info.GetExecutionProvider();
+  ORT_ENFORCE(ep != nullptr, "IExecutionProvider* retrieved from OpKernelInfo should never be nullptr");
+  const auto& ep_name = ep->Type();
+
+  // Do some basic checks for the OrtKernelImpl provided by the EP. Other checks for missing function implementations
+  // that are only required in certain situations (e.g., pre-packing) happen later as soon as we know they are required.
+  ORT_RETURN_IF(op_kernel->kernel_impl_ == nullptr, "OrtKernelCreateFunc returned a NULL OrtKernelImpl for ", op_type,
+                " node named ", node_name, " assigned to ", ep_name);
+  ORT_RETURN_IF(op_kernel->kernel_impl_->flags > OrtKernelImplFlags::kOrtKernelImplFlags_MAX_VALUE,
+                "OrtKernelImpl::flags has been initialized to an unexpected value for ", op_type,
+                " node named ", node_name, " assigned to ", ep_name);
+  ORT_RETURN_IF(op_kernel->kernel_impl_->Compute == nullptr, "OrtKernelImpl is missing an implementation of the ",
+                " Compute() function for ", op_type, " node named ", node_name, " assigned to ", ep_name);
+  ORT_RETURN_IF(op_kernel->kernel_impl_->Release == nullptr, "OrtKernelImpl is missing an implementation of the ",
+                " Release() function for ", op_type, " node named ", node_name, " assigned to ", ep_name);
 
   return Status::OK();
 }

@@ -19,7 +19,7 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -34,6 +34,9 @@ Abstract:
 #define POWER_10_ANDUP (POWER_10)
 #include <sys/systemcfg.h>
 #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
+#elif defined(__FreeBSD__)
+#include <machine/cpu.h>
+#include <sys/auxv.h>
 #endif
 #endif
 
@@ -600,7 +603,7 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
         this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;

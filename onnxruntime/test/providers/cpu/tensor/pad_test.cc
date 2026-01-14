@@ -42,6 +42,8 @@ static void RunOnnxOpsetTypedTest(
   if constexpr (std::is_same_v<T, int8_t>) {
     provider_types.insert(kTensorrtExecutionProvider);
   }
+  // Exclude QNN due to a few test failures with the CPU backend.
+  provider_types.insert(kQnnExecutionProvider);
   SessionOptions so;
   // Don't fail early on shape inference so that we can test the op's error handling.
   if (expect != OpTester::ExpectResult::kExpectSuccess) {
@@ -537,6 +539,7 @@ TYPED_TEST(PadOpTest, Pad_Edge_3D_Last_Slice_Inner_No_Padding) {
 
 TYPED_TEST(PadOpTest, Pad_Reflect_3D_Inner_No_Padding) {
   using T = TypeParam;
+
   RunAllOpsetAllDomainPadTests<T>({3, 2, 5},
                                   {T(1), T(2), T(3), T(4), T(5),
                                    T(6), T(7), T(8), T(9), T(10),

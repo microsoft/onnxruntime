@@ -539,25 +539,6 @@ if(onnxruntime_USE_KLEIDIAI)
       set(${is_supported_var} FALSE PARENT_SCOPE)
       return()
     endif()
-
-    # check for compiler support
-    if(MSVC)
-      # TODO detect on MSVC
-    else()
-      check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-      check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-      if(NOT HAS_ARM64_DOTPROD)
-        message(WARNING "The compiler doesn't support dotprod instructions.")
-      endif()
-      if(NOT HAS_ARM64_I8MM)
-        message(WARNING "The compiler doesn't support i8mm instructions.")
-      endif()
-      if(NOT HAS_ARM64_DOTPROD OR NOT HAS_ARM64_I8MM)
-        set(${is_supported_var} FALSE PARENT_SCOPE)
-        return()
-      endif()
-    endif()
-
     set(${is_supported_var} TRUE PARENT_SCOPE)
   endfunction()
 
