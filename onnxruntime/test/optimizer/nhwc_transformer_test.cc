@@ -243,7 +243,11 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat) {
   TransformerTester(build_test_case,
                     check_nhwc_graph,
                     TransformerLevel::Level2,
-                    TransformerLevel::Level3);
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+
 }
 
 TEST(NhwcTransformerTests, ConvAveragePool) {
