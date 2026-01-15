@@ -4885,35 +4885,36 @@ TEST(CApiTest, TestSyncStreamOverride) {
     GTEST_SKIP() << "No CUDA device found, skipping test.";
   }
 
-  // Create a stream on CUDA Device
-  const auto sync_stream = cuda_device.CreateSyncStream();
-  TestCudaStreamOverrideUsed cuda_override_stream(sync_stream);
-
   // Create session with CUDA EP using C++ public API in Ort:: namespace
-  Ort::SessionOptions session_options;
-  Ort::CUDAProviderOptions cuda_options;
-  session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+  {
+    // Create a stream on CUDA Device
+    const auto sync_stream = cuda_device.CreateSyncStream();
+    TestCudaStreamOverrideUsed cuda_override_stream(sync_stream);
 
-  Ort::Session session(*ort_env, MODEL_URI, session_options);
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, {});
 
-  constexpr const std::array<const char*, 1U> input_names = {"X"};
-  constexpr const std::array<const char*, 1U> output_names = {"Y"};
-  constexpr const std::array<int64_t, 2U> input_shape = {3LL, 2LL};
-  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  auto input_value = Ort::Value::CreateTensor<float>(
-      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU),
-      x_value, std::size(x_value), input_shape.data(), input_shape.size());
-  Ort::Value ort_inputs[] = {std::move(input_value)};
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
 
-  Ort::RunOptions run_options;
-  run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&cuda_override_stream));
+    constexpr const std::array<const char*, 1U> input_names = {"X"};
+    constexpr const std::array<const char*, 1U> output_names = {"Y"};
+    constexpr const std::array<int64_t, 2U> input_shape = {3LL, 2LL};
+    float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    auto input_value = Ort::Value::CreateTensor<float>(
+        Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU),
+        x_value, std::size(x_value), input_shape.data(), input_shape.size());
+    Ort::Value ort_inputs[] = {std::move(input_value)};
 
-  auto output_values = session.Run(run_options,
-                                   input_names.data(), ort_inputs, std::size(ort_inputs),
-                                   output_names.data(), output_names.size());
+    Ort::RunOptions run_options;
+    run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&cuda_override_stream));
 
-  ASSERT_GT(cuda_override_stream.flush_count, 0U)
-      << "Expected the custom CUDA stream override to be used during session run.";
+    auto output_values = session.Run(run_options,
+                                     input_names.data(), ort_inputs, std::size(ort_inputs),
+                                     output_names.data(), output_names.size());
+
+    ASSERT_GT(cuda_override_stream.flush_count, 0U)
+        << "Expected the custom CUDA stream override to be used during session run.";
+  }
 
   ort_env->UnregisterExecutionProviderLibrary(cuda_ep_name);
 }
