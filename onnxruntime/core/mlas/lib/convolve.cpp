@@ -727,7 +727,7 @@ Return Value:
         MlasActivation(Parameters->Activation, output, bias, FilterCount,
             OutputSize, OutputSize);
 
-        Input += InputGroupSize;
+        input += InputGroupSize;
         //output += OutputGroupSize;
     }
 }
