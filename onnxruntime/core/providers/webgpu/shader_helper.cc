@@ -144,6 +144,7 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
     ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 ||
                           var_type == ProgramVariableDataType::Uint32 ||
                           var_type == ProgramVariableDataType::Float32 ||
+                          var_type == ProgramVariableDataType::Float16 ||
                           var_type == ProgramVariableDataType::Float16x4 ||
                           var_type == ProgramVariableDataType::Float32x4,
                       "Unexpected program variable type ", int(var_type), " for atomic variable");
@@ -482,6 +483,8 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
           ss << "atomic<u32>";
         } else if (output->type_ == ProgramVariableDataType::Int32) {
           ss << "atomic<i32>";
+        } else if (output->type_ == ProgramVariableDataType::Float16) {
+          ss << "atomic<u32>";  // emulate f16 atomic via u32 (storing as packed u16)
         } else {
           ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
         }

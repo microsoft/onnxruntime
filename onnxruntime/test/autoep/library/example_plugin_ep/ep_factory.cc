@@ -36,6 +36,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  GetHardwareDeviceIncompatibilityDetails = GetHardwareDeviceIncompatibilityDetailsImpl;
+
+  CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
@@ -305,6 +308,51 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
     auto sync_stream = std::make_unique<StreamImpl>(factory, /*OrtEp**/ nullptr, stream_options);
     *stream = sync_stream.release();
   }
+
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetHardwareDeviceIncompatibilityDetailsImpl(
+    OrtEpFactory* this_ptr,
+    const OrtHardwareDevice* hw,
+    OrtDeviceEpIncompatibilityDetails* details) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  // Example: This EP only supports CPU devices. Report incompatibility for non-CPU devices.
+  OrtHardwareDeviceType device_type = factory.ort_api.HardwareDevice_Type(hw);
+
+  if (device_type != OrtHardwareDeviceType_CPU) {
+    // Report that the device type is not supported
+    uint32_t reasons = OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE;
+    return factory.ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+        details,
+        reasons,
+        static_cast<int32_t>(device_type),  // Use device type as the error code for testing
+        "ExampleEP only supports CPU devices");
+  }
+
+  // Device is compatible - details are already initialized with default values by ORT
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDeviceImpl(
+    OrtEpFactory* this_ptr,
+    const OrtEpDevice* /*ep_device*/,
+    OrtExternalResourceImporterImpl** out_importer) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  if (out_importer == nullptr) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "out_importer cannot be nullptr");
+  }
+
+  // Create the external resource importer
+  // NOTE: For production multi-GPU EPs, you should capture ep_device in the importer
+  // to enable proper device validation and support multiple physical devices.
+  // This example EP only supports a single device, so we don't store it.
+  auto importer = std::make_unique<ExampleExternalResourceImporter>(factory);
+  *out_importer = importer.release();
 
   return nullptr;
 }

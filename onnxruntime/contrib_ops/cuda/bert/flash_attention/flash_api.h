@@ -32,6 +32,9 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include <tuple>
+#include <type_traits>
+#include <cutlass/numeric_types.h>
+#include <cuda_bf16.h>
 
 namespace onnxruntime {
 namespace flash {
@@ -58,7 +61,9 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
                void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                bool kv_bsnh = true,
-               int local_window_size = -1);
+               int local_window_size = -1,
+               void* cache_batch_idx = nullptr,
+               void* leftpad_k = nullptr);
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       cudaStream_t stream,
@@ -88,18 +93,20 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
 
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        cudaStream_t stream,
-                       void* q,            // batch_size x seqlen_q x num_heads x head_size
-                       void* kcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x x head_size
-                       void* vcache,       // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k seqlen_k x x head_size
-                       void* k,            // batch_size x seqlen_k_new x num_heads_k x head_size
-                       void* v,            // batch_size x seqlen_k_new x num_heads_k x head_size
-                       void* out,          // batch_size x seqlen_q x num_heads x head_size
-                       void* softmax_lse,  // batch_size x num_heads x seqlen_q
-                       void* seqlens_k_,   // batch_size
-                       void* rotary_cos,   // seqlen_ro x (rotary_dim / 2)
-                       void* rotary_sin,   // seqlen_ro x (rotary_dim / 2)
-                       void* head_sink,    // num_heads
-                       int* block_table,   // batch_size x max_num_blocks_per_seq
+                       void* q,                // batch_size x seqlen_q x num_heads x head_size
+                       void* kcache,           // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k x seqlen_k x head_size, or num_blocks x page_block_size x num_heads_k x head_size if there's a block_table.
+                       void* vcache,           // batch_size x seqlen_k x num_heads_k x head_size or batch_size x num_heads_k x seqlen_k x head_size, or num_blocks x page_block_size x num_heads_k x head_size if there's a block_table.
+                       void* k,                // batch_size x seqlen_k_new x num_heads_k x head_size
+                       void* v,                // batch_size x seqlen_k_new x num_heads_k x head_size
+                       void* out,              // batch_size x seqlen_q x num_heads x head_size
+                       void* softmax_lse,      // batch_size x num_heads x seqlen_q
+                       void* seqlens_k_,       // batch_size
+                       void* rotary_cos,       // seqlen_ro x (rotary_dim / 2)
+                       void* rotary_sin,       // seqlen_ro x (rotary_dim / 2)
+                       void* cache_batch_idx,  // (optional) indices to index into the KV cache
+                       void* leftpad_k,        // (optional) batch_size
+                       void* head_sink,        // num_heads
+                       int* block_table,       // batch_size x max_num_blocks_per_seq
                        int batch_size,
                        int num_heads,
                        int num_heads_k,
@@ -130,6 +137,23 @@ std::tuple<size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_
                                                                    size_t head_size, size_t num_SMs);
 
 bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k);
+
+// Template version that checks for bf16 type in quick build mode
+template <typename T>
+bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k) {
+#ifdef ORT_QUICK_BUILD
+  // In quick build mode, only fp16 flash attention is built
+  constexpr bool is_bf16 = std::is_same<T, onnxruntime::BFloat16>::value;
+  if (is_bf16) {
+    return false;
+  }
+
+  if (head_size != 128) {
+    return false;
+  }
+#endif
+  return is_supported(dprops, head_size, num_heads, num_heads_k);
+}
 
 }  // namespace flash
 }  // namespace onnxruntime

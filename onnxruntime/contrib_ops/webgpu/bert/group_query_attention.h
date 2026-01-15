@@ -14,16 +14,6 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
- public:
-  SplitPackedQKVProgram() : Program{"SplitPackedQKV"} {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
-};
-
 class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
  public:
   SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}

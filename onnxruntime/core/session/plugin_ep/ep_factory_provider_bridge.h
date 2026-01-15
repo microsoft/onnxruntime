@@ -65,6 +65,27 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
     return ep_factory_.CreateSyncStreamForDevice(&ep_factory_, device, stream_options, stream);
   }
 
+  OrtStatus* CreateExternalResourceImporterForDevice(
+      const OrtEpDevice* ep_device,
+      OrtExternalResourceImporterImpl** importer) noexcept override {
+    // OrtEpFactory::CreateExternalResourceImporterForDevice was added in ORT 1.24.
+    if (ep_factory_.ort_version_supported < 24 ||
+        ep_factory_.CreateExternalResourceImporterForDevice == nullptr) {
+      *importer = nullptr;
+      return nullptr;
+    }
+    return ep_factory_.CreateExternalResourceImporterForDevice(&ep_factory_, ep_device, importer);
+  }
+
+  OrtStatus* GetHardwareDeviceIncompatibilityDetails(_In_ const OrtHardwareDevice* hw,
+                                                     _Inout_ OrtDeviceEpIncompatibilityDetails* details) noexcept override {
+    if (ep_factory_.GetHardwareDeviceIncompatibilityDetails == nullptr) {
+      // Factory doesn't implement this hook, leave details unchanged (device assumed compatible)
+      return nullptr;
+    }
+    return ep_factory_.GetHardwareDeviceIncompatibilityDetails(&ep_factory_, hw, details);
+  }
+
   OrtEpFactory& ep_factory_;
   ProviderLibrary& provider_library_;
   std::optional<std::filesystem::path> library_path_;
