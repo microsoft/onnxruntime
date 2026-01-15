@@ -4892,7 +4892,7 @@ TEST(CApiTest, TestSyncStreamOverride) {
     TestCudaStreamOverrideUsed cuda_override_stream(sync_stream);
 
     Ort::SessionOptions session_options;
-    session_options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, {});
+    session_options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, Ort::KeyValuePairs{});
 
     Ort::Session session(*ort_env, MODEL_URI, session_options);
 
