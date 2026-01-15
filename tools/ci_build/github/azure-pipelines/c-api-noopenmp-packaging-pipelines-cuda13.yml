@@ -29,6 +29,16 @@ parameters:
   type: number
   default: 0
 
+- name: AdditionalBuildFlag
+  displayName: Build flags to append to build command
+  type: string
+  default: '--use_azure'
+
+- name: NugetPackageSuffix
+  displayName: Suffix to append to nuget package
+  type: string
+  default: 'NONE'
+
 # these 2 parameters are used for debugging.
 - name: SpecificArtifact
   displayName: Use Specific Artifact (Debugging only)
@@ -39,6 +49,13 @@ parameters:
   displayName: Pipeline BuildId, you could find it in the URL
   type: string
   default: '0'
+
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
+- name: QnnSdk
+  displayName: QNN SDK Version
+  type: string
+  default: 2.42.0.251225
 
 - name: CudaVersion
   displayName: CUDA version
@@ -111,6 +128,22 @@ extends:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
+    - template: templates/c-api-cpu.yml
+      parameters:
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+        ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
+          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+        ${{ else }}:
+          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
+        AdditionalBuildFlags: ''
+        AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
+        BuildVariant: 'default'
+        QnnSDKVersion: ${{ parameters.QnnSdk }}
+        is1ES: true
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
