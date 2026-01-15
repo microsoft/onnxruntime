@@ -2940,18 +2940,21 @@ Status InferenceSession::Run(const RunOptions& run_options,
   if (run_options.enable_profiling && !session_profiler_.IsEnabled()) {
     run_profiler.emplace();
     run_profiler->Initialize(session_logger_);
-    std::basic_ostringstream<ORTCHAR_T> oss;
-    oss << ToPathString(run_options.profile_file_prefix) << "_" << GetCurrentTimeString<ORTCHAR_T>() << ".json";
+    PathString profile_file = ToPathString(run_options.profile_file_prefix);
+    profile_file.append(ORT_TSTR("_"));
+    profile_file.append(GetCurrentTimeString<ORTCHAR_T>());
+    profile_file.append(ORT_TSTR(".json"));
     for (auto& ep : execution_providers_) {
       run_profiler->AddEpProfilers(ep->GetProfiler());
     }
-    run_profiler->StartProfiling(oss.str());
+    run_profiler->StartProfiling(profile_file);
   }
 
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
-  } else if (run_profiler && run_profiler->IsEnabled()) {
+  } else if (run_profiler) {
+    ORT_ENFORCE(run_profiler->IsEnabled(), "Run profiler should be enabled here.");
     tp = run_profiler->Start();
   }
 
@@ -3095,11 +3098,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
         ORT_CHECK_AND_SET_RETVAL(status);
       }
 
-      if (run_profiler && run_profiler->IsEnabled()) {
+      if (run_profiler) {
+        ORT_ENFORCE(run_profiler->IsEnabled(), "Run profiler should be enabled here.");
         run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
-      }
-
-      if (run_profiler && run_profiler->IsEnabled()) {
         run_profiler->EndProfiling();
       }
 

@@ -177,7 +177,7 @@ class SessionScope {
 #endif
   {
     const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    const bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
+    const bool run_profiling_enabled = IsRunProfilingEnabled();
 
     if (session_profiling_enabled) {
       session_start_ = session_state_.Profiler().Start();
@@ -235,7 +235,7 @@ class SessionScope {
     if (session_profiling_enabled) {
       session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
     } else if (run_profiling_enabled) {
-      run_profiler_->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
+      StopEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
     }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -261,6 +261,21 @@ class SessionScope {
     flush_memory_info_ = flush_memory_info;
   }
 #endif
+
+  bool IsRunProfilingEnabled() const {
+    return run_profiler_ && run_profiler_->IsEnabled();
+  }
+
+  void StopEvent(profiling::EventCategory category,
+                 const std::string& event_name,
+                 const TimePoint& start_time,
+                 std::unordered_map<std::string, std::string> event_args = {}) {
+    if (!run_profiler_) return;
+    run_profiler_->EndTimeAndRecordEvent(category,
+                                         event_name,
+                                         start_time,
+                                         std::move(event_args));
+  }
 
  private:
   const SessionState& session_state_;
@@ -352,7 +367,7 @@ class KernelScope {
 #endif
 
     const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    const bool run_profiling_enabled = session_scope_.run_profiler_ && session_scope_.run_profiler_->IsEnabled();
+    const bool run_profiling_enabled = session_scope_.IsRunProfilingEnabled();
 
     if (session_profiling_enabled || run_profiling_enabled) {
       auto& node = kernel.Node();
@@ -380,13 +395,13 @@ class KernelScope {
 #endif
 
     const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    const bool run_profiling_enabled = session_scope_.run_profiler_ && session_scope_.run_profiler_->IsEnabled();
+    const bool run_profiling_enabled = session_scope_.IsRunProfilingEnabled();
 
     if (session_profiling_enabled || run_profiling_enabled) {
       std::string output_type_shape_;
       CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
 
-      std::initializer_list<std::pair<std::string, std::string>> event_args = {
+      std::unordered_map<std::string, std::string> event_args = {
           {"op_name", kernel_.KernelDef().OpName()},
           {"provider", kernel_.KernelDef().Provider()},
           {"node_index", std::to_string(kernel_.Node().Index())},
@@ -403,12 +418,12 @@ class KernelScope {
         session_state_.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                         node_name_ + "_kernel_time",
                                                         kernel_begin_time_,
-                                                        event_args);
+                                                        std::move(event_args));
       } else if (run_profiling_enabled) {
-        session_scope_.run_profiler_->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                            node_name_ + "_kernel_time",
-                                                            kernel_begin_time_,
-                                                            event_args);
+        session_scope_.StopEvent(profiling::NODE_EVENT,
+                                 node_name_ + "_kernel_time",
+                                 kernel_begin_time_,
+                                 std::move(event_args));
       }
     }
 
@@ -432,6 +447,7 @@ class KernelScope {
   }  //~KernelScope
 
  private:
+  TimePoint kernel_begin_time_;
   SessionScope& session_scope_;
   const SessionState& session_state_;
   std::string node_name_;
@@ -442,8 +458,6 @@ class KernelScope {
   size_t input_parameter_sizes_{};
   size_t total_output_sizes_{};
   std::string input_type_shape_;
-
-  TimePoint kernel_begin_time_;
 
 #ifdef CONCURRENCY_VISUALIZER
   diagnostic::span span_;
