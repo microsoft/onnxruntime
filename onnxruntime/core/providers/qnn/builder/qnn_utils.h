@@ -493,6 +493,14 @@ Status RequantizeBiasTensor(const std::vector<uint8_t>& original_bias_data,
                             /*out*/ std::vector<int32_t>& new_offsets,
                             std::optional<int64_t> axis = std::nullopt);
 
+template <typename T>
+inline std::ostream& operator<<(std::ostream& out, const std::vector<T>& vec) {
+  for (const auto& elem : vec) {
+    out << elem << " ";
+  }
+  return out;
+}
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime
