@@ -169,6 +169,8 @@ QnnQuantParamsWrapper::QnnQuantParamsWrapper(
     gsl::span<const uint32_t> block_sizes,
     Qnn_DataType_t tensor_data_type) {
   ORT_UNUSED_PARAMETER(tensor_data_type);
+  assert(block_sizes.size() > 0);
+  assert(scales.size() > 0);
   assert(scales.size() == offsets.size());  // Logic error if sizes don't match.
 
   num_blocks_ = static_cast<uint32_t>(scales.size());
@@ -176,27 +178,20 @@ QnnQuantParamsWrapper::QnnQuantParamsWrapper(
   params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_BLOCK;
 
   block_encoding_tensor_rank_ = static_cast<uint32_t>(block_sizes.size());
-  const size_t be_axis_num_bytes = block_encoding_tensor_rank_ * sizeof(uint32_t);
-  constexpr std::uintptr_t be_axis_align = alignof(uint32_t);
-  block_encoding_axis_data_ = std::make_unique<char[]>(be_axis_num_bytes + be_axis_align);
-  uint32_t* block_encoding_axis_data_aligned = ALIGN_PTR_UP(block_encoding_axis_data_.get(), be_axis_align, uint32_t*);
-  for (size_t idx = 0; idx < block_encoding_tensor_rank_; idx++) {
-    block_encoding_axis_data_aligned[idx] = block_sizes[idx];
-  }
-  params_.blockEncoding.blockSize = block_encoding_axis_data_aligned;
+  block_encoding_axis_data_ = std::make_unique<uint32_t[]>(block_encoding_tensor_rank_);
+  std::memcpy(block_encoding_axis_data_.get(),
+              block_sizes.data(),
+              static_cast<size_t>(block_encoding_tensor_rank_) * sizeof(uint32_t));
+  params_.blockEncoding.blockSize = block_encoding_axis_data_.get();
 
   // Deep copy the scale offsets
   if (num_blocks_ > 0) {
-    const size_t be_scale_offsets_num_bytes = num_blocks_ * sizeof(Qnn_ScaleOffset_t);
-    constexpr std::uintptr_t be_scale_offsets_align = alignof(Qnn_ScaleOffset_t);
-    block_encoding_scale_offsets_data_ = std::make_unique<char[]>(be_scale_offsets_num_bytes + be_scale_offsets_align);
-    Qnn_ScaleOffset_t* block_encoding_scale_offsets_data_aligned = ALIGN_PTR_UP(block_encoding_scale_offsets_data_.get(), be_scale_offsets_align, Qnn_ScaleOffset_t*);
-
-    for (uint32_t i = 0; i < num_blocks_; i++) {
-      block_encoding_scale_offsets_data_aligned[i].offset = offsets[i];
-      block_encoding_scale_offsets_data_aligned[i].scale = scales[i];
+    block_encoding_scale_offsets_data_ = std::make_unique<Qnn_ScaleOffset_t[]>(num_blocks_);
+    for (size_t i = 0; i < num_blocks_; ++i) {
+      block_encoding_scale_offsets_data_[i].offset = offsets[i];
+      block_encoding_scale_offsets_data_[i].scale = scales[i];
     }
-    params_.blockEncoding.scaleOffset = block_encoding_scale_offsets_data_aligned;
+    params_.blockEncoding.scaleOffset = block_encoding_scale_offsets_data_.get();
   }
 }
 
@@ -372,20 +367,19 @@ Status QnnQuantParamsWrapper::Init(const Qnn_QuantizeParams_t& params, const siz
       params_.quantizationEncoding = params.quantizationEncoding;
 
       block_encoding_tensor_rank_ = static_cast<uint32_t>(tensor_rank);
-      const size_t be_axis_num_bytes = block_encoding_tensor_rank_ * sizeof(uint32_t);
-      constexpr std::uintptr_t be_axis_align = alignof(uint32_t);
-      block_encoding_axis_data_ = std::make_unique<char[]>(be_axis_num_bytes + be_axis_align);
-      uint32_t* block_encoding_axis_data_aligned = ALIGN_PTR_UP(block_encoding_axis_data_.get(), be_axis_align, uint32_t*);
-      std::memcpy(block_encoding_axis_data_aligned, params.blockEncoding.blockSize, be_axis_num_bytes);
-      params_.blockEncoding.blockSize = block_encoding_axis_data_aligned;
+      block_encoding_axis_data_ = std::make_unique<uint32_t[]>(block_encoding_tensor_rank_);
+      std::memcpy(block_encoding_axis_data_.get(),
+                  params.blockEncoding.blockSize,
+                  static_cast<size_t>(block_encoding_tensor_rank_) * sizeof(uint32_t));
+      params_.blockEncoding.blockSize = block_encoding_axis_data_.get();
 
       // Deep copy the scale offsets
-      const size_t be_scale_offsets_num_bytes = num_scaleoffsets * sizeof(Qnn_ScaleOffset_t);
-      constexpr std::uintptr_t be_scale_offsets_align = alignof(Qnn_ScaleOffset_t);
-      block_encoding_scale_offsets_data_ = std::make_unique<char[]>(be_scale_offsets_num_bytes + be_scale_offsets_align);
-      Qnn_ScaleOffset_t* block_encoding_scale_offsets_data_aligned = ALIGN_PTR_UP(block_encoding_scale_offsets_data_.get(), be_scale_offsets_align, Qnn_ScaleOffset_t*);
-      std::memcpy(block_encoding_scale_offsets_data_aligned, params.blockEncoding.scaleOffset, be_scale_offsets_num_bytes);
-      params_.blockEncoding.scaleOffset = block_encoding_scale_offsets_data_aligned;
+      block_encoding_scale_offsets_data_ = std::make_unique<Qnn_ScaleOffset_t[]>(num_scaleoffsets);
+      for (size_t i = 0; i < num_scaleoffsets; ++i) {
+        block_encoding_scale_offsets_data_[i].scale = params.blockEncoding.scaleOffset[i].scale;
+        block_encoding_scale_offsets_data_[i].offset = params.blockEncoding.scaleOffset[i].offset;
+      }
+      params_.blockEncoding.scaleOffset = block_encoding_scale_offsets_data_.get();
 
       break;
     }

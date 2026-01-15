@@ -24,7 +24,7 @@ namespace qnn {
       - B           : Init            : (uint8)   : [N, K/block_size, (block_size * bits) / 8]
       - scales      : Init            : (fp32)    : [N * K / block_size]
       - zero_points : (optional)Init  : (uint8)   : [N * K / (block_size * 2)]
-      - bias        : (optional)Init  : [?]       : [?]
+      - bias        : (optional)Init  : [fp16/32] : [N]
 
     Outputs
       -  Y          :                 : (fp16/32) : [batch_size{1}, sequence_len, N]
@@ -118,9 +118,10 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   ORT_RETURN_IF_NOT(bits == 4, "Invalid bits. Qnn Gpu Only Supports MatMulNBits with bits == 4");
   ORT_RETURN_IF_NOT(block_size == 32, "Invalid block_size. Qnn Gpu Only Supports MatMulNBits with block_size == 32");
-  ORT_RETURN_IF_NOT(((N * K) % block_size) == 0, "K must be divisible by block_size");
+  ORT_RETURN_IF_NOT((K % block_size) == 0, "K must be divisible by block_size");
 
   const int64_t num_blocks = (N * K) / block_size;
+  ORT_RETURN_IF_NOT(num_blocks > 0, "Invalid configuration. (N * K) / block_size must be > 0");
 
   const auto& inputs = node_unit.Inputs();
   // 1. input : Datatype should be float16 or float32
@@ -183,7 +184,7 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT((per_block_uint8_offset.size() * 2) == (num_blocks * sizeof(uint8_t)),
                       "Only packed uint4 into uint8 offset supported by op builder");
     const uint8_t expected_offset_value = 0b10001000;
-    for (int32_t i = 0; i < gsl::narrow_cast<int32_t>(per_block_uint8_offset.size()); i++) {
+    for (size_t i = 0; i < per_block_uint8_offset.size(); i++) {
       ORT_RETURN_IF_NOT(per_block_uint8_offset[i] == expected_offset_value, "Unsupported zero point value");
     }
   }
