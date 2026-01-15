@@ -51,7 +51,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Sum", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
-    CreateSimpleOpBuilder("Concat", *this);
+    CreateConcatOpBuilder("Concat", *this);
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
     CreateSimpleOpBuilder("DequantizeLinear", *this);
