@@ -122,9 +122,7 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: linux/linux-cpu-packaging-pipeline.yml
-      parameters:
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+    - template: stages/linux-cpu-packaging-pipeline.yml
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
