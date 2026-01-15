@@ -196,7 +196,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -206,7 +208,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel logging_level,
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -216,7 +220,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel log
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -227,7 +233,56 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a valid (non-null) OrtEnvCreationOptions argument");
+  }
+
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a valid (non-null) output parameter into which to "
+                                 "store the new OrtEnv instance");
+  }
+
+  // Both this API function and OrtEnvCreationOptions were added in ORT 1.24, so check that the user
+  // filled out the version correctly.
+  if (options->version < 24) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument with the version set "
+                                 "equal to ORT_API_VERSION");
+  }
+
+  if (options->logging_severity_level < OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE ||
+      options->logging_severity_level > OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
+                                 "with a valid logging severity level value from the OrtLoggingLevel enumeration");
+  }
+
+  if (options->log_id == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
+                                 "with a valid (non-null) log identifier string");
+  }
+
+  OrtLoggingLevel logging_severity_level = static_cast<OrtLoggingLevel>(options->logging_severity_level);
+  OrtEnv::LoggingManagerConstructionInfo lm_info(options->custom_logging_function,
+                                                 options->custom_logging_param,
+                                                 logging_severity_level,
+                                                 options->log_id);
+  Status status;
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, options->threading_options, options->config_entries);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -4291,6 +4346,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::GetInteropApi,
     &OrtApis::SessionGetEpDeviceForOutputs,
+
     &OrtApis::GetNumHardwareDevices,
     &OrtApis::GetHardwareDevices,
     &OrtApis::GetHardwareDeviceEpIncompatibilityDetails,
@@ -4298,6 +4354,8 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::DeviceEpIncompatibilityDetails_GetNotes,
     &OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode,
     &OrtApis::ReleaseDeviceEpIncompatibilityDetails,
+
+    &OrtApis::CreateEnvWithOptions,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -965,14 +965,6 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
-/** \brief The C API
- *
- * All C API functions are defined inside this structure as pointers to functions.
- * Call OrtApiBase::GetApi to get a pointer to it
- *
- * \nosubgrouping
- */
-
 /** \addtogroup Global
  * @{
  */
@@ -1056,6 +1048,101 @@ typedef enum OrtCompiledModelCompatibility {
   OrtCompiledModelCompatibility_EP_UNSUPPORTED,
 } OrtCompiledModelCompatibility;
 
+/** \brief Configuration options for creating an OrtEnv.
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ *       This ensures forward compatibility as fields may be added in future versions.
+ *
+ * \since Version 1.24.
+ */
+typedef struct OrtEnvCreationOptions {
+  uint32_t version;  ///< Must be set to ORT_API_VERSION
+
+  /** \brief The logging severity level for the environment. Must be set to a value from OrtLoggingLevel.
+   *
+   * \note Logging messages which are less severe than the `logging_severity_level` are not emitted.
+   *
+   * \note Serves as the default logging severity level for session creation and runs.
+   *       Use ::SetSessionLogSeverityLevel() to set a logging severity level for the creation of specific session.
+   *       Use ::RunOptionsSetRunLogSeverityLevel() to set a logging severity level for a specific session run.
+   *
+   * \since Version 1.24.
+   */
+  int32_t logging_severity_level;
+
+  /** \brief The log identifier. Must be set to a valid UTF-8 null-terminated string.
+   *
+   * \note This string identifier is copied by ORT.
+   *
+   * \since Version 1.24.
+   */
+  const char* log_id;
+
+  /** \brief Optional custom logging function. May be set to NULL.
+   *
+   * \note The OrtEnvCreationOptions::custom_logging_param is provided as the first argument to this logging function.
+   *       This allows passing custom state into the logging function.
+   *
+   * \note This function is only called when a message's severity meets or exceeds the set logging severity level.
+   *
+   * \since Version 1.24.
+   */
+  OrtLoggingFunction custom_logging_function;
+
+  /** \brief Optional state to pass as the first argument to OrtEnvCreationOptions::custom_logger_function.
+   *         May be set to NULL.
+   *
+   * \since Version 1.24.
+   */
+  void* custom_logging_param;
+
+  /** \brief Optional threading options for creating an environment with global thread pools shared across sessions.
+   *         May be set to NULL.
+   *
+   * \note The OrtThreadingOptions instance is copied by ORT.
+   *
+   * \note Use OrtApi::CreateThreadingOptions() to create an instance of OrtThreadingOptions.
+   *
+   * \note Use this in conjunction with OrtApi::DisablePerSessionThreads or else the session will use its own
+   *       thread pools.
+   *
+   * \since Version 1.24.
+   */
+  const OrtThreadingOptions* threading_options;
+
+  /** \brief Optional environment configuration entries represented as string key-value pairs. May be set to NULL.
+   *
+   * \note The OrtKeyValuePairs instance is copied by ORT.
+   *
+   * \note Refer to onnxruntime_env_config_keys.h for common config entry keys and their supported values.
+   *
+   * \note An application provides environment-level configuration options for execution provider libraries by
+   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
+   *       the specific execution provider's documentation for valid keys and values.
+   *
+   * \note An application may separately set session-level configuration options for execution providers via other APIs
+   *       such as SessionOptionsAppendExecutionProvider_V2, which store configuration entries within OrtSessionOptions.
+   *       If an environment-level configuration conflicts with a session-level configuration, then
+   *       precedence is determined by the execution provider library itself.
+   *
+   * \since Version 1.24.
+   */
+  const OrtKeyValuePairs* config_entries;
+
+  //
+  // End of fields available in ORT 1.24
+  //
+
+} OrtEnvCreationOptions;
+
+/** \brief The C API
+ *
+ * All C API functions are defined inside this structure as pointers to functions.
+ * Call OrtApiBase::GetApi to get a pointer to it
+ *
+ * \nosubgrouping
+ */
 struct OrtApi {
   /// \name OrtStatus
   /// @{
@@ -6912,6 +6999,20 @@ struct OrtApi {
   ORT_CLASS_RELEASE(DeviceEpIncompatibilityDetails);
 
   /// @}
+
+  /** \brief Create an OrtEnv instance with the given options.
+   *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   *       to another env creation function; all arguments to this function will be ignored.
+   *
+   * \param[in] options The OrtEnvCreationOptions instance that contains creation options.
+   * \param[out] out Output parameter set to the new OrtEnv instance. Must be freed with OrtApi::ReleaseEnv.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out);
 };
 
 /*
