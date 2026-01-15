@@ -50,13 +50,6 @@ parameters:
   type: string
   default: '0'
 
-# Do not update this to a version that does not exist for the qnn-runtime Maven package:
-# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
-- name: QnnSdk
-  displayName: QNN SDK Version
-  type: string
-  default: 2.42.0.251225
-
 - name: CudaVersion
   displayName: CUDA version
   type: string
@@ -129,21 +122,9 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: templates/c-api-cpu.yml
+    - template: linux-cpu-packaging-pipeline.yml
       parameters:
-        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
-        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
-        ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
-          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
-        ${{ else }}:
-          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
-        AdditionalBuildFlags: ''
-        AdditionalWinBuildFlags: '--enable_onnx_tests ${{parameters.AdditionalBuildFlag}}'
-        BuildVariant: 'default'
-        QnnSDKVersion: ${{ parameters.QnnSdk }}
-        is1ES: true
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
