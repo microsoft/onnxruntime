@@ -41,7 +41,7 @@ struct OrtRunOptions {
   // File prefix for profiling result for this run.
   // The actual filename will be: <profile_file_prefix>_<timestamp>.json
   // Only used when enable_profiling is true.
-  std::string profile_file_prefix = "onnxruntime_run_profile";
+  std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_run_profile");
 
 #ifdef ENABLE_TRAINING
   // Used by onnxruntime::training::TrainingSession. This class is now deprecated.
