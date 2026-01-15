@@ -728,7 +728,7 @@ Return Value:
             OutputSize, OutputSize);
 
         input += InputGroupSize;
-        //output += OutputGroupSize;
+        output += OutputGroupSize;
     }
 }
 
