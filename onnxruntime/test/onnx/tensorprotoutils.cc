@@ -648,6 +648,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(FLOAT4E2M1)
     CASE_TYPE(UINT4)
     CASE_TYPE(INT4)
+    CASE_TYPE(UINT2)
+    CASE_TYPE(INT2)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -854,6 +856,14 @@ Status MLValueToTensorProto(Ort::Value& value, onnx::TensorProto& tensor_proto) 
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
       tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4;
+      tensor_elem_bytes = 1;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT2;
+      tensor_elem_bytes = 1;
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2:
+      tensor_proto_dtype = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT2;
       tensor_elem_bytes = 1;
       break;
     default: {
