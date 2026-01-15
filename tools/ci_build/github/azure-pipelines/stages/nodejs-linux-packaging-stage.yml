@@ -46,6 +46,6 @@ stages:
       parameters:
         arch: 'x64'
         os: 'linux'
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64_${{parameters.StageToken}}'
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64-${{parameters.StageToken}}'
 
     - template: ../templates/clean-agent-build-directory-step.yml

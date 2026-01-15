@@ -102,7 +102,7 @@ stages:
         parameters:
           arch: 'linux-x64'
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64-tensorrt_${{parameters.StageToken}}'
+          artifactName: 'onnxruntime-java-linux-x64-tensorrt-${{parameters.StageToken}}'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
 
