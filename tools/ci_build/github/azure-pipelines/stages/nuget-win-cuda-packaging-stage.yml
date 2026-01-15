@@ -74,7 +74,7 @@ stages:
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
     DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: TensorRT_${{parameters.StageToken}}
+    stage_name_suffix: TensorRT-${{parameters.StageToken}}
     buildArch: x64
     msbuildPlatform: x64
     CudaVersion: "${{ parameters.CudaVersion.major }}.${{ parameters.CudaVersion.minor }}"
