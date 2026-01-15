@@ -15,7 +15,7 @@ namespace test {
 
 // Helper function to create a simple Add model for BF16 testing
 [[maybe_unused]] static GetTestModelFn BuildBF16AddTestCase(const TestInputDef<float>& input1_def,
-                                           const TestInputDef<float>& input2_def) {
+                                                            const TestInputDef<float>& input2_def) {
   return [input1_def, input2_def](ModelTestBuilder& builder) {
     NodeArg* input1 = MakeTestInput(builder, input1_def);
     NodeArg* input2 = MakeTestInput(builder, input2_def);
