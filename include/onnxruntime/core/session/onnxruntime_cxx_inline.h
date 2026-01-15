@@ -784,6 +784,15 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction loggin
   }
 }
 
+inline Env::Env(const OrtEnvCreationOptions* options) {
+  ThrowOnError(GetApi().CreateEnvWithOptions(options, &p_));
+  if (strcmp(options->log_id, "onnxruntime-node") == 0) {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
+  } else {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+  }
+}
+
 inline Env& Env::EnableTelemetryEvents() {
   ThrowOnError(GetApi().EnableTelemetryEvents(p_));
   return *this;
@@ -1658,6 +1667,19 @@ inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() co
                                                       num_inputs));
   }
   return input_devices;
+}
+
+template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForOutputs() const {
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstEpDevice> output_devices;
+  if (num_outputs > 0) {
+    output_devices.resize(num_outputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtEpDevice**>(output_devices.data()),
+                                                       num_outputs));
+  }
+  return output_devices;
 }
 
 template <typename T>
@@ -2547,10 +2569,10 @@ inline void* KernelContext::GetGPUComputeStream() const {
   return out;
 }
 
-inline OrtAllocator* KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
+inline Ort::Allocator KernelContext::GetAllocator(const OrtMemoryInfo& memory_info) const {
   OrtAllocator* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetAllocator(ctx_, &memory_info, &out));
-  return out;
+  return Ort::Allocator{out};
 }
 
 inline Logger KernelContext::GetLogger() const {
@@ -2840,6 +2862,50 @@ inline KeyValuePairs KernelInfoImpl<T>::GetConfigEntries() const {
   OrtKeyValuePairs* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelInfo_GetConfigEntries(this->p_, &out));
   return KeyValuePairs{out};
+}
+
+template <typename T>
+inline std::string KernelInfoImpl<T>::GetOperatorDomain() const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorDomain(this->p_, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorDomain(this->p_, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline std::string KernelInfoImpl<T>::GetOperatorType() const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorType(this->p_, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorType(this->p_, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline int KernelInfoImpl<T>::GetOperatorSinceVersion() const {
+  int out = 0;
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOperatorSinceVersion(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline const OrtEp* KernelInfoImpl<T>::GetEp() const {
+  const OrtEp* ep = nullptr;
+  Ort::ThrowOnError(GetEpApi().KernelInfo_GetEp(this->p_, &ep));
+  return ep;
 }
 
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
@@ -3712,5 +3778,21 @@ inline KernelRegistry::KernelRegistry(OrtKernelRegistry* p) : detail::Base<OrtKe
 inline Status KernelRegistry::AddKernel(const OrtKernelDef* kernel_def, OrtKernelCreateFunc kernel_create_func,
                                         void* kernel_create_func_state) {
   return Status{GetEpApi().KernelRegistry_AddKernel(p_, kernel_def, kernel_create_func, kernel_create_func_state)};
+}
+
+namespace detail {
+template <typename T>
+inline Status SharedPrePackedWeightCacheImpl<T>::StoreWeightData(void** buffer_data_ptrs, size_t* buffer_sizes,
+                                                                 size_t num_buffers) {
+  return Status{GetEpApi().SharedPrePackedWeightCache_StoreWeightData(this->p_, buffer_data_ptrs, buffer_sizes,
+                                                                      num_buffers)};
+}
+}  // namespace detail
+
+inline Ort::KeyValuePairs GetEnvConfigEntries() {
+  OrtKeyValuePairs* entries = nullptr;
+  Ort::ThrowOnError(GetEpApi().GetEnvConfigEntries(&entries));
+
+  return Ort::KeyValuePairs{entries};
 }
 }  // namespace Ort

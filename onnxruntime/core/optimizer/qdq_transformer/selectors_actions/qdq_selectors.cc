@@ -868,6 +868,21 @@ bool ScatterElementsNodeGroupSelector::Check(const GraphViewer& graph_viewer, co
   return true;
 }
 
+bool RMSNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                              const Node* redundant_clip_node,
+                                              const std::vector<const Node*>& dq_nodes,
+                                              const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
+    return false;
+  }
+
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  // input and output need to be the same type.
+  return (dt_input == dt_output);
+}
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 

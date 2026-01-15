@@ -67,6 +67,42 @@ class PadBase {
 
   // End provider shared
 
+  // Only flatten innermost axes when there is no padding and no slicing on ANY axis.
+  static bool ShouldFlattenInnerShape(gsl::span<const int64_t> input_dims,
+                                      gsl::span<const int64_t> pads,
+                                      gsl::span<const int64_t> slices) {
+    const size_t rank = input_dims.size();
+    if (rank == 0) return false;
+    for (size_t i = 0; i < rank; ++i) {
+      if (slices[i] != 0 || slices[rank + i] != 0) return false;
+    }
+
+    const size_t inner = rank - 1;
+    if (pads[inner] != 0 || pads[inner + rank] != 0 ||
+        slices[inner] != 0 || slices[inner + rank] != 0) {
+      return false;
+    }
+    return true;
+  }
+
+  // Guard: pre-pad + copy + post-pad must equal total output elements.
+  static Status ValidateTotalElementsCoverage(size_t total_output_elems,
+                                              size_t prepad_elems,
+                                              size_t copy_elems,
+                                              size_t postpad_elems) {
+    const size_t checked_sum =
+        SafeInt<size_t>(prepad_elems) +
+        SafeInt<size_t>(copy_elems) +
+        SafeInt<size_t>(postpad_elems);
+    if (checked_sum != total_output_elems) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Pad coverage invalid: pre=", prepad_elems,
+                             " copy=", copy_elems, " post=", postpad_elems,
+                             " total=", total_output_elems);
+    }
+    return Status::OK();
+  }
+
   /// <summary>
   /// Flatten no padding inner most Axis, so one memcpy cover multiple Axis.
   /// For example, for a shape of [1,224,224,3] with padding [0,3,3,0,0,3,3,0], can be flatten as

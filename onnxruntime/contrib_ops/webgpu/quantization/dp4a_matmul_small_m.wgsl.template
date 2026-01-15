@@ -45,23 +45,27 @@ var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
 const scale_a_size_in_tile_a = double_tile_size_k_vec / 8;
 var<workgroup> scale_A : array<output_element_t, scale_a_size_in_tile_a>;
 
-fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
+fn loadSHMA(batch: u32, a_global: u32, kidx_v: u32, col: u32)
 {
     let k_offset = kidx_v + col;
     if (k_offset >= uniforms.K16) {
     return;
     }
 
-    tile_A[col] = a.getByOffset(a_global*uniforms.K16+k_offset);
+    tile_A[col] = a.getByOffset(batch*uniforms.M*uniforms.K16+a_global*uniforms.K16+k_offset);
     if (col < scale_a_size_in_tile_a)
     {
     // kidx_v - covers 16 values of k in input_a
-    scale_A[col] = scales_a.getByOffset(a_global*(uniforms.K/128) + kidx_v/8 + col);
+    scale_A[col] = scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8 + col);
     }
 }
 
 $MAIN {
-    let a_global = u32(workgroup_idx / uniforms.num_N_tile);
+    let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
+    if (batch >= uniforms.batch_count) {
+        return;
+    }
+    let a_global = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.M);
     let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
     // Handle each workgroup threads as a block of [sub_tile_count][tile_size_k_vec]
     let local_col = local_idx % tile_size_k_vec;
@@ -95,7 +99,7 @@ $MAIN {
         // Load Phase: Populate shared memory for the workgroup.
         if (local_idx < double_tile_size_k_vec)
         {
-        loadSHMA(a_global, kidx_v * 2, local_idx);
+        loadSHMA(batch, a_global, kidx_v * 2, local_idx);
         }
         workgroupBarrier();
         var own_a: vec4<u32> = tile_A[local_col * 2];
@@ -153,7 +157,7 @@ $MAIN {
         output_value += inter_results[local_idx][b];
       }
       let b_global =  b_global_base + local_idx;
-      let output_idx = a_global * uniforms.N + b_global;
+      let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
       if (b_global < uniforms.N) {
 #if has_bias
         let bias_value = bias[b_global + b_bias_offset];

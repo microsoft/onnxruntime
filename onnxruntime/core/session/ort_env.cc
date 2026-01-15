@@ -19,7 +19,7 @@ std::atomic<bool> g_is_shutting_down(false);
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
 namespace onnxruntime {
 namespace webgpu {
 void CleanupWebGpuContexts();
@@ -41,20 +41,22 @@ OrtEnv::~OrtEnv() {
   UnloadSharedProviders();
 #endif
 
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
   // Explicitly destroy the Environment first, which will properly clean up DataTransferManager
   // and call ReleaseImpl on WebGpuDataTransferImpl
   value_.reset();
 
   // Now that Environment is destroyed and all data transfers are cleaned up,
   // we can safely cleanup any remaining WebGPU contexts
-#ifdef USE_WEBGPU
   webgpu::CleanupWebGpuContexts();
 #endif
 }
 
-OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
-                            onnxruntime::common::Status& status,
-                            const OrtThreadingOptions* tp_options) {
+/*static*/
+OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
+                                      onnxruntime::common::Status& status,
+                                      const OrtThreadingOptions* tp_options,
+                                      const OrtKeyValuePairs* config_entries) {
   std::lock_guard<std::mutex> lock(m_);
   if (!p_instance_) {
     std::unique_ptr<LoggingManager> lmgr;
@@ -76,14 +78,13 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
                                             LoggingManager::InstanceType::Default,
                                             &name);
 
+    const bool create_global_thread_pools = tp_options != nullptr;
     std::unique_ptr<onnxruntime::Environment> env;
-    if (!tp_options) {
-      status = onnxruntime::Environment::Create(std::move(lmgr), env);
-    } else {
-      status = onnxruntime::Environment::Create(std::move(lmgr), env, tp_options, true);
-    }
+    status = onnxruntime::Environment::Create(std::move(lmgr), env, tp_options,
+                                              create_global_thread_pools, config_entries);
+
     if (!status.IsOK()) {
-      return nullptr;
+      return OrtEnvPtr(nullptr, OrtEnv::Release);
     }
     // Use 'new' to allocate OrtEnv, as it will be managed by p_instance_
     // and deleted in ReleaseEnv or leaked if g_is_process_shutting_down is true.
@@ -91,9 +92,10 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
   }
 
   ++ref_count_;
-  return p_instance_;
+  return OrtEnvPtr(p_instance_, OrtEnv::Release);
 }
 
+/*static*/
 void OrtEnv::Release(OrtEnv* env_ptr) {
   if (!env_ptr) {
     return;  // nothing to release
@@ -129,6 +131,17 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
   // Perform the deletion outside the lock if an instance was marked for deletion.
   // instance_to_delete can be null here, but it's perfectly safe to delete a nullptr
   delete instance_to_delete;
+}
+
+/*static*/
+OrtEnvPtr OrtEnv::TryGetInstance() {
+  std::lock_guard<std::mutex> lock(m_);
+
+  if (p_instance_) {
+    ++ref_count_;
+  }
+
+  return OrtEnvPtr(p_instance_, OrtEnv::Release);
 }
 
 onnxruntime::logging::LoggingManager* OrtEnv::GetLoggingManager() const {
