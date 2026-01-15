@@ -453,10 +453,10 @@ bool IsParamConstant(const QnnModelWrapper& qnn_model_wrapper,
 
 // Adjust BatchNorm param types for QNN HTP compatibility.
 // Modifies scale/bias types in-place; quantization happens in Postprocess.
-void MaybeQuantizeAndOverrideParamType(Qnn_DataType_t x_dtype,
-                                       Qnn_DataType_t& scale_dtype,
-                                       Qnn_DataType_t& bias_dtype,
-                                       bool is_scale_has_negative_values = true) {
+void OverrideParamTypeForRequantize(Qnn_DataType_t x_dtype,
+                                    Qnn_DataType_t& scale_dtype,
+                                    Qnn_DataType_t& bias_dtype,
+                                    bool is_scale_has_negative_values = true) {
   // QNN HTP with UFIXED_POINT_16 input doesn't support SFIXED_POINT_8 scale
   if (x_dtype == QNN_DATATYPE_UFIXED_POINT_16 && scale_dtype == QNN_DATATYPE_SFIXED_POINT_8) {
     scale_dtype = is_scale_has_negative_values ? QNN_DATATYPE_SFIXED_POINT_16 : QNN_DATATYPE_UFIXED_POINT_8;
@@ -622,10 +622,10 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                        bias_double_tensor));
 
     // Apply QNN HTP type conversions
-    MaybeQuantizeAndOverrideParamType(input_info.qnn_data_type,
-                                      scale_info.qnn_data_type,
-                                      bias_info.qnn_data_type,
-                                      scale_rmin < 0.0);
+    OverrideParamTypeForRequantize(input_info.qnn_data_type,
+                                   scale_info.qnn_data_type,
+                                   bias_info.qnn_data_type,
+                                   scale_rmin < 0.0);
     if (is_quantized_op && bias_is_float) {
       bias_info.quant_param = QnnQuantParamsWrapper(1.0f, 0);  // Placeholder, computed in Postprocess
     }
@@ -706,7 +706,7 @@ Status BatchNormOpBuilder::CheckHtpDataTypes(const std::vector<Qnn_DataType_t> i
 
   // We likely need to re-quantize scale/bias for HTP compatibility, override dtypes before checking.
   // Note: We conservatively assume scale may have negative values during validation.
-  MaybeQuantizeAndOverrideParamType(x_dtype, scale_dtype, bias_dtype);
+  OverrideParamTypeForRequantize(x_dtype, scale_dtype, bias_dtype);
   std::vector<Qnn_DataType_t> all_dtypes{x_dtype, scale_dtype, bias_dtype, y_dtype};
   // FP16/FP32
   if (
