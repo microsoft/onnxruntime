@@ -251,32 +251,35 @@ void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
   std::vector<std::byte> model_data_buffer{};
   const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
 
-  SessionOptions so;
-  so.session_logid = log_id;
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  //
-  // get expected output from CPU EP
-  //
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  ASSERT_STATUS_OK(session_object.Initialize());
-
-  const auto& graph = session_object.GetGraph();
-  const auto& outputs = graph.GetOutputs();
-
-  // fetch all outputs
   std::vector<std::string> output_names;
-  output_names.reserve(outputs.size());
-  for (const auto* node_arg : outputs) {
-    if (node_arg->Exists()) {
-      output_names.push_back(node_arg->Name());
-    }
-  }
-
   std::vector<OrtValue> expected_fetches;
-  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &expected_fetches));
+
+  if (verify_outputs) {
+    SessionOptions so;
+    so.session_logid = log_id;
+    RunOptions run_options;
+    run_options.run_tag = so.session_logid;
+
+    //
+    // get expected output from CPU EP
+    //
+    InferenceSessionWrapper session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    const auto& graph = session_object.GetGraph();
+    const auto& outputs = graph.GetOutputs();
+
+    // fetch all outputs
+    output_names.reserve(outputs.size());
+    for (const auto* node_arg : outputs) {
+      if (node_arg->Exists()) {
+        output_names.push_back(node_arg->Name());
+      }
+    }
+
+    ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &expected_fetches));
+  }
 
   // Run with EP and verify the result
   OrtSessionWrapper ort_session(*GetOrtEnv(), model_data.data(), static_cast<int>(model_data.size()), ort_so);
