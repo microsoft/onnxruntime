@@ -1429,6 +1429,23 @@ struct OrtEpApi {
                   _Outptr_ OrtKernelImpl** kernel_out);
 
   ORT_CLASS_RELEASE(KernelImpl);
+
+  /** \brief Gets a new OrtKeyValuePairs instance containing a copy of all configuration entries set on the environment.
+   *
+   * \note An application provides environment-level configuration options for execution provider libraries by
+   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
+   *       the specific execution provider's documentation for valid keys and values.
+   *
+   * \note Refer to onnxruntime_env_config_keys.h for common configuration entry keys and their supported values.
+   *
+   * \param[out] out Output parameter set to the OrtKeyValuePairs instance containing all configuration entries.
+   *                 Must be released via OrtApi::ReleaseKeyValuePairs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
 };
 
 /**
@@ -1981,35 +1998,6 @@ struct OrtEpFactory {
                   _In_ const OrtMemoryDevice* memory_device,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
-
-  /** \brief Set environment options on this EP factory.
-   *
-   * Environment options can be set by ORT after calling the library's 'CreateEpFactories' function to
-   * create EP factories.
-   *
-   * Supported options:
-   *   "allow_virtual_devices": Allows EP factory to specify OrtEpDevice instances that use custom
-   *      virtual OrtHardwareDevices, which can be created via OrtEpApi::CreateHardwareDevice().
-   *
-   *      A virtual OrtHardwareDevice does not represent actual hardware on the device, and is identified
-   *      via the metadata entry "is_virtual" with a value of "1".
-   *      Refer to onnxruntime_ep_device_ep_metadata_keys.h for well-known OrtHardwareDevice metadata keys.
-   *
-   *      Allowed values:
-   *      -# "0": Default. Creation of virtual devices is not allowed.
-   *      -# "1": Creation of virtual devices is allowed.
-   *
-   * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] options The configuration options.
-   *
-   * \note Implementation of this function is optional.
-   *       An EP factory should only implement this if it needs to handle any environment options.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.24.
-   */
-  ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
 
   /** \brief Check for known incompatibility reasons between a hardware device and this execution provider.
    *
