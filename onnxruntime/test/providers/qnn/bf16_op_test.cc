@@ -37,7 +37,7 @@ namespace test {
 
 // Helper function to create a Conv model for BF16 testing
 [[maybe_unused]] static GetTestModelFn BuildBF16ConvTestCase(const TestInputDef<float>& input_def,
-                                            const TestInputDef<float>& weights_def) {
+                                                             const TestInputDef<float>& weights_def) {
   return [input_def, weights_def](ModelTestBuilder& builder) {
     NodeArg* input = MakeTestInput(builder, input_def);
     NodeArg* weights = MakeTestInput(builder, weights_def);
