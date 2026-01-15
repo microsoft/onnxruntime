@@ -25,6 +25,11 @@ constexpr bool Is4BitIntType(int32_t data_type) {
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4);
 }
 
+constexpr bool Is2BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT2) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT2);
+}
+
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
@@ -164,6 +169,11 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
     return false;
   }
 
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input)) {
+    return false;
+  }
+
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
@@ -212,6 +222,11 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
     return false;
   }
 
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input)) {
+    return false;
+  }
+
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
@@ -239,6 +254,11 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   }
 
   if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
+
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input)) {
     return false;
   }
 
@@ -277,6 +297,11 @@ bool ClipNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     return false;
   }
 
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -302,6 +327,11 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
   }
 
   if (!allow_4bit_ && Is4BitIntType(dt_input_1)) {
+    return false;
+  }
+
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input_1)) {
     return false;
   }
 
@@ -343,6 +373,11 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -369,6 +404,11 @@ bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
   if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+    return false;
+  }
+
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input)) {
     return false;
   }
 
@@ -409,6 +449,11 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
   }
 
   if (!allow_4bit_weight_ && Is4BitIntType(dt_weight)) {
+    return false;
+  }
+
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_weight)) {
     return false;
   }
 
@@ -457,6 +502,10 @@ bool EinsumNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     if (!allow_4bit_ && Is4BitIntType(dt_input)) {
       return false;
     }
+    // skip 2-bit cases
+    if (Is2BitIntType(dt_input)) {
+      return false;
+    }
   }
   if (!q_nodes.empty()) {
     int32_t dt_input0 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -486,6 +535,10 @@ bool ReciprocalNodeGroupSelector::Check(const GraphViewer& graph_viewer,
       return false;
     }
     if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+      return false;
+    }
+    // skip 2-bit cases
+    if (Is2BitIntType(dt_input)) {
       return false;
     }
   }
@@ -522,6 +575,11 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
 
   // 4-bit int types must be explicitly allowed.
   if (!allow_4bit_ && (Is4BitIntType(dt_input) || Is4BitIntType(dt_weight))) {
+    return false;
+  }
+
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input) || Is2BitIntType(dt_weight)) {
     return false;
   }
 
@@ -661,6 +719,11 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     return false;
   }
 
+  // skip 2-bit cases
+  if ((Is2BitIntType(dt_A) || Is2BitIntType(dt_B))) {
+    return false;
+  }
+
   if (dq_nodes.size() < 3) {  // no bias
     return true;
   }
@@ -700,6 +763,11 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   }
 
   if (!allow_4bit_ && Is4BitIntType(dt_input_1)) {
+    return false;
+  }
+
+  // skip 2-bit cases
+  if (Is2BitIntType(dt_input_1)) {
     return false;
   }
 
