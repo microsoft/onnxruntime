@@ -17,17 +17,17 @@ stages:
       templateContext:
         inputs:
         - input: pipelineArtifact
-          artifactName: drop-onnxruntime-java-win-x64-tensorrt_${{cuda_version.key}}
+          artifactName: drop-onnxruntime-java-win-x64-tensorrt-${{cuda_version.key}}
           targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
 
         - input: pipelineArtifact
-          artifactName: drop-onnxruntime-java-linux-x64-tensorrt_${{cuda_version.key}}
+          artifactName: drop-onnxruntime-java-linux-x64-tensorrt-${{cuda_version.key}}
           targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
 
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
-          artifactName: onnxruntime-java-gpu_${{cuda_version.key}}
+          artifactName: onnxruntime-java-gpu-${{cuda_version.key}}
       pool: 'onnxruntime-Win-CPU-VS2022-Latest'
       dependsOn: []
       condition: succeeded()

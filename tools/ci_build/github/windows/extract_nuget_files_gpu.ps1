@@ -68,13 +68,11 @@ else {
     Write-Error "Could not find protoc.exe in $protocInstallDir"
 }
 
-# Rename onnxruntime directories to a generic format.
+# Rename onnxruntime directories to a generic format. Name is of format <dir>-<cuda_version>-<ort_version>
 $ort_dirs = Get-ChildItem -Path "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-*" -Directory
 foreach ($ort_dir in $ort_dirs) {
-    $dirname = Split-Path -Path $ort_dir -Leaf
-    $lastHyphenIndex = $dirname.LastIndexOf('-')
-    if ($lastHyphenIndex -gt -1) {
-        $newName = $dirname.Substring(0, $lastHyphenIndex)
+    if( $dirname -match '^(.+)-cuda_\d+-[\d.]+$' ) {
+        $newName = $matches[1]
         $newPath = Join-Path -Path $ort_dir.Parent.FullName -ChildPath $newName
         Write-Output "Renaming '$($ort_dir.FullName)' to '$newPath'"
         Rename-Item -Path $ort_dir.FullName -NewName $newName
