@@ -784,6 +784,15 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction loggin
   }
 }
 
+inline Env::Env(const OrtEnvCreationOptions* options) {
+  ThrowOnError(GetApi().CreateEnvWithOptions(options, &p_));
+  if (strcmp(options->log_id, "onnxruntime-node") == 0) {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
+  } else {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+  }
+}
+
 inline Env& Env::EnableTelemetryEvents() {
   ThrowOnError(GetApi().EnableTelemetryEvents(p_));
   return *this;
@@ -1663,6 +1672,19 @@ inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() co
                                                       num_inputs));
   }
   return input_devices;
+}
+
+template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForOutputs() const {
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstEpDevice> output_devices;
+  if (num_outputs > 0) {
+    output_devices.resize(num_outputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtEpDevice**>(output_devices.data()),
+                                                       num_outputs));
+  }
+  return output_devices;
 }
 
 template <typename T>
@@ -3771,4 +3793,11 @@ inline Status SharedPrePackedWeightCacheImpl<T>::StoreWeightData(void** buffer_d
                                                                       num_buffers)};
 }
 }  // namespace detail
+
+inline Ort::KeyValuePairs GetEnvConfigEntries() {
+  OrtKeyValuePairs* entries = nullptr;
+  Ort::ThrowOnError(GetEpApi().GetEnvConfigEntries(&entries));
+
+  return Ort::KeyValuePairs{entries};
+}
 }  // namespace Ort

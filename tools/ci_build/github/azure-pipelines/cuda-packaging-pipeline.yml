@@ -67,6 +67,11 @@ variables:
     value: $(Agent.TempDirectory)\v12.8
   ${{ if eq(parameters.CudaVersion, '13.0') }}:
     value: $(Agent.TempDirectory)\v13.0
+- name: win_cudnn_home
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: ''
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\9.14.0.64_cuda13
 # CMAKE_CUDA_ARCHITECTURES for Windows nuget packaging
 - name: CudaArchs
   ${{ if eq(parameters.CudaVersion, '12.8') }}:
@@ -133,6 +138,7 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
         CudaArchs: ${{ variables.CudaArchs }}
+        win_cudnn_home: ${{ variables.win_cudnn_home }}
 
     - template: stages/download-java-tools-stage.yml
 

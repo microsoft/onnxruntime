@@ -143,7 +143,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_CUDA
     } else if (name == "cuda") {
       OrtCUDAProviderOptionsV2* options;
-      Ort::GetApi().CreateCUDAProviderOptions(&options);
+      Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
       options->device_id = deviceId;
       sessionOptions.AppendExecutionProvider_CUDA_V2(*options);
       Ort::GetApi().ReleaseCUDAProviderOptions(options);
@@ -151,7 +151,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_TENSORRT
     } else if (name == "tensorrt") {
       OrtTensorRTProviderOptionsV2* options;
-      Ort::GetApi().CreateTensorRTProviderOptions(&options);
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorRTProviderOptions(&options));
       options->device_id = deviceId;
       sessionOptions.AppendExecutionProvider_TensorRT_V2(*options);
       Ort::GetApi().ReleaseTensorRTProviderOptions(options);

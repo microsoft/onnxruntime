@@ -237,6 +237,20 @@ inline const OrtCompileApi& GetCompileApi() {
 }
 
 /// <summary>
+/// This returns a reference to the ORT C Interop API. Used for external resource import with EPs.
+/// </summary>
+/// <returns>ORT C Interop API reference</returns>
+inline const OrtInteropApi& GetInteropApi() {
+  auto* api = GetApi().GetInteropApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("Interop API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
+/// <summary>
 /// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
 /// </summary>
 /// <returns>ORT C EP API reference</returns>
@@ -1171,6 +1185,9 @@ struct Env : detail::Base<OrtEnv> {
   Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
       OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
 
+  /// \brief Wraps OrtApi::CreateEnvWithOptions
+  explicit Env(const OrtEnvCreationOptions* options);
+
   /// \brief C Interop Helper
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
@@ -1617,6 +1634,7 @@ struct ConstSessionImpl : Base<T> {
   std::vector<ConstMemoryInfo> GetMemoryInfoForInputs() const;   ///< Wrapper for OrtApi::SessionGetMemoryInfoForInputs
   std::vector<ConstMemoryInfo> GetMemoryInfoForOutputs() const;  ///< Wrapper for OrtApi::SessionGetMemoryInfoForOutputs
   std::vector<ConstEpDevice> GetEpDeviceForInputs() const;       ///< Wrapper for OrtApi::SessionGetEpDeviceForInputs
+  std::vector<ConstEpDevice> GetEpDeviceForOutputs() const;      ///< Wrapper for OrtApi::SessionGetEpDeviceForOutputs
 
   /** \brief Returns a copy of input name at the specified index.
    *
@@ -3423,5 +3441,8 @@ struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
  */
 using UnownedSharedPrePackedWeightCache =
     detail::SharedPrePackedWeightCacheImpl<Ort::detail::Unowned<OrtSharedPrePackedWeightCache>>;
+
+///< Wraps OrtEpApi::GetEnvConfigEntries()
+Ort::KeyValuePairs GetEnvConfigEntries();
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"
