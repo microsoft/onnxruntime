@@ -673,8 +673,7 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
 Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
                                     gsl::span<const char* const> ep_option_keys,
                                     gsl::span<const char* const> ep_option_vals,
-                                    OrtSessionOptions& ort_session_options) {
-  SessionOptions& session_options = ort_session_options.value;
+                                    SessionOptions& session_options) {
   const size_t num_ep_options = ep_option_keys.size();
   if (ep_option_vals.size() != num_ep_options) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
