@@ -1185,6 +1185,9 @@ struct Env : detail::Base<OrtEnv> {
   Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
       OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
 
+  /// \brief Wraps OrtApi::CreateEnvWithOptions
+  explicit Env(const OrtEnvCreationOptions* options);
+
   /// \brief C Interop Helper
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
@@ -3431,5 +3434,8 @@ struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
  */
 using UnownedSharedPrePackedWeightCache =
     detail::SharedPrePackedWeightCacheImpl<Ort::detail::Unowned<OrtSharedPrePackedWeightCache>>;
+
+///< Wraps OrtEpApi::GetEnvConfigEntries()
+Ort::KeyValuePairs GetEnvConfigEntries();
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"
