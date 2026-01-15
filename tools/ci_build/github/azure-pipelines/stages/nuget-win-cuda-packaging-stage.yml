@@ -104,7 +104,6 @@ stages:
     pool:
       name: 'onnxruntime-Win2022-GPU-A10'
     variables:
-    variables:
       CUDA_VERSION_MAJOR: ${{ parameters.CudaVersion.major }}
       CUDA_MODULE_LOADINGL: 'LAZY'
       GRADLE_OPTS: '-Dorg.gradle.daemon=false'
