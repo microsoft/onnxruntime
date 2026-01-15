@@ -968,14 +968,24 @@ ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphAssignmentInfo, _In_ const OrtSes
   API_IMPL_END
 }
 
-ORT_API(const char*, OrtApis::EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph) {
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  return ep_subgraph->ep_name.c_str();
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetEpName requires a valid (non-null) `out` output parameter "
+                                 "into which to store the EP name string.");
+  }
+
+  *out = ep_subgraph->ep_name.c_str();
+  return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ep_subgraph);
-  fprintf(stderr, "EP graph assignment information is not supported in this build\n");
-  return nullptr;
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
@@ -1006,34 +1016,64 @@ ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssign
   API_IMPL_END
 }
 
-ORT_API(const char*, OrtApis::EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node) {
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  return ep_node->name.c_str();
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetName requires a valid (non-null) `out` output parameter "
+                                 "into which to store the name string.");
+  }
+
+  *out = ep_node->name.c_str();
+  return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ep_node);
-  fprintf(stderr, "EP graph assignment information is not supported in this build\n");
-  return nullptr;
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
 }
 
-ORT_API(const char*, OrtApis::EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node) {
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  return ep_node->domain.c_str();
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetDomain requires a valid (non-null) `out` output parameter "
+                                 "into which to store the domain string.");
+  }
+
+  *out = ep_node->domain.c_str();
+  return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ep_node);
-  fprintf(stderr, "EP graph assignment information is not supported in this build\n");
-  return nullptr;
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
 }
 
-ORT_API(const char*, OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node) {
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  return ep_node->op_type.c_str();
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetOperatorType requires a valid (non-null) `out` output parameter "
+                                 "into which to store the operator type string.");
+  }
+
+  *out = ep_node->op_type.c_str();
+  return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ep_node);
-  fprintf(stderr, "EP graph assignment information is not supported in this build\n");
-  return nullptr;
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
 }
 
 struct OrtIoBinding {

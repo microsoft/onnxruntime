@@ -750,7 +750,11 @@ inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardwar
 namespace detail {
 template <typename T>
 inline std::string EpAssignedSubgraphImpl<T>::GetEpName() const {
-  return std::string(GetApi().EpAssignedSubgraph_GetEpName(this->p_));
+  const char* ep_name = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetEpName(this->p_, &ep_name));
+  return std::string(ep_name);
 }
 
 template <typename T>
@@ -772,17 +776,29 @@ inline std::vector<ConstEpAssignedNode> EpAssignedSubgraphImpl<T>::GetNodes() co
 
 template <typename T>
 inline std::string EpAssignedNodeImpl<T>::GetName() const {
-  return std::string(GetApi().EpAssignedNode_GetName(this->p_));
+  const char* node_name = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetName(this->p_, &node_name));
+  return std::string(node_name);
 }
 
 template <typename T>
 inline std::string EpAssignedNodeImpl<T>::GetDomain() const {
-  return std::string(GetApi().EpAssignedNode_GetDomain(this->p_));
+  const char* domain = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetDomain(this->p_, &domain));
+  return std::string(domain);
 }
 
 template <typename T>
 inline std::string EpAssignedNodeImpl<T>::GetOperatorType() const {
-  return std::string(GetApi().EpAssignedNode_GetOperatorType(this->p_));
+  const char* op_type = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetOperatorType(this->p_, &op_type));
+  return std::string(op_type);
 }
 }  // namespace detail
 

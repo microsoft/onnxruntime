@@ -1903,6 +1903,12 @@ provider)pbdoc");
           },
           R"pbdoc(The node's name)pbdoc")
       .def_property_readonly(
+          "domain",
+          [](const OrtEpAssignedNode* ep_node) -> std::string {
+            return ep_node->domain;
+          },
+          R"pbdoc(The node's domain)pbdoc")
+      .def_property_readonly(
           "op_type",
           [](const OrtEpAssignedNode* ep_node) -> std::string {
             return ep_node->op_type;
@@ -2714,7 +2720,17 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
       .def("get_provider_graph_assignment_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
 #if !defined(ORT_MINIMAL_BUILD)
-        return sess->GetSessionHandle()->GetEpGraphAssignmentInfo();
+        const auto* inference_session = sess->GetSessionHandle();
+        const auto& sess_options = inference_session->GetSessionOptions();
+        bool is_enabled =
+            sess_options.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+
+        if (!is_enabled) {
+          OrtPybindThrowIfError(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, !is_enabled, "Session configuration entry '",
+                                                kOrtSessionOptionsRecordEpGraphAssignmentInfo,
+                                                "' must be set to \"1\" to retrieve EP graph assignment information."));
+        }
+        return inference_session->GetEpGraphAssignmentInfo();
 #else
         ORT_UNUSED_PARAMETER(sess);
         ORT_THROW("EP graph assignment information is not supported in this build");

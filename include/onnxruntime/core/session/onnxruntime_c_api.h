@@ -7052,11 +7052,15 @@ struct OrtApi {
   /** \brief Get the name of the execution provider to which the subgraph was assigned.
    *
    * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
-   * \return The execution provider's name as UTF-8 null-terminated string.
+   * \param[out] out Output parameter set to the execution provider's name as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedSubgraph instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
-  ORT_API_T(const char*, EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph);
+  ORT_API2_STATUS(EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_ const char** out);
 
   /** \brief Get the nodes in a subgraph assigned to a specific execution provider.
    *
@@ -7074,29 +7078,38 @@ struct OrtApi {
   /** \brief Get the name of the node assigned to an execution provider.
    *
    * \param[in] ep_node The OrtEpAssignedNode instance.
-   * \return The node's name as a UTF-8 null-terminated string.
+   * \param[out] out Output parameter set to the node's name as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
-  ORT_API_T(const char*, EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node);
+  ORT_API2_STATUS(EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
 
   /** \brief Get the domain of the node assigned to an execution provider.
    *
    * \param[in] ep_node The OrtEpAssignedNode instance.
-   * \return The node's domain as a UTF-8 null-terminated string.
+   * \param[out] out Output parameter set to the node's domain as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
-  ORT_API_T(const char*, EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node);
+  ORT_API2_STATUS(EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
 
   /** \brief Get the operator type of the node assigned to an execution provider.
    *
    * \param[in] ep_node The OrtEpAssignedNode instance.
-   * \return The node's operator type as a UTF-8 null-terminated string.
+   * \param[out] out Output parameter set to the node's operator type as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.24.
    */
-  ORT_API_T(const char*, EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node);
+  ORT_API2_STATUS(EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
 };
 
 /*
