@@ -513,23 +513,6 @@ class InferenceSession(Session):
         available_providers = C.get_available_providers()
 
         # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
-        if "TensorrtExecutionProvider" in available_providers:
-            if (
-                providers
-                and any(
-                    provider == "CUDAExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
-                    for provider in providers
-                )
-                and any(
-                    provider == "TensorrtExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
-                    for provider in providers
-                )
-            ):
-                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
         if "NvTensorRTRTXExecutionProvider" in available_providers:
             if (
                 providers
@@ -541,6 +524,23 @@ class InferenceSession(Session):
                 and any(
                     provider == "NvTensorRTRTXExecutionProvider"
                     or (isinstance(provider, tuple) and provider[0] == "NvExecutionProvider")
+                    for provider in providers
+                )
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
+        elif "TensorrtExecutionProvider" in available_providers:
+            if (
+                providers
+                and any(
+                    provider == "CUDAExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                    for provider in providers
+                )
+                and any(
+                    provider == "TensorrtExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
                     for provider in providers
                 )
             ):
