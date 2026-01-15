@@ -122,7 +122,7 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: stages/linux-cpu-packaging-pipeline.yml
+    - template: templates/linux-cpu-packaging-pipeline.yml
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
