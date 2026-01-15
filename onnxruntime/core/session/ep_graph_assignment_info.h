@@ -13,6 +13,7 @@
 /// </summary>
 struct OrtEpAssignedNode {
   std::string name;
+  std::string domain;
   std::string op_type;
 };
 

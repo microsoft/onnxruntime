@@ -1170,8 +1170,9 @@ struct EpAssignedNodeImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
-  const char* GetName() const;
-  const char* GetOperatorType() const;
+  std::string GetName() const;
+  std::string GetDomain() const;
+  std::string GetOperatorType() const;
 };
 }  // namespace detail
 
@@ -1186,7 +1187,7 @@ struct EpAssignedSubgraphImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
 
-  const char* GetEpName() const;
+  std::string GetEpName() const;
   std::vector<ConstEpAssignedNode> GetNodes() const;
 };
 }  // namespace detail

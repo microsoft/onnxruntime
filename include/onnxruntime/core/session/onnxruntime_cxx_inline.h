@@ -749,8 +749,8 @@ inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardwar
 
 namespace detail {
 template <typename T>
-inline const char* EpAssignedSubgraphImpl<T>::GetEpName() const {
-  return GetApi().EpAssignedSubgraph_GetEpName(this->p_);
+inline std::string EpAssignedSubgraphImpl<T>::GetEpName() const {
+  return std::string(GetApi().EpAssignedSubgraph_GetEpName(this->p_));
 }
 
 template <typename T>
@@ -771,13 +771,18 @@ inline std::vector<ConstEpAssignedNode> EpAssignedSubgraphImpl<T>::GetNodes() co
 }
 
 template <typename T>
-inline const char* EpAssignedNodeImpl<T>::GetName() const {
-  return GetApi().EpAssignedNode_GetName(this->p_);
+inline std::string EpAssignedNodeImpl<T>::GetName() const {
+  return std::string(GetApi().EpAssignedNode_GetName(this->p_));
 }
 
 template <typename T>
-inline const char* EpAssignedNodeImpl<T>::GetOperatorType() const {
-  return GetApi().EpAssignedNode_GetOperatorType(this->p_);
+inline std::string EpAssignedNodeImpl<T>::GetDomain() const {
+  return std::string(GetApi().EpAssignedNode_GetDomain(this->p_));
+}
+
+template <typename T>
+inline std::string EpAssignedNodeImpl<T>::GetOperatorType() const {
+  return std::string(GetApi().EpAssignedNode_GetOperatorType(this->p_));
 }
 }  // namespace detail
 

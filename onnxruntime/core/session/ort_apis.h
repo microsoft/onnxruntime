@@ -790,5 +790,6 @@ ORT_API(const char*, EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgr
 ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
                     _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
 ORT_API(const char*, EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node);
+ORT_API(const char*, EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node);
 ORT_API(const char*, EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node);
 }  // namespace OrtApis

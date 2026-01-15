@@ -6915,20 +6915,30 @@ struct OrtApi {
 
   /// @}
 
-  /** \brief Get information about the subgraphs assigned to each EP and the nodes within.
+  /** \brief Get information about the subgraphs assigned to each execution provider (EP) and the nodes within.
    *
-   * Each returned OrtEpAssignedSubgraph instance contains details of the subgraph/nodes assigned to an execution provider,
-   * including the execution provider's name, and the name and operator type for every node. For compiling EPs,
-   * a subgraph contains one or more nodes. Alternatively, for EPs that use kernel registration (e.g., CPU EP), each
-   * registered kernel for a node is contained in its own subgraph (i.e., a subgraph contains one node).
+   * Each returned OrtEpAssignedSubgraph instance contains details of the subgraph/nodes assigned to an execution
+   * provider, including the execution provider's name, and the name, domain, and operator type for every node.
    *
-   * \note Application must enable the recording of graph partitioning information by enabling the session configuration
-   *       for the key "session.record_ep_graph_assignment_info". Refer to onnxruntime_session_options_config_keys.h.
-   *       If the session configuration is not enabled, this function returns an empty result.
+   * For compiling execution providers, a single OrtEpAssignedSubgraph instance contains information about the
+   * nodes that are fused and compiled within a single subgraph assigned to the execution provider.
    *
-   * \param[in] session The OrtSession instance to query.
-   * \param[out] ep_subgraphs The OrtEpAssignedSubgraph instances denoting the EP graph partitioning.
-   * \param[out] num_ep_subgraphs The number of OrtEpAssignedSubgraph instances returned.
+   * For execution providers that use kernel registration (e.g., CPU EP), each node with a registered kernel is
+   * contained in its own OrtEpAssignedSubgraph instance.
+   *
+   * \note The caller must enable the collection of this information by enabling the session
+   *       configuration entry "session.record_ep_graph_assignment_info" during session creation.
+   *       Refer to onnxruntime_session_options_config_keys.h. Otherwise, if not enabled, this function returns a
+   *       status with error code ORT_FAIL.
+   *
+   * \note The information reported by this function is obtained immediately after running basic optimizations on the
+   *       original graph if the session optimization level is set to ORT_ENABLE_BASIC or higher. If the session
+   *       optimization level is set to ORT_DISABLE_ALL, only minimal/required optimizations are run before
+   *       the information is collected.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[out] ep_subgraphs Output parameter set to the array of OrtEpAssignedSubgraph instances.
+   * \param[out] num_ep_subgraphs Output parameter set to the number of elements in the `ep_subgraphs` array.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6940,18 +6950,18 @@ struct OrtApi {
 
   /** \brief Get the name of the execution provider to which the subgraph was assigned.
    *
-   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance to query.
-   * \return The execution provider name.
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
+   * \return The execution provider's name as UTF-8 null-terminated string.
    *
    * \since Version 1.24.
    */
-  const char*(ORT_API_CALL* EpAssignedSubgraph_GetEpName)(_In_ const OrtEpAssignedSubgraph* ep_subgraph);
+  ORT_API_T(const char*, EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph);
 
-  /** \brief Get the list of nodes assigned to an execution provider.
+  /** \brief Get the nodes in a subgraph assigned to a specific execution provider.
    *
-   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance to query.
-   * \param[out] ep_nodes Output parameter set to the list of OrtEpAssignedNode instances.
-   * \param[out] num_ep_nodes Output parameter set to the number of OrtEpAssignedNode instances returned.
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
+   * \param[out] ep_nodes Output parameter set to the array of OrtEpAssignedNode instances.
+   * \param[in] num_ep_nodes Output parameter set to the number of OrtEpAssignedNode instance returned.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6962,21 +6972,30 @@ struct OrtApi {
 
   /** \brief Get the name of the node assigned to an execution provider.
    *
-   * \param[in] ep_node The OrtEpAssignedNode instance to query.
-   * \return The node's name.
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \return The node's name as a UTF-8 null-terminated string.
    *
    * \since Version 1.24.
    */
-  const char*(ORT_API_CALL* EpAssignedNode_GetName)(_In_ const OrtEpAssignedNode* ep_node);
+  ORT_API_T(const char*, EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node);
+
+  /** \brief Get the domain of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \return The node's domain as a UTF-8 null-terminated string.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API_T(const char*, EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node);
 
   /** \brief Get the operator type of the node assigned to an execution provider.
    *
-   * \param[in] ep_node The OrtEpAssignedNode instance to query.
-   * \return The node's operator type.
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \return The node's operator type as a UTF-8 null-terminated string.
    *
    * \since Version 1.24.
    */
-  const char*(ORT_API_CALL* EpAssignedNode_GetOperatorType)(_In_ const OrtEpAssignedNode* ep_node);
+  ORT_API_T(const char*, EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node);
 };
 
 /*
