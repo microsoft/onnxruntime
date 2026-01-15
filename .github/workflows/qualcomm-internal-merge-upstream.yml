@@ -49,7 +49,10 @@ jobs:
       - name: Resolve conflicts automatically and commit
         run: |
           # Resolve main repository conflicts
-          git rm $(git diff --name-only --diff-filter=U)
+          CONFLICTING_REMOVALS=$(git diff --name-only --diff-filter=U)
+          if [ -n "$CONFLICTING_REMOVALS" ]; then
+            git rm $CONFLICTING_REMOVALS
+          fi
 
           # Handle submodule conflicts and updates
           git submodule sync --recursive
