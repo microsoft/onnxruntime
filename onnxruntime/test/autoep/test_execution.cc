@@ -302,7 +302,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  // Function that checks the ep graph partitioning (Mul on plugin EP, others on CPU EP).
+  // Function that checks the ep graph/node assignment (Mul on plugin EP, others on CPU EP).
   // Model has 3 subgraphs (in no particular order):
   // - Subgraph 1: Add assigned to CPU EP.
   // - Subgraph 2: Mul assigned to plugin EP.

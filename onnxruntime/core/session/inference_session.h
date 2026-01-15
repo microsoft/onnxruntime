@@ -1063,7 +1063,8 @@ class InferenceSession {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Enable partition info collection
+  // Information about the subgraphs/nodes assigned to each EP.
+  // A user gets this information via the OrtApi::GetEpGraphAssignmentInfo C API function.
   std::vector<std::unique_ptr<OrtEpAssignedSubgraph>> ep_graph_assignment_info_storage_;
   std::vector<const OrtEpAssignedSubgraph*> ep_graph_assignment_info_;
 #endif  // !defined(ORT_MINIMAL_BUILD)

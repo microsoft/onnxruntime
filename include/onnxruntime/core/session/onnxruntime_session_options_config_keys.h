@@ -420,6 +420,6 @@ static const char* const kOrtEpDynamicOptionsQnnHtpPerformanceMode = "ep.dynamic
 // When enabled, an application may call Session_GetEpGraphAssignmentInfo() to retrieve the information.
 //
 // Option values:
-// - "0": Recording of EP graph partitioning information is disabled. [DEFAULT]
-// - "1": Recording of EP graph partitioning information is enabled.
+// - "0": Recording of EP graph assignment information is disabled. [DEFAULT]
+// - "1": Recording of EP graph assignment information is enabled.
 static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "session.record_ep_graph_assignment_info";
