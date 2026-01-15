@@ -1,10 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <stdlib.h>
+
 #include <filesystem>
 #include <string>
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model_saving_options.h"
@@ -15,6 +18,10 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+
+#include "CPU/QnnCpuCommon.h"
+#include "HTP/QnnHtpCommon.h"
+#include "QnnSdkBuildId.h"
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
@@ -2472,6 +2479,434 @@ TEST_F(QnnABIHTPBackendTests, CompileApi_InitializerHandler_ReuseExternalInitial
 
   ASSERT_EQ(num_reused_ext_initializers, 2);  // Reused external conv weight and bias.
 }
+
+#ifdef _WIN32
+// Utility class to help create enviornment using HNRD for testing.
+// Expected usage is used along with smart pointer to automatically restore temporarily moved libraries.
+class HnrdTestHandle {
+ public:
+  HnrdTestHandle(uint32_t htp_arch) : htp_arch_(htp_arch) {
+    // Move Prepare/Skel/Stub libraries to a temporary directory to trigger HNRD.
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    temp_dir_ = std::string("temp_") + info->test_suite_name() + "-" + info->name();
+
+    std::filesystem::create_directory(temp_dir_);
+    for (const std::string& lib : GetRelatedLibs()) {
+      std::filesystem::rename(lib, temp_dir_ / lib);
+    }
+  }
+
+  ~HnrdTestHandle() {
+    // Move libraries back from temporary directory for later testcases.
+    for (const std::string& lib : GetRelatedLibs()) {
+      std::filesystem::rename(temp_dir_ / lib, lib);
+    }
+
+    std::filesystem::remove(temp_dir_);
+  }
+
+ private:
+  std::vector<std::string> GetRelatedLibs() {
+    return {"QnnHtpPrepare.dll",
+            "libQnnHtpV" + std::to_string(htp_arch_) + "Skel.so",
+            "QnnHtpV" + std::to_string(htp_arch_) + "Stub.dll"};
+  }
+
+  uint32_t htp_arch_;
+  std::filesystem::path temp_dir_;
+};
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_SelfValidate_CbTradRtTrad) {
+  const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
+  std::filesystem::path output_model_file("mul_1_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  ProviderOptions qnn_options = {{"backend_type", "htp"}};
+
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_file.string().c_str());
+    so.AddConfigEntry(kOrtSessionOptionsFailOnSuboptimalCompiledModel, "1");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    Ort::Session session(*ort_env, input_model_file, so);
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  {
+    Ort::SessionOptions so;
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    Ort::Session session(*ort_env, output_model_file.wstring().c_str(), so);
+  }
+
+  std::filesystem::remove(output_model_file);
+}
+
+// TODO: Re-enable once CI supports HNRD. One can still run the test on local WoS machine.
+TEST_F(QnnABIHTPBackendTests, DISABLED_ModelCompatibility_SelfValidate_CbTradRtHnrd) {
+  QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS();
+
+  const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
+  std::filesystem::path output_model_file("mul_1_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  ProviderOptions qnn_options = {{"backend_type", "htp"}};
+
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_file.string().c_str());
+    so.AddConfigEntry(kOrtSessionOptionsFailOnSuboptimalCompiledModel, "1");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    Ort::Session session(*ort_env, input_model_file, so);
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  QnnHtpDevice_Arch_t htp_arch = QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch;
+  auto hnrd_test_handle = std::make_unique<HnrdTestHandle>(static_cast<uint32_t>(htp_arch));
+
+  ORT_TRY {
+    {
+      Ort::SessionOptions so;
+      RegisteredEpDeviceUniquePtr registered_ep_device;
+      RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+      Ort::Session session(*ort_env, output_model_file.wstring().c_str(), so);
+    }
+    // Compare to ModelCompatibility_SelfValidate_CbHnrdRtTrad, this testcase could get here if driver is as new as
+    // compiled SDK.
+  }
+  ORT_CATCH(const Ort::Exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      std::string message(e.what());
+      ASSERT_TRUE(message.find("Compiled model is not supported by execution provider") != std::string::npos);
+    });
+  }
+
+  std::filesystem::remove(output_model_file);
+}
+
+// TODO: Re-enable once CI supports HNRD. One can still run the test on local WoS machine.
+TEST_F(QnnABIHTPBackendTests, DISABLED_ModelCompatibility_SelfValidate_CbHnrdRtTrad) {
+  QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS();
+
+  const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
+  std::filesystem::path output_model_file("mul_1_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  ProviderOptions qnn_options = {{"backend_type", "htp"}};
+
+  QnnHtpDevice_Arch_t htp_arch = QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch;
+  auto hnrd_test_handle = std::make_unique<HnrdTestHandle>(static_cast<uint32_t>(htp_arch));
+
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_file.string().c_str());
+    so.AddConfigEntry(kOrtSessionOptionsFailOnSuboptimalCompiledModel, "1");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    Ort::Session session(*ort_env, input_model_file, so);
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  hnrd_test_handle.reset();
+
+  ORT_TRY {
+    {
+      Ort::SessionOptions so;
+      RegisteredEpDeviceUniquePtr registered_ep_device;
+      RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+      Ort::Session session(*ort_env, output_model_file.wstring().c_str(), so);
+    }
+    FAIL() << "Expect compiled model not supported by execution provider.";  // Should not get here.
+  }
+  ORT_CATCH(const Ort::Exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      std::string message(e.what());
+      ASSERT_TRUE(message.find("Compiled model is not supported by execution provider") != std::string::npos);
+    });
+  }
+
+  std::filesystem::remove(output_model_file);
+}
+
+// TODO: Re-enable once CI supports HNRD. One can still run the test on local WoS machine.
+TEST_F(QnnABIHTPBackendTests, DISABLED_ModelCompatibility_SelfValidate_CbHnrdRtHnrd) {
+  QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS();
+
+  const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
+  std::filesystem::path output_model_file("mul_1_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  ProviderOptions qnn_options = {{"backend_type", "htp"}};
+
+  QnnHtpDevice_Arch_t htp_arch = QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch;
+  auto hnrd_test_handle = std::make_unique<HnrdTestHandle>(static_cast<uint32_t>(htp_arch));
+
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_file.string().c_str());
+    so.AddConfigEntry(kOrtSessionOptionsFailOnSuboptimalCompiledModel, "1");
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    Ort::Session session(*ort_env, input_model_file, so);
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  {
+    Ort::SessionOptions so;
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    Ort::Session session(*ort_env, output_model_file.wstring().c_str(), so);
+  }
+
+  std::filesystem::remove(output_model_file);
+}
+
+struct CompatibilityTestInfo {
+  uint32_t backend_id = QNN_BACKEND_ID_HTP;
+  std::string sdk_build_id = QNN_SDK_BUILD_ID;  // In format of "v<major>.<minor>.<patch>.<build_id>".
+  uint32_t backend_api_version_major = QNN_HTP_API_VERSION_MAJOR;
+  uint32_t backend_api_version_minor = QNN_HTP_API_VERSION_MINOR;
+  uint32_t backend_api_version_patch = QNN_HTP_API_VERSION_PATCH;
+  uint32_t context_blob_version_major = QNN_HTP_CONTEXT_BLOB_VERSION_MAJOR;
+  uint32_t context_blob_version_minor = QNN_HTP_CONTEXT_BLOB_VERSION_MINOR;
+  uint32_t context_blob_version_patch = QNN_HTP_CONTEXT_BLOB_VERSION_PATCH;
+  uint32_t htp_arch = 0;
+  bool is_htp_usr_drv = false;
+
+  std::string ToString() const {
+    if (sdk_build_id.empty()) {
+      return "";
+    }
+    size_t idx = sdk_build_id.rfind(".");
+    std::string sdk_version = sdk_build_id.substr(1, idx - 1);
+
+    return (std::to_string(backend_id) + ":" +
+            sdk_version + ":" +
+            std::to_string(backend_api_version_major) + "." +
+            std::to_string(backend_api_version_minor) + "." +
+            std::to_string(backend_api_version_patch) + ":" +
+            std::to_string(context_blob_version_major) + "." +
+            std::to_string(context_blob_version_minor) + "." +
+            std::to_string(context_blob_version_patch) + ":" +
+            std::to_string(htp_arch) + ":" +
+            (is_htp_usr_drv ? "1" : "0"));
+  }
+};
+
+struct MallocAllocator : OrtAllocator {
+  MallocAllocator() {
+    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) {
+      return static_cast<MallocAllocator*>(this_)->Alloc(size);
+    };
+  }
+
+  void* Alloc(size_t size) {
+    return malloc(size);
+  }
+};
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_GetCompatibility) {
+  QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS();
+
+  const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
+  std::filesystem::path output_model_file("mul_1_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  ProviderOptions qnn_options = {{"backend_type", "htp"}};
+
+  {
+    Ort::SessionOptions so;
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_file.string().c_str());
+
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    Ort::Session session(*ort_env, input_model_file, so);
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  {
+    Ort::SessionOptions so;
+    RegisteredEpDeviceUniquePtr registered_ep_device;
+    RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, qnn_options);
+
+    Ort::Session session(*ort_env, output_model_file.wstring().c_str(), so);
+
+    // Extract generated compatibility info from model metadata.
+    OrtModelMetadata* model_metadata = nullptr;
+    Ort::GetApi().SessionGetModelMetadata(session, &model_metadata);
+
+    MallocAllocator allocator;
+    std::string key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + onnxruntime::kQnnABIExecutionProvider;
+    char* val = nullptr;
+    Ort::GetApi().ModelMetadataLookupCustomMetadataMap(model_metadata, &allocator, key.c_str(), &val);
+
+    CompatibilityTestInfo expected_info;
+    expected_info.htp_arch = static_cast<uint32_t>(QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch);
+    ASSERT_TRUE(val != nullptr && expected_info.ToString() == val);
+  }
+
+  std::filesystem::remove(output_model_file);
+}
+
+static void TestModelCompatibilityApiValidate(const CompatibilityTestInfo& test_info,
+                                              const OrtCompiledModelCompatibility expected_compatibility) {
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions so;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, {{"backend_type", "htp"}});
+
+  OrtEpFactory* ep_factory = registered_ep_device->GetMutableFactory();
+  OrtEp* ep = nullptr;
+  ep_factory->CreateEp(ep_factory, nullptr, nullptr, 0, so, DefaultLoggingManager().DefaultLogger().ToExternal(), &ep);
+
+  const OrtEpDevice* ep_device = registered_ep_device.get();
+  OrtCompiledModelCompatibility out_status;
+  Ort::GetApi().GetModelCompatibilityForEpDevices(&ep_device, 1, test_info.ToString().c_str(), &out_status);
+  ASSERT_EQ(out_status, expected_compatibility);
+
+  ep_factory->ReleaseEp(ep_factory, ep);
+}
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_ApiValidate) {
+  CompatibilityTestInfo test_info;
+  test_info.htp_arch = static_cast<uint32_t>(QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch);
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL);
+}
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_ApiValidate_NoEp) {
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions so;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, {{"backend_type", "htp"}});
+
+  const OrtEpDevice* ep_device = registered_ep_device.get();
+  OrtCompiledModelCompatibility out_status;
+  OrtStatus* status = Ort::GetApi().GetModelCompatibilityForEpDevices(&ep_device, 1, "", &out_status);
+  std::string message(Ort::GetApi().GetErrorMessage(status));
+  ASSERT_TRUE(message.find("Unable to validate model compatibility without EP created.") != std::string::npos);
+}
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_ApiValidate_DiffBackend) {
+  CompatibilityTestInfo test_info;
+  test_info.backend_id = QNN_BACKEND_ID_CPU;
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_ApiValidate_CbTradRtTrad_CbNewApiVersion) {
+  CompatibilityTestInfo test_info;
+  test_info.backend_api_version_major = 9999;
+  test_info.backend_api_version_minor = 9999;
+  test_info.backend_api_version_patch = 9999;
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_ApiValidate_CbTradRtTrad_CbNewBlobVersion) {
+  CompatibilityTestInfo test_info;
+  test_info.context_blob_version_major = 9999;
+  test_info.context_blob_version_minor = 9999;
+  test_info.context_blob_version_patch = 9999;
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+
+// TODO: Re-enable once CI supports HNRD. One can still run the test on local WoS machine.
+TEST_F(QnnABIHTPBackendTests, DISABLED_ModelCompatibility_ApiValidate_CbTradRtHnrd_CbNewSdkVersion) {
+  QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS();
+
+  QnnHtpDevice_Arch_t htp_arch = QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch;
+  auto hnrd_test_handle = std::make_unique<HnrdTestHandle>(static_cast<uint32_t>(htp_arch));
+
+  CompatibilityTestInfo test_info;
+  test_info.sdk_build_id = "v9999.9999.9999.9999";
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+
+// TODO: Re-enable once CI supports HNRD. One can still run the test on local WoS machine.
+TEST_F(QnnABIHTPBackendTests, DISABLED_ModelCompatibility_ApiValidate_CbTradRtHnrd_CbNewBlobVersion) {
+  QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS();
+
+  QnnHtpDevice_Arch_t htp_arch = QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch;
+  auto hnrd_test_handle = std::make_unique<HnrdTestHandle>(static_cast<uint32_t>(htp_arch));
+
+  CompatibilityTestInfo test_info;
+  test_info.context_blob_version_major = 9999;
+  test_info.context_blob_version_minor = 9999;
+  test_info.context_blob_version_patch = 9999;
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+
+// TODO: Re-enable once CI supports HNRD. One can still run the test on local WoS machine.
+TEST_F(QnnABIHTPBackendTests, DISABLED_ModelCompatibility_ApiValidate_CbHnrdRtHnrd_CbNewSdkVersion) {
+  QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS();
+
+  QnnHtpDevice_Arch_t htp_arch = QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch;
+  auto hnrd_test_handle = std::make_unique<HnrdTestHandle>(static_cast<uint32_t>(htp_arch));
+
+  CompatibilityTestInfo test_info;
+  test_info.sdk_build_id = "v9999.9999.9999.9999";
+  test_info.is_htp_usr_drv = true;
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+
+// TODO: Re-enable once CI supports HNRD. One can still run the test on local WoS machine.
+TEST_F(QnnABIHTPBackendTests, DISABLED_ModelCompatibility_ApiValidate_CbHnrdRtHnrd_CbNewBlobVersion) {
+  QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS();
+
+  QnnHtpDevice_Arch_t htp_arch = QnnABIHTPBackendTests::GetPlatformAttributes().htp_arch;
+  auto hnrd_test_handle = std::make_unique<HnrdTestHandle>(static_cast<uint32_t>(htp_arch));
+
+  CompatibilityTestInfo test_info;
+  test_info.context_blob_version_major = 9999;
+  test_info.context_blob_version_minor = 9999;
+  test_info.context_blob_version_patch = 9999;
+  test_info.is_htp_usr_drv = true;
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_ApiValidate_CbOldHtpArch) {
+  CompatibilityTestInfo test_info;
+  test_info.htp_arch = 0;
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION);
+}
+
+TEST_F(QnnABIHTPBackendTests, ModelCompatibility_ApiValidate_CbNewHtpArch) {
+  CompatibilityTestInfo test_info;
+  test_info.htp_arch = 9999;
+
+  TestModelCompatibilityApiValidate(test_info, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+#endif  // _WIN32
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 

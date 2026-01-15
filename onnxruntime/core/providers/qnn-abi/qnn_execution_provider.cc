@@ -25,6 +25,7 @@
 #include "core/providers/qnn-abi/shared_context.h"
 #include "core/providers/qnn-abi/qnn_allocator.h"
 #include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
+#include "core/providers/qnn-abi/builder/qnn_cache_compatibility_manager.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_model.h"
 #include "core/providers/qnn-abi/builder/qnn_node_group/qnn_node_group.h"
@@ -381,6 +382,7 @@ QnnEp::QnnEp(QnnEpFactory& factory,
   OnRunEnd = OnRunEndImpl;
   CreateAllocator = CreateAllocatorImpl;
   SetDynamicOptions = SetDynamicOptionsImpl;
+  GetCompiledModelCompatibilityInfo = GetCompiledModelCompatibilityInfoImpl;
 
   // Initialize from session options
   {
@@ -827,6 +829,9 @@ QnnEp::QnnEp(QnnEpFactory& factory,
       SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_);
     }
   }
+
+  // Initialize compatibility manager with backend manager.
+  qnn_cache_compatibility_manager_ = std::make_shared<qnn::QnnCacheCompatibilityManager>(qnn_backend_manager_.get());
 
 #if defined(_WIN32)
   if (qnn::QnnTelemetry::SupportsETW()) {
@@ -1280,7 +1285,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   }
 
   Ort::Status rt = ep->qnn_backend_manager_->SetupBackend(is_qnn_ctx_model,
-                                                          ep->context_cache_enabled_ && ep->enable_spill_fill_buffer_,
+                                                          ep->context_cache_enabled_,
                                                           ep->share_ep_contexts_,
                                                           ep->enable_vtcm_backup_buffer_sharing_,
                                                           context_bin_map);
@@ -1596,6 +1601,16 @@ OrtStatus* QnnEp::CreateEPContextNodes(const OrtGraph* graph,
                                              stop_share_ep_contexts_,
                                              name_));
 
+  // Get compatibility info for later query in GetCompiledModelCompatibilityInfo.
+  Ort::Status status = qnn_cache_compatibility_manager_->GetCompatibilityInfo(context_buffer.get(),
+                                                                              buffer_size,
+                                                                              compatibility_info_);
+  if (!status.IsOK()) {
+    ORT_CXX_LOG(logger_,
+                ORT_LOGGING_LEVEL_VERBOSE,
+                ("Failed to get compatibility info. " + status.GetErrorMessage()).c_str());
+  }
+
   if (share_ep_contexts_ &&
       !stop_share_ep_contexts_ &&
       nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
@@ -1879,6 +1894,100 @@ OrtStatus* ORT_API_CALL QnnEp::SetDynamicOptionsImpl(_In_ OrtEp* this_ptr,
   }
 
   return nullptr;
+}
+const char* ORT_API_CALL QnnEp::GetCompiledModelCompatibilityInfoImpl(_In_ OrtEp* this_ptr,
+                                                                      _In_ const OrtGraph* /*graph*/) noexcept {
+  QnnEp* ep = static_cast<QnnEp*>(this_ptr);
+
+  // Return empty string if the cached info is not properly set, probably any thing wrong during the acquisition.
+  qnn::QnnCompatibilityInfo default_info;
+  if (ep->compatibility_info_.sdk_version == default_info.sdk_version ||
+      ep->compatibility_info_.backend_api_version == default_info.backend_api_version ||
+      ep->compatibility_info_.context_blob_version == default_info.context_blob_version ||
+      ep->compatibility_info_.htp_arch == default_info.htp_arch) {
+    return "";
+  }
+
+  auto version_to_string = [](const qnn::QnnVersion& version) {
+    return std::to_string(version.major) + "." + std::to_string(version.minor) + "." + std::to_string(version.patch);
+  };
+
+  const std::string backend_id_string = std::to_string(ep->compatibility_info_.backend_id);
+  const std::string sdk_version_string = version_to_string(ep->compatibility_info_.sdk_version);
+  const std::string backend_api_version_string = version_to_string(ep->compatibility_info_.backend_api_version);
+  const std::string context_blob_version_string = version_to_string(ep->compatibility_info_.context_blob_version);
+  const std::string htp_arch_string = std::to_string(ep->compatibility_info_.htp_arch);
+  const std::string is_htp_usr_drv_string = ep->compatibility_info_.is_htp_usr_drv ? "1" : "0";
+
+  ep->compatibility_info_string_ = (backend_id_string + ":" +
+                                    sdk_version_string + ":" +
+                                    backend_api_version_string + ":" +
+                                    context_blob_version_string + ":" +
+                                    htp_arch_string + ":" +
+                                    is_htp_usr_drv_string);
+
+  return ep->compatibility_info_string_.c_str();
+}
+
+OrtStatus* QnnEp::ValidateCompiledModelCompatibilityInfo(const OrtHardwareDevice* const* /*devices*/,
+                                                         size_t /*num_devices*/,
+                                                         const char* compatibility_info,
+                                                         OrtCompiledModelCompatibility* model_compatibility) noexcept {
+  std::string info_string(compatibility_info);
+  if (info_string.empty()) {
+    *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return nullptr;
+  }
+
+  auto split_info_strings = qnn::utils::SplitString(info_string, ":");
+  if (split_info_strings.size() != 6) {
+    ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_VERBOSE, "Unrecognized compatibility info format.");
+    *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return nullptr;
+  }
+
+  qnn::QnnCompatibilityInfo info;
+  for (size_t idx = 0; idx < 6; ++idx) {
+    if (idx == 0) {
+      info.backend_id = static_cast<uint32_t>(std::stoi(std::string(split_info_strings[idx])));
+    } else if (idx == 4) {
+      info.htp_arch = static_cast<uint32_t>(std::stoi(std::string(split_info_strings[idx])));
+    } else if (idx == 5) {
+      info.is_htp_usr_drv = split_info_strings[idx] == "1";
+    } else {
+      auto split_version_strings = qnn::utils::SplitString(split_info_strings[idx], ".");
+      if (split_version_strings.size() != 3) {
+        ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_VERBOSE, "Unrecognized compatibility info format.");
+        *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+        return nullptr;
+      }
+
+      qnn::QnnVersion& version = idx == 1 ? info.sdk_version
+                                          : (idx == 2 ? info.backend_api_version : info.context_blob_version);
+      version.major = static_cast<uint32_t>(std::stoi(std::string(split_version_strings[0])));
+      version.minor = static_cast<uint32_t>(std::stoi(std::string(split_version_strings[1])));
+      version.patch = static_cast<uint32_t>(std::stoi(std::string(split_version_strings[2])));
+    }
+  }
+
+  // Backend is only setup in GetCapability. However, at this point, it is possible that this function is invoked
+  // before any GetCapability call, and thus backend is not ready. Here, backend is setup and released with basic
+  // settings for actual setup in GetCapability later. If the duplicate setup introduces significant overhead in the
+  // future, we may consider setup actual backend here.
+  bool is_backend_setup = qnn_backend_manager_->IsBackendSetup();
+  if (!is_backend_setup) {
+    std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>> dummy_map;
+    qnn_backend_manager_->SetupBackend(true, true, false, false, dummy_map);
+  }
+
+  Ort::Status status = qnn_cache_compatibility_manager_->ValidateCompatibilityInfo(info, *model_compatibility);
+
+  if (!is_backend_setup) {
+    // Release backend to avoid interfering later usage.
+    qnn_backend_manager_->ReleaseResources();
+  }
+
+  return status.release();
 }
 
 bool QnnEp::GetHtpPowerConfigId(uint32_t& htp_power_config_id) {

@@ -1499,6 +1499,13 @@ class QnnABIIRBackendTests : public ::testing::Test {
  */
 bool ReduceOpHasAxesInputABI(const std::string& op_type, int opset_version);
 
+#define QNN_SKIP_TEST_IF_NO_PLATFORM_ATTRS()                                         \
+  do {                                                                               \
+    if (!QnnABIHTPBackendTests::HasPlatformAttributes()) {                           \
+      GTEST_SKIP() << "Test requires platform attributes, which are not available."; \
+    }                                                                                \
+  } while (0)
+
 #define QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED()                                  \
   do {                                                                           \
     if (QnnABIHTPBackendTests::ShouldSkipIfHtpFp16Unsupported()) {               \

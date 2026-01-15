@@ -13,6 +13,7 @@
 #include "HTP/QnnHtpGraph.h"
 
 #include "core/providers/qnn-abi/ort_api.h"
+#include "core/providers/qnn-abi/builder/qnn_cache_compatibility_manager.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
@@ -38,6 +39,11 @@ class QnnEp : public OrtEp, public ApiPtrs {
         const OrtSessionOptions& session_options,
         const OrtLogger* logger);
   ~QnnEp();
+
+  OrtStatus* ValidateCompiledModelCompatibilityInfo(const OrtHardwareDevice* const* devices,
+                                                    size_t num_devices,
+                                                    const char* compatibility_info,
+                                                    OrtCompiledModelCompatibility* model_compatibility) noexcept;
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
@@ -71,6 +77,8 @@ class QnnEp : public OrtEp, public ApiPtrs {
                                                        _In_reads_(num_options) const char* const* option_keys,
                                                        _In_reads_(num_options) const char* const* option_values,
                                                        _In_ size_t num_options) noexcept;
+  static const char* ORT_API_CALL GetCompiledModelCompatibilityInfoImpl(_In_ OrtEp* this_ptr,
+                                                                        _In_ const OrtGraph* graph) noexcept;
 
   OrtStatus* GetSupportedNodes(const OrtGraph* graph,
                                const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
@@ -172,6 +180,12 @@ class QnnEp : public OrtEp, public ApiPtrs {
   // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
   // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
   std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
+
+  // Model compatibility.
+  std::shared_ptr<qnn::QnnCacheCompatibilityManager> qnn_cache_compatibility_manager_ = nullptr;
+  qnn::QnnCompatibilityInfo compatibility_info_;
+  // Format: <BackendId>:<SDK>:<BackendApi>:<ContextBlob>:<HtpArch>:<IsHtpUsrDrv>.
+  std::string compatibility_info_string_ = "";
 };
 
 }  // namespace onnxruntime

@@ -28,6 +28,7 @@ QnnEpFactory::QnnEpFactory(const char* ep_name,
   ReleaseAllocator = ReleaseAllocatorImpl;
   CreateDataTransfer = CreateDataTransferImpl;
   IsStreamAware = IsStreamAwareImpl;
+  ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
 
   // HOST_ACCESSIBLE memory.
   OrtMemoryInfo* mem_info = nullptr;
@@ -153,6 +154,7 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
     return factory->ort_api.CreateStatus(ORT_FAIL, e.what());
   }
 
+  factory->qnn_ep_ = qnn_ep.get();
   *ep = qnn_ep.release();
   return nullptr;
 }
@@ -179,6 +181,27 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateDataTransferImpl(OrtEpFactory* /* th
 
 bool ORT_API_CALL QnnEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
   return false;
+}
+
+OrtStatus* ORT_API_CALL QnnEpFactory::ValidateCompiledModelCompatibilityInfoImpl(
+    _In_ OrtEpFactory* this_ptr,
+    _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+    _In_ size_t num_devices,
+    _In_ const char* compatibility_info,
+    _Out_ OrtCompiledModelCompatibility* model_compatibility) noexcept {
+  auto* factory = static_cast<QnnEpFactory*>(this_ptr);
+
+  if (factory->qnn_ep_ == nullptr) {
+    // Currently we require EP must first be created as QNN backend is mandatory for validating the compatibility.
+    // Possibly consider creating a fake EP for validation only if necessary.
+    *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return factory->ort_api.CreateStatus(ORT_EP_FAIL, "Unable to validate model compatibility without EP created.");
+  }
+
+  return factory->qnn_ep_->ValidateCompiledModelCompatibilityInfo(devices,
+                                                                  num_devices,
+                                                                  compatibility_info,
+                                                                  model_compatibility);
 }
 
 }  // namespace onnxruntime

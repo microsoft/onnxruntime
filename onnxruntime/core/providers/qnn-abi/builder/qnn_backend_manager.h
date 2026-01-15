@@ -20,6 +20,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "CPU/QnnCpuCommon.h"
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "QnnTypes.h"
@@ -193,6 +194,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
+  const QNN_SYSTEM_INTERFACE_VER_TYPE& GetQnnSystemInterface() { return qnn_sys_interface_; }
+
   const Qnn_ContextHandle_t& GetQnnContext(int index = 0) {
     if (!((contexts_.size() > 0) && (static_cast<size_t>(index) < contexts_.size()))) {
       ORT_CXX_API_THROW("No valid QNN context!", ORT_EP_FAIL);
@@ -205,6 +208,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   }
 
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
+
+  const Qnn_DeviceHandle_t& GetQnnDeviceHandle() { return device_handle_; }
 
   const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
 
@@ -223,10 +228,30 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Ort::Status SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param);
 
+  uint32_t GetBackendId() { return backend_id_; }
+
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
   const std::string& GetSdkVersion() { return sdk_build_version_; }
+
+  Ort::Status GetHtpArch(QnnHtpDevice_Arch_t& htp_arch) {
+    RETURN_IF_ERROR(GetPlatformInfo());
+    htp_arch = htp_arch_internal_;
+    return Ort::Status();
+  }
+
+  // Get backend library directory by adopting identical logic as in LoadLib.
+  std::string GetBackendLibDir() {
+    auto backend_path = std::filesystem::path(backend_path_);
+    if (backend_path.is_absolute()) {
+      return backend_path.parent_path().string();
+    }
+
+    auto abs_backend_path = std::filesystem::path(OrtGetRuntimePath()) / backend_path_;
+    return std::filesystem::exists(abs_backend_path) ? abs_backend_path.parent_path().string()
+                                                     : backend_path.parent_path().string();
+  }
 
   Ort::Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
 
@@ -260,6 +285,12 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool ProfilingEnabled() { return profiling_enabled_; }
 #endif
 
+  bool IsBackendSetup() { return backend_setup_completed_; }
+
+  // Releases all QNN resources. Called in the destructor.
+  // NOTE: This function indirectly locks the internal `logger_recursive_mutex_` via nested function calls.
+  void ReleaseResources();
+
  private:
   Ort::Status LoadBackend();
 
@@ -289,10 +320,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Terminate logging in the backend
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Ort::Status TerminateQnnLog();
-
-  // Releases all QNN resources. Called in the destructor.
-  // NOTE: This function indirectly locks the internal `logger_recursive_mutex_` via nested function calls.
-  void ReleaseResources();
 
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
@@ -360,6 +387,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   bool GetPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
                                          PerThreadHtpPowerConfigs_t& htp_power_configs);
+
+  Ort::Status GetPlatformInfo();
 
  private:
   // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
@@ -490,7 +519,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   bool vtcm_backup_buffer_sharing_enabled_ = false;
-  // NPU backend requires quantized model
+
+  uint32_t backend_id_ = QNN_BACKEND_ID_CPU;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   ContextPriority context_priority_;
@@ -508,6 +538,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Mapping of thread id to on-run-start/end power configs
   std::mutex per_thread_power_configs_mutex_;
   std::unordered_map<std::thread::id, PerThreadHtpPowerConfigs_t> per_thread_power_configs_;
+
+  // Internal holder to differentiate with user provided.
+  QnnHtpDevice_Arch_t htp_arch_internal_ = QNN_HTP_DEVICE_ARCH_NONE;
 
   const ApiPtrs api_ptrs_;
   const Ort::Logger& logger_;
