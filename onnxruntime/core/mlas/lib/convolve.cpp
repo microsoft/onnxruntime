@@ -698,13 +698,13 @@ Return Value:
     const size_t OutputGroupSize = FilterCount * OutputSize;
     const size_t FilterGroupSize = FilterCount * K;
 
+    const float* input = WorkBlock->Input + BatchGroupStart * InputGroupSize;
+    float* output = WorkBlock->Output + BatchGroupStart * OutputGroupSize;
+
     for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
 
         size_t group = bg % GroupCount;
-
-        const float* input = WorkBlock->Input + bg * InputGroupSize;
         const float* filter = WorkBlock->Filter + group * FilterGroupSize;
-        float* output = WorkBlock->Output + bg * OutputGroupSize;
 
         //
         // Invoke the non-threaded GEMM directly with the input tensor.
@@ -726,6 +726,9 @@ Return Value:
 
         MlasActivation(Parameters->Activation, output, bias, FilterCount,
             OutputSize, OutputSize);
+
+        Input += InputGroupSize;
+        //output += OutputGroupSize;
     }
 }
 
