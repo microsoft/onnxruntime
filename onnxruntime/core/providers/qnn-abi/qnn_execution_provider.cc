@@ -1468,9 +1468,9 @@ OrtStatus* QnnEp::CompileContextModel(const OrtGraph** graphs,
 
         auto node_compute_info = std::make_unique<QnnNodeComputeInfo>(*this);
         node_compute_infos[graph_idx] = node_compute_info.release();
-
-        return nullptr;
       }
+
+      return nullptr;
     }
   }
 
