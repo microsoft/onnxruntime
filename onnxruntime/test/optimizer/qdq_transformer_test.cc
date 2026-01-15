@@ -3221,7 +3221,7 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
   test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
 }
 
-// Test skip removing edge when min/max come from DequantizeLinear nodes instead of initializers).
+// Test skip removing node when min/max come from DequantizeLinear nodes instead of initializers.
 TEST(QDQTransformerTests, ClipQuantFusion_MultipleInputEdges) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     // Clip's min coming from another DQ node (creating 2 input edges to Clip)
