@@ -480,6 +480,20 @@ ORT_API_STATUS_IMPL(KernelContext_GetAllocator, _In_ const OrtKernelContext* con
 
 ORT_API(const char*, GetBuildInfoString);
 
+ORT_API_STATUS_IMPL(GetNumHardwareDevices, _In_ const OrtEnv* env, _Out_ size_t* num_devices);
+
+ORT_API_STATUS_IMPL(GetHardwareDevices, _In_ const OrtEnv* env, _Out_writes_(num_devices) const OrtHardwareDevice** devices, _In_ size_t num_devices);
+
+ORT_API_STATUS_IMPL(GetHardwareDeviceEpIncompatibilityDetails, _In_ const OrtEnv* env, _In_ const char* ep_name, _In_ const OrtHardwareDevice* hw, _Outptr_ OrtDeviceEpIncompatibilityDetails** details);
+
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_GetReasonsBitmask, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Out_ uint32_t* reasons_bitmask);
+
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_GetNotes, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Outptr_result_maybenull_ const char** notes);
+
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_GetErrorCode, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Out_ int32_t* error_code);
+
+ORT_API(void, ReleaseDeviceEpIncompatibilityDetails, _Frees_ptr_opt_ OrtDeviceEpIncompatibilityDetails*);
+
 ORT_API_STATUS_IMPL(CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out);
 ORT_API_STATUS_IMPL(UpdateROCMProviderOptions, _Inout_ OrtROCMProviderOptions* rocm_options,
                     _In_reads_(num_keys) const char* const* provider_options_keys,
@@ -768,4 +782,6 @@ ORT_API_STATUS_IMPL(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session
                     _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                     _In_ size_t num_outputs);
 
+// OrtEnv
+ORT_API_STATUS_IMPL(CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out);
 }  // namespace OrtApis

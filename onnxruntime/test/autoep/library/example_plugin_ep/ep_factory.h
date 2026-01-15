@@ -73,6 +73,11 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       const OrtEpDevice* ep_device,
       OrtExternalResourceImporterImpl** out_importer) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetHardwareDeviceIncompatibilityDetailsImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* hw,
+      OrtDeviceEpIncompatibilityDetails* details) noexcept;
+
   const OrtLogger& default_logger_;        // default logger for the EP factory
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name

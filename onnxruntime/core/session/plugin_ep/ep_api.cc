@@ -21,8 +21,10 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
+#include "core/session/ort_env.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
 #include "core/session/utils.h"
@@ -656,6 +658,27 @@ ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ c
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_SetDetails, _Inout_ OrtDeviceEpIncompatibilityDetails* details,
+                    _In_ uint32_t reasons_bitmask,
+                    _In_ int32_t error_code,
+                    _In_opt_z_ const char* notes) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details parameter must not be null");
+  }
+
+  details->reasons_bitmask = reasons_bitmask;
+  details->error_code = error_code;
+  if (notes != nullptr) {
+    details->notes = notes;
+  } else {
+    details->notes.clear();
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 // Control flow kernel APIs
 ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out) {
   API_IMPL_BEGIN
@@ -763,6 +786,26 @@ ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl) {
   }
 }
 
+ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries) {
+  API_IMPL_BEGIN
+  OrtEnvPtr ort_env = OrtEnv::TryGetInstance();
+
+  if (ort_env == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtEnv instance does not exist");
+  }
+
+  if (config_entries == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "GetEnvConfigEntries requires a valid (non-null) output parameter into which to store "
+                                 "the new OrtKeyValuePairs instance");
+  }
+
+  auto entries_unique_ptr = std::make_unique<OrtKeyValuePairs>(ort_env->GetEnvironment().GetConfigEntries());
+  *config_entries = entries_unique_ptr.release();
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -819,10 +862,12 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::EpGraphSupportInfo_LookUpKernel,
     &OrtExecutionProviderApi::SharedPrePackedWeightCache_StoreWeightData,
     &OrtExecutionProviderApi::KernelInfo_GetEp,
+    &OrtExecutionProviderApi::DeviceEpIncompatibilityDetails_SetDetails,
     &OrtExecutionProviderApi::CreateIfKernel,
     &OrtExecutionProviderApi::CreateLoopKernel,
     &OrtExecutionProviderApi::CreateScanKernel,
     &OrtExecutionProviderApi::ReleaseKernelImpl,
+    &OrtExecutionProviderApi::GetEnvConfigEntries,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

@@ -196,7 +196,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -206,7 +208,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel logging_level,
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -216,7 +220,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel log
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -227,7 +233,56 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a valid (non-null) OrtEnvCreationOptions argument");
+  }
+
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a valid (non-null) output parameter into which to "
+                                 "store the new OrtEnv instance");
+  }
+
+  // Both this API function and OrtEnvCreationOptions were added in ORT 1.24, so check that the user
+  // filled out the version correctly.
+  if (options->version < 24) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument with the version set "
+                                 "equal to ORT_API_VERSION");
+  }
+
+  if (options->logging_severity_level < OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE ||
+      options->logging_severity_level > OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
+                                 "with a valid logging severity level value from the OrtLoggingLevel enumeration");
+  }
+
+  if (options->log_id == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
+                                 "with a valid (non-null) log identifier string");
+  }
+
+  OrtLoggingLevel logging_severity_level = static_cast<OrtLoggingLevel>(options->logging_severity_level);
+  OrtEnv::LoggingManagerConstructionInfo lm_info(options->custom_logging_function,
+                                                 options->custom_logging_param,
+                                                 logging_severity_level,
+                                                 options->log_id);
+  Status status;
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, options->threading_options, options->config_entries);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -4291,6 +4346,16 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::GetInteropApi,
     &OrtApis::SessionGetEpDeviceForOutputs,
+
+    &OrtApis::GetNumHardwareDevices,
+    &OrtApis::GetHardwareDevices,
+    &OrtApis::GetHardwareDeviceEpIncompatibilityDetails,
+    &OrtApis::DeviceEpIncompatibilityDetails_GetReasonsBitmask,
+    &OrtApis::DeviceEpIncompatibilityDetails_GetNotes,
+    &OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode,
+    &OrtApis::ReleaseDeviceEpIncompatibilityDetails,
+
+    &OrtApis::CreateEnvWithOptions,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4368,3 +4433,137 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
+
+ORT_API_STATUS_IMPL(OrtApis::GetNumHardwareDevices, _In_ const OrtEnv* env, _Out_ size_t* num_devices) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (env == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env must not be null");
+  }
+  if (num_devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "num_devices must not be null");
+  }
+
+  const auto& device_vector = env->GetEnvironment().GetSortedOrtHardwareDevices();
+  *num_devices = device_vector.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(num_devices);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetNumHardwareDevices is not available in minimal build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetHardwareDevices, _In_ const OrtEnv* env,
+                    _Out_writes_(num_devices) const OrtHardwareDevice** devices,
+                    _In_ size_t num_devices) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (env == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env must not be null");
+  }
+  if (devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "devices must not be null");
+  }
+
+  const auto& device_vector = env->GetEnvironment().GetSortedOrtHardwareDevices();
+  size_t available_devices = device_vector.size();
+
+  if (num_devices < available_devices) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "num_devices is less than the number of available hardware devices. "
+                                 "Use GetNumHardwareDevices() to get the required array size.");
+  }
+
+  for (size_t i = 0; i < available_devices; ++i) {
+    devices[i] = device_vector[i];
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(devices);
+  ORT_UNUSED_PARAMETER(num_devices);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetHardwareDevices is not available in minimal build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetHardwareDeviceEpIncompatibilityDetails, _In_ const OrtEnv* env, _In_ const char* ep_name, _In_ const OrtHardwareDevice* hw, _Outptr_ OrtDeviceEpIncompatibilityDetails** details) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  // Validate all input parameters
+  if (env == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env is required and cannot be null");
+  }
+  if (ep_name == nullptr || ep_name[0] == '\0') {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_name is required and cannot be null or empty");
+  }
+  if (hw == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "hw is required and cannot be null");
+  }
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details output parameter cannot be null");
+  }
+
+  std::unique_ptr<OrtDeviceEpIncompatibilityDetails> compat_details;
+  auto status = env->GetEnvironment().GetHardwareDeviceEpIncompatibilityDetails(ep_name, hw, compat_details);
+  if (!status.IsOK()) {
+    return ToOrtStatus(status);
+  }
+
+  *details = compat_details.release();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(ep_name);
+  ORT_UNUSED_PARAMETER(hw);
+  ORT_UNUSED_PARAMETER(details);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetHardwareDeviceEpIncompatibilityDetails is not available in minimal build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceEpIncompatibilityDetails_GetReasonsBitmask, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Out_ uint32_t* reasons_bitmask) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details cannot be null");
+  }
+  if (reasons_bitmask == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "reasons_bitmask output parameter cannot be null");
+  }
+  *reasons_bitmask = details->reasons_bitmask;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceEpIncompatibilityDetails_GetNotes, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Outptr_result_maybenull_ const char** notes) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details cannot be null");
+  }
+  if (notes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "notes output parameter cannot be null");
+  }
+  *notes = details->notes.empty() ? nullptr : details->notes.c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Out_ int32_t* error_code) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details cannot be null");
+  }
+  if (error_code == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "error_code output parameter cannot be null");
+  }
+  *error_code = details->error_code;
+  return nullptr;
+  API_IMPL_END
+}
+
+void ORT_API_CALL OrtApis::ReleaseDeviceEpIncompatibilityDetails(OrtDeviceEpIncompatibilityDetails* details) noexcept {
+  delete details;
+}

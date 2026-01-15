@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <vector>
 // #include <absl/base/config.h>
 #include <gsl/gsl>
 #include <gtest/gtest.h>
@@ -549,5 +550,102 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Scan) {
     ASSERT_NO_FATAL_FAILURE(RunScanMulModel(session_options));
   }
 }
+
+// Tests the GetHardwareDeviceEpIncompatibilityDetails C API with the example plugin EP.
+// The example plugin EP supports CPU devices, so this test verifies that a CPU device
+// is reported as compatible (reasons_bitmask == 0).
+TEST(OrtEpLibrary, PluginEp_CpuDevice_ReturnsCompatible) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtEnv* env = static_cast<OrtEnv*>(*ort_env);
+
+  // Register the example plugin EP
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+
+  // Get all hardware devices
+  size_t num_hw_devices = 0;
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_hw_devices));
+  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices(num_hw_devices);
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, hw_devices.data(), num_hw_devices));
+
+  // Find a CPU device using the public accessor
+  const OrtHardwareDevice* cpu_device = nullptr;
+  for (size_t i = 0; i < num_hw_devices; ++i) {
+    if (api->HardwareDevice_Type(hw_devices[i]) == OrtHardwareDeviceType_CPU) {
+      cpu_device = hw_devices[i];
+      break;
+    }
+  }
+  ASSERT_NE(cpu_device, nullptr) << "No CPU device found";
+
+  // Check compatibility - ExampleEP supports CPU, so should return no incompatibility reasons
+  OrtDeviceEpIncompatibilityDetails* details = nullptr;
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEpIncompatibilityDetails(env, Utils::example_ep_info.registration_name.c_str(),
+                                                                     cpu_device, &details));
+  ASSERT_NE(details, nullptr);
+
+  // Verify compatible (no incompatibility reasons)
+  uint32_t reasons_bitmask = 0xFFFFFFFF;
+  ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetReasonsBitmask(details, &reasons_bitmask));
+  EXPECT_EQ(reasons_bitmask, 0u) << "CPU device should be compatible with example_plugin_ep";
+
+  int32_t error_code = -1;
+  ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetErrorCode(details, &error_code));
+  EXPECT_EQ(error_code, 0);
+
+  api->ReleaseDeviceEpIncompatibilityDetails(details);
+}
+
+// Tests the GetHardwareDeviceEpIncompatibilityDetails C API with the example plugin EP.
+// The example plugin EP only supports CPU devices, so this test verifies that a GPU device
+// is reported as incompatible (reasons_bitmask != 0).
+TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtEnv* env = static_cast<OrtEnv*>(*ort_env);
+
+  // Register the regular example plugin EP (CPU-only)
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+
+  // Get all hardware devices
+  size_t num_hw_devices = 0;
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_hw_devices));
+  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices(num_hw_devices);
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, hw_devices.data(), num_hw_devices));
+
+  // Find a GPU device using the public accessor
+  const OrtHardwareDevice* gpu_device = nullptr;
+  for (size_t i = 0; i < num_hw_devices; ++i) {
+    if (api->HardwareDevice_Type(hw_devices[i]) == OrtHardwareDeviceType_GPU) {
+      gpu_device = hw_devices[i];
+      break;
+    }
+  }
+
+  if (gpu_device == nullptr) {
+    // GPU device not found, early exit
+    GTEST_SKIP() << "No GPU device found";
+  }
+
+  // Check compatibility - ExampleEP only supports CPU, so GPU should return incompatibility reasons
+  OrtDeviceEpIncompatibilityDetails* details = nullptr;
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEpIncompatibilityDetails(env, Utils::example_ep_info.registration_name.c_str(),
+                                                                     gpu_device, &details));
+  ASSERT_NE(details, nullptr);
+
+  // Verify incompatible (should have incompatibility reasons)
+  uint32_t reasons_bitmask = 0;
+  ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetReasonsBitmask(details, &reasons_bitmask));
+  EXPECT_NE(reasons_bitmask, 0u) << "GPU device should be incompatible with example_plugin_ep (CPU-only)";
+
+  api->ReleaseDeviceEpIncompatibilityDetails(details);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

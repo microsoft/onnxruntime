@@ -19,7 +19,7 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -421,6 +421,8 @@ Return Value:
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
 
+                // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
+                this->LutGenKernel = &MlasLutGenKernelAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -603,7 +605,7 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
         this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
