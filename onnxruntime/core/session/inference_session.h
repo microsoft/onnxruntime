@@ -484,15 +484,6 @@ class InferenceSession {
    * This is required for a user to know the location of the input/output when autoep selection is enabled.
    */
   common::Status GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
-
-  /**
-   * Get the OrtEpDevice (if available) for the outputs of the model.
-   *
-   * This is required for a user to validate that outputs will be placed on the expected device
-   * for external resource sharing.
-   */
-  common::Status GetEpDeviceForOutputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
-
   /**
    * Get the current number of in-progress concurrent Run calls.
    */
@@ -660,22 +651,6 @@ class InferenceSession {
 
   uint32_t GetCurrentSessionId() const {
     return session_id_;
-  }
-
-  void SetExecutionDevices(std::vector<const OrtEpDevice*> execution_devices) {
-    execution_devices_ = std::move(execution_devices);
-  }
-
-  const std::vector<const OrtEpDevice*>& GetExecutionDevices() noexcept {
-    return execution_devices_;
-  }
-
-  void SetSelectedDevices(std::vector<const OrtEpDevice*> selected_devices) {
-    devices_selected_ = std::move(selected_devices);
-  }
-
-  const std::vector<const OrtEpDevice*>& GetSelectedDevices() noexcept {
-    return devices_selected_;
   }
 
  protected:
@@ -1070,13 +1045,6 @@ class InferenceSession {
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
 #endif
-
-  // Holds the list of devices from the environment, ordered via OrderDevices().
-  // It's used for auto ep selection.
-  std::vector<const OrtEpDevice*> execution_devices_;
-
-  // Holds the list of devices selected by policies.
-  std::vector<const OrtEpDevice*> devices_selected_;
 };
 
 struct SessionIOBinding {

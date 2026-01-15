@@ -50,7 +50,6 @@ bool IsDefaultCpuEp(const OrtEpDevice* d) {
   return d->device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU &&
          d->ep_vendor == "Microsoft";
 }
-}  // namespace
 
 // Sort devices. NPU -> GPU -> CPU
 // Within in type, vendor owned, not.
@@ -116,10 +115,16 @@ std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice
   return sorted_devices;
 }
 
-OrtKeyValuePairs GetModelMetadataKeyValuePairs(const ModelMetadata& model_metadata) {
+OrtKeyValuePairs GetModelMetadata(const InferenceSession& session) {
   OrtKeyValuePairs metadata;
+  auto status_and_metadata = session.GetModelMetadata();
+
+  if (!status_and_metadata.first.IsOK()) {
+    return metadata;
+  }
 
   // use field names from onnx.proto
+  const auto& model_metadata = *status_and_metadata.second;
   metadata.Add("producer_name", model_metadata.producer_name);
   metadata.Add("producer_version", model_metadata.producer_version);
   metadata.Add("domain", model_metadata.domain);
@@ -133,42 +138,88 @@ OrtKeyValuePairs GetModelMetadataKeyValuePairs(const ModelMetadata& model_metada
 
   return metadata;
 }
-
-OrtKeyValuePairs GetModelMetadataFromSession(const InferenceSession& session) {
-  OrtKeyValuePairs metadata;
-  auto status_and_metadata = session.GetModelMetadata();
-
-  if (!status_and_metadata.first.IsOK()) {
-    return metadata;
-  }
-
-  const auto& model_metadata = *status_and_metadata.second;
-  return GetModelMetadataKeyValuePairs(model_metadata);
-}
+}  // namespace
 
 // Select execution providers based on the device policy and available devices and add to session
 Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const OrtSessionOptions& options,
                                                   InferenceSession& sess) {
-  std::vector<const OrtEpDevice*> execution_devices;
-
-  // Check if the sorted list of devices has cached in the session
-  if (!sess.GetExecutionDevices().empty()) {
-    execution_devices = sess.GetExecutionDevices();
-  } else {
-    // Get the list of devices from the environment and order them.
-    // Ordered by preference within each type. NPU -> GPU -> NPU
-    // TODO: Should environment.cc do the ordering?
-    execution_devices = OrderDevices(env.GetOrtEpDevices());
-  }
+  // Get the list of devices from the environment and order them.
+  // Ordered by preference within each type. NPU -> GPU -> NPU
+  // TODO: Should environment.cc do the ordering?
+  std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
 
   // The list of devices selected by policies
   std::vector<const OrtEpDevice*> devices_selected;
 
-  // Check if the list of devices has been selected and cached in the session
-  if (!sess.GetSelectedDevices().empty()) {
-    devices_selected = sess.GetSelectedDevices();
+  // Run the delegate if it was passed in lieu of any other policy
+  if (options.value.ep_selection_policy.delegate) {
+    auto model_metadata = GetModelMetadata(sess);
+    OrtKeyValuePairs runtime_metadata;  // TODO: where should this come from?
+
+    std::vector<const OrtEpDevice*> delegate_devices(execution_devices.begin(), execution_devices.end());
+    std::array<const OrtEpDevice*, 8> selected_devices{nullptr};
+    size_t num_selected = 0;
+
+    EpSelectionDelegate delegate = options.value.ep_selection_policy.delegate;
+    auto* status = delegate(delegate_devices.data(), delegate_devices.size(),
+                            &model_metadata, &runtime_metadata,
+                            selected_devices.data(), selected_devices.size(), &num_selected,
+                            options.value.ep_selection_policy.state);
+
+    // return or fall-through for both these cases
+    // going with explicit failure for now so it's obvious to user what is happening
+    if (status != nullptr) {
+      std::string delegate_error_msg = OrtApis::GetErrorMessage(status);  // copy
+      OrtApis::ReleaseStatus(status);
+
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP selection delegate failed: ", delegate_error_msg);
+    }
+
+    if (num_selected == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP selection delegate did not select anything.");
+    }
+
+    if (num_selected > selected_devices.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "EP selection delegate selected too many EP devices (", num_selected, "). ",
+                             "The limit is ", selected_devices.size(), " EP devices.");
+    }
+
+    // Copy the selected devices to the output vector
+    devices_selected.reserve(num_selected);
+    for (size_t i = 0; i < num_selected; ++i) {
+      devices_selected.push_back(selected_devices[i]);
+    }
   } else {
-    ORT_RETURN_IF_ERROR(SelectEpDevices(options, execution_devices, devices_selected, nullptr, sess));
+    // Create the selector for the chosen policy
+    std::unique_ptr<IEpPolicySelector> selector;
+    switch (options.value.ep_selection_policy.policy) {
+      case OrtExecutionProviderDevicePolicy_DEFAULT:
+        selector = std::make_unique<DefaultEpPolicy>();
+        break;
+      case OrtExecutionProviderDevicePolicy_PREFER_CPU:
+        selector = std::make_unique<PreferCpuEpPolicy>();
+        break;
+      case OrtExecutionProviderDevicePolicy_PREFER_NPU:
+      case OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY:
+      case OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER:
+        selector = std::make_unique<PreferNpuEpPolicy>();
+        break;
+      case OrtExecutionProviderDevicePolicy_PREFER_GPU:
+      case OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE:
+        selector = std::make_unique<PreferGpuEpPolicy>();
+        break;
+    }
+
+    // Execute policy
+
+    selector->SelectProvidersForDevices(execution_devices, devices_selected);
+  }
+
+  // Fail if we did not find any device matches
+  if (devices_selected.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "No execution providers selected. Please check the device policy and available devices.");
   }
 
   // Log telemetry for auto EP selection
@@ -263,98 +314,6 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
     }
   }
 
-  if (sess.GetExecutionDevices().empty()) {
-    sess.SetExecutionDevices(execution_devices);
-  }
-
-  if (sess.GetSelectedDevices().empty()) {
-    sess.SetSelectedDevices(devices_selected);
-  }
-
-  return Status::OK();
-}
-
-Status ProviderPolicyContext::SelectEpDevices(const OrtSessionOptions& options,
-                                              const std::vector<const OrtEpDevice*>& execution_devices,
-                                              std::vector<const OrtEpDevice*>& devices_selected,
-                                              const OrtKeyValuePairs* metadata_from_model,
-                                              const InferenceSession& sess) {
-  // Run the delegate if it was passed in lieu of any other policy
-  if (options.value.ep_selection_policy.delegate) {
-    OrtKeyValuePairs model_metadata;
-
-    if (metadata_from_model) {
-      model_metadata = *metadata_from_model;
-    } else {
-      model_metadata = GetModelMetadataFromSession(sess);
-    }
-    OrtKeyValuePairs runtime_metadata;  // TODO: where should this come from?
-
-    std::vector<const OrtEpDevice*> delegate_devices(execution_devices.begin(), execution_devices.end());
-    std::array<const OrtEpDevice*, 8> selected_devices{nullptr};
-    size_t num_selected = 0;
-
-    EpSelectionDelegate delegate = options.value.ep_selection_policy.delegate;
-    auto* status = delegate(delegate_devices.data(), delegate_devices.size(),
-                            &model_metadata, &runtime_metadata,
-                            selected_devices.data(), selected_devices.size(), &num_selected,
-                            options.value.ep_selection_policy.state);
-
-    // return or fall-through for both these cases
-    // going with explicit failure for now so it's obvious to user what is happening
-    if (status != nullptr) {
-      std::string delegate_error_msg = OrtApis::GetErrorMessage(status);  // copy
-      OrtApis::ReleaseStatus(status);
-
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP selection delegate failed: ", delegate_error_msg);
-    }
-
-    if (num_selected == 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP selection delegate did not select anything.");
-    }
-
-    if (num_selected > selected_devices.size()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "EP selection delegate selected too many EP devices (", num_selected, "). ",
-                             "The limit is ", selected_devices.size(), " EP devices.");
-    }
-
-    // Copy the selected devices to the output vector
-    devices_selected.reserve(num_selected);
-    for (size_t i = 0; i < num_selected; ++i) {
-      devices_selected.push_back(selected_devices[i]);
-    }
-  } else {
-    // Create the selector for the chosen policy
-    std::unique_ptr<IEpPolicySelector> selector;
-    switch (options.value.ep_selection_policy.policy) {
-      case OrtExecutionProviderDevicePolicy_DEFAULT:
-        selector = std::make_unique<DefaultEpPolicy>();
-        break;
-      case OrtExecutionProviderDevicePolicy_PREFER_CPU:
-        selector = std::make_unique<PreferCpuEpPolicy>();
-        break;
-      case OrtExecutionProviderDevicePolicy_PREFER_NPU:
-      case OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY:
-      case OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER:
-        selector = std::make_unique<PreferNpuEpPolicy>();
-        break;
-      case OrtExecutionProviderDevicePolicy_PREFER_GPU:
-      case OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE:
-        selector = std::make_unique<PreferGpuEpPolicy>();
-        break;
-    }
-
-    // Execute policy
-
-    selector->SelectProvidersForDevices(execution_devices, devices_selected);
-  }
-
-  // Fail if we did not find any device matches
-  if (devices_selected.empty()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "No execution providers selected. Please check the device policy and available devices.");
-  }
   return Status::OK();
 }
 

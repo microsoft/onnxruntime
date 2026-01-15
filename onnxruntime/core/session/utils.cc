@@ -20,8 +20,6 @@
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
-#include "core/session/provider_policy_context.h"
-#include "core/graph/model.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/plugin_ep/ep_factory_internal.h"
@@ -33,8 +31,8 @@
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 using namespace onnxruntime;
-namespace {
 #if !defined(ORT_MINIMAL_BUILD)
+namespace {
 // temporary implementation for testing. EP to 'select' is specified in config option
 Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, const std::string& ep_to_select) {
   const auto& execution_devices = env.GetOrtEpDevices();
@@ -131,69 +129,8 @@ bool DoesDomainWithNameExist(const std::string& domain_name, const std::vector<O
   }
   return false;
 }
-
-Status GetModelMetadata(const ORTCHAR_T* model_path,
-                        const void* model_data,
-                        size_t model_data_length,
-                        ModelMetadata& model_metadata) {
-  auto get_model_metadata = [&](ONNX_NAMESPACE::ModelProto& model_proto,
-                                ModelMetadata& model_metadata) -> void {
-    if (model_proto.has_producer_name()) {
-      model_metadata.producer_name = model_proto.producer_name();
-    }
-
-    if (model_proto.has_producer_version()) {
-      model_metadata.producer_version = model_proto.producer_version();
-    }
-
-    if (model_proto.has_doc_string()) {
-      model_metadata.description = model_proto.doc_string();
-    }
-
-    if (model_proto.has_graph() && model_proto.graph().has_doc_string()) {
-      model_metadata.graph_description = model_proto.graph().doc_string();
-    }
-
-    if (model_proto.has_domain()) {
-      model_metadata.domain = model_proto.domain();
-    }
-
-    if (model_proto.has_model_version()) {
-      model_metadata.version = model_proto.model_version();
-    }
-
-    ModelMetaData metadata;
-    for (auto& prop : model_proto.metadata_props()) {
-      metadata[prop.key()] = prop.value();
-    }
-    model_metadata.custom_metadata_map = metadata;
-
-    if (model_proto.has_graph() && model_proto.graph().has_name()) {
-      model_metadata.graph_name = model_proto.graph().name();
-    }
-  };
-
-  ONNX_NAMESPACE::ModelProto model_proto;
-
-  if (model_path != nullptr) {
-    PathString path(model_path);
-    ORT_RETURN_IF_ERROR(Model::Load(path, model_proto));
-  } else if (model_data != nullptr && model_data_length > 0) {
-    const bool result = model_proto.ParseFromArray(model_data, static_cast<int>(model_data_length));
-    if (!result) {
-      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
-                    "Failed to load model because protobuf parsing failed.");
-    }
-  } else {
-    return Status::OK();
-  }
-
-  get_model_metadata(model_proto, model_metadata);
-
-  return Status::OK();
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
   if (size == nullptr) {
@@ -290,36 +227,14 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Add custom domains if the selected ep from auto ep selection has custom domains to register.
+  // Add custom domains for all OrtEpDevice instances to inference session.
   // The custom domains should be registered before model load for ORT to validate the custom ops.
   if (options != nullptr &&
       options->provider_factories.empty() &&
       options->value.ep_selection_policy.enable) {
-    ProviderPolicyContext context;
-
-    // Get the list of devices from the environment and order them.
-    // Ordered by preference within each type. NPU -> GPU -> NPU
-    // TODO: Should environment.cc do the ordering?
-    std::vector<const OrtEpDevice*> execution_devices = OrderDevices(env.GetOrtEpDevices());
-
-    // The list of devices selected by policies
-    std::vector<const OrtEpDevice*> devices_selected;
-
-    // If the selection policy is delegate, the model metadata as key-value paris should be provided to
-    // the delegate function
-    ModelMetadata model_metadata;
-    OrtKeyValuePairs model_metadata_key_value_pairs;
-    if (options->value.ep_selection_policy.delegate) {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(GetModelMetadata(model_path, model_data, model_data_length, model_metadata));
-      model_metadata_key_value_pairs = GetModelMetadataKeyValuePairs(model_metadata);
-    }
-
-    ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpDevices(*options, execution_devices,
-                                                            devices_selected, &model_metadata_key_value_pairs, *sess));
-
     InlinedVector<OrtCustomOpDomain*> all_ep_custom_op_domains;
 
-    for (const OrtEpDevice* ep_device : devices_selected) {
+    for (const OrtEpDevice* ep_device : env.GetOrtEpDevices()) {
       InlinedVector<OrtCustomOpDomain*> domains;
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
@@ -337,14 +252,6 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
     if (!all_ep_custom_op_domains.empty()) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(all_ep_custom_op_domains));
-    }
-
-    if (!execution_devices.empty()) {
-      sess->SetExecutionDevices(std::move(execution_devices));
-    }
-
-    if (!devices_selected.empty()) {
-      sess->SetSelectedDevices(std::move(devices_selected));
     }
   }
 #endif
