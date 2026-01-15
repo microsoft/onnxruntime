@@ -1032,7 +1032,7 @@ function(onnxruntime_apply_common_test_target_settings target)
   endif()
 
   if (MSVC)
-    # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+    # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachable code.
     # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
     target_compile_options(${target} PRIVATE "/wd4702")
   endif()
