@@ -39,7 +39,13 @@ from ep_build.tasks.build import (
     QdcTestsTask,
 )
 from ep_build.tasks.docker import MANYLINUX_2_34_AARCH64_TAG, DockerBuildTask
-from ep_build.tasks.python import CreateOrtVenvTask, OrtWheelGpuModelTestTask, OrtWheelSmokeTestTask, RunLinterTask
+from ep_build.tasks.python import (
+    CreateOrtVenvTask,
+    CreateQdcVenvTask,
+    OrtWheelGpuModelTestTask,
+    OrtWheelSmokeTestTask,
+    RunLinterTask,
+)
 from ep_build.typing import BuildConfigT, TargetPyVersionT
 from ep_build.util import (
     DEFAULT_PYTHON,
@@ -566,6 +572,10 @@ class TaskLibrary:
             )
 
     @task
+    def create_qdc_venv(self, plan: Plan) -> str:
+        return plan.add_step(CreateQdcVenvTask(self.__python_executable, self.__venv_path))
+
+    @task
     def create_venv(self, plan: Plan) -> str:
         return plan.add_step(CreateOrtVenvTask(self.__python_executable, self.__venv_path))
 
@@ -582,6 +592,18 @@ class TaskLibrary:
                 },
             )
         )
+
+    if is_host_linux() and is_host_arm64():
+
+        @task
+        def extract_ort_linux_aarch64_manylinux_2_34(self, plan: Plan) -> str:
+            return plan.add_step(
+                ExtractArchiveTask(
+                    "Extracting ONNX Runtime for Linux",
+                    REPO_ROOT / "build" / "onnxruntime-tests-linux-aarch64_manylinux_2_34.tar.bz2",
+                    REPO_ROOT,
+                )
+            )
 
     @task
     def extract_ort_linux_x86_64(self, plan: Plan) -> str:
@@ -672,6 +694,24 @@ class TaskLibrary:
         def test_ort_linux(self, plan: Plan) -> str:
             return plan.add_step(NoOpTask())
 
+    if is_host_linux() and is_host_arm64():
+
+        @task
+        @depends(["build_ort_linux_aarch64_manylinux_2_34"])
+        def test_ort_linux_aarch64_manylinux_2_34(self, plan: Plan) -> str:
+            return plan.add_step(
+                BuildEpLinuxTask(
+                    "Testing ONNX Runtime for ARM64 Linux",
+                    self.__venv_path,
+                    "linux",
+                    "aarch64_manylinux_2_34",
+                    self.__config,
+                    self.__target_py_version,
+                    self.__qairt_sdk_root,
+                    "test",
+                )
+            )
+
     if is_host_linux() and is_host_x86_64():
 
         @task
@@ -732,7 +772,7 @@ class TaskLibrary:
     if is_host_linux() or is_host_mac():
 
         @task
-        @depends(["archive_ort_android_aarch64"])
+        @depends(["create_qdc_venv", "archive_ort_android_aarch64"])
         def test_ort_qdc_android_aarch64(self, plan: Plan) -> str:
             return plan.add_step(
                 QdcTestsTask(

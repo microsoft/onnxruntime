@@ -64,7 +64,7 @@ def have_root() -> bool:
 
 
 def is_host_arm64() -> bool:
-    return platform.machine().lower() == "arm64"
+    return platform.machine().lower() in ["aarch64", "arm64"]
 
 
 def is_host_in_ci():

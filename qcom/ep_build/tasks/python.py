@@ -41,30 +41,93 @@ def uv_pip_install_cmd(
     return cmd
 
 
+class PipInstallTask(RunExecutablesWithVenvTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        venv_path: Path,
+        requirements: Iterable[Path] = [],
+        packages: Iterable[Path] = [],
+        index_url: str | None = None,
+    ) -> None:
+        super().__init__(
+            group_name,
+            venv=venv_path,
+            executables_and_args=[
+                uv_pip_install_cmd(requirements=requirements, packages=packages, index_url=index_url)
+            ],
+        )
+
+
+class PipInstallQcomDevRequirements(PipInstallTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        venv_path: Path,
+        qdc: bool,
+    ) -> None:
+        requirements: str = "requirements.txt"
+        index_url: str | None = None
+        if qdc:
+            requirements = "requirements-qdc.txt"
+            index_url = "http://ort-ep-win-01.na.qualcomm.com:8080"
+        super().__init__(group_name, venv_path, requirements=[REPO_ROOT / "qcom" / requirements], index_url=index_url)
+
+
 class CreateOrtVenvTask(CompositeTask):
-    def __init__(self, python_executable: Path, venv_path: Path) -> None:
+    def __init__(
+        self,
+        python_executable: Path,
+        venv_path: Path,
+    ) -> None:
         super().__init__(
             group_name=None,
             tasks=[
                 CreateVenvTask(python_executable=python_executable, venv_path=venv_path),
+                PipInstallTask(
+                    f"Installing ORT build requirements into {venv_path}",
+                    venv_path,
+                    requirements=[
+                        REPO_ROOT / MSFT_CI_REQUIREMENTS_RELPATH,
+                        REPO_ROOT / "requirements-dev.txt",
+                    ],
+                ),
                 RunExecutablesWithVenvTask(
-                    group_name=f"Installing required packages into {venv_path}",
+                    group_name="Initializing lintrunner",
                     venv=venv_path,
                     executables_and_args=[
-                        uv_pip_install_cmd(
-                            requirements=[
-                                REPO_ROOT / MSFT_CI_REQUIREMENTS_RELPATH,
-                                REPO_ROOT / "requirements-dev.txt",
-                            ]
-                        ),
                         ["lintrunner", "init"],
                         uv_pip_install_cmd(
                             requirements=[
                                 REPO_ROOT / "qcom" / "requirements.txt",
                             ],
-                            index_url="http://ort-ep-win-01.na.qualcomm.com:8080",
                         ),
                     ],
+                ),
+                PipInstallTask(
+                    f"Installing QCOM build requirements into {venv_path}",
+                    venv_path,
+                    requirements=[
+                        REPO_ROOT / "qcom" / "requirements.txt",
+                    ],
+                ),
+            ],
+        )
+
+
+class CreateQdcVenvTask(CompositeTask):
+    def __init__(self, python_executable: Path, venv_path: Path) -> None:
+        super().__init__(
+            group_name=None,
+            tasks=[
+                CreateVenvTask(python_executable=python_executable, venv_path=venv_path),
+                PipInstallTask(
+                    f"Installing QDC build requirements into {venv_path}",
+                    venv_path,
+                    requirements=[
+                        REPO_ROOT / "qcom" / "requirements-qdc.txt",
+                    ],
+                    index_url="http://ort-ep-win-01.na.qualcomm.com:8080",
                 ),
             ],
         )

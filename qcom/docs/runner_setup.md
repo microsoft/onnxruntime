@@ -181,7 +181,10 @@ certutil -addstore -f root roots.sst
 
 ## Linux
 
-### Provisioning
+We have two classes of Linux devices: build and test. Build machines are generally x86_64 VMs, whereas test devices
+are typically small single-board computers with Qualcomm SoCs.
+
+### Provisioning Build Machines
 
 We haven't had much luck with self-service provisioning of Linux VMs. As of June 2025, they are short on capacity
 in San Diego and Las Vegas. After weeks of them ignoring our failed tickets, Krishna escalated and we suddenly got
@@ -214,8 +217,45 @@ five VMs, four of which we actually wanted. In case it comes up again, here's th
 
 ### Initial Setup
 
+#### Build Machine Setup
+
 1. Install but **do not run** the GitHub Actions Runner into `/local/mnt/workspace/actions-runner` following the
    [usual instructions](https://github.qualcomm.com/MLG/onnxruntime-qnn-ep/settings/actions/runners/new?arch=x64&os=linux).
    It's important that `ortqnnepci` owns everything so consider running GitHub's instructions under `sudo -u ortqnnepci bash`.
-2. Copy `./setup_linux_vm.sh` to the host and run it as your user.
+2. Copy `./setup_linux_build_vm.sh` to the host and run it as your user.
 3. Install and start the Runner service using the commands printed at the end of the above script.
+
+#### Test Device Setup
+
+This has been tested on a Rubik Pi device running Ubuntu 24.04.3 LTS.
+
+1. Create a user for yourself and start using it.
+
+    ```sh
+    ubuntu@ubuntu:$ sudo useradd --create-home --shell /usr/bin/bash --groups sudo,staff YOUR_LOGIN
+    ubuntu@ubuntu:$ sudo passwd YOUR_LOGIN
+    ubuntu@ubuntu:$ logout
+    ```
+
+2. Create user `ortqnnepci` service account.
+
+    ```sh
+    YOUR_LOGIN@ubuntu:$ sudo useradd --create-home --shell /usr/sbin/nologin --no-user-group --gid staff ortqnnepci
+    ```
+
+3. Get the device onto the network. Access to the internet, `github.qualcomm.com`, and `ort-qnn-ep-win-01` are required.
+4. Set an appropriate hostname, likely following the pattern `ort-ep-lin-test-XX`.
+5. Install but **do not run** the GitHub Actions Runner into `/home/ortqnnepci/actions-runner` following the
+   [usual instructions](https://github.qualcomm.com/MLG/onnxruntime-qnn-ep/settings/actions/runners/new?arch=arm64&os=linux).
+   It's important that `ortqnnepci` owns everything so consider running GitHub's instructions under `sudo -u ortqnnepci bash`.
+6. Load the new runner's config page from the
+   [repo's runners page](https://github.qualcomm.com/MLG/onnxruntime-qnn-ep/settings/actions/runners) and ensure it has
+   an appropriate set of tags from the following:
+     * `self-hosted`
+     * `Linux`
+     * `Test` (**not `Build`**)
+     * `ARM64`
+     * `QCS6490`
+     * `Ubuntu` or `Qualcomm Linux`
+7. Copy `./setup_linux_test_device.sh` to the host and run it as your user.
+8. Install and start the Runner service using the commands printed at the end of the above script.

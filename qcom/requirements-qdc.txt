@@ -1,0 +1,5 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
+
+-r requirements.txt
+qdc-public-api-client == 0.0.14

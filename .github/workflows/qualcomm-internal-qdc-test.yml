@@ -55,7 +55,7 @@ jobs:
         # not leak huge files on the runner.
         run: >
           exec python3 qcom/build_and_test.py
-          create_venv
+          create_qdc_venv
           test_ort_qdc_${{inputs.target_os}}_${{inputs.target_arch}} --only
 
       - name: Publish Test Report
@@ -71,4 +71,5 @@ jobs:
         with:
           name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} pynone Test Results
           path: |
-            ${{ github.workspace }}/build/qdc--${{ env.QDC_RESULTS_ARCH }}/*.results.xml
+            ${{ github.workspace }}/build/qdc-${{ env.QDC_RESULTS_ARCH }}/*.results.xml
+            ${{ github.workspace }}/build/qdc-${{ env.QDC_RESULTS_ARCH }}/*.txt
