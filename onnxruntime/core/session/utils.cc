@@ -697,7 +697,14 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
 
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
     }
+  }
 
+  return Status::OK();
+}
+
+Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
+                                          OrtSessionOptions& ort_session_options) {
+  for (const OrtEpDevice* ep_device : ep_devices) {
     // Add custom domains if EP factory has any.
     InlinedVector<OrtCustomOpDomain*> domains;
     ORT_RETURN_IF_ERROR(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
