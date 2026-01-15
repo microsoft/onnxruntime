@@ -701,6 +701,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   }
 
   std::unique_ptr<EpNode> ep_parent_node = nullptr;
+  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> parent_node_value_infos_map;
 
   // If this is a subgraph, add the OrtValueInfo and OrtValue objects that come from the outer scope.
   // Wait until we have already processed OrtValueInfos consumed and produced by nodes so that we only add
@@ -714,11 +715,9 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
     if (create_parent_node) {
       std::unique_ptr<EpNode> ep_node = nullptr;
 
-      std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map_tmp;  // won't be used
-
       // At this point, the EpGraph that contains the parent node hasn't been created yet.
       // It's not needed to create that EpGraph here, so just pass nullptr.
-      ORT_RETURN_IF_ERROR(EpNode::Create(*parent_node, /*ep_graph*/ nullptr, value_infos_map_tmp, ep_node));
+      ORT_RETURN_IF_ERROR(EpNode::Create(*parent_node, /*ep_graph*/ nullptr, parent_node_value_infos_map, ep_node));
 
       // Note: Calling ep_parent_node.GetGraph() will return nullptr because
       // ep_parent_node was created without an associated EpGraph pointer.
@@ -773,6 +772,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   ep_graph->inputs_ = std::move(graph_input_value_infos);
   ep_graph->outputs_ = std::move(graph_output_value_infos);
   ep_graph->parent_node_owned_ = std::move(ep_parent_node);
+  ep_graph->parent_node_value_infos_map_ = std::move(parent_node_value_infos_map);
 
   result = std::move(ep_graph);
 
@@ -915,7 +915,10 @@ Status EpGraph::GetParentNode(const OrtNode*& result) const {
   return Status::OK();
 }
 
-void EpGraph::SetParentNode(const EpNode* node) { parent_node_ = node; }
+void EpGraph::SetParentNode(const EpNode* node) {
+  parent_node_ = node;
+  parent_node_owned_ = nullptr;
+}
 
 const GraphViewer& EpGraph::GetGraphViewer() const { return graph_viewer_; }
 
