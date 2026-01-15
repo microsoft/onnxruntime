@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/llm/attention.h"
+#include "core/providers/cpu/llm/attention_helper.h"
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -115,13 +116,13 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
   qk_matmul_output_mode_ = info.node().OutputDefs().size() >= 4 && info.node().OutputDefs()[3]->Exists()
-                               ? static_cast<QKMatMulOutputMode>(mode)
-                               : QKMatMulOutputMode::kNone;
-  ORT_ENFORCE(qk_matmul_output_mode_ == QKMatMulOutputMode::kNone ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKMask ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftCap ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftMax,
+                               ? static_cast<attention_helper::QKMatMulOutputMode>(mode)
+                               : attention_helper::QKMatMulOutputMode::kNone;
+  ORT_ENFORCE(qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQK ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKMask ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftCap ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftMax,
               "qk_matmul_output_mode must be 0, 1, 2, or 3.");
   // The default scale depends on the input dimensions. It is set to nan to indicate that it should be computed.
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
@@ -140,11 +141,12 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* past_value = context->Input<Tensor>(5);
 
   AttentionParameters parameters;
-  std::vector<int64_t> y_shape;
-  std::vector<int64_t> present_key_shape;
-  std::vector<int64_t> present_value_shape;
-  std::vector<int64_t> output_qk_shape;
+  TensorShape y_shape;
+  TensorShape present_key_shape;
+  TensorShape present_value_shape;
+  TensorShape output_qk_shape;
 
+  // ComputeOutputShapeForAttention also checks the validity of the inputs.
   ORT_ENFORCE(attention_helper::ComputeOutputShapeForAttention(
                   Q,
                   K,
@@ -243,51 +245,49 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   bool delete_mask_data = false;
   bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
   if (mask_index == nullptr) {
-    // No mask = null mask.
+    // No external mask: allocate only if causal behavior needed.
     if (causal) {
-      size_t mask_data_bytes = SafeInt<size_t>(parameters.q_sequence_length) * parameters.total_sequence_length * sizeof(T);
-      void* allocated_ptr = allocator->Alloc(mask_data_bytes);
-      memset(allocated_ptr, 0, mask_data_bytes);
-      mask_data = static_cast<T*>(allocated_ptr);
-      for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
-        for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
-          mask_data[s_i * parameters.total_sequence_length + m_i] = mask_filter_value<T>();
+      size_t mask_bytes = SafeInt<size_t>(parameters.q_sequence_length) * parameters.total_sequence_length * sizeof(T);
+      void* raw = allocator->Alloc(mask_bytes);
+      memset(raw, 0, mask_bytes);  // start all allowed
+      mask_data = static_cast<T*>(raw);
+      for (int s = 0; s < parameters.q_sequence_length; ++s) {
+        for (int t = parameters.past_sequence_length + s + 1; t < parameters.total_sequence_length; ++t) {
+          mask_data[s * parameters.total_sequence_length + t] = mask_filter_value<T>();
         }
       }
       delete_mask_data = true;
     }
-  } else if (mask_index->IsDataType<bool>() || causal) {
-    // We need a copy.
-    size_t mask_data_bytes = SafeInt<size_t>(mask_index->Shape().Size()) * sizeof(T);
-    mask_data = static_cast<T*>(allocator->Alloc(mask_data_bytes));
-    delete_mask_data = true;
-
-    if (mask_index->IsDataType<bool>()) {
-      // Convert bool mask to 0/1
-      make_copy(mask_data, mask_index->Data<bool>(), SafeInt<size_t>(mask_index->Shape().Size()));
-    } else if (mask_index != nullptr) {
-      // We make a copy because causal is True.
-      make_copy(mask_data, mask_index->Data<T>(), SafeInt<size_t>(mask_index->Shape().Size()));
-    }
-    if (causal) {
-      // This loop could be parallelized.
-      // According to the specifications, this configuration is not supported
-      // as is_causal=1 or mask is not None (exclusive or).
-      int n_iter = mask_batch_size * mask_num_heads;
-      for (int i = 0; i < n_iter; ++i) {
-        for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
-          for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
-            mask_data[s_i * parameters.total_sequence_length + m_i + probs_matrix_size * i] = mask_filter_value<T>();
+  } else {
+    const bool is_bool_mask = mask_index->IsDataType<bool>();
+    const bool need_copy = is_bool_mask || causal;  // copy if we must convert or overlay causal pattern
+    if (need_copy) {
+      size_t mask_bytes = SafeInt<size_t>(mask_index->Shape().Size()) * sizeof(T);
+      mask_data = static_cast<T*>(allocator->Alloc(mask_bytes));
+      delete_mask_data = true;
+      if (is_bool_mask) {
+        make_copy(mask_data, mask_index->Data<bool>(), SafeInt<size_t>(mask_index->Shape().Size()));
+      } else {
+        make_copy(mask_data, mask_index->Data<T>(), SafeInt<size_t>(mask_index->Shape().Size()));
+      }
+      if (causal) {
+        // Overlay causal -inf above diagonal for every broadcast slice
+        int slices = mask_batch_size * mask_num_heads;
+        for (int slice = 0; slice < slices; ++slice) {
+          T* base = mask_data + probs_matrix_size * slice;
+          for (int s = 0; s < parameters.q_sequence_length; ++s) {
+            for (int t = parameters.past_sequence_length + s + 1; t < parameters.total_sequence_length; ++t) {
+              base[s * parameters.total_sequence_length + t] = mask_filter_value<T>();
+            }
           }
         }
       }
+    } else {
+      // Reuse mask memory directly (numeric, non-causal)
+      mask_data = const_cast<T*>(mask_index->Data<T>());
     }
-  } else {
-    // Nothing to do, no necessary copy.
-    mask_data = const_cast<T*>(mask_index->Data<T>());
   }
 
-  bool transposed_k = parameters.transpose_output && nullptr == present_key;
   if (nullptr != present_key && parameters.kv_num_heads != parameters.q_num_heads) {
     // This is not part of the main loop because it is not needed at every iteration and
     // we cannot ensure the inner body is executed first before getting used in another iteration.
@@ -309,6 +309,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   // If past_key is not null, then we need to concatenate it with K, the concatenation is not transposed.
   const int loop_len = parameters.batch_size * parameters.q_num_heads;
   const float alpha = parameters.scale;
+  bool transposed_k = parameters.transpose_output && nullptr == present_key;
 
   ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t i = begin; i != end; ++i) {
