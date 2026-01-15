@@ -568,6 +568,10 @@ QnnEp::QnnEp(QnnEpFactory& factory,
                                  htp_performance_mode_str);
   if (!htp_performance_mode_str.empty()) {
     ParseHtpPerformanceMode(htp_performance_mode_str, default_htp_performance_mode_, logger_);
+
+    if (qnn::HtpPerformanceMode::kHtpBurst == default_htp_performance_mode_) {
+      default_rpc_polling_time_ = 9999;
+    }
   }
 
   // HTP graph finalization optimization mode
@@ -1738,11 +1742,12 @@ OrtStatus* ORT_API_CALL QnnEp::ShouldConvertDataLayoutForOpImpl(_In_ OrtEp* this
   return nullptr;
 }
 
-qnn::PerThreadHtpPowerConfigs_t QnnEp::GetPerThreadHtpPowerConfigs(const ::OrtRunOptions* run_options) {
+bool QnnEp::GetPerThreadHtpPowerConfigs(qnn::PerThreadHtpPowerConfigs_t& per_thread_htp_power_configs,
+                                        const ::OrtRunOptions* run_options) {
   qnn::HtpPerformanceMode pre_run_htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
   qnn::HtpPerformanceMode post_run_htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
 
-  qnn::PerThreadHtpPowerConfigs_t per_thread_htp_power_configs;
+  bool configs_set = false;
 
   const char* htp_perf_mode = nullptr;
   htp_perf_mode = ort_api.GetRunConfigEntry(run_options, kOrtRunOptionsConfigQnnPerfMode);
@@ -1761,6 +1766,9 @@ qnn::PerThreadHtpPowerConfigs_t QnnEp::GetPerThreadHtpPowerConfigs(const ::OrtRu
   uint32_t rpc_control_latency = 0;
   if (rpc_latency != nullptr) {
     rpc_control_latency = static_cast<uint32_t>(std::stoul(rpc_latency));
+    per_thread_htp_power_configs.rpc_control_latency = rpc_control_latency;
+    configs_set = true;
+
     ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_VERBOSE, (std::string("rpc_control_latency: ") + rpc_latency).c_str());
   }
 
@@ -1771,17 +1779,17 @@ qnn::PerThreadHtpPowerConfigs_t QnnEp::GetPerThreadHtpPowerConfigs(const ::OrtRu
 
   if (qnn::HtpPerformanceMode::kHtpDefault != pre_run_htp_performance_mode) {
     per_thread_htp_power_configs.pre_run_perf_mode = pre_run_htp_performance_mode;
+    // rpc polling time will only be updated with perf mode changes
+    per_thread_htp_power_configs.rpc_polling_time = rpc_polling_time;
+    configs_set = true;
   }
 
   if (qnn::HtpPerformanceMode::kHtpDefault != post_run_htp_performance_mode) {
     per_thread_htp_power_configs.post_run_perf_mode = post_run_htp_performance_mode;
+    configs_set = true;
   }
 
-  if (rpc_control_latency > 0 || rpc_polling_time > 0) {
-    per_thread_htp_power_configs.rpc_configs = {rpc_control_latency, rpc_polling_time};
-  }
-
-  return per_thread_htp_power_configs;
+  return configs_set;
 }
 
 OrtStatus* ORT_API_CALL QnnEp::OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const ::OrtRunOptions* run_options) noexcept {
@@ -1795,10 +1803,12 @@ OrtStatus* ORT_API_CALL QnnEp::OnRunStartImpl(_In_ OrtEp* this_ptr, _In_ const :
   uint32_t htp_power_config_id = 0;
   if (ep->GetHtpPowerConfigId(htp_power_config_id)) {
     auto thread_id = std::this_thread::get_id();
-    auto per_thread_htp_power_configs = ep->GetPerThreadHtpPowerConfigs(run_options);
-    per_thread_htp_power_configs.power_config_id = htp_power_config_id;
-    RETURN_IF_NOT_OK(ep->qnn_backend_manager_->AddPerThreadHtpPowerConfigMapping(thread_id,
-                                                                                 per_thread_htp_power_configs));
+    qnn::PerThreadHtpPowerConfigs_t per_thread_htp_power_configs;
+    if (ep->GetPerThreadHtpPowerConfigs(per_thread_htp_power_configs, run_options)) {
+      per_thread_htp_power_configs.power_config_id = htp_power_config_id;
+      RETURN_IF_ERROR(ep->qnn_backend_manager_->AddPerThreadHtpPowerConfigMapping(thread_id,
+                                                                                  per_thread_htp_power_configs));
+    }
   }
 
   const char* lora_config = nullptr;
@@ -1872,10 +1882,17 @@ OrtStatus* ORT_API_CALL QnnEp::SetDynamicOptionsImpl(_In_ OrtEp* this_ptr,
       qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
       ParseHtpPerformanceMode(value, htp_performance_mode, ep->logger_);
 
+      uint32_t rpc_polling_time = 0;
+      if (htp_performance_mode == qnn::HtpPerformanceMode::kHtpBurst) {
+        rpc_polling_time = 9999;
+      }
+
       uint32_t htp_power_config_id = 0;
       if (ep->GetHtpPowerConfigId(htp_power_config_id)) {
-        RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id,
-                                                                     htp_performance_mode));
+        RETURN_IF_NOT_OK(ep->qnn_backend_manager_->SetHtpPowerConfigs(htp_power_config_id,
+                                                                      htp_performance_mode,
+                                                                      rpc_polling_time,
+                                                                      ep->default_rpc_control_latency_));
       }
     } else {
       ORT_CXX_LOG(ep->logger_,
@@ -2006,14 +2023,16 @@ void QnnEp::CreateHtpPowerConfigId() const {
   if (rt.IsOK()) {
     htp_power_config_id_ = htp_power_config_id;
 
-    if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode_) {
-      qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id, default_htp_performance_mode_);
+    rt = qnn_backend_manager_->SetHtpPowerConfigs(htp_power_config_id,
+                                                  default_htp_performance_mode_,
+                                                  default_rpc_polling_time_,
+                                                  default_rpc_control_latency_);
+
+    if (!rt.IsOK()) {
+      ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_ERROR, "Unable to set HTP power configurations.");
     }
-    if (default_rpc_control_latency_ > 0 || default_rpc_polling_time_ > 0) {
-      qnn_backend_manager_->SetRpcPowerConfigs(htp_power_config_id,
-                                               default_rpc_control_latency_,
-                                               default_rpc_polling_time_);
-    }
+  } else {
+    ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_ERROR, "Failed to create HTP power config id.");
   }
 }
 
