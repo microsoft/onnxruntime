@@ -570,7 +570,7 @@ Return Value:
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
-#if defined(__linux__)
+#if defined(__aarch64__) && defined(__linux__)
     this->ConvPointwiseBf16Kernel = MlasConvPointwiseBf16KernelNeon;
 #endif
     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;

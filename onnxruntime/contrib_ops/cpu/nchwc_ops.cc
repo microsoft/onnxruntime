@@ -203,9 +203,9 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   }
 
 #if defined(__aarch64__) && defined(__linux__)
-  bool use_bf16 = use_fastmath_mode_;
+  const bool use_bf16 = use_fastmath_mode_;
 #else
-  bool use_bf16 = false;
+  const bool use_bf16 = false;
 #endif
 
   MlasNchwcConv(
