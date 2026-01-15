@@ -337,14 +337,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
   std::string QnnErrorHandleToString(Qnn_ErrorHandle_t error);
   QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
-  void LogQnnProfileEventAsTraceLogging(
-      uint64_t timestamp,
-      const std::string& message,
-      const std::string& qnnScalarValue,
-      const std::string& unit,
-      const std::string& timingSource,
-      const std::string& eventLevel,
-      const char* eventIdentifier);
 
   // Adds a new QNN context.
   // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
