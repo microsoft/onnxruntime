@@ -7062,7 +7062,7 @@ struct OrtApi {
    *
    * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
    * \param[out] ep_nodes Output parameter set to the array of OrtEpAssignedNode instances.
-   * \param[in] num_ep_nodes Output parameter set to the number of OrtEpAssignedNode instance returned.
+   * \param[out] num_ep_nodes Output parameter set to the number of OrtEpAssignedNode instance returned.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
