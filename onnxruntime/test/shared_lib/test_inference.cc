@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <filesystem>
 #include <fstream>
 #include <future>
 #include <iostream>
@@ -4857,8 +4858,18 @@ struct TestCudaStreamOverrideUsed : onnxruntime::Stream {
 }  // namespace
 
 TEST(CApiTest, TestSyncStreamOverride) {
+#ifdef _WIN32
+  auto cuda_lib = ORT_TSTR("onnxruntime_providers_cuda.dll");
+#else
+  auto cuda_lib = ORT_TSTR("onnxruntime_providers_cuda.so");
+#endif
+
+  if (!std::filesystem::exists(cuda_lib)) {
+    GTEST_SKIP() << "CUDA library was not found";
+  }
+
   constexpr const char* cuda_ep_name = "ORT Cuda";
-  ort_env->RegisterExecutionProviderLibrary(cuda_ep_name, ORT_TSTR("onnxruntime_providers_cuda"));
+  ort_env->RegisterExecutionProviderLibrary(cuda_ep_name, cuda_lib);
   auto ep_devices = ort_env->GetEpDevices();
 
   Ort::ConstEpDevice cuda_device;
