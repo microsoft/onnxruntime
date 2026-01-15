@@ -48,10 +48,10 @@ namespace test {
 
 // Helper function to run BF16 model test
 [[maybe_unused]] static void RunBF16ModelTest(const GetTestModelFn& build_test_case,
-                             const std::vector<int64_t>& input_shape,
-                             ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
-                             int opset = 18,
-                             float fp32_abs_err = 1e-2f) {
+                                              const std::vector<int64_t>& input_shape,
+                                              ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
+                                              int opset = 18,
+                                              float fp32_abs_err = 1e-2f) {
   ORT_UNUSED_PARAMETER(input_shape);
 
   ProviderOptions provider_options;
