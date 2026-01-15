@@ -119,6 +119,8 @@ Status MatMulNBitsOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(bits == 4, "Invalid bits. Qnn Gpu Only Supports MatMulNBits with bits == 4");
   ORT_RETURN_IF_NOT(block_size == 32, "Invalid block_size. Qnn Gpu Only Supports MatMulNBits with block_size == 32");
   ORT_RETURN_IF_NOT((K % block_size) == 0, "K must be divisible by block_size");
+  ORT_RETURN_IF_NOT(((N * K) % (2 * block_size)) == 0,
+                    "Invalid configuration. N * K must be divisible by 2 * block_size");
 
   const int64_t num_blocks = (N * K) / block_size;
   ORT_RETURN_IF_NOT(num_blocks > 0, "Invalid configuration. (N * K) / block_size must be > 0");
