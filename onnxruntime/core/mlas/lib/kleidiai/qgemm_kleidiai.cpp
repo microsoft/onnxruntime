@@ -122,7 +122,6 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     //to reverse the packing decision that was made for RHS.
 
     ORT_ENFORCE(DataParams != nullptr, "Dynamic QGEMM requires valid DataParams.");
-   // ORT_ENFORCE(Shape.K > 0, "Dynamic QGEMM requires Shape.K to be non-zero.");
 
     for (size_t batch_idx = 0; batch_idx < BatchSize; ++batch_idx) {
         const auto& params = DataParams[batch_idx];

@@ -9,7 +9,6 @@
 #include "core/mlas/inc/mlas.h"
 
 #include <cmath>
-#include <cstdlib>
 #include <limits>
 
 class MlasDynamicQgemmTestBase {
@@ -165,36 +164,10 @@ class MlasDynamicQgemmTestBase {
     auto validate = [&](const char* tag) {
       SCOPED_TRACE(tag);
 
-      float max_diff = 0.0f;
-      size_t max_i = 0;
-
       for (size_t i = 0; i < M * N * BatchSize; ++i) {
         float abs_tol = 0.001f;
         float diff = std::abs(C[i] - CRef[i]);
-
-        if (diff > max_diff) {
-          max_diff = diff;
-          max_i = i;
-        }
-
         ASSERT_LE(diff, abs_tol);
-      }
-
-      // Optional: print max diff for understanding margin vs tolerance.
-      // Enable by setting MLAS_DYNQGEMM_REPORT_MAX_DIFF to any non-empty value.
-      if (const char* env = std::getenv("MLAS_DYNQGEMM_REPORT_MAX_DIFF"); env && *env) {
-        const size_t element_count = M * N * BatchSize;
-        std::cerr << "[DynamicQGEMM] tag=" << tag
-                  << " M=" << M << " N=" << N << " K=" << K << " B=" << BatchSize
-                  << " max_diff=" << max_diff << " at_i=" << max_i;
-
-        if (element_count > 0 && max_i < element_count) {
-          std::cerr << " C=" << C[max_i] << " CRef=" << CRef[max_i];
-        } else {
-          std::cerr << " (no element details; output is empty or index is out of range)";
-        }
-
-        std::cerr << std::endl;
       }
     };
 
