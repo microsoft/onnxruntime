@@ -784,4 +784,16 @@ ORT_API_STATUS_IMPL(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session
 
 // OrtEnv
 ORT_API_STATUS_IMPL(CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out);
+
+// APIs to get EP graph assignment info
+ORT_API_STATUS_IMPL(Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
+                    _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                    _Out_ size_t* num_ep_subgraphs);
+ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
+ORT_API_STATUS_IMPL(EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
 }  // namespace OrtApis

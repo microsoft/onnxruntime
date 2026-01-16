@@ -38,6 +38,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
+#include "core/session/ep_graph_assignment_info.h"
 #include "core/session/interop_api.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
@@ -47,6 +48,7 @@
 #include "core/session/lora_adapters.h"
 #include "core/session/model_editor_api.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/utils.h"
@@ -924,6 +926,153 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
                                        output_span,
                                        run_async_callback,
                                        user_data));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
+                    _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                    _Out_ size_t* num_ep_subgraphs) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto* inference_session = reinterpret_cast<const onnxruntime::InferenceSession*>(session);
+  const auto& session_options = inference_session->GetSessionOptions();
+  bool is_enabled =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+
+  if (!is_enabled) {
+    std::ostringstream oss;
+    oss << "Session configuration entry '" << kOrtSessionOptionsRecordEpGraphAssignmentInfo
+        << "' must be set to \"1\" to retrieve EP graph assignment information.";
+    return OrtApis::CreateStatus(ORT_FAIL, oss.str().c_str());
+  }
+
+  if (ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_subgraphs' argument is null");
+  }
+
+  if (num_ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_ep_subgraphs' argument is null");
+  }
+
+  const std::vector<const OrtEpAssignedSubgraph*>& ep_assignment_info = inference_session->GetEpGraphAssignmentInfo();
+
+  *ep_subgraphs = ep_assignment_info.data();
+  *num_ep_subgraphs = ep_assignment_info.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(session);
+  ORT_UNUSED_PARAMETER(ep_subgraphs);
+  ORT_UNUSED_PARAMETER(num_ep_subgraphs);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetEpName requires a valid (non-null) `out` output parameter "
+                                 "into which to store the EP name string.");
+  }
+
+  *out = ep_subgraph->ep_name.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetNodes requires a valid (non-null) `ep_nodes` output parameter "
+                                 "into which to store the pointer to the node array.");
+  }
+
+  if (num_ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetNodes requires a valid (non-null) `num_ep_nodes` "
+                                 "output parameter into which to store the number of nodes.");
+  }
+
+  *ep_nodes = ep_subgraph->nodes.data();
+  *num_ep_nodes = ep_subgraph->nodes.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(ep_nodes);
+  ORT_UNUSED_PARAMETER(num_ep_nodes);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetName requires a valid (non-null) `out` output parameter "
+                                 "into which to store the name string.");
+  }
+
+  *out = ep_node->name.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetDomain requires a valid (non-null) `out` output parameter "
+                                 "into which to store the domain string.");
+  }
+
+  *out = ep_node->domain.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetOperatorType requires a valid (non-null) `out` output parameter "
+                                 "into which to store the operator type string.");
+  }
+
+  *out = ep_node->op_type.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
 
@@ -4356,6 +4505,12 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::ReleaseDeviceEpIncompatibilityDetails,
 
     &OrtApis::CreateEnvWithOptions,
+    &OrtApis::Session_GetEpGraphAssignmentInfo,
+    &OrtApis::EpAssignedSubgraph_GetEpName,
+    &OrtApis::EpAssignedSubgraph_GetNodes,
+    &OrtApis::EpAssignedNode_GetName,
+    &OrtApis::EpAssignedNode_GetDomain,
+    &OrtApis::EpAssignedNode_GetOperatorType,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
