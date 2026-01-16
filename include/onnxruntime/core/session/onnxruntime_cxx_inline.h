@@ -929,14 +929,14 @@ inline OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
 }
 
 inline AllocatedStringPtr GetCompatibilityInfoFromModelAllocated(const ORTCHAR_T* model_path, const char* ep_type,
-                                                                  OrtAllocator* allocator) {
+                                                                 OrtAllocator* allocator) {
   char* compat_info = nullptr;
   ThrowOnError(GetApi().GetCompatibilityInfoFromModel(model_path, ep_type, allocator, &compat_info));
   return AllocatedStringPtr(compat_info, detail::AllocatedFree(allocator));
 }
 
 inline AllocatedStringPtr GetCompatibilityInfoFromModelBytesAllocated(const void* model_data, size_t model_data_length,
-                                                                       const char* ep_type, OrtAllocator* allocator) {
+                                                                      const char* ep_type, OrtAllocator* allocator) {
   char* compat_info = nullptr;
   ThrowOnError(GetApi().GetCompatibilityInfoFromModelBytes(model_data, model_data_length, ep_type, allocator, &compat_info));
   return AllocatedStringPtr(compat_info, detail::AllocatedFree(allocator));

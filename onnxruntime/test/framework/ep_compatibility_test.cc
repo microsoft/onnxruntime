@@ -735,7 +735,7 @@ TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_NotFound) {
   char* compat_info = nullptr;
   OrtStatus* st = api->GetCompatibilityInfoFromModelBytes(
       model_data.data(), model_data.size(), "NonExistentEP", allocator, &compat_info);
-  ASSERT_EQ(st, nullptr);  // Not an error - just not found
+  ASSERT_EQ(st, nullptr);           // Not an error - just not found
   EXPECT_EQ(compat_info, nullptr);  // Should be nullptr when not found
 }
 
