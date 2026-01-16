@@ -263,8 +263,8 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
       ScaleOutput(*b_scale_tensor, *ctx->Output<Tensor>(0));
     }
   }
-  // Guard against KleidiAI functions being called in non kleidi builds
-  // migrate to a suitable override function call for kelidiai dynamic qgemm function calls
+  // Guard against KleidiAI functions being called in non-Kleidi builds
+  // migrate to a suitable override function call for KleidiAI dynamic QGEMM function calls
 #if defined(USE_KLEIDIAI)
   else {
     MatMulComputeHelper helper;
