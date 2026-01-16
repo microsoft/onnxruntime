@@ -2949,7 +2949,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
         run_profiler->AddEpProfilers(ep->GetProfiler());
       }
       run_profiler->StartProfiling(profile_file);
-      
       // Verify profiler was successfully initialized and enabled
       if (!run_profiler->IsEnabled()) {
         LOGS(*session_logger_, WARNING) << "Failed to enable run-level profiler. Profiling will not be performed for this run.";
