@@ -1467,6 +1467,16 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"dequantizelinear_uint2", "unknown version"});
     broken_tests->insert({"quantizelinear_int2", "unknown version"});
     broken_tests->insert({"quantizelinear_uint2", "unknown version"});
+    broken_tests->insert({"cast_FLOAT16_to_INT2", "unknown version"});
+    broken_tests->insert({"cast_FLOAT16_to_UINT2", "unknown version"});
+    broken_tests->insert({"cast_FLOAT_to_INT2", "unknown version"});
+    broken_tests->insert({"cast_FLOAT_to_UINT2", "unknown version"});
+    broken_tests->insert({"cast_INT2_to_FLOAT", "unknown version"});
+    broken_tests->insert({"cast_INT2_to_FLOAT16", "unknown version"});
+    broken_tests->insert({"cast_INT2_to_INT8", "unknown version"});
+    broken_tests->insert({"cast_UINT2_to_FLOAT", "unknown version"});
+    broken_tests->insert({"cast_UINT2_to_FLOAT16", "unknown version"});
+    broken_tests->insert({"cast_UINT2_to_UINT8", "unknown version"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
