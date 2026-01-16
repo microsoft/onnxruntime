@@ -130,8 +130,37 @@ export const createSplitProgramInfo = (inputs: readonly TensorView[], attributes
 
 export const split = (context: ComputeContext, attributes: SplitAttributes): void => {
   validateInputs(context.inputs);
-  const updatedAttributes =
+  let updatedAttributes =
     context.inputs.length === 1 ? attributes : createSplitAttributesFromInputs(context.inputs, attributes);
+
+  // Handle the case where splitSizes is empty or all zeros (dynamic shapes from C++ side)
+  // In this case, we need to compute split sizes from input shape at runtime
+  const hasEmptyOrZeroSplitSizes =
+    updatedAttributes.splitSizes.length === 0 ||
+    updatedAttributes.splitSizes.every((s) => s === 0);
+
+  if (hasEmptyOrZeroSplitSizes && updatedAttributes.numOutputs > 0) {
+    const inputShape = context.inputs[0].dims;
+    const axis = ShapeUtil.normalizeAxis(updatedAttributes.axis, inputShape.length);
+    const inputSizeAlongAxis = inputShape[axis];
+
+    // Compute split sizes: divide input size evenly among outputs
+    const baseSplitSize = Math.floor(inputSizeAlongAxis / updatedAttributes.numOutputs);
+    const remainder = inputSizeAlongAxis % updatedAttributes.numOutputs;
+
+    const computedSplitSizes: number[] = [];
+    for (let i = 0; i < updatedAttributes.numOutputs; i++) {
+      // Distribute remainder to the first few outputs
+      computedSplitSizes.push(baseSplitSize + (i < remainder ? 1 : 0));
+    }
+
+    updatedAttributes = createAttributeWithCacheKey({
+      axis: updatedAttributes.axis,
+      numOutputs: updatedAttributes.numOutputs,
+      splitSizes: computedSplitSizes,
+    });
+  }
+
   context.compute(createSplitProgramInfo(context.inputs, updatedAttributes), { inputs: [0] });
 };
 
@@ -139,7 +168,8 @@ export const parseSplitAttributes = (attributes: Record<string, unknown>): Split
   const axis = attributes.axis as number;
   const splitSizes: number[] = attributes.splitSizes as number[];
   const numOutputs = (attributes.numOutputs as number) < 0 ? splitSizes.length : (attributes.numOutputs as number);
-  if (numOutputs !== splitSizes.length) {
+  // Allow empty splitSizes (will be computed at runtime for dynamic shapes)
+  if (splitSizes.length > 0 && numOutputs !== splitSizes.length) {
     throw new Error('numOutputs and splitSizes length must be equal');
   }
   return createAttributeWithCacheKey({ axis, numOutputs, splitSizes });
