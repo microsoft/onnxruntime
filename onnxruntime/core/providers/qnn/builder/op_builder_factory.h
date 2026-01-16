@@ -126,6 +126,7 @@ void CreateThresholdedReluOpBuilder(const std::string& op_type, OpBuilderRegistr
 void CreateSTFTOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateInverseOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateFusedMatMulOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace qnn
 }  // namespace onnxruntime
