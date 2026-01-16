@@ -568,8 +568,12 @@ struct OpenVINO_Provider : Provider {
     // Parse provider info with the device type
     ProviderInfo pi;
     const auto& config_options = session_options.GetConfigOptions();
-    ParseProviderInfo(provider_options, &config_options, pi);
-    ParseConfigOptions(pi);
+    try {
+      ParseProviderInfo(provider_options, &config_options, pi);
+      ParseConfigOptions(pi);
+    } catch (std::exception& e) {
+      return Status(common::ONNXRUNTIME, ORT_INVALID_ARGUMENT, e.what());
+    }
 
     // Create and return the execution provider
     auto factory = std::make_unique<OpenVINOProviderFactory>(pi, OVCore::Get());

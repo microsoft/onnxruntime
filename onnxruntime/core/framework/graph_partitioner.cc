@@ -68,6 +68,7 @@ struct PartitionParams {
   std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout_function;
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  std::reference_wrapper<const OnPartitionAssignmentFunction> on_partition_assignment_fn;
 };
 }  // namespace
 
@@ -426,6 +427,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const layout_transformation::TransformLayoutFunction& transform_layout_fn,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
                                            const CheckLoadCancellationFn& check_load_cancellation_fn,
+                                           const OnPartitionAssignmentFunction& on_partition_assignment_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
                                            const GraphOptimizerRegistry& graph_optimizer_registry,
                                            bool disable_model_compile) {
@@ -444,6 +446,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
                                                        transform_layout_fn, debug_graph_fn,
                                                        check_load_cancellation_fn,
+                                                       on_partition_assignment_fn,
                                                        logger, resource_accountant,
                                                        graph_optimizer_registry, disable_model_compile));
     }
@@ -518,6 +521,12 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
     Node* n = nullptr;
     if (sub_graph_available_for_assignment) {
+      if (on_partition_assignment_fn) {
+        // Call custom function provided by owner of GraphPartitioner whenever a subgraph is assigned to an EP.
+        // This can be used, for example, to collect partitioning information.
+        on_partition_assignment_fn(graph, *capability, type);
+      }
+
       n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
     }
 
@@ -1018,6 +1027,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
   auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
   const auto& transform_layout_function = partition_params.transform_layout_function;
   const CheckLoadCancellationFn& check_load_cancellation_fn = partition_params.check_load_cancellation_fn;
+  const OnPartitionAssignmentFunction& on_partition_assignment_fn = partition_params.on_partition_assignment_fn;
 
   do {
     // process full graph with each EP
@@ -1034,6 +1044,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
                                                        check_load_cancellation_fn,
+                                                       on_partition_assignment_fn,
                                                        logger, resource_accountant, graph_optimizer_registry,
                                                        disable_model_compile));
     }
@@ -1280,7 +1291,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(*fused_kernel_registry),
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
-      std::cref(debug_graph_fn)};
+      std::cref(debug_graph_fn),
+      std::cref(on_partition_assignment_fn_)};
 
 #else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1290,6 +1302,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   PartitionParams partition_params{
       std::ref(graph),
       std::cref(check_load_cancellation_fn),
+      std::cref(on_partition_assignment_fn_),
   };
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
