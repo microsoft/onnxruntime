@@ -617,17 +617,36 @@ Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep
 
     const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
     for (auto domain : domains_span) {
-      if (!DoesDomainWithNameExist(domain->domain_, ort_session_options.custom_op_domains_) &&
-          domain->custom_ops_.size() > 0) {
-        ort_session_options.custom_op_domains_.push_back(domain);
-      } else {
-        LOGS_DEFAULT(WARNING) << "The custom op domain name "
-                              << domain->domain_ << " is already in the session option. Skip it.";
-      }
-    }
-  }
+      const bool has_custom_ops = !domain->custom_ops_.empty();
+      const bool domain_name_exists =
+          DoesDomainWithNameExist(domain->domain_, ort_session_options.custom_op_domains_);
 
-  return Status::OK();
+      // new domain + has ops => add it to session options.
+      if (!domain_name_exists && has_custom_ops) {
+        ort_session_options.custom_op_domains_.push_back(domain);
+        continue;
+      }
+
+      // Everything else is a skip; log a reason.
+      if (!has_custom_ops) {
+        if (domain_name_exists) {
+          LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain->domain_
+                                << "': domain already exists in session options and this domain "
+                                << "provides no custom ops.";
+        } else {
+          LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain->domain_
+                                << "': no custom ops provided.";
+        }
+        continue;
+      }
+
+      // has_custom_ops && domain_name_exists
+      LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain->domain_
+                            << "': domain already exists in session options.";
+    }
+
+    return Status::OK();
+  }
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace onnxruntime
