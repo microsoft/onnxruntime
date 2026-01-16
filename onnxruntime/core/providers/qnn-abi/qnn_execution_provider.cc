@@ -476,7 +476,6 @@ QnnEp::QnnEp(QnnEpFactory& factory,
     // Get backend type and path from session options
     std::string backend_type;
     std::string backend_path_option;
-    std::string ep_select_backend_path_option;
 
     GetSessionConfigEntryOrDefault(ort_api, session_options_, FormatEPConfigKey("backend_type"), "", backend_type);
     GetSessionConfigEntryOrDefault(ort_api,
@@ -484,11 +483,6 @@ QnnEp::QnnEp(QnnEpFactory& factory,
                                    FormatEPConfigKey("backend_path"),
                                    "",
                                    backend_path_option);
-    GetSessionConfigEntryOrDefault(ort_api,
-                                   session_options_,
-                                   FormatEPConfigKey("ep_select_backend_path"),
-                                   "",
-                                   ep_select_backend_path_option);
 
     // Check if both options are provided
     if (!backend_type.empty() && !backend_path_option.empty()) {
@@ -502,8 +496,6 @@ QnnEp::QnnEp(QnnEpFactory& factory,
       }
     } else if (!backend_path_option.empty()) {
       backend_path_from_options = backend_path_option;
-    } else if (!ep_select_backend_path_option.empty()) {
-      backend_path_from_options = ep_select_backend_path_option;
     }
 
     // Use the determined backend path or default
