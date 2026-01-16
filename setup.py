@@ -72,15 +72,11 @@ class Distribution(_Distribution):
         
         def write_pkg_file_with_provides(file):
             """Enhanced write_pkg_file that includes Provides-Dist metadata."""
-            try:
-                # Call original method
-                original_write_pkg_file(file)
-            except Exception:
-                # Re-raise any exceptions from the original method
-                raise
+            # Call original method
+            original_write_pkg_file(file)
             
             # Add Provides-Dist entries if available and valid
-            if self.provides_dist and hasattr(self.provides_dist, '__iter__') and not isinstance(self.provides_dist, str):
+            if self.provides_dist and isinstance(self.provides_dist, (list, tuple)):
                 for entry in self.provides_dist:
                     if entry:  # Skip empty strings
                         file.write(f"Provides-Dist: {entry}\n")
