@@ -613,7 +613,7 @@ void QnnModel::LogTensorDetails(QnnModelWrapper& qnn_model_wrapper,
   // Build a map of initializer names to the operators that use them
   std::unordered_map<std::string, std::vector<std::string>> initializer_to_ops;
 
-  for (const Ort::ConstNode node : graph.GetNodes()) {
+  for (const Ort::ConstNode& node : graph.GetNodes()) {
     if (static_cast<const OrtNode*>(node) == nullptr) {
       continue;
     }
@@ -622,7 +622,7 @@ void QnnModel::LogTensorDetails(QnnModelWrapper& qnn_model_wrapper,
     const std::string node_name = node.GetName();
 
     // Check each input of the node
-    for (const Ort::ConstValueInfo input : node.GetInputs()) {
+    for (const Ort::ConstValueInfo& input : node.GetInputs()) {
       if (static_cast<const OrtValueInfo*>(input) == nullptr) {
         continue;
       }
@@ -639,7 +639,7 @@ void QnnModel::LogTensorDetails(QnnModelWrapper& qnn_model_wrapper,
   }
 
   // Collect initializer tensor information with operator usage
-  for (const Ort::ConstValueInfo initializer : graph.GetInitializers()) {
+  for (const Ort::ConstValueInfo& initializer : graph.GetInitializers()) {
     const std::string initializer_name = initializer.GetName();
 
     // Check if this tensor exists in the QNN model

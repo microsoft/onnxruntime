@@ -742,6 +742,31 @@ QnnEp::QnnEp(QnnEpFactory& factory,
                                                                   true,
                                                                   logger_);
 
+  model_settings_.htp_bf16_enable = ParseBoolOption(ort_api,
+                                                    session_options_,
+                                                    FormatEPConfigKey("htp_bf16_enable"),
+                                                    false,
+                                                    logger_);
+  // Check BF16 compatibility early
+  if (model_settings_.htp_bf16_enable) {
+    // Check SoC model
+    if (soc_model == QNN_SOC_MODEL_UNKNOWN) {
+      std::string message =
+          "BF16 mode is enabled but soc_model is not specified. Both parameters must be set together for BF16 support.";
+      ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_ERROR, message.c_str());
+      throw std::runtime_error(message);
+    } else if (soc_model < 88) {
+      std::string message = "BF16 mode is enabled but SoC model is " + std::to_string(soc_model) +
+                            " (expected 88 and above).";
+      ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_ERROR, message.c_str());
+      throw std::runtime_error(message);
+    }
+
+    ORT_CXX_LOG(logger_,
+                ORT_LOGGING_LEVEL_INFO,
+                ("BF16 mode enabled with compatible hardware: SoC " + std::to_string(soc_model)).c_str());
+  }
+
   if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
     ORT_CXX_LOG(logger_,
                 ORT_LOGGING_LEVEL_INFO,
