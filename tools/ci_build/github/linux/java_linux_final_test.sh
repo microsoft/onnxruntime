@@ -33,6 +33,7 @@ mkdir tests
 cd tests
 jar xf ../onnxruntime-java/testing.jar
 rm -f ../onnxruntime-java/testing.jar
+echo "Contents of tests directory ($BINARY_DIR/tests):"
 ls "$BINARY_DIR/tests"
 echo "Java Version"
 java -version
