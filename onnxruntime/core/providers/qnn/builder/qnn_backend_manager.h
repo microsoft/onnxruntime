@@ -212,6 +212,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
+  uint32_t GetSocModel() const { return soc_model_; }
+
   const std::string& GetSdkVersion() { return sdk_build_version_; }
 
   Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
