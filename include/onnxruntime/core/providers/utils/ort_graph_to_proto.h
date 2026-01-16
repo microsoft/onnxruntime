@@ -417,7 +417,10 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(value_info, *value_info_proto));
     }
 
-    // There might be some initializers in the original OrtGraph that are not added yet.
+    // There may be initializers in the original OrtGraph that have not been added yet.
+    // For example, an initializer may not be used by any node but is still a graph output.
+    // Iterating through all nodes to collect initializer value info is therefore not sufficient,
+    // initializers must also be obtained from ort_graph.GetInitializers().
     // Add those missing initializers and skip the ones that already in `initializer_value_infos`
     std::vector<Ort::ConstValueInfo> ort_graph_initializers = ort_graph.GetInitializers();
     for (const auto& initializer : ort_graph_initializers) {

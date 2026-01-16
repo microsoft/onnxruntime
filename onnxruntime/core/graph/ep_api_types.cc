@@ -547,12 +547,11 @@ void EpGraph::IndexToEpNodeMap::Resize(NodeIndex min_node_index, NodeIndex max_n
   size_t num_elems = (max_node_index - min_node_index) + 1;
 
   min_node_index_ = min_node_index;
-  max_node_index_ = max_node_index;
   nodes_.resize(num_elems, nullptr);
 }
 
 EpNode* EpGraph::IndexToEpNodeMap::GetEpNode(NodeIndex node_index) const {
-  if (node_index < min_node_index_ || node_index > max_node_index_) {
+  if (node_index < min_node_index_ || node_index > (min_node_index_ + nodes_.size() - 1)) {
     return nullptr;
   }
   size_t i = node_index - min_node_index_;
