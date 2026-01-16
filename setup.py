@@ -28,7 +28,31 @@ logger = logging.getLogger()
 
 
 class Distribution(_Distribution):
-    """Custom Distribution class that adds Provides-Dist metadata for variant packages."""
+    """Custom Distribution class that adds Provides-Dist metadata for variant packages.
+    
+    This class extends setuptools.Distribution to support the `provides_dist` parameter,
+    which specifies a list of distribution names that this package provides. This is
+    particularly useful for variant packages (e.g., onnxruntime-gpu) that should be
+    recognized as providing the base package (onnxruntime) for dependency resolution.
+    
+    The class overrides the metadata writing process to inject Provides-Dist entries
+    into the wheel's METADATA file, ensuring that modern dependency resolvers (pip, uv,
+    poetry, pdm) correctly recognize the relationship between variant and base packages.
+    
+    Args:
+        attrs: Dictionary of package attributes, including the optional 'provides_dist'
+               parameter which should be a list of strings in the format:
+               ["package_name (==version)", ...]
+    
+    Example:
+        setup(
+            name="onnxruntime-gpu",
+            version="1.23.2",
+            provides_dist=["onnxruntime (==1.23.2)"],
+            distclass=Distribution,
+            ...
+        )
+    """
     
     def __init__(self, attrs=None):
         # Store provides_dist before calling super().__init__ to avoid setter issues
@@ -47,12 +71,19 @@ class Distribution(_Distribution):
         original_write_pkg_file = self.metadata.write_pkg_file
         
         def write_pkg_file_with_provides(file):
-            # Call original method
-            original_write_pkg_file(file)
-            # Add Provides-Dist entries
-            if self.provides_dist:
+            """Enhanced write_pkg_file that includes Provides-Dist metadata."""
+            try:
+                # Call original method
+                original_write_pkg_file(file)
+            except Exception:
+                # Re-raise any exceptions from the original method
+                raise
+            
+            # Add Provides-Dist entries if available and valid
+            if self.provides_dist and hasattr(self.provides_dist, '__iter__') and not isinstance(self.provides_dist, str):
                 for entry in self.provides_dist:
-                    file.write(f"Provides-Dist: {entry}\n")
+                    if entry:  # Skip empty strings
+                        file.write(f"Provides-Dist: {entry}\n")
         
         self.metadata.write_pkg_file = write_pkg_file_with_provides
 
