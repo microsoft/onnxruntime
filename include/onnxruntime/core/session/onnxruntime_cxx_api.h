@@ -1314,6 +1314,12 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    * \param profile_file_prefix The prefix for the profile file
    */
   RunOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
+
+  /** \brief Disable profiling for this run
+   *
+   * Wraps OrtApi::RunOptionsDisableProfiling
+   */
+  RunOptions& DisableProfiling();
 };
 
 namespace detail {

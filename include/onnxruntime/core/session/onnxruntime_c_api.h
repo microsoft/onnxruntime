@@ -7025,6 +7025,16 @@ struct OrtApi {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(RunOptionsEnableProfiling, _Inout_ OrtRunOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
+
+  /** \brief Disable profiling for this run
+   *
+   * \param[in] options
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
 };
 
 /*

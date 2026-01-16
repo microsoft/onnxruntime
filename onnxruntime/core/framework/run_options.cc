@@ -87,3 +87,9 @@ ORT_API_STATUS_IMPL(OrtApis::RunOptionsEnableProfiling, _Inout_ OrtRunOptions* o
   options->profile_file_prefix = profile_file_prefix;
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(OrtApis::RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options) {
+  options->enable_profiling = false;
+  options->profile_file_prefix.clear();
+  return nullptr;
+}

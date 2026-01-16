@@ -1008,6 +1008,11 @@ inline RunOptions& RunOptions::EnableProfiling(const ORTCHAR_T* profile_file_pre
   return *this;
 }
 
+inline RunOptions& RunOptions::DisableProfiling() {
+  ThrowOnError(GetApi().RunOptionsDisableProfiling(p_));
+  return *this;
+}
+
 inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
   ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
 }
