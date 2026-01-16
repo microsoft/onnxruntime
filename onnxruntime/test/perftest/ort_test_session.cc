@@ -124,15 +124,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       }
     } else if (!performance_test_config.filter_ep_device_kv_pairs.empty()) {
       // Find and select the OrtEpDevice associated with the EP in "--filter_ep_devices".
-      for (size_t index = 0; index < ep_devices.size(); ++index) {
-        auto device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) == ep_set.end())
-          continue;
+      for (const auto& kv : performance_test_config.filter_ep_device_kv_pairs) {
+        for (size_t index = 0; index < ep_devices.size(); ++index) {
+          auto device = ep_devices[index];
+          if (ep_set.find(std::string(device.EpName())) == ep_set.end())
+            continue;
 
-        // Check both EP metadata and device metadata for a match
-        auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
-        auto device_metadata_kv_pairs = device.Device().Metadata().GetKeyValuePairs();
-        for (const auto& kv : performance_test_config.filter_ep_device_kv_pairs) {
+          // Skip if deviced was already added
+          if (added_ep_devices.find(device.EpName()) != added_ep_devices.end() &&
+              std::find(added_ep_devices[device.EpName()].begin(), added_ep_devices[device.EpName()].end(), device) != added_ep_devices[device.EpName()].end())
+            continue;
+
+          // Check both EP metadata and device metadata for a match
+          auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
+          auto device_metadata_kv_pairs = device.Device().Metadata().GetKeyValuePairs();
           auto ep_metadata_itr = ep_metadata_kv_pairs.find(kv.first);
           auto device_metadata_itr = device_metadata_kv_pairs.find(kv.first);
 
@@ -352,7 +357,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                          "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
                          "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
                          "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
-                         "json_qnn_graph_dir"});
+                         "json_qnn_graph_dir", "htp_bf16_enable"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -404,7 +409,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
         }
       } else if (key == "htp_arch") {
-        std::set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+        std::set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75", "81"};
         if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
           std::ostringstream str_stream;
           std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
@@ -1016,14 +1021,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     input_names_[i] = input_names_str_[i].c_str();
   }
 
-  auto transform_fcn = std::function<int64_t(int64_t)>();
-  auto new_value = std::function<Ort::Value(OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&)>();
-  if (device_memory_name_.empty()) {
-    transform_fcn = [](int64_t input) { return input; };
-    new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
-      return Ort::Value(nullptr);
-    };
-  } else {
+  if (!device_memory_name_.empty()) {
     Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
     if (device_memory_name_ == CUDA) {
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
@@ -1031,22 +1029,20 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
-    // Switch to custom
+    // Switch to custom allocator
     allocator_ = Ort::UnownedAllocator(custom_allocator_);
-
-    // free dimensions are treated as 1 if not overridden
-    transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
-    new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape, Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
-      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
-    };
   }
-
   for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
     Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
-    std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
-    outputs_.emplace_back(new_value(allocator_, output_shape, tensor_info));
+    auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
+    if (is_dynamic || device_memory_name_.empty()) {
+      outputs_.emplace_back(Ort::Value(nullptr));
+    } else {
+      auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
+      outputs_.emplace_back(std::move(new_value));
+    }
   }
 }
 
