@@ -2954,7 +2954,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   } else if (run_profiler) {
-    ORT_ENFORCE(run_profiler->IsEnabled(), "Run profiler should be enabled here.");
     tp = run_profiler->Start();
   }
 
@@ -3099,7 +3098,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
       }
 
       if (run_profiler) {
-        ORT_ENFORCE(run_profiler->IsEnabled(), "Run profiler should be enabled here.");
         run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
         run_profiler->EndProfiling();
       }

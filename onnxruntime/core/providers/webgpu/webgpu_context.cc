@@ -647,7 +647,7 @@ void WebGpuContext::CollectProfilingData() {
         uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
         uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
 
-        const std::unordered_map<std::string, std::string>& event_args = {
+        InlinedHashMap<std::string, std::string> event_args = {
             {"shapes", SS_GET(shapes)},
             {"cache_key", pending_kernel_info.cache_key},
         };

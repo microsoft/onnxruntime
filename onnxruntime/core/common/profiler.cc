@@ -75,7 +75,7 @@ void Profiler::EndTimeAndRecordEvent(
     EventCategory category,
     const std::string& event_name,
     const TimePoint& start_time,
-    std::unordered_map<std::string, std::string> event_args,
+    InlinedHashMap<std::string, std::string> event_args,
     bool /*sync_gpu*/) {
   long long dur = TimeDiffMicroSeconds(start_time);
   long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);

@@ -8,6 +8,7 @@
 #include <vector>
 #include <sstream>
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
@@ -155,7 +156,7 @@ std::string ComposeSeriesName(const GraphViewer& graph_viewer) {
 class SessionScope {
  public:
   friend class KernelScope;
-  SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler = nullptr)
+  SessionScope(const SessionState& session_state, const ExecutionFrame& frame, profiling::Profiler* run_profiler)
       : session_state_(session_state), run_profiler_(run_profiler)
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
         ,
@@ -176,14 +177,7 @@ class SessionScope {
         dump_context_{session_state_.GetGraphExecutionCounter(), 0}
 #endif
   {
-    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    const bool run_profiling_enabled = IsRunProfilingEnabled();
-
-    if (session_profiling_enabled) {
-      session_start_ = session_state_.Profiler().Start();
-    } else if (run_profiling_enabled) {
-      session_start_ = run_profiler_->Start();
-    }
+    session_start_ = StartProfilingIfEnabled();
 
     auto& logger = session_state_.Logger();
     VLOGS(logger, 0) << "Begin execution";
@@ -229,14 +223,7 @@ class SessionScope {
     }
 #endif
 
-    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
-    const bool run_profiling_enabled = run_profiler_ && run_profiler_->IsEnabled();
-
-    if (session_profiling_enabled) {
-      session_state_.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
-    } else if (run_profiling_enabled) {
-      StopEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
-    }
+    StopProfilingIfEnabled(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     auto& logger = session_state_.Logger();
@@ -266,15 +253,36 @@ class SessionScope {
     return run_profiler_ && run_profiler_->IsEnabled();
   }
 
-  void StopEvent(profiling::EventCategory category,
-                 const std::string& event_name,
-                 const TimePoint& start_time,
-                 std::unordered_map<std::string, std::string> event_args = {}) {
-    if (!run_profiler_) return;
-    run_profiler_->EndTimeAndRecordEvent(category,
-                                         event_name,
-                                         start_time,
-                                         std::move(event_args));
+  void StopProfilingIfEnabled(profiling::EventCategory category,
+                              const std::string& event_name,
+                              const TimePoint& start_time,
+                              InlinedHashMap<std::string, std::string> event_args = {}) {
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = IsRunProfilingEnabled();
+
+    if (session_profiling_enabled) {
+      session_state_.Profiler().EndTimeAndRecordEvent(category,
+                                                      event_name,
+                                                      start_time,
+                                                      std::move(event_args));
+    } else if (run_profiling_enabled) {
+      run_profiler_->EndTimeAndRecordEvent(category,
+                                           event_name,
+                                           start_time,
+                                           std::move(event_args));
+    }
+  }
+
+  TimePoint StartProfilingIfEnabled() {
+    const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
+    const bool run_profiling_enabled = IsRunProfilingEnabled();
+
+    if (session_profiling_enabled) {
+      return session_state_.Profiler().Start();
+    } else if (run_profiling_enabled) {
+      return run_profiler_->Start();
+    }
+    return TimePoint{};
   }
 
  private:
@@ -375,11 +383,7 @@ class KernelScope {
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
 
-      if (session_profiling_enabled) {
-        kernel_begin_time_ = session_state_.Profiler().Start();
-      } else {
-        kernel_begin_time_ = session_scope_.run_profiler_->Start();
-      }
+      kernel_begin_time_ = session_scope_.StartProfilingIfEnabled();
 
       CalculateTotalInputSizes(&kernel_context, &kernel_,
                                input_activation_sizes_, input_parameter_sizes_,
@@ -401,7 +405,7 @@ class KernelScope {
       std::string output_type_shape_;
       CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
 
-      std::unordered_map<std::string, std::string> event_args = {
+      InlinedHashMap<std::string, std::string> event_args = {
           {"op_name", kernel_.KernelDef().OpName()},
           {"provider", kernel_.KernelDef().Provider()},
           {"node_index", std::to_string(kernel_.Node().Index())},
@@ -414,17 +418,10 @@ class KernelScope {
            concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
       };
 
-      if (session_profiling_enabled) {
-        session_state_.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                        node_name_ + "_kernel_time",
-                                                        kernel_begin_time_,
-                                                        std::move(event_args));
-      } else if (run_profiling_enabled) {
-        session_scope_.StopEvent(profiling::NODE_EVENT,
-                                 node_name_ + "_kernel_time",
-                                 kernel_begin_time_,
-                                 std::move(event_args));
-      }
+      session_scope_.StopProfilingIfEnabled(profiling::NODE_EVENT,
+                                            node_name_ + "_kernel_time",
+                                            kernel_begin_time_,
+                                            std::move(event_args));
     }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -735,7 +732,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
-  SessionScope session_scope(session_state, ctx.GetExecutionFrame());
+  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), nullptr);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Only flush memory info for the 2nd partial graph execution (since ORTModule runs this function twice).
