@@ -1050,7 +1050,13 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
+  if (profiler_->Enabled()) {
+    context_.StartProfiling();
+  }
   context_.Replay(captured_commands_, *graph_buffer_mgr_);
+  if (profiler_->Enabled()) {
+    context_.CollectProfilingData(profiler_->Events());
+  }
   return Status::OK();
 }
 

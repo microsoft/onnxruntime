@@ -5,6 +5,8 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <tuple>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
@@ -31,7 +33,8 @@ struct CapturedCommandInfo {
   WGPUBindGroup bind_group;
   WGPUBindGroupLayout bind_group_layout;
   std::array<uint32_t, 3> dispatch_group;
-  WGPUBuffer indirect_buffer;  // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
+  WGPUBuffer indirect_buffer;                                                                                                   // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
+  std::optional<std::tuple<std::string, std::string, std::vector<TensorShape>, std::vector<TensorShape>>> pending_kernel_info;  // Optional profiling data: (name, cache_key, input_shapes, output_shapes)
 };
 
 struct WebGpuBufferCacheConfig {
@@ -279,6 +282,16 @@ class WebGpuContext final {
         output_shapes.emplace_back(output.use_override_shape ? output.override_shape : output.tensor->Shape());
       }
     }
+
+    // Constructor for replay - takes shapes directly
+    PendingKernelInfo(std::string name_in,
+                      std::string cache_key_in,
+                      std::vector<TensorShape> input_shapes_in,
+                      std::vector<TensorShape> output_shapes_in)
+        : name{std::move(name_in)},
+          cache_key{std::move(cache_key_in)},
+          input_shapes{std::move(input_shapes_in)},
+          output_shapes{std::move(output_shapes_in)} {}
 
     PendingKernelInfo(PendingKernelInfo&&) = default;
     PendingKernelInfo& operator=(PendingKernelInfo&&) = default;

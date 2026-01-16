@@ -792,11 +792,20 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
     if (indirect_dispatch_tensor != nullptr) {
       indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
     }
+
+    // Store profiling info if profiling is enabled
+    std::optional<std::tuple<std::string, std::string, std::vector<TensorShape>, std::vector<TensorShape>>> profiling_data;
+    if (is_profiling_ && !pending_kernels_.empty()) {
+      const auto& kernel_info = pending_kernels_.back();
+      profiling_data = std::make_tuple(kernel_info.name, kernel_info.cache_key, kernel_info.input_shapes, kernel_info.output_shapes);
+    }
+
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
                                             bind_group_layout,
                                             {x, y, z},
-                                            indirect_buffer});
+                                            indirect_buffer,
+                                            profiling_data});
   } else {
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
@@ -827,9 +836,6 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
     external_captured_commands_->clear();
   }
 
-  // TODO: support profiling with graph capture.
-  ORT_ENFORCE(!is_profiling_, "profiling is not supported yet under graph capture mode");
-
   graph_capture_state_ = GraphCaptureState::Capturing;
 }
 
@@ -842,6 +848,13 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
     auto& command = captured_commands[i];
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
+
+    // Restore profiling info if available and profiling is enabled
+    if (is_profiling_ && command.pending_kernel_info.has_value()) {
+      const auto& [name, cache_key, input_shapes, output_shapes] = command.pending_kernel_info.value();
+      pending_kernels_.emplace_back(name, cache_key, input_shapes, output_shapes);
+    }
+
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
 
