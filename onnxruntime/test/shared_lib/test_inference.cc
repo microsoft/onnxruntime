@@ -4827,3 +4827,26 @@ TEST(CApiTest, ModelWithExternalDataOutsideModelDirectoryShouldFailToLoad) {
               exception_message.find("model") != std::string::npos)
       << "Exception message should indicate external data or security issue. Got: " << exception_message;
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CApiTest, GetEpGraphAssignmentInfo_NotEnabledError) {
+  // Test that calling OrtApi::Session_GetEpGraphAssignmentInfo() without enabling the appropriate
+  // session configuration option returns an error.
+
+  Ort::SessionOptions options;
+  // Do not set:
+  // options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+  try {
+    session.GetEpGraphAssignmentInfo();
+    ASSERT_TRUE(false) << "Call to Session_GetEpGraphAssignmentInfo should have failed";
+  } catch (const Ort::Exception& ex) {
+    ASSERT_EQ(ex.GetOrtErrorCode(), ORT_FAIL);
+
+    std::ostringstream oss;
+    oss << "Session configuration entry '" << kOrtSessionOptionsRecordEpGraphAssignmentInfo << "' must be set to \"1\"";
+    ASSERT_THAT(ex.what(), testing::HasSubstr(oss.str()));
+  }
+}
+#endif

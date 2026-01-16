@@ -1967,6 +1967,52 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(len(outputs), 1)
         self.assertTrue(np.allclose(outputs[0], expected_output))
 
+    def test_get_graph_provider_assignment_info(self):
+        """
+        Tests querying for information about the nodes assigned to the CPU EP.
+        """
+
+        # Create session options that enables recording EP graph partitioning info.
+        session_options = onnxrt.SessionOptions()
+        session_options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+
+        session = onnxrt.InferenceSession(get_name("add_mul_add.onnx"), sess_options=session_options)
+
+        # Query session for information on each subgraph assigned to an EP.
+        ep_subgraphs = session.get_provider_graph_assignment_info()
+
+        # Check that all 3 nodes are assigned to CPU EP (each in its own subgraph)
+        self.assertEqual(len(ep_subgraphs), 3)
+        for ep_subgraph in ep_subgraphs:
+            self.assertEqual(ep_subgraph.ep_name, "CPUExecutionProvider")
+            self.assertEqual(len(ep_subgraph.get_nodes()), 1)
+
+        # Serialize each node to an identifier (concatenates domain, operator type, and node name)
+        node_ids: list[str] = [f"{n.domain}:{n.op_type}/{n.name}" for s in ep_subgraphs for n in s.get_nodes()]
+
+        # Should have 1 Mul and 2 Adds.
+        self.assertEqual(len(node_ids), 3)
+        self.assertIn(":Add/add_0", node_ids)
+        self.assertIn(":Add/add_1", node_ids)
+        self.assertIn(":Mul/mul_0", node_ids)
+
+    def test_get_graph_provider_assignment_info_not_enabled(self):
+        """
+        Tests querying for information about the nodes assigned to the CPU EP when
+        the corresponding config entry is disabled.
+        """
+
+        # Do not enable "session.record_ep_graph_assignment_info"
+        session = onnxrt.InferenceSession(get_name("add_mul_add.onnx"))
+
+        # Expect failure
+        with self.assertRaises(Fail) as context:
+            session.get_provider_graph_assignment_info()
+        self.assertIn(
+            "Session configuration entry 'session.record_ep_graph_assignment_info' must be set to \"1\"",
+            str(context.exception),
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

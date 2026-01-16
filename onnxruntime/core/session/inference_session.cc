@@ -1287,6 +1287,32 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
   return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+static std::unique_ptr<OrtEpAssignedSubgraph> CreateEpAssignedSubgraph(const Graph& graph,
+                                                                       const ComputeCapability& capability,
+                                                                       const std::string& ep_name) {
+  auto assigned_subgraph = std::make_unique<OrtEpAssignedSubgraph>();
+  assigned_subgraph->ep_name = ep_name;
+
+  gsl::span<NodeIndex> node_indices = capability.sub_graph->nodes;
+
+  for (NodeIndex node_index : node_indices) {
+    const Node* node = graph.GetNode(node_index);
+    if (node != nullptr) {
+      auto assigned_node = std::make_unique<OrtEpAssignedNode>();
+      assigned_node->name = node->Name();
+      assigned_node->domain = node->Domain();
+      assigned_node->op_type = node->OpType();
+
+      assigned_subgraph->nodes.push_back(assigned_node.get());
+      assigned_subgraph->nodes_storage.push_back(std::move(assigned_node));
+    }
+  }
+
+  return assigned_subgraph;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. Ensure we inline as many functions as possible. We refer to it as Ahead Of Time (AOT) function inlining.
@@ -1301,12 +1327,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 8. Repeat steps 5 to 7 depending on the graph optimizations loop level.
   // 9. insert copy nodes (required transformer).
 
+  OnPartitionAssignmentFunction on_partition_assignment_fn;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool record_ep_graph_assignment =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+  if (record_ep_graph_assignment) {
+    on_partition_assignment_fn = [this](const Graph& graph, const ComputeCapability& compute_capability,
+                                        const std::string& ep_name) {
+      std::unique_ptr<OrtEpAssignedSubgraph> assigned_subgraph = CreateEpAssignedSubgraph(graph,
+                                                                                          compute_capability,
+                                                                                          ep_name);
+
+      this->ep_graph_assignment_info_.push_back(assigned_subgraph.get());
+      this->ep_graph_assignment_info_storage_.push_back(std::move(assigned_subgraph));
+    };
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
                                                                            execution_providers_.Get(onnxruntime::kCpuExecutionProvider),
                                                                            session_logger_);
   GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_, std::move(graph_optimizer_registry),
-                               check_load_cancellation_fn_);
+                               check_load_cancellation_fn_, on_partition_assignment_fn);
 
   // Run Ahead Of time function inlining
   if (const bool disable_aot_function_inlining =

@@ -18,8 +18,11 @@ static inline uint64_t AlignUp(uint64_t value, uint64_t alignment) {
 // Only supports input operations.
 class TensorStreamBuf : public std::streambuf {
  public:
-  explicit TensorStreamBuf(ov::Tensor& tensor) {
-    char* data = const_cast<char*>(tensor.data<char>());
+  explicit TensorStreamBuf(const ov::Tensor& tensor) {
+    // Suppress warning for tensor.data() returning const in 2026.0. Should be removable after 2026.0 is min supported ov version.
+    OPENVINO_SUPPRESS_DEPRECATED_START
+    char* data = const_cast<char*>(tensor.data<const char>());  // setg requires non-const char* but we won't modify data
+    OPENVINO_SUPPRESS_DEPRECATED_END
     size_t size = tensor.get_byte_size();
     setg(data, data, data + size);
   }
@@ -66,8 +69,8 @@ class TensorStream : public std::istream {
         buf_(tensor_) {}
 
  private:
-  ov::Tensor tensor_;    // Keep tensor alive
-  TensorStreamBuf buf_;  // Buffer wrapping tensor data
+  const ov::Tensor tensor_;  // Keep tensor alive
+  TensorStreamBuf buf_;      // Buffer wrapping tensor data
 };
 
 /*
@@ -169,11 +172,12 @@ ov::Tensor BinManager::GetNativeBlob(const std::string& blob_name) {
   }
 
   if (mapped_bin_) {
-    // Create a tensor from memory-mapped external file
-    blob_container.tensor = ov::Tensor(
-        ov::element::u8,
-        ov::Shape{blob_container.serialized_info.size},
-        mapped_bin_.data<uint8_t>() + blob_container.serialized_info.file_offset);
+    // Create tensor view from mapped_bin_ (which holds the underlying buffer)
+    auto blob_offset = blob_container.serialized_info.file_offset;
+    auto blob_size = blob_container.serialized_info.size;
+    ov::Coordinate begin{blob_offset};
+    ov::Coordinate end{blob_offset + blob_size};
+    blob_container.tensor = ov::Tensor(mapped_bin_, begin, end);
   } else {
     // Create a tensor from embedded data vector
     blob_container.tensor = ov::Tensor(
