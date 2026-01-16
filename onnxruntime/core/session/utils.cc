@@ -259,11 +259,8 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       InlinedVector<OrtCustomOpDomain*> domains;
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
-      const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
-      const auto existing_domains = gsl::span<const OrtCustomOpDomain* const>(options->custom_op_domains_.data(),
-                                                                              options->custom_op_domains_.size());
-      for (auto domain : domains_span) {
-        if (ShouldAddDomain(domain, existing_domains)) {
+      for (auto domain : domains) {
+        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
           all_ep_custom_op_domains.push_back(domain);
         }
       }
@@ -634,11 +631,8 @@ Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep
     InlinedVector<OrtCustomOpDomain*> domains;
     ORT_RETURN_IF_ERROR(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
-    const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
-    const auto existing_domains = gsl::span<OrtCustomOpDomain*>(ort_session_options.custom_op_domains_.data(),
-                                                                ort_session_options.custom_op_domains_.size());
-    for (auto domain : domains_span) {
-      if (ShouldAddDomain(domain, existing_domains)) {
+    for (auto domain : domains) {
+      if (ShouldAddDomain(domain, ort_session_options.custom_op_domains_)) {
         ort_session_options.custom_op_domains_.push_back(domain);
       }
     }

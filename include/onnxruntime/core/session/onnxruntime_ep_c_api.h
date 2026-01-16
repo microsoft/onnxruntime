@@ -2069,7 +2069,8 @@ struct OrtEpFactory {
    * 2. The application either 1) calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
    *    the plugin EP's factory or 2) enables auto ep selection.
    * 3. 1) SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomains to the
-   *    session options or 2) ORT registers the OrtCustomOpDomains provided by the selected EP devices.
+   *    session options or 2) ORT registers the OrtCustomOpDomains provided by the EP devices
+   *    that could be potentially selected.
    *
    * As a result, any session created from these session options will have these custom op domains registered
    * in ORT, ensuring that the custom ops are properly recognized and validated when the model is loaded.
@@ -2097,7 +2098,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[out] domains Array of `num_domains` elements pre-allocated by ORT that should be filled with
                          OrtCustomOpDomain instances created by the EP. The `num_domains` is the value returned by
-                         GetNumCustomOpDomains(). The implementation is expected to treat `domains` as a buffer.
+                         GetNumCustomOpDomains().
    * \param[in] num_domains The size of the `domains` array pre-allocated by ORT.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
