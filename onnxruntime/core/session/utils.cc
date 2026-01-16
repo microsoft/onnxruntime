@@ -121,13 +121,34 @@ Status GetCustomOpDomainsFromEpDevice(const OrtEpDevice& ep_device, InlinedVecto
   return Status::OK();
 }
 
-bool DoesDomainWithNameExist(const std::string& domain_name, const std::vector<OrtCustomOpDomain*>& domains) {
+bool DoesDomainWithNameExist(const std::string& domain_name, gsl::span<const OrtCustomOpDomain* const> domains) {
   for (auto ptr : domains) {
     if (domain_name == ptr->domain_) {
       return true;
     }
   }
   return false;
+}
+
+bool ShouldAddDomain(const OrtCustomOpDomain* domain_to_add,
+                     gsl::span<const OrtCustomOpDomain* const> existing_domains) {
+  if (!domain_to_add) {
+    return false;
+  }
+
+  if (domain_to_add->custom_ops_.size() == 0) {
+    LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain_to_add->domain_
+                          << "': custom ops is empty.";
+    return false;
+  }
+
+  if (DoesDomainWithNameExist(domain_to_add->domain_, existing_domains)) {
+    LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain_to_add->domain_
+                          << "': domain already exists in session options.";
+    return false;
+  }
+
+  return true;
 }
 }  // namespace
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -239,13 +260,11 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
       const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
+      const auto existing_domains = gsl::span<const OrtCustomOpDomain* const>(options->custom_op_domains_.data(),
+                                                                              options->custom_op_domains_.size());
       for (auto domain : domains_span) {
-        if (!DoesDomainWithNameExist(domain->domain_, options->custom_op_domains_) &&
-            domain->custom_ops_.size() > 0) {
+        if (ShouldAddDomain(domain, existing_domains)) {
           all_ep_custom_op_domains.push_back(domain);
-        } else {
-          LOGS_DEFAULT(WARNING) << "The custom op domain name "
-                                << domain->domain_ << " is already in the session option. Skip it.";
         }
       }
     }
@@ -616,35 +635,15 @@ Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep
     ORT_RETURN_IF_ERROR(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
 
     const auto domains_span = gsl::span<OrtCustomOpDomain*>(domains.data(), domains.size());
+    const auto existing_domains = gsl::span<OrtCustomOpDomain*>(ort_session_options.custom_op_domains_.data(),
+                                                                ort_session_options.custom_op_domains_.size());
     for (auto domain : domains_span) {
-      const bool has_custom_ops = !domain->custom_ops_.empty();
-      const bool domain_name_exists =
-          DoesDomainWithNameExist(domain->domain_, ort_session_options.custom_op_domains_);
-
-      // new domain + has ops => add it to session options.
-      if (!domain_name_exists && has_custom_ops) {
+      if (ShouldAddDomain(domain, existing_domains)) {
         ort_session_options.custom_op_domains_.push_back(domain);
-        continue;
       }
-
-      // Everything else is a skip; log a reason.
-      if (!has_custom_ops) {
-        if (domain_name_exists) {
-          LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain->domain_
-                                << "': domain already exists in session options and this domain "
-                                << "provides no custom ops.";
-        } else {
-          LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain->domain_
-                                << "': no custom ops provided.";
-        }
-        continue;
-      }
-
-      // has_custom_ops && domain_name_exists
-      LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain->domain_
-                            << "': domain already exists in session options.";
     }
   }
+
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
