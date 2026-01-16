@@ -1395,7 +1395,14 @@ bool OrtBatchNormalizationNodeGroupSelector::Check(const OrtGraph* graph, const 
                                                    const OrtNode* redundant_clip_node,
                                                    const std::vector<const OrtNode*>& dq_nodes,
                                                    const std::vector<const OrtNode*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, 3)) {
+  // BatchNormalization has 5 inputs: x, scale, bias, mean, var.
+  // Require DQ on x and scale (indices 0,1). mean, var may optionally have DQ.
+  const int num_dq_nodes = gsl::narrow_cast<int>(dq_nodes.size());
+  if (num_dq_nodes < 3 || num_dq_nodes > 5) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, num_dq_nodes)) {
     return false;
   }
 
