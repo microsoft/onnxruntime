@@ -4921,8 +4921,6 @@ TEST(CApiTest, TestSyncStreamOverride) {
 #endif
 #endif
 
-
-
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(CApiTest, GetEpGraphAssignmentInfo_NotEnabledError) {
   // Test that calling OrtApi::Session_GetEpGraphAssignmentInfo() without enabling the appropriate
@@ -4944,4 +4942,4 @@ TEST(CApiTest, GetEpGraphAssignmentInfo_NotEnabledError) {
     ASSERT_THAT(ex.what(), testing::HasSubstr(oss.str()));
   }
 }
-
+#endif

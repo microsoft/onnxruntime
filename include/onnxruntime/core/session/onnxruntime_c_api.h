@@ -7113,8 +7113,8 @@ struct OrtApi {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
-  
-/** \brief Sets OrtSyncStream for the run options
+
+  /** \brief Sets OrtSyncStream for the run options
    *
    * OrtSyncStream is used to synchronize the execution of the model run for the device
    * of the stream. It overrides the existing stream for the duration of the Run().
@@ -7126,7 +7126,6 @@ struct OrtApi {
    * \since 1.24
    */
   ORT_API_T(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
- 
 };
 
 /*
