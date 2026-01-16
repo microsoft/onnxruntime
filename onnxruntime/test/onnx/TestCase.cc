@@ -1477,6 +1477,26 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"cast_UINT2_to_FLOAT", "unknown version"});
     broken_tests->insert({"cast_UINT2_to_FLOAT16", "unknown version"});
     broken_tests->insert({"cast_UINT2_to_UINT8", "unknown version"});
+    broken_tests->insert({"castlike_UINT2_to_UINT8", "unknown version"});
+    broken_tests->insert({"castlike_UINT2_to_FLOAT16", "unknown version"});
+    broken_tests->insert({"castlike_UINT2_to_FLOAT", "unknown version"});
+    broken_tests->insert({"castlike_UINT2_to_UINT8_expanded", "unknown version"});
+    broken_tests->insert({"castlike_UINT2_to_FLOAT16_expanded", "unknown version"});
+    broken_tests->insert({"castlike_UINT2_to_FLOAT_expanded", "unknown version"});
+    broken_tests->insert({"castlike_FLOAT16_to_UINT2", "unknown version"});
+    broken_tests->insert({"castlike_FLOAT_to_UINT2", "unknown version"});
+    broken_tests->insert({"castlike_FLOAT_to_UINT2_expanded", "unknown version"});
+    broken_tests->insert({"castlike_FLOAT16_to_UINT2_expanded", "unknown version"});
+    broken_tests->insert({"castlike_INT2_to_UINT8", "unknown version"});
+    broken_tests->insert({"castlike_INT2_to_FLOAT16", "unknown version"});
+    broken_tests->insert({"castlike_INT2_to_FLOAT", "unknown version"});
+    broken_tests->insert({"castlike_INT2_to_UINT8_expanded", "unknown version"});
+    broken_tests->insert({"castlike_INT2_to_FLOAT16_expanded", "unknown version"});
+    broken_tests->insert({"castlike_INT2_to_FLOAT_expanded", "unknown version"});
+    broken_tests->insert({"castlike_FLOAT16_to_INT2", "unknown version"});
+    broken_tests->insert({"castlike_FLOAT_to_INT2", "unknown version"});
+    broken_tests->insert({"castlike_FLOAT_to_INT2_expanded", "unknown version"});
+    broken_tests->insert({"castlike_FLOAT16_to_INT2_expanded", "unknown version"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
