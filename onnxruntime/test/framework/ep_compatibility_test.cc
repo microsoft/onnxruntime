@@ -540,7 +540,7 @@ TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModel_InvalidArgs) {
   ASSERT_NE(api, nullptr);
 
   OrtAllocator* allocator = nullptr;
-  api->GetAllocatorWithDefaultOptions(&allocator);
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
   ASSERT_NE(allocator, nullptr);
 
   char* compat_info = nullptr;
@@ -581,7 +581,7 @@ TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModel_FileNotFound) {
   ASSERT_NE(api, nullptr);
 
   OrtAllocator* allocator = nullptr;
-  api->GetAllocatorWithDefaultOptions(&allocator);
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
   ASSERT_NE(allocator, nullptr);
 
   char* compat_info = nullptr;
@@ -596,7 +596,7 @@ TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_InvalidArgs) {
   ASSERT_NE(api, nullptr);
 
   OrtAllocator* allocator = nullptr;
-  api->GetAllocatorWithDefaultOptions(&allocator);
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
   ASSERT_NE(allocator, nullptr);
 
   char* compat_info = nullptr;
@@ -653,7 +653,7 @@ TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_InvalidModelDat
   ASSERT_NE(api, nullptr);
 
   OrtAllocator* allocator = nullptr;
-  api->GetAllocatorWithDefaultOptions(&allocator);
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
   ASSERT_NE(allocator, nullptr);
 
   char* compat_info = nullptr;
@@ -671,7 +671,7 @@ TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_WithMetadata) {
   ASSERT_NE(api, nullptr);
 
   OrtAllocator* allocator = nullptr;
-  api->GetAllocatorWithDefaultOptions(&allocator);
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
   ASSERT_NE(allocator, nullptr);
 
   // Create a minimal ModelProto with compatibility metadata
@@ -702,7 +702,7 @@ TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_WithMetadata) {
   ASSERT_EQ(st, nullptr) << (st ? api->GetErrorMessage(st) : "");
   ASSERT_NE(compat_info, nullptr);
   EXPECT_STREQ(compat_info, expected_compat_info.c_str());
-  api->AllocatorFree(allocator, compat_info);
+  ASSERT_EQ(api->AllocatorFree(allocator, compat_info), nullptr);
 }
 
 // Test when compatibility info is not found for the EP
@@ -711,7 +711,7 @@ TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_NotFound) {
   ASSERT_NE(api, nullptr);
 
   OrtAllocator* allocator = nullptr;
-  api->GetAllocatorWithDefaultOptions(&allocator);
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
   ASSERT_NE(allocator, nullptr);
 
   // Create a minimal ModelProto without compatibility metadata for our EP
