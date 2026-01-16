@@ -236,29 +236,6 @@ std::unique_ptr<ONNX_NAMESPACE::GraphProto> GradientBuilderBase::SubgraphGradien
 
   subgraph->SetGraphProtoSyncNeeded();
   subgraph->ToGraphProto();
-
-  // Add prefix to avoid name conflict
-  std::string prefix = subgraph->Name() + "_grad/";
-  std::unordered_set<std::string> orig_name;
-  for (auto& input : *subgraph_proto->mutable_input()) {
-    orig_name.insert(input.name());
-    if (!input.name().empty())
-      input.mutable_name()->insert(0, prefix);
-  }
-  for (auto& output : *subgraph_proto->mutable_output())
-    if (!output.name().empty())
-      output.mutable_name()->insert(0, prefix);
-  for (auto& node : *subgraph_proto->mutable_node()) {
-    for (auto& input : *node.mutable_input())
-      if (!input.empty() && (orig_name.find(input) != orig_name.end()))
-        input.insert(0, prefix);
-
-    for (auto& output : *node.mutable_output()) {
-      orig_name.insert(output);
-      if (!output.empty())
-        output.insert(0, prefix);
-    }
-  }
   return subgraph_proto;
 }
 

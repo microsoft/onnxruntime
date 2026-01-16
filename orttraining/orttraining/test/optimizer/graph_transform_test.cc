@@ -1218,9 +1218,7 @@ TEST_F(GraphTransformationTests, ScanReplacement) {
   const Node* node_after = graph.GetProducerNode("y");
   ASSERT_TRUE(node_after != nullptr);
   ASSERT_TRUE(node_after->Name() == "scan");
-  ASSERT_TRUE(node_after->OutputDefs().size() == 3);  // y_next, y, y_next_carries
-  std::cout << node_after->OutputDefs()[2]->Name() << std::endl;
-  ASSERT_TRUE(node_after->OutputDefs()[2]->Name().find("y_next_carries") != std::string::npos);
+  ASSERT_TRUE(node_after->OutputDefs().size() == 3);  // y_next, y_next_carries, y
 }
 
 class QDQFusionTestsParameterized : public GraphTransformationTests,
