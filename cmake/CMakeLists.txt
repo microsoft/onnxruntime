@@ -46,6 +46,10 @@ endif()
 if (MSVC)
   #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+
+  # Prevents CMake from injecting '#pragma system_header', which results in warnings being disabled in projects that
+  # use precompiled headers.
+  set(CMAKE_PCH_PROLOGUE "")
 endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
