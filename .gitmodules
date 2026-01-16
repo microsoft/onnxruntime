@@ -8,3 +8,9 @@
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
 	branch = 4.0.21
+[submodule "onnxruntime/test/ep_validation_tool/winml/external/json"]
+	path = onnxruntime/test/ep_validation_tool/winml/external/json
+	url = https://github.com/nlohmann/json.git
+[submodule "onnxruntime/test/ep_validation_tool/winml/external/libnpy"]
+	path = onnxruntime/test/ep_validation_tool/winml/external/libnpy
+	url = https://github.com/matajoh/libnpy.git
