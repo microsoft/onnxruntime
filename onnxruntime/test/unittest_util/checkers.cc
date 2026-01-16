@@ -9,6 +9,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
 #include "core/framework/float4.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/unittest_util/conversion.h"
@@ -254,6 +255,44 @@ struct TensorCheck<UInt4x2> {
     for (size_t i = 0; i < size; ++i) {
       size_t r = i >> 1;
       size_t c = i & 0x1;
+      EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
+    }
+  }
+};
+
+template <>
+struct TensorCheck<Int2x4> {
+  void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
+                  const std::string& /*provider_type*/) const {
+    ORT_UNUSED_PARAMETER(params);
+    const Int2x4* cur_expected;
+    const Int2x4* cur_actual;
+    const auto size = narrow<size_t>(actual.Shape().Size());
+    cur_expected = expected.Data<Int2x4>();
+    cur_actual = actual.Data<Int2x4>();
+
+    for (size_t i = 0; i < size; ++i) {
+      size_t r = i >> 2;
+      size_t c = i & 0x3;
+      EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
+    }
+  }
+};
+
+template <>
+struct TensorCheck<UInt2x4> {
+  void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
+                  const std::string& /*provider_type*/) const {
+    ORT_UNUSED_PARAMETER(params);
+    const UInt2x4* cur_expected;
+    const UInt2x4* cur_actual;
+    const auto size = narrow<size_t>(actual.Shape().Size());
+    cur_expected = expected.Data<UInt2x4>();
+    cur_actual = actual.Data<UInt2x4>();
+
+    for (size_t i = 0; i < size; ++i) {
+      size_t r = i >> 2;
+      size_t c = i & 0x3;
       EXPECT_EQ(cur_expected[r].GetElem(c), cur_actual[r].GetElem(c)) << "i:" << i;
     }
   }
@@ -536,7 +575,7 @@ void Check<Tensor>(std::string_view name, const OrtValue& expected, const Tensor
 
   utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t,
                               int8_t, int16_t, int32_t, int64_t, std::string,
-                              Int4x2, UInt4x2,
+                              Int4x2, UInt4x2, Int2x4, UInt2x4,
 #if !defined(DISABLE_FLOAT8_TYPES)
                               Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ,
 #endif
