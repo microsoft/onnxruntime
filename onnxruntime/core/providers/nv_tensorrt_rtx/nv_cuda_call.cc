@@ -141,5 +141,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
 
 template Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
+template Status CudaCall<CUresult, false>(CUresult retCode, const char* exprString, const char* libName, CUresult successCode, const char* msg, const char* file, const int line);
+template void CudaCall<CUresult, true>(CUresult retCode, const char* exprString, const char* libName, CUresult successCode, const char* msg, const char* file, const int line);
 
 }  // namespace onnxruntime

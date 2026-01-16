@@ -959,8 +959,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
       device_id_(info.device_id) {
   InitProviderOrtApi();
 
-  // TODO(maximlianm) remove this since we should be able to compile an AOT context file without GPU
-
   if (!info.has_user_compute_stream) {
     // If the app is passing in a compute stream, it already has initialized cuda and created a context.
     // Calling cudaSetDevice() will set the default context in the current thread
