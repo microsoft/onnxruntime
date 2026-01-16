@@ -597,6 +597,7 @@ set (onnxruntime_shared_lib_test_SRC
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_builder_api.cc)
+  list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_env_creation.cc)
 endif()
 
 if(onnxruntime_RUN_ONNX_TESTS)
@@ -1043,6 +1044,10 @@ if (MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
 
+  # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+  # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd4702")
+
   # Avoid this compile error in graph_transform_test.cc and qdq_transformer_test.cc:
   # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
   set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
@@ -1124,7 +1129,7 @@ onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.pr
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
-onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
+onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto ${PROTOBUF_LIB})
 if (MSVC)
     # Cutlass code has an issue with the following:
     # warning C4100: 'magic': unreferenced formal parameter
@@ -1227,6 +1232,16 @@ block()
     LIBS ${onnxruntime_provider_test_libs}
     DEPENDS ${onnxruntime_provider_test_deps}
   )
+
+  # Expose QNN SDK headers to unit tests via an interface target 
+  if(onnxruntime_USE_QNN)
+    add_library(qnn_sdk_headers_include INTERFACE)
+    target_include_directories(qnn_sdk_headers_include INTERFACE
+      ${onnxruntime_QNN_HOME}/include
+      ${onnxruntime_QNN_HOME}/include/QNN)
+    target_link_libraries(onnxruntime_provider_test PRIVATE qnn_sdk_headers_include)
+  endif()
+  
   if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
     # The test_main.cc includes NvInfer.h where it has many deprecated declarations
     # simply ignore them for TensorRT EP build
@@ -1235,6 +1250,13 @@ block()
 
   # enable dynamic plugin EP usage
   target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+
+
+  if (MSVC)
+    # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachabel code.
+    # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
+    target_compile_options(onnxruntime_provider_test PRIVATE "/wd4702")
+  endif()
 
   # TODO fix shorten-64-to-32 warnings
   # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
@@ -2112,8 +2134,14 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/squeeze.cc"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/relu.h"
           "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/relu.cc"
-          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/mul.h"
-          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/mul.cc")
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/binary_op.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/scan.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/scan.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/loop.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/loop.cc"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/if.h"
+          "${TEST_SRC_DIR}/autoep/library/example_plugin_ep_kernel_registry/kernels/if.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep_kernel_registry ${onnxruntime_autoep_test_example_plugin_ep_kernel_registry_src})
   target_include_directories(example_plugin_ep_kernel_registry PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
   target_link_libraries(example_plugin_ep_kernel_registry PRIVATE onnxruntime ${GSL_TARGET})

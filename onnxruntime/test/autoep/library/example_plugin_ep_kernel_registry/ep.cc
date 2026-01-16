@@ -14,12 +14,13 @@
 #include "ep_factory.h"
 #include "../plugin_ep_utils.h"
 
-ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const OrtLogger& logger)
+ExampleKernelEp::ExampleKernelEp(ExampleKernelEpFactory& factory, const Config& config, const OrtLogger& logger)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       factory_{factory},
       ort_api_{factory.GetOrtApi()},
       ep_api_{factory.GetEpApi()},
       name_{factory.GetEpName()},
+      config_{config},
       logger_{logger} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
 
@@ -65,12 +66,12 @@ OrtStatus* ORT_API_CALL ExampleKernelEp::GetCapabilityImpl(OrtEp* this_ptr, cons
     for (const auto& node : all_nodes) {
       std::string op_type = node.GetOperatorType();
 
-      if (op_type == "Relu" || op_type == "Squeeze") {
+      if (op_type == "Relu" || op_type == "Squeeze" || op_type == "If" || op_type == "Loop" || op_type == "Scan") {
         candidate_nodes.push_back(node);
-      } else if (op_type == "Mul") {
+      } else if (op_type == "Mul" || op_type == "Sub") {
         std::vector<Ort::ConstValueInfo> inputs = node.GetInputs();
 
-        // Note: ONNX shape inference should ensure Mul has two inputs.
+        // Note: ONNX shape inference should ensure Mul/Sub has two inputs.
         std::optional<std::vector<int64_t>> input_0_shape = GetTensorShape(inputs[0]);
         std::optional<std::vector<int64_t>> input_1_shape = GetTensorShape(inputs[1]);
 

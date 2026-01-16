@@ -237,6 +237,20 @@ inline const OrtCompileApi& GetCompileApi() {
 }
 
 /// <summary>
+/// This returns a reference to the ORT C Interop API. Used for external resource import with EPs.
+/// </summary>
+/// <returns>ORT C Interop API reference</returns>
+inline const OrtInteropApi& GetInteropApi() {
+  auto* api = GetApi().GetInteropApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("Interop API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
+/// <summary>
 /// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
 /// </summary>
 /// <returns>ORT C EP API reference</returns>
@@ -1150,6 +1164,39 @@ OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
     const std::vector<ConstEpDevice>& ep_devices,
     const char* compatibility_info);
 
+namespace detail {
+template <typename T>
+struct EpAssignedNodeImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  std::string GetName() const;
+  std::string GetDomain() const;
+  std::string GetOperatorType() const;
+};
+}  // namespace detail
+
+/** \brief Constant wrapper around ::OrtEpAssignedNode
+ * \remarks EpAssignedNode is always read-only for ORT API users.
+ */
+using ConstEpAssignedNode = detail::EpAssignedNodeImpl<Ort::detail::Unowned<const OrtEpAssignedNode>>;
+
+namespace detail {
+template <typename T>
+struct EpAssignedSubgraphImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  std::string GetEpName() const;
+  std::vector<ConstEpAssignedNode> GetNodes() const;
+};
+}  // namespace detail
+
+/** \brief Constant wrapper around ::OrtEpAssignedSubgraph
+ * \remarks EpAssignedSubgraph is always read-only for ORT API users.
+ */
+using ConstEpAssignedSubgraph = detail::EpAssignedSubgraphImpl<Ort::detail::Unowned<const OrtEpAssignedSubgraph>>;
+
 /** \brief The Env (Environment)
  *
  * The Env holds the logging state used by all other objects.
@@ -1170,6 +1217,9 @@ struct Env : detail::Base<OrtEnv> {
   /// \brief Wraps OrtApi::CreateEnvWithCustomLoggerAndGlobalThreadPools
   Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
       OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+
+  /// \brief Wraps OrtApi::CreateEnvWithOptions
+  explicit Env(const OrtEnvCreationOptions* options);
 
   /// \brief C Interop Helper
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
@@ -1610,6 +1660,7 @@ struct ConstSessionImpl : Base<T> {
   std::vector<ConstMemoryInfo> GetMemoryInfoForInputs() const;   ///< Wrapper for OrtApi::SessionGetMemoryInfoForInputs
   std::vector<ConstMemoryInfo> GetMemoryInfoForOutputs() const;  ///< Wrapper for OrtApi::SessionGetMemoryInfoForOutputs
   std::vector<ConstEpDevice> GetEpDeviceForInputs() const;       ///< Wrapper for OrtApi::SessionGetEpDeviceForInputs
+  std::vector<ConstEpDevice> GetEpDeviceForOutputs() const;      ///< Wrapper for OrtApi::SessionGetEpDeviceForOutputs
 
   /** \brief Returns a copy of input name at the specified index.
    *
@@ -1647,9 +1698,14 @@ struct ConstSessionImpl : Base<T> {
 
   int GetOpset(const std::string& domain) const;  ///< Wraps OrtApi::SessionGetOpsetForDomain
 
-  // Will move before checkin if that's the case.
   std::vector<ValueInfo> GetInputs() const;
   std::vector<ValueInfo> GetOutputs() const;
+
+  /** \brief Returns information on the subgraph/nodes assigned to execution providers in the session.
+   *
+   * \return A list of ConstEpAssignedSubgraph instances.
+   */
+  std::vector<ConstEpAssignedSubgraph> GetEpGraphAssignmentInfo() const;
 };
 
 template <typename T>
@@ -2782,6 +2838,11 @@ struct KernelInfoImpl : Base<T> {
   Logger GetLogger() const;
 
   KeyValuePairs GetConfigEntries() const;
+
+  std::string GetOperatorDomain() const;  ///< Wraps OrtApi::KernelInfo_GetOperatorDomain
+  std::string GetOperatorType() const;    ///< Wraps OrtApi::KernelInfo_GetOperatorType
+  int GetOperatorSinceVersion() const;    ///< Wraps OrtApi::KernelInfo_GetOperatorSinceVersion
+  const OrtEp* GetEp() const;             ///< Wraps OrtEpApi::KernelInfo_GetEp
 };
 
 }  // namespace detail
@@ -3411,5 +3472,8 @@ struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
  */
 using UnownedSharedPrePackedWeightCache =
     detail::SharedPrePackedWeightCacheImpl<Ort::detail::Unowned<OrtSharedPrePackedWeightCache>>;
+
+///< Wraps OrtEpApi::GetEnvConfigEntries()
+Ort::KeyValuePairs GetEnvConfigEntries();
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

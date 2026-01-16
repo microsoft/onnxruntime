@@ -105,4 +105,18 @@ ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
                     _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
                     _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
                     _In_ size_t num_buffers);
+
+// KernelInfo
+ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
+
+// Control flow kernel APIs
+ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out);
+ORT_API_STATUS_IMPL(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtLoopKernelHelper* helper,
+                    _Outptr_ OrtKernelImpl** kernel_out);
+ORT_API_STATUS_IMPL(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtScanKernelHelper* helper,
+                    _Outptr_ OrtKernelImpl** kernel_out);
+ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl);
+
+// Env config entries
+ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
 }  // namespace OrtExecutionProviderApi

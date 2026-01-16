@@ -268,7 +268,17 @@ class WebGpuContext final {
                       std::string_view cache_key,
                       const std::vector<ProgramInput>& inputs,
                       const std::vector<ProgramOutput>& outputs)
-        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs} {}
+        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key} {
+      // Store shape information instead of tensor pointers to avoid accessing released tensors
+      input_shapes.reserve(inputs.size());
+      for (const auto& input : inputs) {
+        input_shapes.emplace_back(input.use_override_shape ? input.override_shape : input.tensor->Shape());
+      }
+      output_shapes.reserve(outputs.size());
+      for (const auto& output : outputs) {
+        output_shapes.emplace_back(output.use_override_shape ? output.override_shape : output.tensor->Shape());
+      }
+    }
 
     PendingKernelInfo(PendingKernelInfo&&) = default;
     PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
@@ -276,8 +286,8 @@ class WebGpuContext final {
 
     std::string name;
     std::string cache_key;
-    std::vector<ProgramInput> inputs;
-    std::vector<ProgramOutput> outputs;
+    std::vector<TensorShape> input_shapes;
+    std::vector<TensorShape> output_shapes;
   };
 
   struct PendingQueryInfo {

@@ -1126,6 +1126,16 @@ MlasEltwiseAdd(
     size_t N
     );
 
+template <typename T>
+void
+MLASCALL
+MlasEltwiseMul(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
+    );
+
 template<typename T>
 void
 MLASCALL
@@ -2116,7 +2126,7 @@ MlasFlashAttention(
     MLAS_THREADPOOL* ThreadPool
 );
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
 /**
  * @brief Function to override the packing mechanism decision if kleidi ai is included
  * @param enable     enable kleidiai packing (allow or disallow depending on true/false)
