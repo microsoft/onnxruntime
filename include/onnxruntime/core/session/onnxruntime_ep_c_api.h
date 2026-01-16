@@ -43,11 +43,9 @@ ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
  * \since Version 1.24.
  */
 struct OrtExternalMemoryHandle {
-  uint32_t version;                         ///< Must be ORT_API_VERSION
-  const OrtEpDevice* ep_device;             ///< EP device that created this handle
-  OrtExternalMemoryHandleType handle_type;  ///< Original handle type for tracking
-  size_t size_bytes;                        ///< Size of the imported memory
-  size_t offset_bytes;                      ///< Offset into the imported memory
+  uint32_t version;                        ///< Must be ORT_API_VERSION
+  const OrtEpDevice* ep_device;            ///< EP device that created this handle
+  OrtExternalMemoryDescriptor descriptor;  ///< External memory descriptor
 
   /** \brief Release callback for this handle. EP sets this to its release function.
    *
@@ -72,9 +70,9 @@ struct OrtExternalMemoryHandle {
  * \since Version 1.24.
  */
 struct OrtExternalSemaphoreHandle {
-  uint32_t version;               ///< Must be ORT_API_VERSION
-  const OrtEpDevice* ep_device;   ///< EP device that created this handle
-  OrtExternalSemaphoreType type;  ///< Original semaphore type
+  uint32_t version;                           ///< Must be ORT_API_VERSION
+  const OrtEpDevice* ep_device;               ///< EP device that created this handle
+  OrtExternalSemaphoreDescriptor descriptor;  ///< External semaphore descriptor
 
   /** \brief Release callback for this handle. EP sets this to its release function.
    *
