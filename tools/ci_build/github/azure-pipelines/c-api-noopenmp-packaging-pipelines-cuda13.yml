@@ -85,6 +85,8 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    settings:
+      networkIsolationPolicy: Permissive
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
@@ -133,8 +135,8 @@ extends:
         win_cuda_home: ${{ variables.win_cuda_home }}
         DoEsrp: true
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-        buildJava: false
-        buildNodejs: false
+        buildJava: true
+        buildNodejs: true
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
