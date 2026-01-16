@@ -19,6 +19,10 @@
 namespace onnxruntime {
 namespace qnn {
 
+// Forward declarations
+class QnnModelWrapper;
+class BF16ConversionGuard;
+
 // Stores information about an ONNX input or output tensor.
 // Filled out by QnnModelWrapper::GetTensorInfo()
 struct TensorInfo {
@@ -32,9 +36,13 @@ struct TensorInfo {
 struct ModelSettings {
   bool offload_graph_io_quantization = false;
   bool htp_shared_memory = false;
+  bool htp_bf16_enable = false;
 };
 
 class QnnModelWrapper {
+  // Allow BF16ConversionGuard to access private RestoreFP32AfterValidation method
+  friend class BF16ConversionGuard;
+
  public:
   QnnModelWrapper(const GraphViewer& graph_viewer,
                   const logging::Logger& logger,
@@ -237,7 +245,8 @@ class QnnModelWrapper {
   }
 
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                               std::vector<uint8_t>& unpacked_tensor) const;
+                               std::vector<uint8_t>& unpacked_tensor,
+                               const bool unpack_4_bit_to_8_bit = true) const;
 
   QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 
@@ -323,6 +332,36 @@ class QnnModelWrapper {
   void GetGraphInputOutputTensorWrapper(const std::vector<std::string>& names,
                                         std::vector<QnnTensorWrapper>& wrappers_list);
 
+  // BF16 conversion helper methods
+  bool IsBF16ConversionEnabled() const {
+    return model_settings_.htp_bf16_enable &&
+           (qnn_backend_type_ == QnnBackendType::HTP || qnn_backend_type_ == QnnBackendType::SERIALIZER);
+  }
+
+  bool ProcessBF16InputConversion(const std::string& qnn_node_name,
+                                  const std::vector<std::string>& input_names,
+                                  std::vector<std::string>& converted_input_names,
+                                  std::vector<QnnOpProperty>& cast_ops_to_add);
+
+  bool ProcessBF16OutputConversion(const std::string& qnn_node_name,
+                                   const std::vector<std::string>& output_names,
+                                   std::vector<std::string>& converted_output_names,
+                                   std::vector<std::pair<std::string, std::string>>& graph_output_cast_ops);
+
+  bool ApplyBF16ConversionForValidation(const std::vector<std::string>& input_names,
+                                        const std::vector<std::string>& output_names,
+                                        std::vector<std::string>& validation_input_names,
+                                        std::vector<std::string>& validation_output_names);
+
+  void RestoreFP32AfterValidation(const std::vector<std::string>& input_names,
+                                  const std::vector<std::string>& output_names);
+
+  bool CreateBF16CastTensor(const std::string& tensor_name,
+                            const std::vector<uint32_t>& shape,
+                            Qnn_TensorType_t tensor_type);
+
+  bool ProcessBF16Conversions(std::vector<QnnOpProperty>& final_ops);
+
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
@@ -397,6 +436,41 @@ inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
   qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
   return Status::OK();
 }
+
+// RAII guard to ensure FP32 restoration after BF16 conversion for validation
+class BF16ConversionGuard {
+ public:
+  BF16ConversionGuard(QnnModelWrapper* wrapper,
+                      const std::vector<std::string>& input_names,
+                      const std::vector<std::string>& output_names)
+      : wrapper_(wrapper),
+        input_names_(input_names),
+        output_names_(output_names) {}
+
+  ~BF16ConversionGuard() {
+    if (wrapper_) {
+      try {
+        wrapper_->RestoreFP32AfterValidation(input_names_, output_names_);
+      } catch (...) {
+        // Destructors must not throw exceptions
+        // Silently catch any exceptions during cleanup
+      }
+    }
+  }
+
+  // Prevent copying
+  BF16ConversionGuard(const BF16ConversionGuard&) = delete;
+  BF16ConversionGuard& operator=(const BF16ConversionGuard&) = delete;
+
+  // Prevent moving to avoid double-cleanup issues
+  BF16ConversionGuard(BF16ConversionGuard&&) = delete;
+  BF16ConversionGuard& operator=(BF16ConversionGuard&&) = delete;
+
+ private:
+  QnnModelWrapper* wrapper_;
+  std::vector<std::string> input_names_;   // Store by value, not reference
+  std::vector<std::string> output_names_;  // Store by value, not reference
+};
 
 }  // namespace qnn
 }  // namespace onnxruntime

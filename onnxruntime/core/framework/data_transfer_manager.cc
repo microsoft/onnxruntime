@@ -54,12 +54,9 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
     return data_transfer->CopyTensor(src, dst);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME,
-                         FAIL,
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                          "There's no data transfer registered for copying tensors from ",
-                         src.Location().device.ToString(),
-                         " to ",
-                         dst.Location().device.ToString());
+                         src.Location().device.ToString(), " to ", dst.Location().device.ToString());
 }
 
 Status DataTransferManager::CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const {
@@ -75,12 +72,9 @@ Status DataTransferManager::CopyTensorAsync(const Tensor& src, Tensor& dst, Stre
     return data_transfer->CopyTensorAsync(src, dst, stream);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME,
-                         FAIL,
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                          "There's no data transfer registered for copying tensors from ",
-                         src.Location().device.ToString(),
-                         " to ",
-                         dst.Location().device.ToString());
+                         src.Location().device.ToString(), " to ", dst.Location().device.ToString());
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -97,12 +91,9 @@ Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTens
     return src.Copy(*data_transfer, dst);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME,
-                         FAIL,
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                          "There's no data transfer registered for copying tensors from ",
-                         src.Location().device.ToString(),
-                         " to ",
-                         dst.Location().device.ToString());
+                         src.Location().device.ToString(), " to ", dst.Location().device.ToString());
 }
 #endif
 
@@ -130,12 +121,17 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
   }
 
   if (first_dt == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME,
-                           FAIL,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "There's no data transfer registered for copying tensors from ",
-                           src_device.ToString(),
-                           " to ",
-                           dst_device.ToString());
+                           src_device.ToString(), " to ", dst_device.ToString());
+  }
+
+  for (const auto& pair : src_dst_pairs) {
+    const auto& src_shape = pair.src.get().Shape();
+    const auto& dst_shape = pair.dst.get().Shape();
+    if (src_shape.Size() != dst_shape.Size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Tensor size mismatch. src:", src_shape, " dst:", dst_shape);
+    }
   }
 
   // all copies are between the same devices so we can do them all at once
@@ -148,11 +144,13 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
   // batch as much as possible.
 
   // copy the first one as we already did the IDataTransfer lookup
-  ORT_RETURN_IF_ERROR(first_pair.src_stream ? first_dt->CopyTensorAsync(first_pair.src.get(), first_pair.dst.get(), *(first_pair.src_stream))
+  ORT_RETURN_IF_ERROR(first_pair.src_stream ? first_dt->CopyTensorAsync(first_pair.src.get(), first_pair.dst.get(),
+                                                                        *(first_pair.src_stream))
                                             : first_dt->CopyTensor(first_pair.src.get(), first_pair.dst.get()));
 
   for (auto cur_pair = src_dst_pairs.cbegin() + 1, end_pair = src_dst_pairs.cend(); cur_pair != end_pair; ++cur_pair) {
-    ORT_RETURN_IF_ERROR(!cur_pair->src_stream ? CopyTensor(cur_pair->src, cur_pair->dst) : CopyTensorAsync(cur_pair->src, cur_pair->dst, *(cur_pair->src_stream)));
+    ORT_RETURN_IF_ERROR(!cur_pair->src_stream ? CopyTensor(cur_pair->src, cur_pair->dst)
+                                              : CopyTensorAsync(cur_pair->src, cur_pair->dst, *(cur_pair->src_stream)));
   }
 
   return Status::OK();
@@ -183,12 +181,9 @@ common::Status DataTransferManager::CopySparseTensors(const std::vector<IDataTra
   }
 
   if (first_dt == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME,
-                           FAIL,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "There's no data transfer registered for copying tensors from ",
-                           src_device.ToString(),
-                           " to ",
-                           dst_device.ToString());
+                           src_device.ToString(), " to ", dst_device.ToString());
   }
 
   // all copies are between the same devices so we can do them all at once

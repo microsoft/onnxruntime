@@ -96,15 +96,15 @@ BackendManager::BackendManager(SessionContext& session_context,
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
-    if (!session_context_.reshape.empty()) {
+    if (!session_context_.reshape.empty() && !subgraph_context_.is_ep_ctx_ovir_encapsulated) {
       std::string exception_str =
           "[OpenVINO-EP] Bounded dynamic model execution using provider option reshape_input is not supported for OVEP EPContext model";
       ORT_THROW(exception_str);
     }
     if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
-      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.onnx_model_path_name.replace_extension("xml").string(), subgraph);
+      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.onnx_model_path_name.replace_extension("xml").string(), subgraph, session_context_.device_type);
     } else {
-      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
+      model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph, session_context_.device_type);
     }
 
   } else {
@@ -231,21 +231,8 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
   const auto& graph_inputs = subgraph.GetInputs();
 
-  // First validate shapes if provided by user
-  bool shapes_valid = true;
-  if (!session_context_.reshape.empty()) {
-    try {
-      ValidateInputShapes(session_context_.reshape, graph_inputs);
-    } catch (const std::exception& e) {
-      LOGS_DEFAULT(ERROR) << "[OpenVINO-EP] Shape validation failed: " << e.what();
-      session_context_.reshape.clear();  // Clear the shape map as it's invalid
-      shapes_valid = false;
-    }
-  }
-
   // Count dynamic inputs and check if reshape covers all of them
   size_t dynamic_input_count = 0;
-  bool all_dynamic_inputs_covered = true;
 
   for (const auto* input : graph_inputs) {
     // Skip dangling inputs (no consumers)
@@ -273,14 +260,6 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
     // If dynamic, count it and check if reshape covers it
     if (has_dynamic_dim) {
       dynamic_input_count++;
-
-      // Check if this dynamic input is covered by reshape input
-      if (!session_context_.reshape.empty() &&
-          session_context_.reshape.find(input->Name()) == session_context_.reshape.end()) {
-        all_dynamic_inputs_covered = false;
-        LOGS_DEFAULT(WARNING) << "[OpenVINO-EP] reshape_input is provided but doesn't cover dynamic input: "
-                              << input->Name();
-      }
     }
   }
 
@@ -289,23 +268,8 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
   // Early return if no reshape input provided
   if (session_context_.reshape.empty()) {
     return has_symbolic_dims;  // Return based on whether model has symbolic dims
-  }
-
-  // For dynamic models with incomplete reshape coverage, clear shapes
-  if (has_symbolic_dims && !all_dynamic_inputs_covered) {
-    session_context_.reshape.clear();
-    LOGS_DEFAULT(WARNING) << "reshape_input does not cover all dynamic dimensions, "
-                          << "ignoring all provided shapes";
-    return true;  // Model is dynamic
-  }
-
-  // If shapes are valid with complete coverage for dynamic model, treat as concrete
-  if (has_symbolic_dims && shapes_valid && all_dynamic_inputs_covered) {
-    LOGS_DEFAULT(INFO) << "All dynamic dimensions successfully covered by reshape_input";
-    return false;  // Model is now effectively static with concrete shapes
-  }
-
-  return has_symbolic_dims;  // Return dynamic status based on symbolic dimensions
+  } else
+    return false;
 }
 
 // Check to see if the graph is QDQ
@@ -383,12 +347,12 @@ static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& on
 
 // this is a helper function to set the data fields, it duplicates ExternalDataInfo::SetExternalLocationToProto
 // but we cannot use that function as it is not part of public provider api.
-static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto* proto_init, const void* data_ptr, int64_t data_size) {
+static void SetExternalDataFields(ONNX_NAMESPACE::TensorProto& proto_init, const void* data_ptr, int64_t data_size) {
   static constexpr const char* ORT_INTERNAL_MEM_INITIALIZER = "*/_ORT_MEM_ADDR_/*";
-  auto* external_data = proto_init->mutable_external_data();
+  auto* external_data = proto_init.mutable_external_data();
   bool found_location = false, found_offset = false, found_length = false;
   const int ext_data_size = external_data->size();
-  proto_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  proto_init.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
 
   for (int j = 0; j < ext_data_size; ++j) {
     auto& ext_entry = external_data->at(j);
@@ -576,11 +540,15 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
         if (it == proto_initializer_map.end())
           continue;
 
-        auto* proto_init = it->second;
+        if (!it->second) {
+          ORT_THROW(name + " proto initializer is null!");
+        }
+
+        auto& proto_init = *it->second;
 
         // If the proto initializer is missing data, fill it in
-        if (!proto_init->has_raw_data() && src_init->has_raw_data()) {
-          *proto_init->mutable_raw_data() = src_init->raw_data();
+        if (!proto_init.has_raw_data() && src_init->has_raw_data()) {
+          *(proto_init.mutable_raw_data()) = src_init->raw_data();
         }
 
         // Only set in-memory external_data fields if the data is in memory
@@ -589,10 +557,11 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                 << src_init->name()
                                 << ", data_type: " << src_init->data_type()
                                 << ", raw_data size: " << src_init->raw_data().size();
-          if (src_init->raw_data().size() > 0)
+          if (src_init->raw_data().size() > 0) {
             SetExternalDataFields(proto_init, src_init->raw_data().data(), src_init->raw_data().size());
-          else
+          } else {
             LOGS(logger, VERBOSE) << "Initializer has empty raw_data: skipping initializer '" << src_init->name() << "'...";
+          }
         } else if (onnxruntime::utils::HasExternalDataInMemory(*src_init)) {
           auto it_ext = external_initializers_offset_and_length.find(name);
           if (it_ext == external_initializers_offset_and_length.end()) {
@@ -688,40 +657,6 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
     g_in_shape->mutable_dim(0)->set_dim_value(1);
   }
   return model_copy;
-}
-
-void BackendManager::ValidateInputShapes(const reshape_t& shapes,
-                                         const std::vector<const NodeArg*>& graph_inputs) const {
-  for (const auto& [tensor_name, requested_shape] : shapes) {
-    // Find matching input in graph
-    const NodeArg* graph_input = nullptr;
-    for (const auto* input : graph_inputs) {
-      if (input->Name() == tensor_name) {
-        graph_input = input;
-        break;
-      }
-    }
-
-    if (!graph_input) {
-      ORT_THROW("Input '" + tensor_name + "' specified in reshape_input does not exist in the graph");
-    }
-
-    const ONNX_NAMESPACE::TensorShapeProto* graph_shape = graph_input->Shape();
-    if (!graph_shape) {
-      ORT_THROW("Graph input '" + tensor_name + "' has no shape information");
-    }
-
-    // Check dimensions count matches
-    size_t graph_dim_count = graph_shape->dim_size();
-    size_t requested_dim_count = requested_shape.get_max_shape().size();
-
-    if (graph_dim_count != requested_dim_count) {
-      ORT_THROW("Dimensions mismatch for input '" + tensor_name +
-                "': graph expects " + std::to_string(graph_dim_count) +
-                " dimensions but reshape_input specifies " +
-                std::to_string(requested_dim_count) + " dimensions");
-    }
-  }
 }
 
 void BackendManager::Compute(OrtKernelContext* context) {
@@ -841,6 +776,12 @@ void BackendManager::ShutdownBackendManager() {
 void BackendManager::RewindKVCache(size_t index) {
   if (concrete_backend_) {
     concrete_backend_->RewindKVCache(index);
+  }
+}
+
+void BackendManager::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+  if (concrete_backend_) {
+    concrete_backend_->ReorderKVCache(src_indices, dst_indices);
   }
 }
 

@@ -34,11 +34,16 @@ class QnnQuantParamsWrapper {
   QnnQuantParamsWrapper(gsl::span<const float> per_channel_float_scales, gsl::span<const uint8_t> per_block_int_scales,
                         gsl::span<const int32_t> offsets, int64_t axis, int64_t block_size, bool is_int4);
 
+  // Construct a BQ quantization param.
+  QnnQuantParamsWrapper(
+      gsl::span<const float> scales, gsl::span<const int32_t> offsets,
+      gsl::span<const uint32_t> block_size, Qnn_DataType_t tensor_data_type);
+
   Qnn_QuantizeParams_t& Get() { return params_; }
   const Qnn_QuantizeParams_t& Get() const { return params_; }
 
   // Initialize this object from a raw Qnn_QuantizeParam_t object.
-  Status Init(const Qnn_QuantizeParams_t& params, const size_t lpbq_num_scaleoffsets = 0);
+  Status Init(const Qnn_QuantizeParams_t& params, const size_t num_scaleoffsets = 0, const size_t tensor_rank = 0);
 
   // Initialize this object from a (potentially) quantized ONNX tensor.
   // QnnModelWrapper provides utilities for unpacking scale and zero-point ONNX initializers.
@@ -65,6 +70,11 @@ class QnnQuantParamsWrapper {
   bool IsLPBQ() const {
     return params_.encodingDefinition == QNN_DEFINITION_DEFINED &&
            (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCKWISE_EXPANSION);
+  }
+
+  bool IsBlockQuantized() const {
+    return params_.encodingDefinition == QNN_DEFINITION_DEFINED &&
+           (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BLOCK);
   }
 
   // Get a copy of scales. Works for both per-tensor and per-channel.
@@ -163,6 +173,12 @@ class QnnQuantParamsWrapper {
   uint32_t per_channel_scales_size_;
   std::unique_ptr<uint8_t[]> block_scales_data_;
   std::unique_ptr<char[]> blockwise_expansion_data_;
+
+  // Stores BlockEncoding axis and scale offset data
+  uint32_t block_encoding_tensor_rank_ = 0;
+  uint32_t num_blocks_ = 0;
+  std::unique_ptr<uint32_t[]> block_encoding_axis_data_;
+  std::unique_ptr<Qnn_ScaleOffset_t[]> block_encoding_scale_offsets_data_;
 };
 
 }  // namespace qnn
