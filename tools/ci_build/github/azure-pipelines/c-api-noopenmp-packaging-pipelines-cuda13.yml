@@ -133,8 +133,8 @@ extends:
         win_cuda_home: ${{ variables.win_cuda_home }}
         DoEsrp: true
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-        buildJava: true
-        buildNodejs: true
+        buildJava: false
+        buildNodejs: false
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
