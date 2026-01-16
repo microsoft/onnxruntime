@@ -18,6 +18,7 @@ class IBackend {
   virtual ov::CompiledModel GetOVCompiledModel() = 0;
   virtual ~IBackend() = default;
   virtual void RewindKVCache(size_t index) {}
+  virtual void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {}
 };
 using ptr_stream_t = std::unique_ptr<ModelBlobWrapper>;
 class BackendFactory {
