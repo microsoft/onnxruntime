@@ -644,9 +644,8 @@ Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep
       LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain->domain_
                             << "': domain already exists in session options.";
     }
-
-    return Status::OK();
   }
+  return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace onnxruntime
