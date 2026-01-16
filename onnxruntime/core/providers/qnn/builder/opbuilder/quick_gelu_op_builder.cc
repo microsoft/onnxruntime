@@ -34,7 +34,7 @@ Status QuickGeluOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   const std::string& output_name = outputs[0].node_arg.Name();
 
   NodeAttrHelper node_helper(node_unit);
-  float alpha = node_helper.Get("alpha", 1.0f);
+  float alpha = node_helper.Get("alpha", 1.702f);
 
   TensorInfo input_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
