@@ -16,7 +16,7 @@
 #include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x32p2vlx1_x32p_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme.h"
-#if(ENABLE_QMX_KERNELS)
+#if defined(ENABLE_QMX_KERNELS)
 #include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa.h"
 #endif // ENABLE_QMX_KERNELS
 
@@ -600,7 +600,7 @@ static void ConvolveSme(const size_t co, //channels out
                     -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
                 );
             } else {
-#if(ENABLE_QMX_KERNELS)
+#if defined(ENABLE_QMX_KERNELS)
                     if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
                     {
                         KLEIDIAI_KERNEL_LOG("kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa" << " M=" << TileSizeM << " N=" << TileSizeN << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);

@@ -16,7 +16,7 @@
 #include "mlasi_kleidiai.h"
 #include "kai_ukernel_interface.h"
 
-#if(ENABLE_QMX_KERNELS)
+#if defined(ENABLE_QMX_KERNELS)
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa.h"
 #endif // ENABLE_QMX_KERNELS
 

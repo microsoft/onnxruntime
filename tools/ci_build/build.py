@@ -897,6 +897,8 @@ def generate_build_tree(
     if not args.no_kleidiai:
         cmake_args += ["-Donnxruntime_USE_KLEIDIAI=ON"]
         if args.use_qmx:
+            cmake_args += ["-Donnxruntime_USE_QMX_KLEIDIAI_COEXIST=ON"]
+            # QMX KleidiAI build option
             cmake_args += ["-DENABLE_KLEIDIAI_QMX_COEXIST=ON"]
 
     if args.enable_arm_neon_nchwc:

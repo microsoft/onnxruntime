@@ -284,7 +284,7 @@ function(setup_kleidiai)
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
-  if(ENABLE_KLEIDIAI_QMX_COEXIST)
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
           target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
           target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
           list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai-qmx)
@@ -308,7 +308,7 @@ function(setup_kleidiai)
     FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
 
-  if(ENABLE_KLEIDIAI_QMX_COEXIST)
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
     install(TARGETS kleidiai-qmx EXPORT ${PROJECT_NAME}Targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

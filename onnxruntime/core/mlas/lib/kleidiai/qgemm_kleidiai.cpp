@@ -13,7 +13,7 @@
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme2_dot.h"
-#if(ENABLE_QMX_KERNELS)
+#if defined(ENABLE_QMX_KERNELS)
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa.h"
 #endif // ENABLE_QMX_KERNELS
 
@@ -125,7 +125,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         }
         else {
 
-                #if(ENABLE_QMX_KERNELS)
+                #if defined(ENABLE_QMX_KERNELS)
                     if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
                     {
                         KLEIDIAI_KERNEL_LOG("kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa");
