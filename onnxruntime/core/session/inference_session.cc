@@ -2938,16 +2938,28 @@ Status InferenceSession::Run(const RunOptions& run_options,
                                        "Ignoring run-level profiling request.";
   }
   if (run_options.enable_profiling && !session_profiler_.IsEnabled()) {
-    run_profiler.emplace();
-    run_profiler->Initialize(session_logger_);
-    PathString profile_file = ToPathString(run_options.profile_file_prefix);
-    profile_file.append(ORT_TSTR("_"));
-    profile_file.append(GetCurrentTimeString<ORTCHAR_T>());
-    profile_file.append(ORT_TSTR(".json"));
-    for (auto& ep : execution_providers_) {
-      run_profiler->AddEpProfilers(ep->GetProfiler());
+    try {
+      run_profiler.emplace();
+      run_profiler->Initialize(session_logger_);
+      PathString profile_file = ToPathString(run_options.profile_file_prefix);
+      profile_file.append(ORT_TSTR("_"));
+      profile_file.append(GetCurrentTimeString<ORTCHAR_T>());
+      profile_file.append(ORT_TSTR(".json"));
+      for (auto& ep : execution_providers_) {
+        run_profiler->AddEpProfilers(ep->GetProfiler());
+      }
+      run_profiler->StartProfiling(profile_file);
+      
+      // Verify profiler was successfully initialized and enabled
+      if (!run_profiler->IsEnabled()) {
+        LOGS(*session_logger_, WARNING) << "Failed to enable run-level profiler. Profiling will not be performed for this run.";
+        run_profiler.reset();
+      }
+    } catch (const std::exception& ex) {
+      LOGS(*session_logger_, WARNING) << "Failed to initialize run-level profiler: " << ex.what()
+                                       << ". Profiling will not be performed for this run.";
+      run_profiler.reset();
     }
-    run_profiler->StartProfiling(profile_file);
   }
 
   TimePoint tp = std::chrono::high_resolution_clock::now();
