@@ -13,9 +13,11 @@ static size_t Conv2dNchwcRegistLongExecute() {
       count += MlasLongExecuteTests<MlasNchwcConv2DTest<true>>::RegisterLongExecute();
     }
 #if defined(__aarch64__) && defined(__linux__)
-    count += MlasLongExecuteTests<MlasNchwcConv2DBf16Test<false>>::RegisterLongExecute();
-    if (GetMlasThreadPool() != nullptr) {
-      count += MlasLongExecuteTests<MlasNchwcConv2DBf16Test<true>>::RegisterLongExecute();
+    if (MlasBf16AccelerationSupported()) {
+      count += MlasLongExecuteTests<MlasNchwcConv2DBf16Test<false>>::RegisterLongExecute();
+      if (GetMlasThreadPool() != nullptr) {
+        count += MlasLongExecuteTests<MlasNchwcConv2DBf16Test<true>>::RegisterLongExecute();
+      }
     }
 #endif
   }
@@ -32,9 +34,11 @@ static size_t Conv2dNchwcRegistShortExecute() {
       count += Conv2dShortExecuteTest<MlasNchwcConv2DTest<true>>::RegisterShortExecuteTests();
     }
 #if defined(__aarch64__) && defined(__linux__)
-    count += Conv2dShortExecuteTest<MlasNchwcConv2DBf16Test<false>>::RegisterShortExecuteTests();
-    if (GetMlasThreadPool() != nullptr) {
-      count += Conv2dShortExecuteTest<MlasNchwcConv2DBf16Test<true>>::RegisterShortExecuteTests();
+    if (MlasBf16AccelerationSupported()) {
+      count += Conv2dShortExecuteTest<MlasNchwcConv2DBf16Test<false>>::RegisterShortExecuteTests();
+      if (GetMlasThreadPool() != nullptr) {
+        count += Conv2dShortExecuteTest<MlasNchwcConv2DBf16Test<true>>::RegisterShortExecuteTests();
+      }
     }
 #endif
   }
