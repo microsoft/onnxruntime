@@ -1240,6 +1240,10 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchLasx;
 
+struct MLAS_QNBIT_LUT_GEMM_DISPATCH;
+
+extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2;
+
 //
 // Rotary embedding dispatch structure.
 //
@@ -1445,6 +1449,7 @@ struct MLAS_PLATFORM {
     const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
 
     const MLAS_QNBIT_GEMM_DISPATCH* QNBitGemmDispatch{nullptr};
+    const MLAS_QNBIT_LUT_GEMM_DISPATCH* LutGenKernel{nullptr};
 
     MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;

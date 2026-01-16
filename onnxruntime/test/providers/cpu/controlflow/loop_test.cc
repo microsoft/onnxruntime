@@ -1037,7 +1037,8 @@ TEST(Loop, IterationCountAsOutput) {
   test.AddOutput<int64_t>("loop_var_0_final", {3, 1}, {0, 1, 2});
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable OV EP due to ONNX partition create new domain and OV FE can't handle it
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 #if defined(USE_CUDA)
