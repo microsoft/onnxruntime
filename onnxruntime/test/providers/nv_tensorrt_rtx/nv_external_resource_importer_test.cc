@@ -62,15 +62,15 @@ class CudaDriverLoader {
 
   // CUDA Driver API function pointers
   using cuCtxCreate_v4_t = CUresult (*)(CUcontext*, CUctxCreateParams*, unsigned int, CUdevice);
+  using cuCtxDestroy_t = CUresult (*)(CUcontext);
   using cuCtxGetCurrent_t = CUresult (*)(CUcontext*);
   using cuCtxSetCurrent_t = CUresult (*)(CUcontext);
-  using cuCtxPushCurrent_t = CUresult (*)(CUcontext);
 
  public:
   cuCtxCreate_v4_t cuCtxCreate_v4_fn = nullptr;
+  cuCtxDestroy_t cuCtxDestroy_fn = nullptr;
   cuCtxSetCurrent_t cuCtxSetCurrent_fn = nullptr;
   cuCtxGetCurrent_t cuCtxGetCurrent_fn = nullptr;
-  cuCtxPushCurrent_t cuCtxPushCurrent_fn = nullptr;
 
   CudaDriverLoader() {
     // Load CUDA driver library dynamically
@@ -78,12 +78,12 @@ class CudaDriverLoader {
     if (cuda_driver_dll_) {
       cuCtxCreate_v4_fn = reinterpret_cast<cuCtxCreate_v4_t>(
           GetProcAddress(cuda_driver_dll_, "cuCtxCreate_v4"));
+      cuCtxDestroy_fn = reinterpret_cast<cuCtxDestroy_t>(
+          GetProcAddress(cuda_driver_dll_, "cuCtxDestroy"));
       cuCtxSetCurrent_fn = reinterpret_cast<cuCtxSetCurrent_t>(
           GetProcAddress(cuda_driver_dll_, "cuCtxSetCurrent"));
       cuCtxGetCurrent_fn = reinterpret_cast<cuCtxGetCurrent_t>(
-        GetProcAddress(cuda_driver_dll_, "cuCtxGetCurrent"));
-      cuCtxPushCurrent_fn = reinterpret_cast<cuCtxPushCurrent_t>(
-          GetProcAddress(cuda_driver_dll_, "cuCtxPushCurrent"));
+          GetProcAddress(cuda_driver_dll_, "cuCtxGetCurrent"));
     }
   }
 
@@ -97,8 +97,8 @@ class CudaDriverLoader {
     return cuda_driver_dll_ != nullptr &&
            cuCtxCreate_v4_fn != nullptr &&
            cuCtxSetCurrent_fn != nullptr &&
-           cuCtxGetCurrent_fn != nullptr &&
-           cuCtxPushCurrent_fn != nullptr;
+           cuCtxDestroy_fn != nullptr &&
+           cuCtxGetCurrent_fn != nullptr;
   }
 };
 
@@ -393,7 +393,7 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, ImportD3D12SharedResourc
   OrtStatus* status = ort_interop_api_->CreateExternalResourceImporterForDevice(ep_device_, &importer);
   if (status != nullptr || importer == nullptr) {
     if (status != nullptr) ort_api_->ReleaseStatus(status);
-    GTEST_SKIP() << "External Onv_exeresource import not supported";
+    GTEST_SKIP() << "External resource import not supported";
   }
 
   // Create a shared D3D12 buffer
@@ -664,7 +664,6 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
     GTEST_SKIP() << "NvTensorRtRtx EP not available";
   }
 
-
   // Create a simple ReLU model using shared utility pattern
   PathString model_path = ORT_TSTR("external_mem_relu_test.onnx");
   {
@@ -922,7 +921,6 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
   ASSERT_EQ(cudaGetDeviceCount(&cuda_device_count), cudaSuccess);
   for (; cuda_device_id < cuda_device_count; ++cuda_device_id) {
     cudaDeviceProp prop;
-    unsigned int node_mask = 0;
     ASSERT_EQ(cudaGetDeviceProperties(&prop, cuda_device_id), cudaSuccess);
     uint64_t cuda_luid = *reinterpret_cast<const uint64_t*>(prop.luid);
     if (cuda_luid == d3d12_luid) {
@@ -931,7 +929,6 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
     }
   }
   ASSERT_TRUE(found);
-  // Global instance of CUDA driver function loader
   CudaDriverLoader cuda_driver_loader;
   ASSERT_TRUE(cuda_driver_loader.IsLoaded());
   ASSERT_EQ(cuda_driver_loader.cuCtxCreate_v4_fn(&cig_context, &ctxParams, 0, cuda_device_id), CUDA_SUCCESS);
@@ -940,254 +937,254 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
   if (!IsEPAvailable()) {
     GTEST_SKIP() << "NvTensorRtRtx EP not available";
   }
-
-  // Create a simple ReLU model using shared utility pattern
-  PathString model_path = ORT_TSTR("external_mem_relu_test.onnx");
   {
-    onnxruntime::Model model("relu_test", false, DefaultLoggingManager().DefaultLogger());
-    auto& graph = model.MainGraph();
+    // Create a simple ReLU model using shared utility pattern
+    PathString model_path = ORT_TSTR("external_mem_relu_test.onnx");
+    {
+      onnxruntime::Model model("relu_test", false, DefaultLoggingManager().DefaultLogger());
+      auto& graph = model.MainGraph();
 
-    ONNX_NAMESPACE::TypeProto tensor_type;
-    tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
-    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(64);
-    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(64);
+      ONNX_NAMESPACE::TypeProto tensor_type;
+      tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(64);
+      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(64);
 
-    auto& input_arg = graph.GetOrCreateNodeArg("X", &tensor_type);
-    auto& output_arg = graph.GetOrCreateNodeArg("Y", &tensor_type);
-    graph.AddNode("relu", "Relu", "ReLU operation", {&input_arg}, {&output_arg});
+      auto& input_arg = graph.GetOrCreateNodeArg("X", &tensor_type);
+      auto& output_arg = graph.GetOrCreateNodeArg("Y", &tensor_type);
+      graph.AddNode("relu", "Relu", "ReLU operation", {&input_arg}, {&output_arg});
 
-    ASSERT_STATUS_OK(graph.Resolve());
-    ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_path));
-  }
+      ASSERT_STATUS_OK(graph.Resolve());
+      ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_path));
+    }
 
-  const int64_t batch = 1, channels = 3, dim = 64;
-  const int64_t shape[] = {batch, channels, dim, dim};
-  const size_t num_elements = batch * channels * dim * dim;
-  const size_t buffer_size = num_elements * sizeof(float);
+    const int64_t batch = 1, channels = 3, dim = 64;
+    const int64_t shape[] = {batch, channels, dim, dim};
+    const size_t num_elements = batch * channels * dim * dim;
+    const size_t buffer_size = num_elements * sizeof(float);
 
-  // Create external resource importer
-  OrtExternalResourceImporter* importer = nullptr;
-  OrtStatus* status = ort_interop_api_->CreateExternalResourceImporterForDevice(ep_device_, &importer);
-  if (status != nullptr || importer == nullptr) {
-    if (status != nullptr) ort_api_->ReleaseStatus(status);
+    // Create external resource importer
+    OrtExternalResourceImporter* importer = nullptr;
+    OrtStatus* status = ort_interop_api_->CreateExternalResourceImporterForDevice(ep_device_, &importer);
+    if (status != nullptr || importer == nullptr) {
+      if (status != nullptr) ort_api_->ReleaseStatus(status);
+      clearFileIfExists(model_path);
+      GTEST_SKIP() << "External resource import not supported";
+    }
+
+    // Create CUDA stream via ORT
+    OrtSyncStream* ort_stream = nullptr;
+    status = ort_api_->CreateSyncStreamForEpDevice(ep_device_, nullptr, &ort_stream);
+    ASSERT_EQ(status, nullptr);
+
+    // Create shared D3D12 buffers for input and output
+    ComPtr<ID3D12Resource> input_buffer, output_buffer;
+    D3D12ResourceHelper::CreateSharedBuffer(d3d12_device_.Get(), buffer_size, &input_buffer);
+    D3D12ResourceHelper::CreateSharedBuffer(d3d12_device_.Get(), buffer_size, &output_buffer);
+
+    // Create shared handles for cross-API import
+    HANDLE input_handle = nullptr, output_handle = nullptr;
+    d3d12_device_->CreateSharedHandle(input_buffer.Get(), nullptr, GENERIC_ALL, nullptr, &input_handle);
+    d3d12_device_->CreateSharedHandle(output_buffer.Get(), nullptr, GENERIC_ALL, nullptr, &output_handle);
+
+    // Import memory into CUDA
+    OrtExternalMemoryDescriptor input_mem_desc = {};
+    input_mem_desc.version = ORT_API_VERSION;
+    input_mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
+    input_mem_desc.native_handle = input_handle;
+    input_mem_desc.size_bytes = buffer_size;
+    input_mem_desc.offset_bytes = 0;
+
+    OrtExternalMemoryDescriptor output_mem_desc = input_mem_desc;
+    output_mem_desc.native_handle = output_handle;
+
+    OrtExternalMemoryHandle *input_mem = nullptr, *output_mem = nullptr;
+    status = ort_interop_api_->ImportMemory(importer, &input_mem_desc, &input_mem);
+    ASSERT_EQ(status, nullptr) << "ImportMemory for input should succeed (proves cuImportExternalMemory called)";
+    status = ort_interop_api_->ImportMemory(importer, &output_mem_desc, &output_mem);
+    ASSERT_EQ(status, nullptr) << "ImportMemory for output should succeed";
+
+    // Create ORT tensors from imported memory
+    OrtExternalTensorDescriptor tensor_desc = {};
+    tensor_desc.version = ORT_API_VERSION;
+    tensor_desc.element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    tensor_desc.shape = shape;
+    tensor_desc.rank = 4;
+    tensor_desc.offset_bytes = 0;
+
+    OrtValue *input_tensor = nullptr, *output_tensor = nullptr;
+    status = ort_interop_api_->CreateTensorFromMemory(importer, input_mem, &tensor_desc, &input_tensor);
+    ASSERT_EQ(status, nullptr);
+    status = ort_interop_api_->CreateTensorFromMemory(importer, output_mem, &tensor_desc, &output_tensor);
+    ASSERT_EQ(status, nullptr);
+
+    // Verify the tensor data pointers are CUDA device memory
+    void* input_data_ptr = nullptr;
+    void* output_data_ptr = nullptr;
+    status = ort_api_->GetTensorMutableData(input_tensor, &input_data_ptr);
+    ASSERT_EQ(status, nullptr);
+    status = ort_api_->GetTensorMutableData(output_tensor, &output_data_ptr);
+    ASSERT_EQ(status, nullptr);
+
+    cudaPointerAttributes input_attrs, output_attrs;
+    ASSERT_EQ(cudaPointerGetAttributes(&input_attrs, input_data_ptr), cudaSuccess);
+    ASSERT_EQ(cudaPointerGetAttributes(&output_attrs, output_data_ptr), cudaSuccess);
+    EXPECT_EQ(input_attrs.type, cudaMemoryTypeDevice) << "Input tensor must be CUDA device memory";
+    EXPECT_EQ(output_attrs.type, cudaMemoryTypeDevice) << "Output tensor must be CUDA device memory";
+
+    // Create D3D12 fence for bidirectional synchronization
+    ComPtr<ID3D12Fence> sync_fence;
+    d3d12_device_->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&sync_fence));
+    HANDLE fence_handle = nullptr;
+    d3d12_device_->CreateSharedHandle(sync_fence.Get(), nullptr, GENERIC_ALL, nullptr, &fence_handle);
+
+    OrtExternalSemaphoreDescriptor sem_desc = {};
+    sem_desc.version = ORT_API_VERSION;
+    sem_desc.type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
+    sem_desc.native_handle = fence_handle;
+
+    OrtExternalSemaphoreHandle* sem_handle = nullptr;
+    status = ort_interop_api_->ImportSemaphore(importer, &sem_desc, &sem_handle);
+    ASSERT_EQ(status, nullptr) << "ImportSemaphore should succeed";
+
+    // Setup test data via D3D12 upload buffer
+    ComPtr<ID3D12Resource> upload_buffer;
+    D3D12ResourceHelper::CreateUploadBuffer(d3d12_device_.Get(), buffer_size, &upload_buffer);
+
+    // Generate test data: alternating positive and negative values for ReLU verification
+    std::vector<float> test_data(num_elements);
+    for (size_t i = 0; i < num_elements; ++i) {
+      test_data[i] = (i % 2 == 0) ? static_cast<float>(i + 1) : -static_cast<float>(i + 1);
+    }
+
+    void* upload_ptr = nullptr;
+    upload_buffer->Map(0, nullptr, &upload_ptr);
+    memcpy(upload_ptr, test_data.data(), buffer_size);
+    upload_buffer->Unmap(0, nullptr);
+
+    // Copy upload buffer to input buffer via D3D12
+    command_allocator_->Reset();
+    command_list_->Reset(command_allocator_.Get(), nullptr);
+    command_list_->CopyBufferRegion(input_buffer.Get(), 0, upload_buffer.Get(), 0, buffer_size);
+    command_list_->Close();
+
+    ID3D12CommandList* cmd_lists[] = {command_list_.Get()};
+    command_queue_->ExecuteCommandLists(1, cmd_lists);
+
+    // Signal fence after D3D12 upload completes
+    uint64_t upload_complete_value = 1;
+    command_queue_->Signal(sync_fence.Get(), upload_complete_value);
+
+    // Make CUDA wait for D3D12 upload to complete
+    status = ort_interop_api_->WaitSemaphore(importer, sem_handle, ort_stream, upload_complete_value);
+    ASSERT_EQ(status, nullptr) << "WaitSemaphore should succeed";
+
+    // Setup ORT session with user_compute_stream
+    Ort::SessionOptions session_options;
+    session_options.SetExecutionMode(ORT_SEQUENTIAL);
+    session_options.DisableMemPattern();
+    session_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+
+    // Configure to use our CUDA stream
+    char stream_address[32];
+    size_t stream_addr_val = reinterpret_cast<size_t>(ort_api_->SyncStream_GetHandle(ort_stream));
+    sprintf(stream_address, "%llu", static_cast<uint64_t>(stream_addr_val));
+    const char* option_keys[] = {
+        onnxruntime::nv::provider_option_names::kUserComputeStream,
+        onnxruntime::nv::provider_option_names::kHasUserComputeStream,
+        onnxruntime::nv::provider_option_names::kMaxSharedMemSize,
+        // TRT will create itss own context to create streams if we do not manually provide aux streams
+        onnxruntime::nv::provider_option_names::kLengthAuxStreamArray,
+        onnxruntime::nv::provider_option_names::kUserAuxStreamArray,
+    };
+    char aux_stream_address[32];
+    std::array<size_t, 1> aux_streams = {stream_addr_val};
+    size_t aux_stream_address_val = reinterpret_cast<size_t>(aux_streams.data());
+    sprintf(aux_stream_address, "%llu", static_cast<uint64_t>(aux_stream_address_val));
+    std::string max_shared_mem_size = std::to_string(1024 * 28);  // 28 KiB
+    const char* option_values[] = {
+        stream_address,
+        "1",
+        max_shared_mem_size.c_str(),
+        "1",
+        aux_stream_address};
+
+    // Add the NvTensorRtRtx EP with user stream
+    status = ort_api_->SessionOptionsAppendExecutionProvider_V2(
+        session_options, *ort_env, &ep_device_, 1, option_keys, option_values, 5);
+    ASSERT_EQ(status, nullptr);
+
+    // Create session
+    Ort::Session session(*ort_env, model_path.c_str(), session_options);
+
+    // Create IoBinding and bind external tensors
+    Ort::IoBinding io_binding(session);
+    Ort::AllocatorWithDefaultOptions allocator;
+
+    Ort::AllocatedStringPtr input_name = session.GetInputNameAllocated(0, allocator);
+    Ort::AllocatedStringPtr output_name = session.GetOutputNameAllocated(0, allocator);
+
+    io_binding.BindInput(input_name.get(), Ort::Value(input_tensor));
+    io_binding.BindOutput(output_name.get(), Ort::Value(output_tensor));
+    io_binding.SynchronizeInputs();
+
+    // Run inference. ORT synchronizes the stream before returning, so GPU work is complete
+    // when we signal the semaphore below.
+    session.Run(Ort::RunOptions{}, io_binding);
+
+    // Signal from CUDA that inference is complete
+    uint64_t inference_complete_value = 2;
+    status = ort_interop_api_->SignalSemaphore(importer, sem_handle, ort_stream, inference_complete_value);
+    ASSERT_EQ(status, nullptr) << "SignalSemaphore should succeed";
+
+    // Wait on D3D12 for CUDA inference to complete
+    command_queue_->Wait(sync_fence.Get(), inference_complete_value);
+
+    // Copy output to readback buffer
+    ComPtr<ID3D12Resource> readback_buffer;
+    D3D12ResourceHelper::CreateReadbackBuffer(d3d12_device_.Get(), buffer_size, &readback_buffer);
+
+    command_allocator_->Reset();
+    command_list_->Reset(command_allocator_.Get(), nullptr);
+    command_list_->CopyBufferRegion(readback_buffer.Get(), 0, output_buffer.Get(), 0, buffer_size);
+    command_list_->Close();
+
+    command_queue_->ExecuteCommandLists(1, cmd_lists);
+    D3D12ResourceHelper::FlushAndWait(d3d12_device_.Get(), command_queue_.Get());
+
+    // Read back and verify ReLU output: max(0, x)
+    std::vector<float> output_data(num_elements);
+    void* readback_ptr = nullptr;
+    readback_buffer->Map(0, nullptr, &readback_ptr);
+    memcpy(output_data.data(), readback_ptr, buffer_size);
+    readback_buffer->Unmap(0, nullptr);
+
+    // Verify ReLU correctness
+    for (size_t i = 0; i < num_elements; ++i) {
+      float expected = std::max(0.0f, test_data[i]);
+      EXPECT_FLOAT_EQ(output_data[i], expected)
+          << "Mismatch at index " << i << ": input=" << test_data[i]
+          << ", expected=" << expected << ", got=" << output_data[i];
+    }
+    CUcontext cu_context;
+    ASSERT_EQ(cuda_driver_loader.cuCtxGetCurrent_fn(&cu_context), CUDA_SUCCESS);
+    ASSERT_EQ(cu_context, cig_context);
+    // Note: io_binding takes ownership of input_tensor and output_tensor, so don't release them manually
+
+    // Cleanup
+    ort_interop_api_->ReleaseExternalSemaphoreHandle(sem_handle);
+    ort_interop_api_->ReleaseExternalMemoryHandle(output_mem);
+    ort_interop_api_->ReleaseExternalMemoryHandle(input_mem);
+    CloseHandle(fence_handle);
+    CloseHandle(output_handle);
+    CloseHandle(input_handle);
+    ort_api_->ReleaseSyncStream(ort_stream);
+    ort_interop_api_->ReleaseExternalResourceImporter(importer);
     clearFileIfExists(model_path);
-    GTEST_SKIP() << "External resource import not supported";
   }
-
-  // Create CUDA stream via ORT
-  OrtSyncStream* ort_stream = nullptr;
-  status = ort_api_->CreateSyncStreamForEpDevice(ep_device_, nullptr, &ort_stream);
-  ASSERT_EQ(status, nullptr);
-
-  // Create shared D3D12 buffers for input and output
-  ComPtr<ID3D12Resource> input_buffer, output_buffer;
-  D3D12ResourceHelper::CreateSharedBuffer(d3d12_device_.Get(), buffer_size, &input_buffer);
-  D3D12ResourceHelper::CreateSharedBuffer(d3d12_device_.Get(), buffer_size, &output_buffer);
-
-  // Create shared handles for cross-API import
-  HANDLE input_handle = nullptr, output_handle = nullptr;
-  d3d12_device_->CreateSharedHandle(input_buffer.Get(), nullptr, GENERIC_ALL, nullptr, &input_handle);
-  d3d12_device_->CreateSharedHandle(output_buffer.Get(), nullptr, GENERIC_ALL, nullptr, &output_handle);
-
-
-  // Import memory into CUDA
-  OrtExternalMemoryDescriptor input_mem_desc = {};
-  input_mem_desc.version = ORT_API_VERSION;
-  input_mem_desc.handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
-  input_mem_desc.native_handle = input_handle;
-  input_mem_desc.size_bytes = buffer_size;
-  input_mem_desc.offset_bytes = 0;
-
-  OrtExternalMemoryDescriptor output_mem_desc = input_mem_desc;
-  output_mem_desc.native_handle = output_handle;
-
-  OrtExternalMemoryHandle *input_mem = nullptr, *output_mem = nullptr;
-  status = ort_interop_api_->ImportMemory(importer, &input_mem_desc, &input_mem);
-  ASSERT_EQ(status, nullptr) << "ImportMemory for input should succeed (proves cuImportExternalMemory called)";
-  status = ort_interop_api_->ImportMemory(importer, &output_mem_desc, &output_mem);
-  ASSERT_EQ(status, nullptr) << "ImportMemory for output should succeed";
-
-  // Create ORT tensors from imported memory
-  OrtExternalTensorDescriptor tensor_desc = {};
-  tensor_desc.version = ORT_API_VERSION;
-  tensor_desc.element_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  tensor_desc.shape = shape;
-  tensor_desc.rank = 4;
-  tensor_desc.offset_bytes = 0;
-
-  OrtValue *input_tensor = nullptr, *output_tensor = nullptr;
-  status = ort_interop_api_->CreateTensorFromMemory(importer, input_mem, &tensor_desc, &input_tensor);
-  ASSERT_EQ(status, nullptr);
-  status = ort_interop_api_->CreateTensorFromMemory(importer, output_mem, &tensor_desc, &output_tensor);
-  ASSERT_EQ(status, nullptr);
-
-  // Verify the tensor data pointers are CUDA device memory
-  void* input_data_ptr = nullptr;
-  void* output_data_ptr = nullptr;
-  status = ort_api_->GetTensorMutableData(input_tensor, &input_data_ptr);
-  ASSERT_EQ(status, nullptr);
-  status = ort_api_->GetTensorMutableData(output_tensor, &output_data_ptr);
-  ASSERT_EQ(status, nullptr);
-
-  cudaPointerAttributes input_attrs, output_attrs;
-  ASSERT_EQ(cudaPointerGetAttributes(&input_attrs, input_data_ptr), cudaSuccess);
-  ASSERT_EQ(cudaPointerGetAttributes(&output_attrs, output_data_ptr), cudaSuccess);
-  EXPECT_EQ(input_attrs.type, cudaMemoryTypeDevice) << "Input tensor must be CUDA device memory";
-  EXPECT_EQ(output_attrs.type, cudaMemoryTypeDevice) << "Output tensor must be CUDA device memory";
-
-  // Create D3D12 fence for bidirectional synchronization
-  ComPtr<ID3D12Fence> sync_fence;
-  d3d12_device_->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&sync_fence));
-  HANDLE fence_handle = nullptr;
-  d3d12_device_->CreateSharedHandle(sync_fence.Get(), nullptr, GENERIC_ALL, nullptr, &fence_handle);
-
-  OrtExternalSemaphoreDescriptor sem_desc = {};
-  sem_desc.version = ORT_API_VERSION;
-  sem_desc.type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
-  sem_desc.native_handle = fence_handle;
-
-  OrtExternalSemaphoreHandle* sem_handle = nullptr;
-  status = ort_interop_api_->ImportSemaphore(importer, &sem_desc, &sem_handle);
-  ASSERT_EQ(status, nullptr) << "ImportSemaphore should succeed";
-
-  // Setup test data via D3D12 upload buffer
-  ComPtr<ID3D12Resource> upload_buffer;
-  D3D12ResourceHelper::CreateUploadBuffer(d3d12_device_.Get(), buffer_size, &upload_buffer);
-
-  // Generate test data: alternating positive and negative values for ReLU verification
-  std::vector<float> test_data(num_elements);
-  for (size_t i = 0; i < num_elements; ++i) {
-    test_data[i] = (i % 2 == 0) ? static_cast<float>(i + 1) : -static_cast<float>(i + 1);
-  }
-
-  void* upload_ptr = nullptr;
-  upload_buffer->Map(0, nullptr, &upload_ptr);
-  memcpy(upload_ptr, test_data.data(), buffer_size);
-  upload_buffer->Unmap(0, nullptr);
-
-  // Copy upload buffer to input buffer via D3D12
-  command_allocator_->Reset();
-  command_list_->Reset(command_allocator_.Get(), nullptr);
-  command_list_->CopyBufferRegion(input_buffer.Get(), 0, upload_buffer.Get(), 0, buffer_size);
-  command_list_->Close();
-
-  ID3D12CommandList* cmd_lists[] = {command_list_.Get()};
-  command_queue_->ExecuteCommandLists(1, cmd_lists);
-
-  // Signal fence after D3D12 upload completes
-  uint64_t upload_complete_value = 1;
-  command_queue_->Signal(sync_fence.Get(), upload_complete_value);
-
-  // Make CUDA wait for D3D12 upload to complete
-  status = ort_interop_api_->WaitSemaphore(importer, sem_handle, ort_stream, upload_complete_value);
-  ASSERT_EQ(status, nullptr) << "WaitSemaphore should succeed";
-
-  // Setup ORT session with user_compute_stream
-  Ort::SessionOptions session_options;
-  session_options.SetExecutionMode(ORT_SEQUENTIAL);
-  session_options.DisableMemPattern();
-  session_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
-
-  // Configure to use our CUDA stream
-  char stream_address[32];
-  size_t stream_addr_val = reinterpret_cast<size_t>(ort_api_->SyncStream_GetHandle(ort_stream));
-  sprintf(stream_address, "%llu", static_cast<uint64_t>(stream_addr_val));
-  const char* option_keys[] = {
-      onnxruntime::nv::provider_option_names::kUserComputeStream,
-      onnxruntime::nv::provider_option_names::kHasUserComputeStream,
-      onnxruntime::nv::provider_option_names::kMaxSharedMemSize,
-    // TRT will create it's own context to create streams if we do not manually provide aux streams
-      onnxruntime::nv::provider_option_names::kLengthAuxStreamArray,
-      onnxruntime::nv::provider_option_names::kUserAuxStreamArray,
-  };
-  char aux_stream_address[32];
-  std::array<size_t, 1> aux_streams = {stream_addr_val};
-  size_t aux_stream_address_val = reinterpret_cast<size_t>(aux_streams.data());
-  sprintf(aux_stream_address, "%llu", static_cast<uint64_t>(aux_stream_address_val));
-  std::string max_shared_mem_size = std::to_string(1024 * 28);  // 28 KiB
-  const char* option_values[] = {
-    stream_address,
-    "1",
-    max_shared_mem_size.c_str(),
-    "1",
-    aux_stream_address
-  };
-
-  // Add the NvTensorRtRtx EP with user stream
-  status = ort_api_->SessionOptionsAppendExecutionProvider_V2(
-      session_options, *ort_env, &ep_device_, 1, option_keys, option_values, 5);
-  ASSERT_EQ(status, nullptr);
-
-  // Create session
-  Ort::Session session(*ort_env, model_path.c_str(), session_options);
-
-  // Create IoBinding and bind external tensors
-  Ort::IoBinding io_binding(session);
-  Ort::AllocatorWithDefaultOptions allocator;
-
-  Ort::AllocatedStringPtr input_name = session.GetInputNameAllocated(0, allocator);
-  Ort::AllocatedStringPtr output_name = session.GetOutputNameAllocated(0, allocator);
-
-  io_binding.BindInput(input_name.get(), Ort::Value(input_tensor));
-  io_binding.BindOutput(output_name.get(), Ort::Value(output_tensor));
-  io_binding.SynchronizeInputs();
-
-  // Run inference. ORT synchronizes the stream before returning, so GPU work is complete
-  // when we signal the semaphore below.
-  session.Run(Ort::RunOptions{}, io_binding);
-
-  // Signal from CUDA that inference is complete
-  uint64_t inference_complete_value = 2;
-  status = ort_interop_api_->SignalSemaphore(importer, sem_handle, ort_stream, inference_complete_value);
-  ASSERT_EQ(status, nullptr) << "SignalSemaphore should succeed";
-
-  // Wait on D3D12 for CUDA inference to complete
-  command_queue_->Wait(sync_fence.Get(), inference_complete_value);
-
-  // Copy output to readback buffer
-  ComPtr<ID3D12Resource> readback_buffer;
-  D3D12ResourceHelper::CreateReadbackBuffer(d3d12_device_.Get(), buffer_size, &readback_buffer);
-
-  command_allocator_->Reset();
-  command_list_->Reset(command_allocator_.Get(), nullptr);
-  command_list_->CopyBufferRegion(readback_buffer.Get(), 0, output_buffer.Get(), 0, buffer_size);
-  command_list_->Close();
-
-  command_queue_->ExecuteCommandLists(1, cmd_lists);
-  D3D12ResourceHelper::FlushAndWait(d3d12_device_.Get(), command_queue_.Get());
-
-  // Read back and verify ReLU output: max(0, x)
-  std::vector<float> output_data(num_elements);
-  void* readback_ptr = nullptr;
-  readback_buffer->Map(0, nullptr, &readback_ptr);
-  memcpy(output_data.data(), readback_ptr, buffer_size);
-  readback_buffer->Unmap(0, nullptr);
-
-  // Verify ReLU correctness
-  for (size_t i = 0; i < num_elements; ++i) {
-    float expected = std::max(0.0f, test_data[i]);
-    EXPECT_FLOAT_EQ(output_data[i], expected)
-        << "Mismatch at index " << i << ": input=" << test_data[i]
-        << ", expected=" << expected << ", got=" << output_data[i];
-  }
-  CUcontext cu_context;
-  ASSERT_EQ(cuda_driver_loader.cuCtxGetCurrent_fn(&cu_context), CUDA_SUCCESS);
-  ASSERT_EQ(cu_context, cig_context);
-  // Note: io_binding takes ownership of input_tensor and output_tensor, so don't release them manually
-
-  // Cleanup
-  ort_interop_api_->ReleaseExternalSemaphoreHandle(sem_handle);
-  ort_interop_api_->ReleaseExternalMemoryHandle(output_mem);
-  ort_interop_api_->ReleaseExternalMemoryHandle(input_mem);
-  CloseHandle(fence_handle);
-  CloseHandle(output_handle);
-  CloseHandle(input_handle);
-  ort_api_->ReleaseSyncStream(ort_stream);
-  ort_interop_api_->ReleaseExternalResourceImporter(importer);
-
-  clearFileIfExists(model_path);
+  // all associated objects with the context must be destroyed before destroying the CIG context which ORT inherited
+  ASSERT_EQ(cuda_driver_loader.cuCtxDestroy_fn(cig_context), CUDA_SUCCESS);
 }
 
 #endif  // _WIN32

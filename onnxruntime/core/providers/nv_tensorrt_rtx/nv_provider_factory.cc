@@ -26,7 +26,10 @@ struct ScopedContext {
   explicit ScopedContext(int device_id) {
     CUcontext cu_context = 0;
     CU_CALL_THROW(cuCtxGetCurrent(&cu_context));
-    if (!cu_context) {  // do not alter currently set context
+    if (!cu_context) {
+      // cuCtxGetCurrent succeeded but returned nullptr, which indicates that no CUDA context
+      // is currently set for this thread. This implicates that there is not user created context.
+      // We use runtime API to initialize a context for the specified device.
       CUDA_CALL_THROW(cudaSetDevice(device_id));
       CU_CALL_THROW(cuCtxGetCurrent(&cu_context));
     }
