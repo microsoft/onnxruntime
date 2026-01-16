@@ -77,17 +77,27 @@ class QuickGelu : public OpKernel {
           const T* p_input = input_data + start;
           T* p_output = output_data + start;
           int64_t count = std::min(length_per_task, elem_count - start);
-          for (int64_t i = 0; i < count; i++) {
-            p_output[i] = p_input[i] * alpha_;
+
+          if (alpha_ != 1.0f) {
+            // TODO: Consider vectorizing this scalar multiplication.
+            // It needs exposing a new API in MLAS to take in a scalar
+            // that will be used in the elementwise multiplication.
+            // Estimate the cost-benefit tradeoff before proceeding
+            // with that optimization.
+            for (int64_t i = 0; i < count; i++) {
+              p_output[i] = p_input[i] * alpha_;
+            }
+
+            MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
+          } else {
+            // SILU activation - this needs no `alpha_` scaling as `alpha_` will be 1.0f
+            MlasComputeLogistic(p_input, p_output, onnxruntime::narrow<size_t>(count));
           }
 
-          MlasComputeLogistic(p_output, p_output, onnxruntime::narrow<size_t>(count));
-
-          for (int64_t i = 0; i < count; i++) {
-            p_output[i] = p_input[i] * p_output[i];
-          }
+          MlasEltwiseMul<float>(p_input, p_output, p_output, onnxruntime::narrow<size_t>(count));
         },
         0);
+
     return Status::OK();
   }
 
