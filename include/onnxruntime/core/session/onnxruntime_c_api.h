@@ -337,6 +337,8 @@ ORT_RUNTIME_CLASS(ExternalResourceImporter);  // Capability object for external 
 ORT_RUNTIME_CLASS(ExternalMemoryHandle);      // EP-imported view of shared external allocation
 ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared external semaphore
 ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
+ORT_RUNTIME_CLASS(EpAssignedSubgraph);
+ORT_RUNTIME_CLASS(EpAssignedNode);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -7016,6 +7018,101 @@ struct OrtApi {
    * \since Version 1.24
    */
   ORT_API2_STATUS(CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out);
+
+  /** \brief Get information about the subgraphs assigned to each execution provider (EP) and the nodes within.
+   *
+   * Each returned OrtEpAssignedSubgraph instance contains details of the subgraph/nodes assigned to an execution
+   * provider, including the execution provider's name, and the name, domain, and operator type for every node.
+   *
+   * For compiling execution providers, a single OrtEpAssignedSubgraph instance contains information about the
+   * nodes that are fused and compiled within a single subgraph assigned to the execution provider.
+   *
+   * For execution providers that use kernel registration (e.g., CPU EP), each node with a registered kernel is
+   * contained in its own OrtEpAssignedSubgraph instance.
+   *
+   * \note The caller must enable the collection of this information by enabling the session
+   *       configuration entry "session.record_ep_graph_assignment_info" during session creation.
+   *       Refer to onnxruntime_session_options_config_keys.h. Otherwise, if not enabled, this function returns a
+   *       status with error code ORT_FAIL.
+   *
+   * \note The information reported by this function is obtained immediately after running basic optimizations on the
+   *       original graph if the session optimization level is set to ORT_ENABLE_BASIC or higher. If the session
+   *       optimization level is set to ORT_DISABLE_ALL, only minimal/required optimizations are run before
+   *       the information is collected.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[out] ep_subgraphs Output parameter set to the array of OrtEpAssignedSubgraph instances.
+   * \param[out] num_ep_subgraphs Output parameter set to the number of elements in the `ep_subgraphs` array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
+                  _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                  _Out_ size_t* num_ep_subgraphs);
+
+  /** \brief Get the name of the execution provider to which the subgraph was assigned.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
+   * \param[out] out Output parameter set to the execution provider's name as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedSubgraph instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_ const char** out);
+
+  /** \brief Get the nodes in a subgraph assigned to a specific execution provider.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
+   * \param[out] ep_nodes Output parameter set to the array of OrtEpAssignedNode instances.
+   * \param[out] num_ep_nodes Output parameter set to the number of OrtEpAssignedNode instance returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
+
+  /** \brief Get the name of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \param[out] out Output parameter set to the node's name as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+
+  /** \brief Get the domain of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \param[out] out Output parameter set to the node's domain as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+
+  /** \brief Get the operator type of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \param[out] out Output parameter set to the node's operator type as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
 };
 
 /*
