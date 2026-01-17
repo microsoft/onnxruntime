@@ -36,7 +36,6 @@ struct ParameterInfo {
   // Query methods
   bool IsStatic() const { return dynamic_flags == 0; }
   bool IsFullyDynamic() const { return dynamic_flags & 1; }
-  bool IsBoundedDynamic() const { return dynamic_flags & 2; }
   bool IsMixed() const { return (dynamic_flags & 3) == 3; }
 
   // Setter methods
@@ -61,6 +60,7 @@ struct OnnxToOvNetworkBindings {
 
   OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
     auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
+      auto input_parameter_aligned = (onnx_input_map.size() == ov_parameters.size());
       for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
                                [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
@@ -80,6 +80,13 @@ struct OnnxToOvNetworkBindings {
             has_dynamic_io_ = true;
             continue;
           }
+        }
+
+        if (!input_parameter_aligned && !matched_names) {
+          LOGS_DEFAULT(WARNING) << log_tag << "The input '" << onnx_name
+                                << "' is not used due to OpenVINO optimization. "
+                                   "This may cause issues if the input is required.";
+          continue;
         }
 
         ORT_ENFORCE(matched_names, log_tag,
@@ -111,6 +118,12 @@ struct OnnxToOvNetworkBindings {
 
           info.SetFullyDynamic(has_fully_dynamic);
           info.SetBoundedDynamic(has_bounded_dynamic);
+        } else {
+          // OV needs allocate the output buffer before inference, but the 0 size output graph doesn't need to do a real inference in ONNX
+          auto shape_size = ov::shape_size(shape.get_shape());
+          if (0 == shape_size) {
+            has_dynamic_io_ = true;
+          }
         }
 
         input_output_map.push_back(std::move(info));
@@ -138,6 +151,7 @@ class BasicBackend : public IBackend {
     return exe_network_.Get();
   }
   void RewindKVCache(size_t index) override;
+  void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
 
  private:
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
@@ -147,8 +161,6 @@ class BasicBackend : public IBackend {
   void EnableStreams(ov::AnyMap& device_config);
   void SetNumThreads(ov::AnyMap& device_config);
   void SetOVDeviceConfiguration(ov::AnyMap& device_config);
-  void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
-                                          const ov::PartialShape& partial_shape) const;
 
   SessionContext& session_context_;
   SubGraphContext subgraph_context_;

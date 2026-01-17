@@ -840,7 +840,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
     MlasConvAlgorithmDepthwise,
 #endif
 };
@@ -1120,6 +1120,16 @@ template <typename T>
 void
 MLASCALL
 MlasEltwiseAdd(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
+    );
+
+template <typename T>
+void
+MLASCALL
+MlasEltwiseMul(
     const T* left,
     const T* right,
     T* output,

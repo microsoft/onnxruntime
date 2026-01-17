@@ -83,16 +83,17 @@ class EpFactoryInternalImpl {
                                  "CreateSyncStreamForDevice is not implemented for this EP factory.");
   }
 
-  virtual OrtStatus* SetEnvironmentOptions(const OrtKeyValuePairs* /*options*/) noexcept {
-    // Default implementation does not handle any options.
-    return nullptr;
-  }
-
   virtual OrtStatus* CreateExternalResourceImporterForDevice(
       _In_ const OrtEpDevice* /*ep_device*/,
       _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
     // Default implementation does not support external resource import
     *importer = nullptr;
+    return nullptr;
+  }
+
+  virtual OrtStatus* GetHardwareDeviceIncompatibilityDetails(_In_ const OrtHardwareDevice* /*hw*/,
+                                                             _Inout_ OrtDeviceEpIncompatibilityDetails* /*details*/) noexcept {
+    // Default implementation: leave details unchanged (device assumed compatible)
     return nullptr;
   }
 

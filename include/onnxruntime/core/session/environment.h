@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <vector>
+#include <shared_mutex>
 #include <string>
 
 #include "core/common/common.h"
@@ -20,6 +21,7 @@
 #include "core/platform/threadpool.h"
 
 #include "core/session/abi_devices.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/plugin_ep/ep_library.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -51,11 +53,13 @@ class Environment {
     @param tp_options optional set of parameters controlling the number of intra and inter op threads for the global
     threadpools.
     @param create_global_thread_pools determine if this function will create the global threadpools or not.
+    @param config_entries Application-specified configuration entries.
   */
   static Status Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                        std::unique_ptr<Environment>& environment,
                        const OrtThreadingOptions* tp_options = nullptr,
-                       bool create_global_thread_pools = false);
+                       bool create_global_thread_pools = false,
+                       const OrtKeyValuePairs* config_entries = nullptr);
 
   /**
    * Set the global threading options for the environment, if no global thread pools have been created yet.
@@ -146,6 +150,17 @@ class Environment {
     return execution_devices_;
   }
 
+  /// Get hardware device incompatibility details for a specific EP.
+  /// @param ep_name The name of the execution provider to check.
+  /// @param hw The hardware device to check for incompatibility.
+  /// @param details Output: Incompatibility details including reasons for incompatibility if any.
+  /// @returns Status indicating success or failure.
+  Status GetHardwareDeviceEpIncompatibilityDetails(const std::string& ep_name,
+                                                   const OrtHardwareDevice* hw,
+                                                   std::unique_ptr<OrtDeviceEpIncompatibilityDetails>& details) const;
+
+  const std::vector<const OrtHardwareDevice*>& GetSortedOrtHardwareDevices() const;
+
   Status CreateSharedAllocator(const OrtEpDevice& ep_device,
                                OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator);
@@ -159,6 +174,17 @@ class Environment {
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
   Status GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator);
 
+  /// <summary>
+  /// Returns a copy of the configuration entries set by the application on environment creation.
+  ///
+  /// Primarily used by EP libraries to retrieve environment-level configurations, but could be used
+  /// more generally to specify global settings.
+  ///
+  /// Refer to OrtApi::CreateEnvWithOptions().
+  /// </summary>
+  /// <returns></returns>
+  OrtKeyValuePairs GetConfigEntries() const;
+
   ~Environment();
 
  private:
@@ -166,7 +192,8 @@ class Environment {
 
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                     const OrtThreadingOptions* tp_options = nullptr,
-                    bool create_global_thread_pools = false);
+                    bool create_global_thread_pools = false,
+                    const OrtKeyValuePairs* config_entries = nullptr);
 
   Status RegisterAllocatorImpl(AllocatorPtr allocator);
   Status UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool error_if_not_found = true);
@@ -174,6 +201,13 @@ class Environment {
                                    const OrtMemoryInfo& memory_info, OrtAllocatorType allocator_type,
                                    const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator,
                                    bool replace_existing);
+
+  // Inserts (or assigns) a config entry into `config_entries_`. Locks `config_entries_mutex_`.
+  void InsertOrAssignConfigEntry(std::string key, std::string value);
+
+  // Removes a config entry from `config_entries_`. Does nothing if the key does not exist.
+  // Locks `config_entries_mutex_`.
+  void RemoveConfigEntry(const std::string& key);
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
@@ -243,6 +277,20 @@ class Environment {
   DataTransferManager data_transfer_mgr_;  // plugin EP IDataTransfer instances
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  // Application-specified environment configuration entries
+  // The environment may add or remove an entry on EP library registration and unregistration, respectively.
+  OrtKeyValuePairs config_entries_;
+  mutable std::shared_mutex config_entries_mutex_;  // Should be locked when accessing config_entries_
+
+  // Tracks the number of registered EP libraries that can create virtual devices.
+  // It is incremented when an EP library is registered with a name that ends in ".virtual".
+  // It is decremented when that EP library is unregistered.
+  // If it reaches 0, the config entry "allow_virtual_devices" is removed.
+  //
+  // This starts at 1 if user created an OrtEnv with the config "allow_virtual_devices" set to "1"
+  // to prevent removal of the config entry in that case.
+  size_t num_allow_virtual_device_uses_{};
 };
 
 }  // namespace onnxruntime

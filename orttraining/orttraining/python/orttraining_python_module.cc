@@ -109,7 +109,7 @@ bool GetProviderInstanceHash(const std::string& type,
   return false;
 }
 
-ORTTrainingPythonEnv::ORTTrainingPythonEnv(std::unique_ptr<OrtEnv> ort_env) : ort_env_(std::move(ort_env)) {
+ORTTrainingPythonEnv::ORTTrainingPythonEnv(OrtEnvPtr ort_env) : ort_env_(std::move(ort_env)) {
   const auto& builtinEPs = GetAvailableExecutionProviderNames();
   available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
 }
@@ -173,7 +173,7 @@ static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
-  std::unique_ptr<OrtEnv> ort_env(OrtEnv::GetInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr));
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr);
   if (!status.IsOK()) return status;
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {

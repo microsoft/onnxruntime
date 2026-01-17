@@ -541,6 +541,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", true,
                                                                   provider_options_map);
 
+  model_settings_.htp_bf16_enable = ParseBoolOption("htp_bf16_enable", false, provider_options_map);
+
   if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
     LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
                        << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
@@ -906,6 +908,25 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
 
   const auto& logger = *GetLogger();
+
+  // Check BF16 compatibility early
+  if (model_settings_.htp_bf16_enable) {
+    // Check SoC model
+    uint32_t soc_model = qnn_backend_manager_->GetSocModel();
+    if (soc_model == QNN_SOC_MODEL_UNKNOWN) {
+      LOGS(logger, WARNING) << "BF16 mode is enabled but soc_model is not specified. "
+                            << "Both parameters must be set together for BF16 support. "
+                            << "QNN EP will not handle any nodes.";
+      return result;  // Empty result means QNN EP won't handle any nodes
+    } else if (soc_model < 88) {
+      LOGS(logger, WARNING) << "BF16 mode is enabled but SoC model is " << soc_model
+                            << " (expected 88 and above). QNN EP will not handle any nodes.";
+      return result;  // Empty result means QNN EP won't handle any nodes
+    }
+
+    LOGS(logger, INFO) << "BF16 mode enabled with compatible hardware: SoC " << soc_model;
+  }
+
   bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
 
   const auto gen_metadef_name = [&]() {

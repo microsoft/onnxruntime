@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <vector>
 // #include <absl/base/config.h>
 #include <gsl/gsl>
 #include <gtest/gtest.h>
 
+#include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -218,9 +220,16 @@ void RunScanMulModel(const Ort::SessionOptions& session_options) {
   EXPECT_THAT(output_span, ::testing::ElementsAre(2.f, 4.f, 6.f, 20.f, 40.f, 60.f, 200.f, 400.f, 600.f));
 }
 
-void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_options) {
+using CheckEpNodeAssignmentFunc = std::function<void(const Ort::Session& session)>;
+
+void RunAddMulAddModel(const Ort::SessionOptions& session_options,
+                       CheckEpNodeAssignmentFunc check_ep_node_assignment_func = {}) {
   // This model has Add -> Mul -> Add. The example plugin EP supports Mul but not Add.
   Ort::Session session(*ort_env, ORT_TSTR("testdata/add_mul_add.onnx"), session_options);
+
+  if (check_ep_node_assignment_func) {
+    ASSERT_NO_FATAL_FAILURE(check_ep_node_assignment_func(session));
+  }
 
   // Create inputs
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -288,9 +297,46 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   // Create session with example plugin EP
   Ort::SessionOptions session_options;
   std::unordered_map<std::string, std::string> ep_options;
+
+  // Create session that enables recording of EP-graph assignment info
+  session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  RunPartiallySupportedModelWithPluginEp(session_options);
+  // Function that checks the ep graph/node assignment (Mul on plugin EP, others on CPU EP).
+  // Model has 3 subgraphs (in no particular order):
+  // - Subgraph 1: Add assigned to CPU EP.
+  // - Subgraph 2: Mul assigned to plugin EP.
+  // - Subgraph 3: Add assigned to CPU EP.
+  auto check_ep_node_assignment = [](const Ort::Session& session) -> void {
+    std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphAssignmentInfo();
+    ASSERT_EQ(ep_subgraphs.size(), 3);
+
+    for (Ort::ConstEpAssignedSubgraph ep_subgraph : ep_subgraphs) {
+      std::string ep_name = ep_subgraph.GetEpName();
+      ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name || ep_name == kCpuExecutionProvider);
+
+      const std::vector<Ort::ConstEpAssignedNode> ep_nodes = ep_subgraph.GetNodes();
+
+      ASSERT_GE(ep_nodes.size(), 1);  // All of these subgraphs just have one node.
+      std::string domain = ep_nodes[0].GetDomain();
+      std::string op_type = ep_nodes[0].GetOperatorType();
+      std::string node_name = ep_nodes[0].GetName();
+
+      ASSERT_EQ(domain, kOnnxDomain);  // All node ops should have the ONNX domain
+
+      // Check that CPU EP has the Adds and that the example EP has the Mul.
+      if (ep_name == kCpuExecutionProvider) {
+        ASSERT_EQ(op_type, "Add");
+        ASSERT_TRUE(node_name == "add_0" || node_name == "add_1");
+      } else {
+        ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name);
+        ASSERT_EQ(op_type, "Mul");
+        ASSERT_EQ(node_name, "mul_0");
+      }
+    }
+  };
+
+  RunAddMulAddModel(session_options, check_ep_node_assignment);
 }
 
 // Generate an EPContext model with a plugin EP.
@@ -549,5 +595,102 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Scan) {
     ASSERT_NO_FATAL_FAILURE(RunScanMulModel(session_options));
   }
 }
+
+// Tests the GetHardwareDeviceEpIncompatibilityDetails C API with the example plugin EP.
+// The example plugin EP supports CPU devices, so this test verifies that a CPU device
+// is reported as compatible (reasons_bitmask == 0).
+TEST(OrtEpLibrary, PluginEp_CpuDevice_ReturnsCompatible) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtEnv* env = static_cast<OrtEnv*>(*ort_env);
+
+  // Register the example plugin EP
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+
+  // Get all hardware devices
+  size_t num_hw_devices = 0;
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_hw_devices));
+  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices(num_hw_devices);
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, hw_devices.data(), num_hw_devices));
+
+  // Find a CPU device using the public accessor
+  const OrtHardwareDevice* cpu_device = nullptr;
+  for (size_t i = 0; i < num_hw_devices; ++i) {
+    if (api->HardwareDevice_Type(hw_devices[i]) == OrtHardwareDeviceType_CPU) {
+      cpu_device = hw_devices[i];
+      break;
+    }
+  }
+  ASSERT_NE(cpu_device, nullptr) << "No CPU device found";
+
+  // Check compatibility - ExampleEP supports CPU, so should return no incompatibility reasons
+  OrtDeviceEpIncompatibilityDetails* details = nullptr;
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEpIncompatibilityDetails(env, Utils::example_ep_info.registration_name.c_str(),
+                                                                     cpu_device, &details));
+  ASSERT_NE(details, nullptr);
+
+  // Verify compatible (no incompatibility reasons)
+  uint32_t reasons_bitmask = 0xFFFFFFFF;
+  ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetReasonsBitmask(details, &reasons_bitmask));
+  EXPECT_EQ(reasons_bitmask, 0u) << "CPU device should be compatible with example_plugin_ep";
+
+  int32_t error_code = -1;
+  ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetErrorCode(details, &error_code));
+  EXPECT_EQ(error_code, 0);
+
+  api->ReleaseDeviceEpIncompatibilityDetails(details);
+}
+
+// Tests the GetHardwareDeviceEpIncompatibilityDetails C API with the example plugin EP.
+// The example plugin EP only supports CPU devices, so this test verifies that a GPU device
+// is reported as incompatible (reasons_bitmask != 0).
+TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtEnv* env = static_cast<OrtEnv*>(*ort_env);
+
+  // Register the regular example plugin EP (CPU-only)
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+
+  // Get all hardware devices
+  size_t num_hw_devices = 0;
+  ASSERT_ORTSTATUS_OK(api->GetNumHardwareDevices(env, &num_hw_devices));
+  ASSERT_GT(num_hw_devices, 0u);
+  std::vector<const OrtHardwareDevice*> hw_devices(num_hw_devices);
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDevices(env, hw_devices.data(), num_hw_devices));
+
+  // Find a GPU device using the public accessor
+  const OrtHardwareDevice* gpu_device = nullptr;
+  for (size_t i = 0; i < num_hw_devices; ++i) {
+    if (api->HardwareDevice_Type(hw_devices[i]) == OrtHardwareDeviceType_GPU) {
+      gpu_device = hw_devices[i];
+      break;
+    }
+  }
+
+  if (gpu_device == nullptr) {
+    // GPU device not found, early exit
+    GTEST_SKIP() << "No GPU device found";
+  }
+
+  // Check compatibility - ExampleEP only supports CPU, so GPU should return incompatibility reasons
+  OrtDeviceEpIncompatibilityDetails* details = nullptr;
+  ASSERT_ORTSTATUS_OK(api->GetHardwareDeviceEpIncompatibilityDetails(env, Utils::example_ep_info.registration_name.c_str(),
+                                                                     gpu_device, &details));
+  ASSERT_NE(details, nullptr);
+
+  // Verify incompatible (should have incompatibility reasons)
+  uint32_t reasons_bitmask = 0;
+  ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetReasonsBitmask(details, &reasons_bitmask));
+  EXPECT_NE(reasons_bitmask, 0u) << "GPU device should be incompatible with example_plugin_ep (CPU-only)";
+
+  api->ReleaseDeviceEpIncompatibilityDetails(details);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
@@ -209,6 +209,9 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4,   // maps to a pair of packed int4 values (size == 1 byte)
   // Float4 types were introduced in ONNX 1.18. See https://onnx.ai/onnx/technical/float4.html
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1,  // maps to a pair of packed float4 values (size == 1 byte)
+  // Int2 types were introduced in ONNX 1.20. See https://onnx.ai/onnx/technical/int2.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,  // maps to 4 packed uint2 values (size == 1 byte)
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to 4 packed int2 values (size == 1 byte)
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -333,6 +336,9 @@ ORT_RUNTIME_CLASS(ExternalInitializerInfo);
 ORT_RUNTIME_CLASS(ExternalResourceImporter);  // Capability object for external resource import
 ORT_RUNTIME_CLASS(ExternalMemoryHandle);      // EP-imported view of shared external allocation
 ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared external semaphore
+ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
+ORT_RUNTIME_CLASS(EpAssignedSubgraph);
+ORT_RUNTIME_CLASS(EpAssignedNode);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -509,6 +515,16 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
+
+/** \brief Reasons why an execution provider might not be compatible with a device
+ */
+typedef enum OrtDeviceEpIncompatibilityReason {
+  OrtDeviceEpIncompatibility_NONE = 0,
+  OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE = 1 << 0,
+  OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE = 1 << 1,
+  OrtDeviceEpIncompatibility_MISSING_DEPENDENCY = 1 << 2,
+  OrtDeviceEpIncompatibility_UNKNOWN = 1 << 31
+} OrtDeviceEpIncompatibilityReason;
 
 /** \brief Delegate to allow providing custom OrtEpDevice selection logic
  *
@@ -954,14 +970,6 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
-/** \brief The C API
- *
- * All C API functions are defined inside this structure as pointers to functions.
- * Call OrtApiBase::GetApi to get a pointer to it
- *
- * \nosubgrouping
- */
-
 /** \addtogroup Global
  * @{
  */
@@ -1045,6 +1053,101 @@ typedef enum OrtCompiledModelCompatibility {
   OrtCompiledModelCompatibility_EP_UNSUPPORTED,
 } OrtCompiledModelCompatibility;
 
+/** \brief Configuration options for creating an OrtEnv.
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ *       This ensures forward compatibility as fields may be added in future versions.
+ *
+ * \since Version 1.24.
+ */
+typedef struct OrtEnvCreationOptions {
+  uint32_t version;  ///< Must be set to ORT_API_VERSION
+
+  /** \brief The logging severity level for the environment. Must be set to a value from OrtLoggingLevel.
+   *
+   * \note Logging messages which are less severe than the `logging_severity_level` are not emitted.
+   *
+   * \note Serves as the default logging severity level for session creation and runs.
+   *       Use ::SetSessionLogSeverityLevel() to set a logging severity level for the creation of specific session.
+   *       Use ::RunOptionsSetRunLogSeverityLevel() to set a logging severity level for a specific session run.
+   *
+   * \since Version 1.24.
+   */
+  int32_t logging_severity_level;
+
+  /** \brief The log identifier. Must be set to a valid UTF-8 null-terminated string.
+   *
+   * \note This string identifier is copied by ORT.
+   *
+   * \since Version 1.24.
+   */
+  const char* log_id;
+
+  /** \brief Optional custom logging function. May be set to NULL.
+   *
+   * \note The OrtEnvCreationOptions::custom_logging_param is provided as the first argument to this logging function.
+   *       This allows passing custom state into the logging function.
+   *
+   * \note This function is only called when a message's severity meets or exceeds the set logging severity level.
+   *
+   * \since Version 1.24.
+   */
+  OrtLoggingFunction custom_logging_function;
+
+  /** \brief Optional state to pass as the first argument to OrtEnvCreationOptions::custom_logger_function.
+   *         May be set to NULL.
+   *
+   * \since Version 1.24.
+   */
+  void* custom_logging_param;
+
+  /** \brief Optional threading options for creating an environment with global thread pools shared across sessions.
+   *         May be set to NULL.
+   *
+   * \note The OrtThreadingOptions instance is copied by ORT.
+   *
+   * \note Use OrtApi::CreateThreadingOptions() to create an instance of OrtThreadingOptions.
+   *
+   * \note Use this in conjunction with OrtApi::DisablePerSessionThreads or else the session will use its own
+   *       thread pools.
+   *
+   * \since Version 1.24.
+   */
+  const OrtThreadingOptions* threading_options;
+
+  /** \brief Optional environment configuration entries represented as string key-value pairs. May be set to NULL.
+   *
+   * \note The OrtKeyValuePairs instance is copied by ORT.
+   *
+   * \note Refer to onnxruntime_env_config_keys.h for common config entry keys and their supported values.
+   *
+   * \note An application provides environment-level configuration options for execution provider libraries by
+   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
+   *       the specific execution provider's documentation for valid keys and values.
+   *
+   * \note An application may separately set session-level configuration options for execution providers via other APIs
+   *       such as SessionOptionsAppendExecutionProvider_V2, which store configuration entries within OrtSessionOptions.
+   *       If an environment-level configuration conflicts with a session-level configuration, then
+   *       precedence is determined by the execution provider library itself.
+   *
+   * \since Version 1.24.
+   */
+  const OrtKeyValuePairs* config_entries;
+
+  //
+  // End of fields available in ORT 1.24
+  //
+
+} OrtEnvCreationOptions;
+
+/** \brief The C API
+ *
+ * All C API functions are defined inside this structure as pointers to functions.
+ * Call OrtApiBase::GetApi to get a pointer to it
+ *
+ * \nosubgrouping
+ */
 struct OrtApi {
   /// \name OrtStatus
   /// @{
@@ -6784,8 +6887,232 @@ struct OrtApi {
   ORT_API2_STATUS(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
                   _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
                   _In_ size_t num_outputs);
+  /** \brief Get the number of available hardware devices.
+   *
+   * Returns the count of hardware devices discovered on the system.
+   * Use this to allocate an array before calling GetHardwareDevices().
+   *
+   * \param[in] env The OrtEnv instance where device discovery results are stored.
+   * \param[out] num_devices The number of OrtHardwareDevice instances available.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetNumHardwareDevices, _In_ const OrtEnv* env, _Out_ size_t* num_devices);
+
+  /** \brief Get the list of available hardware devices.
+   *
+   * Enumerates hardware devices available on the system.
+   * Populates a user-provided array with pointers to OrtHardwareDevice instances. The caller is responsible
+   * for allocating the array with sufficient space (use GetNumHardwareDevices() to get the count).
+   *
+   * The returned pointers reference internal ORT data structures that are discovered once at process
+   * startup and remain valid for the lifetime of the OrtEnv. The caller does not need to release these
+   * pointers, but should not use them after calling ReleaseEnv().
+   *
+   * \param[in] env The OrtEnv instance where device discovery results are stored.
+   * \param[out] devices User-allocated array to receive pointers to OrtHardwareDevice instances.
+   *                     The array must have space for at least num_devices elements.
+   * \param[in] num_devices The size of the user-allocated devices array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetHardwareDevices, _In_ const OrtEnv* env,
+                  _Out_writes_(num_devices) const OrtHardwareDevice** devices,
+                  _In_ size_t num_devices);
+
+  /** \brief Check for known incompatibility issues between hardware device and a specific execution provider.
+   *
+   * This function checks for known incompatibility issues between the specified hardware device
+   * and a specific execution provider.
+   * If returned incompatibility details have non-zero reasons, it indicates the device is not compatible.
+   * However, if returned detail have reason == 0, it doesn't guarantee 100% compatibility for all models,
+   * as models may have specific requirements.
+   *
+   * Note: This method should only be called when the OrtEnv has been initialized with execution
+   * providers (after RegisterExecutionProviderLibrary is called).
+   *
+   * \param[in] env The OrtEnv instance with registered execution providers.
+   * \param[in] ep_name The name of the execution provider to check. Required and cannot be null or empty.
+   * \param[in] hw The hardware device to check for incompatibility.
+   * \param[out] details Compatibility details including reasons for incompatibility if any.
+   *                     Must be freed with OrtApi::ReleaseDeviceEpIncompatibilityDetails.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetHardwareDeviceEpIncompatibilityDetails, _In_ const OrtEnv* env,
+                  _In_ const char* ep_name,
+                  _In_ const OrtHardwareDevice* hw,
+                  _Outptr_ OrtDeviceEpIncompatibilityDetails** details);
+
+  /// \name OrtDeviceEpIncompatibilityDetails
+  /// Accessor functions for device incompatibility details
+  /// @{
+
+  /** \brief Get the incompatibility reasons bitmask from OrtDeviceEpIncompatibilityDetails.
+   *
+   * \param[in] details The OrtDeviceEpIncompatibilityDetails instance to query.
+   * \param[out] reasons_bitmask Pointer to store the bitmask of incompatibility reasons.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(DeviceEpIncompatibilityDetails_GetReasonsBitmask,
+                  _In_ const OrtDeviceEpIncompatibilityDetails* details,
+                  _Out_ uint32_t* reasons_bitmask);
+
+  /** \brief Get the notes from OrtDeviceEpIncompatibilityDetails.
+   *
+   * \param[in] details The OrtDeviceEpIncompatibilityDetails instance to query.
+   * \param[out] notes Pointer to the notes string. May be nullptr if no notes are available.
+   *                   The returned string is owned by the details object and should not be freed.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(DeviceEpIncompatibilityDetails_GetNotes,
+                  _In_ const OrtDeviceEpIncompatibilityDetails* details,
+                  _Outptr_result_maybenull_ const char** notes);
+
+  /** \brief Get the execution provider error code from OrtDeviceEpIncompatibilityDetails.
+   *
+   * This allows Independent Hardware Vendors (IHVs) to define their own error codes
+   * to provide additional details about device incompatibility.
+   *
+   * \param[in] details The OrtDeviceEpIncompatibilityDetails instance to query.
+   * \param[out] error_code Pointer to store the EP-specific error code. A value of 0 indicates no error code was set.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(DeviceEpIncompatibilityDetails_GetErrorCode,
+                  _In_ const OrtDeviceEpIncompatibilityDetails* details,
+                  _Out_ int32_t* error_code);
+
+  /** \brief Release an OrtDeviceEpIncompatibilityDetails instance.
+   *
+   * \since Version 1.24.
+   */
+  ORT_CLASS_RELEASE(DeviceEpIncompatibilityDetails);
 
   /// @}
+
+  /** \brief Create an OrtEnv instance with the given options.
+   *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   *       to another env creation function; all arguments to this function will be ignored.
+   *
+   * \param[in] options The OrtEnvCreationOptions instance that contains creation options.
+   * \param[out] out Output parameter set to the new OrtEnv instance. Must be freed with OrtApi::ReleaseEnv.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out);
+
+  /** \brief Get information about the subgraphs assigned to each execution provider (EP) and the nodes within.
+   *
+   * Each returned OrtEpAssignedSubgraph instance contains details of the subgraph/nodes assigned to an execution
+   * provider, including the execution provider's name, and the name, domain, and operator type for every node.
+   *
+   * For compiling execution providers, a single OrtEpAssignedSubgraph instance contains information about the
+   * nodes that are fused and compiled within a single subgraph assigned to the execution provider.
+   *
+   * For execution providers that use kernel registration (e.g., CPU EP), each node with a registered kernel is
+   * contained in its own OrtEpAssignedSubgraph instance.
+   *
+   * \note The caller must enable the collection of this information by enabling the session
+   *       configuration entry "session.record_ep_graph_assignment_info" during session creation.
+   *       Refer to onnxruntime_session_options_config_keys.h. Otherwise, if not enabled, this function returns a
+   *       status with error code ORT_FAIL.
+   *
+   * \note The information reported by this function is obtained immediately after running basic optimizations on the
+   *       original graph if the session optimization level is set to ORT_ENABLE_BASIC or higher. If the session
+   *       optimization level is set to ORT_DISABLE_ALL, only minimal/required optimizations are run before
+   *       the information is collected.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[out] ep_subgraphs Output parameter set to the array of OrtEpAssignedSubgraph instances.
+   * \param[out] num_ep_subgraphs Output parameter set to the number of elements in the `ep_subgraphs` array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
+                  _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                  _Out_ size_t* num_ep_subgraphs);
+
+  /** \brief Get the name of the execution provider to which the subgraph was assigned.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
+   * \param[out] out Output parameter set to the execution provider's name as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedSubgraph instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_ const char** out);
+
+  /** \brief Get the nodes in a subgraph assigned to a specific execution provider.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance.
+   * \param[out] ep_nodes Output parameter set to the array of OrtEpAssignedNode instances.
+   * \param[out] num_ep_nodes Output parameter set to the number of OrtEpAssignedNode instance returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
+
+  /** \brief Get the name of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \param[out] out Output parameter set to the node's name as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+
+  /** \brief Get the domain of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \param[out] out Output parameter set to the node's domain as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+
+  /** \brief Get the operator type of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance.
+   * \param[out] out Output parameter set to the node's operator type as a UTF-8 null-terminated string.
+   *                 Owned by the OrtEpAssignedNode instance (do not free).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
 };
 
 /*
