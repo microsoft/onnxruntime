@@ -1,10 +1,9 @@
 import onnx
-from onnx import TensorProto, helper
 
 
 def create_custom_mul_model():
     # === Inputs ===
-    x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 2])
+    x = onnx.helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 2])
     w = helper.make_tensor_value_info("W", TensorProto.FLOAT, [3, 2])
 
     # === Output ===
