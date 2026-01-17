@@ -34,6 +34,7 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
@@ -3093,6 +3094,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
 #ifdef ORT_ENABLE_STREAM
       DeviceStreamCollectionHolder device_stream_collection_holder(session_state_.get());
+      if (run_options.sync_stream != nullptr) {
+        if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+          // XXX: Not tested in Parallel execution mode and disabled at this time.
+          LOGS(*session_logger_, WARNING) << "Setting sync stream is not supported in parallel execution mode.";
+        } else {
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              device_stream_collection_holder.p_->SetStreamOverride(run_options.sync_stream));
+        }
+      }
 #endif
 
       if (retval.IsOK()) {

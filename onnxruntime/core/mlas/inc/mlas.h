@@ -840,7 +840,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
     MlasConvAlgorithmDepthwise,
 #endif
 };
@@ -2125,14 +2125,3 @@ MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
 );
-
-#if defined(USE_KLEIDIAI)
-/**
- * @brief Function to override the packing mechanism decision if kleidi ai is included
- * @param enable     enable kleidiai packing (allow or disallow depending on true/false)
- * @return
-*/
-void
-MLASCALL
-MlasGemmBatchPackUseKleidi(bool enable);
-#endif

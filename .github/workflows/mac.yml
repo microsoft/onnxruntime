@@ -72,7 +72,7 @@ jobs:
       matrix:
         target_arch: [x86_64, arm64]
 
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout code
