@@ -8,7 +8,7 @@ This document aims to provide guidance for ONNX Runtime (ORT) plugin Execution P
 
 ### Usage
 
-Here, we will refer to the ORT C API functions. Their equivalents should exist for other language bindings that support plugin EP usage.
+Note: Here, we will refer to the ORT C API functions. Their equivalents should exist for other language bindings that support plugin EP usage.
 
 Users are expected to call the ORT API `RegisterExecutionProviderLibrary()` to register the plugin EP library. Then, they may either choose to use the auto EP selection mechanism or manually call ORT API `SessionOptionsAppendExecutionProvider_V2()` to explicitly use the plugin EP.
 
