@@ -3,15 +3,15 @@ import onnx
 
 def create_custom_mul_model():
     # === Inputs ===
-    x = onnx.helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 2])
-    w = helper.make_tensor_value_info("W", TensorProto.FLOAT, [3, 2])
+    x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [3, 2])
+    w = onnx.helper.make_tensor_value_info("W", onnx.TensorProto.FLOAT, [3, 2])
 
     # === Output ===
-    y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 2])
+    y = onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [3, 2])
 
     # === Custom Node: Custom_Mul ===
     # Replace "Mul" with your custom op name and domain
-    custom_node = helper.make_node(
+    custom_node = onnx.helper.make_node(
         op_type="Custom_Mul",  # <-- custom op name
         inputs=["X", "W"],
         outputs=["Y"],
@@ -19,7 +19,7 @@ def create_custom_mul_model():
     )
 
     # === Graph ===
-    graph = helper.make_graph(
+    graph = onnx.helper.make_graph(
         nodes=[custom_node],
         name="CustomMulGraph",
         inputs=[x, w],
@@ -27,11 +27,11 @@ def create_custom_mul_model():
     )
 
     # === Model (opset version 13 or later is fine) ===
-    model = helper.make_model(
+    model = onnx.helper.make_model(
         graph,
         opset_imports=[
-            helper.make_opsetid("", 13),  # standard ONNX domain
-            helper.make_opsetid("com.example", 1),
+            onnx.helper.make_opsetid("", 13),  # standard ONNX domain
+            onnx.helper.make_opsetid("com.example", 1),
         ],  # your custom domain
         producer_name="custom_mul_builder",
     )
