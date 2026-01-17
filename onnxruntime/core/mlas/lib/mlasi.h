@@ -964,9 +964,13 @@ extern "C" {
 #endif
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwBf16KernelNeon;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcBf16KernelNeon;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseBf16KernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelNeon;
