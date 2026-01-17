@@ -21,8 +21,6 @@ WindowsFileMapper::WindowsFileMapper(const logging::Logger& logger) : logger_(&l
 // Use LOGS_DEFAULT here as this function will be called during destruction of QnnBackendManager
 // At time of destruction. Usage of logger_ will not be available and will result in a seg fault
 WindowsFileMapper::~WindowsFileMapper() {
-  std::lock_guard<std::mutex> lock(map_mutex_);
-
   // Ideally, there should be nothing to clean up at this point
   // but free any resources anyway if applicable
   if (!mapping_handle_to_info_map_.empty() || !context_bin_map_view_pointers_.empty()) {
@@ -54,6 +52,14 @@ Status WindowsFileMapper::MapContextBin(const std::string& bin_filepath,
 
   std::lock_guard<std::mutex> lock(map_mutex_);
 
+  auto file_mapping_it = context_bin_to_mapping_handle_map_.find(bin_filepath);
+  if (file_mapping_it != context_bin_to_mapping_handle_map_.end()) {
+    LOGS(*logger_, INFO) << "Context bin file mapping already exists for "
+                         << bin_filepath;
+    *notify_param = reinterpret_cast<void*>(file_mapping_it->second);
+    return Status::OK();
+  }
+
   HANDLE file_handle = CreateFileA(bin_filepath.c_str(),
                                    GENERIC_READ,
                                    FILE_SHARE_READ,
@@ -62,15 +68,18 @@ Status WindowsFileMapper::MapContextBin(const std::string& bin_filepath,
                                    FILE_ATTRIBUTE_NORMAL,
                                    NULL);
   ORT_RETURN_IF(file_handle == INVALID_HANDLE_VALUE,
-                "Failed to create file handle for context bin",
-                bin_filepath);
+                "Failed to create file handle with error code ",
+                GetLastError(), " for context bin", bin_filepath);
 
   LOGS(*logger_, VERBOSE) << "Created file handle (" << file_handle << ") for context bin: "
                           << bin_filepath;
 
   HANDLE file_mapping_handle = CreateFileMappingA(file_handle, NULL, PAGE_READONLY, 0x00, 0x00, NULL);
-  ORT_RETURN_IF(file_mapping_handle == INVALID_HANDLE_VALUE,
-                "Failed to create file mapping for context bin ", bin_filepath);
+  if (file_mapping_handle == INVALID_HANDLE_VALUE) {
+    CloseHandles(file_handle, nullptr);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create file mapping with error code ",
+                           GetLastError(), " for context bin ", bin_filepath);
+  }
 
   LOGS(*logger_, INFO) << "Created file mapping with handle (" << file_mapping_handle << ") for context bin:"
                        << bin_filepath;
@@ -93,11 +102,7 @@ Status WindowsFileMapper::ReleaseContextBin(const std::string& bin_filepath) {
   std::lock_guard<std::mutex> lock(map_mutex_);
   auto status = Status::OK();
 
-  auto bin_map_it = std::find_if(context_bin_to_mapping_handle_map_.begin(),
-                                 context_bin_to_mapping_handle_map_.end(),
-                                 [&bin_filepath](const auto& kv) {
-                                   return kv.first == bin_filepath;
-                                 });
+  auto bin_map_it = context_bin_to_mapping_handle_map_.find(bin_filepath);
 
   if (bin_map_it == context_bin_to_mapping_handle_map_.end()) {
     LOGS(*logger_, VERBOSE) << "File handle does not exist for " << bin_filepath;
@@ -105,11 +110,6 @@ Status WindowsFileMapper::ReleaseContextBin(const std::string& bin_filepath) {
   }
 
   HANDLE file_mapping_handle = bin_map_it->second;
-  auto mapping_it = std::find_if(mapping_handle_to_info_map_.begin(),
-                                 mapping_handle_to_info_map_.end(),
-                                 [file_mapping_handle](const auto& kv) {
-                                   return kv.first == file_mapping_handle;
-                                 });
 
   HANDLE file_handle = nullptr;
   auto it = mapping_handle_to_info_map_.find(file_mapping_handle);
@@ -142,11 +142,7 @@ Status WindowsFileMapper::GetContextBinMappingPointer(const std::string& bin_fil
   LOGS(*logger_, INFO) << "Creating mapping pointer for " << bin_filepath;
 
   std::lock_guard<std::mutex> lock(map_mutex_);
-  auto it = std::find_if(context_bin_to_mapping_handle_map_.begin(),
-                         context_bin_to_mapping_handle_map_.end(),
-                         [&bin_filepath](const auto& kv) {
-                           return kv.first == bin_filepath;
-                         });
+  auto it = context_bin_to_mapping_handle_map_.find(bin_filepath);
 
   ORT_RETURN_IF(it == context_bin_to_mapping_handle_map_.end(),
                 "Failed to create mapping pointer: File mapping does not exist for ",
@@ -160,14 +156,7 @@ Status WindowsFileMapper::GetContextBinMappingPointer(const std::string& bin_fil
 
   ORT_RETURN_IF(mapview_ptr == nullptr, "Failed to create mapping pointer for ", bin_filepath);
 
-  if (!context_bin_map_view_pointers_.insert(mapview_ptr).second) {
-    LOGS(*logger_, ERROR) << "Unable to insert mapping pointer " << mapview_ptr << " into set";
-    if (!UnmapViewOfFile(mapview_ptr)) {
-      LOGS(*logger_, ERROR) << "Failed to unmap mapping pointer: " << mapview_ptr;
-    }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create mapping pointer for ", bin_filepath);
-  }
-
+  ORT_UNUSED_PARAMETER(context_bin_map_view_pointers_.insert(mapview_ptr));
   *mapping_ptr = mapview_ptr;
   LOGS(*logger_, INFO) << "Created mapping pointer (" << mapping_ptr << ") for " << bin_filepath;
   return Status::OK();
@@ -177,16 +166,13 @@ Status WindowsFileMapper::FreeContextBinMappingPointer(LPVOID bin_mapping_pointe
   LOGS(*logger_, INFO) << "Releasing mapping pointer " << bin_mapping_pointer;
 
   std::lock_guard<std::mutex> lock(map_mutex_);
-  auto it = std::find_if(context_bin_map_view_pointers_.begin(),
-                         context_bin_map_view_pointers_.end(),
-                         [bin_mapping_pointer](const auto& pointer) {
-                           return pointer == bin_mapping_pointer;
-                         });
+  auto it = context_bin_map_view_pointers_.find(bin_mapping_pointer);
 
   ORT_RETURN_IF(it == context_bin_map_view_pointers_.end(), "Mapping pointer ",
                 bin_mapping_pointer, " cannot be found and is invalid");
 
-  ORT_RETURN_IF(!UnmapViewOfFile(bin_mapping_pointer), "Failed to free mapping pointer ", bin_mapping_pointer);
+  ORT_RETURN_IF(!UnmapViewOfFile(bin_mapping_pointer), "Failed to free mapping pointer ", bin_mapping_pointer,
+                " with error code ", GetLastError());
   ORT_UNUSED_PARAMETER(context_bin_map_view_pointers_.erase(bin_mapping_pointer));
   return Status::OK();
 }
@@ -233,7 +219,8 @@ Qnn_ErrorHandle_t WindowsFileMapper::MapDmaData(Qnn_ContextBinaryDataRequest_t r
                                           (buffer_size + delta));
 
   if (aligned_data_ptr == nullptr) {
-    LOGS(*logger_, ERROR) << "Failed to map DMA data for file mapping handle ";
+    LOGS(*logger_, ERROR) << "Failed to map DMA data with error code " << GetLastError()
+                          << " for file mapping handle " << file_mapping_handle;
     return QNN_COMMON_ERROR_SYSTEM;
   }
 
@@ -249,7 +236,8 @@ Qnn_ErrorHandle_t WindowsFileMapper::MapDmaData(Qnn_ContextBinaryDataRequest_t r
   if (fd == -1) {
     LOGS(*logger_, ERROR) << "Failed to register DMA data mapping to RPCMEM";
     if (!UnmapViewOfFile(aligned_data_ptr)) {
-      LOGS(*logger_, ERROR) << "Failed to unmap DMA data with address: " << aligned_data_ptr;
+      LOGS(*logger_, ERROR) << "Failed to unmap DMA data with error code " << GetLastError()
+                            << " with address : " << aligned_data_ptr;
     }
     return QNN_COMMON_ERROR_SYSTEM;
   }
@@ -292,10 +280,7 @@ Qnn_ErrorHandle_t WindowsFileMapper::ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_
 
   LPVOID unaligned_data_ptr = reinterpret_cast<void*>(data_mem.dmaBuffer.data);
   auto& mapped_data = mapping_info.mapped_data;
-  auto mapped_data_it = std::find_if(mapped_data.begin(), mapped_data.end(),
-                                     [unaligned_data_ptr](const auto& kv) {
-                                       return kv.first == unaligned_data_ptr;
-                                     });
+  auto mapped_data_it = mapped_data.find(unaligned_data_ptr);
 
   if (mapped_data_it == mapped_data.end()) {
     LOGS_DEFAULT(ERROR) << "Failed to find DMA data mapping for address: " << unaligned_data_ptr;
@@ -308,6 +293,11 @@ Qnn_ErrorHandle_t WindowsFileMapper::ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_
   if (!mapped_data.erase(unaligned_data_ptr)) {
     LOGS_DEFAULT(WARNING) << "Possible leak: failed to remove unordered_map entry for DMA data address: "
                           << unaligned_data_ptr;
+  }
+
+  if (mapped_data.empty()) {
+    CloseHandles(mapping_info.file_handle, file_mapping_handle);
+    ORT_UNUSED_PARAMETER(mapping_handle_to_info_map_.erase(mapping_info_it));
   }
 
   return QNN_SUCCESS;
@@ -350,7 +340,8 @@ void WindowsFileMapper::CleanUpDataMapping(LPVOID unaligned_data_ptr, LPVOID ali
   }
 
   if (aligned_data_ptr && !UnmapViewOfFile(aligned_data_ptr)) {
-    LOGS_DEFAULT(ERROR) << "Failed to unmap view of pointer: " << aligned_data_ptr;
+    LOGS_DEFAULT(ERROR) << "Failed to unmap view of pointer: " << aligned_data_ptr
+                        << ", error code: " << GetLastError();
   }
 }
 
@@ -366,10 +357,12 @@ void WindowsFileMapper::CleanUpDataMappings(const std::unordered_map<LPVOID, Map
 
 void WindowsFileMapper::CloseHandles(HANDLE file_handle, HANDLE file_mapping_handle) {
   if (file_mapping_handle && !CloseHandle(file_mapping_handle)) {
-    LOGS_DEFAULT(ERROR) << "Failed to close file mapping handle: " << file_mapping_handle;
+    LOGS_DEFAULT(ERROR) << "Failed to close file mapping handle: " << file_mapping_handle
+                        << ", error code: " << GetLastError();
   }
   if (file_handle && !CloseHandle(file_handle)) {
-    LOGS_DEFAULT(ERROR) << "Failed to close file handle: " << file_handle;
+    LOGS_DEFAULT(ERROR) << "Failed to close file handle: " << file_handle
+                        << ", error code: " << GetLastError();
   }
 }
 

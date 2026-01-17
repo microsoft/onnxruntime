@@ -954,7 +954,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       NodeAttrHelper node_helper(*ep_ctx_node);
       std::string context_bin_filepath(parent_path.string());
       context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
-
       if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {
         context_bin_map.emplace(context_bin_filepath, std::make_unique<std::vector<std::string>>());
         // Push context bin filepath for lookup between sessions

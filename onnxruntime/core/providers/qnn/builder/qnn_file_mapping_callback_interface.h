@@ -3,14 +3,12 @@
 
 #pragma once
 
-#include "core/providers/qnn/builder/qnn_def.h"
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
-
 #include <string>
 
 #include <QnnContext.h>
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -41,5 +39,3 @@ class FileMappingCallbackInterface {
 
 }  // namespace qnn
 }  // namespace onnxruntime
-
-#endif  // QNN_FILE_MAPPED_WEIGHTS_ENABLED

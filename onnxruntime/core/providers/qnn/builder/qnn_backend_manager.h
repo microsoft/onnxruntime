@@ -481,7 +481,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool file_mapped_weights_enabled_ = false;
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
-  std::shared_ptr<FileMappingCallbackInterface> file_mapper_ = nullptr;
+  std::unique_ptr<FileMappingCallbackInterface> file_mapper_ = nullptr;
   // Notify params for file mapping must persist throughout lifetime of
   // QnnBackendManager for release of DMA data callback on destruction
   std::vector<std::pair<FileMappingCallbackInterface*, void*>> file_mapping_notify_params_;
