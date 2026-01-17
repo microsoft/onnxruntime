@@ -544,7 +544,7 @@ class QNNTestEnvironment {
   bool IsEnvVarSet(const char* name) {
 #ifdef _MSC_VER
 #pragma warning(push)
-#pragma warning(disable: 4996)
+#pragma warning(disable : 4996)
 #endif
     const char* value = std::getenv(name);
 #ifdef _MSC_VER
