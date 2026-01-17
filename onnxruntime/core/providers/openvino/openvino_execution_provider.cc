@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <cerrno>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/contexts.h"
@@ -285,6 +286,64 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
         } else {
           LOGS_DEFAULT(WARNING) << "kvcache_rewind index is < 0:\t" << index;
         }
+      }
+    } else if (key == "kvcache_reorder") {
+      // Convert kvcache_reorder value format "1,2,3;4,5,6" into two vectors
+      // src_indices = [1,2,3], dst_indices = [4,5,6]
+      size_t delimiter_pos = value.find(';');
+      if (delimiter_pos == std::string::npos) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                      "kvcache_reorder value format is incorrect, expected format is 'x1,x2,x3;y1,y2,y3' where x and y are comma-separated int64_t lists");
+      }
+
+      std::string_view src_string(value.begin(), value.begin() + delimiter_pos);
+      std::string_view dst_string(value.begin() + delimiter_pos + 1, value.end());
+
+      constexpr auto parse_indices = [](std::string_view input, const std::string& index_type) -> std::variant<Status, std::vector<int32_t>> {
+        std::vector<int32_t> indices;
+        while (!input.empty()) {
+          const auto delimiter_pos = input.find(',');
+          const auto part = input.substr(0, delimiter_pos);
+          errno = 0;
+          char* parse_end = nullptr;
+          // strtol/stol already skips whitespaces
+          const auto index = std::strtol(part.data(), &parse_end, 10);
+          if (parse_end == part.data()) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "Failed to parse kvcache_reorder " + index_type + ": " + std::string(part));
+          }
+          if (index < 0) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "kvcache_reorder " + index_type + " cannot be negative: " + std::string(part));
+          }
+          if (index > std::numeric_limits<int32_t>::max() || errno == ERANGE) {
+            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                          "kvcache_reorder " + index_type + " exceed INT32_MAX: " + std::string(part));
+          }
+          indices.push_back(static_cast<int32_t>(index));
+          if (delimiter_pos != std::string_view::npos) {
+            // ignore any trailing chars after the number, can do further checking if needed
+            input.remove_prefix(part.size() + 1);
+          } else {
+            break;
+          }
+        }
+        return indices;
+      };
+
+      const auto src_indices = parse_indices(src_string, "src_index");
+      if (std::holds_alternative<Status>(src_indices)) {
+        return std::get<Status>(src_indices);
+      }
+
+      const auto dst_indices = parse_indices(dst_string, "dst_index");
+      if (std::holds_alternative<Status>(dst_indices)) {
+        return std::get<Status>(dst_indices);
+      }
+
+      // Trigger KVCache Reorder for target Backend with vector arguments
+      for (auto& backend : backend_managers_) {
+        backend.ReorderKVCache(std::get<std::vector<int32_t>>(src_indices), std::get<std::vector<int32_t>>(dst_indices));
       }
     } else {
       // Handle unknown options

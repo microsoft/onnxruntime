@@ -881,7 +881,8 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
 }
 
 Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                                              std::vector<uint8_t>& unpacked_tensor) const {
+                                              std::vector<uint8_t>& unpacked_tensor,
+                                              const bool unpack_4_bit_to_8_bit) const {
   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(),
                                                                   unpacked_tensor));
@@ -891,12 +892,13 @@ Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto&
 
   int32_t onnx_data_type = initializer.data_type();
 
-  // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
-  if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
+  // If this is an int4,
+  // If unpack_4_bit_to_8_bit is true, we need to unpack it because QNN HTP treats int4 as a full int8.
+  if (unpack_4_bit_to_8_bit && onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
     TensorShape shape(qnn::utils::GetInitializerShape<int64_t>(initializer));
     const size_t num_int4_elems = shape.Size();
     ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<true>(num_int4_elems, unpacked_tensor));
-  } else if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
+  } else if (unpack_4_bit_to_8_bit && onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     TensorShape shape(qnn::utils::GetInitializerShape<int64_t>(initializer));
     const size_t num_uint4_elems = shape.Size();
     ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<false>(num_uint4_elems, unpacked_tensor));

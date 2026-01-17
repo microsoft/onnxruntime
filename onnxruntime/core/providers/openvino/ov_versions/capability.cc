@@ -102,8 +102,16 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
+    auto input_nodes = graph_viewer_.GetInputs();
+    // Input is not a tensor, OV only handle a tensor input
+    for (auto& node : input_nodes) {
+      auto shape = node->Shape();
+      if (!shape) {
+        return result;
+      }
+    }
     // Fill inputs with names
-    Iterable2String(inputs, graph_viewer_.GetInputs());
+    Iterable2String(inputs, input_nodes);
 
     /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/

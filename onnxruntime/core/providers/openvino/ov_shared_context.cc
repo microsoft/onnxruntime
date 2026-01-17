@@ -35,7 +35,7 @@ void SharedContext::WeightsFile::LoadWeights(size_t file_offset, void* data, siz
   file_.read(static_cast<char*>(data), size);
 }
 
-void* SharedContext::WeightsFile::TryGetOrCreateDeviceMapping(std::optional<ov::RemoteContext>& remote_context) {
+const void* SharedContext::WeightsFile::TryGetOrCreateDeviceMapping(std::optional<ov::RemoteContext>& remote_context) {
   std::string dev_name{};
   if (remote_context) {
     dev_name = remote_context->get_device_name();
@@ -53,8 +53,12 @@ void* SharedContext::WeightsFile::TryGetOrCreateDeviceMapping(std::optional<ov::
 #endif
     } else if (dev_name.empty()) {
       // CPU/virtual device case, create a CPU tensor memory mapped from file
-      auto&& mmaped_tensor = ov::read_tensor_data(file_path_);
+      const auto&& mmaped_tensor = ov::read_tensor_data(file_path_);
+
+      // Suppress warning for tensor.data() returning const in 2026.0. Should be removable after 2026.0 is min supported ov version.
+      OPENVINO_SUPPRESS_DEPRECATED_START
       it->second = MappingContainer{.ptr_ = mmaped_tensor.data(), .tensor_ = mmaped_tensor};
+      OPENVINO_SUPPRESS_DEPRECATED_END
     }
   }
 
@@ -74,12 +78,17 @@ void SharedContext::LoadTensorFromFile(
   }
 
   ov::Tensor tensor;
-  uint8_t* mmaped_weights = static_cast<uint8_t*>(weights_file->TryGetOrCreateDeviceMapping(remote_context));
+  const uint8_t* mmaped_weights = static_cast<const uint8_t*>(weights_file->TryGetOrCreateDeviceMapping(remote_context));
   if (mmaped_weights) {
     // We have memory mapped weights. Create a Tensor view into it for this value.
     ORT_ENFORCE(InRange(value.serialized.data_offset, value.serialized.size, weights_file->Size()), "File offset + size outside of external initializer file");
-    void* mmapped_offset = static_cast<void*>(mmaped_weights + value.serialized.data_offset);
+    const void* mmapped_offset = static_cast<const void*>(mmaped_weights + value.serialized.data_offset);
+#if OPENVINO_VERSION_AT_LEAST(2026, 0)
+    // In OV 2026.0 we can pass read-only tensors as inputs.
     tensor = ov::Tensor(element_type, dimensions, mmapped_offset);
+#else
+    tensor = ov::Tensor(element_type, dimensions, const_cast<void*>(mmapped_offset));
+#endif
   } else {
     ORT_ENFORCE(remote_context, "Unexpected: Don't have remote context and memory mapped weights is null!");
     // Can't mmap the file to device tensor, create a host tensor and copy the data

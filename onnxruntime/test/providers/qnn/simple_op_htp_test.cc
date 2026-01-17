@@ -268,6 +268,26 @@ static void RunFP16OpTest(const std::string& op_type,
                         tolerance);
 }
 
+// Test Concat with empty input
+TEST_F(QnnHTPBackendTests, Concat_EmptyInput) {
+  RunOpTest("Concat",
+            {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+             TestInputDef<float>({1, 0, 4, 4}, false, {})},
+            {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+            13,
+            ExpectedEPNodeAssignment::All);
+}
+
+// Test Concat with empty initializer
+TEST_F(QnnHTPBackendTests, Concat_EmptyInitializer) {
+  RunOpTest("Concat",
+            {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+             TestInputDef<float>({1, 0, 4, 4}, true, {})},  // true makes this an initializer
+            {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+            13,
+            ExpectedEPNodeAssignment::All);
+}
+
 // Test the accuracy of QDQ Sigmoid.
 TEST_F(QnnHTPBackendTests, UnaryOp_Sigmoid) {
   RunQDQOpTest<uint8_t>("Sigmoid",
