@@ -61,8 +61,7 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   Status status = CreatePluginExecutionProvider(session_options, session_logger, plugin_ep);
 
   if (!status.IsOK()) {
-    LOGS(*session_logger.ToInternal(), ERROR) << "Error creating execution provider: " << status.ToString();
-    return nullptr;
+    ORT_THROW("Error creating execution provider: ", status.ToString());
   }
 
   return plugin_ep;

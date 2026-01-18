@@ -16,6 +16,9 @@
 #include "mlasi_kleidiai.h"
 #include "kai_ukernel_interface.h"
 
+#if defined(ENABLE_QMX_KERNELS)
+#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa.h"
+#endif // ENABLE_QMX_KERNELS
 
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffers {
@@ -145,9 +148,9 @@ ArmKleidiAI::MlasGemvBatch(
         if (M != 1 && N != 1) {
             return false;
         }
-    
+
         const bool m_path = (M == 1);
-    
+
         // We cannot support cases where N == 1 and B is already packed.
         // When both are 1, we route through the M-path, so this naturally doesn't trigger.
         if (!m_path && Data->BIsPacked) {
@@ -165,15 +168,15 @@ ArmKleidiAI::MlasGemvBatch(
             // - M-path: LHS is A, stride = lda
             // - N-path: LHS is B, stride = ldb
             size_t lhs_ld = m_path ? Data[b].lda : Data[b].ldb;
-            
+
             const float* rhs_base = m_path ? static_cast<const float*>(Data[b].B)
                                            : static_cast<const float*>(Data[b].A);
-            const float* lhs_base = m_path ? static_cast<const float*>(Data[b].A) 
+            const float* lhs_base = m_path ? static_cast<const float*>(Data[b].A)
                                            : static_cast<const float*>(Data[b].B);
 
             // Prepare packed RHS if needed
             const void* rhs_packed_ptr = nullptr;
-            
+
             // The if branch can only be taken in cases where we are dealing with M == 1
             // We previously reject any prepacked B where N == 1
             // In cases where N == 1 we Pack A Matrix as the RHS using tb = CBlasTrans

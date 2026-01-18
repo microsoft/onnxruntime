@@ -763,6 +763,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL/ArmNN)."
     )
 
+    # --- Qualcomm QMX Library ---
+    qmx_group = parser.add_argument_group("QMX kernel library")
+    qmx_group.add_argument(
+        "--use_qmx", action="store_true", help="Enable Qualcomm QMX kernel to coexist with Arm KleidiAI."
+    )
+
     # --- RKNPU ---
     rknpu_group = parser.add_argument_group("RKNPU Execution Provider")
     rknpu_group.add_argument("--use_rknpu", action="store_true", help="Enable RKNPU EP.")

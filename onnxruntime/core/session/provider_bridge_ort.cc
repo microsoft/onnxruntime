@@ -92,9 +92,9 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+
 #include "core/providers/shared_library/provider_interfaces.h"
 #include "core/providers/partitioning_utils.h"
-
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/dnnl/dnnl_provider_factory_creator.h"
@@ -117,6 +117,10 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
+
+#if defined(_WIN32) && !defined(NDEBUG) && defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#include "core/platform/windows/debug_alloc.h"
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) &&                                        \
     (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
@@ -279,8 +283,13 @@ struct ProviderHostImpl : ProviderHost {
     return Status::OK();
   };
 
+#if defined(_WIN32) && !defined(NDEBUG) && defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  void* HeapAllocate(size_t size) override { return DebugHeapAlloc(size, 1); }
+  void HeapFree(void* p) override { DebugHeapFree(p); }
+#else
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
+#endif
 
   logging::Logger* LoggingManager_GetDefaultLogger() override {
     return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
@@ -1002,6 +1011,8 @@ struct ProviderHostImpl : ProviderHost {
 
   MLDataType DataTypeImpl__GetType_Int4x2() override { return DataTypeImpl::GetType<Int4x2>(); }
   MLDataType DataTypeImpl__GetType_UInt4x2() override { return DataTypeImpl::GetType<UInt4x2>(); }
+  MLDataType DataTypeImpl__GetType_Int2x4() override { return DataTypeImpl::GetType<Int2x4>(); }
+  MLDataType DataTypeImpl__GetType_UInt2x4() override { return DataTypeImpl::GetType<UInt2x4>(); }
 
   MLDataType DataTypeImpl__GetTensorTypeFromOnnxType(int onnx_type) override { return DataTypeImpl::TensorTypeFromONNXEnum(onnx_type)->AsTensorType(); }
   MLDataType DataTypeImpl__GetTensorType_bool() override { return DataTypeImpl::GetTensorType<bool>(); }
@@ -1031,6 +1042,8 @@ struct ProviderHostImpl : ProviderHost {
 
   MLDataType DataTypeImpl__GetTensorType_Int4x2() override { return DataTypeImpl::GetTensorType<Int4x2>(); }
   MLDataType DataTypeImpl__GetTensorType_UInt4x2() override { return DataTypeImpl::GetTensorType<UInt4x2>(); }
+  MLDataType DataTypeImpl__GetTensorType_Int2x4() override { return DataTypeImpl::GetTensorType<Int2x4>(); }
+  MLDataType DataTypeImpl__GetTensorType_UInt2x4() override { return DataTypeImpl::GetTensorType<UInt2x4>(); }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   MLDataType DataTypeImpl__GetSparseTensorType_bool() override { return DataTypeImpl::GetSparseTensorType<bool>(); }
@@ -1680,6 +1693,8 @@ struct ProviderHostImpl : ProviderHost {
 
   Int4x2* Tensor__MutableData_Int4x2(Tensor* p) override { return p->MutableData<Int4x2>(); }
   UInt4x2* Tensor__MutableData_UInt4x2(Tensor* p) override { return p->MutableData<UInt4x2>(); }
+  Int2x4* Tensor__MutableData_Int2x4(Tensor* p) override { return p->MutableData<Int2x4>(); }
+  UInt2x4* Tensor__MutableData_UInt2x4(Tensor* p) override { return p->MutableData<UInt2x4>(); }
 
   const bool* Tensor__Data_bool(const Tensor* p) override { return p->Data<bool>(); }
   const int8_t* Tensor__Data_int8(const Tensor* p) override { return p->Data<int8_t>(); }
@@ -1708,6 +1723,8 @@ struct ProviderHostImpl : ProviderHost {
 
   const Int4x2* Tensor__Data_Int4x2(const Tensor* p) override { return p->Data<Int4x2>(); }
   const UInt4x2* Tensor__Data_UInt4x2(const Tensor* p) override { return p->Data<UInt4x2>(); }
+  const Int2x4* Tensor__Data_Int2x4(const Tensor* p) override { return p->Data<Int2x4>(); }
+  const UInt2x4* Tensor__Data_UInt2x4(const Tensor* p) override { return p->Data<UInt2x4>(); }
 
   gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) override { return p->DataAsSpan<int64_t>(); }
 
@@ -1744,6 +1761,8 @@ struct ProviderHostImpl : ProviderHost {
 
   bool Tensor__IsDataType_Int4x2(const Tensor* p) noexcept override { return p->IsDataType<Int4x2>(); }
   bool Tensor__IsDataType_UInt4x2(const Tensor* p) noexcept override { return p->IsDataType<UInt4x2>(); }
+  bool Tensor__IsDataType_Int2x4(const Tensor* p) noexcept override { return p->IsDataType<Int2x4>(); }
+  bool Tensor__IsDataType_UInt2x4(const Tensor* p) noexcept override { return p->IsDataType<UInt2x4>(); }
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   void Tensor__Reshape(Tensor* p, const TensorShape& new_shape) override { return p->Reshape(new_shape); }

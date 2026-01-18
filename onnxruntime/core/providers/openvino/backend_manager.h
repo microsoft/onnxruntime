@@ -31,6 +31,7 @@ class BackendManager {
   void TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph, bool include_embed_data);
   ov::CompiledModel GetOVCompiledModel();
   void RewindKVCache(size_t index);
+  void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices);
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
@@ -42,8 +43,6 @@ class BackendManager {
   std::unordered_set<std::string> IdentifyDynamicInputs(const onnxruntime::GraphViewer& subgraph,
                                                         const std::vector<const NodeArg*>& graph_inputs) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
-  void ValidateInputShapes(const reshape_t& shapes,
-                           const std::vector<const NodeArg*>& graph_inputs) const;
 
   std::shared_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto);
