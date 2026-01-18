@@ -60,6 +60,13 @@
         "^test_attention_4d_with_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
         "^test_attention_3d_with_past_and_present_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_cuda", // QK matmul + bias not supported in Attention-cuda
+        // is_causal=Truen && q_seq_len != kv_seq_len not supported in Attention-cuda
+        "^test_attention_3d_causal_cuda",
+        "^test_attention_3d_diff_heads_sizes_causal_cuda",
+        "^test_attention_4d_attn_mask_3d_causal_cuda",
+        "^test_attention_4d_attn_mask_4d_causal_cuda",
+        "^test_attention_4d_causal_cuda",
+        "^test_attention_4d_diff_heads_sizes_causal_cuda",
         "^test_l1normalization*",  // LpNormalization(22) not implemented
         "^test_lpnormalization*",  // LpNormalization(22) not implemented
         "^test_tensorscatter*",  // TensorScatter(24) not implemented
