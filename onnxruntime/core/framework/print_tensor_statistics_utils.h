@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include "core/framework/print_tensor_utils.h"
+#include "core/framework/int2.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -94,36 +95,38 @@ void PrintCommonStats(const T* data, size_t count, TensorStatisticsData& tensor_
   }
 }
 
-#define DEF_PRINT_COMMON_STATS_4BIT(FOUR_BIT_TYPE)                      \
-  template <>                                                           \
-  inline void PrintCommonStats<FOUR_BIT_TYPE>(                          \
-      const FOUR_BIT_TYPE* data, size_t count, TensorStatisticsData&) { \
-    using UnpackedType = typename FOUR_BIT_TYPE::UnpackedType;          \
-    UnpackedType min = data[0].GetElem(0);                              \
-    UnpackedType max = min;                                             \
-    for (size_t i = 1; i < count; i++) {                                \
-      auto indices = FOUR_BIT_TYPE::GetTensorElemIndices(i);            \
-      auto value = data[indices.first].GetElem(indices.second);         \
-      if (value > max) {                                                \
-        max = value;                                                    \
-      }                                                                 \
-      if (value < min) {                                                \
-        min = value;                                                    \
-      }                                                                 \
-    }                                                                   \
-                                                                        \
-    std::cout << "Min=";                                                \
-    PrintValue(min);                                                    \
-                                                                        \
-    std::cout << ",Max=";                                               \
-    PrintValue(max);                                                    \
+#define DEF_PRINT_COMMON_STATS_PACKED(PACKED_TYPE)                    \
+  template <>                                                         \
+  inline void PrintCommonStats<PACKED_TYPE>(                          \
+      const PACKED_TYPE* data, size_t count, TensorStatisticsData&) { \
+    using UnpackedType = typename PACKED_TYPE::UnpackedType;          \
+    UnpackedType min = data[0].GetElem(0);                            \
+    UnpackedType max = min;                                           \
+    for (size_t i = 1; i < count; i++) {                              \
+      auto indices = PACKED_TYPE::GetTensorElemIndices(i);            \
+      auto value = data[indices.first].GetElem(indices.second);       \
+      if (value > max) {                                              \
+        max = value;                                                  \
+      }                                                               \
+      if (value < min) {                                              \
+        min = value;                                                  \
+      }                                                               \
+    }                                                                 \
+                                                                      \
+    std::cout << "Min=";                                              \
+    PrintValue(min);                                                  \
+                                                                      \
+    std::cout << ",Max=";                                             \
+    PrintValue(max);                                                  \
   }
 
-DEF_PRINT_COMMON_STATS_4BIT(Int4x2)
-DEF_PRINT_COMMON_STATS_4BIT(UInt4x2)
+DEF_PRINT_COMMON_STATS_PACKED(Int4x2)
+DEF_PRINT_COMMON_STATS_PACKED(UInt4x2)
 #if !defined(DISABLE_FLOAT4_TYPES)
-DEF_PRINT_COMMON_STATS_4BIT(Float4E2M1x2)
+DEF_PRINT_COMMON_STATS_PACKED(Float4E2M1x2)
 #endif
+DEF_PRINT_COMMON_STATS_PACKED(Int2x4)
+DEF_PRINT_COMMON_STATS_PACKED(UInt2x4)
 
 template <typename T>
 void PrintHalfStats(const T* data, size_t count) {
