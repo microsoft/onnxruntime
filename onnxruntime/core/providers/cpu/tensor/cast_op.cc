@@ -664,7 +664,7 @@ struct TensorCaster<SrcType, DstType,
 
     // Handle remaining elements
     if (i < shape_size) {
-      const auto zero = DstType::UnpackedType(0);
+      const auto zero = typename DstType::UnpackedType(0);
       auto val0 = ToInt2Converter<SrcType, DstType>::Convert(in_data[i]);
       auto val1 = (i + 1 < shape_size) ? ToInt2Converter<SrcType, DstType>::Convert(in_data[i + 1]) : zero;
       auto val2 = (i + 2 < shape_size) ? ToInt2Converter<SrcType, DstType>::Convert(in_data[i + 2]) : zero;
