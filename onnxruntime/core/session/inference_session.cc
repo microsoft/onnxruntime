@@ -2039,6 +2039,15 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+PathString GenerateProfileFilePath(const std::string& file_prefix) {
+  PathString profile_file = ToPathString(file_prefix);
+  profile_file.append(ORT_TSTR("_"));
+  profile_file.append(GetCurrentTimeString<ORTCHAR_T>());
+  profile_file.append(ORT_TSTR(".json"));
+  return profile_file;
+}
+
 }  // namespace
 
 static void ResolveMemoryPatternFlags(SessionState& session_state) {
@@ -2983,10 +2992,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   if (run_options.enable_profiling && !session_profiler_.IsEnabled()) {
     run_profiler.emplace();
     run_profiler->Initialize(session_logger_);
-    PathString profile_file = ToPathString(run_options.profile_file_prefix);
-    profile_file.append(ORT_TSTR("_"));
-    profile_file.append(GetCurrentTimeString<ORTCHAR_T>());
-    profile_file.append(ORT_TSTR(".json"));
+    PathString profile_file = GenerateProfileFilePath(run_options.profile_file_prefix);
     for (auto& ep : execution_providers_) {
       run_profiler->AddEpProfilers(ep->GetProfiler());
     }
