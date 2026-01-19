@@ -53,6 +53,7 @@ parameters:
   type: boolean
   default: false
 
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -378,12 +379,12 @@ stages:
         DoEsrp: true
 
 
-- stage: Nodejs_Packaging
+- stage: Nodejs_Packaging_Cuda_12
   dependsOn:
   - Setup
   - Windows_Nodejs_Packaging_x64
   - Windows_Nodejs_Packaging_arm64
-  - Linux_Nodejs_Packaging_x64
+  - Linux_Nodejs_Packaging_x64_cuda_12
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Packaging_CPU
   condition: succeeded()
@@ -507,7 +508,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64'
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64-cuda_12'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
 
     - task: DownloadPipelineArtifact@0

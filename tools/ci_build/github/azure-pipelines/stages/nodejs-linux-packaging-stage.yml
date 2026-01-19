@@ -1,10 +1,11 @@
 parameters:
 - name: CudaVersion
+  type: object
+- name: StageToken
   type: string
-  default: '12.8'
 
 stages:
-- stage: Linux_Nodejs_Packaging_x64
+- stage: Linux_Nodejs_Packaging_x64_${{parameters.StageToken}}
   dependsOn: []
   jobs:
   - job: Linux_Nodejs_Packaging_x64
@@ -16,19 +17,12 @@ stages:
       name: 'onnxruntime-Ubuntu2404-AMD-CPU'
       os: linux
     variables:
-    - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
-      ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        value: '13'
-      ${{ if eq(parameters.CudaVersion, '12.8') }}:
-        value: '12'
+      value: ${{ parameters.CudaVersion.major }}
     - name: CUDA_VERSION
-      value: ${{ parameters.CudaVersion }}
+      value: "${{ parameters.CudaVersion.major }}.${{ parameters.CudaVersion.minor }}"
     - name: linux_trt_version
-      ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        value: ${{ variables.linux_trt_version_cuda13 }}
-      ${{ if eq(parameters.CudaVersion, '12.8') }}:
-        value: ${{ variables.linux_trt_version_cuda12 }}
+      value: ${{ parameters.CudaVersion.linux_trt_version }}
     steps:
     - checkout: self
       clean: true
@@ -52,6 +46,6 @@ stages:
       parameters:
         arch: 'x64'
         os: 'linux'
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64'
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64-${{parameters.StageToken}}'
 
     - template: ../templates/clean-agent-build-directory-step.yml

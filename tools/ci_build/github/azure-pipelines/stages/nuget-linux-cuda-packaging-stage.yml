@@ -1,14 +1,15 @@
 parameters:
 - name: CudaVersion
-  type: string
-  default: '12.8'
+  type: object
 - name: buildJava
   type: boolean
 - name: buildNodejs
   type: boolean
+- name: StageToken
+  type: string
 
 stages:
-- stage: Linux_C_API_Packaging_GPU
+- stage: Linux_C_API_Packaging_GPU_${{parameters.StageToken}}
   dependsOn: []
   jobs:
   - job: Linux_C_API_Packaging_CUDA
@@ -20,12 +21,9 @@ stages:
       os: linux
     variables:
     - name: CUDA_VERSION_MAJOR
-      ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        value: '13'
-      ${{ if eq(parameters.CudaVersion, '12.8') }}:
-        value: '12'
+      value: ${{ parameters.CudaVersion.major }}
     - name: CUDA_VERSION
-      value: ${{ parameters.CudaVersion }}
+      value: "${{ parameters.CudaVersion.major }}.${{ parameters.CudaVersion.minor }}"
     steps:
     - template: ../templates/set-version-number-variables-step.yml
     - task: UsePythonVersion@0
@@ -48,20 +46,20 @@ stages:
         parameters:
           arch: 'linux-x64'
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64-cuda'
+          artifactName: 'onnxruntime-java-linux-x64-${{parameters.StageToken}}'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
-        artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
-        artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
+        artifactName: 'onnxruntime-linux-x64-${{parameters.StageToken}}-$(OnnxRuntimeVersion)'
+        artifactNameNoVersionString: 'onnxruntime-linux-x64-${{parameters.StageToken}}'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
     - template: ../templates/clean-agent-build-directory-step.yml
   # Linux CUDA with TensorRT Packaging
-  - job: Linux_C_API_Packaging_TensorRT
+  - job: Linux_C_API_Packaging_TensorRT_${{parameters.StageToken}}
     dependsOn: []
     workspace:
       clean: all
@@ -70,19 +68,12 @@ stages:
       name: 'onnxruntime-Ubuntu2404-AMD-CPU'
       os: linux
     variables:
-    - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
-      ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        value: '13'
-      ${{ if eq(parameters.CudaVersion, '12.8') }}:
-        value: '12'
+      value: ${{ parameters.CudaVersion.major }}
     - name: CUDA_VERSION
-      value: ${{ parameters.CudaVersion }}
+      value: "${{ parameters.CudaVersion.major }}.${{ parameters.CudaVersion.minor }}"
     - name: linux_trt_version
-      ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        value: ${{ variables.linux_trt_version_cuda13 }}
-      ${{ if eq(parameters.CudaVersion, '12.8') }}:
-        value: ${{ variables.linux_trt_version_cuda12 }}
+      value: ${{ parameters.CudaVersion.linux_trt_version }}
     steps:
     - checkout: self
       clean: true
@@ -111,22 +102,22 @@ stages:
         parameters:
           arch: 'linux-x64'
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-x64-tensorrt'
+          artifactName: 'onnxruntime-java-linux-x64-tensorrt-${{parameters.StageToken}}'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
 
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
-        artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
-        artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
+        artifactName: 'onnxruntime-linux-x64-tensorrt-${{parameters.StageToken}}-$(OnnxRuntimeVersion)'
+        artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt-${{parameters.StageToken}}'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
     - template: ../templates/clean-agent-build-directory-step.yml
   # Linux CUDA Combined Testing and Publishing
-- stage: Linux_Packaging_combined_CUDA
+- stage: Linux_Packaging_combined_CUDA_${{parameters.StageToken}}
   dependsOn:
-  - Linux_C_API_Packaging_GPU
+  - Linux_C_API_Packaging_GPU_${{parameters.StageToken}}
   jobs:
   - job: Linux_Packaging_combined_CUDA
     condition: succeeded()
@@ -136,23 +127,16 @@ stages:
       name: 'Onnxruntime-Linux-GPU-A10'
       os: linux
     variables:
-    - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
-      ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        value: '13'
-      ${{ if eq(parameters.CudaVersion, '12.8') }}:
-        value: '12'
+      value: ${{ parameters.CudaVersion.major }}
     - name: linux_trt_version
-      ${{ if eq(parameters.CudaVersion, '13.0') }}:
-        value: ${{ variables.linux_trt_version_cuda13 }}
-      ${{ if eq(parameters.CudaVersion, '12.8') }}:
-        value: ${{ variables.linux_trt_version_cuda12 }}
+      value: ${{ parameters.CudaVersion.linux_trt_version }}
+
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
       submodules: false
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
-
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
@@ -169,13 +153,13 @@ stages:
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Pipeline Artifact - Combined GPU'
       inputs:
-        artifactName: 'onnxruntime-linux-x64-cuda'
+        artifactName: 'onnxruntime-linux-x64-${{parameters.StageToken}}'
         targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download Pipeline Artifact - Combined GPU'
       inputs:
-        artifactName: 'onnxruntime-linux-x64-tensorrt'
+        artifactName: 'onnxruntime-linux-x64-tensorrt-${{parameters.StageToken}}'
         targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
 
     - task: ShellScript@2
@@ -218,4 +202,4 @@ stages:
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'onnxruntime-linux-x64-gpu'
+        artifactName: 'onnxruntime-linux-x64-gpu-${{parameters.StageToken}}'
