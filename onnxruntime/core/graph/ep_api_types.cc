@@ -771,6 +771,7 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   ep_graph->inputs_ = std::move(graph_input_value_infos);
   ep_graph->outputs_ = std::move(graph_output_value_infos);
   ep_graph->parent_node_owned_ = std::move(ep_parent_node);
+  ep_graph->parent_node_ = ep_graph->parent_node_owned_ ? ep_graph->parent_node_owned_.get() : nullptr;
   ep_graph->parent_node_value_infos_map_ = std::move(parent_node_value_infos_map);
 
   result = std::move(ep_graph);
@@ -903,13 +904,7 @@ Status EpGraph::GetNodes(gsl::span<const OrtNode*> dst) const {
 }
 
 Status EpGraph::GetParentNode(const OrtNode*& result) const {
-  if (parent_node_ != nullptr) {
-    result = parent_node_->ToExternal();
-  } else if (parent_node_owned_) {
-    result = parent_node_owned_->ToExternal();
-  } else {
-    result = nullptr;
-  }
+  result = parent_node_ != nullptr ? parent_node_->ToExternal() : nullptr;
 
   return Status::OK();
 }

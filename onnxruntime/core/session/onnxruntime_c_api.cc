@@ -2825,22 +2825,25 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   const Graph& graph = graph_viewer.GetGraph();
 
   // Create a GraphViewer with filtered info
+  // TODO: Investigate whether utils::MakeComputeCapability can be extended and reused instead
   std::unique_ptr<IndexedSubGraph> indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
   // Following data structures help determine the final inputs/outputs of the subgraph.
   // Note: The 'subgraph' here refers to a graph contains a subset of nodes in the 'src_graph'.
 
   // Subgraph's node set
-  std::unordered_set<size_t> node_set(num_nodes);
-  for (size_t i = 0; i < num_nodes; i++) {
-    const OrtNode* ort_node = nodes[i];
-    const EpNode* ep_node = EpNode::ToInternal(ort_node);
-    if (ep_node == nullptr) {
-      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
-                                   "node is a ModelEditorNode which doesn't support Graph_GetGraphView.");
+  const std::unordered_set<size_t> node_set = [&]() {
+    std::unordered_set<size_t> node_set;
+    for (size_t i = 0; i < num_nodes; i++) {
+      const OrtNode* ort_node = nodes[i];
+      const EpNode* ep_node = EpNode::ToInternal(ort_node);
+      if (ep_node != nullptr) {
+        node_set.insert(ep_node->GetInternalNode().Index());
+      }
     }
-    node_set.insert(ep_node->GetInternalNode().Index());
-  }
+
+    return node_set;
+  }();
 
   // Source graph output names
   std::unordered_set<std::string> graph_output_names;

@@ -388,17 +388,11 @@ struct EpGraph : public OrtGraph {
 
   const GraphViewer& graph_viewer_;
 
-  // parent_node_ and parent_node_owned_ are mutually exclusive and will never both be set.
-  // One of the following cases applies:
-  //  1) parent_node_ points to a parent node that is not owned by this graph, and parent_node_owned_ is unset.
-  //  2) parent_node_owned_ holds the parent node created and owned by this graph, and parent_node_ is unset.
-  //  3) Neither is set.
-
-  // Keep the pointer to the parent node that is not owned by this graph
-  const EpNode* parent_node_ = nullptr;
-
   // Hold the parent node created and owned by this graph
   std::unique_ptr<EpNode> parent_node_owned_ = nullptr;
+
+  // Holds either a pointer to a parent node not owned by this graph, a pointer to parent_node_owned_, or nullptr.
+  const EpNode* parent_node_ = nullptr;
 
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> parent_node_value_infos_map_;
 
