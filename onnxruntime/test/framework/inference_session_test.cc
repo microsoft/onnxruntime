@@ -829,15 +829,14 @@ TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
       has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
                                          lines[i].find("cudaLaunch") != std::string::npos;
 #endif
-// Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
-#if (defined(USE_WEBGPU) && !defined(__APPLE__))
+#ifdef USE_WEBGPU
       has_api_info = has_api_info || lines[i].find("Api") != std::string::npos;
 #endif
     }
   }
 
 // Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
-#if defined(USE_WEBGPU)
+#if (defined(USE_WEBGPU) && !defined(__APPLE__))
   ASSERT_TRUE(has_api_info);
 #endif
 
