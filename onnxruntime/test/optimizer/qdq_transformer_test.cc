@@ -1034,6 +1034,10 @@ TEST(QDQTransformerTests, MaxPoolDropQDQ) {
   RunMaxPoolDropQDQTestCase<int8_t>(true);         // Use com.microsoft QDQ ops
   RunMaxPoolDropQDQTestCase<uint8_t>();
   RunMaxPoolDropQDQTestCase<uint8_t>(true);         // Use com.microsoft QDQ ops
+
+  // Opset 22
+  RunMaxPoolDropQDQTestCase<int8_t>(false, 22);
+  RunMaxPoolDropQDQTestCase<uint8_t>(false, 22);
 }
 
 // Runs a test case that checks if Q/DQ nodes are *not* dropped from DQ -> MaxPool -> Q if the quantization scale is
