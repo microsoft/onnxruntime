@@ -13,11 +13,14 @@
 #include <fstream>
 #include <random>
 
+#include "core/graph/model.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/IOBinding.h"
 
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
 
