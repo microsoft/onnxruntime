@@ -2041,12 +2041,11 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-PathString GenerateProfileFilePath(const std::string& file_prefix) {
-  PathString profile_file = ToPathString(file_prefix);
-  profile_file.append(ORT_TSTR("_"));
-  profile_file.append(GetCurrentTimeString<ORTCHAR_T>());
-  profile_file.append(ORT_TSTR(".json"));
-  return profile_file;
+std::basic_string<ORTCHAR_T> GenerateProfileFilePath(std::basic_string<ORTCHAR_T> profile_file_prefix) {
+  profile_file_prefix.append(ORT_TSTR("_"));
+  profile_file_prefix.append(GetCurrentTimeString<ORTCHAR_T>());
+  profile_file_prefix.append(ORT_TSTR(".json"));
+  return profile_file_prefix;
 }
 
 }  // namespace
@@ -2993,7 +2992,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   if (run_options.enable_profiling && !session_profiler_.IsEnabled()) {
     run_profiler.emplace();
     run_profiler->Initialize(session_logger_);
-    PathString profile_file = GenerateProfileFilePath(run_options.profile_file_prefix);
+    std::basic_string<ORTCHAR_T> profile_file = GenerateProfileFilePath(run_options.profile_file_prefix);
     for (auto& ep : execution_providers_) {
       run_profiler->AddEpProfilers(ep->GetProfiler());
     }
