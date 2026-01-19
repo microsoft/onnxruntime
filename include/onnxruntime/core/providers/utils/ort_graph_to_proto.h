@@ -318,7 +318,6 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
 
       // Don't add graph inputs or graph outputs to GraphProto's list of value_infos.
       // Do add initializers (constant and non-constant) to GraphProto's list of initializer tensors.
-      // For values defined in an outer scope, just add the value info but not the initializer.
       if (is_from_outer_scope) {
         value_infos.emplace(value_name, ort_value_info);
         if (is_constant_initializer) {
@@ -504,7 +503,6 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::ModelProto& model_proto,
                             HandleInitializerDataFunc handle_initializer_data_func) {
   try {
-    // Check that OrtGraph is a top-level graph (no parent node).
     Ort::ConstGraph ort_graph{&graph};
 
     // Set model description.

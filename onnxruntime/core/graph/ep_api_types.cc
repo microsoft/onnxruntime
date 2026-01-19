@@ -917,6 +917,7 @@ Status EpGraph::GetParentNode(const OrtNode*& result) const {
 void EpGraph::SetParentNode(const EpNode* node) {
   parent_node_ = node;
   parent_node_owned_ = nullptr;
+  parent_node_value_infos_map_.clear();
 }
 
 const GraphViewer& EpGraph::GetGraphViewer() const { return graph_viewer_; }
