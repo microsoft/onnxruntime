@@ -812,19 +812,10 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
   session_options.DisableMemPattern();
   session_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
 
-  // Configure to use our CUDA stream
-  char stream_address[32];
-  size_t stream_addr_val = reinterpret_cast<size_t>(ort_api_->SyncStream_GetHandle(ort_stream));
-  sprintf(stream_address, "%llu", static_cast<uint64_t>(stream_addr_val));
-  const char* option_keys[] = {
-      onnxruntime::nv::provider_option_names::kUserComputeStream,
-      onnxruntime::nv::provider_option_names::kHasUserComputeStream,
-  };
-  const char* option_values[] = {stream_address, "1"};
-
   // Add the NvTensorRtRtx EP with user stream
   status = ort_api_->SessionOptionsAppendExecutionProvider_V2(
-      session_options, *ort_env, &ep_device_, 1, option_keys, option_values, 2);
+      session_options, *ort_env, &ep_device_, 1,
+      nullptr, nullptr, 0);
   ASSERT_EQ(status, nullptr);
 
   // Create session
@@ -840,10 +831,11 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
   io_binding.BindInput(input_name.get(), Ort::Value(input_tensor));
   io_binding.BindOutput(output_name.get(), Ort::Value(output_tensor));
   io_binding.SynchronizeInputs();
-
-  // Run inference. ORT synchronizes the stream before returning, so GPU work is complete
-  // when we signal the semaphore below.
-  session.Run(Ort::RunOptions{}, io_binding);
+  // Run inference. ORT submits all work to the stream before returning, so we signal the async semaphore below.
+  Ort::RunOptions run_options;
+  run_options.SetSyncStream(ort_stream);
+  run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
+  session.Run(run_options, io_binding);
 
   // Signal from CUDA that inference is complete
   uint64_t inference_complete_value = 2;
@@ -1091,12 +1083,14 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
     size_t stream_addr_val = reinterpret_cast<size_t>(ort_api_->SyncStream_GetHandle(ort_stream));
     sprintf(stream_address, "%llu", static_cast<uint64_t>(stream_addr_val));
     const char* option_keys[] = {
+        // TODO we should no longer require to set the compute stream at this point but there are too many cudaSetDevice calls from allocators and stream handling (NVBUG 5822116)
         onnxruntime::nv::provider_option_names::kUserComputeStream,
         onnxruntime::nv::provider_option_names::kHasUserComputeStream,
         onnxruntime::nv::provider_option_names::kMaxSharedMemSize,
         // TRT will create itss own context to create streams if we do not manually provide aux streams
         onnxruntime::nv::provider_option_names::kLengthAuxStreamArray,
         onnxruntime::nv::provider_option_names::kUserAuxStreamArray,
+        onnxruntime::nv::provider_option_names::kCudaGraphEnable,
     };
     char aux_stream_address[32];
     std::array<size_t, 1> aux_streams = {stream_addr_val};
@@ -1108,11 +1102,13 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
         "1",
         max_shared_mem_size.c_str(),
         "1",
-        aux_stream_address};
+        aux_stream_address,
+        "0"
+    };
 
     // Add the NvTensorRtRtx EP with user stream
     status = ort_api_->SessionOptionsAppendExecutionProvider_V2(
-        session_options, *ort_env, &ep_device_, 1, option_keys, option_values, 5);
+        session_options, *ort_env, &ep_device_, 1, option_keys, option_values, 6);
     ASSERT_EQ(status, nullptr);
 
     // Create session
@@ -1128,10 +1124,11 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
     io_binding.BindInput(input_name.get(), Ort::Value(input_tensor));
     io_binding.BindOutput(output_name.get(), Ort::Value(output_tensor));
     io_binding.SynchronizeInputs();
-
-    // Run inference. ORT synchronizes the stream before returning, so GPU work is complete
-    // when we signal the semaphore below.
-    session.Run(Ort::RunOptions{}, io_binding);
+    // Run inference. ORT submits all work to the stream before returning, so we signal the async semaphore below.
+    Ort::RunOptions run_options;
+    run_options.SetSyncStream(ort_stream);
+    run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
+    session.Run(run_options, io_binding);
 
     // Signal from CUDA that inference is complete
     uint64_t inference_complete_value = 2;

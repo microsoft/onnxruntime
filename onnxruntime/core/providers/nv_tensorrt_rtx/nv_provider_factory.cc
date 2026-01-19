@@ -11,6 +11,7 @@
 #include "core/framework/plugin_ep_stream.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_custom_ops.h"
+#include "core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 #include "nv_provider_factory.h"
@@ -22,27 +23,6 @@
 using namespace onnxruntime;
 
 namespace onnxruntime {
-
-struct ScopedContext {
-  explicit ScopedContext(int device_id) {
-    CUcontext cu_context = 0;
-    CU_CALL_THROW(cuCtxGetCurrent(&cu_context));
-    if (!cu_context) {
-      // cuCtxGetCurrent succeeded but returned nullptr, which indicates that no CUDA context
-      // is currently set for this thread. This implicates that there is not user created context.
-      // We use runtime API to initialize a context for the specified device.
-      CUDA_CALL_THROW(cudaSetDevice(device_id));
-      CU_CALL_THROW(cuCtxGetCurrent(&cu_context));
-    }
-    CU_CALL_THROW(cuCtxPushCurrent(cu_context));
-  }
-
-  ScopedContext(const ScopedContext&) = delete;
-
-  ~ScopedContext() {
-    CU_CALL_THROW(cuCtxPopCurrent(nullptr));
-  }
-};
 
 void InitializeRegistry();
 void DeleteRegistry();
