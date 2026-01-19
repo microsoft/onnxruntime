@@ -2893,6 +2893,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
     indexed_sub_graph->nodes.push_back(node.Index());
 
     for (const auto& input : node.InputDefs()) {
+      if (!input->Exists()) {
+        continue;
+      }
+
       if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
         initializers.push_back(input->Name());
         continue;
@@ -2908,6 +2912,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
     }
 
     for (const auto& input : node.ImplicitInputDefs()) {
+      if (!input->Exists()) {
+        continue;
+      }
+
       if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
         initializers.push_back(input->Name());
         continue;
@@ -2929,6 +2937,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
     // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
     // to the output list
     for (const auto& output : node.OutputDefs()) {
+      if (!output->Exists()) {
+        continue;
+      }
+
       const auto& it = subgraph_inputs.find(output);
       if (it != subgraph_inputs.end()) {
         subgraph_inputs.erase(it);
