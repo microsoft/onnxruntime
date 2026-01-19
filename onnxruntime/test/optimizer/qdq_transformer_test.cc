@@ -1031,9 +1031,9 @@ static void RunMaxPoolDropQDQTestCase(bool use_contrib_qdq = false,
 TEST(QDQTransformerTests, MaxPoolDropQDQ) {
   // Opset 12
   RunMaxPoolDropQDQTestCase<int8_t>();
-  RunMaxPoolDropQDQTestCase<int8_t>(true);         // Use com.microsoft QDQ ops
+  RunMaxPoolDropQDQTestCase<int8_t>(true);  // Use com.microsoft QDQ ops
   RunMaxPoolDropQDQTestCase<uint8_t>();
-  RunMaxPoolDropQDQTestCase<uint8_t>(true);         // Use com.microsoft QDQ ops
+  RunMaxPoolDropQDQTestCase<uint8_t>(true);  // Use com.microsoft QDQ ops
 
   // Opset 22
   RunMaxPoolDropQDQTestCase<int8_t>(false, 22);
