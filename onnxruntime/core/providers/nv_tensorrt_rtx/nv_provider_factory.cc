@@ -6,6 +6,7 @@
 #include <atomic>
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
@@ -557,14 +558,12 @@ struct NvTrtRtxExternalMemoryHandle : OrtExternalMemoryHandle {
   CUdeviceptr mapped_ptr;       ///< Mapped device pointer for tensor access
   bool is_dedicated;            ///< Whether the D3D12 resource is a dedicated allocation
 
-  NvTrtRtxExternalMemoryHandle()
+  NvTrtRtxExternalMemoryHandle(const OrtExternalMemoryDescriptor& descriptor_in)
       : ext_memory(nullptr), mapped_ptr(0), is_dedicated(true) {
     // Initialize base struct fields
     version = ORT_API_VERSION;
+    descriptor = descriptor_in;
     ep_device = nullptr;
-    handle_type = ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
-    size_bytes = 0;
-    offset_bytes = 0;
     Release = ReleaseCallback;
   }
 
@@ -589,12 +588,12 @@ struct NvTrtRtxExternalMemoryHandle : OrtExternalMemoryHandle {
 struct NvTrtRtxExternalSemaphoreHandle : OrtExternalSemaphoreHandle {
   CUexternalSemaphore ext_semaphore;  ///< CUDA external semaphore object
 
-  NvTrtRtxExternalSemaphoreHandle()
+  NvTrtRtxExternalSemaphoreHandle(const OrtExternalSemaphoreDescriptor& descriptor_in)
       : ext_semaphore(nullptr) {
     // Initialize base struct fields
     version = ORT_API_VERSION;
+    descriptor = descriptor_in;
     ep_device = nullptr;
-    type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
     Release = ReleaseCallback;
   }
 
@@ -740,12 +739,13 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     }
 
     // Create and return the derived handle (cast to base pointer)
-    auto handle = std::make_unique<NvTrtRtxExternalMemoryHandle>();
-
+    OrtExternalMemoryDescriptor descriptor = {};  // make a copy for the handle
+    descriptor.version = ORT_API_VERSION;
+    descriptor.handle_type = desc->handle_type;
+    descriptor.size_bytes = desc->size_bytes;
+    descriptor.offset_bytes = desc->offset_bytes;
+    auto handle = std::make_unique<NvTrtRtxExternalMemoryHandle>(descriptor);
     handle->ep_device = impl.ep_device_;
-    handle->handle_type = desc->handle_type;
-    handle->size_bytes = desc->size_bytes;
-    handle->offset_bytes = desc->offset_bytes;
     handle->ext_memory = ext_memory;
     handle->mapped_ptr = mapped_ptr;
     handle->is_dedicated = is_dedicated;
@@ -798,7 +798,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     auto* handle = static_cast<const NvTrtRtxExternalMemoryHandle*>(mem_handle);
 
     // Validate tensor offset does not exceed available buffer size
-    size_t available_size = handle->size_bytes - handle->offset_bytes;
+    size_t available_size = handle->descriptor.size_bytes - handle->descriptor.offset_bytes;
     if (tensor_desc->offset_bytes > available_size) {
       return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                        "tensor offset_bytes exceeds available imported memory size");
@@ -817,7 +817,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     OrtStatus* status = impl.ort_api.CreateTensorWithDataAsOrtValue(
         memory_info,
         data_ptr,
-        handle->size_bytes - tensor_desc->offset_bytes,
+        handle->descriptor.size_bytes - tensor_desc->offset_bytes,
         tensor_desc->shape,
         tensor_desc->rank,
         tensor_desc->element_type,
@@ -878,12 +878,10 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     }
 
     // Create and return the derived handle (cast to base pointer)
-    auto handle = std::make_unique<NvTrtRtxExternalSemaphoreHandle>();
+    auto handle = std::make_unique<NvTrtRtxExternalSemaphoreHandle>(*desc);
 
     // Populate base struct fields
     handle->ep_device = impl.ep_device_;
-    handle->type = desc->type;
-
     // Populate derived fields
     handle->ext_semaphore = ext_semaphore;
 
