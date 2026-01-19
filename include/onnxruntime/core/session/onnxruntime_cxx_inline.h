@@ -1058,6 +1058,11 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
   return *this;
 }
 
+inline RunOptions& RunOptions::SetSyncStream(OrtSyncStream* stream) {
+  GetApi().RunOptionsSetSyncStream(p_, stream);
+  return *this;
+}
+
 inline RunOptions& RunOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
   ThrowOnError(GetApi().RunOptionsEnableProfiling(p_, profile_file_prefix));
   return *this;
