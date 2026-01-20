@@ -6,6 +6,7 @@
 #include "core/providers/cuda/llm/attention.h"
 #include "contrib_ops/cuda/bert/attention_data.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 
 using namespace onnxruntime::cuda;
 
@@ -173,11 +174,119 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     contribop_parameters.is_output_bnsh = false;
   }
 
-  // TODO(titaiwang, xadupre): Group query attention is not supported yet
-  if (parameters.kv_num_heads != parameters.q_num_heads) {
-    ORT_THROW("Group query attention is not supported yet in Attention op (CUDA).");
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  // Check if this is Group Query Attention (GQA)
+  const bool is_gqa = parameters.kv_num_heads != parameters.q_num_heads;
+
+  if (is_gqa) {
+    // Use GQA path
+    // For now, GQA doesn't support qk_matmul_output_mode other than kNone
+    if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone) {
+      ORT_THROW("qk_matmul_output_mode is not supported yet in GQA path of Attention op (CUDA).");
+    }
+    // GQA doesn't support softcap and softmax_precision yet
+    if (parameters.softcap != 0.0f) {
+      ORT_THROW("softcap is not supported yet in GQA path of Attention op (CUDA).");
+    }
+    if (parameters.softmax_precision != 0) {
+      ORT_THROW("softmax_precision is not supported yet in GQA path of Attention op (CUDA).");
+    }
+
+    // Bridge parameters to GroupQueryAttentionParameters
+    onnxruntime::contrib::GroupQueryAttentionParameters gqa_parameters;
+    gqa_parameters.batch_size = parameters.batch_size;
+    gqa_parameters.sequence_length = parameters.q_sequence_length;
+    gqa_parameters.seqlen_past_kv_cache = parameters.past_sequence_length;
+    gqa_parameters.seqlen_present_kv_cache = parameters.total_sequence_length;
+    gqa_parameters.total_sequence_length = parameters.total_sequence_length;
+    gqa_parameters.kv_sequence_length = parameters.kv_sequence_length;
+    gqa_parameters.hidden_size = parameters.q_num_heads * parameters.head_size;
+    gqa_parameters.num_heads = parameters.q_num_heads;
+    gqa_parameters.head_size = parameters.head_size;
+    gqa_parameters.v_head_size = parameters.v_head_size;
+    gqa_parameters.kv_hidden_size = parameters.kv_num_heads * parameters.head_size;
+    gqa_parameters.kv_num_heads = parameters.kv_num_heads;
+    gqa_parameters.rotary_dim = 0;  // New Attention op doesn't use rotary embeddings directly
+    gqa_parameters.is_unidirectional = parameters.is_causal;
+    gqa_parameters.past_present_share_buffer = false;  // New Attention op doesn't share buffer
+    gqa_parameters.kv_share_buffer = false;
+    gqa_parameters.is_packed_qkv = false;  // New Attention op has separate Q, K, V inputs
+    gqa_parameters.is_subsequent_prompt = false;
+    gqa_parameters.is_first_prompt = parameters.past_sequence_length == 0;
+    gqa_parameters.do_rotary = false;  // New Attention op doesn't use rotary embeddings
+    gqa_parameters.rotary_interleaved = false;
+    gqa_parameters.use_smooth_softmax = false;
+    gqa_parameters.scale = parameters.scale;
+    gqa_parameters.softcap = 0.0f;
+    gqa_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_NONE;
+    gqa_parameters.qkv_format = contribop_parameters.qkv_format;
+    gqa_parameters.past_kv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH;
+    gqa_parameters.local_window_size = -1;  // No local window for standard attention
+    gqa_parameters.zeros_count = 0;
+    gqa_parameters.zero_ptr = nullptr;
+
+    // Construct GroupQueryAttentionData
+    onnxruntime::contrib::cuda::GroupQueryAttentionData<CudaT> gqa_data;
+
+    // Set input pointers
+    gqa_data.query = reinterpret_cast<const CudaT*>(Q->Data<T>());
+    gqa_data.key = reinterpret_cast<const CudaT*>(K->Data<T>());
+    gqa_data.value = reinterpret_cast<const CudaT*>(V->Data<T>());
+    gqa_data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
+    gqa_data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
+
+    // Set output pointers
+    gqa_data.output = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+    gqa_data.present_key = (present_key == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
+    gqa_data.present_value = (present_value == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+
+    // GQA doesn't support attention_bias yet, but we set it to nullptr explicitly
+    if (nullptr != attn_mask) {
+      ORT_THROW("attention_bias (attn_mask) is not supported yet in GQA path of Attention op (CUDA).");
+    }
+
+    // Set GQA-specific fields
+    gqa_data.cos_cache = nullptr;  // No rotary embeddings
+    gqa_data.sin_cache = nullptr;
+    gqa_data.head_sink = nullptr;
+    gqa_data.position_ids = nullptr;
+
+    // For unfused GQA path (no flash attention or memory efficient attention for now)
+    gqa_data.use_flash_attention = false;
+    gqa_data.use_memory_efficient_attention = false;
+    gqa_data.use_flash_attention_fast_decode = false;
+    gqa_data.disable_fused_kv = true;
+
+    // Sequence lengths: GQA expects total_seq_lens and past_seq_lens
+    // For now, we don't have these as inputs, so we skip them
+    // This means GQA will fall back to unfused path without flash/memory efficient attention
+    gqa_data.total_seq_lens = nullptr;
+    gqa_data.past_seq_lens = nullptr;
+    gqa_data.padded_seq_lens = nullptr;
+
+    // Flash buffers (not used in unfused path)
+    gqa_data.softmax_lse = nullptr;
+    gqa_data.softmax_lse_accum = nullptr;
+    gqa_data.out_accum = nullptr;
+
+    // Memory efficient buffers (not used)
+    gqa_data.fmha_buffer = nullptr;
+    gqa_data.unpacked_qkv_buffer = nullptr;
+    gqa_data.rotary_buffer = nullptr;
+    gqa_data.position_ids_buffer = nullptr;
+    gqa_data.k = nullptr;
+    gqa_data.v = nullptr;
+
+    // Call GQA kernel
+    auto& device_prop = GetDeviceProp();
+    cublasHandle_t cublas = GetCublasHandle(context);
+
+    return onnxruntime::contrib::cuda::QkvToContext<CudaT>(
+        device_prop, cublas, context->GetComputeStream(), gqa_parameters, gqa_data);
   }
 
+  // MHA path (kv_num_heads == q_num_heads)
   // TODO(titaiwang, xadupre): qk_matmul_output_mode only supports kNone and kQK for now
   if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
       qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kQK) {
@@ -191,9 +300,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_THROW("softmax_precision is not supported yet in Attention op (CUDA).");
   }
 
-  // TODO(titaiwang): Continue on these parameters
   // Construct AttentionData to pass to QkvToContext
-  typedef typename ToCudaType<T>::MappedType CudaT;
   onnxruntime::contrib::cuda::AttentionData<CudaT> data;
 
   // Set input pointers
