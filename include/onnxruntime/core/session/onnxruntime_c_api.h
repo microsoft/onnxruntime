@@ -1062,8 +1062,8 @@ typedef struct OrtEnvCreationOptions {
    * \note Logging messages which are less severe than the `logging_severity_level` are not emitted.
    *
    * \note Serves as the default logging severity level for session creation and runs.
-   *       Use ::SetSessionLogSeverityLevel() to set a logging severity level for the creation of specific session.
-   *       Use ::RunOptionsSetRunLogSeverityLevel() to set a logging severity level for a specific session run.
+   *       Use OrtApi::SetSessionLogSeverityLevel to set a logging severity level for the creation of specific session.
+   *       Use OrtApi::RunOptionsSetRunLogSeverityLevel to set a logging severity level for a specific session run.
    *
    * \since Version 1.24.
    */
@@ -1116,7 +1116,7 @@ typedef struct OrtEnvCreationOptions {
    * \note Refer to onnxruntime_env_config_keys.h for common config entry keys and their supported values.
    *
    * \note An application provides environment-level configuration options for execution provider libraries by
-   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       using keys with the prefix 'ep_factory.\\<ep_name\\>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
    *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
    *       the specific execution provider's documentation for valid keys and values.
    *
@@ -7979,7 +7979,7 @@ struct OrtInteropApi {
 
   /** \brief Release an OrtExternalResourceImporter instance.
    *
-   * \param[in] importer The OrtExternalResourceImporter instance to release. May be nullptr.
+   * \param[in] input The OrtExternalResourceImporter instance to release. May be nullptr.
    *
    * \since Version 1.24.
    */
@@ -8022,7 +8022,7 @@ struct OrtInteropApi {
 
   /** \brief Release an OrtExternalMemoryHandle instance.
    *
-   * \param[in] handle The OrtExternalMemoryHandle instance to release. May be nullptr.
+   * \param[in] input The OrtExternalMemoryHandle instance to release. May be nullptr.
    *
    * \since Version 1.24.
    */
@@ -8088,7 +8088,7 @@ struct OrtInteropApi {
 
   /** \brief Release an OrtExternalSemaphoreHandle instance.
    *
-   * \param[in] handle The OrtExternalSemaphoreHandle instance to release. May be nullptr.
+   * \param[in] input The OrtExternalSemaphoreHandle instance to release. May be nullptr.
    *
    * \since Version 1.24.
    */
