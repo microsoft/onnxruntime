@@ -218,7 +218,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_parameters.rotary_interleaved = false;
     gqa_parameters.use_smooth_softmax = false;
     gqa_parameters.scale = parameters.scale;
-    gqa_parameters.softcap = parameters.softcap;
+    gqa_parameters.softcap = 0.0f;  // Validated to be 0.0f above
     gqa_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_NONE;
     gqa_parameters.qkv_format = contribop_parameters.qkv_format;
     gqa_parameters.past_kv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH;
