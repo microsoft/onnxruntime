@@ -225,6 +225,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_parameters.local_window_size = -1;  // No local window for standard attention
     gqa_parameters.zeros_count = 0;
     gqa_parameters.zero_ptr = nullptr;
+    gqa_parameters.num_splits = 1;  // No splits for unfused path
 
     // Construct GroupQueryAttentionData
     onnxruntime::contrib::cuda::GroupQueryAttentionData<CudaT> gqa_data;
@@ -277,6 +278,16 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.position_ids_buffer = nullptr;
     gqa_data.k = nullptr;
     gqa_data.v = nullptr;
+
+#ifndef NDEBUG
+    // Initialize debug tracking fields
+    gqa_data.unpacked_qkv_buffer_size = 0;
+    gqa_data.rotary_buffer_size = 0;
+    gqa_data.position_ids_buffer_size = 0;
+    gqa_data.unpacked_qkv_max_used = 0;
+    gqa_data.rotary_max_used = 0;
+    gqa_data.position_ids_max_used = 0;
+#endif
 
     // Call GQA kernel
     auto& device_prop = GetDeviceProp();
