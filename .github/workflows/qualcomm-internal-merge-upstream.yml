@@ -29,7 +29,7 @@ jobs:
       - name: Configure git as ortqnnepci
         run: |
           git config --local user.name "ortqnnepci"
-          git config --local user.email "ortqnnepci@qualcomm.com"
+          git config --local user.email "ortqnnepci@qti.qualcomm.com"
       - name: Add upstream and fetch
         run: |
           git remote set-url upstream "$UPSTREAM_URL" || git remote add upstream "$UPSTREAM_URL"
