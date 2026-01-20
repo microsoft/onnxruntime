@@ -6100,7 +6100,8 @@ struct OrtApi {
   /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
    *
    * \note The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
-   * the same underlying graph.
+   * the same underlying graph. "dst_graph" preserves the input order of "src_graph", and
+   * its output order corresponds to the outputs produced by the nodes in "nodes" with the given order.
    *
    * \param[in] src_graph The source OrtGraph instance.
    * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
@@ -6389,6 +6390,9 @@ struct OrtApi {
   /** \brief Get the node's parent OrtGraph instance.
    *
    * Can return NULL if the OrtNode was created without an owning graph.
+   * In another case, this API may also return NULL if `node` is obtained by calling Graph_GetParentNode()
+   * on an OrtGraph that is a subgraph of a control-flow op, and the parent graph has not been created yet,
+   * for example during ORT's GetCapability() when processing the innermost subgraph.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] graph Output parameter set to the node's OrtGraph. Can be set to NULL
