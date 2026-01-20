@@ -3539,6 +3539,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
       ep_option_vals_span,
       session_options->value));
 
+  ORT_API_RETURN_IF_STATUS_NOT_OK(AddEpCustomDomainsToSessionOptions(
+      ep_devices_span,
+      *session_options));
+
   session_options->provider_factories.push_back(std::move(provider_factory));
 
   return nullptr;
