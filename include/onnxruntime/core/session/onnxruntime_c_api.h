@@ -970,10 +970,6 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
-/** \addtogroup Global
- * @{
- */
-
 /** \brief External memory handle type for importing GPU resources.
  *
  * \todo Add OPAQUE_WIN32 for Windows Vulkan-specific memory handles
@@ -1040,8 +1036,6 @@ typedef struct OrtExternalTensorDescriptor {
                                                Applied relative to OrtExternalMemoryDescriptor::offset_bytes.
                                                Enables multiple tensors from the same imported memory handle. */
 } OrtExternalTensorDescriptor;
-
-/// @}
 
 /*
  * Public enum for compiled model compatibility across EPs.
