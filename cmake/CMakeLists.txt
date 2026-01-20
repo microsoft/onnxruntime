@@ -775,7 +775,7 @@ if (onnxruntime_USE_CUDA)
     endif()
 
     if (onnxruntime_QUICK_BUILD)
-        message( STATUS "Quick build mode: Flash attention limited to fp16 only")
+        message( STATUS "Quick build mode: Flash attention limited to head dimension 128 only")
         list(APPEND ORT_PROVIDER_FLAGS -DORT_QUICK_BUILD=1)
     endif()
 endif()

@@ -25,7 +25,7 @@ try:
     from test_gqa import compute_scale, quantize_tensor_with_scale
 except ImportError:
     # Fallback for when running from different directory
-    import os
+
     import sys
 
     sys.path.insert(0, os.path.dirname(__file__))
@@ -570,10 +570,7 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
     else:
         float_type = TensorProto.FLOAT
 
-    # Determine cache tensor type based on quantization
-    cache_type = float_type
-    if config.kv_cache_type == "int4" or config.kv_cache_type == "int8":
-        cache_type = TensorProto.UINT8
+
 
     # Build input list for the GQA node
     node_inputs = [
