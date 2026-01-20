@@ -33,8 +33,10 @@ struct CapturedCommandInfo {
   WGPUBindGroup bind_group;
   WGPUBindGroupLayout bind_group_layout;
   std::array<uint32_t, 3> dispatch_group;
-  WGPUBuffer indirect_buffer;                                                                                                   // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
-  std::optional<std::tuple<std::string, std::string, std::vector<TensorShape>, std::vector<TensorShape>>> pending_kernel_info;  // Optional profiling data: (name, cache_key, input_shapes, output_shapes)
+  // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
+  WGPUBuffer indirect_buffer;
+  // Optional profiling data: (name, cache_key, input_shapes, output_shapes)
+  std::optional<std::tuple<std::string, std::string, std::vector<TensorShape>, std::vector<TensorShape>>> pending_kernel_info;
 };
 
 struct WebGpuBufferCacheConfig {
