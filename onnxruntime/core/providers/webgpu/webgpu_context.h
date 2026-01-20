@@ -6,7 +6,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <tuple>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
@@ -27,6 +26,37 @@ class WebGpuContext;
 class ComputeContextBase;
 class ProgramBase;
 
+// PendingKernelInfo stores profiling information for a kernel execution
+struct PendingKernelInfo {
+  PendingKernelInfo(std::string_view kernel_name,
+                    std::string_view kernel_type,
+                    std::string_view program_name,
+                    std::string_view cache_key,
+                    const std::vector<ProgramInput>& inputs,
+                    const std::vector<ProgramOutput>& outputs)
+      : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key} {
+    // Store shape information instead of tensor pointers to avoid accessing released tensors
+    input_shapes.reserve(inputs.size());
+    for (const auto& input : inputs) {
+      input_shapes.emplace_back(input.use_override_shape ? input.override_shape : input.tensor->Shape());
+    }
+    output_shapes.reserve(outputs.size());
+    for (const auto& output : outputs) {
+      output_shapes.emplace_back(output.use_override_shape ? output.override_shape : output.tensor->Shape());
+    }
+  }
+
+  PendingKernelInfo(const PendingKernelInfo&) = default;
+  PendingKernelInfo& operator=(const PendingKernelInfo&) = default;
+  PendingKernelInfo(PendingKernelInfo&&) = default;
+  PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
+
+  std::string name;
+  std::string cache_key;
+  std::vector<TensorShape> input_shapes;
+  std::vector<TensorShape> output_shapes;
+};
+
 // Definition for CapturedCommandInfo in the webgpu namespace
 struct CapturedCommandInfo {
   wgpu::ComputePipeline compute_pipeline;
@@ -35,8 +65,8 @@ struct CapturedCommandInfo {
   std::array<uint32_t, 3> dispatch_group;
   // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
   WGPUBuffer indirect_buffer;
-  // Optional profiling data: (name, cache_key, input_shapes, output_shapes)
-  std::optional<std::tuple<std::string, std::string, std::vector<TensorShape>, std::vector<TensorShape>>> pending_kernel_info;
+  // Optional profiling data
+  std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -265,45 +295,6 @@ class WebGpuContext final {
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
   wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
-
-  struct PendingKernelInfo {
-    PendingKernelInfo(std::string_view kernel_name,
-                      std::string_view kernel_type,
-                      std::string_view program_name,
-                      std::string_view cache_key,
-                      const std::vector<ProgramInput>& inputs,
-                      const std::vector<ProgramOutput>& outputs)
-        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key} {
-      // Store shape information instead of tensor pointers to avoid accessing released tensors
-      input_shapes.reserve(inputs.size());
-      for (const auto& input : inputs) {
-        input_shapes.emplace_back(input.use_override_shape ? input.override_shape : input.tensor->Shape());
-      }
-      output_shapes.reserve(outputs.size());
-      for (const auto& output : outputs) {
-        output_shapes.emplace_back(output.use_override_shape ? output.override_shape : output.tensor->Shape());
-      }
-    }
-
-    // Constructor for replay - takes shapes directly
-    PendingKernelInfo(std::string name_in,
-                      std::string cache_key_in,
-                      std::vector<TensorShape> input_shapes_in,
-                      std::vector<TensorShape> output_shapes_in)
-        : name{std::move(name_in)},
-          cache_key{std::move(cache_key_in)},
-          input_shapes{std::move(input_shapes_in)},
-          output_shapes{std::move(output_shapes_in)} {}
-
-    PendingKernelInfo(PendingKernelInfo&&) = default;
-    PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
-    ORT_DISALLOW_COPY_AND_ASSIGNMENT(PendingKernelInfo);
-
-    std::string name;
-    std::string cache_key;
-    std::vector<TensorShape> input_shapes;
-    std::vector<TensorShape> output_shapes;
-  };
 
   struct PendingQueryInfo {
     PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)

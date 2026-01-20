@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <cmath>
+#include <string>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -793,11 +794,10 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
       indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
     }
 
-    // Store profiling info if profiling is enabled
-    std::optional<std::tuple<std::string, std::string, std::vector<TensorShape>, std::vector<TensorShape>>> profiling_data;
-    if (is_profiling_ && !pending_kernels_.empty()) {
-      const auto& kernel_info = pending_kernels_.back();
-      profiling_data = std::make_tuple(kernel_info.name, kernel_info.cache_key, kernel_info.input_shapes, kernel_info.output_shapes);
+    // Always store profiling metadata to support profiling during replay regardless of current profiling state
+    std::optional<PendingKernelInfo> profiling_data;
+    if (!pending_kernels_.empty()) {
+      profiling_data = pending_kernels_.back();
     }
 
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
@@ -851,8 +851,7 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
 
     // Restore profiling info if available and profiling is enabled
     if (is_profiling_ && command.pending_kernel_info.has_value()) {
-      const auto& [name, cache_key, input_shapes, output_shapes] = command.pending_kernel_info.value();
-      pending_kernels_.emplace_back(name, cache_key, input_shapes, output_shapes);
+      pending_kernels_.emplace_back(command.pending_kernel_info.value());
     }
 
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
