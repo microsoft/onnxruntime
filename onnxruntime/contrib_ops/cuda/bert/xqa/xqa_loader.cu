@@ -4,89 +4,14 @@
 #include "xqa_loader.h"
 #include <cassert>
 
-// Define global constants BEFORE including ANY header that uses them
-#define HEAD_ELEMS 128
-#define USE_PAGED_KV_CACHE 0
-#define TOKENS_PER_PAGE 0
-#define INPUT_FP16 1
-#define ALLOW_MULTI_BLOCK_MODE 1
-
-#pragma nv_diag_suppress 177
-#pragma nv_diag_suppress 20012
-
-// Include common headers once
-#include "cuda_hint.cuh"
-#include "mha.h"
-// Include all helpers globally to ensure visibility
-#include "ldgsts.cuh"
-#include "mhaUtils.cuh"
-#include "mha_components.cuh"
-#include "mma.cuh"
-#include "utils.cuh"
-#include "hostUtils.h"
-
-// Undefine HEAD_GRP_SIZE and M_TILESIZE to allow re-definition in impl gen
-#undef HEAD_GRP_SIZE
-#undef M_TILESIZE
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// ============================================================================
-// FP16 KV Cache Instantiations
-// ============================================================================
-
-#define NAMESPACE_NAME grp1_fp16
-#define GRP_SIZE 1
-#define M_TILESIZE 8
-#include "xqa_impl_gen.cuh"
-#undef NAMESPACE_NAME
-#undef GRP_SIZE
-#undef M_TILESIZE
-
-#define NAMESPACE_NAME grp2_fp16
-#define GRP_SIZE 2
-#define M_TILESIZE 8
-#include "xqa_impl_gen.cuh"
-#undef NAMESPACE_NAME
-#undef GRP_SIZE
-#undef M_TILESIZE
-
-#define NAMESPACE_NAME grp4_fp16
-#define GRP_SIZE 4
-#define M_TILESIZE 8
-#include "xqa_impl_gen.cuh"
-#undef NAMESPACE_NAME
-#undef GRP_SIZE
-#undef M_TILESIZE
-
-#define NAMESPACE_NAME grp8_fp16
-#define GRP_SIZE 8
-#define M_TILESIZE 8
-#include "xqa_impl_gen.cuh"
-#undef NAMESPACE_NAME
-#undef GRP_SIZE
-#undef M_TILESIZE
-
-#define NAMESPACE_NAME grp16_fp16
-#define GRP_SIZE 16
-#define M_TILESIZE 16
-#include "xqa_impl_gen.cuh"
-#undef NAMESPACE_NAME
-#undef GRP_SIZE
-#undef M_TILESIZE
-
-#define NAMESPACE_NAME grp32_fp16
-#define GRP_SIZE 32
-#define M_TILESIZE 32
-#include "xqa_impl_gen.cuh"
-#undef NAMESPACE_NAME
-#undef GRP_SIZE
-#undef M_TILESIZE
-
-// Extern declarations for INT8 kernels (implemented in xqa_loader_int8.cu)
-Status LaunchXQAInt8Kernel(
+// Forward declarations of instantiated kernels from H128 and H64 namespaces
+namespace H128 {
+template <typename T>
+Status LaunchXQAKernelImpl(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     const void* query,
@@ -103,13 +28,50 @@ Status LaunchXQAInt8Kernel(
     const bool is_bsnh,
     const int* seq_lens,
     const float* kv_cache_scale,
+    const int kv_quant_type,
     void* workspace,
     size_t workspace_size);
 
-// ============================================================================
-// Dispatcher
-// ============================================================================
+size_t GetXQAScratchSize(
+    const cudaDeviceProp& device_prop,
+    int batch_size,
+    int num_heads,
+    int kv_num_heads,
+    int max_seq_len);
+}  // namespace H128
 
+namespace H64 {
+template <typename T>
+Status LaunchXQAKernelImpl(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    const void* query,
+    const void* key_cache,
+    const void* value_cache,
+    void* output,
+    const int batch_size,
+    const int num_heads,
+    const int kv_num_heads,
+    const int head_size,
+    const int actual_seq_len,
+    const int max_seq_len,
+    const float scale,
+    const bool is_bsnh,
+    const int* seq_lens,
+    const float* kv_cache_scale,
+    const int kv_quant_type,
+    void* workspace,
+    size_t workspace_size);
+
+size_t GetXQAScratchSize(
+    const cudaDeviceProp& device_prop,
+    int batch_size,
+    int num_heads,
+    int kv_num_heads,
+    int max_seq_len);
+}  // namespace H64
+
+// Dispatcher Implementation
 template <typename T>
 Status LaunchXQAKernel(
     const cudaDeviceProp& device_prop,
@@ -131,36 +93,16 @@ Status LaunchXQAKernel(
     const int kv_quant_type,
     void* workspace,
     size_t workspace_size) {
-  if (head_size != 128) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA only supports head_size=128.");
-  }
-
-  // Dispatch to INT8 path if requested
-  if (kv_quant_type == 1) {
-    if constexpr (std::is_same<T, half>::value) {
-      return LaunchXQAInt8Kernel(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, workspace, workspace_size);
-    } else {
-      // BF16 case is handled in xqa_loader_bf16.cu via specialization
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA INT8 path mismatch.");
-    }
-  }
-
-  int group_size = num_heads / kv_num_heads;
-  switch (group_size) {
-    case 1:
-      return grp1_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, workspace, workspace_size);
-    case 2:
-      return grp2_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, workspace, workspace_size);
-    case 4:
-      return grp4_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, workspace, workspace_size);
-    case 8:
-      return grp8_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, workspace, workspace_size);
-    case 16:
-      return grp16_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, workspace, workspace_size);
-    case 32:
-      return grp32_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, workspace, workspace_size);
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA supports group_size 1, 2, 4, 8, 16, 32. Input has ", group_size);
+  if (head_size == 128) {
+    return H128::LaunchXQAKernelImpl<T>(
+        device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size,
+        actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, kv_quant_type, workspace, workspace_size);
+  } else if (head_size == 64) {
+    return H64::LaunchXQAKernelImpl<T>(
+        device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size,
+        actual_seq_len, max_seq_len, scale, is_bsnh, seq_lens, kv_cache_scale, kv_quant_type, workspace, workspace_size);
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA only supports head_size=64 or 128. Input has ", head_size);
   }
 }
 
@@ -170,27 +112,55 @@ size_t GetXQAScratchSize(
     int num_heads,
     int kv_num_heads,
     int max_seq_len) {
-  int group_size = num_heads / kv_num_heads;
-  switch (group_size) {
-    case 1:
-      return grp1_fp16::GetScratchSize(device_prop, batch_size, kv_num_heads, max_seq_len);
-    case 2:
-      return grp2_fp16::GetScratchSize(device_prop, batch_size, kv_num_heads, max_seq_len);
-    case 4:
-      return grp4_fp16::GetScratchSize(device_prop, batch_size, kv_num_heads, max_seq_len);
-    case 8:
-      return grp8_fp16::GetScratchSize(device_prop, batch_size, kv_num_heads, max_seq_len);
-    case 16:
-      return grp16_fp16::GetScratchSize(device_prop, batch_size, kv_num_heads, max_seq_len);
-    case 32:
-      return grp32_fp16::GetScratchSize(device_prop, batch_size, kv_num_heads, max_seq_len);
-    default:
-      return 0;  // Not supported
-  }
+  // Just use H128 logic for scratch size estimation if it doesn't depend on head size being strictly 128 in estimation logic?
+  // Looking at xqa_impl_gen.cuh, GetScratchSize depends on namespace/template params which depend on HEAD_ELEMS indirectly?
+  // Actually, GetScratchSize in xqa_impl_gen calls `grpX_fp16::GetScratchSize`.
+  // If H64 logic is different, we should pick the right one.
+  // But GetXQAScratchSize doesn't take head_size as input?
+  // Wait, the signature in xqa_loader.h DOES include head_size?
+  // No, `size_t GetXQAScratchSize(const cudaDeviceProp& device_prop, int batch_size, int num_heads, int kv_num_heads, int max_seq_len);`
+  // It does NOT have head_size.
+
+  // Checking `xqa_impl_gen.cuh`:
+  // size_t scratch_size = ::onnxruntime::contrib::cuda::NAMESPACE_NAME::GetScratchSize(nbSeq, nbSubSeqPerSeq);
+
+  // `NAMESPACE_NAME` (e.g. grp8_fp16) is generated including `mha_impl.cuh`.
+  // `mha_impl.cuh` depends on `HEAD_ELEMS`.
+  // So the scratch size might depend on HEAD_ELEMS.
+  // BUT the API doesn't pass head_size. This is a problem if scratch size depends on head size.
+  // Most likely, scratch size depends on sequence lengths and number of heads, not head dim (unless smem usage constraint).
+  // However, if I use H128's GetScratchSize, it assumes HEAD_ELEMS=128 for any persistent structures.
+
+  // Let's assume for now we use H128's size as a conservative estimate (usually larger head dim size -> maybe larger scratch? or same?).
+  // If the kernels are built with static smem, 128 might need more.
+
+  return H128::GetXQAScratchSize(device_prop, batch_size, num_heads, kv_num_heads, max_seq_len);
 }
 
 // Instantiate template for half
 template Status LaunchXQAKernel<half>(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    const void* query,
+    const void* key_cache,
+    const void* value_cache,
+    void* output,
+    const int batch_size,
+    const int num_heads,
+    const int kv_num_heads,
+    const int head_size,
+    const int actual_seq_len,
+    const int max_seq_len,
+    const float scale,
+    const bool is_bsnh,
+    const int* seq_lens,
+    const float* kv_cache_scale,
+    const int kv_quant_type,
+    void* workspace,
+    size_t workspace_size);
+
+// Instantiate template for BFloat16
+template Status LaunchXQAKernel<BFloat16>(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     const void* query,

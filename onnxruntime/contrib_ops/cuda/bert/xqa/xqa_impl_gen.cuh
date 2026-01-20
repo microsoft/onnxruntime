@@ -29,7 +29,7 @@ inline size_t GetScratchSize(
   uint32_t nbSeq = static_cast<uint32_t>(batch_size * kv_num_heads);
 
   size_t semaphore_size = nbSeq * sizeof(uint32_t);
-  size_t scratch_size = ::onnxruntime::contrib::cuda::NAMESPACE_NAME::GetScratchSize(nbSeq, nbSubSeqPerSeq);
+  size_t scratch_size = NAMESPACE_NAME::GetScratchSize(nbSeq, nbSubSeqPerSeq);
 
   // Return total size with alignment padding
   return roundUp<size_t>(semaphore_size, 128) + scratch_size;

@@ -596,10 +596,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                               k_quant_type_ == KVQuantizationType::PER_TENSOR &&
                               v_quant_type_ == KVQuantizationType::PER_TENSOR &&
                               data.k_scale == data.v_scale &&  // XQA requires k_scale and v_scale to be the same. Here requires k_scale and v_scale are same tensor.
-                              parameters.head_size == 128 &&
+                              (parameters.head_size == 128 || parameters.head_size == 64) &&
                               (group_size == 8 || group_size == 16 || group_size == 32));
     bool is_non_quantized_supported = !use_quantized_kv &&
-                                      parameters.head_size == 128 &&
+                                      (parameters.head_size == 128 || parameters.head_size == 64) &&
                                       (64 % group_size == 0);
 
     data.use_xqa = !parameters.is_first_prompt &&

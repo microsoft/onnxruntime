@@ -2386,29 +2386,32 @@ def gqa_xqa_test_cases():
             for past_kv_sequence_length in [1, 4]:
                 for rotary in [False, True]:
                     for packed in [False, True]:
-                        kv_num_heads = 4
-                        num_heads = kv_num_heads * group_size
-                        config = GQAConfig(
-                            batch_size=2,
-                            q_sequence_length=1,
-                            kv_sequence_length=1,
-                            num_heads=num_heads,
-                            kv_num_heads=kv_num_heads,
-                            head_size=128,
-                            past_kv_sequence_length=past_kv_sequence_length,
-                            buffer_sequence_length=past_kv_sequence_length + 128,
-                            rotary=rotary,
-                            packed=packed,
-                            share_buffer=True,
-                            k_quant_type="PER_TENSOR",
-                            v_quant_type="PER_TENSOR",
-                            kv_cache_type=torch.int8,
-                            share_kv_scale=True,
-                        )
+                        for head_size in [128, 64] if not quick_build else [128]:
+                            kv_num_heads = 4
+                            num_heads = kv_num_heads * group_size
+                            config = GQAConfig(
+                                batch_size=2,
+                                q_sequence_length=1,
+                                kv_sequence_length=1,
+                                num_heads=num_heads,
+                                kv_num_heads=kv_num_heads,
+                                head_size=head_size,
+                                past_kv_sequence_length=past_kv_sequence_length,
+                                buffer_sequence_length=past_kv_sequence_length + 128,
+                                rotary=rotary,
+                                packed=packed,
+                                share_buffer=True,
+                                k_quant_type="PER_TENSOR",
+                                v_quant_type="PER_TENSOR",
+                                kv_cache_type=torch.int8,
+                                share_kv_scale=True,
+                            )
                         type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
                         rot_str = "rot" if rotary else "norot"
                         pkd_str = "pkd" if packed else "sep"
-                        name = f"{type_str}_g_{group_size}_past{past_kv_sequence_length}_{rot_str}_{pkd_str}"
+                        name = (
+                            f"{type_str}_g_{group_size}_h{head_size}_past{past_kv_sequence_length}_{rot_str}_{pkd_str}"
+                        )
                         yield name, config, torch_type, ort_type
 
 
