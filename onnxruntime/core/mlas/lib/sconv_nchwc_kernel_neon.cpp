@@ -6,18 +6,18 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sconv_kernel_neon.cpp
+    sconv_nchwc_kernel_neon.cpp
 
 Abstract:
 
-    This module implements the single precision convolution kernels for ARM NEON.
+    This module implements the single precision NCHWC convolution kernels for ARM NEON.
 
 --*/
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
 
 #include "mlasi.h"
-#include "sconv.h"
+#include "sconv_nchwc_kernel_neon.h"
 
 constexpr size_t BlockSize = MLAS_PLATFORM::MLAS_NEON_NCHWC_BLOCK_SIZE;
 

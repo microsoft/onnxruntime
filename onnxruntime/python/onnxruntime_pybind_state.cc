@@ -1348,6 +1348,9 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                                    ep_option_vals,
                                                    py_sess_options.value));
 
+  ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_devices,
+                                                         py_sess_options));
+
   py_sess_options.provider_factories.push_back(std::move(provider_factory));
   return Status::OK();
 }

@@ -127,6 +127,7 @@ void CreateSTFTOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateInverseOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateFusedMatMulOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateQuickGeluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateMatMulNBitsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

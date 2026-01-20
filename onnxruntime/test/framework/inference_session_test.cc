@@ -3089,5 +3089,70 @@ TEST(InferenceSessionTests, GraphResolveHandlesNodeWithSubgraphBeingRemoved) {
   ASSERT_STATUS_OK(session.Load(model_uri));
 }
 
+#ifdef ORT_ENABLE_STREAM
+namespace {
+
+struct TestNotification : public synchronize::Notification {
+  explicit TestNotification(Stream& s) : Notification(s) {}
+  void Activate() override {}
+};
+
+struct TestOverrideStream : Stream {
+  TestOverrideStream(StreamHandle h, const OrtDevice& d) : Stream(h, d) {}
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
+    return std::make_unique<TestNotification>(*this);
+  }
+};
+}  // namespace
+
+TEST(DeviceStreamCollection, TestOverride) {
+  // We need an allocator map for the constructor, but it's not used in this test scenario.
+  AllocatorMap allocators;
+  DeviceStreamCollection collection(2, allocators, false);
+
+  OrtDevice cpu_device(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0);
+  OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
+
+  auto cpu_stream = std::make_unique<TestOverrideStream>(nullptr, cpu_device);
+  auto* cpu_stream_ptr = cpu_stream.get();
+  collection.AddDeviceStream(0, std::move(cpu_stream));
+
+  auto gpu_stream = std::make_unique<TestOverrideStream>(nullptr, gpu_device);
+  auto* gpu_stream_ptr = gpu_stream.get();
+  collection.AddDeviceStream(1, std::move(gpu_stream));
+
+  ASSERT_EQ(collection.GetStream(0), cpu_stream_ptr);
+  ASSERT_EQ(collection.GetStream(1), gpu_stream_ptr);
+
+  // 1. Override CPU stream
+  TestOverrideStream cpu_override_stream(nullptr, cpu_device);
+  ASSERT_STATUS_OK(collection.SetStreamOverride(&cpu_override_stream));
+
+  // Verify override took effect for correct device match
+  ASSERT_EQ(collection.GetStream(0), &cpu_override_stream);
+  ASSERT_EQ(collection.GetStream(1), gpu_stream_ptr);
+
+  // 2. Reset Override
+  collection.ResetStreamOverride();
+  ASSERT_EQ(collection.GetStream(0), cpu_stream_ptr);
+  ASSERT_EQ(collection.GetStream(1), gpu_stream_ptr);
+
+  // 3. Override GPU stream
+  TestOverrideStream gpu_override_stream(nullptr, gpu_device);
+  ASSERT_STATUS_OK(collection.SetStreamOverride(&gpu_override_stream));
+
+  ASSERT_EQ(collection.GetStream(0), cpu_stream_ptr);
+  ASSERT_EQ(collection.GetStream(1), &gpu_override_stream);
+
+  collection.ResetStreamOverride();
+
+  // 4. Override with non-matching device
+  OrtDevice other_device(OrtDevice::FPGA, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0);
+  TestOverrideStream other_stream(nullptr, other_device);
+  ASSERT_FALSE(collection.SetStreamOverride(&other_stream).IsOK());
+}
+
+#endif  // ORT_ENABLE_STREAM
+
 }  // namespace test
 }  // namespace onnxruntime
