@@ -10,6 +10,8 @@
 #include <future>
 #include <iterator>
 #include <thread>
+#include <sstream>
+#include <iostream>
 #include <fstream>
 #include <random>
 
