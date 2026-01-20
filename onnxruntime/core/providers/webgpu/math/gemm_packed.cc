@@ -109,6 +109,7 @@ Status ApplyGemmPacked(const Tensor* a,
   const bool output_is_vec4 = output_components == 4;
   // The parameter `is_channel_last` is not used for GEMM.
   const bool need_split_k = split_k_config.UseSplitK(
+      &context,
       is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, /*is_gemm*/ true, /*is_channels_last*/ true, M, N, K);
   if (need_split_k) {
     const Tensor* bias = nullptr;
