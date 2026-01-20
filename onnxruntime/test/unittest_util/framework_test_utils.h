@@ -139,8 +139,8 @@ void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_di
   ASSERT_EQ(expected_values, found);
 }
 
-inline void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                          const std::vector<float>& expected_values) {
+inline void VerifySingleOutput(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
+                               const std::vector<float>& expected_values) {
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   VerifyOutputs(rtensor, expected_dims, expected_values);

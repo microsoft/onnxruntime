@@ -212,7 +212,7 @@ void RunModel(InferenceSession& session_object,
     std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   }
   ASSERT_TRUE(st.IsOK());
-  VerifyOutputs(fetches, expected_dims_mul_y, expected_values_mul_y);
+  VerifySingleOutput(fetches, expected_dims_mul_y, expected_values_mul_y);
 }
 
 TEST(InferenceSessionTests, NoTimeout) {
@@ -1012,14 +1012,14 @@ TEST(ExecutionProviderTest, FunctionTest) {
 
   // Now run
   ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+  VerifySingleOutput(fetches, expected_dims_mul_m, expected_values_mul_m);
 
   InferenceSession session2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>()));
   ASSERT_STATUS_OK(session2.Load(model_file_name));
   ASSERT_STATUS_OK(session2.Initialize());
   ASSERT_STATUS_OK(session2.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+  VerifySingleOutput(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 
 TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
@@ -1280,7 +1280,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   // Now run
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-  VerifyOutputs(fetches, expected_dims, expected_values);
+  VerifySingleOutput(fetches, expected_dims, expected_values);
 
 #if USE_TENSORRT
   // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
@@ -1295,7 +1295,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   // Now run
   status = session_object_2.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-  VerifyOutputs(fetches, expected_dims, expected_values);
+  VerifySingleOutput(fetches, expected_dims, expected_values);
 #endif
 }
 
@@ -1437,7 +1437,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   // Now run
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-  VerifyOutputs(fetches, expected_dims, expected_values);
+  VerifySingleOutput(fetches, expected_dims, expected_values);
 }
 
 TEST(InferenceSessionTests, TestTruncatedSequence) {
@@ -1644,7 +1644,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
     common::Status st = session_object.Run(run_options, feed_names, feeds, output_names, &fetches, nullptr);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
-    VerifyOutputs(fetches, expected_dims_mul_y, expected_values_mul_y);
+    VerifySingleOutput(fetches, expected_dims_mul_y, expected_values_mul_y);
   };
 
   int run_number = 0;
@@ -2539,7 +2539,7 @@ void RunModelWithDenormalAsZero(InferenceSession& session_object,
     std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   }
   ASSERT_TRUE(st.IsOK());
-  VerifyOutputs(fetches, expected_dims_mul, expected_values_mul);
+  VerifySingleOutput(fetches, expected_dims_mul, expected_values_mul);
 }
 
 void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp,

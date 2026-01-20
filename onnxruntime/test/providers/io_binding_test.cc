@@ -4,16 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
-#include <algorithm>
-#include <cfloat>
-#include <functional>
-#include <future>
-#include <iterator>
-#include <thread>
 #include <sstream>
-#include <iostream>
-#include <fstream>
-#include <random>
 
 #include "core/graph/model.h"
 #include "core/framework/tensorprotoutils.h"
@@ -64,7 +55,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
 #endif
   }
   Status status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(status);
 }
 
 void RunModelWithBindingMatMul(InferenceSession& session_object,
@@ -105,7 +96,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& cpu_tensor_a = input_ml_value_A_cpu.Get<Tensor>();
     Tensor gpu_tensor_a(cpu_tensor_a.DataType(), cpu_tensor_a.Shape(), gpu_alloc);
     st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_a, gpu_tensor_a);
-    ASSERT_TRUE(st.IsOK());
+    ASSERT_STATUS_OK(st);
     OrtValue input_ml_value_A;
     Tensor::InitOrtValue(std::move(gpu_tensor_a), input_ml_value_A);
 
@@ -114,7 +105,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& cpu_tensor_b = input_ml_value_B_cpu.Get<Tensor>();
     Tensor gpu_tensor_b(cpu_tensor_b.DataType(), cpu_tensor_b.Shape(), gpu_alloc);
     st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_b, gpu_tensor_b);
-    ASSERT_TRUE(st.IsOK());
+    ASSERT_STATUS_OK(st);
     OrtValue input_ml_value_B;
     Tensor::InitOrtValue(std::move(gpu_tensor_b), input_ml_value_B);
 
@@ -180,29 +171,24 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider)) ||
       (output_device && output_device->Type() == OrtDevice::GPU)) {
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
-    // in this case we need to copy the tensor from cuda to cpu
+    // in this case we need to copy the tensor from GPU to CPU
     std::vector<OrtValue>& outputs = io_binding->GetOutputs();
     ASSERT_EQ(1u, outputs.size());
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
     Tensor cpu_tensor(element_type, shape, cpu_alloc);
-#ifdef USE_CUDA
     st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
-#endif
-#ifdef USE_WEBGPU
-    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
-#endif
-    ASSERT_TRUE(st.IsOK());
+    ASSERT_STATUS_OK(st);
     OrtValue ml_value;
     Tensor::InitOrtValue(std::move(cpu_tensor), ml_value);
-    VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y);
+    VerifySingleOutput({ml_value}, expected_output_dims, expected_values_mul_y);
 #endif
   } else {
     if (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
       ASSERT_STATUS_OK(gpu_provider->Sync());
     }
-    VerifyOutputs(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
+    VerifySingleOutput(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
   }
 
   if (enable_graph_capture) {
@@ -211,12 +197,10 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     CreateMLValue<float>(cpu_alloc, dims_mul_x_A_tmp, values_mul_x_tmp, &input_a2);
     auto& cpu_tensor_a2 = input_a2.Get<Tensor>();
     st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_a2, const_cast<Tensor&>(io_binding->GetInputs()[0].Get<Tensor>()));
-    ASSERT_TRUE(st.IsOK());
+    ASSERT_STATUS_OK(st);
 
     st = session_object.Run(run_options, *io_binding.get());
-
-    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
-    ASSERT_TRUE(st.IsOK());
+    ASSERT_STATUS_OK(st);
 
     // Copy the tensor from gpu to cpu
     std::vector<OrtValue>& outputs = io_binding->GetOutputs();
@@ -226,12 +210,12 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& shape = rtensor.Shape();
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_alloc);
     st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
-    ASSERT_TRUE(st.IsOK());
+    ASSERT_STATUS_OK(st);
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-    VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y_2);
+    VerifySingleOutput({ml_value}, expected_output_dims, expected_values_mul_y_2);
   }
 }
 
@@ -309,11 +293,11 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   std::string s1;
   p_model->ToProto().SerializeToString(&s1);
   std::stringstream sstr(s1);
-  ASSERT_TRUE(session_object.Load(sstr).IsOK());
+  ASSERT_STATUS_OK(session_object.Load(sstr));
   ASSERT_STATUS_OK(session_object.Initialize());
   std::unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
-  ASSERT_TRUE(st.IsOK());
+  ASSERT_STATUS_OK(st);
 
   OrtValue ml_value1;
   const std::vector<float> v1{2.f};
@@ -340,47 +324,47 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
 }
 
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
-#if USE_CUDA
+#if defined(USE_CUDA)
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_WEBGPU
+#elif defined(USE_WEBGPU)
 constexpr const char* kGpuExecutionProvider = kWebGpuExecutionProvider;
 #endif
 
-TEST(InferenceSessionTests, TestBindCuda) {
-  TestBindHelper("TestBindCuda",
+TEST(InferenceSessionTests, TestBindGpu) {
+  TestBindHelper("TestBindGpu",
                  kGpuExecutionProvider,
                  kGpuExecutionProvider,
                  false /* don't preallocate output */);
 }
 
-TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCuda) {
-  TestBindHelper("TestBindCudaPreallocateOutputOnCuda",
+TEST(InferenceSessionTests, TestBindGpuPreallocateOutputOnGpu) {
+  TestBindHelper("TestBindGpuPreallocateOutputOnGpu",
                  kGpuExecutionProvider,
                  kGpuExecutionProvider,
                  true /* preallocate output on GPU */,
                  kGpuExecutionProvider);
 }
 
-TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu) {
-  TestBindHelper("TestBindCudaPreallocateOutputOnCpu",
+TEST(InferenceSessionTests, TestBindGpuPreallocateOutputOnCpu) {
+  TestBindHelper("TestBindGpuPreallocateOutputOnCpu",
                  kGpuExecutionProvider,
                  kGpuExecutionProvider,
                  true /* preallocate output on CPU */,
                  kCpuExecutionProvider);
 }
 
-TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu2) {
-  TestBindHelper("TestBindCudaPreallocateOutputOnCpu2",
+TEST(InferenceSessionTests, TestBindGpuPreallocateOutputOnCpu2) {
+  TestBindHelper("TestBindGpuPreallocateOutputOnCpu2",
                  kGpuExecutionProvider,
                  kCpuExecutionProvider,
                  true /* preallocate output on CPU */,
                  kCpuExecutionProvider);
 }
 #ifndef USE_WEBGPU
-TEST(InferenceSessionTests, TestBindCudaSpecifyOutputDeviceOnCuda) {
+TEST(InferenceSessionTests, TestBindGpuSpecifyOutputDeviceOnGpu) {
   OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
 
-  TestBindHelper("TestBindCudaPreallocateOutputOnCuda",
+  TestBindHelper("TestBindGpuSpecifyOutputDeviceOnGpu",
                  kGpuExecutionProvider,
                  kGpuExecutionProvider,
                  false /* preallocate output on GPU */,
