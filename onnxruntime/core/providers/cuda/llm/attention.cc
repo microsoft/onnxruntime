@@ -205,7 +205,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_parameters.num_heads = parameters.q_num_heads;
     gqa_parameters.head_size = parameters.head_size;
     gqa_parameters.v_head_size = parameters.v_head_size;
-    gqa_parameters.kv_hidden_size = parameters.kv_num_heads * parameters.head_size;
+    gqa_parameters.kv_hidden_size = parameters.kv_num_heads * parameters.v_head_size;
     gqa_parameters.kv_num_heads = parameters.kv_num_heads;
     gqa_parameters.rotary_dim = 0;  // New Attention op doesn't use rotary embeddings directly
     gqa_parameters.is_unidirectional = parameters.is_causal;
@@ -218,7 +218,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_parameters.rotary_interleaved = false;
     gqa_parameters.use_smooth_softmax = false;
     gqa_parameters.scale = parameters.scale;
-    gqa_parameters.softcap = 0.0f;
+    gqa_parameters.softcap = parameters.softcap;
     gqa_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_NONE;
     gqa_parameters.qkv_format = contribop_parameters.qkv_format;
     gqa_parameters.past_kv_format = onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH;
