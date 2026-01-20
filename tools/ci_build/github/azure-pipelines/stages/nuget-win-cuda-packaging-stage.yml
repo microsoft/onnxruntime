@@ -183,6 +183,7 @@ stages:
 
     - task: BatchScript@1
       displayName: 'Test C API application for GPU package'
+      condition: and(succeeded(), ne(${{parameters.CudaVersion}}, '13.0'))
       inputs:
         filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
         arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
