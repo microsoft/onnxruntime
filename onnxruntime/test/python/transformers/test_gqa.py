@@ -52,9 +52,6 @@ param_count = int(os.getenv("PARAM_COUNT", "3")) if not pipeline_mode else 2
 # When quick build is used, flash attention only supports head_size=128
 quick_build = ", quick-build=" in get_build_info()
 
-# When quick build mode is 1, bf16 is excluded
-quick_build_exclude_bf16 = ", quick-build=1, " in get_build_info()
-
 enable_debug_print = quick_build
 
 enable_deterministic_check = True
@@ -2057,9 +2054,7 @@ def has_cuda_device(min_capability: int = 80):
     return major * 10 + minor >= min_capability
 
 
-def has_flash_attention(bf16: bool = False):
-    if bf16 and quick_build_exclude_bf16:
-        return False
+def has_flash_attention():
     return has_cuda_device(80)
 
 
@@ -2151,7 +2146,7 @@ class TestFlashGQAQuantizedKV(unittest.TestCase):
         )
 
 
-@unittest.skipIf(not has_flash_attention(bf16=True), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQABF16(unittest.TestCase):
     @parameterized.expand(gqa_cuda_prompt_test_cases())
     def test_gqa_prompt_flash_attention_bf16(self, name, config):
@@ -2199,7 +2194,7 @@ class TestFlashGQABF16(unittest.TestCase):
 
 
 @unittest.skipIf(
-    not has_flash_attention(bf16=True) or not enable_quantized_kv_tests,
+    not has_flash_attention() or not enable_quantized_kv_tests,
     "Flash Attention is not available, skipping tests.",
 )
 class TestFlashGQABF16QuantizedKV(unittest.TestCase):
