@@ -1919,14 +1919,6 @@ def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True, allow_local: bool =
                     yield name, config
 
 
-# def gqa_cuda_past_verification_test_cases():
-#     batches = [1]
-#     seqs = [(1, 2)]
-#     subsequent_prompt_seqs = []
-#     heads = [(2, 1)]
-#     h_sizes = [128]
-
-
 def gqa_cuda_past_test_cases(
     allow_head_sink: bool = True, allow_local: bool = True, enforce_share_buffer: bool = False
 ):
