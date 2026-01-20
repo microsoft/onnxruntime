@@ -140,8 +140,8 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 
     // create initializer buffer manager. cache is always disabled for initializer buffer manager
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                                           BufferCacheMode::Disabled,
-                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::Disabled);
 
     // create program manager
