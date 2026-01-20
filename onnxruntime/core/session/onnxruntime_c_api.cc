@@ -38,6 +38,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
+#include "core/session/ep_graph_assignment_info.h"
 #include "core/session/interop_api.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
@@ -47,6 +48,7 @@
 #include "core/session/lora_adapters.h"
 #include "core/session/model_editor_api.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/session/utils.h"
@@ -196,7 +198,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -206,7 +210,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel logging_level,
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -216,7 +222,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel log
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -227,7 +235,56 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a valid (non-null) OrtEnvCreationOptions argument");
+  }
+
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a valid (non-null) output parameter into which to "
+                                 "store the new OrtEnv instance");
+  }
+
+  // Both this API function and OrtEnvCreationOptions were added in ORT 1.24, so check that the user
+  // filled out the version correctly.
+  if (options->version < 24) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument with the version set "
+                                 "equal to ORT_API_VERSION");
+  }
+
+  if (options->logging_severity_level < OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE ||
+      options->logging_severity_level > OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
+                                 "with a valid logging severity level value from the OrtLoggingLevel enumeration");
+  }
+
+  if (options->log_id == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
+                                 "with a valid (non-null) log identifier string");
+  }
+
+  OrtLoggingLevel logging_severity_level = static_cast<OrtLoggingLevel>(options->logging_severity_level);
+  OrtEnv::LoggingManagerConstructionInfo lm_info(options->custom_logging_function,
+                                                 options->custom_logging_param,
+                                                 logging_severity_level,
+                                                 options->log_id);
+  Status status;
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, options->threading_options, options->config_entries);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -869,6 +926,153 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
                                        output_span,
                                        run_async_callback,
                                        user_data));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
+                    _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                    _Out_ size_t* num_ep_subgraphs) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto* inference_session = reinterpret_cast<const onnxruntime::InferenceSession*>(session);
+  const auto& session_options = inference_session->GetSessionOptions();
+  bool is_enabled =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+
+  if (!is_enabled) {
+    std::ostringstream oss;
+    oss << "Session configuration entry '" << kOrtSessionOptionsRecordEpGraphAssignmentInfo
+        << "' must be set to \"1\" to retrieve EP graph assignment information.";
+    return OrtApis::CreateStatus(ORT_FAIL, oss.str().c_str());
+  }
+
+  if (ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_subgraphs' argument is null");
+  }
+
+  if (num_ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_ep_subgraphs' argument is null");
+  }
+
+  const std::vector<const OrtEpAssignedSubgraph*>& ep_assignment_info = inference_session->GetEpGraphAssignmentInfo();
+
+  *ep_subgraphs = ep_assignment_info.data();
+  *num_ep_subgraphs = ep_assignment_info.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(session);
+  ORT_UNUSED_PARAMETER(ep_subgraphs);
+  ORT_UNUSED_PARAMETER(num_ep_subgraphs);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetEpName requires a valid (non-null) `out` output parameter "
+                                 "into which to store the EP name string.");
+  }
+
+  *out = ep_subgraph->ep_name.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetNodes requires a valid (non-null) `ep_nodes` output parameter "
+                                 "into which to store the pointer to the node array.");
+  }
+
+  if (num_ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetNodes requires a valid (non-null) `num_ep_nodes` "
+                                 "output parameter into which to store the number of nodes.");
+  }
+
+  *ep_nodes = ep_subgraph->nodes.data();
+  *num_ep_nodes = ep_subgraph->nodes.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(ep_nodes);
+  ORT_UNUSED_PARAMETER(num_ep_nodes);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetName requires a valid (non-null) `out` output parameter "
+                                 "into which to store the name string.");
+  }
+
+  *out = ep_node->name.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetDomain requires a valid (non-null) `out` output parameter "
+                                 "into which to store the domain string.");
+  }
+
+  *out = ep_node->domain.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetOperatorType requires a valid (non-null) `out` output parameter "
+                                 "into which to store the operator type string.");
+  }
+
+  *out = ep_node->op_type.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
 
@@ -2819,72 +3023,242 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
 
   const EpGraph* ep_graph = EpGraph::ToInternal(src_graph);
   if (ep_graph == nullptr) {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "src_graph is a ModelEditorGraph which doesn't support Graph_GetSubGraph.");
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
+                                 "src_graph is a ModelEditorGraph which doesn't support Graph_GetGraphView.");
   }
-  const Graph& graph = ep_graph->GetGraphViewer().GetGraph();
+  const GraphViewer& graph_viewer = ep_graph->GetGraphViewer();
+  const Graph& graph = graph_viewer.GetGraph();
 
   // Create a GraphViewer with filtered info
+  // TODO: Investigate whether utils::MakeComputeCapability can be extended and reused instead
   std::unique_ptr<IndexedSubGraph> indexed_sub_graph = std::make_unique<IndexedSubGraph>();
-  std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();
-  metadef->name = "sub_graph";
-  metadef->since_version = 1;
-  std::unordered_set<std::string> outputs;
-  std::unordered_set<const NodeArg*> initializers;
 
-  auto add_inputs = [&](ConstPointerContainer<std::vector<NodeArg*>> defs) {
-    for (const auto* def : defs) {
-      if (def->Exists()) {
-        // not the output of a previous node
-        if (outputs.count(def->Name()) == 0) {
-          metadef->inputs.push_back(def->Name());
-        } else {
-          // consumed by node so no longer subgraph output
-          // NOTE: Ignoring edge case where a node output is an overall graph output AND a node input
-          outputs.erase(def->Name());
+  // Following data structures help determine the final inputs/outputs of the subgraph.
+  // Note: The 'subgraph' here refers to a graph contains a subset of nodes in the 'src_graph'.
+
+  // Subgraph's node set
+  const std::unordered_set<size_t> node_set = [&]() {
+    std::unordered_set<size_t> node_set;
+    for (size_t i = 0; i < num_nodes; i++) {
+      const OrtNode* ort_node = nodes[i];
+      const EpNode* ep_node = EpNode::ToInternal(ort_node);
+      if (ep_node != nullptr) {
+        node_set.insert(ep_node->GetInternalNode().Index());
+      }
+    }
+
+    return node_set;
+  }();
+
+  // Source graph output names
+  std::unordered_set<std::string> graph_output_names;
+  for (const auto* output_arg : graph_viewer.GetOutputs()) {
+    graph_output_names.insert(output_arg->Name());
+  }
+
+  // These maps store the inputs and outputs of the subgraph.
+  // Please note that the inputs and outputs of the maps will be dynamically updated during node iteration
+  // to determine the final inputs and outputs of the subgraph.
+  std::unordered_map<const NodeArg*, int> subgraph_inputs, subgraph_outputs;
+
+  // This map stores the node's output that will be consumed by another node outside of this subgraph.
+  // So the node's output should be put into the subgraph's output list.
+  std::unordered_map<const NodeArg*, int> subgraph_outputs_to_add;
+
+  // This map stores the node's output that is original graph's output.
+  // So the node's output should be put into the subgraph's output list.
+  std::unordered_map<const NodeArg*, int> graph_outputs_to_add;
+
+  std::unordered_set<const NodeArg*> erased;
+
+  // This is the relative ordering that ensures node's input or output being added to the 'subgraph_inputs',
+  // 'subgraph_outputs', 'subgraph_outputs_to_add' and 'graph_outputs_to_add' maps is associated with a relative order index.
+  // Items added earlier receive a smaller order index than items added later.
+  // When constructing the final subgraph's input or output lists, entries with smaller
+  // order indices will appear before those with larger indices.
+  int input_order = 0;
+  int output_order = 0;
+
+  // node arg to its consumer nodes.
+  // Note: graph.GetConsumerNodes() is not available in minimal build, in order to use unified implementation across
+  //       all builds, this map is needed to determine if node arg is consumed by other nodes.
+  std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes;
+
+  std::vector<std::string> initializers;
+
+  // Add nodes
+  for (size_t i = 0; i < num_nodes; i++) {
+    const OrtNode* ort_node = nodes[i];
+    const EpNode* ep_node = EpNode::ToInternal(ort_node);
+    if (ep_node == nullptr) {
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
+                                   "node is a ModelEditorNode which doesn't support Graph_GetGraphView.");
+    }
+    const Node& node = ep_node->GetInternalNode();
+    indexed_sub_graph->nodes.push_back(node.Index());
+
+    for (const auto& input : node.InputDefs()) {
+      if (!input->Exists()) {
+        continue;
+      }
+
+      if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
+        initializers.push_back(input->Name());
+        continue;
+      }
+      const auto& it = subgraph_outputs.find(input);
+      if (it != subgraph_outputs.end()) {
+        subgraph_outputs.erase(it);
+        erased.insert(input);
+      } else if (erased.find(input) == erased.end()) {
+        // Only when input is neither in output list nor erased list, add the input to input list
+        subgraph_inputs.insert({input, input_order++});
+      }
+    }
+
+    for (const auto& input : node.ImplicitInputDefs()) {
+      if (!input->Exists()) {
+        continue;
+      }
+
+      if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
+        initializers.push_back(input->Name());
+        continue;
+      }
+      const auto& it = subgraph_outputs.find(input);
+      if (it != subgraph_outputs.end()) {
+        subgraph_outputs.erase(it);
+        erased.insert(input);
+      } else if (erased.find(input) == erased.end()) {
+        // Only when input is neither in output list nor erased list, add the input to input list
+        subgraph_inputs.insert({input, input_order++});
+      }
+    }
+
+    // For output searching, there are two special cases,
+    // One is, if subgraph's node output is parent graph's output. the node output should
+    // be also added to the subgraph's output list
+    // The other one is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
+    // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
+    // to the output list
+    for (const auto& output : node.OutputDefs()) {
+      if (!output->Exists()) {
+        continue;
+      }
+
+      const auto& it = subgraph_inputs.find(output);
+      if (it != subgraph_inputs.end()) {
+        subgraph_inputs.erase(it);
+        erased.insert(output);
+      } else if (erased.find(output) == erased.end()) {
+        auto has_consumer_nodes = [&](const std::string& node_arg_str) -> bool {
+          // Same implementation as Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes()
+          if (node_arg_to_consumer_nodes.empty()) {
+            for (const auto& node : graph.Nodes()) {
+              node.ForEachDef([&](const NodeArg& node_arg, bool is_input) {
+                if (is_input) {
+                  node_arg_to_consumer_nodes[node_arg.Name()].insert(node.Index());
+                }
+              });
+            }
+          }
+          return node_arg_to_consumer_nodes.find(node_arg_str) != node_arg_to_consumer_nodes.end();
+        };
+
+        if (has_consumer_nodes(output->Name())) {
+          // Only when output is neither in input list nor erased list,
+          // and the output is consumed by another node, add the output to output list
+          subgraph_outputs.insert({output, output_order++});
         }
+      }
 
-        if (graph.IsInitializedTensor(def->Name())) {
-          initializers.insert(def);
+      if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
+        // This output is the graph's output.
+        // So the output should be put into the subgraph's output list.
+        graph_outputs_to_add.insert({output, output_order++});
+      }
+    }
+
+    if (node.GetOutputEdgesCount() > node.OutputDefs().size()) {
+      for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+        const auto& node_idx = it->GetNode().Index();
+
+        if (node_set.find(node_idx) == node_set.end()) {
+          // This output will be consumed by another node outside of this subgraph.
+          // So the output should be put into the subgraph's output list.
+          const NodeArg* output = nullptr;
+
+          // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.
+          // We need to get the correct input index accordingly. (See Graph::BuildConnections() in graph.cc for more details)
+          if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
+            output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+          } else {
+            output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - it->GetNode().InputDefs().size()];
+          }
+          subgraph_outputs_to_add.insert({output, output_order++});
         }
       }
     }
-  };
+  }
 
-  auto add_node = [&](const Node& node) {
-    indexed_sub_graph->nodes.push_back(node.Index());
-    add_inputs(node.InputDefs());
-    add_inputs(node.ImplicitInputDefs());
+  subgraph_outputs.insert(subgraph_outputs_to_add.begin(), subgraph_outputs_to_add.end());
+  subgraph_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
 
-    for (const auto* def : node.OutputDefs()) {
-      outputs.insert(def->Name());
+  std::multimap<int, const NodeArg*> inputs, outputs;
+
+  // Get the input order of the original graph
+  std::unordered_map<const NodeArg*, int> original_inputs;
+  int order = 0;
+  for (const auto* input : graph_viewer.GetInputs()) {
+    original_inputs[input] = order++;
+  }
+
+  // input order needs to be consistent with original graph's input order
+  for (const auto& [node_arg, subgraph_input_order] : subgraph_inputs) {
+    const auto& original_input_it = original_inputs.find(node_arg);
+
+    if (original_input_it != original_inputs.end()) {
+      inputs.insert(std::make_pair(
+          original_input_it->second,  // input order from original graph
+          node_arg));
+    } else {
+      inputs.insert(std::make_pair(
+          subgraph_input_order,  // input order from subgraph
+          node_arg));
     }
-  };
+  }
 
-  // Add nodes
-  for (size_t node_idx = 0; node_idx < num_nodes; node_idx++) {
-    const OrtNode* ort_node = nodes[node_idx];
-    const EpNode* ep_node = EpNode::ToInternal(ort_node);
-    if (ep_node == nullptr) {
-      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Graph_GetSubGraph.");
+  // Sort outputs by the order they were added
+  for (auto it = subgraph_outputs.begin(), end = subgraph_outputs.end(); it != end; ++it) {
+    outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+  }
+
+  std::unique_ptr<IndexedSubGraph::MetaDef> meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  meta_def->name = "sub_graph";
+  meta_def->since_version = 1;
+
+  // Assign inputs and outputs to subgraph's meta_def
+  for (const auto& input : inputs) {
+    if (input.second->Exists()) {
+      meta_def->inputs.push_back(input.second->Name());
     }
-    add_node(ep_node->GetInternalNode());
   }
 
-  // Add initializers
-  for (auto& initializer : initializers) {
-    metadef->constant_initializers.push_back(initializer->Name());
+  for (const auto& initializer : initializers) {
+    meta_def->constant_initializers.push_back(initializer);
   }
 
-  // Add outputs
-  for (auto& output : outputs) {
-    metadef->outputs.push_back(output);
+  for (const auto& output : outputs) {
+    if (output.second->Exists()) {
+      meta_def->outputs.push_back(output.second->Name());
+    }
   }
 
-  indexed_sub_graph->SetMetaDef(std::move(metadef));
-  auto graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph.get());
+  indexed_sub_graph->SetMetaDef(std::move(meta_def));
+  auto new_graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph.get());
 
   std::unique_ptr<EpGraph> result;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(graph_viewer), std::move(indexed_sub_graph), result));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(indexed_sub_graph), result));
 
   *dst_graph = result.release();
 
@@ -3334,6 +3708,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
       ep_option_keys_span,
       ep_option_vals_span,
       session_options->value));
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(AddEpCustomDomainsToSessionOptions(
+      ep_devices_span,
+      *session_options));
 
   session_options->provider_factories.push_back(std::move(provider_factory));
 
@@ -4291,6 +4669,7 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::GetInteropApi,
     &OrtApis::SessionGetEpDeviceForOutputs,
+
     &OrtApis::GetNumHardwareDevices,
     &OrtApis::GetHardwareDevices,
     &OrtApis::GetHardwareDeviceEpIncompatibilityDetails,
@@ -4298,6 +4677,14 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::DeviceEpIncompatibilityDetails_GetNotes,
     &OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode,
     &OrtApis::ReleaseDeviceEpIncompatibilityDetails,
+    &OrtApis::CreateEnvWithOptions,
+    &OrtApis::Session_GetEpGraphAssignmentInfo,
+    &OrtApis::EpAssignedSubgraph_GetEpName,
+    &OrtApis::EpAssignedSubgraph_GetNodes,
+    &OrtApis::EpAssignedNode_GetName,
+    &OrtApis::EpAssignedNode_GetDomain,
+    &OrtApis::EpAssignedNode_GetOperatorType,
+    &OrtApis::RunOptionsSetSyncStream,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

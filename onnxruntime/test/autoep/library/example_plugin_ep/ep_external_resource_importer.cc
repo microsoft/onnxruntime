@@ -65,7 +65,7 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::ImportMemoryImpl(
   // For testing purposes, we simulate this by allocating CPU memory
   // that mirrors the size of the external allocation.
 
-  auto* handle = new (std::nothrow) ExampleExternalMemoryHandle();
+  auto* handle = new (std::nothrow) ExampleExternalMemoryHandle(*desc);
   if (handle == nullptr) {
     return impl.apis_.ort_api.CreateStatus(ORT_FAIL, "Failed to allocate external memory handle");
   }
@@ -73,10 +73,6 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::ImportMemoryImpl(
   // Allocate simulated memory (using CPU memory for the example)
   size_t effective_size = desc->size_bytes - desc->offset_bytes;
   handle->simulated_ptr = std::make_unique<char[]>(effective_size);
-
-  handle->size_bytes = desc->size_bytes;
-  handle->offset_bytes = desc->offset_bytes;
-  handle->handle_type = desc->handle_type;
 
   *out_handle = handle;
   return nullptr;
@@ -132,7 +128,7 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::CreateTensorFromMemoryI
   //   1. Calculate actual tensor size from shape + element_type
   //   2. Validate it fits within available memory region
   //   3. Use that validated size rather than subtracting offsets
-  size_t buffer_size = handle->size_bytes - handle->offset_bytes - tensor_desc->offset_bytes;
+  size_t buffer_size = handle->descriptor.size_bytes - handle->descriptor.offset_bytes - tensor_desc->offset_bytes;
 
   // Create tensor with pre-allocated memory
   status = impl.apis_.ort_api.CreateTensorWithDataAsOrtValue(
@@ -180,12 +176,11 @@ OrtStatus* ORT_API_CALL ExampleExternalResourceImporter::ImportSemaphoreImpl(
   //
   // For testing purposes, we create a simulated semaphore using an atomic counter
 
-  auto* handle = new (std::nothrow) ExampleExternalSemaphoreHandle();
+  auto* handle = new (std::nothrow) ExampleExternalSemaphoreHandle(*desc);
   if (handle == nullptr) {
     return impl.apis_.ort_api.CreateStatus(ORT_FAIL, "Failed to allocate external semaphore handle");
   }
 
-  handle->type = desc->type;
   handle->value.store(0);
 
   *out_handle = handle;

@@ -7,6 +7,7 @@
 #include <gsl/gsl>
 #include <gtest/gtest.h>
 
+#include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -46,6 +47,35 @@ void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
+}
+
+void RunCustomMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/custom_mul.onnx"), session_options);
+
+  // Create two inputs with same values
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+  ort_input_names.push_back("X");
+  ort_input_names.push_back("W");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"Y"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(1, 4, 9, 16, 25, 36));
 }
 
 void RunSqueezeMulReluModel(const Ort::SessionOptions& session_options) {
@@ -219,9 +249,16 @@ void RunScanMulModel(const Ort::SessionOptions& session_options) {
   EXPECT_THAT(output_span, ::testing::ElementsAre(2.f, 4.f, 6.f, 20.f, 40.f, 60.f, 200.f, 400.f, 600.f));
 }
 
-void RunPartiallySupportedModelWithPluginEp(const Ort::SessionOptions& session_options) {
+using CheckEpNodeAssignmentFunc = std::function<void(const Ort::Session& session)>;
+
+void RunAddMulAddModel(const Ort::SessionOptions& session_options,
+                       CheckEpNodeAssignmentFunc check_ep_node_assignment_func = {}) {
   // This model has Add -> Mul -> Add. The example plugin EP supports Mul but not Add.
   Ort::Session session(*ort_env, ORT_TSTR("testdata/add_mul_add.onnx"), session_options);
+
+  if (check_ep_node_assignment_func) {
+    ASSERT_NO_FATAL_FAILURE(check_ep_node_assignment_func(session));
+  }
 
   // Create inputs
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -289,9 +326,46 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   // Create session with example plugin EP
   Ort::SessionOptions session_options;
   std::unordered_map<std::string, std::string> ep_options;
+
+  // Create session that enables recording of EP-graph assignment info
+  session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  RunPartiallySupportedModelWithPluginEp(session_options);
+  // Function that checks the ep graph/node assignment (Mul on plugin EP, others on CPU EP).
+  // Model has 3 subgraphs (in no particular order):
+  // - Subgraph 1: Add assigned to CPU EP.
+  // - Subgraph 2: Mul assigned to plugin EP.
+  // - Subgraph 3: Add assigned to CPU EP.
+  auto check_ep_node_assignment = [](const Ort::Session& session) -> void {
+    std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphAssignmentInfo();
+    ASSERT_EQ(ep_subgraphs.size(), 3);
+
+    for (Ort::ConstEpAssignedSubgraph ep_subgraph : ep_subgraphs) {
+      std::string ep_name = ep_subgraph.GetEpName();
+      ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name || ep_name == kCpuExecutionProvider);
+
+      const std::vector<Ort::ConstEpAssignedNode> ep_nodes = ep_subgraph.GetNodes();
+
+      ASSERT_GE(ep_nodes.size(), 1);  // All of these subgraphs just have one node.
+      std::string domain = ep_nodes[0].GetDomain();
+      std::string op_type = ep_nodes[0].GetOperatorType();
+      std::string node_name = ep_nodes[0].GetName();
+
+      ASSERT_EQ(domain, kOnnxDomain);  // All node ops should have the ONNX domain
+
+      // Check that CPU EP has the Adds and that the example EP has the Mul.
+      if (ep_name == kCpuExecutionProvider) {
+        ASSERT_EQ(op_type, "Add");
+        ASSERT_TRUE(node_name == "add_0" || node_name == "add_1");
+      } else {
+        ASSERT_TRUE(ep_name == Utils::example_ep_info.ep_name);
+        ASSERT_EQ(op_type, "Mul");
+        ASSERT_EQ(node_name, "mul_0");
+      }
+    }
+  };
+
+  RunAddMulAddModel(session_options, check_ep_node_assignment);
 }
 
 // Generate an EPContext model with a plugin EP.
@@ -551,6 +625,36 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Scan) {
   }
 }
 
+// Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.
+// Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
+TEST(OrtEpLibrary, PluginEp_Custom_Op_Inference_With_Explicit_Ep) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // Create session with example plugin EP
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  RunCustomMulModelWithPluginEp(session_options);
+}
+
+// Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.
+// Uses the PREFER_CPU policy to append the example plugin EP to the session.
+TEST(OrtEpLibrary, PluginEp_Custom_Op_Inference_With_Prefer_Cpu) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  {
+    // PREFER_CPU pick our example EP over ORT CPU EP. TODO: Actually assert this.
+    Ort::SessionOptions session_options;
+    session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_CPU);
+    RunCustomMulModelWithPluginEp(session_options);
+  }
+}
+
 // Tests the GetHardwareDeviceEpIncompatibilityDetails C API with the example plugin EP.
 // The example plugin EP supports CPU devices, so this test verifies that a CPU device
 // is reported as compatible (reasons_bitmask == 0).
@@ -646,6 +750,5 @@ TEST(OrtEpLibrary, PluginEp_GpuDevice_ReturnsInCompatible) {
 
   api->ReleaseDeviceEpIncompatibilityDetails(details);
 }
-
 }  // namespace test
 }  // namespace onnxruntime

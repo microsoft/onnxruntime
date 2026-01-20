@@ -87,10 +87,6 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->ValidateCompiledModelCompatibilityInfo(devices, num_devices, compatibility_info, model_compatibility);
   }
 
-  OrtStatus* SetEnvironmentOptions(_In_ const OrtKeyValuePairs* options) noexcept {
-    return impl_->SetEnvironmentOptions(options);
-  }
-
   OrtStatus* CreateExternalResourceImporterForDevice(_In_ const OrtEpDevice* ep_device,
                                                      _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
     return impl_->CreateExternalResourceImporterForDevice(ep_device, importer);

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <optional>
 
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -23,16 +24,16 @@ class OVEP_ExtInit_Tests : public ::testing::TestWithParam<std::string> {};
 
 namespace {
 
-std::vector<uint8_t> LoadFileToMemory(const std::string& path) {
+std::optional<std::vector<uint8_t>> LoadFileToMemory(const std::string& path) {
   std::ifstream file(path, std::ios::binary | std::ios::ate);
   if (!file.is_open()) {
-    return std::vector<uint8_t>();
+    return std::nullopt;
   }
   std::streamsize size = file.tellg();
   file.seekg(0, std::ios::beg);
   std::vector<uint8_t> buffer(static_cast<size_t>(size));
   if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
-    return std::vector<uint8_t>();
+    return std::nullopt;
   }
   return buffer;
 }
@@ -57,8 +58,7 @@ auto ProbeDevice(const std::string& device) {
 namespace onnxruntime {
 namespace test {
 
-// this test requires OV 2025.4+ to run
-TEST_P(OVEP_ExtInit_Tests, DISABLED_ModelFromExtInit) {
+TEST_P(OVEP_ExtInit_Tests, ModelFromExtInit) {
   const auto& device = GetParam();
   if (!ProbeDevice(device))
     GTEST_SKIP() << device + " is not available on this machine";
@@ -161,14 +161,15 @@ TEST_P(OVEP_ExtInit_Tests, DISABLED_ModelFromExtInit) {
   }
 
   // 4. Load model and weights into memory
-  std::vector<uint8_t> model_data = LoadFileToMemory(model_path);
-  std::vector<uint8_t> weights_data = LoadFileToMemory(weights_path);
+  auto model_data = LoadFileToMemory(model_path);
+  auto weights_data = LoadFileToMemory(weights_path);
+  ASSERT_TRUE(model_data.has_value() && weights_data.has_value());
 
   // 5. Prepare external initializer info
   PathString weights_name_path(weights_path.begin(), weights_path.end());
   std::vector<PathString> names_path = {weights_name_path};
-  std::vector<char*> buffers = {reinterpret_cast<char*>(weights_data.data())};
-  std::vector<size_t> buffer_sizes = {weights_data.size()};
+  std::vector<char*> buffers = {reinterpret_cast<char*>(weights_data.value().data())};
+  std::vector<size_t> buffer_sizes = {weights_data.value().size()};
 
   // 6. Set up session options with OpenVINO
   Ort::SessionOptions session_options;
@@ -179,7 +180,7 @@ TEST_P(OVEP_ExtInit_Tests, DISABLED_ModelFromExtInit) {
   session_options.AddExternalInitializersFromFilesInMemory(names_path, buffers, buffer_sizes);
 
   // 7. Create session from memory
-  Ort::Session session(*ort_env, model_data.data(), model_data.size(), session_options);
+  Ort::Session session(*ort_env, model_data.value().data(), model_data.value().size(), session_options);
 
   // 8. Run inference to verify weights are loaded
   std::vector<float> input_data(floats_per_initializer, 2.0f);

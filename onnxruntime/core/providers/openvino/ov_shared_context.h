@@ -90,7 +90,7 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
     virtual ~WeightsFile() = default;
     explicit WeightsFile(const std::filesystem::path& filename);
     void LoadWeights(size_t file_offset, void* data, size_t size);
-    void* TryGetOrCreateDeviceMapping(std::optional<ov::RemoteContext>& remote_context);
+    const void* TryGetOrCreateDeviceMapping(std::optional<ov::RemoteContext>& remote_context);
     size_t Size() const { return weights_size_; }
 
    private:
@@ -98,7 +98,7 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
     std::filesystem::path file_path_;
     size_t weights_size_;
     struct MappingContainer {
-      void* ptr_{nullptr};
+      const void* ptr_{nullptr};
       ov::Tensor tensor_;
     };
     std::map<std::string, MappingContainer> imported_device_tensors_;

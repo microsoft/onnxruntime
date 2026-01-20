@@ -43,11 +43,9 @@ ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
  * \since Version 1.24.
  */
 struct OrtExternalMemoryHandle {
-  uint32_t version;                         ///< Must be ORT_API_VERSION
-  const OrtEpDevice* ep_device;             ///< EP device that created this handle
-  OrtExternalMemoryHandleType handle_type;  ///< Original handle type for tracking
-  size_t size_bytes;                        ///< Size of the imported memory
-  size_t offset_bytes;                      ///< Offset into the imported memory
+  uint32_t version;                        ///< Must be ORT_API_VERSION
+  const OrtEpDevice* ep_device;            ///< EP device that created this handle
+  OrtExternalMemoryDescriptor descriptor;  ///< External memory descriptor
 
   /** \brief Release callback for this handle. EP sets this to its release function.
    *
@@ -72,9 +70,9 @@ struct OrtExternalMemoryHandle {
  * \since Version 1.24.
  */
 struct OrtExternalSemaphoreHandle {
-  uint32_t version;               ///< Must be ORT_API_VERSION
-  const OrtEpDevice* ep_device;   ///< EP device that created this handle
-  OrtExternalSemaphoreType type;  ///< Original semaphore type
+  uint32_t version;                           ///< Must be ORT_API_VERSION
+  const OrtEpDevice* ep_device;               ///< EP device that created this handle
+  OrtExternalSemaphoreDescriptor descriptor;  ///< External semaphore descriptor
 
   /** \brief Release callback for this handle. EP sets this to its release function.
    *
@@ -1429,6 +1427,23 @@ struct OrtEpApi {
                   _Outptr_ OrtKernelImpl** kernel_out);
 
   ORT_CLASS_RELEASE(KernelImpl);
+
+  /** \brief Gets a new OrtKeyValuePairs instance containing a copy of all configuration entries set on the environment.
+   *
+   * \note An application provides environment-level configuration options for execution provider libraries by
+   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
+   *       the specific execution provider's documentation for valid keys and values.
+   *
+   * \note Refer to onnxruntime_env_config_keys.h for common configuration entry keys and their supported values.
+   *
+   * \param[out] out Output parameter set to the OrtKeyValuePairs instance containing all configuration entries.
+   *                 Must be released via OrtApi::ReleaseKeyValuePairs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.24
+   */
+  ORT_API2_STATUS(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
 };
 
 /**
@@ -1982,35 +1997,6 @@ struct OrtEpFactory {
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
 
-  /** \brief Set environment options on this EP factory.
-   *
-   * Environment options can be set by ORT after calling the library's 'CreateEpFactories' function to
-   * create EP factories.
-   *
-   * Supported options:
-   *   "allow_virtual_devices": Allows EP factory to specify OrtEpDevice instances that use custom
-   *      virtual OrtHardwareDevices, which can be created via OrtEpApi::CreateHardwareDevice().
-   *
-   *      A virtual OrtHardwareDevice does not represent actual hardware on the device, and is identified
-   *      via the metadata entry "is_virtual" with a value of "1".
-   *      Refer to onnxruntime_ep_device_ep_metadata_keys.h for well-known OrtHardwareDevice metadata keys.
-   *
-   *      Allowed values:
-   *      -# "0": Default. Creation of virtual devices is not allowed.
-   *      -# "1": Creation of virtual devices is allowed.
-   *
-   * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] options The configuration options.
-   *
-   * \note Implementation of this function is optional.
-   *       An EP factory should only implement this if it needs to handle any environment options.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.24.
-   */
-  ORT_API2_STATUS(SetEnvironmentOptions, _In_ OrtEpFactory* this_ptr, _In_ const OrtKeyValuePairs* options);
-
   /** \brief Check for known incompatibility reasons between a hardware device and this execution provider.
    *
    * This function allows an execution provider to check if a specific hardware device is compatible
@@ -2060,6 +2046,65 @@ struct OrtEpFactory {
   ORT_API2_STATUS(CreateExternalResourceImporterForDevice, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device,
                   _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** out_importer);
+
+  /** \brief Returns the number of OrtCustomOpDomains that this factory provides.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[out] num_domains Output parameter set to the number of provided OrtCustomOpDomain instances.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetNumCustomOpDomains, _In_ OrtEpFactory* this_ptr, _Out_ size_t* num_domains);
+
+  /** \brief Gets the EP-specific OrtCustomOpDomains.
+   *
+   * This function is used when running inference on a model that contains EP-specific custom operations.
+   *
+   * Workflow:
+   * 1. The EP factory implements this function to supply a list of OrtCustomOpDomain instances.
+   * 2. The application either 1) calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
+   *    the plugin EP's factory or 2) enables auto ep selection.
+   * 3. 1) SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomains to the
+   *    session options or 2) ORT registers the OrtCustomOpDomains provided by the EP devices
+   *    that could be potentially selected.
+   *
+   * As a result, any session created from these session options will have these custom op domains registered
+   * in ORT, ensuring that the custom ops are properly recognized and validated when the model is loaded.
+   *
+   * Plugin EPs can provide two types of custom ops:
+   *  1. A full OrtCustomOp with a concrete kernel implementation
+   *    - A Plugin EP can supply an OrtCustomOp and a corresponding CustomKernel::Compute() implementation.
+   *    - In GetCapability(), it calls EpGraphSupportInfo_AddSingleNode() to inform ORT
+   *      that the custom node should NOT be fused or compiled. Instead, ORT should invoke
+   *      the custom node's Compute() function at runtime.
+   *
+   *  2. A "placeholder" OrtCustomOp with an empty kernel implementation
+   *    - A compile-based Plugin EP can supply an OrtCustomOp whose CustomKernel::Compute()
+   *      does nothing. The purpose is to satisfy model validation during model loading by
+   *      registering the custom op as a valid operator in the session.
+   *    - In GetCapability(), the EP should call EpGraphSupportInfo_AddNodesToFuse() to
+   *      notify ORT that this custom node should be fused and compiled by the EP.
+   *    - In Compile(), the EP executes its compiled bits to perform inference for
+   *      the fused custom node.
+   *
+   * Note: The OrtCustomOpDomain instances must be valid while any session is using them.
+           EP factory has the responsibility to release OrtCustomOpDomain instances it creates. It happens
+   *       automatically if using the C++ Ort::CustomOpDomain class.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[out] domains Array of `num_domains` elements pre-allocated by ORT that should be filled with
+                         OrtCustomOpDomain instances created by the EP. The `num_domains` is the value returned by
+                         GetNumCustomOpDomains().
+   * \param[in] num_domains The size of the `domains` array pre-allocated by ORT.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetCustomOpDomains, _In_ OrtEpFactory* this_ptr,
+                  _Out_writes_all_(num_domains) OrtCustomOpDomain** domains, _In_ size_t num_domains);
 };
 
 #ifdef __cplusplus

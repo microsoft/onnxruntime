@@ -3221,6 +3221,37 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
   test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
 }
 
+// Test skip removing node when min/max come from DequantizeLinear nodes instead of initializers.
+TEST(QDQTransformerTests, ClipQuantFusion_MultipleInputEdges) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // Clip's min coming from another DQ node (creating 2 input edges to Clip)
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 2, 2}, std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max());
+    auto* data_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.04f, static_cast<uint8_t>(0), data_dq);
+    auto* min_q = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* min_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(min_q, 0.04f, static_cast<uint8_t>(0), min_dq);
+    auto* clip_output = builder.MakeIntermediate();
+    builder.AddNode("Clip", {data_dq, min_dq}, {clip_output});
+    auto* output_q = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(clip_output, 0.04f, static_cast<uint8_t>(0), output_q);
+    auto* output_arg = builder.MakeOutput();
+    builder.AddDequantizeLinearNode<uint8_t>(output_q, 0.04f, static_cast<uint8_t>(0), output_arg);
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // ClipQuantFusion should skip it due to CanRemoveNode check
+    EXPECT_EQ(op_to_count["Clip"], 1);
+  };
+
+  TransformerTester(build_test_case, check_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level2,
+                    18);  // opset
+}
+
 template <typename ScaleType, typename ZpType>
 void TestWhereWithDqInput(bool is_dq_1,
                           bool is_dq_2,
