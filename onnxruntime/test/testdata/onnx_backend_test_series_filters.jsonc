@@ -41,8 +41,6 @@
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
         "^test_l2normalization*",  // LpNormalization(22) not implemented
         // TODO: support the following tests in Attention-cuda
-        "^test_attention_3d_gqa.*_cuda",  // GQA not supported in Attention-cuda
-        "^test_attention_4d_gqa.*_cuda",  // GQA not supported in Attention-cuda
         "^test_attention_3d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
         "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
         "^test_attention_3d_softcap_cuda",  // softcap not supported in Attention-cuda
