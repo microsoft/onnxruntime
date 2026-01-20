@@ -757,7 +757,7 @@ template Status LaunchConcatNewToPastKV<float>(const int batch_size,
 // ============================================================================
 // PURPOSE:
 //   Appends new KV tokens to existing KV cache buffer IN-PLACE.
-//   Used when past and present KV share the same memory (kv_share_buffer=true).
+//   Used when past and present KV share the same memory (past_present_share_buffer=true).
 //
 // INPUTS:
 //   max_seqlen           - Maximum sequence length (buffer size)

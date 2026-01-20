@@ -39,20 +39,22 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
 //   auto req = GQABufferRequirements::Compute<T>(params, use_flash, fast_decode, use_mea, disable_fused);
 //   unpacked_qkv_buffer = GetScratchBuffer<void>(req.unpacked_qkv_bytes, ...);
 //   rotary_buffer = GetScratchBuffer<void>(req.rotary_buffer_bytes, ...);
-//   position_ids_buffer = GetScratchBuffer<void>(req.position_ids_bytes, ...);
 // ============================================================================
 struct GQABufferRequirements {
   size_t unpacked_qkv_bytes = 0;
   size_t rotary_buffer_bytes = 0;
-  size_t position_ids_bytes = 0;
 
   template <typename T>
   static GQABufferRequirements Compute(
       const GroupQueryAttentionParameters& params,
+      bool use_xqa,
       bool use_flash_attention,
       bool use_flash_attention_fast_decode,
       bool use_memory_efficient_attention) {
     GQABufferRequirements req;
+    if (use_flash_attention_fast_decode) {
+      return req;  // All zeros - no scratch buffers needed
+    }
 
     const size_t elem_size = sizeof(T);
     const size_t batch_size = static_cast<size_t>(params.batch_size);
@@ -61,13 +63,18 @@ struct GQABufferRequirements {
     const size_t kv_num_heads = static_cast<size_t>(params.kv_num_heads);
     const size_t head_size = static_cast<size_t>(params.head_size);
 
-    // Fast decode path: Flash Attention handles everything internally
-    if (use_flash_attention_fast_decode) {
-      return req;  // All zeros - no scratch buffers needed
+    // Base requirements for all paths
+    const size_t q_elements = batch_size * seq_len * num_heads * head_size;
+    if (use_xqa) {
+      if (params.do_rotary || params.is_packed_qkv) {
+        // XQA need scratch for rotated/unpacked Q.
+        // RoPE K is written directly to cache by the fused kernel.
+        req.rotary_buffer_bytes = elem_size * q_elements;
+      }
+      return req;
     }
 
-    // Q, K, V element counts
-    const size_t q_elements = batch_size * seq_len * num_heads * head_size;
+    // K, V element counts
     const size_t k_elements = batch_size * seq_len * kv_num_heads * head_size;
     const size_t v_elements = k_elements;
 
@@ -77,22 +84,46 @@ struct GQABufferRequirements {
       //   1. Unpacking packed QKV input
       //   2. Storing rotated Q (and K for non-fused path)
       // - rotary_buffer is NOT used (rotations go to unpacked_qkv_buffer)
-      // - position_ids_buffer is NOT used (flash attention uses implicit position IDs)
 
+      bool is_quantized = params.k_quant_type != KVQuantizationType::NONE || params.v_quant_type != KVQuantizationType::NONE;
       if (params.is_packed_qkv) {
-        // Need full Q+K+V for unpacking
-        req.unpacked_qkv_bytes = elem_size * (q_elements + k_elements + v_elements);
-      } else if (params.do_rotary) {
-        // Unpacked input with RoPE: need Q+K for rotation output
-        req.unpacked_qkv_bytes = elem_size * (q_elements + k_elements);
+        // Need full Q+K+V for unpacking, UNLESS we use the fully fused path.
+        // Fused path (Unpack+RoPE+Append) only stores rotated Q in unpacked_qkv_buffer.
+        // K and V are written directly to present_key/value.
+        // NOTE: For quantized KV cache, we still need full Q+K+V in scratch for prompt because
+        // we can't write float K/V directly to quantized cache.
+        if (params.past_present_share_buffer && params.do_rotary && !is_quantized) {
+          req.unpacked_qkv_bytes = elem_size * q_elements;
+        } else {
+          req.unpacked_qkv_bytes = elem_size * (q_elements + k_elements + v_elements);
+        }
+      } else if (params.do_rotary || is_quantized) {
+        // Unpacked input with RoPE or Quantization:
+        // For quantization in the first prompt, we always need full Q+K+V in scratch
+        // to pass to standard Flash Attention kernels.
+        if (params.is_first_prompt && is_quantized) {
+          req.unpacked_qkv_bytes = elem_size * (q_elements + k_elements + v_elements);
+        } else if (params.do_rotary) {
+          // Unpacked input with RoPE: need Q for rotation output.
+          // K is needed if we use the optimized KV-append path (share_buffer && !first_prompt)
+          // or for quantized decoding path
+          size_t bytes = elem_size * q_elements;
+          if (params.past_present_share_buffer && !params.is_first_prompt) {
+            bytes += elem_size * k_elements;
+          }
+          req.unpacked_qkv_bytes = bytes;
+        } else if (is_quantized && !params.is_first_prompt && params.past_present_share_buffer) {
+          // Unpacked + no-RoPE + quantized decoding: need Q+K buffers for FlashAttentionWithQuantizeKV
+          // Actually, if no rotary, we can use data.query and data.key directly, so no buffer needed
+          // This case is a no-op (buffer not needed)
+        }
       }
-      // Note: unpacked + no-RoPE case does NOT need unpacked_qkv_buffer
+      // Note: unpacked + no-RoPE case does NOT need unpacked_qkv_buffer (unless it is a quantized path)
 
     } else if (use_memory_efficient_attention) {
       // Memory Efficient Attention path:
       // - unpacked_qkv_buffer: for unpacking packed QKV
       // - rotary_buffer: for Q and K rotation output (separate from unpack buffer)
-      // - position_ids_buffer: for explicit position IDs if needed
 
       if (params.is_packed_qkv) {
         req.unpacked_qkv_bytes = elem_size * (q_elements + k_elements + v_elements);
@@ -102,55 +133,12 @@ struct GQABufferRequirements {
         // Q rotation + K rotation
         // Note: K uses kv_num_heads which may be less than num_heads
         req.rotary_buffer_bytes = elem_size * (q_elements + k_elements);
-        // Position IDs space (always allocated for MEA + RoPE path)
-        req.position_ids_bytes = sizeof(int64_t) * batch_size * seq_len;
       }
     }
 
     return req;
   }
 };
-
-// ============================================================================
-// Debug helper for tracking buffer usage
-// ============================================================================
-// Call these after buffer access to record the maximum offset used.
-// In release builds, these are no-ops.
-//
-// Example:
-//   T* unpacked_q = data.unpacked_qkv_buffer;
-//   // ... kernel writes to unpacked_q[0..Q_size-1] ...
-//   UpdateUnpackedQkvMaxUsed(data, Q_size * sizeof(T));
-// ============================================================================
-#ifndef NDEBUG
-template <typename T>
-inline void UpdateUnpackedQkvMaxUsed(GroupQueryAttentionData<T>& data, size_t bytes_used) {
-  if (bytes_used > data.unpacked_qkv_max_used) {
-    data.unpacked_qkv_max_used = bytes_used;
-  }
-}
-
-template <typename T>
-inline void UpdateRotaryMaxUsed(GroupQueryAttentionData<T>& data, size_t bytes_used) {
-  if (bytes_used > data.rotary_max_used) {
-    data.rotary_max_used = bytes_used;
-  }
-}
-
-template <typename T>
-inline void UpdatePositionIdsMaxUsed(GroupQueryAttentionData<T>& data, size_t bytes_used) {
-  if (bytes_used > data.position_ids_max_used) {
-    data.position_ids_max_used = bytes_used;
-  }
-}
-#else
-template <typename T>
-inline void UpdateUnpackedQkvMaxUsed(GroupQueryAttentionData<T>&, size_t) {}
-template <typename T>
-inline void UpdateRotaryMaxUsed(GroupQueryAttentionData<T>&, size_t) {}
-template <typename T>
-inline void UpdatePositionIdsMaxUsed(GroupQueryAttentionData<T>&, size_t) {}
-#endif
 
 Status LaunchGetSequenceLengths(
     const int* total_seq_lens_minus_one,
@@ -162,6 +150,46 @@ Status LaunchGetSequenceLengths(
     const bool is_first_prompt,
     cudaStream_t stream,
     const int max_threads_per_block);
+
+template <typename T, typename T_QUANT, typename T_SCALE>
+Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
+                          const T_QUANT* quantized_data, const T_SCALE* scale,
+                          const int* past_seq_lens, int batch_size, int num_heads,
+                          int cache_sequence_length, int head_size, int bit_width,
+                          KVQuantizationType quant_type,
+                          bool is_input_bsnh);
+
+template <typename T, typename T_QUANT, typename T_SCALE>
+Status LaunchQuantizeKV(cudaStream_t stream, T_QUANT* quantized_data,
+                        const T* dequantized_data, const T_SCALE* scale,
+                        const int* past_seq_lens,
+                        const int* total_seq_lens, int batch_size, int num_heads,
+                        int input_sequence_length, int cache_sequence_length, int head_size, int bit_width,
+                        KVQuantizationType quant_type,
+                        bool is_input_bsnh,
+                        bool is_output_bsnh);
+
+template <typename T, typename T_QUANT, typename T_SCALE>
+Status LaunchQuantizeAppendKV(cudaStream_t stream, T_QUANT* cache_data,
+                              const T* new_data, const T_SCALE* scale,
+                              const int* total_seq_lens, int batch_size, int num_heads,
+                              int max_seq_len, int head_size, int bit_width,
+                              int new_seq_len,
+                              KVQuantizationType quant_type,
+                              bool is_input_bsnh,
+                              bool is_output_bsnh);
+
+template <typename T>
+Status LaunchUnpackRoPEQuantizeAppend(
+    const T* packed_qkv, const T* query, const T* key, const T* value,
+    T* unpacked_q, void* k_cache, void* v_cache,
+    const float* k_scale, const float* v_scale,
+    const int num_heads, const int kv_num_heads, const int head_size,
+    const int sequence_length, const int batch_size, const int max_seqlen,
+    const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
+    const int rotary_dim, const int64_t* position_ids, const bool interleaved,
+    const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
+    const int bit_width, cudaStream_t stream, const int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib

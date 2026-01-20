@@ -20,6 +20,17 @@ from torch import Tensor
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
 from onnxruntime.transformers.io_binding_helper import CudaSession
 
+# Import quantization helpers from test_gqa
+try:
+    from test_gqa import compute_scale, quantize_tensor_with_scale
+except ImportError:
+    # Fallback for when running from different directory
+    import os
+    import sys
+
+    sys.path.insert(0, os.path.dirname(__file__))
+    from test_gqa import compute_scale, quantize_tensor_with_scale
+
 ENABLE_DEBUG = False
 
 
@@ -171,6 +182,10 @@ class GroupQueryAttentionConfig(AttentionConfig):
         max_cache_sequence_length=None,
         max_rotary_sequence_length=None,
         use_smooth_softmax: bool = False,
+        k_quant_type: str = "NONE",
+        v_quant_type: str = "NONE",
+        kv_cache_type: str = "float16",
+        share_kv_scale: bool = False,
     ):
         super().__init__(
             "GroupQueryAttention",
@@ -198,6 +213,14 @@ class GroupQueryAttentionConfig(AttentionConfig):
         # attention mask is for Torch implementation only, not for ORT.
         self.attention_mask = attention_mask
 
+        # Quantization parameters
+        self.k_quant_type = k_quant_type
+        self.v_quant_type = v_quant_type
+        self.kv_cache_type = kv_cache_type
+        # Determine bit width from cache type if applicable
+        self.kv_cache_bit_width = 4 if kv_cache_type == "int4" else (8 if kv_cache_type == "int8" else 0)
+        self.share_kv_scale = share_kv_scale
+
     def shape_dict(self):
         shapes = super().shape_dict()
         shapes.update(
@@ -205,6 +228,8 @@ class GroupQueryAttentionConfig(AttentionConfig):
                 "seqlens_k": (self.batch_size,),
             }
         )
+        # Note: We don't adjust shapes for int4 here because the parent's random_inputs
+        # creates float tensors first, then quantization will pack them
         return shapes
 
     def random_inputs(self):
@@ -215,6 +240,31 @@ class GroupQueryAttentionConfig(AttentionConfig):
                 "seqlens_k": k_seqlens - 1,
             }
         )
+
+        # Generate quantized cache and scales if quantization is enabled
+        if self.k_quant_type != "NONE":
+            # Compute scales from the generated float cache
+            k_scale = compute_scale(feeds["past_key"], self.k_quant_type, self.kv_cache_type)
+            if self.share_kv_scale:
+                v_scale = k_scale
+            else:
+                v_scale = compute_scale(feeds["past_value"], self.v_quant_type, self.kv_cache_type)
+
+            # Scale tensors must be float32 (required by GQA operator)
+            if k_scale is not None:
+                k_scale = k_scale.to(torch.float32)
+                feeds["k_scale"] = k_scale
+            if v_scale is not None:
+                v_scale = v_scale.to(torch.float32)
+                feeds["v_scale"] = v_scale
+
+            # Quantize the cache tensors
+            feeds["past_key"] = quantize_tensor_with_scale(
+                feeds["past_key"], k_scale, self.k_quant_type, self.kv_cache_type
+            )
+            feeds["past_value"] = quantize_tensor_with_scale(
+                feeds["past_value"], v_scale, self.v_quant_type, self.kv_cache_type
+            )
 
         return feeds
 
@@ -520,6 +570,11 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
     else:
         float_type = TensorProto.FLOAT
 
+    # Determine cache tensor type based on quantization
+    cache_type = float_type
+    if config.kv_cache_type == "int4" or config.kv_cache_type == "int8":
+        cache_type = TensorProto.UINT8
+
     # Build input list for the GQA node
     node_inputs = [
         "query",
@@ -534,6 +589,8 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
         "",  # position_ids (optional, not used in benchmark)
         "",  # attention_bias (optional, not used in benchmark)
         "",  # head_sink (optional, not used in benchmark)
+        "k_scale" if config.k_quant_type != "NONE" else "",
+        "v_scale" if config.v_quant_type != "NONE" else "",
     ]
     # Remove trailing empty strings
     while node_inputs and node_inputs[-1] == "":
@@ -550,6 +607,12 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
         "smooth_softmax": 1 if config.use_smooth_softmax else 0,
         "domain": "com.microsoft",
     }
+
+    # Add quantization attributes if enabled
+    if config.k_quant_type != "NONE":
+        node_attrs["k_quant_type"] = config.k_quant_type
+        node_attrs["v_quant_type"] = config.v_quant_type
+        node_attrs["kv_cache_bit_width"] = config.kv_cache_bit_width
 
     nodes = [
         helper.make_node(
@@ -574,11 +637,26 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
             ]
         )
 
+    # Determine cache tensor type based on quantization
+    # Note: INT8 uses INT8 type, INT4 uses UINT8 (for packing 2x4-bit values per byte)
     cache_type = float_type
+    if config.kv_cache_type == "int4":
+        cache_type = TensorProto.UINT8
+    elif config.kv_cache_type == "int8":
+        cache_type = TensorProto.INT8
+
+    # Compute actual cache shapes (packed for INT4)
     past_key_shape = list(shape_dict["past_key"])
     past_value_shape = list(shape_dict["past_value"])
     present_key_shape = list(shape_dict["present_key"])
     present_value_shape = list(shape_dict["present_value"])
+
+    # For INT4, the last dimension is packed (2 values per byte)
+    if config.kv_cache_type == "int4":
+        past_key_shape[-1] = past_key_shape[-1] // 2
+        past_value_shape[-1] = past_value_shape[-1] // 2
+        present_key_shape[-1] = present_key_shape[-1] // 2
+        present_value_shape[-1] = present_value_shape[-1] // 2
 
     graph_input.extend(
         [
@@ -596,6 +674,25 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
             helper.make_tensor_value_info("cos_cache", float_type, list(shape_dict["cos_cache"])),
             helper.make_tensor_value_info("sin_cache", float_type, list(shape_dict["sin_cache"])),
         ]
+
+    # Add scale inputs for quantization
+    # Shape depends on quantization type:
+    # - PER_TENSOR: [1]
+    # - PER_CHANNEL: [1, kv_num_heads, 1, head_size]
+    # Note: k_scale and v_scale are always float32 regardless of the model's dtype
+    if config.k_quant_type != "NONE":
+        if config.k_quant_type == "PER_TENSOR":
+            k_scale_shape = [1]
+        else:  # PER_CHANNEL
+            k_scale_shape = [1, config.kv_num_heads, 1, config.head_size]
+        graph_input.append(helper.make_tensor_value_info("k_scale", TensorProto.FLOAT, k_scale_shape))
+
+    if config.v_quant_type != "NONE":
+        if config.v_quant_type == "PER_TENSOR":
+            v_scale_shape = [1]
+        else:  # PER_CHANNEL
+            v_scale_shape = [1, config.kv_num_heads, 1, config.head_size]
+        graph_input.append(helper.make_tensor_value_info("v_scale", TensorProto.FLOAT, v_scale_shape))
 
     graph_output = [
         helper.make_tensor_value_info("output", float_type, list(shape_dict["output"])),
@@ -648,8 +745,7 @@ def group_query_attention_reference(
         attn = attn.masked_fill((1 - mask).bool(), float("-inf"))
 
     if config.use_smooth_softmax:
-        head_sink = None
-        attn = smooth_softmax_ref(attn, head_sink)
+        attn = smooth_softmax_ref(attn)
     else:
         attn = attn.softmax(-1)
 

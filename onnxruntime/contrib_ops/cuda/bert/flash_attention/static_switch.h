@@ -66,7 +66,7 @@
 #define LOCAL_SWITCH BOOL_SWITCH
 #endif
 
-#ifdef ORT_QUICK_BUILD
+#if ORT_QUICK_BUILD == 1
 // Quick build mode: only fp16 kernels are compiled
 #define FP16_SWITCH(COND, ...)         \
   [&] {                                \

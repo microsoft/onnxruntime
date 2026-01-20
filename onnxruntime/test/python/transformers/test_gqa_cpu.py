@@ -199,7 +199,7 @@ def create_group_query_attention_graph_prompt(
             smooth_softmax=1 if use_smooth_softmax else 0,
             qk_output=config.qk_output.value,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
-            # kv_share_buffer=1 if share_buffer else 0,
+            # past_present_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
         ),
     ]
@@ -442,7 +442,7 @@ def create_group_query_attention_graph_past(
             smooth_softmax=1 if use_smooth_softmax else 0,
             qk_output=config.qk_output.value,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
-            # kv_share_buffer=1 if share_buffer else 0,
+            # past_present_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
         ),
     ]
