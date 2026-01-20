@@ -181,6 +181,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (is_gqa) {
     // Use GQA path
+    // GQA only supports float16 and bfloat16 types
+    if (std::is_same<T, float>::value) {
+      ORT_THROW("GQA in Attention op (CUDA) does not support float32. Please use float16 or bfloat16.");
+    }
     // For now, GQA doesn't support qk_matmul_output_mode other than kNone
     if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone) {
       ORT_THROW("qk_matmul_output_mode is not supported yet in GQA path of Attention op (CUDA).");
