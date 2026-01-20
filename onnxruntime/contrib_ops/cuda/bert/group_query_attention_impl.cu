@@ -1326,6 +1326,20 @@ Status QkvToContext(
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");
 }
 
+template struct GroupQueryAttentionData<float>;
+
+template Status QkvToContext<float>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    Stream* ort_stream,
+    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<float>& data);
+
+template Status LaunchUnpackQKV<float, LAYOUT_BNSH>(
+    const float* packed_qkv, float* unpacked_q, float* unpacked_k, float* unpacked_v, const int num_heads,
+    const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
+    cudaStream_t stream, const int max_threads_per_block);
+
 template struct GroupQueryAttentionData<half>;
 
 template Status QkvToContext<half>(
