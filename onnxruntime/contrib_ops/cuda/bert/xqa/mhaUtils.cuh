@@ -111,7 +111,7 @@ __device__ inline void copyPartialHeadsAsync(
   static_assert(maxNbCopiedHeads <= dstNbHeads);
   assert(idxPart < nbPartsPerHead);
   assert(dstHeadOffset + maxNbCopiedHeads <= dstNbHeads);
-  assert(sizeof(Head) * (src.offset + maxNbCopiedHeads) <= (1UL << 32));
+  assert(sizeof(Head) * (src.offset + maxNbCopiedHeads) <= (1ULL << 32));
   assert(!isFull || nbAvailHeads >= maxNbCopiedHeads);
   constexpr uint32_t headBytes = sizeof(Head);
   constexpr uint32_t partBytes = exactDiv(headBytes, nbPartsPerHead);

@@ -116,14 +116,14 @@ struct alignas(mha::max<uint32_t>(alignof(T), mha::min<uint32_t>(maxArrayAlign<T
   static constexpr uint32_t size = size_;
   Elem data[size];
 
-  HOST_DEVICE_FUNC inline void fill(T val) {
+  HOST_DEVICE_FUNC inline void fill(T const& val) {
     XQA_UNROLL
     for (uint32_t i = 0; i < size; i++) {
       data[i] = val;
     }
   }
 
-  static HOST_DEVICE_FUNC inline Vec<T, size> filled(T val) {
+  static HOST_DEVICE_FUNC inline Vec<T, size> filled(T const& val) {
     Vec<T, size> ret;
     ret.fill(val);
     return ret;

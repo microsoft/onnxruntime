@@ -1340,7 +1340,7 @@ CUBIN_EXPORT __global__
 #if CTA_ROW_MAX_BACKWARD_METHOD != 0
   static_assert(ctaSize >= sizeof(smem.ctaRowMax) / sizeof(float));
   if (ctaThrdId < sizeof(smem.ctaRowMax) / sizeof(float)) {
-    reinterpret_cast<float*>(&smem.ctaRowMax[0])[ctaThrdId] = safeInitRowMax;
+    reinterpret_cast<float*>(&smem.ctaRowMax[0])[ctaThrdId] = SAFE_INIT_ROW_MAX;
   }
 #endif
 #if GRP_LOAD_V
@@ -1961,7 +1961,7 @@ CUBIN_EXPORT __global__
     // @fixme: do prefetch for next iter tile if last part
 
     ThrdRegRowMax globalRowMax;
-    globalRowMax.fill(safeInitRowMax);
+    globalRowMax.fill(SAFE_INIT_ROW_MAX);
     ThrdRegRowMax globalRowSum;
     globalRowSum.fill(0);
     // the accumulator
@@ -2285,7 +2285,7 @@ CUBIN_EXPORT __global__
           ThrdRegRowMax const tileRowScales = expf(tileRowMax - mergedRowMax);
           ThrdRegRowMax const scaledTileRowSum = tileRowSum * tileRowScales;
           partialMergedRowSum = partialMergedRowSum + scaledTileRowSum;
-          assert(std::isfinite(partialMergedRowSum[0]));
+          assert(isfinite(partialMergedRowSum[0]));
           rescaleAcc(warp, tile, fullRescaleMask, scaledTileRowSum);
           sumAcc = sumAcc + tile;
         }
@@ -2305,7 +2305,7 @@ CUBIN_EXPORT __global__
 #pragma unroll
           for (uint32_t i = 0; i < gemm1NbWarpGrps; i++) {
             mergedRowSum = mergedRowSum + mbbuf.mergedRowSum[i].loadToReg<false>(warp);
-            assert(std::isfinite(mergedRowSum[0]));
+            assert(isfinite(mergedRowSum[0]));
           }
         }
         if (attentionSinks != nullptr) {

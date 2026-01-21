@@ -203,3 +203,11 @@ static_assert(CACHE_ELEM_ENUM != 0);
 template <int32_t elemTypeEnum>
 using ElemType = mha::conditional_t<elemTypeEnum == 0, INPUT_ELEM,
                                     mha::conditional_t<elemTypeEnum == 1, int8_t, mha::conditional_t<elemTypeEnum == 2, __nv_fp8_e4m3, void>>>;
+
+// we used an optimization where exp(x-rowMax) is computed as:
+/*  bias = rowMax * log2e  // shared for the whole row
+    exp(x-rowMax) = exp2f(x * log2e - bias)
+*/
+// But this optimization is not numerically stable when (x * log2e - bias) is computed with FMA and x is too large. For
+// this reason, don't set safeInitRowMax with a huge absolute value.
+#define SAFE_INIT_ROW_MAX (-1e+5F)
