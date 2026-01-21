@@ -92,6 +92,63 @@ class TestCompatibilityExecutionProvider : public IExecutionProvider {
   bool should_fail_validation_ = false;
 };
 
+// Test execution provider that tracks whether GetCapability is called.
+// This is used to verify that early validation fails BEFORE Initialize() does expensive work.
+class TestEarlyValidationExecutionProvider : public IExecutionProvider {
+ public:
+  static constexpr const char* kTestEarlyValidationExecutionProviderType = "TestEarlyValidationExecutionProvider";
+
+  TestEarlyValidationExecutionProvider() : IExecutionProvider(kTestEarlyValidationExecutionProviderType) {
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    return std::make_shared<KernelRegistry>();
+  }
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override {
+    return {};
+  }
+
+  // Override GetCapability to track if it's called (happens during Initialize())
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph_viewer,
+      const IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& graph_optimizer_registry,
+      IResourceAccountant* resource_accountant = nullptr) const override {
+    ORT_UNUSED_PARAMETER(graph_viewer);
+    ORT_UNUSED_PARAMETER(kernel_lookup);
+    ORT_UNUSED_PARAMETER(graph_optimizer_registry);
+    ORT_UNUSED_PARAMETER(resource_accountant);
+    get_capability_called_ = true;
+    return {};  // Return empty - we don't actually want to handle any nodes
+  }
+
+  // Configurable mock behavior for validation
+  void SetMockCompatibilityStatus(OrtCompiledModelCompatibility status) {
+    mock_compatibility_status_ = status;
+  }
+
+  common::Status ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
+                                                        OrtCompiledModelCompatibility& model_compatibility) const override {
+    ORT_UNUSED_PARAMETER(compatibility_info);
+    model_compatibility = mock_compatibility_status_;
+    return Status::OK();
+  }
+
+  // Query whether GetCapability was called
+  bool WasGetCapabilityCalled() const {
+    return get_capability_called_;
+  }
+
+  void ResetGetCapabilityCalled() {
+    get_capability_called_ = false;
+  }
+
+ private:
+  OrtCompiledModelCompatibility mock_compatibility_status_ = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+  mutable bool get_capability_called_ = false;
+};
+
 // Helper class to create test models
 class ModelBuilderWithCompatibility {
  public:
@@ -388,6 +445,72 @@ TEST_F(EpCompatibilityTest, TestEpValidationFailure) {
   auto status = InitializeSessionWithValidation(*session);
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Mock validation failure"));
+}
+
+// Test that early validation optimization works: when a model is incompatible,
+// validation should fail BEFORE Initialize() performs expensive graph partitioning.
+// We verify this by checking that GetCapability() is NOT called when validation fails.
+TEST_F(EpCompatibilityTest, TestEarlyValidation_FailsBeforeGetCapability) {
+  const std::string ep_type = TestEarlyValidationExecutionProvider::kTestEarlyValidationExecutionProviderType;
+  const std::string compatibility_string = "test_compatibility_v1.0";
+
+  auto test_ep = std::make_unique<TestEarlyValidationExecutionProvider>();
+  test_ep->SetMockCompatibilityStatus(OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+
+  // Verify GetCapability hasn't been called yet
+  EXPECT_FALSE(test_ep->WasGetCapabilityCalled());
+
+  // Create model with compatibility metadata for this EP
+  std::map<std::string, std::string> compatibility_info = {{ep_type, compatibility_string}};
+  auto model_with_metadata = ModelBuilderWithCompatibility::CreateModelWithCompatibilityMetadata(compatibility_info);
+
+  auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata));
+
+  // Keep a raw pointer to check state after move
+  auto* test_ep_ptr = test_ep.get();
+
+  ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
+
+  // Initialization should fail due to incompatible model
+  auto status = InitializeSessionWithValidation(*session);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("not supported"));
+
+  // CRITICAL: GetCapability should NOT have been called because validation failed early,
+  // before Initialize() could perform graph partitioning
+  EXPECT_FALSE(test_ep_ptr->WasGetCapabilityCalled())
+      << "GetCapability was called, indicating validation did not fail early before Initialize()";
+}
+
+// Test that when validation succeeds, GetCapability IS called (normal flow)
+TEST_F(EpCompatibilityTest, TestEarlyValidation_SucceedsAndProceedsToGetCapability) {
+  const std::string ep_type = TestEarlyValidationExecutionProvider::kTestEarlyValidationExecutionProviderType;
+  const std::string compatibility_string = "test_compatibility_v1.0";
+
+  auto test_ep = std::make_unique<TestEarlyValidationExecutionProvider>();
+  test_ep->SetMockCompatibilityStatus(OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL);
+
+  // Verify GetCapability hasn't been called yet
+  EXPECT_FALSE(test_ep->WasGetCapabilityCalled());
+
+  // Create model with compatibility metadata for this EP
+  std::map<std::string, std::string> compatibility_info = {{ep_type, compatibility_string}};
+  auto model_with_metadata = ModelBuilderWithCompatibility::CreateModelWithCompatibilityMetadata(compatibility_info);
+
+  auto session = SessionBuilderWithCompatibility::CreateTestSession(std::move(model_with_metadata));
+
+  // Keep a raw pointer to check state after move
+  auto* test_ep_ptr = test_ep.get();
+
+  ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(test_ep)));
+
+  // Initialization should succeed
+  ASSERT_STATUS_OK(InitializeSessionWithValidation(*session));
+
+  // GetCapability SHOULD have been called because validation succeeded and
+  // Initialize() proceeded normally with graph partitioning
+  EXPECT_TRUE(test_ep_ptr->WasGetCapabilityCalled())
+      << "GetCapability was not called, but it should have been after successful validation";
 }
 
 // Test session option configuration for fail on suboptimal
