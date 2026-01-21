@@ -1023,14 +1023,8 @@ endif()
 
 partition_provider_test_srcs(all_tests onnxruntime_provider_test_srcs onnxruntime_test_all_srcs)
 
-# Shared settings for onnxruntime test targets.
-function(onnxruntime_apply_common_test_target_settings target)
-  if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
-    # The test_main.cc includes NvInfer.h where it has many deprecated declarations
-    # simply ignore them for TensorRT EP build
-    set_property(TARGET ${target} APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
-  endif()
-
+# Workarounds for onnxruntime test targets.
+function(onnxruntime_apply_test_target_workarounds target)
   if (MSVC)
     # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachable code.
     # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
@@ -1078,7 +1072,7 @@ AddTest(
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
 
-onnxruntime_apply_common_test_target_settings(onnxruntime_test_all)
+onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
@@ -1244,7 +1238,7 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
-  onnxruntime_apply_common_test_target_settings(onnxruntime_provider_test)
+  onnxruntime_apply_test_target_workarounds(onnxruntime_provider_test)
 
   # Expose QNN SDK headers to unit tests via an interface target
   if(onnxruntime_USE_QNN)
@@ -1627,12 +1621,6 @@ endif()
         $<TARGET_FILE_DIR:onnxruntime_shared_lib_test>/testdata)
     endif()
 
-    if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
-        # The test_main.cc includes NvInfer.h where it has many deprecated declarations
-        # simply ignore them for TensorRT EP build
-        set_property(TARGET onnxruntime_shared_lib_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
-    endif()
-
     # test inference using global threadpools
     if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS" AND NOT onnxruntime_MINIMAL_BUILD)
       AddTest(DYN
@@ -1921,12 +1909,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${TEST_DATA_SRC}
         $<TARGET_FILE_DIR:onnxruntime_customopregistration_test>/testdata)
-    endif()
-
-    if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
-        # The test_main.cc includes NvInfer.h where it has many deprecated declarations
-        # simply ignore them for TensorRT EP build
-        set_property(TARGET onnxruntime_customopregistration_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
     endif()
 
   endif()
@@ -2308,11 +2290,6 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
           LIBS ${onnxruntime_ep_graph_test_LIBS}
           DEPENDS ${all_dependencies}
   )
-  if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
-    # The test_main.cc includes NvInfer.h where it has many deprecated declarations
-    # simply ignore them for TensorRT EP build
-    set_property(TARGET onnxruntime_ep_graph_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
-  endif()
 endif()
 
 include(onnxruntime_fuzz_test.cmake)
