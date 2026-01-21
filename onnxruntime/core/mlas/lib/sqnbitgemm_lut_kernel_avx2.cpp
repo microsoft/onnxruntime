@@ -20,6 +20,8 @@ Abstract:
 --*/
 
 #include <cstddef>
+#include <cstring>
+#include <memory>
 #include <type_traits>
 #include <vector>
 // AVX2 intrinsics
@@ -661,11 +663,349 @@ TMACComputeGemm_avx2(
     delete[] CBits;
 }
 
+//
+// AVX2 optimized weight packing for T-MAC LUT GEMM
+// This performs the same transformation as the scalar version but uses SIMD operations
+//
+void
+PackQuantBData_avx2(
+    size_t N,
+    size_t K,
+    size_t bits,
+    size_t g,
+    size_t ngroups_per_elem,
+    size_t simd_n_in,
+    size_t simd_n_out,
+    size_t bm,
+    size_t kfactor,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    // Only optimized for 2-bit, g=4, ngroups_per_elem=2
+    assert(bits == 2 && g == 4 && ngroups_per_elem == 2);
+
+    const size_t mgroup = ngroups_per_elem * simd_n_in;  // 32
+    const size_t K_div_g = K / g;
+
+    // Phase 1: Bit-plane decomposition with grouping by g=4
+    // For 2-bit: each input byte has 4 elements, we extract bit planes and group 4 consecutive bits
+    std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * K_div_g]);
+
+    // Masks for 2-bit extraction
+    const __m256i mask_2bit = _mm256_set1_epi8(0x03);  // mask for 2-bit values
+    const __m256i mask_bit0 = _mm256_set1_epi8(0x01);  // bit 0 of each 2-bit element
+
+    // Phase 1: Parallelize over N (each thread processes one row)
+    MlasTrySimpleParallel(
+        ThreadPool, static_cast<ptrdiff_t>(N),
+        [&](ptrdiff_t tid) {
+            size_t im = static_cast<size_t>(tid);
+
+            // Process in chunks of 32 bytes (128 2-bit elements = 32 groups of 4)
+            const uint8_t* src_row = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + (im * K / 4);
+            uint8_t* dst_bit0 = buf.get() + im * bits * K_div_g;
+            uint8_t* dst_bit1 = dst_bit0 + K_div_g;
+
+            size_t ik = 0;
+            // Process 128 elements at a time (32 bytes input = 128 2-bit elements = 32 output bytes per bit plane)
+            for (; ik + 128 <= K; ik += 128) {
+                // Load 32 bytes = 128 2-bit elements
+                __m256i packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_row + ik / 4));
+
+                // Extract each of 4 positions within each byte
+                // pos0: bits 0-1, pos1: bits 2-3, pos2: bits 4-5, pos3: bits 6-7
+                __m256i pos0 = _mm256_and_si256(packed, mask_2bit);
+                __m256i pos1 = _mm256_and_si256(_mm256_srli_epi16(packed, 2), mask_2bit);
+                __m256i pos2 = _mm256_and_si256(_mm256_srli_epi16(packed, 4), mask_2bit);
+                __m256i pos3 = _mm256_srli_epi16(packed, 6);
+
+                // For g=4: we need to group 4 consecutive elements
+                // Each output byte contains bits from 4 consecutive input elements, shifted by their position
+                // Output for bit0: (pos0_bit0 << 0) | (pos1_bit0 << 1) | (pos2_bit0 << 2) | (pos3_bit0 << 3)
+
+                // Extract bit 0 from each position
+                __m256i b0_pos0 = _mm256_and_si256(pos0, mask_bit0);              // bit0 at position 0
+                __m256i b0_pos1 = _mm256_and_si256(pos1, mask_bit0);              // bit0 at position 0
+                __m256i b0_pos2 = _mm256_and_si256(pos2, mask_bit0);              // bit0 at position 0
+                __m256i b0_pos3 = _mm256_and_si256(pos3, mask_bit0);              // bit0 at position 0
+
+                // Combine: shift each position's bit to its final location
+                __m256i bit0_out = _mm256_or_si256(
+                    _mm256_or_si256(b0_pos0, _mm256_slli_epi16(b0_pos1, 1)),
+                    _mm256_or_si256(_mm256_slli_epi16(b0_pos2, 2), _mm256_slli_epi16(b0_pos3, 3))
+                );
+
+                // Extract bit 1 from each position and shift down first
+                __m256i b1_pos0 = _mm256_and_si256(_mm256_srli_epi16(pos0, 1), mask_bit0);
+                __m256i b1_pos1 = _mm256_and_si256(_mm256_srli_epi16(pos1, 1), mask_bit0);
+                __m256i b1_pos2 = _mm256_and_si256(_mm256_srli_epi16(pos2, 1), mask_bit0);
+                __m256i b1_pos3 = _mm256_and_si256(_mm256_srli_epi16(pos3, 1), mask_bit0);
+
+                // Combine for bit 1 plane
+                __m256i bit1_out = _mm256_or_si256(
+                    _mm256_or_si256(b1_pos0, _mm256_slli_epi16(b1_pos1, 1)),
+                    _mm256_or_si256(_mm256_slli_epi16(b1_pos2, 2), _mm256_slli_epi16(b1_pos3, 3))
+                );
+
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_bit0 + ik / g), bit0_out);
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_bit1 + ik / g), bit1_out);
+            }
+
+            // Handle remaining elements with scalar code
+            for (; ik < K; ++ik) {
+                size_t idx = ik;
+                size_t num_elem_per_byte = 4;  // 2-bit: 4 elements per byte
+                size_t elem_idx = idx % num_elem_per_byte;
+                uint8_t v = src_row[idx / num_elem_per_byte] >> (elem_idx * bits);
+
+                size_t new_ik = ik / g;
+                size_t shft_left = ik % g;
+                dst_bit0[new_ik] += static_cast<uint8_t>(((v >> 0) & 1) << shft_left);
+                dst_bit1[new_ik] += static_cast<uint8_t>(((v >> 1) & 1) << shft_left);
+            }
+        }
+    );
+
+    // Phase 2: Multi-reshape/transpose into final layout
+    // Precompute factors and simplify index math to avoid expensive div/mod in inner loops.
+    // const size_t bm_div_bits = bm / bits;
+    const size_t bm_div_mgroup = bm / mgroup;
+
+    const size_t c2_fac3_div = simd_n_in;
+    const size_t c2_fac2_div = kfactor * c2_fac3_div;
+    const size_t c2_fac1_div = bm_div_mgroup * c2_fac2_div;
+    const size_t c2_fac0_div = K_div_g * bm_div_mgroup * simd_n_in;
+
+    const size_t PackedQuantBDataSize = (N * bits) * (K_div_g / ngroups_per_elem);
+    memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);
+    auto* packed_u8 = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin);
+
+    // Phase 2: Parallelize over N - each thread handles all (bits, K/g) work for its assigned rows
+    // This ensures no write conflicts since each im writes to disjoint output regions
+    MlasTrySimpleParallel(
+        ThreadPool, static_cast<ptrdiff_t>(N),
+        [&](ptrdiff_t tid) {
+            size_t im = static_cast<size_t>(tid);
+            const size_t im0 = im / simd_n_out;
+            const size_t isno = im - im0 * simd_n_out;
+            const size_t x_base = simd_n_out * (im0 * bits) + isno;
+
+            for (size_t ib = 0; ib < bits; ib++) {
+                const size_t x = x_base + ib * simd_n_out;
+                const size_t new_im1 = x / mgroup;
+                const size_t y = x - new_im1 * mgroup;
+                const size_t new_ing = y / simd_n_in;
+                const size_t new_isni = y - new_ing * simd_n_in;
+
+                const size_t new_im2 = new_im1 / bm_div_mgroup;
+                const size_t new_ibm = new_im1 - new_im2 * bm_div_mgroup;
+
+                const size_t base_im = new_im2 * c2_fac0_div + new_ibm * c2_fac2_div + new_isni;
+                const size_t buf_base = im * bits * K_div_g + ib * K_div_g;
+
+                const uint8_t shift = static_cast<uint8_t>(new_ing * g);
+                const size_t stride = c2_fac3_div;
+
+                for (size_t ik = 0; ik < K_div_g; ik += kfactor) {
+                    const size_t new_ik = ik / kfactor;
+                    const size_t base_k = base_im + new_ik * c2_fac1_div;
+                    const size_t buf_k = buf_base + ik;
+
+                    uint8_t* dst = packed_u8 + base_k;
+                    const uint8_t* src = buf.get() + buf_k;
+
+                    if (kfactor == 8) {
+                        dst[stride * 0] = static_cast<uint8_t>(dst[stride * 0] + (src[0] << shift));
+                        dst[stride * 1] = static_cast<uint8_t>(dst[stride * 1] + (src[1] << shift));
+                        dst[stride * 2] = static_cast<uint8_t>(dst[stride * 2] + (src[2] << shift));
+                        dst[stride * 3] = static_cast<uint8_t>(dst[stride * 3] + (src[3] << shift));
+                        dst[stride * 4] = static_cast<uint8_t>(dst[stride * 4] + (src[4] << shift));
+                        dst[stride * 5] = static_cast<uint8_t>(dst[stride * 5] + (src[5] << shift));
+                        dst[stride * 6] = static_cast<uint8_t>(dst[stride * 6] + (src[6] << shift));
+                        dst[stride * 7] = static_cast<uint8_t>(dst[stride * 7] + (src[7] << shift));
+                    } else if (kfactor == 16) {
+                        dst[stride * 0] = static_cast<uint8_t>(dst[stride * 0] + (src[0] << shift));
+                        dst[stride * 1] = static_cast<uint8_t>(dst[stride * 1] + (src[1] << shift));
+                        dst[stride * 2] = static_cast<uint8_t>(dst[stride * 2] + (src[2] << shift));
+                        dst[stride * 3] = static_cast<uint8_t>(dst[stride * 3] + (src[3] << shift));
+                        dst[stride * 4] = static_cast<uint8_t>(dst[stride * 4] + (src[4] << shift));
+                        dst[stride * 5] = static_cast<uint8_t>(dst[stride * 5] + (src[5] << shift));
+                        dst[stride * 6] = static_cast<uint8_t>(dst[stride * 6] + (src[6] << shift));
+                        dst[stride * 7] = static_cast<uint8_t>(dst[stride * 7] + (src[7] << shift));
+                        dst[stride * 8] = static_cast<uint8_t>(dst[stride * 8] + (src[8] << shift));
+                        dst[stride * 9] = static_cast<uint8_t>(dst[stride * 9] + (src[9] << shift));
+                        dst[stride * 10] = static_cast<uint8_t>(dst[stride * 10] + (src[10] << shift));
+                        dst[stride * 11] = static_cast<uint8_t>(dst[stride * 11] + (src[11] << shift));
+                        dst[stride * 12] = static_cast<uint8_t>(dst[stride * 12] + (src[12] << shift));
+                        dst[stride * 13] = static_cast<uint8_t>(dst[stride * 13] + (src[13] << shift));
+                        dst[stride * 14] = static_cast<uint8_t>(dst[stride * 14] + (src[14] << shift));
+                        dst[stride * 15] = static_cast<uint8_t>(dst[stride * 15] + (src[15] << shift));
+                    } else {
+                        for (size_t ikf = 0; ikf < kfactor; ikf++) {
+                            dst[stride * ikf] = static_cast<uint8_t>(dst[stride * ikf] + (src[ikf] << shift));
+                        }
+                    }
+                }
+            }
+        }
+    );
+}
+
+//
+// AVX2 optimized scales and zero points packing for T-MAC LUT GEMM
+// This performs the same transformation as the scalar version but uses SIMD operations
+//
+template <bool HasZeroPoint>
+static void
+PackScalesAndZeroPoints_avx2_impl(
+    size_t N,
+    size_t K,
+    size_t bits,
+    size_t BlkLen,
+    size_t simd_n_out,
+    size_t bm,
+    float* PackedScalesBegin,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    const size_t num_elem_per_byte = 8 / bits;  // 4 for 2-bit
+    const size_t row_blks = K / BlkLen;         // number of blocks per column
+    const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
+
+    const size_t nb1 = K / BlkLen;
+    const size_t bm_div_bits = bm / bits;
+    const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
+    const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
+
+    const size_t TotalBlocks = N * row_blks;
+    ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (N >= static_cast<size_t>(MaxThreads) || row_blks <= 1) {
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(N),
+            [&](ptrdiff_t tid) {
+                size_t im = static_cast<size_t>(tid);
+                const size_t new_im = (bm_div_bits > 0) ? (im / bm_div_bits) : 0;
+                const size_t new_ibm = (bm_div_bits > 0) ? (im - new_im * bm_div_bits) : 0;
+
+                if constexpr (HasZeroPoint) {
+                    const size_t new_isimd = new_ibm % simd_n_out;
+                    const size_t new_ibm_div_simd = new_ibm / simd_n_out;
+                    const size_t outer_base = new_im * (bm_div_bits * nb1 / simd_n_out) + new_ibm_div_simd;
+                    const size_t outer_stride = bm_div_bits / simd_n_out;
+
+                    for (size_t blk_in_col = 0; blk_in_col < row_blks; blk_in_col++) {
+                        const size_t idx = im * nb1 + blk_in_col;
+                        const float scale = QuantBScale[idx];
+
+                        size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                        size_t elem_idx = blk_in_col % num_elem_per_byte;
+                        uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+                        float zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+
+                        const size_t new_idx_outer = outer_base + blk_in_col * outer_stride;
+                        const size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                        const size_t new_idx_zero = new_idx_scale + simd_n_out;
+
+                        PackedScalesBegin[new_idx_scale] = scale;
+                        PackedScalesBegin[new_idx_zero] = zp;
+                    }
+                } else {
+                    const size_t base_idx = new_im * bm_div_bits * nb1 + new_ibm;
+                    const size_t stride_idx = bm_div_bits;
+
+                    for (size_t blk_in_col = 0; blk_in_col < row_blks; blk_in_col++) {
+                        const size_t idx = im * nb1 + blk_in_col;
+                        const float scale = QuantBScale[idx];
+                        const size_t new_idx = base_idx + blk_in_col * stride_idx;
+                        PackedScalesBegin[new_idx] = scale;
+                    }
+                }
+            }
+        );
+    } else {
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(TotalBlocks),
+            [&](ptrdiff_t tid) {
+                const size_t block_idx = static_cast<size_t>(tid);
+                const size_t im = block_idx / row_blks;
+                const size_t blk_in_col = block_idx - im * row_blks;
+
+                const size_t new_im = (bm_div_bits > 0) ? (im / bm_div_bits) : 0;
+                const size_t new_ibm = (bm_div_bits > 0) ? (im - new_im * bm_div_bits) : 0;
+
+                const size_t idx = im * nb1 + blk_in_col;
+                const float scale = QuantBScale[idx];
+
+                if constexpr (HasZeroPoint) {
+                    const size_t new_isimd = new_ibm % simd_n_out;
+                    const size_t new_ibm_div_simd = new_ibm / simd_n_out;
+                    const size_t outer_base = new_im * (bm_div_bits * nb1 / simd_n_out) + new_ibm_div_simd;
+                    const size_t outer_stride = bm_div_bits / simd_n_out;
+
+                    size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                    size_t elem_idx = blk_in_col % num_elem_per_byte;
+                    uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+                    float zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+
+                    const size_t new_idx_outer = outer_base + blk_in_col * outer_stride;
+                    const size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                    const size_t new_idx_zero = new_idx_scale + simd_n_out;
+
+                    PackedScalesBegin[new_idx_scale] = scale;
+                    PackedScalesBegin[new_idx_zero] = zp;
+                } else {
+                    const size_t base_idx = new_im * bm_div_bits * nb1 + new_ibm;
+                    const size_t new_idx = base_idx + blk_in_col * bm_div_bits;
+                    PackedScalesBegin[new_idx] = scale;
+                }
+            }
+        );
+    }
+}
+
+void
+PackScalesAndZeroPoints_avx2(
+    size_t N,
+    size_t K,
+    size_t bits,
+    size_t BlkLen,
+    size_t simd_n_out,
+    size_t bm,
+    bool HasZeroPoint,
+    float* PackedScalesBegin,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    // Only optimized for 2-bit quantization
+    assert(bits == 2);
+
+    if (HasZeroPoint) {
+        PackScalesAndZeroPoints_avx2_impl<true>(
+            N, K, bits, BlkLen, simd_n_out, bm,
+            PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+        );
+    } else {
+        PackScalesAndZeroPoints_avx2_impl<false>(
+            N, K, bits, BlkLen, simd_n_out, bm,
+            PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+        );
+    }
+}
+
 // Kernel dispatch structure definition.
 
 const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2 = []() {
     MLAS_QNBIT_LUT_GEMM_DISPATCH d;
     d.GenerateLUT = GenerateLUT_avx2;
     d.ComputeGemm = TMACComputeGemm_avx2;
+    d.PackQuantBData = PackQuantBData_avx2;
+    d.PackScalesAndZeroPoints = PackScalesAndZeroPoints_avx2;
     return d;
 }();
