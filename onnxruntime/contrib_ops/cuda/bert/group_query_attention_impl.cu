@@ -96,7 +96,9 @@ Status PrepareQKV(
   using CudaT = typename ToCudaType<T>::MappedType;
   CudaT* q_out = reinterpret_cast<CudaT*>(data.unpacked_qkv_buffer);
   if (parameters.do_rotary) {
-    q_out = reinterpret_cast<CudaT*>(data.rotary_buffer);
+    if (data.rotary_buffer != nullptr) {
+      q_out = reinterpret_cast<CudaT*>(data.rotary_buffer);
+    }
   } else if (!parameters.is_packed_qkv) {
     q_out = nullptr;
   }

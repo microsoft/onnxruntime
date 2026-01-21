@@ -2423,7 +2423,48 @@ class TestXQAQuantizedParity(unittest.TestCase):
             std=0.1,
         )
 
-        del os.environ["ORT_ENABLE_XQA"]
+
+class TestGQARegressions(unittest.TestCase):
+    """Specific regression tests for historical bugs."""
+
+    def test_gqa_rope_separate_qkv_bug(self):
+        """
+        Regression test for separate QKV + RoPE + FlashAttention bug.
+        The bug caused q_out to be nullptr when unpacking separate QKV with only Q rotation (standard GQA),
+        leading to unrotated Q being used in Attention.
+        """
+        if "CUDAExecutionProvider" not in get_available_providers():
+            self.skipTest("CUDA required")
+
+        # Config that triggers the path: Prompt phase, Separate QKV inputs, RoPE enabled
+        config = GQAConfig(
+            batch_size=1,
+            num_heads=4,
+            kv_num_heads=4, # MHA for simplicity
+            head_size=128,
+            q_sequence_length=16,
+            kv_sequence_length=16, # Prompt phase
+            # past_kv_sequence_length=0, # implicit
+            buffer_sequence_length=16,
+            rotary=True,
+            rotary_interleaved=False,
+            share_buffer=True,
+        )
+
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        device = "cuda"
+
+        parity_check_gqa_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device=device,
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=1e-3,
+            atol=1e-3,
+        )
 
 
 if __name__ == "__main__":
