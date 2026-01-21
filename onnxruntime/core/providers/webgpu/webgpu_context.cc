@@ -282,16 +282,6 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
 
-  if (is_profiling_) {
-    PendingKernelInfo pending_kernel_info(context.NodeName(),
-                                          context.OpType(),
-                                          program.Name(),
-                                          key,
-                                          inputs,
-                                          outputs);
-    pending_kernels_.emplace_back(std::move(pending_kernel_info));
-  }
-
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
 
   const auto* program_artifact = program_mgr_->Get(key);
@@ -479,6 +469,26 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   WriteTimestamp(num_pending_dispatches_ * 2 + 1);
   ++num_pending_dispatches_;
+
+  // Update profiling data after LaunchComputePipeline
+  if (is_profiling_ || graph_capture_state_ == GraphCaptureState::Capturing) {
+    PendingKernelInfo pending_kernel_info(context.NodeName(),
+                                          context.OpType(),
+                                          program.Name(),
+                                          key,
+                                          inputs,
+                                          outputs);
+
+    if (graph_capture_state_ == GraphCaptureState::Capturing) {
+      // Update the last captured command's profiling info
+      if (external_captured_commands_ && !external_captured_commands_->empty()) {
+        external_captured_commands_->back().pending_kernel_info = std::move(pending_kernel_info);
+      }
+    } else {
+      // Add to pending kernels for current run profiling
+      pending_kernels_.emplace_back(std::move(pending_kernel_info));
+    }
+  }
 
   if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
       (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
@@ -715,6 +725,10 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   EndComputePass();
 
   if (is_profiling_ && num_pending_dispatches_ > 0) {
+    ORT_ENFORCE(num_pending_dispatches_ == pending_kernels_.size(),
+                "Number of pending dispatches (", num_pending_dispatches_,
+                ") does not match pending kernels size (", pending_kernels_.size(), ")");
+
     uint32_t query_count = num_pending_dispatches_ * 2;
     current_command_encoder_.ResolveQuerySet(
         query_set_,
@@ -794,18 +808,13 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
       indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
     }
 
-    // Always store profiling metadata to support profiling during replay regardless of current profiling state
-    std::optional<PendingKernelInfo> profiling_data;
-    if (!pending_kernels_.empty()) {
-      profiling_data = pending_kernels_.back();
-    }
-
+    // Profiling data will be populated after this call in Run()
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
                                             bind_group_layout,
                                             {x, y, z},
                                             indirect_buffer,
-                                            profiling_data});
+                                            std::nullopt});
   } else {
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
@@ -836,6 +845,8 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
     external_captured_commands_->clear();
   }
 
+  // Disable profiling during capture mode
+  is_profiling_ = false;
   graph_capture_state_ = GraphCaptureState::Capturing;
 }
 
