@@ -329,5 +329,18 @@ TEST(GatherNDOpTest, GatherND_slice_int64_t) {
   test.Run();
 }
 
+// Test for issue #23828: GatherND should return error instead of crashing
+// when batch dimensions mismatch between input and indices
+TEST(GatherNDOpTest, GatherND_batch_dims_mismatch_error) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 1);
+  // Input has 3 batches, but indices has 2 batches - mismatch!
+  test.AddInput<float>("data", {3, 3}, {0.f, 1.f, 2.f, 10.f, 11.f, 12.f, 20.f, 21.f, 22.f});
+  test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
+  test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "indices batch size (2) must be divisible by input batch size (3)");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
