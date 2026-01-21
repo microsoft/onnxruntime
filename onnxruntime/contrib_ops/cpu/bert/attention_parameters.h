@@ -34,6 +34,7 @@ struct AttentionParameters {
   float mask_filter_value;
   float scale;
   bool use_tf32;
+  bool is_output_bnsh = false;  // whether the output format is BNSH
   AttentionMaskType mask_type;
   AttentionQkvFormat qkv_format;
 };

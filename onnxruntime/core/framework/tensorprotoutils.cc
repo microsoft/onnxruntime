@@ -417,6 +417,8 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
         {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
         {TensorProto_DataType_UINT4, sizeof(uint8_t)},
         {TensorProto_DataType_INT4, sizeof(uint8_t)},
+        {TensorProto_DataType_UINT2, sizeof(uint8_t)},
+        {TensorProto_DataType_INT2, sizeof(uint8_t)},
     };
     auto pos = tensorproto_data_size.find(tensor.data_type());
     if (pos == tensorproto_data_size.end()) {
@@ -440,6 +442,8 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
       case TensorProto_DataType_BOOL:
       case TensorProto_DataType_UINT4:
       case TensorProto_DataType_INT4:
+      case TensorProto_DataType_UINT2:
+      case TensorProto_DataType_INT2:
       case TensorProto_DataType_UINT8:
       case TensorProto_DataType_INT8:
       case TensorProto_DataType_UINT16:
@@ -1589,6 +1593,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 #endif
     CASE_TYPE(UINT4)
     CASE_TYPE(INT4)
+    CASE_TYPE(UINT2)
+    CASE_TYPE(INT2)
 
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_TYPE(FLOAT4E2M1)
