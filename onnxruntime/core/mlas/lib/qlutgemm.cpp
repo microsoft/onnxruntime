@@ -28,14 +28,27 @@ Abstract:
 #include <unordered_map>
 
 /** T-MAC GEMM kernel Config */
-static std::unordered_map<std::string, struct MlasTMACKernelParams> tmac_kernel_configs;
+// Pack config key into a 64-bit integer for fast lookup:
+// bits [0-15]: M/128, [16-31]: N/128, [32-35]: nbits, [36-47]: block_size/32, [48]: has_zero_point
+static inline uint64_t
+MakeTMACConfigKey(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
+{
+    return (static_cast<uint64_t>(M / 128) & 0xFFFF) |
+           ((static_cast<uint64_t>(N / 128) & 0xFFFF) << 16) |
+           ((static_cast<uint64_t>(nbits) & 0xF) << 32) |
+           ((static_cast<uint64_t>(block_size / 32) & 0xFFF) << 36) |
+           (static_cast<uint64_t>(has_zero_point ? 1 : 0) << 48);
+}
+
+static std::unordered_map<uint64_t, struct MlasTMACKernelParams> tmac_kernel_configs;
 
 const MlasTMACKernelParams&
 MlasGetLutGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
 {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
-    if (tmac_kernel_configs.count(key)) {
-        return tmac_kernel_configs[key];
+    uint64_t key = MakeTMACConfigKey(M, N, nbits, block_size, has_zero_point);
+    auto it = tmac_kernel_configs.find(key);
+    if (it != tmac_kernel_configs.end()) {
+        return it->second;
     }
     MLAS_THROW_EX(std::runtime_error, "T-MAC kernel parameters not initialized");
 }
@@ -49,8 +62,8 @@ MlasClearLutGemmKernelConfig()
 void MLASCALL
 MlasInitLutGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
 {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
-    if (tmac_kernel_configs.count(key)) {
+    uint64_t key = MakeTMACConfigKey(M, N, nbits, block_size, has_zero_point);
+    if (tmac_kernel_configs.find(key) != tmac_kernel_configs.end()) {
         return;
     }
 
@@ -170,26 +183,31 @@ LutGemmPackQuantBData(
     assert(bm % mgroup == 0);
     assert(bm % bits == 0);
 
+    // Allocate intermediate buffer - no memset needed since we write each position exactly once
     std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * (K / g)]);
-    memset(buf.get(), 0, N * bits * (K / g));
 
-    const size_t Iterations = N;  // we parallelize over N, TODO:: tune if needed
+    const size_t Iterations = N;  // we parallelize over N
+    const size_t num_elem_per_byte = 8 / bits;
+    const size_t K_div_g = K / g;
 
+    // Phase 1: Decompose weights into bit-planes grouped by g
+    // Restructured to write each output position exactly once (avoids memset)
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
             size_t im = static_cast<size_t>(tid);
-            for (size_t ik = 0; ik < K; ++ik) {
-                size_t idx = (im * K + ik);
-                size_t num_elem_per_byte = 8 / bits;
-                size_t elem_idx = idx % num_elem_per_byte;
-
-                uint8_t v = ((const uint8_t*)QuantBDataBegin)[idx / num_elem_per_byte] >> (elem_idx * bits);
-
-                for (size_t ib = 0; ib < bits; ++ib) {
-                    size_t new_ik = ik / g;
-                    size_t shft_left = ik % g;
-                    buf[im * bits * K / g + ib * K / g + new_ik] += static_cast<uint8_t>(((v >> ib) & 1) << shft_left);
+            for (size_t ib = 0; ib < bits; ++ib) {
+                for (size_t new_ik = 0; new_ik < K_div_g; ++new_ik) {
+                    // Gather g bits and pack them into one byte
+                    uint8_t result = 0;
+                    for (size_t shift = 0; shift < g; ++shift) {
+                        size_t ik = new_ik * g + shift;
+                        size_t idx = im * K + ik;
+                        size_t elem_idx = idx % num_elem_per_byte;
+                        uint8_t v = ((const uint8_t*)QuantBDataBegin)[idx / num_elem_per_byte] >> (elem_idx * bits);
+                        result |= static_cast<uint8_t>(((v >> ib) & 1) << shift);
+                    }
+                    buf[im * bits * K_div_g + ib * K_div_g + new_ik] = result;
                 }
             }
         }
@@ -197,37 +215,40 @@ LutGemmPackQuantBData(
 
     // Now buf contains the bit planes grouped by g along K
     // Next, we need to do a multi-reshape/transpose into the final layout
+    // (Phase 2: multi-reshape/transpose - uses precomputed K_div_g)
 
-    const size_t c0_fac2 = K / g;
+    const size_t c0_fac2 = K_div_g;
     const size_t c0_fac1 = simd_n_out * c0_fac2;
     const size_t c0_fac0 = bits * c0_fac1;
 
-    const size_t c1_nb2 = K / g;
+    const size_t c1_nb2 = K_div_g;
     const size_t c1_nb1 = simd_n_in * c1_nb2;
     const size_t c1_nb0 = ngroups_per_elem * c1_nb1;
-    const size_t c1_fac2 = K / g;
+    const size_t c1_fac2 = K_div_g;
     const size_t c1_fac1 = ngroups_per_elem * c1_fac2;
     const size_t c1_fac0 = simd_n_in * c1_fac1;
 
     const size_t c2_nb4 = kfactor;
-    const size_t c2_nb3 = K / g / kfactor * c2_nb4;
+    const size_t c2_nb3 = K_div_g / kfactor * c2_nb4;
     const size_t c2_nb2 = ngroups_per_elem * c2_nb3;
     const size_t c2_nb1 = simd_n_in * c2_nb2;
     const size_t c2_nb0 = bm / mgroup * c2_nb1;
     const size_t c2_fac3 = simd_n_in * ngroups_per_elem;
     const size_t c2_fac2 = kfactor * c2_fac3;
     const size_t c2_fac1 = bm / mgroup * c2_fac2;
-    const size_t c2_fac0 = K / g / kfactor * c2_fac1;
+    const size_t c2_fac0 = K_div_g / kfactor * c2_fac1;
 
-    const size_t PackedQuantBDataSize = (N * bits) * (K / g / ngroups_per_elem);
-    memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);  // TODO: is this needed?
+    const size_t PackedQuantBDataSize = (N * bits) * (K_div_g / ngroups_per_elem);
+    // memset is required here because multiple iterations accumulate into the same output position
+    // (due to ngroups_per_elem accumulation pattern)
+    memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);
 
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
             size_t im = static_cast<size_t>(tid);
             for (size_t ib = 0; ib < bits; ib++) {
-                for (size_t ik = 0; ik < K / g; ik++) {
+                for (size_t ik = 0; ik < K_div_g; ik++) {
                     // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
                     size_t new_im = im / simd_n_out;
                     size_t new_isno = im % simd_n_out;
@@ -257,7 +278,7 @@ LutGemmPackQuantBData(
                               new_isni * ngroups_per_elem +
                               new_ing;
                     new_idx = new_idx / ngroups_per_elem;
-                    size_t buf_idx = im * bits * K / g + ib * K / g + ik;
+                    size_t buf_idx = im * bits * K_div_g + ib * K_div_g + ik;
                     uint8_t buf_val = buf[buf_idx];
 
                     // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
