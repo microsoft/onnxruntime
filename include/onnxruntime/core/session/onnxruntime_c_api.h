@@ -7003,6 +7003,77 @@ struct OrtApi {
 
   /// @}
 
+  /// \name Model Compatibility APIs
+  /// @{
+
+  /** \brief Extract EP compatibility info from a precompiled model file.
+   *
+   * Parses the model file to extract the compatibility info string for a specific execution provider
+   * from the model's metadata properties. This is only applicable to models that have been precompiled
+   * for an EP (e.g., via OrtCompileApi). Standard ONNX models do not contain this information.
+   *
+   * The compatibility info string must be valid UTF-8 without embedded NUL characters.
+   *
+   * \note This API performs standalone model parsing, separate from session creation. This means
+   * the protobuf parsing cost is incurred here and again during session creation. It is intended
+   * for scenarios where applications need to check compatibility before deciding whether to proceed
+   * with session creation, such as providing early user feedback.
+   *
+   * \note This operation parses the full ONNX ModelProto from disk. For very large models, consider
+   * using GetCompatibilityInfoFromModelBytes with a pre-loaded buffer if the model is already in memory.
+   *
+   * The compatibility info can then be passed to GetModelCompatibilityForEpDevices to check if a
+   * precompiled model is compatible with the current system.
+   *
+   * \param[in] model_path Path to the ONNX model file.
+   * \param[in] ep_type The execution provider type string. Must be non-empty.
+   *                    Use OrtApi::EpDevice_EpName to get this value from an OrtEpDevice.
+   * \param[in] allocator Allocator to use for the output string. Use OrtApi::GetAllocatorWithDefaultOptions.
+   * \param[out] compatibility_info Output pointer to the compatibility info string.
+   *                                Returns nullptr if no compatibility info exists for the specified EP.
+   *                                Caller must free with OrtApi::AllocatorFree when non-null.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetCompatibilityInfoFromModel,
+                  _In_ const ORTCHAR_T* model_path,
+                  _In_ const char* ep_type,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_result_maybenull_ char** compatibility_info);
+
+  /** \brief Extract EP compatibility info from precompiled model bytes in memory.
+   *
+   * Same as GetCompatibilityInfoFromModel but reads from a memory buffer instead of a file.
+   * Useful when precompiled models are loaded from encrypted storage, network, or other non-file sources.
+   *
+   * \note This API performs standalone model parsing, separate from session creation. This means
+   * the protobuf parsing cost is incurred here and again during session creation. It is intended
+   * for scenarios where applications need to check compatibility before deciding whether to proceed
+   * with session creation, such as providing early user feedback.
+   *
+   * \param[in] model_data Pointer to the model data in memory.
+   * \param[in] model_data_length Size of the model data in bytes.
+   * \param[in] ep_type The execution provider type string. Must be non-empty.
+   * \param[in] allocator Allocator to use for the output string. Use OrtApi::GetAllocatorWithDefaultOptions.
+   * \param[out] compatibility_info Output pointer to the compatibility info string.
+   *                                Returns nullptr if no compatibility info exists for the specified EP.
+   *                                Caller must free with OrtApi::AllocatorFree when non-null.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetCompatibilityInfoFromModelBytes,
+                  _In_reads_(model_data_length) const void* model_data,
+                  _In_ size_t model_data_length,
+                  _In_ const char* ep_type,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_result_maybenull_ char** compatibility_info);
+
+  /// @}
+
   /** \brief Create an OrtEnv instance with the given options.
    *
    * \note Invoking this function will return the same instance of the environment as that returned by a previous call
