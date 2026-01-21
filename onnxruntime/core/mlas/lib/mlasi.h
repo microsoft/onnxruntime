@@ -963,9 +963,15 @@ extern "C" {
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
 #endif
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
+    // AArch64 assembly micro-kernel for direct NCHW convolution
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeonAsm;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
+    // AArch64 assembly micro-kernel for depthwise NCHW convolution
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeonAsm;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
+    // AArch64 assembly micro-kernel for pointwise NCHW convolution
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeonAsm;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
 #if defined(__aarch64__) && defined(__linux__)
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;

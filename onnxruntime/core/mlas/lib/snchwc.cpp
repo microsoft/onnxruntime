@@ -882,6 +882,9 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvPointwiseFloatKernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
+        MLAS_CONV_POINTWISE_FLOAT_KERNEL* const KernelFast = MlasConvPointwiseFloatKernelNeonAsm;
+#endif
 #if defined(__aarch64__) && defined(__linux__)
         if (WorkBlock->UseBf16) {
             Kernel = GetMlasPlatform().ConvPointwiseBf16Kernel;
@@ -937,7 +940,14 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 // Invoke the convolution kernel.
                 //
 
-                Kernel(input, filter, output, StrideWidthBytes, InputChannelBatch /
+                MLAS_CONV_POINTWISE_FLOAT_KERNEL* KernelToUse = Kernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
+                if (!WorkBlock->UseBf16 && OutputThisIteration >= 4 &&
+                    StrideHeight == 1 && StrideWidth == 1) {
+                    KernelToUse = KernelFast;
+                }
+#endif
+                KernelToUse(input, filter, output, StrideWidthBytes, InputChannelBatch /
                     BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
                     OutputStrideBytes, OutputThisIteration, Bias, KernelFlags);
 
@@ -1024,6 +1034,9 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvDepthwiseFloatKernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
+        MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* const KernelFast = MlasConvDepthwiseFloatKernelNeonAsm;
+#endif
 #else
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasConvDepthwiseFloatKernel;
 #endif
@@ -1047,7 +1060,13 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             // Invoke the convolution kernel.
             //
 
-            Kernel(Input + BlockSize * (ih * InputWidth - PaddingLeftX), filter,
+            MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* KernelToUse = Kernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
+            if (OutputWidth >= 4) {
+                KernelToUse = KernelFast;
+            }
+#endif
+            KernelToUse(Input + BlockSize * (ih * InputWidth - PaddingLeftX), filter,
                 Output, StrideWidthBytes, DilationWidthBytes, InputStrideBytes,
                 EffectiveKernelHeight, KernelWidth, Input + BlockSize * (ih * InputWidth),
                 InputWidthBytes, DilatedInputWidthBytes, OutputCountLeftPadX,
