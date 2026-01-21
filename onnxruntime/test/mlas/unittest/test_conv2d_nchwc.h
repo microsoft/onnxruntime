@@ -8,6 +8,8 @@
 template <bool Threaded>
 class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
  protected:
+  bool UseBf16_ = false;
+
   void MlasConv2D(
       size_t BatchCount,
       size_t GroupCount,
@@ -131,7 +133,8 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
                   NchwcOutput,
                   &Activation,
                   true,
-                  MlasConv2DTest<Threaded>::threadpool_);
+                  MlasConv2DTest<Threaded>::threadpool_,
+                  UseBf16_);
 
     //
     // Reorder the output buffer.
@@ -224,3 +227,51 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
     }
   }
 };
+
+#if defined(__aarch64__) && defined(__linux__)
+template <bool Threaded>
+class MlasNchwcConv2DBf16Test : public MlasNchwcConv2DTest<Threaded> {
+ public:
+  MlasNchwcConv2DBf16Test() { this->UseBf16_ = true; }
+
+  static const char* GetTestSuiteName() {
+    static const std::string suite_name(Threaded ? "Conv2dNchwcBf16_Threaded" : "Conv2dNchwcBf16_SingleThread");
+    return suite_name.c_str();
+  }
+
+  void ExecuteLong() override {
+    // BF16 pointwise tests (1x1 kernel, no padding, InputChannels >= BlockSize)
+    for (unsigned ic : {32u, 64u, 128u}) {
+      for (unsigned fc : {32u, 64u, 128u}) {
+        for (unsigned sz : {28u, 14u, 7u}) {
+          TestBf16(1, 1, ic, sz, sz, fc, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+          TestBf16(1, 1, ic, sz, sz, fc, 1, 1, 0, 0, 0, 0, 1, 1, 2, 2);
+          TestBf16(4, 1, ic, sz, sz, fc, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+        }
+      }
+    }
+  }
+
+ private:
+  void TestBf16(size_t B, size_t G, size_t IC, size_t IH, size_t IW, size_t FC,
+                size_t KH, size_t KW, size_t p0, size_t p1, size_t p2, size_t p3,
+                size_t DH, size_t DW, size_t SH, size_t SW) {
+    size_t OH = (IH + p0 + p2 - DH * (KH - 1) - 1) / SH + 1;
+    size_t OW = (IW + p1 + p3 - DW * (KW - 1) - 1) / SW + 1;
+    size_t OutputElements = B * G * FC * OH * OW;
+
+    const float* Input = MlasConv2DTest<Threaded>::BufferInput.GetBuffer(B * G * IC * IH * IW);
+    const float* Filter = MlasConv2DTest<Threaded>::BufferFilter.GetBuffer(G * FC * IC * KH * KW);
+    const float* Bias = MlasConv2DTest<Threaded>::BufferBias.GetBuffer(G * FC);
+    float* Output = MlasConv2DTest<Threaded>::BufferOutput.GetBuffer(OutputElements);
+    float* OutputRef = MlasConv2DTest<Threaded>::BufferOutputReference.GetBuffer(OutputElements);
+
+    this->MlasConv2D(B, G, IC, IH, IW, FC, KH, KW, p0, p1, p2, p3, DH, DW, SH, SW, OH, OW, Input, Filter, Bias, Output);
+    MlasConv2DTest<Threaded>::ReferenceConv2D(B, G, IC, IH, IW, FC, KH, KW, p0, p1, DH, DW, SH, SW, OH, OW, Input, Filter, Bias, OutputRef);
+
+    for (size_t i = 0; i < OutputElements; i++) {
+      ASSERT_TRUE(CloseEnough(Output[i], OutputRef[i])) << " @" << i << " got " << Output[i] << " expected " << OutputRef[i];
+    }
+  }
+};
+#endif

@@ -747,6 +747,61 @@ inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardwar
   ThrowOnError(GetEpApi().CreateEpDevice(&ep_factory, hardware_device, ep_metadata, ep_options, &p_));
 }
 
+namespace detail {
+template <typename T>
+inline std::string EpAssignedSubgraphImpl<T>::GetEpName() const {
+  const char* ep_name = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetEpName(this->p_, &ep_name));
+  return std::string(ep_name);
+}
+
+template <typename T>
+inline std::vector<ConstEpAssignedNode> EpAssignedSubgraphImpl<T>::GetNodes() const {
+  size_t num_ep_nodes = 0;
+  const OrtEpAssignedNode* const* ep_node_ptrs = nullptr;
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetNodes(this->p_, &ep_node_ptrs, &num_ep_nodes));
+
+  std::vector<ConstEpAssignedNode> ep_nodes;
+  if (num_ep_nodes > 0) {
+    ep_nodes.reserve(num_ep_nodes);
+    for (size_t i = 0; i < num_ep_nodes; ++i) {
+      ep_nodes.emplace_back(ep_node_ptrs[i]);
+    }
+  }
+
+  return ep_nodes;
+}
+
+template <typename T>
+inline std::string EpAssignedNodeImpl<T>::GetName() const {
+  const char* node_name = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetName(this->p_, &node_name));
+  return std::string(node_name);
+}
+
+template <typename T>
+inline std::string EpAssignedNodeImpl<T>::GetDomain() const {
+  const char* domain = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetDomain(this->p_, &domain));
+  return std::string(domain);
+}
+
+template <typename T>
+inline std::string EpAssignedNodeImpl<T>::GetOperatorType() const {
+  const char* op_type = nullptr;
+
+  // Returned null-terminated string will not be null if API function returns successfully.
+  ThrowOnError(GetApi().EpAssignedNode_GetOperatorType(this->p_, &op_type));
+  return std::string(op_type);
+}
+}  // namespace detail
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -778,6 +833,15 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction loggin
                 OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnvWithCustomLoggerAndGlobalThreadPools(logging_function, logger_param, logging_level, logid, tp_options, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
+  } else {
+    ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
+  }
+}
+
+inline Env::Env(const OrtEnvCreationOptions* options) {
+  ThrowOnError(GetApi().CreateEnvWithOptions(options, &p_));
+  if (strcmp(options->log_id, "onnxruntime-node") == 0) {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
   } else {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_CPLUSPLUS));
@@ -991,6 +1055,11 @@ inline RunOptions& RunOptions::UnsetTerminate() {
 
 inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) {
   ThrowOnError(GetApi().RunOptionsAddActiveLoraAdapter(p_, adapter));
+  return *this;
+}
+
+inline RunOptions& RunOptions::SetSyncStream(OrtSyncStream* stream) {
+  GetApi().RunOptionsSetSyncStream(p_, stream);
   return *this;
 }
 
@@ -1661,6 +1730,19 @@ inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForInputs() co
 }
 
 template <typename T>
+inline std::vector<ConstEpDevice> ConstSessionImpl<T>::GetEpDeviceForOutputs() const {
+  auto num_outputs = GetOutputCount();
+  std::vector<ConstEpDevice> output_devices;
+  if (num_outputs > 0) {
+    output_devices.resize(num_outputs);
+    ThrowOnError(GetApi().SessionGetEpDeviceForOutputs(this->p_,
+                                                       reinterpret_cast<const OrtEpDevice**>(output_devices.data()),
+                                                       num_outputs));
+  }
+  return output_devices;
+}
+
+template <typename T>
 inline uint64_t ConstSessionImpl<T>::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(this->p_, &out));
@@ -1732,6 +1814,23 @@ std::vector<ValueInfo> ConstSessionImpl<T>::GetOutputs() const {
   }
 
   return outputs;
+}
+
+template <typename T>
+inline std::vector<ConstEpAssignedSubgraph> ConstSessionImpl<T>::GetEpGraphAssignmentInfo() const {
+  size_t num_ep_subgraphs = 0;
+  const OrtEpAssignedSubgraph* const* ep_subgraph_ptrs = nullptr;
+  ThrowOnError(GetApi().Session_GetEpGraphAssignmentInfo(this->p_, &ep_subgraph_ptrs, &num_ep_subgraphs));
+
+  std::vector<ConstEpAssignedSubgraph> ep_subgraphs;
+  if (num_ep_subgraphs > 0) {
+    ep_subgraphs.reserve(num_ep_subgraphs);
+    for (size_t i = 0; i < num_ep_subgraphs; ++i) {
+      ep_subgraphs.emplace_back(ep_subgraph_ptrs[i]);
+    }
+  }
+
+  return ep_subgraphs;
 }
 
 template <typename T>
@@ -3766,4 +3865,11 @@ inline Status SharedPrePackedWeightCacheImpl<T>::StoreWeightData(void** buffer_d
                                                                       num_buffers)};
 }
 }  // namespace detail
+
+inline Ort::KeyValuePairs GetEnvConfigEntries() {
+  OrtKeyValuePairs* entries = nullptr;
+  Ort::ThrowOnError(GetEpApi().GetEnvConfigEntries(&entries));
+
+  return Ort::KeyValuePairs{entries};
+}
 }  // namespace Ort

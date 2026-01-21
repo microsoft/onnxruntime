@@ -91,6 +91,7 @@ option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
 option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
+option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -539,25 +540,6 @@ if(onnxruntime_USE_KLEIDIAI)
       set(${is_supported_var} FALSE PARENT_SCOPE)
       return()
     endif()
-
-    # check for compiler support
-    if(MSVC)
-      # TODO detect on MSVC
-    else()
-      check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-      check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-      if(NOT HAS_ARM64_DOTPROD)
-        message(WARNING "The compiler doesn't support dotprod instructions.")
-      endif()
-      if(NOT HAS_ARM64_I8MM)
-        message(WARNING "The compiler doesn't support i8mm instructions.")
-      endif()
-      if(NOT HAS_ARM64_DOTPROD OR NOT HAS_ARM64_I8MM)
-        set(${is_supported_var} FALSE PARENT_SCOPE)
-        return()
-      endif()
-    endif()
-
     set(${is_supported_var} TRUE PARENT_SCOPE)
   endfunction()
 
@@ -1225,7 +1207,7 @@ function(onnxruntime_configure_target target_name)
 
   # Keep BinSkim happy
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
-    target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>" "$<$<LINK_LANGUAGE:CUDA>:-Xlinker=/CETCOMPAT>")
+    target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>")
   endif()
 
 endfunction()

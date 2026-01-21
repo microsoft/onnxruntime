@@ -51,12 +51,12 @@ jobs:
         with:
           architecture: x64
 
-      - name: Download OpenVINO Toolkit v2025.4.0
+      - name: Download OpenVINO Toolkit v2025.4.1
         env:
-          OpenVINOVersion: 2025.4.0
+          OpenVINOVersion: 2025.4.1
         shell: pwsh
         run: |
-          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4/windows/openvino_toolkit_windows_2025.4.0.20398.8fdad55727d_x86_64.zip"
+          $Url ="https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4.1/windows/openvino_toolkit_windows_2025.4.1.20426.82bbf0292c5_x86_64.zip"
           $OutputPath = "$env:RUNNER_TEMP\openvino.zip"
           $ExtractPath = "$env:RUNNER_TEMP\openvino-v$env:OpenVINOVersion"
           $TempExtractPath = "$env:RUNNER_TEMP\openvino_temp"
@@ -99,7 +99,7 @@ jobs:
         shell: pwsh
         # Use $GITHUB_ENV to set the variable for subsequent steps
         run: |
-          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.4.0"
+          $openVinoRootDir = Join-Path $env:RUNNER_TEMP "openvino-v2025.4.1"
           echo "OpenVINORootDir=$openVinoRootDir" >> $env:GITHUB_ENV
 
       - name: Print OpenVINORootDir after downloading OpenVINO

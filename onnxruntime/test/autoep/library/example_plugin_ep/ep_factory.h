@@ -7,7 +7,10 @@
 
 #include "ep_arena.h"
 #include "ep_data_transfer.h"
+#include "ep_external_resource_importer.h"
 #include "../plugin_ep_utils.h"
+#include "ep.h"
+#include "ep_custom_op.h"
 
 /// <summary>
 /// Example EP factory that can create an OrtEp and return information about the supported hardware devices.
@@ -24,6 +27,8 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   ArenaAllocator* GetArenaAllocator() const {
     return arena_allocator_.get();
   }
+
+  const OrtLogger& default_logger_;  // default logger for the EP factory
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
@@ -67,7 +72,23 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                                                const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
 
-  const OrtLogger& default_logger_;        // default logger for the EP factory
+  static OrtStatus* ORT_API_CALL CreateExternalResourceImporterForDeviceImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpDevice* ep_device,
+      OrtExternalResourceImporterImpl** out_importer) noexcept;
+
+  static OrtStatus* ORT_API_CALL GetHardwareDeviceIncompatibilityDetailsImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* hw,
+      OrtDeviceEpIncompatibilityDetails* details) noexcept;
+
+  static OrtStatus* ORT_API_CALL GetNumCustomOpDomainsImpl(OrtEpFactory* this_ptr,
+                                                           _Out_ size_t* num_domains) noexcept;
+
+  static OrtStatus* ORT_API_CALL GetCustomOpDomainsImpl(OrtEpFactory* this_ptr,
+                                                        _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
+                                                        _Out_ size_t num_domains) noexcept;
+
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
@@ -83,4 +104,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   std::mutex mutex_;  // mutex to protect arena_allocator_ and num_arena_users_
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
+
+  std::vector<Ort::CustomOpDomain> custom_op_domains_{2};
+  std::vector<std::vector<std::unique_ptr<ExampleEpCustomOp>>> created_custom_op_lists_{2};
 };
