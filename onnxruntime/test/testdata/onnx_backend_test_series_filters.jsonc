@@ -40,12 +40,44 @@
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
         "^test_l2normalization*",  // LpNormalization(22) not implemented
+        // TODO: support the following tests in Attention-cuda
+        "^test_attention_3d_gqa.*_cuda",  // GQA not supported in Attention-cuda
+        "^test_attention_4d_gqa.*_cuda",  // GQA not supported in Attention-cuda
+        "^test_attention_3d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_3d_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
+        "test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
+        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_4d_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_4d_with_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
+        "^test_attention_4d_attn_mask_bool_cuda", // bool mask not supported in Attention-cuda
+        "^test_attention_4d_attn_mask_bool_4d_cuda", // bool mask not supported in Attention-cuda
+        "^test_attention_3d_with_past_and_present_qk_matmul_bias_cuda",  // QK matmul + bias not supported in Attention-cuda
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_cuda", // QK matmul + bias not supported in Attention-cuda
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_cuda", // QK matmul + bias not supported in Attention-cuda
+        "^test_attention_4d_with_qk_matmul_bias_cuda", // QK matmul + bias not supported in Attention-cuda
+        "^test_attention_4d_with_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
+        "^test_attention_3d_with_past_and_present_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_cuda", // QK matmul + bias not supported in Attention-cuda
+        // is_causal=Truen && q_seq_len != kv_seq_len not supported in Attention-cuda
+        "^test_attention_3d_causal_cuda",
+        "^test_attention_3d_diff_heads_sizes_causal_cuda",
+        "^test_attention_4d_attn_mask_3d_causal_cuda",
+        "^test_attention_4d_attn_mask_4d_causal_cuda",
+        "^test_attention_4d_causal_cuda",
+        "^test_attention_4d_diff_heads_sizes_causal_cuda",
         "^test_l1normalization*",  // LpNormalization(22) not implemented
         "^test_lpnormalization*",  // LpNormalization(22) not implemented
         "^test_tensorscatter*",  // TensorScatter(24) not implemented
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
         "^test_castlike_INT4_to*",  // ORT does not support ml_dtypes
+        "^test_castlike_INT2_to*",  // ORT does not support int2
+        "^test_castlike_UINT2_to*",  // ORT does not support uint2
+        "^test_cast_INT2_to*",  // ORT does not support int2
+        "^test_cast_UINT2_to*",  // ORT does not support uint2
+        "^test_convinteger_with_padding*",  // ORT does not support per-channel quantization for ConvInteger
         "^test_cast_e8m0_*",  // ORT does not support float8e8m0
         "^test_batchnorm_epsilon_training_mode",
         "^test_batchnorm_example_training_mode",
@@ -721,7 +753,10 @@
         "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
         "^test_center_crop_pad_crop_negative_axes_hwc_expanded*", // failed due to new types or shape infer with negative axis for CenterCropPad.
         "^test_reduce_max_empty_set",
-        "^test_reduce_min_empty_set"
+        "^test_reduce_min_empty_set",
+        "^test_matmul_1d_3d_cpu",
+        "^test_matmul_4d_1d_cpu",
+        "^test_matmul_1d_1d_cpu"
     ],
     "current_failing_tests_pure_DML": [
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",
@@ -777,7 +812,10 @@
         "^test_reduce_max_empty_set_cpu",   // DNNL result in "(shapes (2, 1, 4), (1, 0, 1) mismatch)". this is the same for test_reduce_min_empty_set which is already in the list
         "^test_reduce_min_empty_set_cpu",
         "^test_resize_upsample_sizes_nearest_not_smaller_cpu",
-        "^test_clip_min_greater_than_max_cpu"
+        "^test_clip_min_greater_than_max_cpu",
+        // Fail since v1.20.1 (new matmul 1D tests)
+        "^test_matmul_1d_1d_cpu",
+        "^test_matmul_4d_1d_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

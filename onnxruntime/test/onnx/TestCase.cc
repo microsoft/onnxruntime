@@ -1451,13 +1451,17 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "unknown version"});
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "unknown version"});
     broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "need nonpad_kv_seqlen "});
-#if defined(__linux__) && !defined(__ANDROID__)
-    // TODO: [AISW-163150] ORT test failures on qcs6490
-    broken_tests->insert({"strnormalizer_export_monday_casesensintive_lower", "en_US.UTF-8 is not a valid locale on QLI devices"});
-    broken_tests->insert({"strnormalizer_export_monday_casesensintive_nochangecase", "en_US.UTF-8 is not a valid locale on QLI devices"});
-    broken_tests->insert({"strnormalizer_export_monday_casesensintive_upper", "en_US.UTF-8 is not a valid locale on QLI devices"});
-    broken_tests->insert({"strnormalizer_export_monday_empty_output", "en_US.UTF-8 is not a valid locale on QLI devices"});
-#endif
+    broken_tests->insert({"rms_normalization_2d_axis1", "unknown version"});
+    broken_tests->insert({"rms_normalization_2d_axis_negative_1", "unknown version"});
+    broken_tests->insert({"rms_normalization_3d_axis2_epsilon", "unknown version"});
+    broken_tests->insert({"rms_normalization_3d_axis_negative_1_epsilon", "unknown version"});
+    broken_tests->insert({"rms_normalization_4d_axis3", "unknown version"});
+    broken_tests->insert({"rms_normalization_4d_axis_negative_1", "unknown version"});
+    broken_tests->insert({"rms_normalization_default_axis", "unknown version"});
+    // Fails since ONNX==1.20.0
+    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded", "unknown version"});
+    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded", "unknown version"});
+    broken_tests->insert({"convinteger_with_padding", "unknown version"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

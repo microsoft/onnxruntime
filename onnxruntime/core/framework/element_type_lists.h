@@ -12,6 +12,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
 #include "core/framework/float4.h"
 
 namespace onnxruntime {
@@ -98,6 +99,13 @@ using AllIRv11 =
 #else
 using AllIRv11 = AllIRv10;
 #endif
+
+// IR v13 adds INT2/UINT2 (2-bit integer types)
+using AllIRv13 =
+    boost::mp11::mp_push_back<
+        AllIRv11,
+        UInt2x4,
+        Int2x4>;
 
 // TODO: This needs upgrade to some newer version ,buit it has been
 // at this version for a while and it needs changes at the use sites

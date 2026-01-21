@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <filesystem>
 #include <fstream>
 #include <future>
 #include <iostream>
@@ -21,6 +22,7 @@
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/graph/constants.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_lite_custom_op.h"
@@ -4827,3 +4829,117 @@ TEST(CApiTest, ModelWithExternalDataOutsideModelDirectoryShouldFailToLoad) {
               exception_message.find("model") != std::string::npos)
       << "Exception message should indicate external data or security issue. Got: " << exception_message;
 }
+
+#ifdef ORT_ENABLE_STREAM
+#if USE_CUDA
+
+namespace {
+struct TestCudaStreamOverrideUsed : onnxruntime::Stream {
+  TestCudaStreamOverrideUsed(onnxruntime::Stream* stream)
+      : onnxruntime::Stream(stream->GetHandle(), stream->GetDevice()), real_stream(stream) {}
+
+  std::unique_ptr<onnxruntime::synchronize::Notification> CreateNotification(size_t num_consumers) override {
+    return real_stream->CreateNotification(num_consumers);
+  }
+
+  TestCudaStreamOverrideUsed(const TestCudaStreamOverrideUsed&) = delete;
+  TestCudaStreamOverrideUsed& operator=(const TestCudaStreamOverrideUsed&) = delete;
+
+  void Flush() override {
+    flush_count++;
+    real_stream->Flush();
+  }
+
+  onnxruntime::Status CleanUpOnRunEnd() override { return real_stream->CleanUpOnRunEnd(); }
+
+  onnxruntime::Stream* real_stream;
+  size_t flush_count{0};
+};
+}  // namespace
+
+TEST(CApiTest, TestSyncStreamOverride) {
+#ifdef _WIN32
+  auto cuda_lib = ORT_TSTR("onnxruntime_providers_cuda.dll");
+#else
+  auto cuda_lib = ORT_TSTR("onnxruntime_providers_cuda.so");
+#endif
+
+  if (!std::filesystem::exists(cuda_lib)) {
+    GTEST_SKIP() << "CUDA library was not found";
+  }
+
+  constexpr const char* cuda_ep_name = "ORT Cuda";
+  ort_env->RegisterExecutionProviderLibrary(cuda_ep_name, cuda_lib);
+  auto ep_devices = ort_env->GetEpDevices();
+
+  Ort::ConstEpDevice cuda_device;
+  for (const auto& device : ep_devices) {
+    if (device.Device().Type() == OrtHardwareDeviceType_GPU &&
+        device.Device().VendorId() == 0x10DE) {  // NVIDIA vendor ID
+      cuda_device = device;
+      break;
+    }
+  }
+
+  if (!cuda_device) {
+    GTEST_SKIP() << "No CUDA device found, skipping test.";
+  }
+
+  // Create session with CUDA EP using C++ public API in Ort:: namespace
+  {
+    // Create a stream on CUDA Device
+    const auto sync_stream = cuda_device.CreateSyncStream();
+    TestCudaStreamOverrideUsed cuda_override_stream(sync_stream);
+
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, Ort::KeyValuePairs{});
+
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+    constexpr const std::array<const char*, 1U> input_names = {"X"};
+    constexpr const std::array<const char*, 1U> output_names = {"Y"};
+    constexpr const std::array<int64_t, 2U> input_shape = {3LL, 2LL};
+    float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    auto input_value = Ort::Value::CreateTensor<float>(
+        Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU),
+        x_value, std::size(x_value), input_shape.data(), input_shape.size());
+    Ort::Value ort_inputs[] = {std::move(input_value)};
+
+    Ort::RunOptions run_options;
+    run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&cuda_override_stream));
+
+    auto output_values = session.Run(run_options,
+                                     input_names.data(), ort_inputs, std::size(ort_inputs),
+                                     output_names.data(), output_names.size());
+
+    ASSERT_GT(cuda_override_stream.flush_count, 0U)
+        << "Expected the custom CUDA stream override to be used during session run.";
+  }
+
+  ort_env->UnregisterExecutionProviderLibrary(cuda_ep_name);
+}
+#endif
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CApiTest, GetEpGraphAssignmentInfo_NotEnabledError) {
+  // Test that calling OrtApi::Session_GetEpGraphAssignmentInfo() without enabling the appropriate
+  // session configuration option returns an error.
+
+  Ort::SessionOptions options;
+  // Do not set:
+  // options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+  try {
+    session.GetEpGraphAssignmentInfo();
+    ASSERT_TRUE(false) << "Call to Session_GetEpGraphAssignmentInfo should have failed";
+  } catch (const Ort::Exception& ex) {
+    ASSERT_EQ(ex.GetOrtErrorCode(), ORT_FAIL);
+
+    std::ostringstream oss;
+    oss << "Session configuration entry '" << kOrtSessionOptionsRecordEpGraphAssignmentInfo << "' must be set to \"1\"";
+    ASSERT_THAT(ex.what(), testing::HasSubstr(oss.str()));
+  }
+}
+#endif

@@ -30,6 +30,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/session/ep_graph_assignment_info.h"
 #include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
@@ -484,6 +485,15 @@ class InferenceSession {
    * This is required for a user to know the location of the input/output when autoep selection is enabled.
    */
   common::Status GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
+
+  /**
+   * Get the OrtEpDevice (if available) for the outputs of the model.
+   *
+   * This is required for a user to validate that outputs will be placed on the expected device
+   * for external resource sharing.
+   */
+  common::Status GetEpDeviceForOutputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
+
   /**
    * Get the current number of in-progress concurrent Run calls.
    */
@@ -652,6 +662,12 @@ class InferenceSession {
   uint32_t GetCurrentSessionId() const {
     return session_id_;
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  const std::vector<const OrtEpAssignedSubgraph*>& GetEpGraphAssignmentInfo() const {
+    return this->ep_graph_assignment_info_;
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1045,6 +1061,13 @@ class InferenceSession {
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
 #endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Information about the subgraphs/nodes assigned to each EP.
+  // A user gets this information via the OrtApi::GetEpGraphAssignmentInfo C API function.
+  std::vector<std::unique_ptr<OrtEpAssignedSubgraph>> ep_graph_assignment_info_storage_;
+  std::vector<const OrtEpAssignedSubgraph*> ep_graph_assignment_info_;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 struct SessionIOBinding {
