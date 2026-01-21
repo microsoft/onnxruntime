@@ -10,6 +10,7 @@
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/shared_lib/utils.h"
@@ -427,6 +428,113 @@ TEST(OrtEpLibrary, PluginEp_VirtGpu_GenEpContextModel) {
     // Make sure the compiled model was generated.
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
+}
+
+// Test that compatibility info is written to compiled model metadata
+TEST(OrtEpLibrary, PluginEp_CompatibilityInfo_WrittenToMetadata) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_compat_test.onnx");
+  std::filesystem::remove(output_model_file);
+
+  // Compile the model
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  // Load the compiled model and check metadata for compatibility info
+  {
+    Ort::SessionOptions session_options;
+    // Need to add the EP to handle EPContext nodes
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, output_model_file, session_options);
+    Ort::AllocatorWithDefaultOptions allocator;
+
+    // Check that the model has EP compatibility metadata
+    Ort::ModelMetadata metadata = session.GetModelMetadata();
+    auto custom_metadata_keys = metadata.GetCustomMetadataMapKeysAllocated(allocator);
+
+    // Check for the exact metadata key for this EP: "ep_compatibility_info.example_ep"
+    const std::string expected_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + "example_ep";
+
+    bool found_compatibility_key = false;
+    for (const auto& key : custom_metadata_keys) {
+      std::string key_str(key.get());
+      if (key_str == expected_key) {
+        found_compatibility_key = true;
+        break;
+      }
+    }
+    ASSERT_TRUE(found_compatibility_key) << "Expected metadata key '" << expected_key << "' in compiled model";
+
+    // Verify the compatibility value contains expected EP information
+    auto value = metadata.LookupCustomMetadataMapAllocated(expected_key.c_str(), allocator);
+    ASSERT_NE(value.get(), nullptr);
+    std::string compatibility_value = value.get();
+    ASSERT_GT(compatibility_value.length(), 0) << "Compatibility info should not be empty";
+
+    // Validate the exact compatibility string format and values
+    // Format: "example_ep;version=0.1.0;ort_api_version=<ORT_API_VERSION>"
+    std::string expected_compatibility_info = "example_ep;version=0.1.0;ort_api_version=" +
+                                              std::to_string(ORT_API_VERSION);
+    EXPECT_EQ(compatibility_value, expected_compatibility_info);
+  }
+
+  std::filesystem::remove(output_model_file);
+}
+
+// Test loading a compiled model validates compatibility successfully
+TEST(OrtEpLibrary, PluginEp_CompatibilityInfo_ValidatedOnLoad) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_compat_validate.onnx");
+  std::filesystem::remove(compiled_model_file);
+
+  // Step 1: Compile the model
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+  }
+
+  // Step 2: Load the compiled model with the same EP - should succeed
+  // The EP should validate compatibility and return OPTIMAL status
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // This should not throw - EP should validate compatibility as OPTIMAL
+    ASSERT_NO_THROW(Ort::Session session(*ort_env, compiled_model_file, session_options));
+  }
+
+  std::filesystem::remove(compiled_model_file);
 }
 
 // Uses the original compiling approach with session option configs (instead of explicit compile API).

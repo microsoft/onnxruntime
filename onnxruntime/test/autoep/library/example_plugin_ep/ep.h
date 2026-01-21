@@ -78,6 +78,9 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos) noexcept;
 
+  static const char* ORT_API_CALL GetCompiledModelCompatibilityInfoImpl(OrtEp* this_ptr,
+                                                                        const OrtGraph* graph) noexcept;
+
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
@@ -89,4 +92,5 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;
+  std::string compatibility_info_;  // Cached compatibility string returned by GetCompiledModelCompatibilityInfo
 };

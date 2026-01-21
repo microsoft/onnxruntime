@@ -139,6 +139,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
+  GetCompiledModelCompatibilityInfo = GetCompiledModelCompatibilityInfoImpl;  // compatibility info for compiled models
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -207,10 +208,28 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
     }
 
     std::vector<Ort::ConstNode> supported_nodes;
+    std::vector<Ort::ConstNode> ep_context_nodes;
 
     for (const auto& node : nodes) {
       auto op_type = node.GetOperatorType();
       auto domain = node.GetDomain();
+
+      // Check for EPContext nodes that belong to this EP (from compiled models).
+      // This is needed to handle loading pre-compiled models with EPContext nodes.
+      if (op_type == "EPContext" && domain == "com.microsoft") {
+        // Check if this EPContext node belongs to this EP via the "source" attribute
+        Ort::ConstOpAttr source_attr;
+        Ort::Status status = node.GetAttributeByName("source", source_attr);
+        if (status.IsOK()) {
+          std::string source_value;
+          status = source_attr.GetValue(source_value);
+          if (status.IsOK() && source_value == ep->name_) {
+            // This EPContext node was created by this EP - collect it for fusion
+            ep_context_nodes.push_back(node);
+          }
+        }
+        continue;  // Don't process further, EPContext is a special case
+      }
 
       if (op_type == "Mul") {
         // Check that Mul has inputs/output of type float
@@ -248,28 +267,45 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       }
     }
 
-    if (supported_nodes.empty()) {
+    // Handle EPContext nodes first - these are from loading compiled models
+    // Each EPContext node is fused individually so it gets its own compiled node
+    for (const auto& ep_ctx_node : ep_context_nodes) {
+      std::vector<Ort::ConstNode> single_node = {ep_ctx_node};
+      OrtNodeFusionOptions node_fusion_options = {};
+      node_fusion_options.ort_version_supported = ORT_API_VERSION;
+      node_fusion_options.drop_constant_initializers = true;
+      RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                   reinterpret_cast<const OrtNode* const*>(single_node.data()),
+                                                                   single_node.size(),
+                                                                   &node_fusion_options));
+    }
+
+    // Return early if no supported nodes (but not if we have EPContext nodes)
+    if (supported_nodes.empty() && ep_context_nodes.empty()) {
       return nullptr;
     }
 
-    if (supported_nodes[0].GetOperatorType() == "Mul") {
-      // Create (optional) fusion options for the supported nodes to fuse.
-      OrtNodeFusionOptions node_fusion_options = {};
-      node_fusion_options.ort_version_supported = ORT_API_VERSION;
+    // Handle regular nodes
+    if (!supported_nodes.empty()) {
+      if (supported_nodes[0].GetOperatorType() == "Mul") {
+        // Create (optional) fusion options for the supported nodes to fuse.
+        OrtNodeFusionOptions node_fusion_options = {};
+        node_fusion_options.ort_version_supported = ORT_API_VERSION;
 
-      // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
-      // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
-      // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
-      // during inference.
-      node_fusion_options.drop_constant_initializers = true;
-      RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
-                                                                   reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
-                                                                   supported_nodes.size(),
-                                                                   &node_fusion_options));
-    } else if (supported_nodes[0].GetOperatorType() == "Custom_Mul") {
-      // Calls EpGraphSupportInfo_AddSingleNode() to inform ORT that the custom node should NOT be fused or compiled,
-      // as CustomMul has the concrete kernel implementation.
-      RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddSingleNode(graph_support_info, supported_nodes[0]));
+        // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
+        // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
+        // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
+        // during inference.
+        node_fusion_options.drop_constant_initializers = true;
+        RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                     reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
+                                                                     supported_nodes.size(),
+                                                                     &node_fusion_options));
+      } else if (supported_nodes[0].GetOperatorType() == "Custom_Mul") {
+        // Calls EpGraphSupportInfo_AddSingleNode() to inform ORT that the custom node should NOT be fused or compiled,
+        // as CustomMul has the concrete kernel implementation.
+        RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddSingleNode(graph_support_info, supported_nodes[0]));
+      }
     }
 
   } catch (const Ort::Exception& ex) {
@@ -305,27 +341,58 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
     std::vector<Ort::ConstNode> nodes = graph.GetNodes();
     if (nodes.size() != 1) {
-      Ort::Status status("Expected to compile a single Mul node", ORT_EP_FAIL);
+      Ort::Status status("Expected to compile a single node", ORT_EP_FAIL);
       return status.release();
     }
 
     auto node_op_type = nodes[0].GetOperatorType();
-    if (node_op_type != "Mul") {
-      Ort::Status status("Expected to compile a single Mul node", ORT_EP_FAIL);
+    auto node_domain = nodes[0].GetDomain();
+
+    // Check if this is an EPContext node (from loading a pre-compiled model)
+    bool is_ep_context_node = (node_op_type == "EPContext" && node_domain == "com.microsoft");
+
+    if (node_op_type != "Mul" && !is_ep_context_node) {
+      Ort::Status status("Expected to compile a Mul node or EPContext node", ORT_EP_FAIL);
       return status.release();
     }
-
-    // Now we know we're compiling a single Mul node. Create a computation kernel.
-    std::vector<Ort::ConstValueInfo> node_inputs = nodes[0].GetInputs();
-    std::array<std::string, 2> node_input_names;
-    node_input_names[0] = node_inputs[0].GetName();
-    node_input_names[1] = node_inputs[1].GetName();
 
     Ort::ConstNode fused_node{fused_nodes[0]};
     auto ep_name = fused_node.GetEpName();
     if (ep_name != ep->name_) {
       Ort::Status status("The fused node is expected to assigned to this EP to run on", ORT_EP_FAIL);
       return status.release();
+    }
+
+    // Get input names for the kernel
+    // For both EPContext and Mul nodes, we use the inner node's inputs from the graph
+    // Note: EPContext nodes from compiled models may have fewer inputs if constant initializers were dropped
+    std::array<std::string, 2> node_input_names = {"", ""};
+    std::vector<Ort::ConstValueInfo> node_inputs = nodes[0].GetInputs();
+
+    if (is_ep_context_node) {
+      // This example EP does *not* fully support executing EPContext nodes.
+      //
+      // When a model is compiled with this EP, constant initializers may be dropped from the EPContext
+      // node's inputs. A production EP would serialize initializer data and compiled state into the
+      // `ep_cache_context` attribute and deserialize it here. This example EP does not do that.
+      //
+      // As a result:
+      // - Session creation with a compiled model will succeed (for metadata access, compatibility testing)
+      // - Inference may fail at runtime if MulKernel::Compute cannot find expected inputs/initializers
+      //
+      // To fully support EPContext execution, deserialize `ep_cache_context` and restore initializers.
+      for (size_t i = 0; i < node_inputs.size() && i < 2; ++i) {
+        node_input_names[i] = node_inputs[i].GetName();
+      }
+    } else {
+      // For Mul nodes during initial compilation, we need exactly 2 inputs
+      if (node_inputs.size() != 2) {
+        std::string err_msg = "Mul node should have 2 inputs, got " + std::to_string(node_inputs.size());
+        Ort::Status status(err_msg.c_str(), ORT_EP_FAIL);
+        return status.release();
+      }
+      node_input_names[0] = node_inputs[0].GetName();
+      node_input_names[1] = node_inputs[1].GetName();
     }
 
     // Associate the name of the fused node with our MulKernel.
@@ -340,7 +407,8 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
     node_compute_infos[0] = node_compute_info.release();
 
     // Create EpContext nodes for the fused nodes we compiled.
-    if (ep->config_.enable_ep_context) {
+    // Don't create new EPContext nodes if we're already processing an EPContext node!
+    if (ep->config_.enable_ep_context && !is_ep_context_node) {
       assert(ep_context_nodes != nullptr);
       RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
                                                gsl::span<OrtNode*>(ep_context_nodes, count)));
@@ -520,4 +588,34 @@ void ExampleNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void
   MulKernel& kernel = *reinterpret_cast<MulKernel*>(compute_state);
   (void)kernel;
   // Do nothing for this example.
+}
+
+//
+// Implementation of GetCompiledModelCompatibilityInfo
+//
+/*static*/
+const char* ORT_API_CALL ExampleEp::GetCompiledModelCompatibilityInfoImpl(OrtEp* this_ptr,
+                                                                          const OrtGraph* graph) noexcept {
+  // Suppress unused parameter warning. The ORT_UNUSED_PARAMETER macro is in internal headers
+  // (core/common/common.h) which are not available to plugin EPs using only public APIs.
+  // A real EP would inspect the graph for model-specific compatibility info.
+  (void)graph;
+  auto* ep = static_cast<ExampleEp*>(this_ptr);
+
+  // Generate a compatibility string that includes:
+  // - EP name
+  // - EP version (from factory)
+  // - ORT API version
+  //
+  // In a real EP, this might include driver versions, hardware IDs, etc.
+  // The string format is EP-defined and should be parseable by ValidateCompiledModelCompatibilityInfo.
+  ep->compatibility_info_ = ep->name_ + ";version=" + ep->factory_.GetEpVersionString() + ";ort_api_version=" +
+                            std::to_string(ORT_API_VERSION);
+
+  IGNORE_ORTSTATUS(ep->ort_api.Logger_LogMessage(&ep->logger_,
+                                                 OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                                 ("GetCompiledModelCompatibilityInfo returning: " + ep->compatibility_info_).c_str(),
+                                                 ORT_FILE, __LINE__, __FUNCTION__));
+
+  return ep->compatibility_info_.c_str();
 }
