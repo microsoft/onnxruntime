@@ -129,7 +129,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   }
 
   std::string context_binary_path_str = context_binary_path.string();
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   if (qnn_backend_manager->FileMappingIsEnabled()) {
     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(nullptr,
                                                                0,

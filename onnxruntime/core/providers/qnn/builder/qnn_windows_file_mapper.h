@@ -4,13 +4,14 @@
 #pragma once
 
 #include "core/providers/qnn/builder/qnn_file_mapping_callback_interface.h"
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
 #include <string>
 #include <unordered_map>
 
 #include <QnnContext.h>
 
+#include "core/platform/env.h"
 #include "core/providers/qnn/rpcmem_library.h"
 #include "core/providers/qnn/ort_api.h"
 
@@ -19,57 +20,35 @@ namespace qnn {
 
 class WindowsFileMapper : public FileMappingCallbackInterface {
  public:
-  explicit WindowsFileMapper(const logging::Logger& logger);
+  explicit WindowsFileMapper(const logging::Logger& logger,
+                             std::shared_ptr<qnn::RpcMemLibrary> rpcmem_lib);
   ~WindowsFileMapper() override;
-  Status MapContextBin(const std::string& bin_filepath,
-                       void** notify_param) override;
-  Status ReleaseContextBin(const std::string& model_name) override;
 
-  Status GetContextBinMappingPointer(const std::string& bin_filepath, void** mapping_ptr) override;
+  Status GetContextBinMappedMemoryPtr(const std::string& bin_filepath,
+                                      void** mapped_data_ptr) override;
 
-  Status FreeContextBinMappingPointer(LPVOID bin_mapping_pointer) override;
+  static void UnmapFile(void* addr) noexcept;
 
   Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
                                Qnn_ContextBinaryDmaDataResponse_t* response,
-                               void* notify_param) override;
+                               void* mapped_data_ptr) override;
   Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem,
-                                   void* notify_param) override;
+                                   void* mapped_data_ptr) override;
 
   Qnn_ErrorHandle_t MapRawData(Qnn_ContextBinaryDataRequest_t request,
                                Qnn_ContextBinaryRawDataResponse_t* response,
-                               void* notify_param) override;
+                               void* mapped_data_ptr) override;
   Qnn_ErrorHandle_t ReleaseRawData(Qnn_ContextBinaryRawDataMem_t data_mem,
-                                   void* notify_param) override;
+                                   void* mapped_data_ptr) override;
 
  private:
-  typedef struct MappedDataInfo {
-    LPVOID aligned_data_ptr = nullptr;
-    size_t buffer_size = 0;
-  } MappedDataInfo_t;
-
-  typedef struct MappingInfo {
-    HANDLE file_handle;
-
-    // Maps unaligned data pointers to aligned data pointers
-    std::unordered_map<LPVOID, MappedDataInfo_t> mapped_data;
-  } MappingInfo_t;
-
-  void CleanUpDataMapping(LPVOID unaligned_data_ptr, LPVOID aligned_data_ptr,
-                          size_t buffer_size);
-  void CleanUpDataMappings(const std::unordered_map<LPVOID, MappedDataInfo_t>& mapped_data);
-  void CloseHandles(HANDLE file_handle, HANDLE file_mapping_handle);
-
-  std::mutex map_mutex_;  // Applies to both unordered maps
-  std::unordered_map<std::string, HANDLE> context_bin_to_mapping_handle_map_;
-  std::unordered_map<HANDLE, MappingInfo_t> mapping_handle_to_info_map_;
-  std::unordered_set<LPVOID> context_bin_map_view_pointers_;
-
+  // A container of smart pointers of mapview memory pointers to mapped context bins
+  std::vector<onnxruntime::Env::MappedMemoryPtr> mapped_memory_ptrs;
   const logging::Logger* logger_;
-
-  RpcMemLibrary rpcmem_lib_;
+  std::shared_ptr<RpcMemLibrary> rpcmem_lib_;
 };
 
 }  // namespace qnn
 }  // namespace onnxruntime
 
-#endif  // QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE

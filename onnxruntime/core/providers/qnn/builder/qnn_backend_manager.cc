@@ -29,7 +29,7 @@
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 #include "core/providers/qnn/builder/qnn_windows_file_mapper.h"
 #endif
 
@@ -774,10 +774,10 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
   return Status::OK();
 }
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 // callback required for allocating file mapping resources
-static Qnn_ErrorHandle_t DmaDataProvider(Qnn_ContextBinaryDataRequest_t request,
-                                         Qnn_ContextBinaryDmaDataResponse_t* response, void* notify_param) {
+static Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
+                                    Qnn_ContextBinaryDmaDataResponse_t* response, void* notify_param) {
   if (notify_param == nullptr) {
     LOGS_DEFAULT(ERROR) << "DmaProvider: notify_param is null";
     return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
@@ -793,7 +793,7 @@ static Qnn_ErrorHandle_t DmaDataProvider(Qnn_ContextBinaryDataRequest_t request,
 }
 
 // callback required for releasing file mapping resources
-static Qnn_ErrorHandle_t DmaDataRelease(Qnn_ContextBinaryDmaDataMem_t data_mem, void* notify_param) {
+static Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem, void* notify_param) {
   if (notify_param == nullptr) {
     LOGS_DEFAULT(ERROR) << "DmaRelease: notify_param is null";
     return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
@@ -808,7 +808,7 @@ static Qnn_ErrorHandle_t DmaDataRelease(Qnn_ContextBinaryDmaDataMem_t data_mem, 
 
   return pair->first->ReleaseDmaData(data_mem, pair->second);
 }
-#endif  // QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
 // callback required to add context handles to class list
 // when using contextCreateFromBinaryListAsync()
@@ -916,11 +916,12 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
 #endif
                                           nullptr};
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   if (file_mapped_weights_enabled_ && file_mapper_) {
     // Retry logic -- if context creation failed with file mapped weights, then retry with feature disabled
-    if (CreateContextFromListAsyncV2(configs, context_bin_map) != Status::OK()) {
-      LOGS(*logger_, WARNING) << "Failed to create context with file mapping enabled. Retrying with feature disabled.";
+    auto res = CreateContextFromListAsyncWithCallback(configs, context_bin_map);
+    if (!res.IsOK()) {
+      LOGS(*logger_, WARNING) << res.ErrorMessage() << ". Retrying with feature disabled.";
 
       file_mapped_weights_enabled_ = false;
       // Destruction of file_mapper_ to prevent resource leaks
@@ -930,12 +931,12 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
     }
   }
 #endif
-  return CreateContextFromListAsyncV1(configs, context_bin_map);
+  return CreateContextFromListAsync(configs, context_bin_map);
 }
 
-Status QnnBackendManager::CreateContextFromListAsyncV1(const QnnContext_Config_t** configs,
-                                                       std::unordered_map<std::string,
-                                                                          std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
+Status QnnBackendManager::CreateContextFromListAsync(const QnnContext_Config_t** configs,
+                                                     std::unordered_map<std::string,
+                                                                        std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
   std::vector<QnnContext_Params_t> context_params_list;
   std::vector<QnnContext_ParamsV1_t> context_paramsv1_list;
   std::vector<const QnnContext_Params_t*> context_params_ptr_list;
@@ -979,15 +980,14 @@ Status QnnBackendManager::CreateContextFromListAsyncV1(const QnnContext_Config_t
   return Status::OK();
 }
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
-Status QnnBackendManager::CreateContextFromListAsyncV2(const QnnContext_Config_t** configs,
-                                                       std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContext_Config_t** configs,
+                                                                 std::unordered_map<std::string, 
+                                                                                    std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
   std::vector<QnnContext_Params_t> context_params_list;
   std::vector<QnnContext_ParamsV2_t> context_paramsv2_list;
   std::vector<Qnn_ContextBinaryCallback_t> context_callbacks_list;
   std::vector<const QnnContext_Params_t*> context_params_ptr_list;
-
-  std::vector<void*> buffer_list;
 
   context_params_list.reserve(context_bin_map.size());
   context_callbacks_list.reserve(context_bin_map.size());
@@ -1001,20 +1001,21 @@ Status QnnBackendManager::CreateContextFromListAsyncV2(const QnnContext_Config_t
 
     size_t buffer_size = buffer_info.size;
 
-    void* buffer = nullptr;
-    void* file_mapping_handle = nullptr;
-    ORT_RETURN_IF_ERROR(file_mapper_->MapContextBin(context_bin_filepath, &file_mapping_handle));
-    ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappingPointer(context_bin_filepath, &buffer));
+    void* buffer;
+    ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappedMemoryPtr(context_bin_filepath, &buffer));
 
-    auto& notify_param = file_mapping_notify_params_.emplace_back(file_mapper_.get(),
-                                                                  file_mapping_handle);
+
+    auto notify_param_ptr = std::make_unique<std::pair<FileMappingCallbackInterface*, void*>>(file_mapper_.get(),
+                                                                                           buffer);
 
     Qnn_ContextBinaryCallback_t context_file_map_callbacks;
     context_file_map_callbacks.type = QNN_CONTEXT_CALLBACK_DMA_BUFFER;
     context_file_map_callbacks.dmaBufferCallback.version = QNN_CONTEXT_CALLBACK_DMA_BUFFER_VERSION_1;
-    context_file_map_callbacks.dmaBufferCallback.v1.dataProvide = DmaDataProvider;
-    context_file_map_callbacks.dmaBufferCallback.v1.dataRelease = DmaDataRelease;
-    context_file_map_callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(&notify_param);
+    context_file_map_callbacks.dmaBufferCallback.v1.dataProvide = MapDmaData;
+    context_file_map_callbacks.dmaBufferCallback.v1.dataRelease = ReleaseDmaData;
+    context_file_map_callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(notify_param_ptr.get());
+
+    file_mapping_notify_params_.push_back(std::move(notify_param_ptr));
 
     // Callbacks require QnnContext_ParamsV2_t which is new to QNN API 2.32
     QnnContext_ParamsV2_t context_params_v2 = {nullptr,
@@ -1028,8 +1029,6 @@ Status QnnBackendManager::CreateContextFromListAsyncV2(const QnnContext_Config_t
     QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_2,
                                           {}};
     context_params.v2 = &context_params_v2;
-
-    buffer_list.push_back(buffer);
     context_params_list.push_back(std::move(context_params));
     context_callbacks_list.push_back(std::move(context_file_map_callbacks));
     context_paramsv2_list.push_back(std::move(context_params_v2));
@@ -1042,15 +1041,11 @@ Status QnnBackendManager::CreateContextFromListAsyncV2(const QnnContext_Config_t
                                                                 configs,
                                                                 nullptr);
 
-  for (auto& buffer : buffer_list) {
-    ORT_RETURN_IF_ERROR(file_mapper_->FreeContextBinMappingPointer(buffer));
-  }
-  buffer_list.clear();
-
-  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
+  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context with file mapping enabled. Error: ",
+                                                QnnErrorHandleToString(result), ", Code:", result);
   return Status::OK();
 }
-#endif  // QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
 Status QnnBackendManager::SetContextPriority(ContextPriority context_priority) {
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
@@ -1259,8 +1254,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   ORT_RETURN_IF(result, "Failed to get valid function pointer.");
 
   void* bin_buffer = nullptr;
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
-  void* file_mapping_handle;
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   if (file_mapped_weights_enabled_) {
     ORT_RETURN_IF(!file_mapper_, "Attemping to use File Mapping feature but file_mapper_ is uninitialized");
 
@@ -1269,8 +1263,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     buffer_length = buffer_info.size;
 
     ORT_RETURN_IF(buffer_length == 0, "Context bin has a size of 0 bytes", context_bin_filepath);
-    ORT_RETURN_IF_ERROR(file_mapper_->MapContextBin(context_bin_filepath, &file_mapping_handle));
-    ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappingPointer(context_bin_filepath, &bin_buffer));
+    ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappedMemoryPtr(context_bin_filepath, &bin_buffer));
 
   } else {
     ORT_RETURN_IF(buffer == nullptr, "Attempting to load QNN context from buffer but buffer is null");
@@ -1362,20 +1355,23 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                   "Invalid function pointer for contextCreateFromBinary.");
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
     Qnn_ContextBinaryCallback_t callbacks;
     if (file_mapped_weights_enabled_ && file_mapper_) {
       ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinaryWithCallback,
                     "Invalid function pointer for contextCreateFromBinaryWithCallback.");
 
-      auto& notify_param = file_mapping_notify_params_.emplace_back(file_mapper_.get(),
-                                                                    file_mapping_handle);
+
+      auto notify_param_ptr = std::make_unique<std::pair<FileMappingCallbackInterface*, void*>>(file_mapper_.get(),
+                                                                                                bin_buffer);
 
       callbacks.type = QNN_CONTEXT_CALLBACK_DMA_BUFFER;
       callbacks.dmaBufferCallback.version = QNN_CONTEXT_CALLBACK_DMA_BUFFER_VERSION_1;
-      callbacks.dmaBufferCallback.v1.dataProvide = DmaDataProvider;
-      callbacks.dmaBufferCallback.v1.dataRelease = DmaDataRelease;
-      callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(&notify_param);
+      callbacks.dmaBufferCallback.v1.dataProvide = MapDmaData;
+      callbacks.dmaBufferCallback.v1.dataRelease = ReleaseDmaData;
+      callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(notify_param_ptr.get());
+
+      file_mapping_notify_params_.push_back(std::move(notify_param_ptr));
     }
 #else
   ORT_UNUSED_PARAMETER(context_bin_filepath);
@@ -1388,7 +1384,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     }
 #endif
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
     std::unique_ptr<char[]> backup_buffer;
     if (file_mapped_weights_enabled_ && file_mapper_) {
       rt = qnn_interface_.contextCreateFromBinaryWithCallback(backend_handle_,
@@ -1401,10 +1397,11 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                                               profile_backend_handle_,
                                                               NULL);
 
-      ORT_RETURN_IF_ERROR(file_mapper_->FreeContextBinMappingPointer(bin_buffer));
-
       if (rt != QNN_SUCCESS) {
-        LOGS(*logger_, WARNING) << "Failed to create context with file mapping enabled. Retrying with feature disabled.";
+
+        LOGS(*logger_, WARNING) << "Failed to create context with file mapping enabled. Error: "
+                                << QnnErrorHandleToString(result) << ", Code : " << result
+                                << ". Retrying with feature disabled.";
 
         file_mapped_weights_enabled_ = false;
         // Destruction of file_mapper_ to prevent resource leaks
@@ -1418,7 +1415,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
         bin_buffer = static_cast<void*>(backup_buffer.get());
       }
     }
-#endif  // QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
     if (!file_mapped_weights_enabled_ || rt != QNN_SUCCESS) {
       rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
@@ -1477,6 +1474,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool share_ep_contexts,
                                        bool enable_vtcm_backup_buffer_sharing,
                                        bool enable_file_mapped_weights,
+                                       std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library,
                                        std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
@@ -1564,10 +1562,12 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     LOGS(logger, VERBOSE) << "LoadOpPackage succeed.";
   }
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   if (file_mapped_weights_enabled_ && !file_mapper_ && GetQnnBackendType() == QnnBackendType::HTP) {
-    file_mapper_ = std::make_unique<WindowsFileMapper>(logger);
+    file_mapper_ = std::make_unique<WindowsFileMapper>(logger, rpcmem_library);
   }
+#else
+  ORT_UNUSED_PARAMETER(rpcmem_library);
 #endif
 
   bool enable_htp_weight_sharing = false;

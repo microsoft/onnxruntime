@@ -25,6 +25,7 @@
 #include "System/QnnSystemInterface.h"
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/rpcmem_library.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
@@ -32,7 +33,7 @@
 #include "core/providers/qnn/builder/qnn_profile_serializer.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 #include "core/providers/qnn/builder/qnn_file_mapping_callback_interface.h"
 #endif
 
@@ -169,6 +170,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                       bool need_load_system_lib, bool share_ep_contexts,
                       bool enable_vtcm_backup_buffer_sharing,
                       bool enable_file_mapped_weights,
+                      std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library,
                       std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
@@ -285,14 +287,14 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
                                                                         std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
-  Status CreateContextFromListAsyncV1(const QnnContext_Config_t** configs,
-                                      std::unordered_map<std::string,
-                                                         std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+  Status CreateContextFromListAsync(const QnnContext_Config_t** configs,
+                                    std::unordered_map<std::string,
+                                                       std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
-  Status CreateContextFromListAsyncV2(const QnnContext_Config_t** configs,
-                                      std::unordered_map<std::string,
-                                                         std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  Status CreateContextFromListAsyncWithCallback(const QnnContext_Config_t** configs,
+                                                std::unordered_map<std::string,
+                                                                   std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 #endif
 
   Status ReleaseContext();
@@ -482,11 +484,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool vtcm_backup_buffer_sharing_enabled_ = false;
   bool file_mapped_weights_enabled_ = false;
 
-#ifdef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   std::unique_ptr<FileMappingCallbackInterface> file_mapper_ = nullptr;
   // Notify params for file mapping must persist throughout lifetime of
   // QnnBackendManager for release of DMA data callback on destruction
-  std::vector<std::pair<FileMappingCallbackInterface*, void*>> file_mapping_notify_params_;
+  std::vector<std::unique_ptr<std::pair<FileMappingCallbackInterface*, void*>>> file_mapping_notify_params_;
 #endif
 
   // NPU backend requires quantized model

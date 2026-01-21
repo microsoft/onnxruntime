@@ -484,7 +484,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified disable_file_mapped_weights: " << enable_file_mapped_weights_;
   }
 
-#ifndef QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#ifndef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   enable_file_mapped_weights_ = false;
   LOGS_DEFAULT(WARNING) << "File mapped weights feature is only available on Windows arm64 devices for QNN API versions >= 2.32. "
                         << "Feature will be disabled by default";
@@ -567,7 +567,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
-  if (ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map)) {
+  if (ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map) || enable_file_mapped_weights_) {
     // Initialize rpcmem_library_.
     // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
@@ -992,6 +992,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
                                                share_ep_contexts_,
                                                enable_vtcm_backup_buffer_sharing_,
                                                enable_file_mapped_weights_,
+                                               rpcmem_library_,
                                                context_bin_map);
 
   context_bin_map.clear();

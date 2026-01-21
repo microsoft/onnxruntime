@@ -21,7 +21,7 @@ namespace qnn {
 
 #if defined(_WIN32) && (defined(__aarch64__) || defined(_M_ARM64))
 #if QNN_API_VERSION_MAJOR > 2 || ((QNN_API_VERSION_MAJOR) == 2 && (QNN_API_VERSION_MINOR >= 32))
-#define QNN_FILE_MAPPED_WEIGHTS_ENABLED
+#define QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 #endif
 #endif
 
