@@ -808,7 +808,7 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
       indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
     }
 
-    // Profiling data will be populated after this call in Run()
+    // Profiling data will be populated in Run() after this call returns.
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
                                             bind_group_layout,
@@ -845,7 +845,7 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
     external_captured_commands_->clear();
   }
 
-  // Disable profiling during capture mode
+  // Temporarily disable active profiling during capture; profiling data is deferred and used during replay
   is_profiling_ = false;
   graph_capture_state_ = GraphCaptureState::Capturing;
 }
@@ -860,9 +860,15 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
 
-    // Restore profiling info if available and profiling is enabled
-    if (is_profiling_ && command.pending_kernel_info.has_value()) {
-      pending_kernels_.emplace_back(command.pending_kernel_info.value());
+    // Restore profiling info when profiling is enabled. All commands are expected
+    // to have profiling data in this mode to keep pending_kernels_ consistent
+    // with num_pending_dispatches_.
+    if (is_profiling_) {
+      ORT_ENFORCE(command.pending_kernel_info.has_value(),
+                  "WebGpuContext::Replay: profiling is enabled but captured command at index ",
+                  i,
+                  " is missing pending_kernel_info.");
+      pending_kernels_.emplace_back(*command.pending_kernel_info);
     }
 
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
