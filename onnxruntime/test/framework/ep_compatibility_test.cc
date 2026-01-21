@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <climits>
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -527,4 +529,247 @@ TEST(EpCompatibilityCxxApiTest, SingleDeviceCpuProvider) {
   });
 
   ASSERT_TRUE(status == OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
+}
+
+// -----------------------------
+// GetCompatibilityInfoFromModel Tests
+// -----------------------------
+
+TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModel_InvalidArgs) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtAllocator* allocator = nullptr;
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
+  ASSERT_NE(allocator, nullptr);
+
+  char* compat_info = nullptr;
+
+  // model_path == nullptr
+  OrtStatus* st = api->GetCompatibilityInfoFromModel(nullptr, "TestEP", allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // ep_type == nullptr
+  st = api->GetCompatibilityInfoFromModel(ORT_TSTR("test.onnx"), nullptr, allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // ep_type == empty string
+  st = api->GetCompatibilityInfoFromModel(ORT_TSTR("test.onnx"), "", allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // allocator == nullptr
+  st = api->GetCompatibilityInfoFromModel(ORT_TSTR("test.onnx"), "TestEP", nullptr, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // compatibility_info == nullptr
+  st = api->GetCompatibilityInfoFromModel(ORT_TSTR("test.onnx"), "TestEP", allocator, nullptr);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+}
+
+TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModel_FileNotFound) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtAllocator* allocator = nullptr;
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
+  ASSERT_NE(allocator, nullptr);
+
+  char* compat_info = nullptr;
+  OrtStatus* st = api->GetCompatibilityInfoFromModel(ORT_TSTR("nonexistent_model.onnx"), "TestEP", allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_NO_SUCHFILE);
+  api->ReleaseStatus(st);
+}
+
+TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_InvalidArgs) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtAllocator* allocator = nullptr;
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
+  ASSERT_NE(allocator, nullptr);
+
+  char* compat_info = nullptr;
+  const char dummy_data[] = "dummy";
+
+  // model_data == nullptr
+  OrtStatus* st = api->GetCompatibilityInfoFromModelBytes(nullptr, 10, "TestEP", allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // model_data_length == 0
+  st = api->GetCompatibilityInfoFromModelBytes(dummy_data, 0, "TestEP", allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // ep_type == nullptr
+  st = api->GetCompatibilityInfoFromModelBytes(dummy_data, sizeof(dummy_data), nullptr, allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // ep_type == empty string
+  st = api->GetCompatibilityInfoFromModelBytes(dummy_data, sizeof(dummy_data), "", allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // allocator == nullptr
+  st = api->GetCompatibilityInfoFromModelBytes(dummy_data, sizeof(dummy_data), "TestEP", nullptr, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // compatibility_info == nullptr
+  st = api->GetCompatibilityInfoFromModelBytes(dummy_data, sizeof(dummy_data), "TestEP", allocator, nullptr);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+
+  // model_data_length > INT_MAX (should return error, not crash)
+  // We can't actually allocate this much memory, but we can pass the size
+  // The API should validate the size before attempting to use the data
+  size_t oversized_length = static_cast<size_t>(INT_MAX) + 1;
+  st = api->GetCompatibilityInfoFromModelBytes(dummy_data, oversized_length, "TestEP", allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_ARGUMENT);
+  api->ReleaseStatus(st);
+}
+
+TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_InvalidModelData) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtAllocator* allocator = nullptr;
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
+  ASSERT_NE(allocator, nullptr);
+
+  char* compat_info = nullptr;
+  const char invalid_data[] = "this is not a valid ONNX model";
+
+  OrtStatus* st = api->GetCompatibilityInfoFromModelBytes(invalid_data, sizeof(invalid_data), "TestEP", allocator, &compat_info);
+  ASSERT_NE(st, nullptr);
+  EXPECT_EQ(api->GetErrorCode(st), ORT_INVALID_GRAPH);
+  api->ReleaseStatus(st);
+}
+
+// Test extracting compatibility info from a model with metadata
+TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_WithMetadata) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtAllocator* allocator = nullptr;
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
+  ASSERT_NE(allocator, nullptr);
+
+  // Create a minimal ModelProto with compatibility metadata
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.mutable_graph()->set_name("test_graph");
+
+  // Add an opset import (required)
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  // Add compatibility metadata
+  const std::string ep_type = "TestCompatEP";
+  const std::string expected_compat_info = "test_compat_v1.0_driver_123";
+  auto* prop = model_proto.add_metadata_props();
+  prop->set_key(std::string("ep_compatibility_info.") + ep_type);
+  prop->set_value(expected_compat_info);
+
+  // Serialize the model
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+
+  // Extract compatibility info
+  char* compat_info = nullptr;
+  OrtStatus* st = api->GetCompatibilityInfoFromModelBytes(
+      model_data.data(), model_data.size(), ep_type.c_str(), allocator, &compat_info);
+  ASSERT_EQ(st, nullptr) << (st ? api->GetErrorMessage(st) : "");
+  ASSERT_NE(compat_info, nullptr);
+  EXPECT_STREQ(compat_info, expected_compat_info.c_str());
+  ASSERT_EQ(api->AllocatorFree(allocator, compat_info), nullptr);
+}
+
+// Test when compatibility info is not found for the EP
+TEST(EpCompatibilityCapiTest, GetCompatibilityInfoFromModelBytes_NotFound) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api, nullptr);
+
+  OrtAllocator* allocator = nullptr;
+  ASSERT_EQ(api->GetAllocatorWithDefaultOptions(&allocator), nullptr);
+  ASSERT_NE(allocator, nullptr);
+
+  // Create a minimal ModelProto without compatibility metadata for our EP
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.mutable_graph()->set_name("test_graph");
+
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  // Add metadata for a different EP
+  auto* prop = model_proto.add_metadata_props();
+  prop->set_key("ep_compatibility_info.DifferentEP");
+  prop->set_value("some_value");
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+
+  // Try to get compatibility info for an EP that doesn't have it
+  char* compat_info = nullptr;
+  OrtStatus* st = api->GetCompatibilityInfoFromModelBytes(
+      model_data.data(), model_data.size(), "NonExistentEP", allocator, &compat_info);
+  ASSERT_EQ(st, nullptr);           // Not an error - just not found
+  EXPECT_EQ(compat_info, nullptr);  // Should be nullptr when not found
+}
+
+// C++ API test
+TEST(EpCompatibilityCxxApiTest, GetCompatibilityInfoFromModelBytes) {
+  // Create a minimal ModelProto with compatibility metadata
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.mutable_graph()->set_name("test_graph");
+
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  const std::string ep_type = "CxxTestEP";
+  const std::string expected_compat_info = "cxx_compat_v2.0";
+  auto* prop = model_proto.add_metadata_props();
+  prop->set_key(std::string("ep_compatibility_info.") + ep_type);
+  prop->set_value(expected_compat_info);
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+
+  // Get allocator
+  Ort::AllocatorWithDefaultOptions allocator;
+
+  // Test C++ API - found case
+  Ort::AllocatedStringPtr result = Ort::GetCompatibilityInfoFromModelBytesAllocated(
+      model_data.data(), model_data.size(), ep_type.c_str(), allocator);
+  ASSERT_NE(result.get(), nullptr);
+  EXPECT_STREQ(result.get(), expected_compat_info.c_str());
+
+  // Test when not found - should return nullptr
+  Ort::AllocatedStringPtr not_found = Ort::GetCompatibilityInfoFromModelBytesAllocated(
+      model_data.data(), model_data.size(), "NonExistentEP", allocator);
+  EXPECT_EQ(not_found.get(), nullptr);
 }
