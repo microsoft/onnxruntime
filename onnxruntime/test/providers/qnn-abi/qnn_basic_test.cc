@@ -215,10 +215,17 @@ TEST(QnnABIEP, TestInvalidSpecificationOfBothBackendTypeAndBackendPath) {
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "constant_floats.onnx";
 
-  Ort::Session session(*ort_env, ort_model_path, so);
-  ASSERT_FALSE(SessionHasEp(session, onnxruntime::kQnnABIExecutionProvider))
-      << "QNN EP was found in registered providers for session "
-      << "when both backend_type and backend_path were specified, which should not happen.";
+  try {
+    Ort::Session session(*ort_env, ort_model_path, so);
+    // FAIL();
+    // TODO: Replace the following assertion with FAIL() once upstream completed.
+    ASSERT_FALSE(SessionHasEp(session, onnxruntime::kQnnABIExecutionProvider))
+        << "QNN EP was found in registered providers for session "
+        << "when both backend_type and backend_path were specified, which should not happen.";
+  } catch (const Ort::Exception& e) {
+    ASSERT_EQ(e.GetOrtErrorCode(), ORT_FAIL);
+    ASSERT_THAT(e.what(), testing::HasSubstr("Only one of 'backend_type' and 'backend_path' should be set."));
+  }
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
