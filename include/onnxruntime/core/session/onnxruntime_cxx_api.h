@@ -1349,6 +1349,19 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    * \param stream The OrtSyncStream to associate with these run options. May be nullptr to clear.
    */
   RunOptions& SetSyncStream(OrtSyncStream* stream);
+
+  /** \brief Enable profiling for this run
+   *
+   * Wraps OrtApi::RunOptionsEnableProfiling
+   * \param profile_file_prefix The prefix for the profile file
+   */
+  RunOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
+
+  /** \brief Disable profiling for this run
+   *
+   * Wraps OrtApi::RunOptionsDisableProfiling
+   */
+  RunOptions& DisableProfiling();
 };
 
 namespace detail {

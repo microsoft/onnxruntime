@@ -7124,6 +7124,28 @@ struct OrtApi {
    * \since 1.24
    */
   ORT_API_T(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
+
+  /** \brief Enable profiling for this run
+   *
+   * \param[in] options
+   * \param[in] profile_file_prefix The prefix for the profile file. The actual filename will be:
+   *                                <profile_file_prefix>_<timestamp>.json
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(RunOptionsEnableProfiling, _Inout_ OrtRunOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
+
+  /** \brief Disable profiling for this run
+   *
+   * \param[in] options
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
 };
 
 /*

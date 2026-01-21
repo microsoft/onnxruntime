@@ -1063,6 +1063,16 @@ inline RunOptions& RunOptions::SetSyncStream(OrtSyncStream* stream) {
   return *this;
 }
 
+inline RunOptions& RunOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
+  ThrowOnError(GetApi().RunOptionsEnableProfiling(p_, profile_file_prefix));
+  return *this;
+}
+
+inline RunOptions& RunOptions::DisableProfiling() {
+  ThrowOnError(GetApi().RunOptionsDisableProfiling(p_));
+  return *this;
+}
+
 inline ModelCompilationOptions::ModelCompilationOptions(const Env& env, const SessionOptions& session_options) {
   ThrowOnError(GetCompileApi().CreateModelCompilationOptionsFromSessionOptions(env, session_options, &this->p_));
 }
