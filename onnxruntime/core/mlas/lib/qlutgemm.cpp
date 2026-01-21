@@ -141,6 +141,7 @@ LutGemmPackQuantBDataSize(
 }
 
 // Internal helper: packs quantized B data
+// Fused single-pass implementation that directly computes output positions
 static void
 LutGemmPackQuantBData(
     size_t N,
@@ -153,7 +154,6 @@ LutGemmPackQuantBData(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    // decompose W into w1,... w_bits create temp buffer buf2 of size N * bits * (K/g)
     const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
     const size_t bits = tmac_params.bits;
     const size_t g = tmac_params.g;
@@ -170,103 +170,103 @@ LutGemmPackQuantBData(
     assert(bm % mgroup == 0);
     assert(bm % bits == 0);
 
-    std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * (K / g)]);
-    memset(buf.get(), 0, N * bits * (K / g));
+    const size_t K_div_g = K / g;
+    const size_t num_elem_per_byte = 8 / bits;
 
-    const size_t Iterations = N;  // we parallelize over N, TODO:: tune if needed
-
-    MlasTrySimpleParallel(
-        ThreadPool, Iterations,
-        [&](ptrdiff_t tid) {
-            size_t im = static_cast<size_t>(tid);
-            for (size_t ik = 0; ik < K; ++ik) {
-                size_t idx = (im * K + ik);
-                size_t num_elem_per_byte = 8 / bits;
-                size_t elem_idx = idx % num_elem_per_byte;
-
-                uint8_t v = ((const uint8_t*)QuantBDataBegin)[idx / num_elem_per_byte] >> (elem_idx * bits);
-
-                for (size_t ib = 0; ib < bits; ++ib) {
-                    size_t new_ik = ik / g;
-                    size_t shft_left = ik % g;
-                    buf[im * bits * K / g + ib * K / g + new_ik] += static_cast<uint8_t>(((v >> ib) & 1) << shft_left);
-                }
-            }
-        }
-    );
-
-    // Now buf contains the bit planes grouped by g along K
-    // Next, we need to do a multi-reshape/transpose into the final layout
-
-    const size_t c0_fac2 = K / g;
+    // Precompute constants for Phase 2 index calculations
+    const size_t c0_fac2 = K_div_g;
     const size_t c0_fac1 = simd_n_out * c0_fac2;
     const size_t c0_fac0 = bits * c0_fac1;
 
-    const size_t c1_nb2 = K / g;
+    const size_t c1_nb2 = K_div_g;
     const size_t c1_nb1 = simd_n_in * c1_nb2;
     const size_t c1_nb0 = ngroups_per_elem * c1_nb1;
-    const size_t c1_fac2 = K / g;
+    const size_t c1_fac2 = K_div_g;
     const size_t c1_fac1 = ngroups_per_elem * c1_fac2;
     const size_t c1_fac0 = simd_n_in * c1_fac1;
 
     const size_t c2_nb4 = kfactor;
-    const size_t c2_nb3 = K / g / kfactor * c2_nb4;
+    const size_t c2_nb3 = K_div_g / kfactor * c2_nb4;
     const size_t c2_nb2 = ngroups_per_elem * c2_nb3;
     const size_t c2_nb1 = simd_n_in * c2_nb2;
     const size_t c2_nb0 = bm / mgroup * c2_nb1;
     const size_t c2_fac3 = simd_n_in * ngroups_per_elem;
     const size_t c2_fac2 = kfactor * c2_fac3;
     const size_t c2_fac1 = bm / mgroup * c2_fac2;
-    const size_t c2_fac0 = K / g / kfactor * c2_fac1;
+    const size_t c2_fac0 = K_div_g / kfactor * c2_fac1;
 
-    const size_t PackedQuantBDataSize = (N * bits) * (K / g / ngroups_per_elem);
-    memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);  // TODO: is this needed?
+    const size_t PackedQuantBDataSize = (N * bits) * (K_div_g / ngroups_per_elem);
+    memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);
 
+    // Parallelize over output positions (PackedQuantBDataSize elements)
+    // Each output byte is written by exactly one thread - no race conditions
     MlasTrySimpleParallel(
-        ThreadPool, Iterations,
+        ThreadPool, PackedQuantBDataSize,
         [&](ptrdiff_t tid) {
-            size_t im = static_cast<size_t>(tid);
-            for (size_t ib = 0; ib < bits; ib++) {
-                for (size_t ik = 0; ik < K / g; ik++) {
-                    // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
-                    size_t new_im = im / simd_n_out;
-                    size_t new_isno = im % simd_n_out;
-                    size_t new_ib = ib;
-                    size_t new_ik = ik;
-                    size_t new_idx = new_im * c0_fac0 + new_ib * c0_fac1 + new_isno * c0_fac2 + new_ik;
+            size_t out_idx = static_cast<size_t>(tid);
+            uint8_t result = 0;
 
-                    // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
-                    new_im = new_idx / c1_nb0;
-                    size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
-                    size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
-                    new_ik = (new_idx % c1_nb2);
-                    new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
+            // Each output byte accumulates ngroups_per_elem (=2) values
+            for (size_t ng = 0; ng < ngroups_per_elem; ++ng) {
+                // Reverse the index transformation to find source (im, ib, ik)
+                // out_idx = final_idx / ngroups_per_elem, and we iterate over ng
+                size_t final_idx = out_idx * ngroups_per_elem + ng;
 
-                    // #             0        1             2             3                 4                  5
-                    // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
-                    new_im = new_idx / c2_nb0;
-                    size_t new_ibm = (new_idx % c2_nb0) / c2_nb1;
-                    new_isni = (new_idx % c2_nb1) / c2_nb2;
-                    new_ing = (new_idx % c2_nb2) / c2_nb3;
-                    new_ik = (new_idx % c2_nb3) / c2_nb4;
-                    size_t new_ikf = (new_idx % c2_nb4);
-                    new_idx = new_im * c2_fac0 +
-                              new_ik * c2_fac1 +
-                              new_ibm * c2_fac2 +
-                              new_ikf * c2_fac3 +
-                              new_isni * ngroups_per_elem +
-                              new_ing;
-                    new_idx = new_idx / ngroups_per_elem;
-                    size_t buf_idx = im * bits * K / g + ib * K / g + ik;
-                    uint8_t buf_val = buf[buf_idx];
+                // Reverse of: new_idx = new_im * c2_fac0 + new_ik * c2_fac1 + new_ibm * c2_fac2 + new_ikf * c2_fac3 + new_isni * ngroups_per_elem + new_ing
+                size_t c2_im = final_idx / c2_fac0;
+                size_t rem = final_idx % c2_fac0;
+                size_t c2_ik = rem / c2_fac1;
+                rem = rem % c2_fac1;
+                size_t c2_ibm = rem / c2_fac2;
+                rem = rem % c2_fac2;
+                size_t c2_ikf = rem / c2_fac3;
+                rem = rem % c2_fac3;
+                size_t c2_isni = rem / ngroups_per_elem;
+                size_t c2_ing = rem % ngroups_per_elem;
 
-                    // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
-                    PackedQuantBDataBegin[new_idx] = static_cast<std::byte>(
-                        static_cast<unsigned>(PackedQuantBDataBegin[new_idx]) +
-                        (buf_val << (new_ing * g))
-                    );
+                // Reverse reshape 3: idx = c2_im * c2_nb0 + c2_ibm * c2_nb1 + c2_isni * c2_nb2 + c2_ing * c2_nb3 + c2_ik * c2_nb4 + c2_ikf
+                size_t c1_idx = c2_im * c2_nb0 + c2_ibm * c2_nb1 + c2_isni * c2_nb2 + c2_ing * c2_nb3 + c2_ik * c2_nb4 + c2_ikf;
+
+                // Reverse reshape 2: idx = c1_im * c1_fac0 + c1_isni * c1_fac1 + c1_ing * c1_fac2 + c1_ik
+                size_t c1_im = c1_idx / c1_fac0;
+                rem = c1_idx % c1_fac0;
+                size_t c1_isni = rem / c1_fac1;
+                rem = rem % c1_fac1;
+                size_t c1_ing = rem / c1_fac2;
+                size_t c1_ik = rem % c1_fac2;
+
+                // Reverse to c1 input: idx = c1_im * c1_nb0 + c1_ing * c1_nb1 + c1_isni * c1_nb2 + c1_ik
+                size_t c0_idx = c1_im * c1_nb0 + c1_ing * c1_nb1 + c1_isni * c1_nb2 + c1_ik;
+
+                // Reverse reshape 1: idx = c0_im * c0_fac0 + c0_ib * c0_fac1 + c0_isno * c0_fac2 + c0_ik
+                size_t c0_im = c0_idx / c0_fac0;
+                rem = c0_idx % c0_fac0;
+                size_t c0_ib = rem / c0_fac1;
+                rem = rem % c0_fac1;
+                size_t c0_isno = rem / c0_fac2;
+                size_t c0_ik = rem % c0_fac2;
+
+                // Original indices
+                size_t im = c0_im * simd_n_out + c0_isno;
+                size_t ib = c0_ib;
+                size_t ik_grouped = c0_ik;  // This is ik / g
+
+                // Now compute the bit-plane value directly from input
+                // We need to gather g bits from positions [ik_grouped * g, ik_grouped * g + g)
+                uint8_t buf_val = 0;
+                for (size_t shift = 0; shift < g; ++shift) {
+                    size_t ik = ik_grouped * g + shift;
+                    size_t src_idx = im * K + ik;
+                    size_t elem_idx = src_idx % num_elem_per_byte;
+                    uint8_t v = ((const uint8_t*)QuantBDataBegin)[src_idx / num_elem_per_byte] >> (elem_idx * bits);
+                    buf_val |= static_cast<uint8_t>(((v >> ib) & 1) << shift);
                 }
+
+                // Accumulate with shift
+                result += static_cast<uint8_t>(buf_val << (ng * g));
             }
+
+            PackedQuantBDataBegin[out_idx] = static_cast<std::byte>(result);
         }
     );
 }
@@ -288,7 +288,7 @@ LutPackScalesAndZeroPointsSize(
     }
 }
 
-// Internal helper: packs scales and zero points
+// Internal helper: packs scales and zero points (parallelized over N)
 static void
 LutPackScalesAndZeroPoints(
     size_t N,
@@ -298,7 +298,8 @@ LutPackScalesAndZeroPoints(
     bool HasZeroPoint,
     float* PackedQuantBZPBegin,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint
+    const uint8_t* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool
 )
 {
     const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
@@ -311,54 +312,58 @@ LutPackScalesAndZeroPoints(
     const size_t row_blks = K / BlkLen;  // number of blocks per column
     const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
 
-    for (size_t im = 0; im < N; im += 1) {
-        for (size_t ik = 0; ik < K; ik += BlkLen) {
-            size_t idx = (im * K + ik) / BlkLen;  // linear block index for scale (scale is NOT packed)
-            float scale = QuantBScale[idx];
-            float zp = 0.0f;
-            if (HasZeroPoint) {
-                size_t blk_in_col = ik / BlkLen;  // block index within column
-                size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
-                size_t elem_idx = blk_in_col % num_elem_per_byte;
-                uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & ((1 << bits) - 1);
+    // Precompute constants for index calculation
+    const size_t nb1 = K / BlkLen;
+    const size_t nb0 = bm / bits * nb1;
+    const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
+    const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
 
-                // The LUT kernel assumes weights are centered around the midpoint (2 for 2-bit).
-                // Thus, need to correct for the actual ZP relative to the midpoint.
+    // Parallelize over N (output channels)
+    MlasTrySimpleParallel(
+        ThreadPool, N,
+        [&](ptrdiff_t tid) {
+            size_t im = static_cast<size_t>(tid);
+            for (size_t ik = 0; ik < K; ik += BlkLen) {
+                size_t idx = im * nb1 + ik / BlkLen;  // linear block index for scale
+                float scale = QuantBScale[idx];
+                float zp = 0.0f;
+                if (HasZeroPoint) {
+                    size_t blk_in_col = ik / BlkLen;  // block index within column
+                    size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                    size_t elem_idx = blk_in_col % num_elem_per_byte;
+                    uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
 
-                int midpoint = 1 << (bits - 1);  // 2 for 2-bit
-                zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
-            }
+                    // The LUT kernel assumes weights are centered around the midpoint (2 for 2-bit).
+                    // Thus, need to correct for the actual ZP relative to the midpoint.
+                    zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+                }
 
-            // TODO(vraspar): fix when k < BlkLen and nb1 is 0
-            size_t nb1 = K / BlkLen;
-            size_t nb0 = bm / bits * nb1;
+                size_t new_im, new_ibm, new_ik;
+                if (nb1 == 0) {
+                    new_im = 0;
+                    new_ibm = 0;
+                    new_ik = 0;
+                } else {
+                    new_im = idx / nb0;
+                    new_ibm = (idx % nb0) / nb1;
+                    new_ik = (idx % nb1);
+                }
 
-            size_t new_im, new_ibm, new_ik;
-            if (nb1 == 0) {
-                new_im = 0;
-                new_ibm = 0;
-                new_ik = 0;
+                if (HasZeroPoint) {
+                    size_t new_isimd = new_ibm % simd_n_out;
+                    size_t new_idx_outer = new_im * bm / bits * nb1 / simd_n_out + new_ik * bm / bits / simd_n_out + new_ibm / simd_n_out;
+                    size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                    size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
 
-            } else {
-                new_im = idx / nb0;
-                new_ibm = (idx % nb0) / nb1;
-                new_ik = (idx % nb1);
-            }
-
-            if (HasZeroPoint) {
-                size_t new_isimd = new_ibm % simd_n_out;
-                size_t new_idx_outer = new_im * bm / bits * K / BlkLen / simd_n_out + new_ik * bm / bits / simd_n_out + new_ibm / simd_n_out;
-                size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
-                size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
-
-                PackedQuantBZPBegin[new_idx_scale] = scale;
-                PackedQuantBZPBegin[new_idx_zero] = zp;
-            } else {
-                size_t new_idx = new_im * bm / bits * K / BlkLen + new_ik * bm / bits + new_ibm;
-                PackedQuantBZPBegin[new_idx] = scale;
+                    PackedQuantBZPBegin[new_idx_scale] = scale;
+                    PackedQuantBZPBegin[new_idx_zero] = zp;
+                } else {
+                    size_t new_idx = new_im * bm / bits * nb1 + new_ik * bm / bits + new_ibm;
+                    PackedQuantBZPBegin[new_idx] = scale;
+                }
             }
         }
-    }
+    );
 }
 
 // Internal helper: calculates the offset to scales in the packed buffer
@@ -414,11 +419,11 @@ MlasLutGemmPack(
         LutGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, HasZeroPoint, QuantBData, PackedBuf, ThreadPool);
     }
 
-    // Pack scales/zero points if scales are provided
+    // Pack scales/zero points if scales are provided (parallelized)
     if (QuantBScale != nullptr) {
         size_t scales_offset = LutGemmPackedScalesOffset(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
         float* scales_dest = reinterpret_cast<float*>(PackedBuf + scales_offset);
-        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint);
+        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint, ThreadPool);
     }
 }
 
