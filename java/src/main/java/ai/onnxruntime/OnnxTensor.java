@@ -475,12 +475,18 @@ public class OnnxTensor extends OnnxTensorLike {
    *     native code encountered an error.
    */
   private ByteBuffer getBuffer() throws OrtException {
-    try {
+    // Definitely can't allocate a byte buffer greater than Integer.MAX_VALUE, and
+    // it's typically recommended to make it a little smaller than that as the actual
+    // upper limit is somewhat JVM dependent.
+    int maxSize = (Integer.MAX_VALUE / info.type.size) - 4;
+    if (info.getNumElements() < maxSize) {
       return getBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
-    } catch (IllegalArgumentException e) {
-      // thrown by the byte buffer constructor if the tensor is bigger than Integer.MAX_VALUE.
+    } else {
       throw new OrtException(
-          "Cannot construct a java.nio.Buffer of this size. Message: " + e.getMessage());
+          "Cannot construct a java.nio.Buffer of this size. This tensor has "
+              + info.getNumElements()
+              + ", and the maximum supported is "
+              + maxSize);
     }
   }
 
@@ -844,8 +850,11 @@ public class OnnxTensor extends OnnxTensorLike {
       long[] shape,
       OnnxJavaType type)
       throws OrtException {
-    if (!allocator.isClosed()) {
+    if (!allocator.isClosed() && env != null) {
       return createTensor(type, allocator, data, shape);
+    } else if (env == null) {
+      throw new IllegalStateException(
+          "Trying to create an OnnxTensor with an invalid OrtEnvironment.");
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
