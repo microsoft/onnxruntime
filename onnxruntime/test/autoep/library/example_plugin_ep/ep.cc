@@ -15,117 +15,97 @@
 #include "ep_factory.h"
 #include "ep_stream_support.h"
 
-/// <summary>
-/// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
-/// </summary>
-struct MulKernel {
-  MulKernel(const OrtApi& ort_api, const OrtLogger& logger,
-            const std::unordered_map<std::string, FloatInitializer>& float_initializers,
-            std::string input0_name, std::string input1_name)
-      : ort_api(ort_api),
-        logger(logger),
-        float_initializers(float_initializers),
-        input0_name(input0_name),
-        input1_name(input1_name) {}
+const FloatInitializer* MulKernel::TryGetSavedInitializer(const std::string& name) const {
+  auto iter = float_initializers.find(name);
+  return iter != float_initializers.end() ? &iter->second : nullptr;
+}
 
-  const FloatInitializer* TryGetSavedInitializer(const std::string& name) const {
-    auto iter = float_initializers.find(name);
-    return iter != float_initializers.end() ? &iter->second : nullptr;
-  }
+void MulKernel::GetInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                                     /*out*/ gsl::span<const float>& data,
+                                     /*out*/ std::vector<int64_t>& shape) const {
+  Ort::ConstValue input = kernel_context.GetInput(index);
+  auto type_shape = input.GetTensorTypeAndShapeInfo();
 
-  void GetInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
-                            /*out*/ gsl::span<const float>& data,
-                            /*out*/ std::vector<int64_t>& shape) const {
-    Ort::ConstValue input = kernel_context.GetInput(index);
-    auto type_shape = input.GetTensorTypeAndShapeInfo();
+  ONNXTensorElementDataType elem_type = type_shape.GetElementType();
+  if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
+    throw Ort::Exception("EP Expected float32 inputs", ORT_EP_FAIL);
 
-    ONNXTensorElementDataType elem_type = type_shape.GetElementType();
-    if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
-      throw Ort::Exception("EP Expected float32 inputs", ORT_EP_FAIL);
+  const float* float_data = input.GetTensorData<float>();
+  size_t num_elems = type_shape.GetElementCount();
+  data = gsl::span<const float>(float_data, num_elems);
+  shape = type_shape.GetShape();
+}
 
-    const float* float_data = input.GetTensorData<float>();
-    size_t num_elems = type_shape.GetElementCount();
-    data = gsl::span<const float>(float_data, num_elems);
-    shape = type_shape.GetShape();
-  }
+OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
+  RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
+                                            OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                            "MulKernel::Compute", ORT_FILE, __LINE__, __FUNCTION__));
+  Ort::KernelContext kernel_context(kernel_ctx);
+  try {
+    gsl::span<const float> input0;
+    gsl::span<const float> input1;
+    std::vector<int64_t> shape0;
+    std::vector<int64_t> shape1;
 
-  OrtStatus* Compute(OrtKernelContext* kernel_ctx) {
-    RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
-                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                              "MulKernel::Compute", ORT_FILE, __LINE__, __FUNCTION__));
-    Ort::KernelContext kernel_context(kernel_ctx);
-    try {
-      gsl::span<const float> input0;
-      gsl::span<const float> input1;
-      std::vector<int64_t> shape0;
-      std::vector<int64_t> shape1;
+    size_t num_inputs = kernel_context.GetInputCount();
 
-      size_t num_inputs = kernel_context.GetInputCount();
+    if (num_inputs == 2) {
+      // Both inputs are non-constant. Get them from ORT's KernelContext.
+      GetInputDataAndShape(kernel_context, 0, input0, shape0);
+      GetInputDataAndShape(kernel_context, 1, input1, shape1);
+    } else if (num_inputs == 1) {
+      // ORT is only providing one non-constant input because this EP chose not to request constant initializer inputs.
+      // Get the constant input from the initializers saved by the EP.
+      // Refer to "NodeFusionOptions_DropConstantInitializers()".
 
-      if (num_inputs == 2) {
-        // Both inputs are non-constant. Get them from ORT's KernelContext.
-        GetInputDataAndShape(kernel_context, 0, input0, shape0);
-        GetInputDataAndShape(kernel_context, 1, input1, shape1);
-      } else if (num_inputs == 1) {
-        // ORT is only providing one non-constant input because this EP chose not to request constant initializer inputs.
-        // Get the constant input from the initializers saved by the EP.
-        // Refer to "NodeFusionOptions_DropConstantInitializers()".
-
-        if (const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name); const_input0 != nullptr) {
-          GetInputDataAndShape(kernel_context, 0, input1, shape1);
-          input0 = gsl::span<const float>(const_input0->data);
-          shape0 = const_input0->shape;
-        } else if (const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name); const_input1 != nullptr) {
-          GetInputDataAndShape(kernel_context, 0, input0, shape0);
-          input1 = gsl::span<const float>(const_input1->data);
-          shape1 = const_input1->shape;
-        }
-      } else {
-        // Both inputs are constant. Should never happen unless all ORT optimizations (specifically constant-folding)
-        // are disabled.
-        const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name);
-        const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name);
-        RETURN_IF(const_input0 == nullptr || const_input1 == nullptr, ort_api,
-                  "Expected 2 initializer inputs to be saved by EP");
-
+      if (const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name); const_input0 != nullptr) {
+        GetInputDataAndShape(kernel_context, 0, input1, shape1);
         input0 = gsl::span<const float>(const_input0->data);
-        input1 = gsl::span<const float>(const_input1->data);
         shape0 = const_input0->shape;
+      } else if (const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name); const_input1 != nullptr) {
+        GetInputDataAndShape(kernel_context, 0, input0, shape0);
+        input1 = gsl::span<const float>(const_input1->data);
         shape1 = const_input1->shape;
       }
+    } else {
+      // Both inputs are constant. Should never happen unless all ORT optimizations (specifically constant-folding)
+      // are disabled.
+      const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name);
+      const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name);
+      RETURN_IF(const_input0 == nullptr || const_input1 == nullptr, ort_api,
+                "Expected 2 initializer inputs to be saved by EP");
 
-      if (shape0 != shape1) {
-        throw Ort::Exception("Expected same dimensions for both inputs", ORT_INVALID_ARGUMENT);
-      }
-
-      size_t num_outputs = kernel_context.GetOutputCount();
-      if (num_outputs != 1) {
-        throw Ort::Exception("Expected 1 output for MulKernel", ORT_INVALID_ARGUMENT);
-      }
-
-      auto output = kernel_context.GetOutput(0, shape0);
-      float* output_data = output.GetTensorMutableData<float>();
-
-      for (size_t i = 0; i < input0.size(); ++i) {
-        output_data[i] = input0[i] * input1[i];
-      }
-    } catch (const Ort::Exception& ex) {
-      Ort::Status status(ex);
-      return status.release();
-    } catch (const std::exception& ex) {
-      Ort::Status status(ex.what(), ORT_EP_FAIL);
-      return status.release();
+      input0 = gsl::span<const float>(const_input0->data);
+      input1 = gsl::span<const float>(const_input1->data);
+      shape0 = const_input0->shape;
+      shape1 = const_input1->shape;
     }
 
-    return nullptr;
+    if (shape0 != shape1) {
+      throw Ort::Exception("Expected same dimensions for both inputs", ORT_INVALID_ARGUMENT);
+    }
+
+    size_t num_outputs = kernel_context.GetOutputCount();
+    if (num_outputs != 1) {
+      throw Ort::Exception("Expected 1 output for MulKernel", ORT_INVALID_ARGUMENT);
+    }
+
+    auto output = kernel_context.GetOutput(0, shape0);
+    float* output_data = output.GetTensorMutableData<float>();
+
+    for (size_t i = 0; i < input0.size(); ++i) {
+      output_data[i] = input0[i] * input1[i];
+    }
+  } catch (const Ort::Exception& ex) {
+    Ort::Status status(ex);
+    return status.release();
+  } catch (const std::exception& ex) {
+    Ort::Status status(ex.what(), ORT_EP_FAIL);
+    return status.release();
   }
 
-  const OrtApi& ort_api;
-  const OrtLogger& logger;
-  const std::unordered_map<std::string, FloatInitializer>& float_initializers;
-  std::string input0_name;
-  std::string input1_name;
-};
+  return nullptr;
+}
 
 /// <summary>
 /// Example OrtNodeComputeInfo that represents the computation function for a compiled OrtGraph.
@@ -230,6 +210,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 
     for (const auto& node : nodes) {
       auto op_type = node.GetOperatorType();
+      auto domain = node.GetDomain();
 
       if (op_type == "Mul") {
         // Check that Mul has inputs/output of type float
@@ -262,6 +243,8 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 
         supported_nodes.push_back(node);  // Only support a single Mul for now.
         break;
+      } else if (op_type == "Custom_Mul" && domain == "test") {
+        supported_nodes.push_back(node);
       }
     }
 
@@ -269,19 +252,26 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       return nullptr;
     }
 
-    // Create (optional) fusion options for the supported nodes to fuse.
-    OrtNodeFusionOptions node_fusion_options = {};
-    node_fusion_options.ort_version_supported = ORT_API_VERSION;
+    if (supported_nodes[0].GetOperatorType() == "Mul") {
+      // Create (optional) fusion options for the supported nodes to fuse.
+      OrtNodeFusionOptions node_fusion_options = {};
+      node_fusion_options.ort_version_supported = ORT_API_VERSION;
 
-    // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
-    // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
-    // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
-    // during inference.
-    node_fusion_options.drop_constant_initializers = true;
-    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
-                                                                 reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
-                                                                 supported_nodes.size(),
-                                                                 &node_fusion_options));
+      // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
+      // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
+      // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
+      // during inference.
+      node_fusion_options.drop_constant_initializers = true;
+      RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info,
+                                                                   reinterpret_cast<const OrtNode* const*>(supported_nodes.data()),
+                                                                   supported_nodes.size(),
+                                                                   &node_fusion_options));
+    } else if (supported_nodes[0].GetOperatorType() == "Custom_Mul") {
+      // Calls EpGraphSupportInfo_AddSingleNode() to inform ORT that the custom node should NOT be fused or compiled,
+      // as CustomMul has the concrete kernel implementation.
+      RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddSingleNode(graph_support_info, supported_nodes[0]));
+    }
+
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);
     return status.release();

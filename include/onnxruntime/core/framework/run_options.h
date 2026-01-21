@@ -51,6 +51,11 @@ struct OrtRunOptions {
 
   onnxruntime::InlinedVector<const onnxruntime::lora::LoraAdapter*> active_adapters;
 
+  // Optional sync stream for external resource import.
+  // When set, the EP uses this stream for execution, enabling proper
+  // synchronization with imported external semaphores.
+  OrtSyncStream* sync_stream = nullptr;
+
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
 };

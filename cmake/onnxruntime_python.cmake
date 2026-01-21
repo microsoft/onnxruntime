@@ -297,8 +297,22 @@ if (WIN32)
   if (onnxruntime_USE_CUDA)
     file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
     if(onnxruntime_CUDNN_HOME)
-      file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll")
-      if (NOT CUDNN_DLL_PATH)
+      # may have x64 in the path
+      # may have a path with CUDA toolkit version if multiple installed on the machine
+      set(CUDNN_SEARCH_PATHS
+        "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/x64/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/x64/cudnn64_*.dll"
+      )
+      set(CUDNN_DLL_PATH "")
+      foreach(search_path ${CUDNN_SEARCH_PATHS})
+        file(GLOB CUDNN_DLL_PATH "${search_path}")
+        if(CUDNN_DLL_PATH)
+          break()
+        endif()
+      endforeach()
+      if(NOT CUDNN_DLL_PATH)
         message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
       endif()
     else()
