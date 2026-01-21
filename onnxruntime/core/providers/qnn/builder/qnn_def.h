@@ -232,6 +232,7 @@ class QnnTensorWrapper {
   //   - Unexpected Qnn_TensorType_t: only handle graph inputs/outputs, not static initializers with data buffers.
   //   - Unexpected quantization encoding.
   Status Init(const Qnn_Tensor_t& qnn_tensor) {
+
     Qnn_TensorType_t tensor_type = GetQnnTensorType(qnn_tensor);
     ORT_RETURN_IF(tensor_type == QNN_TENSOR_TYPE_STATIC,
                   "QnnTensorWrapper::Init(const Qnn_Tensor_t&) does not support static initializers");
@@ -242,6 +243,8 @@ class QnnTensorWrapper {
     qnn_tensor_ = qnn_tensor;
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
 
+    std::cout << "Initializing QnnTensorWrapper from Qnn_Tensor_t: " << tensor_name_ << std::endl;
+
     const Qnn_QuantizeParams_t& src_quantize_param = GetQnnTensorQParams(qnn_tensor);
     ORT_RETURN_IF_ERROR(quant_params_.Init(src_quantize_param));
     SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
@@ -251,7 +254,7 @@ class QnnTensorWrapper {
     dimensions_.assign(shape_data, shape_data + shape_rank);
     SetQnnTensorDim(qnn_tensor_, dimensions_);
 
-    SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
+    SetQnnTensorMemType(qnn_tensor_, GetQnnTensorMemType(qnn_tensor));
 
     return Status::OK();
   }

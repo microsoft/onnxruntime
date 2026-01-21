@@ -79,7 +79,7 @@ Status CastOpBuilder::ProcessExtraInputForNotEqual(QnnModelWrapper& qnn_model_wr
                                         qnn_data_type,
                                         QnnQuantParamsWrapper(),
                                         std::vector<uint32_t>{1},
-                                        std::vector<uint8_t>(utils::GetElementSizeByType(qnn_data_type), 0));
+                                        std::vector<uint8_t>(utils::GetElementSizeByType(qnn_data_type), 0), QNN_TENSORMEMTYPE_MEMHANDLE);
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor_wrapper)),
                     "Failed to add additional input tensor for QNN Cast node that will be replaced by NotEqual.");
   input_names.push_back(input_name);
@@ -128,8 +128,13 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                             type_proto,
                                             qnn_data_type));
 
+  std::cout << "Adding input tensor for QNN Cast node: " << input_name << std::endl;
+  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (qnn_model_wrapper.IsGraphInput(input_name)) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+  }
   QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, QnnQuantParamsWrapper(),
-                                       std::move(input_shape), std::move(unpacked_tensor));
+                                       std::move(input_shape), std::move(unpacked_tensor), mem_type);
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)),
                     "Failed to add input tensor for QNN Cast node.");
   input_names.push_back(input_name);
@@ -166,11 +171,18 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   if (qnn_data_type == QNN_DATATYPE_INT_64 && tensor_type == QNN_TENSOR_TYPE_NATIVE) {
     qnn_data_type = QNN_DATATYPE_INT_32;
   }
+  std::cout << "Adding output tensor for QNN Cast node: " << output_name << std::endl;
+  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (qnn_model_wrapper.IsGraphOutput(output_name)) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+  }
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         qnn_data_type,
                                         QnnQuantParamsWrapper(),
-                                        std::move(output_shape));
+                                        std::move(output_shape),
+                                        {},
+                                        mem_type);
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)),
                     "Failed to add output tensor for QNN Cast node.");
 

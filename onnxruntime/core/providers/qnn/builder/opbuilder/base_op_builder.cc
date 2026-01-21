@@ -330,11 +330,15 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
       output_names.push_back(output_name);
     }
     Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+    if (is_graph_output) {
+      std::cout << "[BaseOpBuilder] Adding output tensor for QNN node: " << output_name << " as graph output." << std::endl;
+    }
     QnnTensorWrapper output_tensorwrapper(output_name,
                                           tensor_type,
                                           output_info.qnn_data_type,
                                           std::move(output_info.quant_param),
-                                          std::move(output_info.shape));
+                                          std::move(output_info.shape),
+                                          {}, mem_type);
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   }
 

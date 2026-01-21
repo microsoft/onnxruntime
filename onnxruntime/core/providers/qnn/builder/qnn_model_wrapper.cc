@@ -68,27 +68,50 @@ Status QnnModelWrapper::MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensor
     ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
   }
 
+  // std::cout << "=========================================================" << std::endl;
+  // std::cout << "Processing tensor: " << tensor_name << std::endl;
+  // std::cout << "is_initializer: " << tensor_info.is_initializer << std::endl;
+  // std::cout << "is_graph_input: " << IsGraphInput(tensor_name) << std::endl;
+  // std::cout << "is_graph_output: " << IsGraphOutput(tensor_name) << std::endl;
+
   Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
-  if (true == model_settings_.htp_shared_memory && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
+  if (true == model_settings_.htp_shared_memory && !tensor_info.is_initializer && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
     mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+    // std::cout << "Setting mem_type to MEMHANDLE for tensor: " << tensor_name << std::endl;
   }
   tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
                                     std::move(tensor_info.quant_param), std::move(tensor_info.shape),
                                     std::move(unpacked_tensor), mem_type);
+
+  // std::cout << "=========================================================" << std::endl;
   return Status::OK();
 }
 
 Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
                                           const std::string& tensor_name,
                                           QnnTensorWrapper& tensor_wrapper) const {
+
+  std::cout << "=========================================================" << std::endl;
+  std::cout << "Processing tensor: " << tensor_name << std::endl;
+  std::cout << "is_initializer: " << tensor_info.is_initializer << std::endl;
+  std::cout << "is_graph_input: " << IsGraphInput(tensor_name) << std::endl;
+  std::cout << "is_graph_output: " << IsGraphOutput(tensor_name) << std::endl;
+  std::cout << "=========================================================" << std::endl;
+
   std::vector<uint8_t> unpacked_tensor;
   if (tensor_info.is_initializer) {
     ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
   }
 
+  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (true == model_settings_.htp_shared_memory && !tensor_info.is_initializer && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+    std::cout << "Setting mem_type to MEMHANDLE for tensor: " << tensor_name << std::endl;
+  }
+
   tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
                                     tensor_info.quant_param.Copy(), std::vector<uint32_t>(tensor_info.shape),
-                                    std::move(unpacked_tensor));
+                                    std::move(unpacked_tensor), mem_type);
   return Status::OK();
 }
 
@@ -101,9 +124,20 @@ bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   }
 
   if (IsQnnTensorWrapperExist(tensor_name) == true) {
+    if (IsGraphOutput(tensor_name)) {
+      std::cout << "Graph output tensor already exists, skipping add: " << tensor_name << std::endl;
+    }
     LOGS(logger_, VERBOSE) << "Tensor exist already: " << tensor_name;
     return true;
   }
+
+  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (true == model_settings_.htp_shared_memory && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+    // std::cout << "Setting mem_type to MEMHANDLE for tensor: " << tensor_name << std::endl;
+  }
+
+  SetQnnTensorMemType(tensor_wrapper.GetQnnTensor(), mem_type);
 
   const Qnn_TensorType_t& qnn_tensor_type = tensor_wrapper.GetTensorType();
   // save created tensors for later lookup to populate graph node construction
