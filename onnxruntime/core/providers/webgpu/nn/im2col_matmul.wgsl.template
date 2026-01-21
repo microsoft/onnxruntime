@@ -33,7 +33,7 @@ fn load_src(batch : u32, m : u32, k_packed_idx : u32) -> src_value_t {
 
   // 4. Calculate the coordinate in the original input tensor
   let src_h_coord : i32 = i32(src_h_coord_padded) - i32(uniforms.pads.x);
-  let src_w_coord : i32 = i32(src_w_coord_padded) - i32(uniforms.pads.z);
+  let src_w_coord : i32 = i32(src_w_coord_padded) - i32(uniforms.pads.y);
 
   // 5. Check for padding/out-of-bounds
   if (src_h_coord < 0 || src_h_coord >= i32(uniforms.src_h) ||

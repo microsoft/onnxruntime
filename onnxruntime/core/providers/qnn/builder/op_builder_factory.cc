@@ -213,6 +213,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateQuickGeluOpBuilder("QuickGelu", *this);
+  }
+
+  {
     CreateModOpBuilder("Mod", *this);
   }
 
@@ -229,6 +233,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateFusedMatMulOpBuilder("FusedMatMul", *this);
     CreateMatMulNBitsOpBuilder("MatMulNBits", *this);
   }
 }

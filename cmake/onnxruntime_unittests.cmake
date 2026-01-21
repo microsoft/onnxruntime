@@ -949,9 +949,9 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
-  add_dependencies(onnxruntime_providers_cuda_ut onnxruntime_test_utils onnxruntime_common)
+  add_dependencies(onnxruntime_providers_cuda_ut onnxruntime_test_utils)
   target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
-  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_test_utils onnxruntime_common)
+  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_test_utils)
   if (MSVC)
     # Cutlass code has an issue with the following:
     # warning C4100: 'magic': unreferenced formal parameter
@@ -1233,7 +1233,7 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
-  # Expose QNN SDK headers to unit tests via an interface target 
+  # Expose QNN SDK headers to unit tests via an interface target
   if(onnxruntime_USE_QNN)
     add_library(qnn_sdk_headers_include INTERFACE)
     target_include_directories(qnn_sdk_headers_include INTERFACE
@@ -1241,7 +1241,7 @@ block()
       ${onnxruntime_QNN_HOME}/include/QNN)
     target_link_libraries(onnxruntime_provider_test PRIVATE qnn_sdk_headers_include)
   endif()
-  
+
   if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
     # The test_main.cc includes NvInfer.h where it has many deprecated declarations
     # simply ignore them for TensorRT EP build
