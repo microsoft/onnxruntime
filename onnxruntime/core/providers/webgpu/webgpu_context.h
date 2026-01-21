@@ -184,8 +184,6 @@ class WebGpuContext final {
    */
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
-  webgpu::BufferManager& PrepackBufferManager() const { return *prepack_buffer_mgr_; }
-
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
   }
@@ -326,7 +324,6 @@ class WebGpuContext final {
 
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
   std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
-  std::unique_ptr<webgpu::BufferManager> prepack_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
 
   uint32_t num_pending_dispatches_ = 0;
