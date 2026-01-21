@@ -4393,6 +4393,13 @@ Node& Graph::AddNode(const NodeProto& node_proto,
                            &attributes,
                            node_proto.domain());
 
+#ifndef ORT_MINIMAL_BUILD
+  auto maybe_annotation = utils::GetNodeProtoLayeringAnnotation(node_proto);
+  if (maybe_annotation) {
+    new_node.SetLayeringAnnotation(std::move(*maybe_annotation));
+  }
+#endif
+
   // Perf optimization: temporarily set NodeProto in Node so we don't need to call Node::ToProto prior to
   // calling onnx::check_node
   // NOTE: We don't handle a node with kOnnxDomainAlias. The entry in schema_registry_ uses kOnnxDomain,

@@ -332,6 +332,21 @@ static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "sessi
 static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
     "session.resource_cuda_partitioning_settings";
 
+/// <summary>
+/// This is a setting that contains string annotations or annotation prefixes to be matched
+/// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.
+/// The value is a semicolon separated list of strings or string prefixes per device.
+/// Format: device1(annotation1, annotation2, ...); device2(annotation1, =annotation3, ...);...
+/// Where:
+/// - device1, device2, ... are the recognized device names to be matched against EPs configured in
+///   the given session.
+/// - annotation1, annotation2, ... are the exact annotation strings to be matched against node annotations
+/// - =annotation3 indicates a prefix match for annotation3. Any node annotation that starts with
+///   'annotation3' will be matched.
+/// TODO: add a list of recognized devices here.
+/// </summary>
+static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.layer_assignment_settings";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)

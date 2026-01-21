@@ -1323,7 +1323,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs
     // The map is empty if not created if not enabled
     std::optional<ResourceAccountantMap> ep_acc_map;
-    ORT_RETURN_IF_ERROR(NodeStatsRecorder::CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
+    ORT_RETURN_IF_ERROR(CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
 
     bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,

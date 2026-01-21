@@ -11,6 +11,7 @@
 
 #include "core/framework/config_options.h"
 #include "core/framework/murmurhash3.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -20,15 +21,18 @@
 namespace onnxruntime {
 
 // Use this accountant if your resource can be counted with size_t type
-class SizeTAccountant : public IResourceAccountant {
+// This accountant uses NodeAllocationStats to compute resource consumption per node
+// which can be collected and saved to a file OR loaded from a file and used for partitioning.
+// This is currently used for CUDA EP.
+class SizeBasedStatsAccountant : public IResourceAccountant {
  public:
-  SizeTAccountant() = default;
-  ~SizeTAccountant() = default;
+  SizeBasedStatsAccountant() = default;
+  ~SizeBasedStatsAccountant() = default;
 
-  SizeTAccountant(size_t threshold, InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
+  SizeBasedStatsAccountant(size_t threshold, InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
       : IResourceAccountant(threshold), node_stats_(std::move(node_stats)) {}
 
-  explicit SizeTAccountant(InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
+  explicit SizeBasedStatsAccountant(InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
       : IResourceAccountant(), node_stats_(std::move(node_stats)) {}
 
   ResourceCount GetConsumedAmount() const noexcept override {
@@ -46,7 +50,7 @@ class SizeTAccountant : public IResourceAccountant {
     }
   }
 
-  ResourceCount ComputeResourceCount(const Node& node) const override {
+  ResourceCount ComputeResourceCount(const Node& node) override {
     const auto node_name = MakeUniqueNodeName(node);
     auto hit = node_stats_.find(node_name);
     if (hit != node_stats_.end()) {
@@ -60,6 +64,67 @@ class SizeTAccountant : public IResourceAccountant {
  private:
   size_t consumed_amount_ = 0;
   InlinedHashMap<std::string, NodeAllocationStats> node_stats_;
+};
+
+// Use this accountant if your resource can be counted with size_t type
+// This accountant calculates the resource consumption based on node consumed
+// weights since those are the biggest consumers. It prevents double accounting.
+// The accountant is used for ad-hoc partitioning when runtime consumables are not
+// known (see SizeBasedStatsAccountant above for recording and replaying consumption
+// based on real runs) but we want to run out of the box on as many environments
+// as possible.
+class WeightsSizeBasedAccountant : public IResourceAccountant {
+ public:
+  WeightsSizeBasedAccountant() = default;
+  ~WeightsSizeBasedAccountant() = default;
+
+  ResourceCount GetConsumedAmount() const noexcept override {
+    return consumed_amount_;
+  }
+
+  void AddConsumedAmount(const ResourceCount& amount) noexcept override {
+    if (std::holds_alternative<size_t>(amount)) {
+      consumed_amount_ += std::get<size_t>(amount);
+    }
+  }
+  void RemoveConsumedAmount(const ResourceCount& amount) noexcept override {
+    if (std::holds_alternative<size_t>(amount)) {
+      consumed_amount_ -= std::get<0>(amount);
+    }
+  }
+
+  ResourceCount ComputeResourceCount(const Node& node) override {
+    const auto* graph = node.GetContainingGraph();
+    if (!graph) return static_cast<size_t>(0);
+
+    size_t total_size = 0;
+    for (const auto* input_def : node.InputDefs()) {
+      if (!input_def->Exists()) continue;
+
+      const auto& name = input_def->Name();
+      bool check_outer_scope = true;
+      const auto* tensor_proto = graph->GetInitializer(name, check_outer_scope);
+
+      if (tensor_proto) {
+        if (accounted_weights_.find(name) != accounted_weights_.end()) {
+          continue;
+        }
+
+        size_t size = 0;
+        auto status = utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &size);
+
+        if (status.IsOK()) {
+          total_size += size;
+          accounted_weights_.insert(name);
+        }
+      }
+    }
+    return total_size;
+  }
+
+ private:
+  size_t consumed_amount_ = 0;
+  InlinedHashSet<std::string> accounted_weights_;
 };
 
 struct NodeStatsRecorder::Impl {
@@ -155,10 +220,11 @@ static Status LoadNodeAllocationStats(
   return Status::OK();
 }
 
-Status NodeStatsRecorder::CreateAccountants(
+Status CreateAccountants(
     const ConfigOptions& config_options,
     const std::filesystem::path& model_path,
     std::optional<ResourceAccountantMap>& acc_map) {
+  std::optional<ResourceAccountantMap> result;
   // Check if CUDA partitioning settings are provided
   const std::string resource_partitioning_settings = config_options.GetConfigOrDefault(
       kOrtSessionOptionsResourceCudaPartitioningSettings, "");
@@ -173,7 +239,6 @@ Status NodeStatsRecorder::CreateAccountants(
       InlinedHashMap<std::string, NodeAllocationStats> loaded_stats;
       ORT_RETURN_IF_ERROR(LoadNodeAllocationStats(model_path, splits[1], loaded_stats));
 
-      std::optional<ResourceAccountantMap> result;
       auto& map = result.emplace();
 
       if (!splits[0].empty()) {
@@ -181,21 +246,28 @@ Status NodeStatsRecorder::CreateAccountants(
         ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(std::string{splits[0]}, cuda_memory_limit));
         cuda_memory_limit = SafeInt<size_t>(cuda_memory_limit) * 1024;  // to bytes
         map.insert_or_assign(kCudaExecutionProvider,
-                             std::make_unique<SizeTAccountant>(cuda_memory_limit,
-                                                               std::move(loaded_stats)));
+                             std::make_unique<SizeBasedStatsAccountant>(cuda_memory_limit,
+                                                                        std::move(loaded_stats)));
       } else {
         map.insert_or_assign(kCudaExecutionProvider,
-                             std::make_unique<SizeTAccountant>(std::move(loaded_stats)));
+                             std::make_unique<SizeBasedStatsAccountant>(std::move(loaded_stats)));
       }
-
-      acc_map = std::move(result);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid format for: ",
                              kOrtSessionOptionsResourceCudaPartitioningSettings,
                              " : expecting comma separated fields");
     }
+  } else {
+    const std::string layer_assignments =
+        config_options.GetConfigOrDefault(kOrtSessionOptionsLayerAssignmentSettings, "");
+    if (!layer_assignments.empty()) {
+      auto& map = result.emplace();
+      map.insert_or_assign(kCudaExecutionProvider,
+                           std::make_unique<WeightsSizeBasedAccountant>());
+    }
   }
 
+  acc_map = std::move(result);
   return Status::OK();
 }
 

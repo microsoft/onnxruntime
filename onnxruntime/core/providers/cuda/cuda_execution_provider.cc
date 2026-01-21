@@ -2938,16 +2938,18 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
 
     auto threshold = resource_accountant->GetThreshold();
-    if (!threshold.has_value()) {
+    if (!threshold) {
       // info_.gpu_mem_limit is for BFC arena
       size_t free_memory, total_memory;
       if (0 != cudaMemGetInfo(&free_memory, &total_memory)) {
         memory_threshold = info_.gpu_mem_limit;
+        LOGS(logger, WARNING)
+            << "CUDA_EP failed to get available GPU memory info. Using info_.gpu_mem_limit instead: " << info_.gpu_mem_limit;
       } else {
         memory_threshold = std::min(free_memory, info_.gpu_mem_limit);
       }
     } else {
-      memory_threshold = std::get<0>(threshold.value());
+      memory_threshold = std::get<0>(*threshold);
     }
 
     consumed_memory = std::get<0>(resource_accountant->GetConsumedAmount());

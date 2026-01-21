@@ -175,6 +175,15 @@ class Node {
   void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
 
 #if !defined(ORT_MINIMAL_BUILD)
+  void SetLayeringAnnotation(std::string annotation) { layering_annotation_ = std::move(annotation); }
+
+  const std::string& GetLayeringAnnotation() const { return layering_annotation_; }
+
+  void ClearLayeringAnnotation() {
+    std::string t;
+    layering_annotation_.swap(t);
+  }
+
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
@@ -568,6 +577,8 @@ class Node {
   friend class Graph;
   Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
 
+  const Graph* GetContainingGraph() const noexcept { return graph_; }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
@@ -684,6 +695,10 @@ class Node {
 
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::string layering_annotation_;
+#endif
 
   // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
   bool can_be_saved_;

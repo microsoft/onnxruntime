@@ -9,6 +9,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/layering_annotations.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/ep_context_options.h"

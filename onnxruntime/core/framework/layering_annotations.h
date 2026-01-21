@@ -1,0 +1,253 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include "core/common/inlined_containers.h"
+#include "core/common/status.h"
+#include "core/graph/basic_types.h"
+#include "core/common/logging/logging.h"
+#include "gsl/gsl"
+#include <string>
+#include <vector>
+#include <optional>
+#include <memory>
+
+struct OrtEpDevice;
+
+namespace onnxruntime {
+class ExecutionProviders;
+class Graph;
+
+/// <summary>
+/// Annotation extracted from kOrtSessionOptionsLayerAssignmentSettings session configuration option.
+/// </summary>
+struct LayerAnnotation {
+  std::string device;
+  std::string annotation;
+  bool prefix_match;
+};
+
+/// <summary>
+/// This struct is a container for layering rules extracted from the kOrtSessionOptionsLayerAssignmentSettings
+/// session configuration option.
+/// </summary>
+struct LayeringRules {
+  std::vector<LayerAnnotation> rules;
+  /// <summary>
+  /// Parses the layering rules from the given configuration string.
+  /// </summary>
+  /// <param name="config_value">The configuration string to parse.</param>
+  /// <param name="rules">Output parameter where the parsed rules will be stored.</param>
+  /// <returns>Status indicating success or failure (e.g. due to format errors).</returns>
+  static common::Status FromConfigString(const std::string& config_value, LayeringRules& rules);
+};
+
+/// <summary>
+/// This class matches node annotations against layering rules.
+/// </summary>
+class LayeringRuleMatcher {
+ public:
+  explicit LayeringRuleMatcher(const LayeringRules& rules);
+
+  /// <summary>
+  /// The method returns the index of the best matching rule for the given annotation
+  /// if it exists
+  /// </summary>
+  /// <param name="node_annotation">annotation retrieved from protobuf node metadata</param>
+  /// <returns>index of the matching LayeringRule if it exists</returns>
+  std::optional<size_t> Match(const std::string& node_annotation) const;
+
+ private:
+  struct TrieNode {
+    InlinedHashMap<char, std::unique_ptr<TrieNode>> children;
+    std::optional<size_t> rule_index;
+  };
+
+  TrieNode root_;
+  InlinedHashMap<std::string, size_t> exact_match_rules_;
+
+  void AddExactRule(const std::string& annotation, size_t index) {
+    // Only store the first occurrence (lowest index)
+    exact_match_rules_.insert({annotation, index});
+  }
+
+  void AddPrefixRule(const std::string& annotation, size_t index) {
+    TrieNode* current = &root_;
+    for (char c : annotation) {
+      auto p = current->children.insert({c, nullptr});
+      if (p.second) {
+        p.first->second = std::make_unique<TrieNode>();
+      }
+      current = p.first->second.get();
+    }
+
+    // Only store if strictly better (lower index) or not set
+    // Since we iterate rules 0..N, if a rule index is already set for this node,
+    // it corresponds to a higher priority rule, so we skip overwriting it.
+    if (!current->rule_index) {
+      current->rule_index = index;
+    }
+  }
+
+  void UpdateBestMatch(std::optional<size_t>& current_best, size_t candidate) const {
+    if (!current_best || candidate < *current_best) {
+      current_best = candidate;
+    }
+  }
+};
+
+namespace EpLayeringMatcher {
+/// <summary>
+/// Matches a list of available OrtEpDevices against the device string specified in the LayerAnnotation.
+/// Returns the EP Type string of the first device that matches the rule.
+/// </summary>
+/// <param name="ep_devices">The list of available EP devices.</param>
+/// <param name="rule">The rule containing the device designator.</param>
+/// <returns>Optional containing the matched EP type, nullopt otherwise.</returns>
+std::optional<std::string> Match(gsl::span<const OrtEpDevice* const> ep_devices,
+                                 const LayerAnnotation& rule);
+
+/// <summary>
+/// Matches a collection of ExecutionProviders against the device string specified in the LayerAnnotation.
+/// Returns the EP Type string of the first provider that matches the rule.
+/// </summary>
+/// <param name="providers">The collection of available Execution Providers.</param>
+/// <param name="rule">The rule containing the device designator.</param>
+/// <returns>Optional containing the matched EP type, nullopt otherwise.</returns>
+std::optional<std::string> Match(const ExecutionProviders& providers, const LayerAnnotation& rule);
+};  // namespace EpLayeringMatcher
+
+// This class contains indexing information about the entire graph
+// per sub-graph info is stored in graph_index_
+class LayeringIndex {
+ public:
+  // mapping of EP name/type to a set of LayeringRule indices mapped to that EP.
+  using EpNameToLayeringIndices = InlinedHashMap<std::string, InlinedHashSet<size_t>>;
+  // mapping of LayeringRule index to EP name/type, reverse of the above
+  using LayeringIndexToEpName = InlinedHashMap<size_t, std::string>;
+
+  /// <summary>
+  /// Creates a fully initialized LayeringIndex.
+  /// </summary>
+  /// <param name="graph">The graph to traverse and index.</param>
+  /// <param name="ep_map">Pre-populated mapping of EP names to their applicable rule indices.</param>
+  /// <param name="rule_map">Pre-populated mapping of rule indices to EP names.</param>
+  /// <param name="matcher">Matcher to resolve node annotations to rule indices.</param>
+  static LayeringIndex Create(Graph& graph,
+                              EpNameToLayeringIndices ep_map,
+                              LayeringIndexToEpName rule_map,
+                              const LayeringRuleMatcher& matcher);
+
+  /// <summary>
+  /// Factory method that creates a LayeringIndex by parsing configuration, matching rules against
+  /// available devices/providers, and indexing the graph.
+  /// </summary>
+  /// <param name="graph">The graph to index.</param>
+  /// <param name="config_string">The configuration string containing layering rules.</param>
+  /// <param name="ep_devices">Available OrtEpDevices to match rules against.</param>
+  /// <param name="ep_providers">Available ExecutionProviders to match rules against (fallback).</param>
+  /// <param name="logger">Logger for reporting information/errors.</param>
+  /// <param name="layering_index">Output parameter for the created LayeringIndex. Returns no index if
+  ///              no valid layering rules discovered.</param>
+  /// <returns>Status indicating success or failure.</returns>
+  static Status Create(Graph& graph,
+                       const std::string& config_string,
+                       gsl::span<const OrtEpDevice* const> ep_devices,
+                       const ExecutionProviders& ep_providers,
+                       const logging::Logger& logger,
+                       std::optional<LayeringIndex>& layering_index);
+
+  // Returns the Layering Rule indices mapped to the EP if any
+  std::optional<std::reference_wrapper<const InlinedHashSet<size_t>>>
+  GetLayeringRulesForThisEp(const std::string& ep_type) const {
+    auto hit = ep_name_to_layering_indices_.find(ep_type);
+    if (hit == ep_name_to_layering_indices_.end()) {
+      return {};
+    }
+    return hit->second;
+  }
+
+  // This function returns an index for the Layering rule the node is assigned to if any
+  std::optional<size_t> GetNodeAssignment(const Graph& graph, NodeIndex node_id) const {
+    auto hit = graph_index_.find(&graph);
+    if (hit == graph_index_.end()) {
+      // this should not be possible
+      assert(false);
+      return {};
+    }
+
+    // Nodes in subgraph that were not annotated has already inherited their
+    // annotation if any from the parent node of the subgraph
+    const auto& graph_layering_index = hit->second;
+    auto layer_hit = graph_layering_index.node_to_layering_index_.find(node_id);
+    if (layer_hit != graph_layering_index.node_to_layering_index_.end()) {
+      return layer_hit->second;
+    }
+    return {};
+  }
+
+  // This is used when an EP fails to claim a node during partitioning so we make it
+  // available for other EPs
+  void MakeNodeUnassigned(const Graph& graph, NodeIndex node_id) {
+    auto hit = graph_index_.find(&graph);
+    if (hit == graph_index_.end()) {
+      // this should not be possible
+      assert(false);
+      return;
+    }
+    auto& graph_layering_index = hit->second;
+    auto node_to_layer_hit = graph_layering_index.node_to_layering_index_.find(node_id);
+    std::optional<size_t> layer_idx;
+    if (node_to_layer_hit != graph_layering_index.node_to_layering_index_.end()) {
+      // Get the layer index
+      layer_idx = node_to_layer_hit->second;
+      graph_layering_index.node_to_layering_index_.erase(node_to_layer_hit);
+    }
+
+    // Remove node from layer collection
+    if (layer_idx) {
+      auto layer_to_nodes_hit = graph_layering_index.layer_to_node_ids_.find(*layer_idx);
+      if (layer_to_nodes_hit != graph_layering_index.layer_to_node_ids_.end()) {
+        layer_to_nodes_hit->second.erase(node_id);
+      }
+    }
+  }
+
+ private:
+  // These stay constant
+  EpNameToLayeringIndices ep_name_to_layering_indices_;
+  LayeringIndexToEpName layering_index_to_ep_name_;
+
+  using SetOfNodes = InlinedHashSet<NodeIndex>;
+  using LayerIndexToNodes = InlinedHashMap<size_t, SetOfNodes>;
+  using NodeIndexToLayeringIndex = InlinedHashMap<NodeIndex, size_t>;
+
+  /// <summary>
+  /// This struct contains the result of layering assignment for a graph.
+  /// The struct first reflects pre-assignment according to the configuration.
+  /// However, as we partition the graph, some nodes may be moved to unassigned sections
+  /// to make them available to subsequent partitioning passes.
+  /// </summary>
+  struct GraphLayeringIndex {
+    // Node to layering idx assignment map 1:1
+    // If the node is not in this map, it is unassigned
+    NodeIndexToLayeringIndex node_to_layering_index_;
+    // This map contains mapping of LayeringRule index to the list of node ids
+    // Revers from the above 1:M
+    LayerIndexToNodes layer_to_node_ids_;
+  };
+
+  LayeringIndex() = default;
+
+  LayeringIndex(EpNameToLayeringIndices ep_name_to_layering_indices, LayeringIndexToEpName layering_index_to_ep_name)
+      : ep_name_to_layering_indices_(std::move(ep_name_to_layering_indices)),
+        layering_index_to_ep_name_(std::move(layering_index_to_ep_name)) {}
+
+  // Graph and sub-graphs mapping to their indices
+  InlinedHashMap<const Graph*, GraphLayeringIndex> graph_index_;
+
+  void ProcessGraph(Graph& graph, const LayeringRuleMatcher& matcher, std::optional<size_t> parent_layer_id);
+};
+
+}  // namespace onnxruntime

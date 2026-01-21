@@ -45,10 +45,14 @@ class IResourceAccountant {
   virtual ResourceCount GetConsumedAmount() const = 0;
   virtual void AddConsumedAmount(const ResourceCount& amount) = 0;
   virtual void RemoveConsumedAmount(const ResourceCount& amount) = 0;
-  virtual ResourceCount ComputeResourceCount(const Node& node) const = 0;
+  virtual ResourceCount ComputeResourceCount(const Node& node) = 0;
 
   std::optional<ResourceCount> GetThreshold() const {
     return threshold_;
+  }
+
+  void SetThreshold(const ResourceCount& threshold) {
+    threshold_ = threshold;
   }
 
   void SetStopAssignment() noexcept {
@@ -114,16 +118,16 @@ class NodeStatsRecorder {
 
   void DumpStats(const std::filesystem::path& model_path) const;
 
-  [[nodiscard]] static Status CreateAccountants(
-      const ConfigOptions& config_options,
-      const std::filesystem::path& model_path,
-      std::optional<ResourceAccountantMap>& acc_map);
-
  private:
   void DumpStats(std::ostream& os) const;
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+Status CreateAccountants(
+    const ConfigOptions& config_options,
+    const std::filesystem::path& model_path,
+    std::optional<ResourceAccountantMap>& acc_map);
 
 }  // namespace onnxruntime
