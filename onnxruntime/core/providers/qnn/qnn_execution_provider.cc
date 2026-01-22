@@ -567,11 +567,18 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
-  if (ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map) || enable_file_mapped_weights_) {
+  bool enable_htp_shared_mem_allocator = ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map);
+  if (enable_htp_shared_mem_allocator || enable_file_mapped_weights_) {
     // Initialize rpcmem_library_.
-    // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
-    rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
-    model_settings_.htp_shared_memory = true;
+    // This is necessary for HtpSharedMemoryAllocator and file mapped weights to function and
+    // also indicates that the allocator is available.
+    try {
+      rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    } catch (std::exception e) {
+      // If unable to load, return empty capability on GetCapability() call
+      LOGS_DEFAULT(ERROR) << "Unable to load RPCMEM Library: " << e.what();
+    }
+    model_settings_.htp_shared_memory = enable_htp_shared_mem_allocator;
   }
 
   dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);
@@ -923,6 +930,11 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
 
   const auto& logger = *GetLogger();
+
+  if (enable_file_mapped_weights_ && !rpcmem_library_) {
+    LOGS(logger, ERROR) << "RPCMEM Library is required for file mapped weights but is not loaded.";
+    return result;
+  }
 
   // Check BF16 compatibility early
   if (model_settings_.htp_bf16_enable) {

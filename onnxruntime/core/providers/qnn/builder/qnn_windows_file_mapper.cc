@@ -20,6 +20,7 @@ WindowsFileMapper::WindowsFileMapper(const logging::Logger& logger,
                                      std::shared_ptr<qnn::RpcMemLibrary> rpcmem_lib)
     : logger_(&logger),
       rpcmem_lib_(rpcmem_lib) {
+  ORT_ENFORCE(rpcmem_lib);
 }
 
 // Close all handles and registered buffers
