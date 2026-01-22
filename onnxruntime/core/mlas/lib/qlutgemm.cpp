@@ -181,6 +181,7 @@ LutGemmPackQuantBData(
         return;
     }
 
+    // TODO: remove fallback. it is not needed since we only run the lut kernel for avx2
     // Fallback: original scalar implementation
     std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * (K / g)]);
     memset(buf.get(), 0, N * bits * (K / g));
