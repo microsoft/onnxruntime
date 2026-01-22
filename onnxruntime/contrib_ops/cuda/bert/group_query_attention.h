@@ -35,7 +35,6 @@ class GroupQueryAttention final : public CudaKernel {
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   bool disable_flash_decode_;
-  bool disable_fused_kv_;
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
