@@ -170,18 +170,6 @@ LutGemmPackQuantBData(
     assert(bm % mgroup == 0);
     assert(bm % bits == 0);
 
-    // Use dispatch to call optimized kernel if available
-    const auto* Dispatch = GetMlasPlatform().LutGenKernel;
-    if (Dispatch && Dispatch->PackQuantBData) {
-        Dispatch->PackQuantBData(
-            N, K, bits, g, ngroups_per_elem,
-            simd_n_in, simd_n_out, bm, kfactor,
-            QuantBDataBegin, PackedQuantBDataBegin, ThreadPool
-        );
-        return;
-    }
-
-    // Fallback: original scalar implementation
     std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * (K / g)]);
     memset(buf.get(), 0, N * bits * (K / g));
 
@@ -310,8 +298,7 @@ LutPackScalesAndZeroPoints(
     bool HasZeroPoint,
     float* PackedQuantBZPBegin,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
-    MLAS_THREADPOOL* ThreadPool
+    const uint8_t* QuantBZeroPoint
 )
 {
     const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
@@ -324,55 +311,54 @@ LutPackScalesAndZeroPoints(
     const size_t row_blks = K / BlkLen;  // number of blocks per column
     const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
 
-    // Precompute constants
-    const size_t nb1 = K / BlkLen;
-    const size_t nb0 = bm / bits * nb1;
-    const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
-    const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
+    for (size_t im = 0; im < N; im += 1) {
+        for (size_t ik = 0; ik < K; ik += BlkLen) {
+            size_t idx = (im * K + ik) / BlkLen;  // linear block index for scale (scale is NOT packed)
+            float scale = QuantBScale[idx];
+            float zp = 0.0f;
+            if (HasZeroPoint) {
+                size_t blk_in_col = ik / BlkLen;  // block index within column
+                size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                size_t elem_idx = blk_in_col % num_elem_per_byte;
+                uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & ((1 << bits) - 1);
 
-    // Parallelize over N (output channels)
-    MlasTrySimpleParallel(
-        ThreadPool, N,
-        [&](ptrdiff_t tid) {
-            size_t im = static_cast<size_t>(tid);
-            for (size_t ik = 0; ik < K; ik += BlkLen) {
-                size_t idx = im * nb1 + ik / BlkLen;
-                float scale = QuantBScale[idx];
-                float zp = 0.0f;
-                if (HasZeroPoint) {
-                    size_t blk_in_col = ik / BlkLen;
-                    size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
-                    size_t elem_idx = blk_in_col % num_elem_per_byte;
-                    uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
-                    zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
-                }
+                // The LUT kernel assumes weights are centered around the midpoint (2 for 2-bit).
+                // Thus, need to correct for the actual ZP relative to the midpoint.
 
-                size_t new_im, new_ibm, new_ik;
-                if (nb1 == 0) {
-                    new_im = 0;
-                    new_ibm = 0;
-                    new_ik = 0;
-                } else {
-                    new_im = idx / nb0;
-                    new_ibm = (idx % nb0) / nb1;
-                    new_ik = (idx % nb1);
-                }
+                int midpoint = 1 << (bits - 1);  // 2 for 2-bit
+                zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+            }
 
-                if (HasZeroPoint) {
-                    size_t new_isimd = new_ibm % simd_n_out;
-                    size_t new_idx_outer = new_im * bm / bits * nb1 / simd_n_out + new_ik * bm / bits / simd_n_out + new_ibm / simd_n_out;
-                    size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
-                    size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
+            // TODO(vraspar): fix when k < BlkLen and nb1 is 0
+            size_t nb1 = K / BlkLen;
+            size_t nb0 = bm / bits * nb1;
 
-                    PackedQuantBZPBegin[new_idx_scale] = scale;
-                    PackedQuantBZPBegin[new_idx_zero] = zp;
-                } else {
-                    size_t new_idx = new_im * bm / bits * nb1 + new_ik * bm / bits + new_ibm;
-                    PackedQuantBZPBegin[new_idx] = scale;
-                }
+            size_t new_im, new_ibm, new_ik;
+            if (nb1 == 0) {
+                new_im = 0;
+                new_ibm = 0;
+                new_ik = 0;
+
+            } else {
+                new_im = idx / nb0;
+                new_ibm = (idx % nb0) / nb1;
+                new_ik = (idx % nb1);
+            }
+
+            if (HasZeroPoint) {
+                size_t new_isimd = new_ibm % simd_n_out;
+                size_t new_idx_outer = new_im * bm / bits * K / BlkLen / simd_n_out + new_ik * bm / bits / simd_n_out + new_ibm / simd_n_out;
+                size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
+
+                PackedQuantBZPBegin[new_idx_scale] = scale;
+                PackedQuantBZPBegin[new_idx_zero] = zp;
+            } else {
+                size_t new_idx = new_im * bm / bits * K / BlkLen + new_ik * bm / bits + new_ibm;
+                PackedQuantBZPBegin[new_idx] = scale;
             }
         }
-    );
+    }
 }
 
 // Internal helper: calculates the offset to scales in the packed buffer
@@ -432,7 +418,7 @@ MlasLutGemmPack(
     if (QuantBScale != nullptr) {
         size_t scales_offset = LutGemmPackedScalesOffset(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
         float* scales_dest = reinterpret_cast<float*>(PackedBuf + scales_offset);
-        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint, ThreadPool);
+        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint);
     }
 }
 
