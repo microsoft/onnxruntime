@@ -38,14 +38,11 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
 
   const int i = threadIdx.x;
 
-  T* smem = nullptr;
-  if constexpr (use_smem) {
-    extern __shared__ char smem_[];
-    smem = reinterpret_cast<T*>(smem_);
-  }
-
   const T* input_data = input + b * in_strides.x + s * in_strides.z + n * in_strides.y;
   T* output_data = output + b * out_strides.x + s * out_strides.z + n * out_strides.y;
+
+  [[maybe_unused]] extern __shared__ char smem_[];
+  [[maybe_unused]] T* smem = reinterpret_cast<T*>(smem_);
 
   if constexpr (use_smem) {
     // Load to shared memory for safe in-place update
