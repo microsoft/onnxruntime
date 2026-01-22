@@ -805,17 +805,47 @@ PackQuantBData_avx2(
                 const size_t base_im = new_im2 * c2_fac0_div + new_ibm * c2_fac2_div + new_isni;
                 const size_t buf_base = im * bits * K_div_g + ib * K_div_g;
 
+                const uint8_t shift = static_cast<uint8_t>(new_ing * g);
+                const size_t stride = c2_fac3_div;
+
                 for (size_t ik = 0; ik < K_div_g; ik += kfactor) {
                     const size_t new_ik = ik / kfactor;
                     const size_t base_k = base_im + new_ik * c2_fac1_div;
                     const size_t buf_k = buf_base + ik;
 
-                    for (size_t ikf = 0; ikf < kfactor; ikf++) {
-                        const size_t new_idx = base_k + ikf * c2_fac3_div;
-                        const uint8_t buf_val = buf[buf_k + ikf];
+                    uint8_t* dst = packed_u8 + base_k;
+                    const uint8_t* src = buf.get() + buf_k;
 
-                        // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
-                        packed_u8[new_idx] = static_cast<uint8_t>(packed_u8[new_idx] + (buf_val << (new_ing * g)));
+                    if (kfactor == 8) {
+                        dst[stride * 0] = static_cast<uint8_t>(dst[stride * 0] + (src[0] << shift));
+                        dst[stride * 1] = static_cast<uint8_t>(dst[stride * 1] + (src[1] << shift));
+                        dst[stride * 2] = static_cast<uint8_t>(dst[stride * 2] + (src[2] << shift));
+                        dst[stride * 3] = static_cast<uint8_t>(dst[stride * 3] + (src[3] << shift));
+                        dst[stride * 4] = static_cast<uint8_t>(dst[stride * 4] + (src[4] << shift));
+                        dst[stride * 5] = static_cast<uint8_t>(dst[stride * 5] + (src[5] << shift));
+                        dst[stride * 6] = static_cast<uint8_t>(dst[stride * 6] + (src[6] << shift));
+                        dst[stride * 7] = static_cast<uint8_t>(dst[stride * 7] + (src[7] << shift));
+                    } else if (kfactor == 16) {
+                        dst[stride * 0] = static_cast<uint8_t>(dst[stride * 0] + (src[0] << shift));
+                        dst[stride * 1] = static_cast<uint8_t>(dst[stride * 1] + (src[1] << shift));
+                        dst[stride * 2] = static_cast<uint8_t>(dst[stride * 2] + (src[2] << shift));
+                        dst[stride * 3] = static_cast<uint8_t>(dst[stride * 3] + (src[3] << shift));
+                        dst[stride * 4] = static_cast<uint8_t>(dst[stride * 4] + (src[4] << shift));
+                        dst[stride * 5] = static_cast<uint8_t>(dst[stride * 5] + (src[5] << shift));
+                        dst[stride * 6] = static_cast<uint8_t>(dst[stride * 6] + (src[6] << shift));
+                        dst[stride * 7] = static_cast<uint8_t>(dst[stride * 7] + (src[7] << shift));
+                        dst[stride * 8] = static_cast<uint8_t>(dst[stride * 8] + (src[8] << shift));
+                        dst[stride * 9] = static_cast<uint8_t>(dst[stride * 9] + (src[9] << shift));
+                        dst[stride * 10] = static_cast<uint8_t>(dst[stride * 10] + (src[10] << shift));
+                        dst[stride * 11] = static_cast<uint8_t>(dst[stride * 11] + (src[11] << shift));
+                        dst[stride * 12] = static_cast<uint8_t>(dst[stride * 12] + (src[12] << shift));
+                        dst[stride * 13] = static_cast<uint8_t>(dst[stride * 13] + (src[13] << shift));
+                        dst[stride * 14] = static_cast<uint8_t>(dst[stride * 14] + (src[14] << shift));
+                        dst[stride * 15] = static_cast<uint8_t>(dst[stride * 15] + (src[15] << shift));
+                    } else {
+                        for (size_t ikf = 0; ikf < kfactor; ikf++) {
+                            dst[stride * ikf] = static_cast<uint8_t>(dst[stride * ikf] + (src[ikf] << shift));
+                        }
                     }
                 }
             }
