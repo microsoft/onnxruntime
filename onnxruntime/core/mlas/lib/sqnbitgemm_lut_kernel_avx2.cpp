@@ -842,6 +842,140 @@ PackQuantBData_avx2(
     );
 }
 
+//
+// AVX2 optimized scales and zero points packing for T-MAC LUT GEMM
+// This performs the same transformation as the scalar version but uses SIMD operations
+//
+void
+PackScalesAndZeroPoints_avx2(
+    size_t N,
+    size_t K,
+    size_t bits,
+    size_t BlkLen,
+    size_t simd_n_out,
+    size_t bm,
+    bool HasZeroPoint,
+    float* PackedScalesBegin,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    // Only optimized for 2-bit quantization
+    assert(bits == 2);
+    
+    const size_t num_elem_per_byte = 8 / bits;  // 4 for 2-bit
+    const size_t row_blks = K / BlkLen;         // number of blocks per column
+    const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
+    
+    // Precompute constants
+    const size_t nb1 = K / BlkLen;
+    const size_t nb0 = bm / bits * nb1;
+    const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
+    const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
+    
+    // Calculate optimal parallelization
+    // Total work: N * (K / BlkLen) items
+    // Each thread should have enough work to amortize overhead
+    const size_t TotalBlocks = N * row_blks;
+    ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
+    
+    // Use 2D parallelization over (N, K/BlkLen) for better load balancing
+    // when N is smaller than available threads
+    if (N >= static_cast<size_t>(MaxThreads) || row_blks <= 1) {
+        // Parallelize over N only (original approach - good cache locality per row)
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(N),
+            [&](ptrdiff_t tid) {
+                size_t im = static_cast<size_t>(tid);
+                for (size_t blk_in_col = 0; blk_in_col < row_blks; blk_in_col++) {
+                    size_t idx = im * nb1 + blk_in_col;
+                    float scale = QuantBScale[idx];
+                    float zp = 0.0f;
+                    if (HasZeroPoint) {
+                        size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                        size_t elem_idx = blk_in_col % num_elem_per_byte;
+                        uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+                        zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+                    }
+
+                    size_t new_im, new_ibm, new_ik;
+                    if (nb1 == 0) {
+                        new_im = 0;
+                        new_ibm = 0;
+                        new_ik = 0;
+                    } else {
+                        new_im = idx / nb0;
+                        new_ibm = (idx % nb0) / nb1;
+                        new_ik = (idx % nb1);
+                    }
+
+                    if (HasZeroPoint) {
+                        size_t new_isimd = new_ibm % simd_n_out;
+                        size_t new_idx_outer = new_im * bm / bits * nb1 / simd_n_out + 
+                                               new_ik * bm / bits / simd_n_out + 
+                                               new_ibm / simd_n_out;
+                        size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                        size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
+
+                        PackedScalesBegin[new_idx_scale] = scale;
+                        PackedScalesBegin[new_idx_zero] = zp;
+                    } else {
+                        size_t new_idx = new_im * bm / bits * nb1 + new_ik * bm / bits + new_ibm;
+                        PackedScalesBegin[new_idx] = scale;
+                    }
+                }
+            }
+        );
+    } else {
+        // 2D parallelization over N * row_blks for better thread utilization
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(TotalBlocks),
+            [&](ptrdiff_t tid) {
+                size_t block_idx = static_cast<size_t>(tid);
+                size_t im = block_idx / row_blks;
+                size_t blk_in_col = block_idx % row_blks;
+                
+                size_t idx = im * nb1 + blk_in_col;
+                float scale = QuantBScale[idx];
+                float zp = 0.0f;
+                if (HasZeroPoint) {
+                    size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                    size_t elem_idx = blk_in_col % num_elem_per_byte;
+                    uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+                    zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+                }
+
+                size_t new_im, new_ibm, new_ik;
+                if (nb1 == 0) {
+                    new_im = 0;
+                    new_ibm = 0;
+                    new_ik = 0;
+                } else {
+                    new_im = idx / nb0;
+                    new_ibm = (idx % nb0) / nb1;
+                    new_ik = (idx % nb1);
+                }
+
+                if (HasZeroPoint) {
+                    size_t new_isimd = new_ibm % simd_n_out;
+                    size_t new_idx_outer = new_im * bm / bits * nb1 / simd_n_out + 
+                                           new_ik * bm / bits / simd_n_out + 
+                                           new_ibm / simd_n_out;
+                    size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                    size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
+
+                    PackedScalesBegin[new_idx_scale] = scale;
+                    PackedScalesBegin[new_idx_zero] = zp;
+                } else {
+                    size_t new_idx = new_im * bm / bits * nb1 + new_ik * bm / bits + new_ibm;
+                    PackedScalesBegin[new_idx] = scale;
+                }
+            }
+        );
+    }
+}
+
 // Kernel dispatch structure definition.
 
 const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2 = []() {
@@ -849,5 +983,6 @@ const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2 = []() {
     d.GenerateLUT = GenerateLUT_avx2;
     d.ComputeGemm = TMACComputeGemm_avx2;
     d.PackQuantBData = PackQuantBData_avx2;
+    d.PackScalesAndZeroPoints = PackScalesAndZeroPoints_avx2;
     return d;
 }();
