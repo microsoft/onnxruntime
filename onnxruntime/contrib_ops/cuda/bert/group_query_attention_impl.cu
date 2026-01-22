@@ -27,7 +27,6 @@ limitations under the License.
 
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
-#include <cstdlib>  // For getenv
 
 #include <cassert>
 #include <cub/cub.cuh>
@@ -51,7 +50,6 @@ limitations under the License.
 
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include <math_constants.h>
 
 using namespace onnxruntime::cuda;
 
