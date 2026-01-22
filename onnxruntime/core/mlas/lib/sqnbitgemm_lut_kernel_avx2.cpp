@@ -697,147 +697,76 @@ PackQuantBData_avx2(
     const __m256i mask_2bit = _mm256_set1_epi8(0x03);  // mask for 2-bit values
     const __m256i mask_bit0 = _mm256_set1_epi8(0x01);  // bit 0 of each 2-bit element
 
-    // Calculate optimal parallelization for Phase 1
-    ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
-    const size_t num_k_chunks = (K + 127) / 128;  // number of 128-element chunks per row
+    // Phase 1: Parallelize over N (each thread processes one row)
+    MlasTrySimpleParallel(
+        ThreadPool, static_cast<ptrdiff_t>(N),
+        [&](ptrdiff_t tid) {
+            size_t im = static_cast<size_t>(tid);
 
-    // Phase 1: Bit-plane decomposition with grouping by g=4
-    if (N >= static_cast<size_t>(MaxThreads) || num_k_chunks <= 1) {
-        // Parallelize over N only (one thread per row) - better cache locality
-        MlasTrySimpleParallel(
-            ThreadPool, static_cast<ptrdiff_t>(N),
-            [&](ptrdiff_t tid) {
-                size_t im = static_cast<size_t>(tid);
+            // Process in chunks of 32 bytes (128 2-bit elements = 32 groups of 4)
+            const uint8_t* src_row = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + (im * K / 4);
+            uint8_t* dst_bit0 = buf.get() + im * bits * K_div_g;
+            uint8_t* dst_bit1 = dst_bit0 + K_div_g;
 
-                // Process in chunks of 32 bytes (128 2-bit elements = 32 groups of 4)
-                const uint8_t* src_row = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + (im * K / 4);
-                uint8_t* dst_bit0 = buf.get() + im * bits * K_div_g;
-                uint8_t* dst_bit1 = dst_bit0 + K_div_g;
+            size_t ik = 0;
+            // Process 128 elements at a time (32 bytes input = 128 2-bit elements = 32 output bytes per bit plane)
+            for (; ik + 128 <= K; ik += 128) {
+                // Load 32 bytes = 128 2-bit elements
+                __m256i packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_row + ik / 4));
 
-                size_t ik = 0;
-                // Process 128 elements at a time (32 bytes input = 128 2-bit elements = 32 output bytes per bit plane)
-                for (; ik + 128 <= K; ik += 128) {
-                    // Load 32 bytes = 128 2-bit elements
-                    __m256i packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_row + ik / 4));
+                // Extract each of 4 positions within each byte
+                // pos0: bits 0-1, pos1: bits 2-3, pos2: bits 4-5, pos3: bits 6-7
+                __m256i pos0 = _mm256_and_si256(packed, mask_2bit);
+                __m256i pos1 = _mm256_and_si256(_mm256_srli_epi16(packed, 2), mask_2bit);
+                __m256i pos2 = _mm256_and_si256(_mm256_srli_epi16(packed, 4), mask_2bit);
+                __m256i pos3 = _mm256_srli_epi16(packed, 6);
 
-                    // Extract each of 4 positions within each byte
-                    // pos0: bits 0-1, pos1: bits 2-3, pos2: bits 4-5, pos3: bits 6-7
-                    __m256i pos0 = _mm256_and_si256(packed, mask_2bit);
-                    __m256i pos1 = _mm256_and_si256(_mm256_srli_epi16(packed, 2), mask_2bit);
-                    __m256i pos2 = _mm256_and_si256(_mm256_srli_epi16(packed, 4), mask_2bit);
-                    __m256i pos3 = _mm256_srli_epi16(packed, 6);
+                // For g=4: we need to group 4 consecutive elements
+                // Each output byte contains bits from 4 consecutive input elements, shifted by their position
+                // Output for bit0: (pos0_bit0 << 0) | (pos1_bit0 << 1) | (pos2_bit0 << 2) | (pos3_bit0 << 3)
 
-                    // For g=4: we need to group 4 consecutive elements
-                    // Each output byte contains bits from 4 consecutive input elements, shifted by their position
-                    // Output for bit0: (pos0_bit0 << 0) | (pos1_bit0 << 1) | (pos2_bit0 << 2) | (pos3_bit0 << 3)
+                // Extract bit 0 from each position
+                __m256i b0_pos0 = _mm256_and_si256(pos0, mask_bit0);              // bit0 at position 0
+                __m256i b0_pos1 = _mm256_and_si256(pos1, mask_bit0);              // bit0 at position 0
+                __m256i b0_pos2 = _mm256_and_si256(pos2, mask_bit0);              // bit0 at position 0
+                __m256i b0_pos3 = _mm256_and_si256(pos3, mask_bit0);              // bit0 at position 0
 
-                    // Extract bit 0 from each position
-                    __m256i b0_pos0 = _mm256_and_si256(pos0, mask_bit0);              // bit0 at position 0
-                    __m256i b0_pos1 = _mm256_and_si256(pos1, mask_bit0);              // bit0 at position 0
-                    __m256i b0_pos2 = _mm256_and_si256(pos2, mask_bit0);              // bit0 at position 0
-                    __m256i b0_pos3 = _mm256_and_si256(pos3, mask_bit0);              // bit0 at position 0
+                // Combine: shift each position's bit to its final location
+                __m256i bit0_out = _mm256_or_si256(
+                    _mm256_or_si256(b0_pos0, _mm256_slli_epi16(b0_pos1, 1)),
+                    _mm256_or_si256(_mm256_slli_epi16(b0_pos2, 2), _mm256_slli_epi16(b0_pos3, 3))
+                );
 
-                    // Combine: shift each position's bit to its final location
-                    __m256i bit0_out = _mm256_or_si256(
-                        _mm256_or_si256(b0_pos0, _mm256_slli_epi16(b0_pos1, 1)),
-                        _mm256_or_si256(_mm256_slli_epi16(b0_pos2, 2), _mm256_slli_epi16(b0_pos3, 3))
-                    );
+                // Extract bit 1 from each position and shift down first
+                __m256i b1_pos0 = _mm256_and_si256(_mm256_srli_epi16(pos0, 1), mask_bit0);
+                __m256i b1_pos1 = _mm256_and_si256(_mm256_srli_epi16(pos1, 1), mask_bit0);
+                __m256i b1_pos2 = _mm256_and_si256(_mm256_srli_epi16(pos2, 1), mask_bit0);
+                __m256i b1_pos3 = _mm256_and_si256(_mm256_srli_epi16(pos3, 1), mask_bit0);
 
-                    // Extract bit 1 from each position and shift down first
-                    __m256i b1_pos0 = _mm256_and_si256(_mm256_srli_epi16(pos0, 1), mask_bit0);
-                    __m256i b1_pos1 = _mm256_and_si256(_mm256_srli_epi16(pos1, 1), mask_bit0);
-                    __m256i b1_pos2 = _mm256_and_si256(_mm256_srli_epi16(pos2, 1), mask_bit0);
-                    __m256i b1_pos3 = _mm256_and_si256(_mm256_srli_epi16(pos3, 1), mask_bit0);
+                // Combine for bit 1 plane
+                __m256i bit1_out = _mm256_or_si256(
+                    _mm256_or_si256(b1_pos0, _mm256_slli_epi16(b1_pos1, 1)),
+                    _mm256_or_si256(_mm256_slli_epi16(b1_pos2, 2), _mm256_slli_epi16(b1_pos3, 3))
+                );
 
-                    // Combine for bit 1 plane
-                    __m256i bit1_out = _mm256_or_si256(
-                        _mm256_or_si256(b1_pos0, _mm256_slli_epi16(b1_pos1, 1)),
-                        _mm256_or_si256(_mm256_slli_epi16(b1_pos2, 2), _mm256_slli_epi16(b1_pos3, 3))
-                    );
-
-                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_bit0 + ik / g), bit0_out);
-                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_bit1 + ik / g), bit1_out);
-                }
-
-                // Handle remaining elements with scalar code
-                for (; ik < K; ++ik) {
-                    size_t idx = ik;
-                    size_t num_elem_per_byte = 4;  // 2-bit: 4 elements per byte
-                    size_t elem_idx = idx % num_elem_per_byte;
-                    uint8_t v = src_row[idx / num_elem_per_byte] >> (elem_idx * bits);
-
-                    size_t new_ik = ik / g;
-                    size_t shft_left = ik % g;
-                    dst_bit0[new_ik] += static_cast<uint8_t>(((v >> 0) & 1) << shft_left);
-                    dst_bit1[new_ik] += static_cast<uint8_t>(((v >> 1) & 1) << shft_left);
-                }
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_bit0 + ik / g), bit0_out);
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_bit1 + ik / g), bit1_out);
             }
-        );
-    } else {
-        // 2D parallelization over N * num_k_chunks for better thread utilization
-        const size_t TotalChunks = N * num_k_chunks;
-        MlasTrySimpleParallel(
-            ThreadPool, static_cast<ptrdiff_t>(TotalChunks),
-            [&](ptrdiff_t tid) {
-                size_t chunk_idx = static_cast<size_t>(tid);
-                size_t im = chunk_idx / num_k_chunks;
-                size_t k_chunk = chunk_idx % num_k_chunks;
 
-                const uint8_t* src_row = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + (im * K / 4);
-                uint8_t* dst_bit0 = buf.get() + im * bits * K_div_g;
-                uint8_t* dst_bit1 = dst_bit0 + K_div_g;
+            // Handle remaining elements with scalar code
+            for (; ik < K; ++ik) {
+                size_t idx = ik;
+                size_t num_elem_per_byte = 4;  // 2-bit: 4 elements per byte
+                size_t elem_idx = idx % num_elem_per_byte;
+                uint8_t v = src_row[idx / num_elem_per_byte] >> (elem_idx * bits);
 
-                size_t ik_start = k_chunk * 128;
-                size_t ik_end = std::min(ik_start + 128, K);
-
-                // Process the 128-element chunk with SIMD if full
-                if (ik_end - ik_start == 128) {
-                    __m256i packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_row + ik_start / 4));
-
-                    __m256i pos0 = _mm256_and_si256(packed, mask_2bit);
-                    __m256i pos1 = _mm256_and_si256(_mm256_srli_epi16(packed, 2), mask_2bit);
-                    __m256i pos2 = _mm256_and_si256(_mm256_srli_epi16(packed, 4), mask_2bit);
-                    __m256i pos3 = _mm256_srli_epi16(packed, 6);
-
-                    __m256i b0_pos0 = _mm256_and_si256(pos0, mask_bit0);
-                    __m256i b0_pos1 = _mm256_and_si256(pos1, mask_bit0);
-                    __m256i b0_pos2 = _mm256_and_si256(pos2, mask_bit0);
-                    __m256i b0_pos3 = _mm256_and_si256(pos3, mask_bit0);
-
-                    __m256i bit0_out = _mm256_or_si256(
-                        _mm256_or_si256(b0_pos0, _mm256_slli_epi16(b0_pos1, 1)),
-                        _mm256_or_si256(_mm256_slli_epi16(b0_pos2, 2), _mm256_slli_epi16(b0_pos3, 3))
-                    );
-
-                    __m256i b1_pos0 = _mm256_and_si256(_mm256_srli_epi16(pos0, 1), mask_bit0);
-                    __m256i b1_pos1 = _mm256_and_si256(_mm256_srli_epi16(pos1, 1), mask_bit0);
-                    __m256i b1_pos2 = _mm256_and_si256(_mm256_srli_epi16(pos2, 1), mask_bit0);
-                    __m256i b1_pos3 = _mm256_and_si256(_mm256_srli_epi16(pos3, 1), mask_bit0);
-
-                    __m256i bit1_out = _mm256_or_si256(
-                        _mm256_or_si256(b1_pos0, _mm256_slli_epi16(b1_pos1, 1)),
-                        _mm256_or_si256(_mm256_slli_epi16(b1_pos2, 2), _mm256_slli_epi16(b1_pos3, 3))
-                    );
-
-                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_bit0 + ik_start / g), bit0_out);
-                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_bit1 + ik_start / g), bit1_out);
-                } else {
-                    // Handle remaining elements with scalar code
-                    for (size_t ik = ik_start; ik < ik_end; ++ik) {
-                        size_t idx = ik;
-                        size_t num_elem_per_byte = 4;
-                        size_t elem_idx = idx % num_elem_per_byte;
-                        uint8_t v = src_row[idx / num_elem_per_byte] >> (elem_idx * bits);
-
-                        size_t new_ik = ik / g;
-                        size_t shft_left = ik % g;
-                        dst_bit0[new_ik] += static_cast<uint8_t>(((v >> 0) & 1) << shft_left);
-                        dst_bit1[new_ik] += static_cast<uint8_t>(((v >> 1) & 1) << shft_left);
-                    }
-                }
+                size_t new_ik = ik / g;
+                size_t shft_left = ik % g;
+                dst_bit0[new_ik] += static_cast<uint8_t>(((v >> 0) & 1) << shft_left);
+                dst_bit1[new_ik] += static_cast<uint8_t>(((v >> 1) & 1) << shft_left);
             }
-        );
-    }
+        }
+    );
 
     // Phase 2: Multi-reshape/transpose into final layout
     // Optimize parallelization: use 2D partitioning over N and K/g for better load balancing
@@ -865,111 +794,52 @@ PackQuantBData_avx2(
     const size_t PackedQuantBDataSize = (N * bits) * (K_div_g / ngroups_per_elem);
     memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);
 
-    // Phase 2: Adaptive parallelization
-    // Note: We can only safely parallelize over N because different (ib, ik) pairs from the same im
-    // may write to the same output location (due to the ngroups_per_elem accumulation).
-    // However, different im values always write to disjoint output regions.
-    if (N >= static_cast<size_t>(MaxThreads)) {
-        // Parallelize over N only - better cache locality when N is large enough
-        MlasTrySimpleParallel(
-            ThreadPool, static_cast<ptrdiff_t>(N),
-            [&](ptrdiff_t tid) {
-                size_t im = static_cast<size_t>(tid);
-                for (size_t ib = 0; ib < bits; ib++) {
-                    for (size_t ik = 0; ik < K_div_g; ik++) {
-                        // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
-                        size_t new_im = im / simd_n_out;
-                        size_t new_isno = im % simd_n_out;
-                        size_t new_idx = new_im * c0_fac0 + ib * c0_fac1 + new_isno * c0_fac2 + ik;
+    // Phase 2: Parallelize over N - each thread handles all (bits, K/g) work for its assigned rows
+    // This ensures no write conflicts since each im writes to disjoint output regions
+    MlasTrySimpleParallel(
+        ThreadPool, static_cast<ptrdiff_t>(N),
+        [&](ptrdiff_t tid) {
+            size_t im = static_cast<size_t>(tid);
+            for (size_t ib = 0; ib < bits; ib++) {
+                for (size_t ik = 0; ik < K_div_g; ik++) {
+                    // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
+                    size_t new_im = im / simd_n_out;
+                    size_t new_isno = im % simd_n_out;
+                    size_t new_idx = new_im * c0_fac0 + ib * c0_fac1 + new_isno * c0_fac2 + ik;
 
-                        // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
-                        new_im = new_idx / c1_nb0;
-                        size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
-                        size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
-                        size_t new_ik = (new_idx % c1_nb2);
-                        new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
+                    // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
+                    new_im = new_idx / c1_nb0;
+                    size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
+                    size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
+                    size_t new_ik = (new_idx % c1_nb2);
+                    new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
 
-                        // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
-                        new_im = new_idx / c2_nb0;
-                        size_t new_ibm = (new_idx % c2_nb0) / c2_nb1;
-                        new_isni = (new_idx % c2_nb1) / c2_nb2;
-                        new_ing = (new_idx % c2_nb2) / c2_nb3;
-                        new_ik = (new_idx % c2_nb3) / c2_nb4;
-                        size_t new_ikf = (new_idx % c2_nb4);
-                        new_idx = new_im * c2_fac0 +
-                                  new_ik * c2_fac1 +
-                                  new_ibm * c2_fac2 +
-                                  new_ikf * c2_fac3 +
-                                  new_isni * ngroups_per_elem +
-                                  new_ing;
-                        new_idx = new_idx / ngroups_per_elem;
-                        size_t buf_idx = im * bits * K_div_g + ib * K_div_g + ik;
-                        uint8_t buf_val = buf[buf_idx];
+                    // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
+                    new_im = new_idx / c2_nb0;
+                    size_t new_ibm = (new_idx % c2_nb0) / c2_nb1;
+                    new_isni = (new_idx % c2_nb1) / c2_nb2;
+                    new_ing = (new_idx % c2_nb2) / c2_nb3;
+                    new_ik = (new_idx % c2_nb3) / c2_nb4;
+                    size_t new_ikf = (new_idx % c2_nb4);
+                    new_idx = new_im * c2_fac0 +
+                              new_ik * c2_fac1 +
+                              new_ibm * c2_fac2 +
+                              new_ikf * c2_fac3 +
+                              new_isni * ngroups_per_elem +
+                              new_ing;
+                    new_idx = new_idx / ngroups_per_elem;
+                    size_t buf_idx = im * bits * K_div_g + ib * K_div_g + ik;
+                    uint8_t buf_val = buf[buf_idx];
 
-                        // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
-                        PackedQuantBDataBegin[new_idx] = static_cast<std::byte>(
-                            static_cast<unsigned>(PackedQuantBDataBegin[new_idx]) +
-                            (buf_val << (new_ing * g))
-                        );
-                    }
+                    // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
+                    PackedQuantBDataBegin[new_idx] = static_cast<std::byte>(
+                        static_cast<unsigned>(PackedQuantBDataBegin[new_idx]) +
+                        (buf_val << (new_ing * g))
+                    );
                 }
             }
-        );
-    } else {
-        // When N < MaxThreads, we still parallelize over N but process multiple rows per thread
-        // to reduce overhead. Use chunk-based processing for better load balancing.
-        const size_t work_per_row = bits * K_div_g;
-        const size_t total_work = N * work_per_row;
-        const size_t work_per_thread = (total_work + static_cast<size_t>(MaxThreads) - 1) / static_cast<size_t>(MaxThreads);
-        const size_t rows_per_thread = std::max(size_t(1), (work_per_thread + work_per_row - 1) / work_per_row);
-        const size_t num_chunks = (N + rows_per_thread - 1) / rows_per_thread;
-        
-        MlasTrySimpleParallel(
-            ThreadPool, static_cast<ptrdiff_t>(num_chunks),
-            [&](ptrdiff_t tid) {
-                size_t chunk_idx = static_cast<size_t>(tid);
-                size_t im_start = chunk_idx * rows_per_thread;
-                size_t im_end = std::min(im_start + rows_per_thread, N);
-                
-                for (size_t im = im_start; im < im_end; im++) {
-                    for (size_t ib = 0; ib < bits; ib++) {
-                        for (size_t ik = 0; ik < K_div_g; ik++) {
-                            size_t new_im = im / simd_n_out;
-                            size_t new_isno = im % simd_n_out;
-                            size_t new_idx = new_im * c0_fac0 + ib * c0_fac1 + new_isno * c0_fac2 + ik;
-
-                            new_im = new_idx / c1_nb0;
-                            size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
-                            size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
-                            size_t new_ik = (new_idx % c1_nb2);
-                            new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
-
-                            new_im = new_idx / c2_nb0;
-                            size_t new_ibm = (new_idx % c2_nb0) / c2_nb1;
-                            new_isni = (new_idx % c2_nb1) / c2_nb2;
-                            new_ing = (new_idx % c2_nb2) / c2_nb3;
-                            new_ik = (new_idx % c2_nb3) / c2_nb4;
-                            size_t new_ikf = (new_idx % c2_nb4);
-                            new_idx = new_im * c2_fac0 +
-                                      new_ik * c2_fac1 +
-                                      new_ibm * c2_fac2 +
-                                      new_ikf * c2_fac3 +
-                                      new_isni * ngroups_per_elem +
-                                      new_ing;
-                            new_idx = new_idx / ngroups_per_elem;
-                            size_t buf_idx = im * bits * K_div_g + ib * K_div_g + ik;
-                            uint8_t buf_val = buf[buf_idx];
-
-                            PackedQuantBDataBegin[new_idx] = static_cast<std::byte>(
-                                static_cast<unsigned>(PackedQuantBDataBegin[new_idx]) +
-                                (buf_val << (new_ing * g))
-                            );
-                        }
-                    }
-                }
-            }
-        );
-    }
+        }
+    );
 }
 
 //
