@@ -75,7 +75,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   if (num_slices % num_batches != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "GatherND: indices batch size (", num_slices,
-                           ") must be divisible by input batch size (", num_batches, ")");
+                           ") is not divisible by input batch size (", num_batches, ")");
   }
 
   const auto input_batch_stride = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_));
