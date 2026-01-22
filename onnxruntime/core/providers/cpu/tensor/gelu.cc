@@ -12,6 +12,31 @@
 #include "core/providers/cpu/element_wise_ranged_transform.h"
 #include "core/providers/cpu/tensor/gelu.h"
 
+#include <cstddef>
+#include <cstdlib>
+#include <memory>
+
+#if defined(_WIN32)
+  #include <malloc.h>
+#endif
+
+inline void* AlignedAlloc(size_t alignment, size_t size) {
+#if defined(_WIN32)
+  return _aligned_malloc(size, alignment);
+#else
+  // std::aligned_alloc requires size to be a multiple of alignment
+  return std::aligned_alloc(alignment, size);
+#endif
+}
+
+inline void AlignedFree(void* p) {
+#if defined(_WIN32)
+  _aligned_free(p);
+#else
+  std::free(p);
+#endif
+}
+
 using onnxruntime::narrow;
 using namespace onnxruntime::common;
 
@@ -128,15 +153,23 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
 
   // Alignment and buffer size for aligned_alloc
   constexpr size_t alignment = 64;
+
   size_t buffer_size = elem_count * sizeof(MLFloat16);
-  size_t aligned_size = ((buffer_size + alignment - 1) / alignment) * alignment;
-  auto deleter = [](MLFloat16* p) { std::free(p); };
-  std::unique_ptr<MLFloat16, decltype(deleter)> temp_fp16_aligned(
-      reinterpret_cast<MLFloat16*>(std::aligned_alloc(alignment, aligned_size)),
-      deleter);
-  if (temp_fp16_aligned == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate aligned temporary buffer.");
+  size_t aligned_size =
+      ((buffer_size + alignment - 1) / alignment) * alignment;
+
+  void* raw = AlignedAlloc(alignment, aligned_size);
+  if (!raw) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                          "Failed to allocate aligned temporary buffer.");
   }
+
+auto deleter = [](MLFloat16* p) {
+  AlignedFree(p);
+};
+
+std::unique_ptr<MLFloat16, decltype(deleter)> temp_fp16_aligned(
+    static_cast<MLFloat16*>(raw), deleter);
 
   concurrency::ThreadPool::TryBatchParallelFor(
       tp,
@@ -147,7 +180,7 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
         MLFloat16* p_output = output_data + start;
         int64_t count = std::min(length_per_task, elem_count - start);
         MLFloat16* p_temp = temp_fp16_aligned.get() + start;
-        MlasComputeFP16Gelu(p_input, p_output, p_temp,  count, approximation_algorithm_);
+        MlasComputeFP16Gelu(p_input, p_output, p_temp, count, approximation_algorithm_);
 
       },
       0);
