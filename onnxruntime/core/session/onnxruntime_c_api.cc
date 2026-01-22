@@ -4839,15 +4839,22 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
-static_assert(offsetof(OrtApi, RunOptionsSetSyncStream) / sizeof(void*) == 411, "Size of version 24 API cannot change");
+static_assert(offsetof(OrtApi, RunOptionsSetSyncStream) / sizeof(void*) == 413, "Size of version 24 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.25.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
+//
 // 2. If there were any APIs added to ort_api_1_to_25 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
+//
+// 3. There are additional API structs that may have been updated. Repeat step 2 for these instances:
+//    - ort_compile_api in onnxruntime/onnxruntime/core/session/compile_api.cc
+//    - ort_ep_api in onnxruntime/onnxruntime/core/session/plugin_ep/ep_api.cc
+//    - ort_interop_api in onnxruntime/core/session/interop_api.cc
+//    - ort_model_editor_api in onnxruntime/onnxruntime/core/session/model_editor_c_api.cc
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
