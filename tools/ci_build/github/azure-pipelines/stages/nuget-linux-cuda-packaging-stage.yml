@@ -150,13 +150,16 @@ stages:
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
+
+    - bash: |
+        nvidia-smi
+      displayName: 'Check GPU availability'
+
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
       submodules: false
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
 
-    - bash: |
-        nvidia-smi
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
