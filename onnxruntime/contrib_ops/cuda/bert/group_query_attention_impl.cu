@@ -66,6 +66,14 @@ namespace cuda {
 // ============================================================================
 
 // Internal helper to get Q, K, V pointers, handling packed input
+//
+// This function orchestrates the preparation of Q, K, and V tensors for attention kernels.
+// It performs:
+// 1. Handling packed vs. unpacked QKV inputs.
+// 2. Managing KV cache updates (appending new tokens).
+// 3. Ensuring synchronization between past and present KV caches when necessary.
+// 4. Launching the UnpackRoPEQuantizeAppend kernel to unpack, apply RoPE, and update caches.
+// 5. Returning strict Q, K, V pointers ready for the core attention operation.
 template <typename T>
 Status PrepareQKV(
     cudaStream_t stream,
@@ -92,6 +100,12 @@ Status PrepareQKV(
   CudaT* v_final_ptr = reinterpret_cast<CudaT*>(data.present_value);
   int final_max_seqlen = parameters.seqlen_present_kv_cache;
   bool final_is_bnsh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
+
+  if (!parameters.past_present_share_buffer) {
+    size_t kv_buffer_size = (size_t)batch_size * kv_num_heads * final_max_seqlen * head_size * sizeof(CudaT);
+    CUDA_CALL_THROW(cudaMemsetAsync(data.present_key, 0, kv_buffer_size, stream));
+    CUDA_CALL_THROW(cudaMemsetAsync(data.present_value, 0, kv_buffer_size, stream));
+  }
 
   if (!parameters.past_present_share_buffer && data.past_key != nullptr && parameters.seqlen_past_kv_cache > 0) {
     bool is_bnsh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);

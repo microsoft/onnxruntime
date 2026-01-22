@@ -20,6 +20,42 @@ namespace contrib {
 namespace cuda {
 
 // Fused kernel: Unpack QKV + Apply RoPE to Q and K + Append K/V directly to cache
+//
+// This kernel performs the following operations in a fused manner:
+// 1. Unpacks packed QKV (if packed) or reads separated Q, K, V
+// 2. Applies Rotary Positional Embedding (RoPE) to Q and K
+// 3. Appends K and V to the KV cache (past_key/past_value)
+// 4. Quantizes K and V if T_QUANT is different from T (and KV_QUANT_SUPPORTED is enabled)
+//
+// Template Parameters:
+//   T         - Input/Output data type (e.g., half, nv_bfloat16)
+//   T_QUANT   - Quantized data type for KV cache (e.g., int8_t, uint4_t packed in wider type)
+//   T_SCALE   - Scale data type for quantization (e.g., float)
+//   bit_width - Bit width for quantization (8 or 4)
+//
+// Arguments:
+//   packed_qkv    - Input packed QKV tensor [B, S, (H_q + 2*H_v)*D] (Optional)
+//   query         - Input Q tensor (if not packed)
+//   key           - Input K tensor (if not packed)
+//   value         - Input V tensor (if not packed)
+//   unpacked_q    - Output buffer for rotary encodded query [B, S, H_q, D]
+//   k_cache       - Output KV cache for key
+//   v_cache       - Output KV cache for value
+//   k_scale       - Scale factor for key quantization
+//   v_scale       - Scale factor for value quantization
+//   num_heads     - Number of query heads (H_q)
+//   kv_num_heads  - Number of KV heads (H_v)
+//   head_size     - Dimension of each head (D)
+//   d             - Stride for packed QKV hidden dimension
+//   max_seqlen    - Maximum sequence length of the KV cache
+//   past_seq_lens - Sequence lengths of past tokens (where to append new tokens)
+//   cos_cache     - RoPE cosine table
+//   sin_cache     - RoPE sine table
+//   rotary_dim    - Dimension to apply RoPE
+//   position_ids  - Position indices for RoPE
+//   interleaved   - Whether RoPE uses interleaved (x, x+D/2) or adjacent (x, x+1) pairs
+//   is_cache_bnsh - Layout of KV cache (true: BNSH, false: BSNH)
+//   per_channel   - Quantization granularity (true: per-channel, false: per-tensor)
 template <typename T, typename T_QUANT, typename T_SCALE, int bit_width>
 __global__ void UnpackRoPEQuantizeAppend(
     const T* packed_qkv,

@@ -3,14 +3,11 @@
 
 #include <vector>
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
-#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
@@ -44,6 +41,16 @@ REGISTER_KERNEL_TYPED(BFloat16)
 
 constexpr const char* kDisableFlashDecode = "ORT_DISABLE_FLASH_DECODE";
 
+// Group Query Attention (GQA) Operator
+//
+// This operator implements Group Query Attention, a variation of Multi-Head Attention (MHA)
+// where the number of key/value heads is smaller than the number of query heads.
+// It supports:
+// - Rotary Positional Embeddings (RoPE)
+// - KV Cache (past/present key/value)
+// - Quantized KV Cache (Int8/Int4) via GroupQueryAttentionData
+// - Flash Attention and Memory Efficient Attention backends
+//
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
@@ -77,6 +84,21 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   disable_flash_decode_ = ParseEnvironmentVariableWithDefault<bool>(kDisableFlashDecode, false);
 }
 
+// ComputeInternal executes the GQA kernel.
+//
+// Inputs:
+// 0. query             (Tensor) [batch, sequence_length, hidden_size]
+// 1. key               (Tensor) [batch, sequence_length, kv_hidden_size] (Optional)
+// 2. value             (Tensor) [batch, sequence_length, kv_hidden_size] (Optional)
+// 3. past_key          (Tensor) [batch, num_kv_heads, max_seq_len, head_size] (Optional)
+// 4. past_value        (Tensor) [batch, num_kv_heads, max_seq_len, head_size] (Optional)
+// 5. seqlens_k         (Tensor) [batch] - Total sequence length minus 1 (for historical compatibility)
+// 6. total_seqlen      (Tensor) - Max total sequence length
+// 7. cos_cache         (Tensor) - Precomputed cosine table for RoPE
+// 8. sin_cache         (Tensor) - Precomputed sine table for RoPE
+// 9. position_ids      (Tensor) - Position indices for RoPE
+// 10. attention_bias   (Tensor) - Not supported in this kernel
+// 11. head_sink        (Tensor) - Attention sink for GPT-OSS
 template <typename T>
 Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(0);
