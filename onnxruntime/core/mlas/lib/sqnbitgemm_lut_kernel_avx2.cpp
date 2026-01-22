@@ -769,30 +769,18 @@ PackQuantBData_avx2(
     );
 
     // Phase 2: Multi-reshape/transpose into final layout
-    // Optimize parallelization: use 2D partitioning over N and K/g for better load balancing
-    const size_t c0_fac2 = K_div_g;
-    const size_t c0_fac1 = simd_n_out * c0_fac2;
-    const size_t c0_fac0 = bits * c0_fac1;
+    // Precompute factors and simplify index math to avoid expensive div/mod in inner loops.
+    // const size_t bm_div_bits = bm / bits;
+    const size_t bm_div_mgroup = bm / mgroup;
 
-    const size_t c1_nb2 = K_div_g;
-    const size_t c1_nb1 = simd_n_in * c1_nb2;
-    const size_t c1_nb0 = ngroups_per_elem * c1_nb1;
-    const size_t c1_fac2 = K_div_g;
-    const size_t c1_fac1 = ngroups_per_elem * c1_fac2;
-    const size_t c1_fac0 = simd_n_in * c1_fac1;
-
-    const size_t c2_nb4 = kfactor;
-    const size_t c2_nb3 = K_div_g / kfactor * c2_nb4;
-    const size_t c2_nb2 = ngroups_per_elem * c2_nb3;
-    const size_t c2_nb1 = simd_n_in * c2_nb2;
-    const size_t c2_nb0 = bm / mgroup * c2_nb1;
-    const size_t c2_fac3 = simd_n_in * ngroups_per_elem;
-    const size_t c2_fac2 = kfactor * c2_fac3;
-    const size_t c2_fac1 = bm / mgroup * c2_fac2;
-    const size_t c2_fac0 = K_div_g / kfactor * c2_fac1;
+    const size_t c2_fac3_div = simd_n_in;
+    const size_t c2_fac2_div = kfactor * c2_fac3_div;
+    const size_t c2_fac1_div = bm_div_mgroup * c2_fac2_div;
+    const size_t c2_fac0_div = K_div_g * bm_div_mgroup * simd_n_in;
 
     const size_t PackedQuantBDataSize = (N * bits) * (K_div_g / ngroups_per_elem);
     memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);
+    auto* packed_u8 = reinterpret_cast<uint8_t*>(PackedQuantBDataBegin);
 
     // Phase 2: Parallelize over N - each thread handles all (bits, K/g) work for its assigned rows
     // This ensures no write conflicts since each im writes to disjoint output regions
@@ -800,42 +788,35 @@ PackQuantBData_avx2(
         ThreadPool, static_cast<ptrdiff_t>(N),
         [&](ptrdiff_t tid) {
             size_t im = static_cast<size_t>(tid);
+            const size_t im0 = im / simd_n_out;
+            const size_t isno = im - im0 * simd_n_out;
+            const size_t x_base = simd_n_out * (im0 * bits) + isno;
+
             for (size_t ib = 0; ib < bits; ib++) {
-                for (size_t ik = 0; ik < K_div_g; ik++) {
-                    // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
-                    size_t new_im = im / simd_n_out;
-                    size_t new_isno = im % simd_n_out;
-                    size_t new_idx = new_im * c0_fac0 + ib * c0_fac1 + new_isno * c0_fac2 + ik;
+                const size_t x = x_base + ib * simd_n_out;
+                const size_t new_im1 = x / mgroup;
+                const size_t y = x - new_im1 * mgroup;
+                const size_t new_ing = y / simd_n_in;
+                const size_t new_isni = y - new_ing * simd_n_in;
 
-                    // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
-                    new_im = new_idx / c1_nb0;
-                    size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
-                    size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
-                    size_t new_ik = (new_idx % c1_nb2);
-                    new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
+                const size_t new_im2 = new_im1 / bm_div_mgroup;
+                const size_t new_ibm = new_im1 - new_im2 * bm_div_mgroup;
 
-                    // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
-                    new_im = new_idx / c2_nb0;
-                    size_t new_ibm = (new_idx % c2_nb0) / c2_nb1;
-                    new_isni = (new_idx % c2_nb1) / c2_nb2;
-                    new_ing = (new_idx % c2_nb2) / c2_nb3;
-                    new_ik = (new_idx % c2_nb3) / c2_nb4;
-                    size_t new_ikf = (new_idx % c2_nb4);
-                    new_idx = new_im * c2_fac0 +
-                              new_ik * c2_fac1 +
-                              new_ibm * c2_fac2 +
-                              new_ikf * c2_fac3 +
-                              new_isni * ngroups_per_elem +
-                              new_ing;
-                    new_idx = new_idx / ngroups_per_elem;
-                    size_t buf_idx = im * bits * K_div_g + ib * K_div_g + ik;
-                    uint8_t buf_val = buf[buf_idx];
+                const size_t base_im = new_im2 * c2_fac0_div + new_ibm * c2_fac2_div + new_isni;
+                const size_t buf_base = im * bits * K_div_g + ib * K_div_g;
 
-                    // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
-                    PackedQuantBDataBegin[new_idx] = static_cast<std::byte>(
-                        static_cast<unsigned>(PackedQuantBDataBegin[new_idx]) +
-                        (buf_val << (new_ing * g))
-                    );
+                for (size_t ik = 0; ik < K_div_g; ik += kfactor) {
+                    const size_t new_ik = ik / kfactor;
+                    const size_t base_k = base_im + new_ik * c2_fac1_div;
+                    const size_t buf_k = buf_base + ik;
+
+                    for (size_t ikf = 0; ikf < kfactor; ikf++) {
+                        const size_t new_idx = base_k + ikf * c2_fac3_div;
+                        const uint8_t buf_val = buf[buf_k + ikf];
+
+                        // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
+                        packed_u8[new_idx] = static_cast<uint8_t>(packed_u8[new_idx] + (buf_val << (new_ing * g)));
+                    }
                 }
             }
         }
@@ -846,6 +827,117 @@ PackQuantBData_avx2(
 // AVX2 optimized scales and zero points packing for T-MAC LUT GEMM
 // This performs the same transformation as the scalar version but uses SIMD operations
 //
+template <bool HasZeroPoint>
+static void
+PackScalesAndZeroPoints_avx2_impl(
+    size_t N,
+    size_t K,
+    size_t bits,
+    size_t BlkLen,
+    size_t simd_n_out,
+    size_t bm,
+    float* PackedScalesBegin,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    const size_t num_elem_per_byte = 8 / bits;  // 4 for 2-bit
+    const size_t row_blks = K / BlkLen;         // number of blocks per column
+    const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
+
+    const size_t nb1 = K / BlkLen;
+    const size_t bm_div_bits = bm / bits;
+    const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
+    const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
+
+    const size_t TotalBlocks = N * row_blks;
+    ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (N >= static_cast<size_t>(MaxThreads) || row_blks <= 1) {
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(N),
+            [&](ptrdiff_t tid) {
+                size_t im = static_cast<size_t>(tid);
+                const size_t new_im = (bm_div_bits > 0) ? (im / bm_div_bits) : 0;
+                const size_t new_ibm = (bm_div_bits > 0) ? (im - new_im * bm_div_bits) : 0;
+
+                if constexpr (HasZeroPoint) {
+                    const size_t new_isimd = new_ibm % simd_n_out;
+                    const size_t new_ibm_div_simd = new_ibm / simd_n_out;
+                    const size_t outer_base = new_im * (bm_div_bits * nb1 / simd_n_out) + new_ibm_div_simd;
+                    const size_t outer_stride = bm_div_bits / simd_n_out;
+
+                    for (size_t blk_in_col = 0; blk_in_col < row_blks; blk_in_col++) {
+                        const size_t idx = im * nb1 + blk_in_col;
+                        const float scale = QuantBScale[idx];
+
+                        size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                        size_t elem_idx = blk_in_col % num_elem_per_byte;
+                        uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+                        float zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+
+                        const size_t new_idx_outer = outer_base + blk_in_col * outer_stride;
+                        const size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                        const size_t new_idx_zero = new_idx_scale + simd_n_out;
+
+                        PackedScalesBegin[new_idx_scale] = scale;
+                        PackedScalesBegin[new_idx_zero] = zp;
+                    }
+                } else {
+                    const size_t base_idx = new_im * bm_div_bits * nb1 + new_ibm;
+                    const size_t stride_idx = bm_div_bits;
+
+                    for (size_t blk_in_col = 0; blk_in_col < row_blks; blk_in_col++) {
+                        const size_t idx = im * nb1 + blk_in_col;
+                        const float scale = QuantBScale[idx];
+                        const size_t new_idx = base_idx + blk_in_col * stride_idx;
+                        PackedScalesBegin[new_idx] = scale;
+                    }
+                }
+            }
+        );
+    } else {
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(TotalBlocks),
+            [&](ptrdiff_t tid) {
+                const size_t block_idx = static_cast<size_t>(tid);
+                const size_t im = block_idx / row_blks;
+                const size_t blk_in_col = block_idx - im * row_blks;
+
+                const size_t new_im = (bm_div_bits > 0) ? (im / bm_div_bits) : 0;
+                const size_t new_ibm = (bm_div_bits > 0) ? (im - new_im * bm_div_bits) : 0;
+
+                const size_t idx = im * nb1 + blk_in_col;
+                const float scale = QuantBScale[idx];
+
+                if constexpr (HasZeroPoint) {
+                    const size_t new_isimd = new_ibm % simd_n_out;
+                    const size_t new_ibm_div_simd = new_ibm / simd_n_out;
+                    const size_t outer_base = new_im * (bm_div_bits * nb1 / simd_n_out) + new_ibm_div_simd;
+                    const size_t outer_stride = bm_div_bits / simd_n_out;
+
+                    size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                    size_t elem_idx = blk_in_col % num_elem_per_byte;
+                    uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+                    float zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+
+                    const size_t new_idx_outer = outer_base + blk_in_col * outer_stride;
+                    const size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                    const size_t new_idx_zero = new_idx_scale + simd_n_out;
+
+                    PackedScalesBegin[new_idx_scale] = scale;
+                    PackedScalesBegin[new_idx_zero] = zp;
+                } else {
+                    const size_t base_idx = new_im * bm_div_bits * nb1 + new_ibm;
+                    const size_t new_idx = base_idx + blk_in_col * bm_div_bits;
+                    PackedScalesBegin[new_idx] = scale;
+                }
+            }
+        );
+    }
+}
+
 void
 PackScalesAndZeroPoints_avx2(
     size_t N,
@@ -863,115 +955,16 @@ PackScalesAndZeroPoints_avx2(
 {
     // Only optimized for 2-bit quantization
     assert(bits == 2);
-    
-    const size_t num_elem_per_byte = 8 / bits;  // 4 for 2-bit
-    const size_t row_blks = K / BlkLen;         // number of blocks per column
-    const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
-    
-    // Precompute constants
-    const size_t nb1 = K / BlkLen;
-    const size_t nb0 = bm / bits * nb1;
-    const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
-    const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
-    
-    // Calculate optimal parallelization
-    // Total work: N * (K / BlkLen) items
-    // Each thread should have enough work to amortize overhead
-    const size_t TotalBlocks = N * row_blks;
-    ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
-    
-    // Use 2D parallelization over (N, K/BlkLen) for better load balancing
-    // when N is smaller than available threads
-    if (N >= static_cast<size_t>(MaxThreads) || row_blks <= 1) {
-        // Parallelize over N only (original approach - good cache locality per row)
-        MlasTrySimpleParallel(
-            ThreadPool, static_cast<ptrdiff_t>(N),
-            [&](ptrdiff_t tid) {
-                size_t im = static_cast<size_t>(tid);
-                for (size_t blk_in_col = 0; blk_in_col < row_blks; blk_in_col++) {
-                    size_t idx = im * nb1 + blk_in_col;
-                    float scale = QuantBScale[idx];
-                    float zp = 0.0f;
-                    if (HasZeroPoint) {
-                        size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
-                        size_t elem_idx = blk_in_col % num_elem_per_byte;
-                        uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
-                        zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
-                    }
 
-                    size_t new_im, new_ibm, new_ik;
-                    if (nb1 == 0) {
-                        new_im = 0;
-                        new_ibm = 0;
-                        new_ik = 0;
-                    } else {
-                        new_im = idx / nb0;
-                        new_ibm = (idx % nb0) / nb1;
-                        new_ik = (idx % nb1);
-                    }
-
-                    if (HasZeroPoint) {
-                        size_t new_isimd = new_ibm % simd_n_out;
-                        size_t new_idx_outer = new_im * bm / bits * nb1 / simd_n_out + 
-                                               new_ik * bm / bits / simd_n_out + 
-                                               new_ibm / simd_n_out;
-                        size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
-                        size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
-
-                        PackedScalesBegin[new_idx_scale] = scale;
-                        PackedScalesBegin[new_idx_zero] = zp;
-                    } else {
-                        size_t new_idx = new_im * bm / bits * nb1 + new_ik * bm / bits + new_ibm;
-                        PackedScalesBegin[new_idx] = scale;
-                    }
-                }
-            }
+    if (HasZeroPoint) {
+        PackScalesAndZeroPoints_avx2_impl<true>(
+            N, K, bits, BlkLen, simd_n_out, bm,
+            PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
         );
     } else {
-        // 2D parallelization over N * row_blks for better thread utilization
-        MlasTrySimpleParallel(
-            ThreadPool, static_cast<ptrdiff_t>(TotalBlocks),
-            [&](ptrdiff_t tid) {
-                size_t block_idx = static_cast<size_t>(tid);
-                size_t im = block_idx / row_blks;
-                size_t blk_in_col = block_idx % row_blks;
-                
-                size_t idx = im * nb1 + blk_in_col;
-                float scale = QuantBScale[idx];
-                float zp = 0.0f;
-                if (HasZeroPoint) {
-                    size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
-                    size_t elem_idx = blk_in_col % num_elem_per_byte;
-                    uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
-                    zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
-                }
-
-                size_t new_im, new_ibm, new_ik;
-                if (nb1 == 0) {
-                    new_im = 0;
-                    new_ibm = 0;
-                    new_ik = 0;
-                } else {
-                    new_im = idx / nb0;
-                    new_ibm = (idx % nb0) / nb1;
-                    new_ik = (idx % nb1);
-                }
-
-                if (HasZeroPoint) {
-                    size_t new_isimd = new_ibm % simd_n_out;
-                    size_t new_idx_outer = new_im * bm / bits * nb1 / simd_n_out + 
-                                           new_ik * bm / bits / simd_n_out + 
-                                           new_ibm / simd_n_out;
-                    size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
-                    size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
-
-                    PackedScalesBegin[new_idx_scale] = scale;
-                    PackedScalesBegin[new_idx_zero] = zp;
-                } else {
-                    size_t new_idx = new_im * bm / bits * nb1 + new_ik * bm / bits + new_ibm;
-                    PackedScalesBegin[new_idx] = scale;
-                }
-            }
+        PackScalesAndZeroPoints_avx2_impl<false>(
+            N, K, bits, BlkLen, simd_n_out, bm,
+            PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
         );
     }
 }
