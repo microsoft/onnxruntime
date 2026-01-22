@@ -19,7 +19,7 @@ namespace qnn {
 WindowsFileMapper::WindowsFileMapper(const logging::Logger& logger,
                                      std::shared_ptr<qnn::RpcMemLibrary> rpcmem_lib)
     : logger_(&logger),
-      rpcmem_lib_(rpcmem_lib){
+      rpcmem_lib_(rpcmem_lib) {
 }
 
 // Close all handles and registered buffers
@@ -53,11 +53,11 @@ Status WindowsFileMapper::GetContextBinMappedMemoryPtr(const std::string& bin_fi
                           << bin_filepath;
 
   wil::unique_hfile file_mapping_handle{CreateFileMappingW(file_handle.get(),
-                                                          nullptr,
-                                                          PAGE_READONLY,
-                                                          0x00,
-                                                          0x00,
-                                                          nullptr)};
+                                                           nullptr,
+                                                           PAGE_READONLY,
+                                                           0x00,
+                                                           0x00,
+                                                           nullptr)};
   if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -91,7 +91,7 @@ Status WindowsFileMapper::GetContextBinMappedMemoryPtr(const std::string& bin_fi
 
   *mapped_data_ptr = mapped_memory_ptr.get();
   mapped_memory_ptrs.push_back(std::move(mapped_memory_ptr));
-  
+
   return Status::OK();
 }
 
@@ -144,7 +144,7 @@ Qnn_ErrorHandle_t WindowsFileMapper::MapDmaData(Qnn_ContextBinaryDataRequest_t r
   }
 
   rpcmem_lib_->Api().register_buf(unaligned_data_ptr, buffer_size, NULL,
-                                 rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
+                                  rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
 
   auto fd = rpcmem_lib_->Api().to_fd(unaligned_data_ptr);
   if (fd == -1) {
@@ -174,7 +174,7 @@ Qnn_ErrorHandle_t WindowsFileMapper::ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_
   }
 
   LOGS_DEFAULT(INFO) << "Releasing DMA data mapping for memory mapped pointer("
-                     << mapped_data_ptr  << "), address(" << data_mem.dmaBuffer.data 
+                     << mapped_data_ptr << "), address(" << data_mem.dmaBuffer.data
                      << "), size: (" << data_mem.memSize << ")";
 
   if (data_mem.dmaBuffer.data == nullptr || data_mem.memSize == 0) {
@@ -184,7 +184,7 @@ Qnn_ErrorHandle_t WindowsFileMapper::ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_
 
   void* unaligned_data_ptr = data_mem.dmaBuffer.data;
   rpcmem_lib_->Api().register_buf(unaligned_data_ptr, data_mem.memSize, -1,
-                                 rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
+                                  rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
 
   auto fd = rpcmem_lib_->Api().to_fd(unaligned_data_ptr);
   if (fd != -1) {

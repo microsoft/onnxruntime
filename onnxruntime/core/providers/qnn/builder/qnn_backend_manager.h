@@ -280,9 +280,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status CreateContext(bool enable_htp_weight_sharing);
 
+  Status GetFileSizeIfValid(const std::string& filepath, size_t& file_size);
+
   Status ReadContextBinIfValid(const std::string& context_bin_filepath,
-                               BufferInfo_t& buffer_info,
-                               bool read_file_contents);
+                               BufferInfo_t& buffer_info);
 
   Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
                                                                         std::unique_ptr<std::vector<std::string>>>& context_bin_map);
