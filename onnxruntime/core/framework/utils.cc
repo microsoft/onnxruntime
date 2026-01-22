@@ -759,7 +759,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                       device_stream_collection_holder,
 #endif
                       run_options.only_execute_path_to_fetches,
-                      nullptr,
+                      nullptr /* parent_stream */,
                       run_profiler);
 }
 
