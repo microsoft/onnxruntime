@@ -56,13 +56,13 @@ MlasSveTanhF16Kernel(
 void 
 MLASCALL 
 MlasSveGeluF16Kernel(
-    const MLAS_FP16* input,
-    MLAS_FP16* output,
-    MLAS_FP16* temp,
-    int64_t count,
-    const std::string& algo
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    MLAS_FP16* Temp,
+    int64_t N,
+    const std::string& Algo
 );
-// function decarations
+// function declarations
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveComputeExpVector(

@@ -596,7 +596,7 @@ MlasShiftLeftInt16(MLAS_INT16X4 Vector)
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasReciprocalSqrtFloat16(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+MlasReciprocalStepFloat16(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
     return vrecpsq_f16(Vector1, Vector2);
 }

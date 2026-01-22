@@ -60,8 +60,8 @@ exp_neg_rational_approx_f16(MLAS_FLOAT16X8 x)
     MLAS_FLOAT16X8 den = MlasMultiplyAddFloat16(d1v, x, d0v);
     den = MlasMultiplyAddFloat16(d2v, x2, den);
     MLAS_FLOAT16X8 recip = MlasApproximateReciprocalFloat16(den);
-    recip = MlasMultiplyFloat16(recip, MlasReciprocalSqrtFloat16(den, recip));
-    recip = MlasMultiplyFloat16(recip, MlasReciprocalSqrtFloat16(den, recip));
+    recip = MlasMultiplyFloat16(recip, MlasReciprocalStepFloat16(den, recip));
+    recip = MlasMultiplyFloat16(recip, MlasReciprocalStepFloat16(den, recip));
     MLAS_FLOAT16X8 result = MlasMultiplyFloat16(num, recip);
     return result;
 }
@@ -103,8 +103,8 @@ MlasNeonErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
         MLAS_FLOAT16X8 absx_clamped = MlasMinimumFloat16(absx, vth);
         MLAS_FLOAT16X8 denom = MlasMultiplyAddFloat16(vp, absx_clamped, vone);
         MLAS_FLOAT16X8 t = MlasApproximateReciprocalFloat16(denom);
-        t = MlasMultiplyFloat16(t, MlasReciprocalSqrtFloat16(denom, t));
-        t = MlasMultiplyFloat16(t, MlasReciprocalSqrtFloat16(denom, t));
+        t = MlasMultiplyFloat16(t, MlasReciprocalStepFloat16(denom, t));
+        t = MlasMultiplyFloat16(t, MlasReciprocalStepFloat16(denom, t));
         MLAS_FLOAT16X8 t2 = MlasMultiplyFloat16(t, t);
         MLAS_FLOAT16X8 t3 = MlasMultiplyFloat16(t2, t);
         MLAS_FLOAT16X8 t4 = MlasMultiplyFloat16(t3, t);

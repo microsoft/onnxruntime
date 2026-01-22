@@ -190,8 +190,8 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
     const __fp16 r1 = 0.5f;
     const __fp16 r2 = 1.0f;
     const __fp16 r3 = static_cast<float>(M_SQRT1_2);
-    const __fp16 r4 = 0.7979f;
-    const __fp16 r5 = 0.03568f;
+    const __fp16 r4 = 0.7978845608028654f;
+    const __fp16 r5 = 0.035677408136300125f;
 
     const MLAS_SVFLOAT16 v_half = MlasSveBroadcastfloat16(r1);
     const MLAS_SVFLOAT16 v_one = MlasSveBroadcastfloat16(r2);
@@ -203,7 +203,7 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
     const __fp16 c2 = 5.0f;
     if (algo == "tanh") {
         int64_t i = 0;
-        while (i < (count)) {
+        while (i < count) {
             svbool_t pg = MlasSveSelPredictefloat16(i, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[i]);
             MLAS_SVFLOAT16 v_x2 = MlasSveMulfloat16(pg, v_x, v_x);
@@ -225,7 +225,7 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
             MlasSveStoreF16(pg, &output[j], v_result);
             j += svcnth();
         }
-    } else if (algo == "none") {
+    } else {
         int64_t i = 0;
         while (i < (count)) {
             svbool_t pg = MlasSveSelPredictefloat16(i, count);

@@ -22,7 +22,6 @@ constexpr float kInvSqrt2 = 0.70710678118654752440f;
 
 }  // namespace
 
-
 void
 MLASCALL
 MlasGeluErfKernel(
