@@ -339,7 +339,7 @@ TEST(GatherNDOpTest, GatherND_batch_dims_mismatch_error) {
   test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
   test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "indices batch size (2) must be divisible by input batch size (3)");
+           "GatherND: indices batch size (2) is not divisible by input batch size (3)");
 }
 
 }  // namespace test
