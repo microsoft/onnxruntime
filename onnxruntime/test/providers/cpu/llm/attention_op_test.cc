@@ -863,6 +863,7 @@ TEST(AttentionTest, Attention4DDiffHeadsWithPastAndPresent) {
   );
 }
 
+// GQA only supports fp16 and bf16 in current implementation.
 TEST(AttentionTest, Attention3DGqaAttn) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 9;           // Q.shape[1]
@@ -889,12 +890,13 @@ TEST(AttentionTest, Attention3DGqaAttn) {
 
   RunTest3D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
-            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
             false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
+// GQA only supports fp16 and bf16 in current implementation.
 TEST(AttentionTest, Attention4DGqaAttnMask) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 9;           // Q.shape[1]
@@ -924,12 +926,13 @@ TEST(AttentionTest, Attention4DGqaAttnMask) {
 
   RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, m, std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
-            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
             false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
+// GQA only supports fp16 and bf16 in current implementation.
 TEST(AttentionTest, Attention4DGqaWithPastAndPresent) {
   int batch_size = 2;             // Q.shape[0]
   int q_num_heads = 9;            // Q.shape[1]
@@ -971,7 +974,7 @@ TEST(AttentionTest, Attention4DGqaWithPastAndPresent) {
 
   RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
-            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, std::vector<float>(),
             false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
