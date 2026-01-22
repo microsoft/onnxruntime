@@ -331,17 +331,72 @@ LutPackScalesAndZeroPoints(
     const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
     const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
 
-    // Parallelize over N (output channels)
-    MlasTrySimpleParallel(
-        ThreadPool, N,
-        [&](ptrdiff_t tid) {
-            size_t im = static_cast<size_t>(tid);
-            for (size_t ik = 0; ik < K; ik += BlkLen) {
-                size_t idx = im * nb1 + ik / BlkLen;
+    // Calculate optimal parallelization
+    // Total work: N * (K / BlkLen) items
+    // Each thread should have enough work to amortize overhead
+    const size_t TotalBlocks = N * row_blks;
+    ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
+    
+    // Use 2D parallelization over (N, K/BlkLen) for better load balancing
+    // when N is smaller than available threads
+    if (N >= static_cast<size_t>(MaxThreads) || row_blks <= 1) {
+        // Parallelize over N only (original approach - good cache locality per row)
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(N),
+            [&](ptrdiff_t tid) {
+                size_t im = static_cast<size_t>(tid);
+                for (size_t ik = 0; ik < K; ik += BlkLen) {
+                    size_t idx = im * nb1 + ik / BlkLen;
+                    float scale = QuantBScale[idx];
+                    float zp = 0.0f;
+                    if (HasZeroPoint) {
+                        size_t blk_in_col = ik / BlkLen;
+                        size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+                        size_t elem_idx = blk_in_col % num_elem_per_byte;
+                        uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+                        zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+                    }
+
+                    size_t new_im, new_ibm, new_ik;
+                    if (nb1 == 0) {
+                        new_im = 0;
+                        new_ibm = 0;
+                        new_ik = 0;
+                    } else {
+                        new_im = idx / nb0;
+                        new_ibm = (idx % nb0) / nb1;
+                        new_ik = (idx % nb1);
+                    }
+
+                    if (HasZeroPoint) {
+                        size_t new_isimd = new_ibm % simd_n_out;
+                        size_t new_idx_outer = new_im * bm / bits * nb1 / simd_n_out + new_ik * bm / bits / simd_n_out + new_ibm / simd_n_out;
+                        size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
+                        size_t new_idx_zero = new_idx_outer * (simd_n_out * 2) + simd_n_out + new_isimd;
+
+                        PackedQuantBZPBegin[new_idx_scale] = scale;
+                        PackedQuantBZPBegin[new_idx_zero] = zp;
+                    } else {
+                        size_t new_idx = new_im * bm / bits * nb1 + new_ik * bm / bits + new_ibm;
+                        PackedQuantBZPBegin[new_idx] = scale;
+                    }
+                }
+            }
+        );
+    } else {
+        // 2D parallelization over N * row_blks for better thread utilization
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(TotalBlocks),
+            [&](ptrdiff_t tid) {
+                size_t block_idx = static_cast<size_t>(tid);
+                size_t im = block_idx / row_blks;
+                size_t blk_in_col = block_idx % row_blks;
+                // size_t ik = blk_in_col * BlkLen;
+                
+                size_t idx = im * nb1 + blk_in_col;
                 float scale = QuantBScale[idx];
                 float zp = 0.0f;
                 if (HasZeroPoint) {
-                    size_t blk_in_col = ik / BlkLen;
                     size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
                     size_t elem_idx = blk_in_col % num_elem_per_byte;
                     uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
@@ -372,8 +427,8 @@ LutPackScalesAndZeroPoints(
                     PackedQuantBZPBegin[new_idx] = scale;
                 }
             }
-        }
-    );
+        );
+    }
 }
 
 // Internal helper: calculates the offset to scales in the packed buffer

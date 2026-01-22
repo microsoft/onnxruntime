@@ -687,23 +687,21 @@ PackQuantBData_avx2(
     assert(bits == 2 && g == 4 && ngroups_per_elem == 2);
 
     const size_t mgroup = ngroups_per_elem * simd_n_in;  // 32
+    const size_t K_div_g = K / g;
 
     // Phase 1: Bit-plane decomposition with grouping by g=4
     // For 2-bit: each input byte has 4 elements, we extract bit planes and group 4 consecutive bits
-    std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * (K / g)]);
-
-    const size_t Iterations = N;
+    std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * K_div_g]);
 
     // Masks for 2-bit extraction
     const __m256i mask_2bit = _mm256_set1_epi8(0x03);  // mask for 2-bit values
     const __m256i mask_bit0 = _mm256_set1_epi8(0x01);  // bit 0 of each 2-bit element
-    // const __m256i mask_bit1 = _mm256_set1_epi8(0x02);  // bit 1 of each 2-bit element
 
+    // Phase 1: Parallelize over N (each thread processes one row)
     MlasTrySimpleParallel(
-        ThreadPool, Iterations,
+        ThreadPool, static_cast<ptrdiff_t>(N),
         [&](ptrdiff_t tid) {
             size_t im = static_cast<size_t>(tid);
-            const size_t K_div_g = K / g;
 
             // Process in chunks of 32 bytes (128 2-bit elements = 32 groups of 4)
             const uint8_t* src_row = reinterpret_cast<const uint8_t*>(QuantBDataBegin) + (im * K / 4);
@@ -771,49 +769,49 @@ PackQuantBData_avx2(
     );
 
     // Phase 2: Multi-reshape/transpose into final layout
-    // This part still uses scalar code as the index computation is complex
-    const size_t c0_fac2 = K / g;
+    // Optimize parallelization: use 2D partitioning over N and K/g for better load balancing
+    const size_t c0_fac2 = K_div_g;
     const size_t c0_fac1 = simd_n_out * c0_fac2;
     const size_t c0_fac0 = bits * c0_fac1;
 
-    const size_t c1_nb2 = K / g;
+    const size_t c1_nb2 = K_div_g;
     const size_t c1_nb1 = simd_n_in * c1_nb2;
     const size_t c1_nb0 = ngroups_per_elem * c1_nb1;
-    const size_t c1_fac2 = K / g;
+    const size_t c1_fac2 = K_div_g;
     const size_t c1_fac1 = ngroups_per_elem * c1_fac2;
     const size_t c1_fac0 = simd_n_in * c1_fac1;
 
     const size_t c2_nb4 = kfactor;
-    const size_t c2_nb3 = K / g / kfactor * c2_nb4;
+    const size_t c2_nb3 = K_div_g / kfactor * c2_nb4;
     const size_t c2_nb2 = ngroups_per_elem * c2_nb3;
     const size_t c2_nb1 = simd_n_in * c2_nb2;
     const size_t c2_nb0 = bm / mgroup * c2_nb1;
     const size_t c2_fac3 = simd_n_in * ngroups_per_elem;
     const size_t c2_fac2 = kfactor * c2_fac3;
     const size_t c2_fac1 = bm / mgroup * c2_fac2;
-    const size_t c2_fac0 = K / g / kfactor * c2_fac1;
+    const size_t c2_fac0 = K_div_g / kfactor * c2_fac1;
 
-    const size_t PackedQuantBDataSize = (N * bits) * (K / g / ngroups_per_elem);
+    const size_t PackedQuantBDataSize = (N * bits) * (K_div_g / ngroups_per_elem);
     memset(PackedQuantBDataBegin, 0, PackedQuantBDataSize);
 
+    // Phase 2: Parallelize over N - each thread handles all (bits, K/g) work for its assigned rows
+    // This ensures no write conflicts since each im writes to disjoint output regions
     MlasTrySimpleParallel(
-        ThreadPool, Iterations,
+        ThreadPool, static_cast<ptrdiff_t>(N),
         [&](ptrdiff_t tid) {
             size_t im = static_cast<size_t>(tid);
             for (size_t ib = 0; ib < bits; ib++) {
-                for (size_t ik = 0; ik < K / g; ik++) {
+                for (size_t ik = 0; ik < K_div_g; ik++) {
                     // w = w.reshape(M // bits // simd_n_out, simd_n_out, bits, K // g).transpose(0, 2, 1, 3)
                     size_t new_im = im / simd_n_out;
                     size_t new_isno = im % simd_n_out;
-                    size_t new_ib = ib;
-                    size_t new_ik = ik;
-                    size_t new_idx = new_im * c0_fac0 + new_ib * c0_fac1 + new_isno * c0_fac2 + new_ik;
+                    size_t new_idx = new_im * c0_fac0 + ib * c0_fac1 + new_isno * c0_fac2 + ik;
 
                     // w = w.reshape(M // mgroup, ngroups_per_elem, simd_n_in, K // g).transpose(0, 2, 1, 3)
                     new_im = new_idx / c1_nb0;
                     size_t new_ing = (new_idx % c1_nb0) / c1_nb1;
                     size_t new_isni = (new_idx % c1_nb1) / c1_nb2;
-                    new_ik = (new_idx % c1_nb2);
+                    size_t new_ik = (new_idx % c1_nb2);
                     new_idx = new_im * c1_fac0 + new_isni * c1_fac1 + new_ing * c1_fac2 + new_ik;
 
                     // w = w.reshape(M // bm, bm // mgroup, simd_n_in, ngroups_per_elem, K // g // kfactor, kfactor).transpose(0, 4, 1, 5, 2, 3)
@@ -830,7 +828,7 @@ PackQuantBData_avx2(
                               new_isni * ngroups_per_elem +
                               new_ing;
                     new_idx = new_idx / ngroups_per_elem;
-                    size_t buf_idx = im * bits * K / g + ib * K / g + ik;
+                    size_t buf_idx = im * bits * K_div_g + ib * K_div_g + ik;
                     uint8_t buf_val = buf[buf_idx];
 
                     // w = sum([(w[:, :, :, :, :, ng] << (ng * g)) for ng in range(ngroups_per_elem)])
