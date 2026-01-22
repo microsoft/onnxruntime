@@ -4,7 +4,7 @@ Copyright 2025 FUJITSU LIMITED
 
 Module Name:
 
-   Gelu.cpp
+    gelu_neon_fp16.cpp
 
 Abstract:
 
@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 #include "gelu.h"
-
+#include <cmath>
 #if defined(__ARM_NEON) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
 
 void
@@ -48,7 +48,7 @@ MlasNeonGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp
         // Tail
         for (; i < count; ++i) {
             float x = static_cast<float>(input[i]);
-            float inner = x * (0.7979f + 0.03568f * x * x);
+            float inner = x * (0.7978845608028654f + 0.035677408136300125f * x * x);
             inner = std::max(-5.0f, std::min(5.0f, inner));
             temp[i] = static_cast<MLAS_FP16>(inner);
         }
@@ -56,7 +56,7 @@ MlasNeonGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp
         // Tanh processing
         MlasComputeTanh<MLAS_FP16>(temp, temp, count);
 
-    } else if (algo == "none") {
+    } else{
         // Preprocess input into temp[] for erf
         for (i = 0; i + 7 < count; i += 8) {
             MLAS_FLOAT16X8 x = MlasLoadf16Float16x8(reinterpret_cast<const float16_t*>(input + i));
@@ -67,7 +67,7 @@ MlasNeonGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp
         // Tail
         for (; i < count; ++i) {
             float x = static_cast<float>(input[i]);
-            temp[i] = static_cast<MLAS_FP16>(x * 0.70710678f);
+            temp[i] = static_cast<MLAS_FP16>(x * static_cast<float>(M_SQRT1_2));
         }
 
         // Erf processing

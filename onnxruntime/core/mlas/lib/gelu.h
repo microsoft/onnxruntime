@@ -4,22 +4,17 @@ Copyright 2025 FUJITSU LIMITED
 
 Module Name:
 
-   Gelu.cpp
+    gelu.h
 
 Abstract:
 
-    This module contains  Gelu helper functions .
+    This module contains Gelu helper functions .
 
 --*/
 
 #include "fp16_common.h"
 #if defined(MLAS_NEON_INTRINSICS)
 #include "erf_neon_fp16.h"
-#endif
-
-#ifdef MLAS_USE_SVE
-#include "sve/mlasi_sve.h"
-#endif
 
 void
 MLASCALL
@@ -30,3 +25,9 @@ MlasNeonGeluF16Kernel(
     int64_t count,
     const std::string& algo
 );
+
+#endif
+
+#ifdef MLAS_USE_SVE
+#include "sve/mlasi_sve.h"
+#endif
