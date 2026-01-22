@@ -10,6 +10,8 @@ This document aims to provide guidance for ONNX Runtime (ORT) plugin Execution P
 
 Note: Here, we will refer to the ORT C API functions. Their equivalents should exist for other language bindings that support plugin EP usage.
 
+#### Manual EP Library Registration
+
 Users are expected to call the ORT API `RegisterExecutionProviderLibrary()` to register the plugin EP library. Then, they may either choose to use the auto EP selection mechanism or manually call ORT API `SessionOptionsAppendExecutionProvider_V2()` to explicitly use the plugin EP.
 
 ### Structure
@@ -40,12 +42,19 @@ The name of the package should indicate that the package contains a plugin EP an
 
 The prefix "onnxruntime-ep" can be used to identify a plugin EP.
 
-The suggested package naming convention is: "onnxruntime-ep-\<EP name\>". For example, "onnxruntime-ep-contoso-ai".
+The suggested package naming convention is: "onnxruntime-ep-\<EP identifier\>". For example, "onnxruntime-ep-contoso-ai".
 
-#### TODO Other PyPI stuff
+#### TODO other PyPI info
 
 ### NuGet
-TODO
+
+#### Naming
+
+NuGet packages may use a reserved ID prefix.
+
+The suggested package naming convention is: "\<Vendor prefix\>.ML.OnnxRuntime.\<EP identifier\>.EP". For example, "Contoso.ML.OnnxRuntime.ContosoAI.EP".
+
+#### TODO other NuGet info
 
 ### Maven
 TODO
