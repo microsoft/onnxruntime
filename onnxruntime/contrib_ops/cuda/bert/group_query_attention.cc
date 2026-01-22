@@ -223,16 +223,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
     out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
 
-    auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
-    if (softmax_lse_accum_bytes > 0) {
-      // Initialize to 0 is fine because Flash kernel will write -inf to it if needed.
-      // However, the standard Flash kernel often doesn't zero it globally.
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0, softmax_lse_accum_bytes, cuda_stream));
-    }
-    if (out_accum_bytes > 0) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum_buffer.get(), 0, out_accum_bytes, cuda_stream));
-    }
-
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
     data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
