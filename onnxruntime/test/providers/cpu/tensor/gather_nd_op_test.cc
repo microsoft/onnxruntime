@@ -334,7 +334,7 @@ TEST(GatherNDOpTest, GatherND_slice_int64_t) {
 TEST(GatherNDOpTest, GatherND_batch_dims_mismatch_error) {
   OpTester test("GatherND", 12, kOnnxDomain);
   test.AddAttribute<int64_t>("batch_dims", 1);
-  // Input has 3 batches, but indices has 2 batches - mismatch!
+  // Input has 3 batches, but indices has 2 slices (indices batch size 2), which is not divisible by 3 - mismatch!
   test.AddInput<float>("data", {3, 3}, {0.f, 1.f, 2.f, 10.f, 11.f, 12.f, 20.f, 21.f, 22.f});
   test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
   test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
