@@ -1019,6 +1019,7 @@ Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContex
     context_file_map_callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(notify_param_ptr.get());
 
     file_mapping_notify_params_.push_back(std::move(notify_param_ptr));
+    context_callbacks_list.push_back(std::move(context_file_map_callbacks));
 
     // Callbacks require QnnContext_ParamsV2_t which is new to QNN API 2.32
     QnnContext_ParamsV2_t context_params_v2 = {nullptr,
@@ -1027,17 +1028,16 @@ Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContex
                                                nullptr,
                                                ContextCreateAsyncCallback,
                                                it.second.get(),
-                                               &context_file_map_callbacks};
+                                               &context_callbacks_list.back()};
 
     QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_2,
                                           {}};
 
-    context_params_list.push_back(std::move(context_params));
-    context_callbacks_list.push_back(std::move(context_file_map_callbacks));
     context_paramsv2_list.push_back(std::move(context_params_v2));
-    context_params_ptr_list.push_back(&(context_params_list.back()));
 
     context_params.v2 = &context_paramsv2_list.back();
+    context_params_list.push_back(std::move(context_params));
+    context_params_ptr_list.push_back(&(context_params_list.back()));
   }
   context_params_ptr_list.push_back(nullptr);
   auto result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
