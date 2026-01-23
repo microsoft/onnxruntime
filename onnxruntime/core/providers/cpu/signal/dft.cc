@@ -40,14 +40,6 @@ ONNX_CPU_OPERATOR_KERNEL(STFT, 17,
                              .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
                          STFT);
 
-static bool is_real_valued_signal(const onnxruntime::TensorShape& shape) {
-  return shape.NumDimensions() >= 2 && shape[shape.NumDimensions() - 1] == 1;
-}
-
-static bool is_complex_valued_signal(const onnxruntime::TensorShape& shape) {
-  return shape.NumDimensions() >= 2 && shape[shape.NumDimensions() - 1] == 2;
-}
-
 constexpr static bool is_power_of_2(size_t size) {
   unsigned n_bits = 0;
   while (size != 0) {
@@ -435,8 +427,8 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto* X = ctx->Input<Tensor>(0);
   const auto* dft_length = ctx->Input<Tensor>(1);
   const auto& X_shape = X->Shape();
-  const auto is_real_valued = is_real_valued_signal(X_shape);
-  const auto is_complex_valued = is_complex_valued_signal(X_shape);
+  const auto is_real_valued = X_shape[X_shape.NumDimensions() - 1] == 1;
+  const auto is_complex_valued = X_shape[X_shape.NumDimensions() - 1] == 2;
   axis = HandleNegativeAxis(axis, X_shape.NumDimensions());
 
   // Validate input for IRFFT
@@ -636,8 +628,8 @@ Status STFT::Compute(OpKernelContext* ctx) const {
   // Get signal shape
   const auto* signal = ctx->Input<Tensor>(0);
   const auto& signal_shape = signal->Shape();
-  const auto is_real_valued = is_real_valued_signal(signal_shape);
-  const auto is_complex_valued = is_complex_valued_signal(signal_shape);
+  const auto is_real_valued = signal_shape.NumDimensions() == 2 || signal_shape[signal_shape.NumDimensions() - 1] == 1;
+  const auto is_complex_valued = signal_shape.NumDimensions() > 2 && signal_shape[signal_shape.NumDimensions() - 1] == 2;
 
   // Get data type
   auto data_type = signal->DataType();
