@@ -25,22 +25,31 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
 
   uint32_t output_size = onnxruntime::narrow<uint32_t>(n);
   RangeProgram program{output_tensor->GetElementType()};
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
+
+  // For int64, we need to ensure values fit in int32 range since we use 4 bytes in uniforms
+  uint32_t start_u32, delta_u32;
+  if constexpr (std::is_same_v<T, int64_t>) {
+    // Check if values fit in int32 range
+    ORT_ENFORCE(start >= std::numeric_limits<int32_t>::min() && start <= std::numeric_limits<int32_t>::max(),
+                "Range start value ", start, " is out of int32 range");
+    ORT_ENFORCE(delta >= std::numeric_limits<int32_t>::min() && delta <= std::numeric_limits<int32_t>::max(),
+                "Range delta value ", delta, " is out of int32 range");
+    int32_t start_i32 = static_cast<int32_t>(start);
+    int32_t delta_i32 = static_cast<int32_t>(delta);
+    start_u32 = std::bit_cast<uint32_t>(start_i32);
+    delta_u32 = std::bit_cast<uint32_t>(delta_i32);
+  } else {
+    start_u32 = std::bit_cast<uint32_t>(start);
+    delta_u32 = std::bit_cast<uint32_t>(delta);
+  }
 
   program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Type})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           output_size,
-          *reinterpret_cast<uint32_t*>(&start),
-          *reinterpret_cast<uint32_t*>(&delta),
+          start_u32,
+          delta_u32,
       });
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
   return context.RunProgram(program);
 }
