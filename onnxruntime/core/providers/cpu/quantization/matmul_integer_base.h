@@ -117,7 +117,13 @@ class MatMulIntegerBase : public OpKernel {
     return false;
   }
 
+  // Flag to indicate if we can use MLAS implementation
+  // This flag is set after all relevant input validations
+  // have been performed
   bool can_use_dynamic_quant_mlas_{false};
+
+  // Flag to indicate if user allows usage of KleidiAI's implementation
+  bool use_kleidiai_{true};
 
 #if defined(USE_KLEIDIAI)
   struct KleidiaiDynamicPackContext {

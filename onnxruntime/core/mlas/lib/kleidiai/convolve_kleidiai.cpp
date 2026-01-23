@@ -658,6 +658,13 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool)
 {
+    // Check if the user wants to use KleidiAI
+    if (!Parameters->use_kleidiai) {
+        KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning "
+                           "false from MlasConvPrepare.");
+        return false;
+    }
+
     //Check dimensions before accessing
     if (Dimensions < 2) {
         return false;
@@ -722,8 +729,15 @@ ArmKleidiAI::MlasConv(
     MLAS_THREADPOOL* ThreadPool
     )
 {
+    // Check if the user wants to use KleidiAI
+    if (!Parameters->use_kleidiai) {
+        KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning "
+                           "false from MlasConv.");
+        return false;
+    }
+
     if(!CheckCapabilitiesSme(Parameters)){
-        // Fallback to Default Mlas
+        // Fallback to Default Mlas path
         return false;
     };
     ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in

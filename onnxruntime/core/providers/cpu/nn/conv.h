@@ -26,6 +26,9 @@ class Conv<float> : public OpKernel {
  public:
   Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     activation_.ActivationKind = MlasIdentityActivation;
+
+    auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasUseKleidiai);
+    use_kleidiai_ = (config_ops == "1");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -34,6 +37,8 @@ class Conv<float> : public OpKernel {
   MLAS_ACTIVATION activation_;
 
   ConvAttributes conv_attrs_;
+
+  bool use_kleidiai_;
 };
 
 }  // namespace onnxruntime

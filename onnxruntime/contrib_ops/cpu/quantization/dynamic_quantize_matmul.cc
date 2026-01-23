@@ -159,13 +159,20 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
 
 class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
  public:
-  DynamicQuantizeMatMul(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {}
+  DynamicQuantizeMatMul(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {
+    auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasUseKleidiai);
+    use_kleidiai_ = (config_ops == "1");
+  }
 
   Status Compute(OpKernelContext* context) const override;
 
 #if defined(USE_KLEIDIAI)
   bool SupportsKleidiaiDynamicQuant() const override {
-    if (!MlasIsDynamicQGemmAvailable()) {
+    // Currently the MLAS implementation of Dynamic Quantized MatMul
+    // on ARM devices uses KleidiAI's dynamic quantized gemm functions.
+    // Hence, we return false from here if either the user has disabled
+    // KleidiAI usage or if the system does not support the required SME capabilities
+    if (!use_kleidiai_ || !MlasIsDynamicQGemmAvailable()) {
       return false;
     }
     return true;

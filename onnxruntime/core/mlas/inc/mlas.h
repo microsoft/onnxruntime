@@ -864,6 +864,7 @@ struct MLAS_CONV_PARAMETERS {
     float Beta;
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
+    bool use_kleidiai;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;

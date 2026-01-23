@@ -215,6 +215,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   if (kernel_rank >= 1 && kernel_rank <= 3) {
     MLAS_CONV_PARAMETERS Parameters;
+    Parameters.use_kleidiai = use_kleidiai_;
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,
                     kernel_rank,
