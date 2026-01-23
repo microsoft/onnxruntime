@@ -719,7 +719,8 @@ struct ScopedContext {
   ScopedContext(const ScopedContext&) = delete;
 
   ~ScopedContext() {
-    CU_CALL_THROW(cuCtxPopCurrent(nullptr));
+    // Destructor must not throw. Perform a best-effort pop of the current context.
+    cuCtxPopCurrent(nullptr);
   }
 };
 }  // namespace onnxruntime

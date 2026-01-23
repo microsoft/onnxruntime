@@ -31,6 +31,13 @@ const char* CudaErrString<cudaError_t>(cudaError_t x) {
   return cudaGetErrorString(x);
 }
 
+template <>
+const char* CudaErrString<CUresult>(CUresult x) {
+  const char *errorStr = NULL;
+  cuGetErrorString(x, &errorStr);
+  return errorStr;
+}
+
 #ifndef USE_CUDA_MINIMAL
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {

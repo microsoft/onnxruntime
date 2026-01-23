@@ -549,12 +549,12 @@ struct NvTrtRtxExternalMemoryHandle : OrtExternalMemoryHandle {
 
   static void ORT_API_CALL ReleaseCallback(_In_ OrtExternalMemoryHandle* handle) noexcept {
     if (handle == nullptr) return;
-    auto* derived = static_cast<NvTrtRtxExternalMemoryHandle*>(handle);
+    auto derived = std::unique_ptr<NvTrtRtxExternalMemoryHandle>(
+        static_cast<NvTrtRtxExternalMemoryHandle*>(handle));
     // Destroy the external memory object (also releases mapped buffer)
     if (derived->ext_memory != nullptr) {
       cuDestroyExternalMemory(derived->ext_memory);
     }
-    delete derived;
   }
 };
 
@@ -579,12 +579,12 @@ struct NvTrtRtxExternalSemaphoreHandle : OrtExternalSemaphoreHandle {
 
   static void ORT_API_CALL ReleaseCallback(_In_ OrtExternalSemaphoreHandle* handle) noexcept {
     if (handle == nullptr) return;
-    auto* derived = static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle);
+    auto derived = std::unique_ptr<NvTrtRtxExternalSemaphoreHandle>(
+        static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle));
     // Destroy the external semaphore object
     if (derived->ext_semaphore != nullptr) {
       cuDestroyExternalSemaphore(derived->ext_semaphore);
     }
-    delete derived;
   }
 };
 
@@ -746,14 +746,13 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // The handle has a Release callback that does the actual cleanup
     // This method is called from OrtExternalResourceImporterImpl::ReleaseMemory
     // The Release callback in the handle will call the static ReleaseCallback
-    auto* mem_handle = static_cast<NvTrtRtxExternalMemoryHandle*>(handle);
+    auto mem_handle = std::unique_ptr<NvTrtRtxExternalMemoryHandle>(
+      static_cast<NvTrtRtxExternalMemoryHandle*>(handle));
 
     // Destroy the external memory object (also releases mapped buffer)
     if (mem_handle->ext_memory != nullptr) {
       cuDestroyExternalMemory(mem_handle->ext_memory);
     }
-
-    delete mem_handle;
   }
 
   static OrtStatus* ORT_API_CALL CreateTensorFromMemoryImpl(
@@ -878,13 +877,12 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
       return;
     }
 
-    auto* sem_handle = static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle);
+    auto sem_handle = std::unique_ptr<NvTrtRtxExternalSemaphoreHandle>(
+      static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle));
 
     if (sem_handle->ext_semaphore != nullptr) {
       cuDestroyExternalSemaphore(sem_handle->ext_semaphore);
     }
-
-    delete sem_handle;
   }
 
   static OrtStatus* ORT_API_CALL WaitSemaphoreImpl(

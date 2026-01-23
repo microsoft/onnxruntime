@@ -15,7 +15,6 @@
 // 8. Full inference pipeline with zero-copy external memory
 // 9. Full inference pipeline with zero-copy external memory and a CIG context
 
-#include "../../../../include/onnxruntime/core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -29,8 +28,8 @@
 #include <chrono>
 #include <vector>
 #include <cstring>
-
-#include <onnxruntime_cxx_api.h>
+#include <algorithm>
+#include <cstdio>
 
 #if defined(_WIN32)
 #include <d3d12.h>
@@ -827,9 +826,10 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
 
   Ort::AllocatedStringPtr input_name = session.GetInputNameAllocated(0, allocator);
   Ort::AllocatedStringPtr output_name = session.GetOutputNameAllocated(0, allocator);
-
-  io_binding.BindInput(input_name.get(), Ort::Value(input_tensor));
-  io_binding.BindOutput(output_name.get(), Ort::Value(output_tensor));
+  Ort::Value input(input_tensor);
+  Ort::Value output(output_tensor);
+  io_binding.BindInput(input_name.get(), input);
+  io_binding.BindOutput(output_name.get(), output);
   io_binding.SynchronizeInputs();
   // Run inference. ORT submits all work to the stream before returning, so we signal the async semaphore below.
   Ort::RunOptions run_options;
@@ -1093,9 +1093,8 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
         onnxruntime::nv::provider_option_names::kCudaGraphEnable,
     };
     char aux_stream_address[32];
-    std::array<size_t, 1> aux_streams = {stream_addr_val};
-    size_t aux_stream_address_val = reinterpret_cast<size_t>(aux_streams.data());
-    sprintf(aux_stream_address, "%llu", static_cast<uint64_t>(aux_stream_address_val));
+    size_t aux_streams[] = {stream_addr_val};
+    sprintf(aux_stream_address, "%llu", reinterpret_cast<uint64_t>(aux_streams));
     std::string max_shared_mem_size = std::to_string(1024 * 28);  // 28 KiB
     const char* option_values[] = {
         stream_address,
@@ -1121,8 +1120,10 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
     Ort::AllocatedStringPtr input_name = session.GetInputNameAllocated(0, allocator);
     Ort::AllocatedStringPtr output_name = session.GetOutputNameAllocated(0, allocator);
 
-    io_binding.BindInput(input_name.get(), Ort::Value(input_tensor));
-    io_binding.BindOutput(output_name.get(), Ort::Value(output_tensor));
+    Ort::Value input(input_tensor);
+    Ort::Value output(output_tensor);
+    io_binding.BindInput(input_name.get(), input);
+    io_binding.BindOutput(output_name.get(), output);
     io_binding.SynchronizeInputs();
     // Run inference. ORT submits all work to the stream before returning, so we signal the async semaphore below.
     Ort::RunOptions run_options;
