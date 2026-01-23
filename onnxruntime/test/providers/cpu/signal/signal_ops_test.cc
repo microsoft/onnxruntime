@@ -486,6 +486,98 @@ TEST(SignalOpsTest, DFT20_2D_complex) {
   TestDFT2DComplex(kOpsetVersion20);
 }
 
+// Test 2D real input with onesided=true (forward transform - RFFT)
+static void TestDFT2DComplexOnesided(int since_version) {
+  OpTester test("DFT", since_version);
+
+  // 2D real input: [signal_length, 1]
+  // This represents a single 1D real signal without a batch dimension
+  vector<int64_t> input_shape = {8, 1};
+  vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+
+  // Expected output: RFFT of the real input (one-sided)
+  // Output shape [5, 2] contains only positive frequency bins (8/2 + 1 = 5)
+  vector<int64_t> output_shape = {5, 2};
+  vector<float> expected_output = {
+      36.000f, 0.000f,    // bin 0 (DC)
+      -4.000f, 9.65685f,  // bin 1
+      -4.000f, 4.000f,    // bin 2
+      -4.000f, 1.65685f,  // bin 3
+      -4.000f, 0.000f     // bin 4 (Nyquist for even length)
+  };
+
+  test.AddInput<float>("input", input_shape, input);
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {8});
+    test.AddInput<int64_t>("axis", {}, {0});  // axis=0 for 2D input
+  } else {
+    // For Opset 17, set axis attribute explicitly
+    test.AddAttribute<int64_t>("axis", static_cast<int64_t>(0));
+  }
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(true));
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.SetOutputAbsErr("output", 0.0001f);
+  test.Run();
+}
+
+TEST(SignalOpsTest, DFT17_2D_complex_onesided) {
+  TestDFT2DComplexOnesided(kMinOpsetVersion);
+}
+
+TEST(SignalOpsTest, DFT20_2D_complex_onesided) {
+  TestDFT2DComplexOnesided(kOpsetVersion20);
+}
+
+// Test 2D complex input with onesided=true and inverse=true (IRFFT)
+static void TestDFT2DComplexOnesidedInverse(int since_version) {
+  OpTester test("DFT", since_version);
+
+  // 2D complex input: [onesided_length, 2]
+  // This represents a onesided complex spectrum (5 bins for original signal length 8)
+  vector<int64_t> input_shape = {5, 2};
+  vector<float> input = {
+      36.000f, 0.000f,    // bin 0 (DC)
+      -4.000f, 9.65685f,  // bin 1
+      -4.000f, 4.000f,    // bin 2
+      -4.000f, 1.65685f,  // bin 3
+      -4.000f, 0.000f     // bin 4 (Nyquist)
+  };
+
+  // Expected output: IRFFT reconstructs the real signal [8, 1]
+  vector<int64_t> output_shape = {8, 1};
+  vector<float> expected_output = {
+      1.0f,  // Should reconstruct original real values
+      2.0f,
+      3.0f,
+      4.0f,
+      5.0f,
+      6.0f,
+      7.0f,
+      8.0f};
+
+  test.AddInput<float>("input", input_shape, input);
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {8});
+    test.AddInput<int64_t>("axis", {}, {0});  // axis=0 for 2D input
+  } else {
+    // For Opset 17, set axis attribute explicitly
+    test.AddAttribute<int64_t>("axis", static_cast<int64_t>(0));
+  }
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(true));
+  test.AddAttribute<int64_t>("inverse", static_cast<int64_t>(true));
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.SetOutputAbsErr("output", 0.0001f);
+  test.Run();
+}
+
+TEST(SignalOpsTest, DFT17_2D_complex_onesided_inverse) {
+  TestDFT2DComplexOnesidedInverse(kMinOpsetVersion);
+}
+
+TEST(SignalOpsTest, DFT20_2D_complex_onesided_inverse) {
+  TestDFT2DComplexOnesidedInverse(kOpsetVersion20);
+}
+
 // Test 2D real input (single 1D signal without batch dimension)
 static void TestDFT2DReal(int since_version) {
   OpTester test("DFT", since_version);
