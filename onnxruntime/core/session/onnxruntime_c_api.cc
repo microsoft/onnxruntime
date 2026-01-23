@@ -4807,6 +4807,7 @@ static constexpr OrtApi ort_api_1_to_25 = {
 
     &OrtApis::RunOptionsEnableProfiling,
     &OrtApis::RunOptionsDisableProfiling,
+    &OrtApis::SetDefaultThreadPoolCallbacks,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

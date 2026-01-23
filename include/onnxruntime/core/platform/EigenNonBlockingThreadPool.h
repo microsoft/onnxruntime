@@ -40,6 +40,7 @@
 #pragma warning(disable : 4805)
 #endif
 #include <memory>
+#include <optional>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
 #if defined(__GNUC__)
@@ -52,6 +53,12 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
+
+// Forward declarations
+namespace onnxruntime {
+struct ThreadPoolWorkCallbacks;
+struct ThreadOptions;
+}  // namespace onnxruntime
 
 // ORT thread pool overview
 // ------------------------
@@ -720,6 +727,34 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
   }
 
+  // Wraps a task with work callbacks for context preservation across thread boundaries.
+  // The returned task will invoke on_start_work before the original task and
+  // on_stop_work after (guaranteed even if the task throws).
+  // Precondition: work_callbacks_ must have value when this is called.
+  Task WrapTaskWithCallbacks(Task original_task, void* cb_data) {
+    // Capture callbacks by value (they're just function pointers) and cb_data by value
+    // work_callbacks_ is guaranteed to have value here (checked by caller)
+    ThreadPoolWorkCallbacks callbacks = *work_callbacks_;
+    return [callbacks, cb_data, task = std::move(original_task)]() {
+      if (callbacks.on_start_work) {
+        callbacks.on_start_work(callbacks.user_context, cb_data);
+      }
+      ORT_TRY {
+        task();
+      }
+      ORT_CATCH(...) {
+        // Ensure on_stop_work is called even on exception
+        if (callbacks.on_stop_work) {
+          callbacks.on_stop_work(callbacks.user_context, cb_data);
+        }
+        ORT_RETHROW;
+      }
+      if (callbacks.on_stop_work) {
+        callbacks.on_stop_work(callbacks.user_context, cb_data);
+      }
+    };
+  }
+
  public:
   void StartProfiling() override {
     profiler_.Start();
@@ -773,6 +808,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
+        work_callbacks_(thread_options.work_callbacks ? std::make_optional(*thread_options.work_callbacks)
+                                                      : std::nullopt),
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
@@ -816,6 +853,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // reject work if the queue of pending work is full.
 
   void Schedule(std::function<void()> fn) override {
+    // If work callbacks are configured, wrap the task to invoke them
+    if (work_callbacks_.has_value() && work_callbacks_->on_enqueue) {
+      void* cb_data = work_callbacks_->on_enqueue(work_callbacks_->user_context);
+      fn = WrapTaskWithCallbacks(std::move(fn), cb_data);
+    }
+
     PerThread* pt = GetPerThread();
     int q_idx = Rand(&pt->rand) % num_threads_;
     WorkerData& td = worker_data_[q_idx];
@@ -1496,6 +1539,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   const unsigned num_threads_;
   const bool allow_spinning_;
   const bool set_denormal_as_zero_;
+  std::optional<ThreadPoolWorkCallbacks> work_callbacks_;  // Optional callbacks for work scheduling context preservation
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
