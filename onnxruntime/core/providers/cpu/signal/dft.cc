@@ -135,11 +135,9 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
 
   for (size_t i = 0; i < dft_length; i++) {
     size_t bit_reversed_index = bit_reverse(i, significant_bits);
-    if (bit_reversed_index < number_of_samples) {
-      auto x = *(X_data + bit_reversed_index * X_stride);
-      auto window_element = window_data ? *(window_data + bit_reversed_index) : 1;
-      *(Y_data + i * Y_data_stride) = std::complex<T>(1, 0) * x * window_element;
-    }
+    auto x = (bit_reversed_index < number_of_samples) ? *(X_data + bit_reversed_index * X_stride) : 0;
+    auto window_element = window_data ? *(window_data + bit_reversed_index) : 1;
+    *(Y_data + i * Y_data_stride) = std::complex<T>(1, 0) * x * window_element;
   }
 
   // For IRFFT, fix up the negative frequencies using conjugate symmetry
