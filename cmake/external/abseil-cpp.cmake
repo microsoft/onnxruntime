@@ -27,6 +27,8 @@ if(Patch_FOUND)
   else()
     set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_cuda_warnings.patch)
   endif()
+else()
+  set(ABSL_PATCH_COMMAND "")
 endif()
 
 # NB! Advancing Abseil version changes its internal namespace,
