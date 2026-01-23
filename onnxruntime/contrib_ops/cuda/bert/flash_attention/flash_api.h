@@ -132,9 +132,12 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
 
 size_t get_softmax_lse_size(size_t max_seqlen_q, size_t batch_size, size_t num_heads);
 size_t get_softmax_lse_size(size_t token_count, size_t num_heads);
+size_t get_softmax_lse_accum_size(size_t num_splits, size_t batch_size, size_t num_heads, size_t seqlen_q);
+size_t get_out_accum_size(size_t num_splits, size_t batch_size, size_t num_heads,
+                          size_t seqlen_q, size_t head_size_rounded);
 
-std::tuple<size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_size, size_t seqlen_q, size_t seqlen_k, size_t num_heads,
-                                                                   size_t head_size, size_t num_SMs);
+std::tuple<size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_size, size_t seqlen_q, size_t seqlen_k,
+                                                                   size_t num_heads, size_t head_size, size_t num_SMs);
 
 bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k);
 

@@ -17,7 +17,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
+template <typename T, bool use_smem>
 __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNxH
                                     const T* input,                    // BxSxNxH
                                     const T* cos_cache,                // Mx(H/2)
@@ -38,15 +38,30 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
 
   const int i = threadIdx.x;
 
+  const T* input_data = input + b * in_strides.x + s * in_strides.z + n * in_strides.y;
+  T* output_data = output + b * out_strides.x + s * out_strides.z + n * out_strides.y;
+
+  [[maybe_unused]] extern __shared__ char smem_[];
+  [[maybe_unused]] T* smem = reinterpret_cast<T*>(smem_);
+
+  if constexpr (use_smem) {
+    // Load to shared memory for safe in-place update
+    if (i < head_size) {
+      smem[i] = input_data[i];
+    }
+    __syncthreads();
+  }
+
   if (i >= head_size) {
     return;
   }
 
-  const T* input_data = input + b * in_strides.x + s * in_strides.z + n * in_strides.y;
-  T* output_data = output + b * out_strides.x + s * out_strides.z + n * out_strides.y;
-
   if (i >= rotary_embedding_dim) {
-    output_data[i] = input_data[i];
+    if constexpr (use_smem) {
+      output_data[i] = smem[i];
+    } else {
+      output_data[i] = input_data[i];
+    }
     return;
   }
 
@@ -79,7 +94,13 @@ __global__ void RotaryEmbeddingBSNH(T* output,                         // BxSxNx
     sign = (i < half_rotary_embedding_dim) ? -1 : 1;
     j = (i + half_rotary_embedding_dim) % rotary_embedding_dim;
   }
-  output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+
+  // Use values from shared memory
+  if constexpr (use_smem) {
+    output_data[i] = smem[i] * cos_data[cache_idx] + sign * smem[j] * sin_data[cache_idx];
+  } else {
+    output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+  }
 }
 
 template <typename T>
@@ -137,9 +158,21 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
   const dim3 grid(sequence_length, batch_size, num_heads);
 
   assert(head_size <= max_threads_per_block);
-  RotaryEmbeddingBSNH<<<grid, block, 0, stream>>>(output, input, cos_cache, sin_cache, position_ids, past_sequence_lengths, sequence_length,
-                                                  num_heads, head_size, rotary_embedding_dim, position_ids_format,
-                                                  interleaved, in_strides, out_strides);
+
+  if (output == input) {
+    // In-place operation: use shared memory to avoid read-after-write hazards
+    size_t smem_size = head_size * sizeof(T);
+    RotaryEmbeddingBSNH<T, true><<<grid, block, smem_size, stream>>>(
+        output, input, cos_cache, sin_cache, position_ids, past_sequence_lengths, sequence_length,
+        num_heads, head_size, rotary_embedding_dim, position_ids_format,
+        interleaved, in_strides, out_strides);
+  } else {
+    // Separate buffers: no shared memory needed
+    RotaryEmbeddingBSNH<T, false><<<grid, block, 0, stream>>>(
+        output, input, cos_cache, sin_cache, position_ids, past_sequence_lengths, sequence_length,
+        num_heads, head_size, rotary_embedding_dim, position_ids_format,
+        interleaved, in_strides, out_strides);
+  }
 
   return CUDA_CALL(cudaGetLastError());
 }
