@@ -1726,7 +1726,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #if !defined(ORT_MINIMAL_BUILD)
   // Build and verify node connection (edges).
   // Verify NodeArg name/type/shape matching correctly.
-  common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed);
+  common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed,
+                                  bool& removed_node_with_subgraph);
 
   common::Status VerifyNoDuplicateName();
 
