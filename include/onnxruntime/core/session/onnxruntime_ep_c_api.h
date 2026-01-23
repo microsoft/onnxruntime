@@ -664,7 +664,7 @@ struct OrtLoopKernelHelper;
 typedef struct OrtLoopKernelHelper OrtLoopKernelHelper;
 
 /**
- * \brief Contains helper functions for a Loop OrtKernelImpl created via ::CreateLoopKernel().
+ * \brief Contains helper functions for a Loop OrtKernelImpl created via OrtEpApi::CreateLoopKernel.
  * \since Version 1.24.
  */
 struct OrtLoopKernelHelper {
@@ -707,7 +707,7 @@ struct OrtScanKernelHelper;
 typedef struct OrtScanKernelHelper OrtScanKernelHelper;
 
 /**
- * \brief Contains helper functions for a Scan OrtKernelImpl created via ::CreateScanKernel().
+ * \brief Contains helper functions for a Scan OrtKernelImpl created via OrtEpApi::CreateScanKernel.
  * \since Version 1.24.
  */
 struct OrtScanKernelHelper {
@@ -1431,13 +1431,13 @@ struct OrtEpApi {
   /** \brief Gets a new OrtKeyValuePairs instance containing a copy of all configuration entries set on the environment.
    *
    * \note An application provides environment-level configuration options for execution provider libraries by
-   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       using keys with the prefix 'ep_factory.\\<ep_name\\>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
    *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
    *       the specific execution provider's documentation for valid keys and values.
    *
    * \note Refer to onnxruntime_env_config_keys.h for common configuration entry keys and their supported values.
    *
-   * \param[out] out Output parameter set to the OrtKeyValuePairs instance containing all configuration entries.
+   * \param[out] config_entries Output parameter set to the OrtKeyValuePairs instance containing all configuration entries.
    *                 Must be released via OrtApi::ReleaseKeyValuePairs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
