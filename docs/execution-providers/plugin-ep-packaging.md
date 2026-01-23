@@ -85,7 +85,7 @@ ep_name = ep_names[0]
 all_ep_devices = ort.get_ep_devices()
 selected_ep_devices = [ep_device for ep_device in all_ep_devices if ep_device.ep_name == ep_name]
 
-assert trt_ep_device != None
+assert len(selected_ep_devices) > 0
 
 sess_options = ort.SessionOptions()
 
