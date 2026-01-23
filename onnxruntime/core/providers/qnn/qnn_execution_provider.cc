@@ -937,11 +937,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto& logger = *GetLogger();
 
-  if (enable_file_mapped_weights_ && !rpcmem_library_) {
-    LOGS(logger, ERROR) << "RPCMEM Library is required for file mapped weights but is not loaded.";
-    return result;
-  }
-
   // Check BF16 compatibility early
   if (model_settings_.htp_bf16_enable) {
     // Check SoC model

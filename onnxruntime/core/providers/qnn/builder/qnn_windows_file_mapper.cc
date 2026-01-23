@@ -4,14 +4,13 @@
 #include "core/providers/qnn/builder/qnn_windows_file_mapper.h"
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
-#include <string>
+#include <wil/filesystem.h>
+
+#include <utility>
 
 #include <QnnContext.h>
 
 #include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/rpcmem_library.h"
-
-#include <wil/filesystem.h>
 
 namespace onnxruntime {
 namespace qnn {

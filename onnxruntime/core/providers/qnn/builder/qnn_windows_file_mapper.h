@@ -6,6 +6,7 @@
 #include "core/providers/qnn/builder/qnn_file_mapping_callback_interface.h"
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>

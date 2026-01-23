@@ -804,7 +804,7 @@ static Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem, 
   if (pair->first == nullptr) {
     LOGS_DEFAULT(ERROR) << "DmaRelease: file mapper is null";
     return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
-  };
+  }
 
   return pair->first->ReleaseDmaData(data_mem, pair->second);
 }
