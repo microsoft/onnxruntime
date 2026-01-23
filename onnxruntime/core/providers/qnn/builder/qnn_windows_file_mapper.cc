@@ -23,10 +23,17 @@ WindowsFileMapper::WindowsFileMapper(const logging::Logger& logger,
   ORT_ENFORCE(rpcmem_lib);
 }
 
-// Close all handles and registered buffers
-// Use LOGS_DEFAULT here as this function will be called during destruction of QnnBackendManager
-// At time of destruction. Usage of logger_ will not be available and will result in a seg fault
 WindowsFileMapper::~WindowsFileMapper() {
+}
+
+static void UnmapFile(void* addr) noexcept {
+  bool successful = UnmapViewOfFile(addr);
+  if (!successful) {
+    const auto error_code = GetLastError();
+    LOGS_DEFAULT(ERROR) << "Failed to unmap view of file with ptr: " << addr
+                        << ", Error code: " << error_code << ", \""
+                        << std::system_category().message(error_code) << "\"";
+  }
 }
 
 Status WindowsFileMapper::GetContextBinMappedMemoryPtr(const std::string& bin_filepath,
@@ -35,6 +42,15 @@ Status WindowsFileMapper::GetContextBinMappedMemoryPtr(const std::string& bin_fi
                        << bin_filepath;
 
   ORT_RETURN_IF(bin_filepath.empty(), "Context bin file path is empty");
+
+  std::lock_guard<std::mutex> lock(map_mutex_);
+  auto map_it = mapped_memory_ptrs_.find(bin_filepath);
+  if (map_it != mapped_memory_ptrs_.end()) {
+    *mapped_data_ptr = map_it->second.get();
+    LOGS(*logger_, INFO) << "Found existing mapview memory pointer (" << mapped_data_ptr
+                         << ") for context bin file: " << bin_filepath;
+    return Status::OK();
+  }
 
   std::wstring bin_filepath_wstr(bin_filepath.begin(), bin_filepath.end());
   wil::unique_hfile file_handle{CreateFile2(bin_filepath_wstr.c_str(),
@@ -91,19 +107,9 @@ Status WindowsFileMapper::GetContextBinMappedMemoryPtr(const std::string& bin_fi
                                                       }};
 
   *mapped_data_ptr = mapped_memory_ptr.get();
-  mapped_memory_ptrs.push_back(std::move(mapped_memory_ptr));
+  mapped_memory_ptrs_.emplace(bin_filepath, std::move(mapped_memory_ptr));
 
   return Status::OK();
-}
-
-void WindowsFileMapper::UnmapFile(void* addr) noexcept {
-  bool successful = UnmapViewOfFile(addr);
-  if (!successful) {
-    const auto error_code = GetLastError();
-    LOGS_DEFAULT(ERROR) << "Failed to unmap view of file with ptr: " << addr
-                        << ", Error code: " << error_code << ", \""
-                        << std::system_category().message(error_code) << "\"";
-  }
 }
 
 Qnn_ErrorHandle_t WindowsFileMapper::MapDmaData(Qnn_ContextBinaryDataRequest_t request,
@@ -139,21 +145,12 @@ Qnn_ErrorHandle_t WindowsFileMapper::MapDmaData(Qnn_ContextBinaryDataRequest_t r
                        << "), aligned offset(" << aligned_offset << "), delta(" << delta
                        << "), unaligned address(" << unaligned_data_ptr << ")";
 
-  if (!rpcmem_lib_) {
-    LOGS(*logger_, ERROR) << "RPCMem Libs are not initialized";
-    return QNN_COMMON_ERROR_RESOURCE_UNAVAILABLE;
-  }
-
   rpcmem_lib_->Api().register_buf(unaligned_data_ptr, buffer_size, NULL,
                                   rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
 
   auto fd = rpcmem_lib_->Api().to_fd(unaligned_data_ptr);
   if (fd == -1) {
     LOGS(*logger_, ERROR) << "Failed to register DMA data mapping to RPCMEM";
-    if (!UnmapViewOfFile(aligned_data_ptr)) {
-      LOGS(*logger_, ERROR) << "Failed to unmap DMA data with error code " << GetLastError()
-                            << " with address : " << aligned_data_ptr;
-    }
     return QNN_COMMON_ERROR_SYSTEM;
   }
 

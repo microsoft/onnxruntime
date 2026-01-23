@@ -567,18 +567,24 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
-  bool enable_htp_shared_mem_allocator = ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map);
-  if (enable_htp_shared_mem_allocator || enable_file_mapped_weights_) {
+  enable_htp_shared_mem_allocator_ = ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map);
+  if (enable_htp_shared_mem_allocator_) {
     // Initialize rpcmem_library_.
-    // This is necessary for HtpSharedMemoryAllocator and file mapped weights to function and
-    // also indicates that the allocator is available.
+    // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
+    rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    model_settings_.htp_shared_memory = enable_htp_shared_mem_allocator_;
+  }
+
+  if (enable_file_mapped_weights_ && !rpcmem_library_) {
+    // Attempt to init rpcmem_library_ if needed. If this fails, then
+    // disable file mapped weights and proceed with normal operation
     try {
       rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
-    } catch (std::exception e) {
-      // If unable to load, return empty capability on GetCapability() call
-      LOGS_DEFAULT(ERROR) << "Unable to load RPCMEM Library: " << e.what();
+    } catch (const std::exception& e) {
+      LOGS_DEFAULT(WARNING) << "Unable to load RPCMem library: " << e.what()
+                            << " - Disabling file mapped weights.";
+      enable_file_mapped_weights_ = false;
     }
-    model_settings_.htp_shared_memory = enable_htp_shared_mem_allocator;
   }
 
   dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);

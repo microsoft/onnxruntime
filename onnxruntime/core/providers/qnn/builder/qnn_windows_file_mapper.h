@@ -6,12 +6,12 @@
 #include "core/providers/qnn/builder/qnn_file_mapping_callback_interface.h"
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
 #include <QnnContext.h>
 
-#include "core/platform/env.h"
 #include "core/providers/qnn/rpcmem_library.h"
 #include "core/providers/qnn/ort_api.h"
 
@@ -27,8 +27,6 @@ class WindowsFileMapper : public FileMappingCallbackInterface {
   Status GetContextBinMappedMemoryPtr(const std::string& bin_filepath,
                                       void** mapped_data_ptr) override;
 
-  static void UnmapFile(void* addr) noexcept;
-
   Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
                                Qnn_ContextBinaryDmaDataResponse_t* response,
                                void* mapped_data_ptr) override;
@@ -43,7 +41,9 @@ class WindowsFileMapper : public FileMappingCallbackInterface {
 
  private:
   // A container of smart pointers of mapview memory pointers to mapped context bins
-  std::vector<onnxruntime::Env::MappedMemoryPtr> mapped_memory_ptrs;
+  // key: filepath to context bin, value: smart pointer of mapview memory pointers
+  std::mutex map_mutex_;
+  std::unordered_map<std::string, onnxruntime::Env::MappedMemoryPtr> mapped_memory_ptrs_;
   const logging::Logger* logger_;
   std::shared_ptr<RpcMemLibrary> rpcmem_lib_;
 };

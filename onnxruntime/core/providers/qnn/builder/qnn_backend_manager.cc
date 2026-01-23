@@ -995,6 +995,7 @@ Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContex
   std::vector<const QnnContext_Params_t*> context_params_ptr_list;
 
   context_params_list.reserve(context_bin_map.size());
+  context_paramsv2_list.reserve(context_bin_map.size());
   context_callbacks_list.reserve(context_bin_map.size());
   context_params_ptr_list.reserve(context_bin_map.size() + 1);
 
@@ -1030,11 +1031,13 @@ Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContex
 
     QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_2,
                                           {}};
-    context_params.v2 = &context_params_v2;
+
     context_params_list.push_back(std::move(context_params));
     context_callbacks_list.push_back(std::move(context_file_map_callbacks));
     context_paramsv2_list.push_back(std::move(context_params_v2));
     context_params_ptr_list.push_back(&(context_params_list.back()));
+
+    context_params.v2 = &context_paramsv2_list.back();
   }
   context_params_ptr_list.push_back(nullptr);
   auto result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
