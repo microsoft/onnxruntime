@@ -3,11 +3,12 @@
 
 #include <algorithm>
 #include <cassert>
+#include <climits>
 #include <cstring>
 #include <functional>
 #include <mutex>
-#include <vector>
 #include <sstream>
+#include <vector>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -30,8 +31,10 @@
 #include "core/framework/utils.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
+#include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/ep_api_types.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
@@ -40,6 +43,7 @@
 #include "core/session/environment.h"
 #include "core/session/ep_graph_assignment_info.h"
 #include "core/session/interop_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/inference_session.h"
@@ -3943,6 +3947,93 @@ ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
   API_IMPL_END
 }
 
+// Helper function to extract compatibility info from model metadata
+static OrtStatus* ExtractCompatibilityInfoFromModelProto(
+    const ONNX_NAMESPACE::ModelProto& model_proto,
+    const char* ep_type,
+    OrtAllocator* allocator,
+    char** compatibility_info) {
+  // Build the key we're looking for
+  std::string target_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + ep_type;
+
+  // Search through metadata_props for the matching key
+  for (const auto& prop : model_proto.metadata_props()) {
+    if (prop.key() == target_key) {
+      // Found it - allocate and copy the value using the provided allocator
+      *compatibility_info = onnxruntime::StrDup(prop.value(), allocator);
+      if (*compatibility_info == nullptr) {
+        return OrtApis::CreateStatus(ORT_FAIL, "Failed to allocate memory for compatibility info.");
+      }
+      return nullptr;
+    }
+  }
+
+  // Key not found - return nullptr (not an error, just means no compat info for this EP)
+  *compatibility_info = nullptr;
+  return nullptr;
+}
+
+// Extract EP compatibility info from a model file
+ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModel,
+                    _In_ const ORTCHAR_T* model_path,
+                    _In_ const char* ep_type,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_result_maybenull_ char** compatibility_info) {
+  API_IMPL_BEGIN
+  if (model_path == nullptr || ep_type == nullptr || ep_type[0] == '\0' ||
+      allocator == nullptr || compatibility_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid argument provided to GetCompatibilityInfoFromModel.");
+  }
+
+  *compatibility_info = nullptr;
+
+  // Use Model::Load for proper cross-platform path handling via file descriptor
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto status = Model::Load(PathString(model_path), model_proto);
+  if (!status.IsOK()) {
+    if (status.Code() == common::NO_SUCHFILE) {
+      return OrtApis::CreateStatus(ORT_NO_SUCHFILE, status.ErrorMessage().c_str());
+    }
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, status.ErrorMessage().c_str());
+  }
+
+  return ExtractCompatibilityInfoFromModelProto(model_proto, ep_type, allocator, compatibility_info);
+  API_IMPL_END
+}
+
+// Extract EP compatibility info from model bytes in memory
+ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModelBytes,
+                    _In_reads_(model_data_length) const void* model_data,
+                    _In_ size_t model_data_length,
+                    _In_ const char* ep_type,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_result_maybenull_ char** compatibility_info) {
+  API_IMPL_BEGIN
+  if (model_data == nullptr || model_data_length == 0 || ep_type == nullptr || ep_type[0] == '\0' ||
+      allocator == nullptr || compatibility_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid argument provided to GetCompatibilityInfoFromModelBytes.");
+  }
+
+  *compatibility_info = nullptr;
+
+  // Explicit check for size limit - Model::LoadFromBytes uses int for size due to protobuf API
+  if (model_data_length > static_cast<size_t>(INT_MAX)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Model data size exceeds maximum supported size (2GB). Use GetCompatibilityInfoFromModel with a file path instead.");
+  }
+
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto status = Model::LoadFromBytes(static_cast<int>(model_data_length), model_data, model_proto);
+  if (!status.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, status.ErrorMessage().c_str());
+  }
+
+  return ExtractCompatibilityInfoFromModelProto(model_proto, ep_type, allocator, compatibility_info);
+  API_IMPL_END
+}
+
 // GetInteropApi - returns the Interop API struct
 ORT_API(const OrtInteropApi*, OrtApis::GetInteropApi) {
   return OrtInteropAPI::GetInteropApi();
@@ -3978,6 +4069,29 @@ ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
                     _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetModelCompatibilityForEpDevices is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+// Minimal build stub for GetCompatibilityInfoFromModel
+ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModel,
+                    _In_ const ORTCHAR_T* /*model_path*/,
+                    _In_ const char* /*ep_type*/,
+                    _Inout_ OrtAllocator* /*allocator*/,
+                    _Outptr_result_maybenull_ char** /*compatibility_info*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetCompatibilityInfoFromModel is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+// Minimal build stub for GetCompatibilityInfoFromModelBytes
+ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModelBytes,
+                    _In_reads_(model_data_length) const void* /*model_data*/,
+                    _In_ size_t /*model_data_length*/,
+                    _In_ const char* /*ep_type*/,
+                    _Inout_ OrtAllocator* /*allocator*/,
+                    _Outptr_result_maybenull_ char** /*compatibility_info*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetCompatibilityInfoFromModelBytes is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -4189,7 +4303,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_24 = {
+static constexpr OrtApi ort_api_1_to_25 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4677,6 +4791,9 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::DeviceEpIncompatibilityDetails_GetNotes,
     &OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode,
     &OrtApis::ReleaseDeviceEpIncompatibilityDetails,
+    &OrtApis::GetCompatibilityInfoFromModel,
+    &OrtApis::GetCompatibilityInfoFromModelBytes,
+
     &OrtApis::CreateEnvWithOptions,
     &OrtApis::Session_GetEpGraphAssignmentInfo,
     &OrtApis::EpAssignedSubgraph_GetEpName,
@@ -4685,6 +4802,10 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::EpAssignedNode_GetDomain,
     &OrtApis::EpAssignedNode_GetOperatorType,
     &OrtApis::RunOptionsSetSyncStream,
+    // End of Version 24 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::RunOptionsEnableProfiling,
+    &OrtApis::RunOptionsDisableProfiling,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4721,18 +4842,26 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
+static_assert(offsetof(OrtApi, RunOptionsSetSyncStream) / sizeof(void*) == 413, "Size of version 24 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.24.0",
+static_assert(std::string_view(ORT_VERSION) == "1.25.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_24 above:
+//
+// 2. If there were any APIs added to ort_api_1_to_25 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
+//
+// 3. There are additional API structs that may have been updated. Repeat step 2 for these instances:
+//    - ort_compile_api in onnxruntime/onnxruntime/core/session/compile_api.cc
+//    - ort_ep_api in onnxruntime/onnxruntime/core/session/plugin_ep/ep_api.cc
+//    - ort_interop_api in onnxruntime/core/session/interop_api.cc
+//    - ort_model_editor_api in onnxruntime/onnxruntime/core/session/model_editor_c_api.cc
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_24;
+    return &ort_api_1_to_25;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."
