@@ -34,7 +34,7 @@
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-#include "core/providers/qnn/builder/qnn_file_mapping_callback_interface.h"
+#include "core/providers/qnn/builder/qnn_file_mapping_interface.h"
 #endif
 
 namespace onnxruntime {
@@ -257,6 +257,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #endif
 
   bool FileMappingIsEnabled() { return file_mapped_weights_enabled_; }
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
+                               Qnn_ContextBinaryDmaDataResponse_t* response, void* mapped_base_ptr);
+
+  Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem, void* mapped_base_ptr);
+#endif
 
  private:
   typedef struct BufferInfo {
@@ -486,10 +493,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool file_mapped_weights_enabled_ = false;
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-  std::unique_ptr<FileMappingCallbackInterface> file_mapper_ = nullptr;
+  std::unique_ptr<FileMappingInterface> file_mapper_ = nullptr;
   // Notify params for file mapping must persist throughout lifetime of
   // QnnBackendManager for release of DMA data callback on destruction
-  std::vector<std::unique_ptr<std::pair<FileMappingCallbackInterface*, void*>>> file_mapping_notify_params_;
+  std::vector<std::unique_ptr<std::pair<QnnBackendManager*, void*>>> file_mapping_notify_params_;
 #endif
 
   // NPU backend requires quantized model
@@ -510,6 +517,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Mapping of thread id to on-run-start/end power configs
   std::mutex per_thread_power_configs_mutex_;
   std::unordered_map<std::thread::id, PerThreadHtpPowerConfigs_t> per_thread_power_configs_;
+
+  std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
 };
 
 }  // namespace qnn

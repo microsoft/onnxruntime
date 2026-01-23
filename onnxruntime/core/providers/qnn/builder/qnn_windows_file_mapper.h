@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/qnn/builder/qnn_file_mapping_callback_interface.h"
+#include "core/providers/qnn/builder/qnn_file_mapping_interface.h"
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
 #include <memory>
@@ -13,32 +13,26 @@
 
 #include <QnnContext.h>
 
-#include "core/providers/qnn/rpcmem_library.h"
 #include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
 
-class WindowsFileMapper : public FileMappingCallbackInterface {
+class WindowsFileMapper : public FileMappingInterface {
  public:
-  explicit WindowsFileMapper(const logging::Logger& logger,
-                             std::shared_ptr<qnn::RpcMemLibrary> rpcmem_lib);
+  explicit WindowsFileMapper(const logging::Logger& logger);
   ~WindowsFileMapper() override;
 
+  // Creates a file mapping of the context binary and returns the
+  // mapview pointer of the file mapping
   Status GetContextBinMappedMemoryPtr(const std::string& bin_filepath,
                                       void** mapped_data_ptr) override;
 
-  Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
-                               Qnn_ContextBinaryDmaDataResponse_t* response,
-                               void* mapped_data_ptr) override;
-  Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem,
-                                   void* mapped_data_ptr) override;
-
-  Qnn_ErrorHandle_t MapRawData(Qnn_ContextBinaryDataRequest_t request,
-                               Qnn_ContextBinaryRawDataResponse_t* response,
-                               void* mapped_data_ptr) override;
-  Qnn_ErrorHandle_t ReleaseRawData(Qnn_ContextBinaryRawDataMem_t data_mem,
-                                   void* mapped_data_ptr) override;
+  // Given a base mapview pointer of a context binary and an offset,
+  // calcualte the aligned and unaligned memory pointers to a weight
+  // within the context binary
+  MappedWeightInfo_t GetMappedWeightMemoryPtr(void* mapped_base_ptr,
+                                              const size_t offset) override;
 
  private:
   // A container of smart pointers of mapview memory pointers to mapped context bins
@@ -46,7 +40,6 @@ class WindowsFileMapper : public FileMappingCallbackInterface {
   std::mutex map_mutex_;
   std::unordered_map<std::string, onnxruntime::Env::MappedMemoryPtr> mapped_memory_ptrs_;
   const logging::Logger* logger_;
-  std::shared_ptr<RpcMemLibrary> rpcmem_lib_;
 };
 
 }  // namespace qnn

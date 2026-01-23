@@ -775,38 +775,120 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
 }
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-// callback required for allocating file mapping resources
-static Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
-                                    Qnn_ContextBinaryDmaDataResponse_t* response, void* notify_param) {
+// Callback required for allocating file mapping resources
+static Qnn_ErrorHandle_t MapDmaDataCallback(Qnn_ContextBinaryDataRequest_t request,
+                                            Qnn_ContextBinaryDmaDataResponse_t* response, void* notify_param) {
   if (notify_param == nullptr) {
-    LOGS_DEFAULT(ERROR) << "DmaProvider: notify_param is null";
+    LOGS_DEFAULT(ERROR) << "MapDmaDataCallback: notify_param is null";
     return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
   }
-  auto pair = reinterpret_cast<std::pair<FileMappingCallbackInterface*, void*>*>(notify_param);
+  auto pair = reinterpret_cast<std::pair<QnnBackendManager*, void*>*>(notify_param);
 
   if (pair->first == nullptr) {
-    LOGS_DEFAULT(ERROR) << "DmaProvider: file mapper is null";
+    LOGS_DEFAULT(ERROR) << "MapDmaDataCallback: QnnBackendManager is null";
     return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
   }
 
   return pair->first->MapDmaData(request, response, pair->second);
 }
 
-// callback required for releasing file mapping resources
-static Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem, void* notify_param) {
-  if (notify_param == nullptr) {
-    LOGS_DEFAULT(ERROR) << "DmaRelease: notify_param is null";
+Qnn_ErrorHandle_t QnnBackendManager::MapDmaData(Qnn_ContextBinaryDataRequest_t request,
+                                                Qnn_ContextBinaryDmaDataResponse_t* response,
+                                                void* mapped_base_ptr) {
+  if (!file_mapped_weights_enabled_) {
+    LOGS(*logger_, WARNING) << "Attempting to map DMA data but file mapping has been disabled, "
+                            << "possibly due to an error in a previous request.";
+    return QNN_CONTEXT_ERROR_ABORTED;
+  }
+
+  if (mapped_base_ptr == nullptr) {
+    LOGS(*logger_, ERROR) << "Attempting to map DMA data for null memory mapped base pointer";
     return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
   }
 
-  auto pair = reinterpret_cast<std::pair<FileMappingCallbackInterface*, void*>*>(notify_param);
+  LOGS(*logger_, INFO) << "Mapping DMA data for request: memory mapped base pointer("
+                       << mapped_base_ptr << "), offset(" << request.offset
+                       << "), size(" << request.size << "), isBackendMappingNeeded("
+                       << request.isBackendMappingNeeded << ")";
+
+  auto size = request.size;
+  if (size == 0 || !request.isBackendMappingNeeded) {
+    LOGS(*logger_, ERROR) << "Mapping request size must be > 0 with backend mapping required";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  auto mapped_weight_info = file_mapper_->GetMappedWeightMemoryPtr(mapped_base_ptr, request.offset);
+  void* unaligned_data_ptr = mapped_weight_info.unaligned_data_ptr;
+
+  LOGS(*logger_, INFO) << "Created DMA data mapping with: address(" << mapped_weight_info.aligned_data_ptr
+                       << "), aligned offset(" << mapped_weight_info.aligned_offset
+                       << "), delta(" << mapped_weight_info.delta
+                       << "), unaligned address(" << unaligned_data_ptr << ")";
+
+  rpcmem_library_->Api().register_buf(unaligned_data_ptr, size, NULL,
+                                      rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
+
+  auto fd = rpcmem_library_->Api().to_fd(unaligned_data_ptr);
+  if (fd == -1) {
+    LOGS(*logger_, ERROR) << "Failed to register DMA data mapping to RPCMEM";
+    return QNN_COMMON_ERROR_SYSTEM;
+  }
+
+  response->dmaBuffer.fd = fd;
+  response->dmaBuffer.data = reinterpret_cast<void*>(unaligned_data_ptr);
+  response->dataStartOffset = 0;
+  response->alignedSize = size;
+
+  return QNN_SUCCESS;
+}
+
+// Callback required for releasing file mapping resources
+static Qnn_ErrorHandle_t ReleaseDmaDataCallback(Qnn_ContextBinaryDmaDataMem_t data_mem, void* notify_param) {
+  if (notify_param == nullptr) {
+    LOGS_DEFAULT(ERROR) << "ReleaseDmaDataCallback: notify_param is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  auto pair = reinterpret_cast<std::pair<QnnBackendManager*, void*>*>(notify_param);
 
   if (pair->first == nullptr) {
-    LOGS_DEFAULT(ERROR) << "DmaRelease: file mapper is null";
+    LOGS_DEFAULT(ERROR) << "ReleaseDmaDataCallback: QnnBackendManager is null";
     return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
   }
 
   return pair->first->ReleaseDmaData(data_mem, pair->second);
+}
+
+// Use LOGS_DEFAULT here as this function will be called during destruction of QnnBackendManager
+// At time of destruction, usage of logger_ will not be available and will result in a seg fault
+Qnn_ErrorHandle_t QnnBackendManager::ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem,
+                                                    void* mapped_base_ptr) {
+  if (mapped_base_ptr == nullptr) {
+    LOGS_DEFAULT(ERROR) << "Attempting to release DMA data for null memory mapped pointer";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  LOGS_DEFAULT(INFO) << "Releasing DMA data mapping for memory mapped pointer("
+                     << mapped_base_ptr << "), address(" << data_mem.dmaBuffer.data
+                     << "), size: (" << data_mem.memSize << ")";
+
+  if (data_mem.dmaBuffer.data == nullptr || data_mem.memSize == 0) {
+    LOGS_DEFAULT(ERROR) << "Mapping release request address must not be null and size must be > 0";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  // Deregister file mapped data from NPU regardless of file_mapped_weights_enabled_
+  // as there may be file mapped data registered to the NPU prior to any mapping error
+  void* unaligned_data_ptr = data_mem.dmaBuffer.data;
+  rpcmem_library_->Api().register_buf(unaligned_data_ptr, data_mem.memSize, -1,
+                                      rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
+
+  auto fd = rpcmem_library_->Api().to_fd(unaligned_data_ptr);
+  if (fd != -1) {
+    LOGS_DEFAULT(ERROR) << "Failed to deregister buffer from RPCMEM: " << unaligned_data_ptr;
+    return QNN_CONTEXT_ERROR_MEM_ALLOC;
+  }
+  return QNN_SUCCESS;
 }
 #endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
@@ -1008,14 +1090,14 @@ Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContex
     void* buffer;
     ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappedMemoryPtr(context_bin_filepath, &buffer));
 
-    auto notify_param_ptr = std::make_unique<std::pair<FileMappingCallbackInterface*, void*>>(file_mapper_.get(),
-                                                                                              buffer);
+    auto notify_param_ptr = std::make_unique<std::pair<QnnBackendManager*, void*>>(this,
+                                                                                   buffer);
 
     Qnn_ContextBinaryCallback_t context_file_map_callbacks;
     context_file_map_callbacks.type = QNN_CONTEXT_CALLBACK_DMA_BUFFER;
     context_file_map_callbacks.dmaBufferCallback.version = QNN_CONTEXT_CALLBACK_DMA_BUFFER_VERSION_1;
-    context_file_map_callbacks.dmaBufferCallback.v1.dataProvide = MapDmaData;
-    context_file_map_callbacks.dmaBufferCallback.v1.dataRelease = ReleaseDmaData;
+    context_file_map_callbacks.dmaBufferCallback.v1.dataProvide = MapDmaDataCallback;
+    context_file_map_callbacks.dmaBufferCallback.v1.dataRelease = ReleaseDmaDataCallback;
     context_file_map_callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(notify_param_ptr.get());
 
     file_mapping_notify_params_.push_back(std::move(notify_param_ptr));
@@ -1364,13 +1446,13 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
       ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinaryWithCallback,
                     "Invalid function pointer for contextCreateFromBinaryWithCallback.");
 
-      auto notify_param_ptr = std::make_unique<std::pair<FileMappingCallbackInterface*, void*>>(file_mapper_.get(),
-                                                                                                bin_buffer);
+      auto notify_param_ptr = std::make_unique<std::pair<QnnBackendManager*, void*>>(this,
+                                                                                     bin_buffer);
 
       callbacks.type = QNN_CONTEXT_CALLBACK_DMA_BUFFER;
       callbacks.dmaBufferCallback.version = QNN_CONTEXT_CALLBACK_DMA_BUFFER_VERSION_1;
-      callbacks.dmaBufferCallback.v1.dataProvide = MapDmaData;
-      callbacks.dmaBufferCallback.v1.dataRelease = ReleaseDmaData;
+      callbacks.dmaBufferCallback.v1.dataProvide = MapDmaDataCallback;
+      callbacks.dmaBufferCallback.v1.dataRelease = ReleaseDmaDataCallback;
       callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(notify_param_ptr.get());
 
       file_mapping_notify_params_.push_back(std::move(notify_param_ptr));
@@ -1405,8 +1487,6 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                 << ". Retrying with feature disabled.";
 
         file_mapped_weights_enabled_ = false;
-        // Destruction of file_mapper_ to prevent resource leaks
-        file_mapper_.reset();
 
         // Read context bin from file since file mapping has failed
         BufferInfo_t buffer_info;
@@ -1507,7 +1587,6 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     return Status::OK();
   }
 
-  file_mapped_weights_enabled_ = enable_file_mapped_weights;
   vtcm_backup_buffer_sharing_enabled_ = enable_vtcm_backup_buffer_sharing;
 
   Status status = Status::OK();
@@ -1516,6 +1595,19 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   } else {
     status = LoadQnnSerializerBackend();
   }
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  // Backend is determined after LoadBackend() or LoadQnnSerializerBackend()
+  if (enable_file_mapped_weights && !file_mapper_ && GetQnnBackendType() == QnnBackendType::HTP) {
+    ORT_RETURN_IF(!rpcmem_library, "RPCMem Library is required for file mapping but is uninitialized.");
+    rpcmem_library_ = rpcmem_library;
+    file_mapped_weights_enabled_ = true;
+    file_mapper_ = std::make_unique<WindowsFileMapper>(logger);
+  }
+#else
+  ORT_UNUSED_PARAMETER(rpcmem_library);
+#endif
+
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "LoadBackend succeed.";
   }
@@ -1562,14 +1654,6 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     ORT_RETURN_IF_ERROR(LoadOpPackage());
     LOGS(logger, VERBOSE) << "LoadOpPackage succeed.";
   }
-
-#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-  if (file_mapped_weights_enabled_ && !file_mapper_ && GetQnnBackendType() == QnnBackendType::HTP) {
-    file_mapper_ = std::make_unique<WindowsFileMapper>(logger, rpcmem_library);
-  }
-#else
-  ORT_UNUSED_PARAMETER(rpcmem_library);
-#endif
 
   bool enable_htp_weight_sharing = false;
   if (share_ep_contexts && !load_from_cached_context) {
