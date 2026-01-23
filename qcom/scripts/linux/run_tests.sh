@@ -34,7 +34,11 @@ sed --in-place=".bak" "s@${orig_build_dir}@${build_dir}@g" CTestTestfile.cmake
 
 log_info "-=-=-=- Running ctests -=-=-=-"
 # TODO: [AISW-164203] ORT test failures on Rubik Pi
-./ctest --verbose --timeout 10800 --stop-on-failure --exclude-regex "onnxruntime_provider_test"
+exclude_args=()
+if [ "$(uname -m)" == "aarch64" ]; then
+    exclude_args+=(--exclude-regex "onnxruntime_provider_test")
+fi
+./ctest --verbose --timeout 10800 --stop-on-failure "${exclude_args[@]}"
 
 log_info "-=-=-=- Running Python tests -=-=-=-"
 mapfile -t PYTHON_TEST_FILES < "python_test_files.txt"
