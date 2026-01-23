@@ -367,15 +367,9 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   const auto& X_shape = X->Shape();
   const auto& Y_shape = Y->Shape();
 
-  auto batch_and_signal_rank = X->Shape().NumDimensions();
-  auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[onnxruntime::narrow<size_t>(axis)]);
-
-  auto is_input_real = X->Shape()[X->Shape().NumDimensions() - 1] == 1;
-  auto complex_input_factor = is_input_real ? 1 : 2;
-  if (X->Shape().NumDimensions() > 2) {
-    total_dfts /= onnxruntime::narrow<size_t>(X->Shape()[X->Shape().NumDimensions() - 1]);
-    batch_and_signal_rank -= 1;
-  }
+  auto batch_and_signal_rank = X->Shape().NumDimensions() - 1;
+  auto complex_input_factor = onnxruntime::narrow<size_t>(X->Shape()[X->Shape().NumDimensions() - 1]);
+  auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[onnxruntime::narrow<size_t>(axis)]) / complex_input_factor;
 
   // Calculate x/y offsets/strides
   for (size_t i = 0; i < total_dfts; i++) {
