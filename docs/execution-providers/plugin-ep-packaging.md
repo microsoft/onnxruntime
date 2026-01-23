@@ -35,7 +35,7 @@ For example, the package may provide a helper function that returns the path to 
 ##### EP name(s)
 There should be a way to get the plugin EP name(s) provided by the package. The user may require the plugin EP name(s) to select the appropriate `OrtEpDevice` instances to provide to `OrtApi::SessionOptionsAppendExecutionProvider_V2()`.
 
-For example, the plugin EP name(s) may be well-documented or made available with a helper function provided by the package. The recommended name for this helper function is "get EP names".
+For example, the plugin EP name(s) may be well-documented or made available with a helper function provided by the package. The recommended name for this helper function is "get EP name", or "get EP names" if there are multiple names.
 
 #### Package Naming
 
@@ -57,7 +57,7 @@ For example, "onnxruntime-ep-contoso-ai".
 
 #### Helper Functions
 
-As mentioned in the general guidance section, the package should provide helper function `get_library_path()` to get the EP library path. The package may provide helper function `get_ep_names()` to get a list of EP names.
+As mentioned in the general guidance section, the package should provide helper function `get_library_path()` to get the EP library path. The package may provide helper function `get_ep_name()` or `get_ep_names()` to get the EP name(s).
 
 #### Usage example
 
@@ -123,4 +123,4 @@ For example, "Contoso.ML.OnnxRuntime.ContosoAI.EP".
 
 #### Helper Functions
 
-As mentioned in the general guidance section, the package should provide helper function `GetLibraryPath()` to get the EP library path. The package may provide helper function `GetEpNames()` to get a list of EP names.
+As mentioned in the general guidance section, the package should provide helper function `GetLibraryPath()` to get the EP library path. The package may provide helper function `GetEpName()` or `GetEpNames()` to get the EP name(s).
