@@ -156,10 +156,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // Unset or set to default values for GQA-specific fields
     gqa_parameters.rotary_dim = 0;                     // New Attention op doesn't use rotary embeddings directly
     gqa_parameters.is_unidirectional = true;           // GQA requires causal attention
-    gqa_parameters.past_present_share_buffer = false;  // New Attention op doesn't share buffer
-    gqa_parameters.kv_share_buffer = false;
-    gqa_parameters.is_packed_qkv = false;  // New Attention op has separate Q, K, V inputs
-    gqa_parameters.is_subsequent_prompt = false;
+    gqa_parameters.past_present_share_buffer = false;  // New Attention op doesn't share buffer (unfused path)
+    gqa_parameters.is_packed_qkv = false;              // New Attention op has separate Q, K, V inputs
+    gqa_parameters.is_subsequent_prompt = false;       // Unfused path
     gqa_parameters.is_first_prompt = parameters.past_sequence_length == 0;
     gqa_parameters.do_rotary = false;  // New Attention op doesn't use rotary embeddings
     gqa_parameters.rotary_interleaved = false;
@@ -186,9 +185,59 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.present_key = (present_key == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
     gqa_data.present_value = (present_value == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
 
-    // TODO(titaiwang): We need to turn attn_mask into seqlens_k, and bias (add) is not supported in GQA.
-    if (nullptr != attn_mask) {
-      ORT_THROW("attention_bias (attn_mask) is not supported yet in GQA path of Attention op (CUDA).");
+    // GQA only supports masking, not additive bias.
+    // For bool mask, we need to convert it to sequence lengths.
+    IAllocatorUniquePtr<int> seqlens_k_buffer;
+    IAllocatorUniquePtr<int> seq_lens_buffer;
+    if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
+      // Allocate buffer for seqlens_k (total_sequence_length - 1)
+      seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+      int* seqlens_k = seqlens_k_buffer.get();
+
+      const bool* b_mask = attn_mask->Data<bool>();
+
+      for (int b = 0; b < parameters.batch_size; ++b) {
+        const bool* row = b_mask + b * parameters.total_sequence_length;
+        int seq_len = 0;
+
+        // Find the actual sequence length by looking for the last valid (true) position
+        // Mask convention per Attention spec: true = valid (should participate), false = masked out
+        for (int i = parameters.total_sequence_length - 1; i >= 0; --i) {
+          if (row[i]) {
+            seq_len = i + 1;
+            break;
+          }
+        }
+        // seqlens_k is total_sequence_length - 1 for historical reasons (matching GroupQueryAttention convention)
+        seqlens_k[b] = seq_len - 1;
+      }
+
+      // Process seqlens_k to compute past_seq_lens, total_seq_lens, and padded_seq_lens
+      // This follows the same pattern as GroupQueryAttention
+      seq_lens_buffer = GetScratchBuffer<int>(3 * parameters.batch_size, context->GetComputeStream());
+      auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+      gqa_data.past_seq_lens = seq_lens_buffer.get();
+      gqa_data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
+      gqa_data.padded_seq_lens = gqa_data.total_seq_lens + parameters.batch_size;
+
+      auto& device_prop = GetDeviceProp();
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchGetSequenceLengths(
+          seqlens_k,
+          gqa_data.past_seq_lens,
+          gqa_data.total_seq_lens,
+          gqa_data.padded_seq_lens,
+          parameters.batch_size,
+          parameters.q_sequence_length,
+          gqa_parameters.is_first_prompt,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    } else if (attn_mask != nullptr) {
+      ORT_THROW("Non-boolean attn_mask is not supported yet in GQA path of Attention op (CUDA).");
+    } else {
+      // No mask provided - set sequence length pointers to nullptr
+      gqa_data.total_seq_lens = nullptr;
+      gqa_data.past_seq_lens = nullptr;
+      gqa_data.padded_seq_lens = nullptr;
     }
 
     // Set GQA-specific fields
@@ -197,18 +246,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.head_sink = nullptr;
     gqa_data.position_ids = nullptr;
 
-    // For unfused GQA path (no flash attention or memory efficient attention for now)
+    // Use unfused attention path only
     gqa_data.use_flash_attention = false;
     gqa_data.use_memory_efficient_attention = false;
     gqa_data.use_flash_attention_fast_decode = false;
-    gqa_data.disable_fused_kv = true;
-
-    // Sequence lengths: GQA expects total_seq_lens and past_seq_lens
-    // For now, we don't have these as inputs, so we skip them
-    // This means GQA will fall back to unfused path without flash/memory efficient attention
-    gqa_data.total_seq_lens = nullptr;
-    gqa_data.past_seq_lens = nullptr;
-    gqa_data.padded_seq_lens = nullptr;
 
     // Flash buffers (not used in unfused path)
     gqa_data.softmax_lse = nullptr;
@@ -217,9 +258,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
     // Memory efficient buffers (not used)
     gqa_data.fmha_buffer = nullptr;
-    gqa_data.unpacked_qkv_buffer = nullptr;
-    gqa_data.rotary_buffer = nullptr;
-    gqa_data.position_ids_buffer = nullptr;
+    gqa_data.qkv_buffer = nullptr;
     gqa_data.k = nullptr;
     gqa_data.v = nullptr;
 
@@ -233,7 +272,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.position_ids_max_used = 0;
 #endif
 
-    // Call GQA kernel
+    // Call GQA kernel (unfused path)
     auto& device_prop = GetDeviceProp();
     cublasHandle_t cublas = GetCublasHandle(context);
 
