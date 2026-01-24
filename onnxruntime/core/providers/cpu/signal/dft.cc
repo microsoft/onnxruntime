@@ -421,14 +421,18 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto& X_shape = X->Shape();
   const auto is_real_valued = X_shape[X_shape.NumDimensions() - 1] == 1;
   const auto is_complex_valued = X_shape[X_shape.NumDimensions() - 1] == 2;
+
   axis = HandleNegativeAxis(axis, X_shape.NumDimensions());
   ORT_RETURN_IF(axis == static_cast<int64_t>(X_shape.NumDimensions()) - 1,
-                "DFT axis must refer to a signal dimension, not the last real/imag dimension.");
+                "DFT axis must refer to a signal dimension, not the last (real/imag) dimension.");
 
   // Validate input for IRFFT
   if (inverse && is_onesided) {
     ORT_RETURN_IF(!is_complex_valued,
                   "Inverse one-sided DFT (IRFFT) requires complex-valued input (last dimension must be 2)");
+  } else {
+    ORT_RETURN_IF(!(is_real_valued || is_complex_valued),
+                  "Input layout not supported. The input tensor must have a last dimension of 1 (real) or 2 (complex).");
   }
 
   int64_t number_of_samples = static_cast<int64_t>(X_shape[onnxruntime::narrow<size_t>(axis)]);
