@@ -8,6 +8,8 @@
 
 #include "attention_mechanism.h"
 
+#include "core/mlas/inc/mlas.h"
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -23,7 +25,8 @@ class BahdanauAttention : public IAttentionMechanism<T> {
       int memory_depth,
       int query_depth,
       int attn_depth,
-      bool normalize, concurrency::ThreadPool* threadpool);
+      bool normalize, concurrency::ThreadPool* threadpool,
+      const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
   void SetWeights(
       const gsl::span<const T>& attn_weights,
@@ -78,6 +81,8 @@ class BahdanauAttention : public IAttentionMechanism<T> {
 
   bool normalize_;
   concurrency::ThreadPool* ttp_;
+
+  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace contrib

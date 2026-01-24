@@ -337,6 +337,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
+
+  // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU 
   ORT_RETURN_IF_ERROR(
       SoftmaxCPU<T>(
           batch_beam_size,  // rows
@@ -344,7 +346,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
           (input_length == 1 && logits_batch_size == batch_beam_size) ? logits_data : next_token_logits.data(),
           next_token_scores.data(),
           true,
-          thread_pool));
+          thread_pool,
+          nullptr));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
