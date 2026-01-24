@@ -21,8 +21,7 @@ BahdanauAttention<T>::BahdanauAttention(AllocatorPtr allocator, const logging::L
                                         int batch_size, int max_memory_step, int memory_depth,
                                         int query_depth, int attn_depth, bool normalize, concurrency::ThreadPool* threadpool,
                                         const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config)
-    : allocator_(allocator), logger_(logger), batch_size_(batch_size), max_memory_steps_(max_memory_step), memory_depth_(memory_depth), query_depth_(query_depth), attn_depth_(attn_depth), normalize_(normalize), ttp_(threadpool),
-      mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config) {
+    : allocator_(allocator), logger_(logger), batch_size_(batch_size), max_memory_steps_(max_memory_step), memory_depth_(memory_depth), query_depth_(query_depth), attn_depth_(attn_depth), normalize_(normalize), ttp_(threadpool), mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config) {
   values_ = Allocate(allocator_, batch_size_ * max_memory_steps_ * memory_depth_, values_ptr_, true);
   keys_ = Allocate(allocator_, batch_size_ * max_memory_steps_ * attn_depth_, keys_ptr_, true);
   processed_query_ = Allocate(allocator_, batch_size_ * attn_depth_, processed_query_ptr_, true);
