@@ -12,8 +12,6 @@
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #endif
 
-#include "core/mlas/inc/mlas.h"
-
 #include <vector>
 
 namespace onnxruntime {
@@ -39,7 +37,7 @@ template <typename T>
 using MatMul = std::function<Status(const T* input_1_data, const T* input_2_data, T* output_data,
                                     size_t left_stride, size_t right_stride, size_t output_stride,
                                     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-                                    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_config,
+                                    const void* mlas_backend_config,
                                     void* einsum_cuda_assets)>;
 
 // ReduceSum op - Reduces along `reduce_axes`
@@ -73,7 +71,7 @@ template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-              const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_config,
+              const void* mlas_backend_config,
               void* einsum_cuda_assets);
 
 template <typename T>
@@ -102,7 +100,7 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const TensorShape& input_
 template <typename T>
 std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const gsl::span<const int64_t>& input_1_shape_override,
                                const Tensor& input_2, const gsl::span<const int64_t>& input_2_shape_override,
-                               AllocatorPtr allocator, concurrency::ThreadPool* tp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_config, 
+                               AllocatorPtr allocator, concurrency::ThreadPool* tp, const void* mlas_backend_config,
                                void* einsum_cuda_assets,
                                const DeviceHelpers::MatMul<T>& device_matmul_func);
 

@@ -87,7 +87,7 @@ class FgemmPackedContext<double, false> {
       data[i].alpha = alpha;
       data[i].beta = beta;
     }
-    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool, nullptr);
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
   }
 };
 #endif

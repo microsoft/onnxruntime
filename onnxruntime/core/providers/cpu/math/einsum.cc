@@ -58,7 +58,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   if (inputs[0]->IsDataType<float>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator,
                                                                        tp,
-                                                                       &mlas_backend_kernel_selector_config_,
+                                                                       reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
                                                                        einsum_compute_preprocessor,
                                                                        nullptr);
 
@@ -72,7 +72,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     auto einsum_compute_processor = EinsumTypedComputeProcessor<int32_t>(context,
                                                                          allocator,
                                                                          tp,
-                                                                         &mlas_backend_kernel_selector_config_,
+                                                                         reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
                                                                          einsum_compute_preprocessor,
                                                                          nullptr);
 
@@ -87,7 +87,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context,
                                                                         allocator,
                                                                         tp,
-                                                                        &mlas_backend_kernel_selector_config_,
+                                                                        reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
                                                                         einsum_compute_preprocessor,
                                                                         nullptr);
 
@@ -101,7 +101,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     auto einsum_compute_processor = EinsumTypedComputeProcessor<int64_t>(context,
                                                                          allocator,
                                                                          tp,
-                                                                         &mlas_backend_kernel_selector_config_,
+                                                                         reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
                                                                          einsum_compute_preprocessor,
                                                                          nullptr);
 
