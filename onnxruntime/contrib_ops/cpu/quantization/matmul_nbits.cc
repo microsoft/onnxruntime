@@ -110,6 +110,9 @@ class MatMulNBits final : public OpKernel {
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("block_size")))},
         compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+
     const auto& node = info.node();
     auto input_defs = node.InputDefs();
     const NodeArg* zero_point_arg =
@@ -154,6 +157,8 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<float> bias_fp32_{};
 
   bool has_zp_input_{false};
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
   // dequantize B first and then compute float gemm
   Status ComputeBUnpacked(const Tensor* a,
@@ -687,7 +692,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   }
 
   MlasGemmBatch(CblasNoTrans, CblasTrans,
-                M, N, K, data.data(), batch_count, thread_pool);
+                M, N, K, data.data(), batch_count, thread_pool, &mlas_backend_kernel_selector_config_);
 
   return Status::OK();
 }
@@ -839,7 +844,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     }
   }
 
-  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), batch_count, thread_pool);
+  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), batch_count, thread_pool, &mlas_backend_kernel_selector_config_);
   MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, c_size);
   return Status::OK();
 }

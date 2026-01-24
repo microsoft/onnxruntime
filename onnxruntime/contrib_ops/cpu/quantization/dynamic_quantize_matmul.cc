@@ -9,6 +9,7 @@
 #include "core/providers/cpu/quantization/matmul_integer_base.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include <cassert>
 #include <algorithm>
@@ -161,7 +162,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
  public:
   DynamicQuantizeMatMul(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasUseKleidiaiDynamicQuantGemm) == "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) == "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -305,7 +306,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
       params.ldc = gemm_shape.N;
     }
 
-    MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool());
+    MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
     // This evaluates to true if bias data was not provided as constant data for prepacking stage
     if (!dynamic_quant_mlas_bias_data_was_packed_) {
       if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {

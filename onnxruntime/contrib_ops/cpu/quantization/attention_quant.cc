@@ -83,7 +83,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   weights_is_signed_ = weights.IsDataType<int8_t>();
 
-  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, false /*AIsSigned*/, weights_is_signed_);
+  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, false /*AIsSigned*/, weights_is_signed_, &mlas_backend_kernel_selector_config_);
   if (packed_weights_size_ == 0) {
     return Status::OK();
   }

@@ -71,7 +71,7 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
                                            const T* weights_data,
                                            size_t weight_matrix_col_size,
                                            /*out*/ PrePackedWeights* prepacked_weights) {
-  size_t packb_size = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, head_size, input_hidden_size);
+  size_t packb_size = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, head_size, input_hidden_size, &mlas_backend_kernel_selector_config_);
   if (packb_size == 0) {
     return false;
   }
@@ -87,7 +87,7 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
   memset(packed_weights_data, 0, packed_weights_data_size);
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(CblasNoTrans, CblasNoTrans, head_size, input_hidden_size, weights_data, weight_matrix_col_size, packed_weights_data);
+    MlasGemmPackB(CblasNoTrans, CblasNoTrans, head_size, input_hidden_size, weights_data, weight_matrix_col_size, packed_weights_data, &mlas_backend_kernel_selector_config_);
     packed_weights_data += packb_size;
     weights_data += head_size;
   }
@@ -310,7 +310,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               1.0f,                       // beta
               qkv_dest + qkv_offset,      // C
               head_size,                  // ldc
-              nullptr);                   // use single-thread
+              nullptr,                    // use single-thread
+              &mlas_backend_kernel_selector_config_);  // BackendKernelSelectorConfig
         } else {
           math::GemmEx<float, ThreadPool>(
               CblasNoTrans,                   // TransA = no
@@ -326,8 +327,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               1.0f,                           // beta
               qkv_dest + qkv_offset,          // C
               head_size,                      // ldc
-              nullptr                         // use single-thread
-          );
+              nullptr,                        // use single-thread
+              &mlas_backend_kernel_selector_config_);  // BackendKernelSelectorConfig
         }
       }
     });

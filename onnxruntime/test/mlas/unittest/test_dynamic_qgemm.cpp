@@ -113,7 +113,7 @@ class MlasDynamicQgemmTestBase {
     // Prepare kernel parameters
     MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS shape{M, N, K};
 
-    const size_t packed_b_stride = MlasDynamicQgemmPackBSize(N, K);
+    const size_t packed_b_stride = MlasDynamicQgemmPackBSize(N, K, nullptr);
     std::vector<uint8_t> packed_b_storage(BatchSize * packed_b_stride);
     std::vector<MLAS_GEMM_DYN_QUANT_DATA_PARAMS> params(BatchSize);
 
@@ -133,7 +133,7 @@ class MlasDynamicQgemmTestBase {
                               Bq + b * K * N,
                               b_scale_batches[b].data(),
                               b_bias_batches[b].data(),
-                              packed_b);
+                              packed_b, nullptr);
       }
 
       params[b].PackedB = packed_b;
@@ -158,7 +158,7 @@ class MlasDynamicQgemmTestBase {
     }
 
     std::fill(C, C + M * N * BatchSize, 0.0f);
-    MlasDynamicQGemmBatch(shape, params.data(), BatchSize, threadpool);
+    MlasDynamicQGemmBatch(shape, params.data(), BatchSize, threadpool, nullptr);
 
     // Validate results
     auto validate = [&](const char* tag) {

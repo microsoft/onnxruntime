@@ -6,6 +6,8 @@
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/llm/attention_parameters.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -27,7 +29,11 @@ inline MLFloat16 mask_filter_value() {
 template <typename T>
 class AttentionBase : public OpKernel {
  public:
-  AttentionBase(const OpKernelInfo& info) : OpKernel(info) {}
+  AttentionBase(const OpKernelInfo& info) : OpKernel(info) {
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+
+  }
 
   Status ApplyAttention(OpKernelContext* context,
                         const T* Q,                                              // Q data with shape BxNxSxH
@@ -82,6 +88,8 @@ class AttentionBase : public OpKernel {
                       std::ptrdiff_t batch_i,
                       std::ptrdiff_t head_i,
                       bool transposed) const;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 template <typename T>

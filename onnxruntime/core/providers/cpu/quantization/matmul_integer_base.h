@@ -54,7 +54,7 @@ class MatMulIntegerBase : public OpKernel {
         std::swap(K, N);
         b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, alloc, N, K);
       }
-      const size_t packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed_);
+      const size_t packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed_, &mlas_backend_kernel_selector_config_);
       if (packed_b_size == 0) {
         return Status::OK();
       }
@@ -229,7 +229,7 @@ class MatMulIntegerBase : public OpKernel {
 
     is_packed = false;
 
-    const size_t packed_b_size = MlasDynamicQgemmPackBSize(ctx.N, ctx.K, mlas_backend_kernel_selector_config_);
+    const size_t packed_b_size = MlasDynamicQgemmPackBSize(ctx.N, ctx.K, &mlas_backend_kernel_selector_config_);
     if (packed_b_size == 0) {
       can_use_dynamic_quant_mlas_ = false;
       return false;
@@ -249,7 +249,7 @@ class MatMulIntegerBase : public OpKernel {
                             : std::vector<float>(ctx.N, 0.f);
 
     MlasDynamicQgemmPackB(ctx.N, ctx.K, reinterpret_cast<const int8_t*>(ctx.b_data),
-                          scales.data(), biases.data(), packed_b_.get());
+                          scales.data(), biases.data(), packed_b_.get(), &mlas_backend_kernel_selector_config_);
 
     if (prepacked_weights != nullptr) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));

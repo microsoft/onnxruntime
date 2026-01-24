@@ -795,7 +795,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                1.0f, A1, k,
                B1_dequant, k,
                0.0f, C1, n,
-               tp);
+               tp, &mlas_backend_kernel_selector_config_);
 
       fc1_bias_handled_by_q4_gemm = fc1_used_direct_q4 && has_fc1_bias;
       if (has_fc1_bias && !fc1_bias_handled_by_q4_gemm) {
@@ -975,7 +975,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                1.0f, A2, k2,
                B2_dequant, k2,
                0.0f, C2, n2,
-               tp);
+               tp, &mlas_backend_kernel_selector_config_);
 
     fc2_gemm_done:
 

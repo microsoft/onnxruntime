@@ -8,6 +8,7 @@
 #include "core/framework/op_kernel.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -32,6 +33,9 @@ class AttentionBase {
                      int& past_sequence_length) const;
 
  protected:
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
   AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);

@@ -19,13 +19,18 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
 template <typename T>
 class ConvTranspose : public OpKernel {
  public:
-  ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {}
+  ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+                          info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+  }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
@@ -46,6 +51,8 @@ class ConvTranspose : public OpKernel {
   // for pre-packing usage
   TensorShape filter_shape_;
   BufferUniquePtr transposed_filter_;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime

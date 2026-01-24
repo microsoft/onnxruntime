@@ -9,6 +9,8 @@
 #include "core/common/common.h"
 #include "core/util/math.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -25,6 +27,8 @@ template <typename T>
 class Gemm : protected GemmBase, public OpKernel {
  public:
   Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info) {
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+                            info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -44,7 +48,8 @@ class Gemm : protected GemmBase, public OpKernel {
                           T beta,
                           const T* c_data, const TensorShape* c_shape,
                           T* y_data,
-                          concurrency::ThreadPool* thread_pool);
+                          concurrency::ThreadPool* thread_pool,
+                          const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
  protected:
   TensorShape b_shape_;
@@ -52,6 +57,8 @@ class Gemm : protected GemmBase, public OpKernel {
 
   // For fused gemm + activation
   std::unique_ptr<functors::ElementWiseRangedTransform<T>> activation_;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
   void ComputeActivation(_Inout_updates_(y_size) T* y_data, ptrdiff_t y_size, _Inout_opt_ concurrency::ThreadPool* thread_pool) const;
 };

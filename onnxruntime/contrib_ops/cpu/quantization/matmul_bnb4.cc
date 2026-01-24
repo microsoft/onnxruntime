@@ -94,7 +94,7 @@ Status MatMulBnb4::Compute(OpKernelContext* ctx) const {
     data[i].alpha = 1.f;
     data[i].beta = 0.0f;
   }
-  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), max_len, thread_pool);
+  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), max_len, thread_pool, nullptr);
 
   return Status::OK();
 }

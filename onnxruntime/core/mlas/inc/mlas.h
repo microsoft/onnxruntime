@@ -705,7 +705,8 @@ MlasDynamicQGemm (
     const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-) {
+) 
+{
     MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool, BackendKernelSelectorConfig);
 }
 
@@ -778,7 +779,8 @@ MlasGemmPackBSize(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
-    size_t K
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
 void
@@ -790,7 +792,8 @@ MlasGemmPackB(
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
 size_t

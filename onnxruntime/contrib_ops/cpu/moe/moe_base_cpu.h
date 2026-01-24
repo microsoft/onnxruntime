@@ -8,6 +8,8 @@
 #include "core/framework/op_kernel.h"
 #include "moe_helper.h"
 #include <limits>
+#include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -52,8 +54,12 @@ class MoEBaseCPU {
     swiglu_limit_ = op_kernel_info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
     activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.0f);
     activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 0.0f);
+
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+        op_kernel_info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
   int64_t k_;

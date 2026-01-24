@@ -369,7 +369,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                       beta,
                                       output,
                                       parameters.total_sequence_length,  // ldc
-                                      nullptr);
+                                      nullptr, &mlas_backend_kernel_selector_config_);
         } else {
           math::Gemm<T, ThreadPool>(CblasNoTrans,
                                     CblasTrans,
@@ -381,7 +381,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                     k,
                                     beta,
                                     output,
-                                    nullptr);
+                                    nullptr, &mlas_backend_kernel_selector_config_);
         }
       } else if constexpr (std::is_same<T, MLFloat16>::value) {
         if (MlasHGemmSupported(CblasNoTrans, CblasTrans)) {
@@ -418,7 +418,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                         MLFloat16(beta),
                                         output,
                                         parameters.total_sequence_length,  // ldc
-                                        nullptr);
+                                        nullptr, &mlas_backend_kernel_selector_config_);
           } else {
             TensorShape c_shape({parameters.q_sequence_length, parameters.total_sequence_length});
             Gemm_MLFloat16(CblasNoTrans, CblasTrans,
@@ -606,7 +606,8 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                                           0.f,                                                                                           // beta
                                           output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size),
                                           v_head_size * num_heads,  // ldc
-                                          nullptr);
+                                          nullptr,                  // Threadpool
+                                          &mlas_backend_kernel_selector_config_);  // BackendKernelSelectorConfig;
             } else if constexpr (std::is_same<T, MLFloat16>::value) {
               // This switch should probably be moved to math_cpu.h.
               if (MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
@@ -636,7 +637,7 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                                             MLFloat16(0.f),                                                                               // beta
                                             output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size),
                                             v_head_size * num_heads,  // ldc
-                                            nullptr);
+                                            nullptr, &mlas_backend_kernel_selector_config_);
               }
             } else {
               ORT_THROW("Unsupported data type for attention QK*V multiplication: ",
@@ -650,7 +651,7 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
 
             if constexpr (std::is_same<T, float>::value) {
               math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
-                              attention_probs + attention_probs_offset, v, dest, nullptr);
+                              attention_probs + attention_probs_offset, v, dest, nullptr, &mlas_backend_kernel_selector_config_);
             } else if constexpr (std::is_same<T, MLFloat16>::value) {
               if (MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
                 MlasGemm(CblasNoTrans,

@@ -12,9 +12,15 @@ namespace onnxruntime {
 template <typename T>
 class MatMul final : public OpKernel {
  public:
-  MatMul(const OpKernelInfo& info) : OpKernel(info) {}
+  MatMul(const OpKernelInfo& info) : OpKernel(info) {
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+                   info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+  }
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 template <>
@@ -34,6 +40,9 @@ class MatMul<float> final : public OpKernel {
     auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
     use_fastmath_mode_ = (config_ops == "1") && MlasBf16AccelerationSupported();
 #endif
+
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+                            info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -56,6 +65,8 @@ class MatMul<float> final : public OpKernel {
   bool trans_batch_a_;
   bool trans_batch_b_;
 
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
 #if defined(__aarch64__) && defined(__linux__)
   // fastmath mode state
   bool use_fastmath_mode_;
@@ -63,6 +74,7 @@ class MatMul<float> final : public OpKernel {
   // so a minimum of 32 elements is defined to outweigh the additional prepacking overhead
   const size_t kFastMathModeKernelsizeThreshold = 32;
 #endif
+
 };
 
 }  // namespace onnxruntime

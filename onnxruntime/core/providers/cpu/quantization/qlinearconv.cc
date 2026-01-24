@@ -10,6 +10,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -20,6 +21,8 @@ class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -33,6 +36,8 @@ class QLinearConv : public OpKernel {
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
   enum InputTensors : int {
     IN_X = 0,
     IN_X_SCALE = 1,
@@ -419,7 +424,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
     packed_W_size_ = MlasGemmPackBSize(group_output_channels,
                                        kernel_dim,
                                        std::is_same<ActType, int8_t>::value,
-                                       is_W_signed_);
+                                       is_W_signed_, &mlas_backend_kernel_selector_config_);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
       packed_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_W_data_size, true);

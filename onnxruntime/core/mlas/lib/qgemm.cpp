@@ -207,7 +207,7 @@ MlasIsDynamicQGemmAvailable(const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKe
 {
 #if defined(USE_KLEIDIAI)
   return (ArmKleidiAI::UseSME2 || ArmKleidiAI::UseSME) &&
-         (BackendKernelSelectorConfig == nullptr || BackendKernelSelectorConfig->use_kleidiai);
+         (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai);
 #else
   return false;
 #endif
@@ -504,6 +504,7 @@ Return Value:
 
 --*/
 {
+
     //
     // Retrieve the packing parameters.
     //
