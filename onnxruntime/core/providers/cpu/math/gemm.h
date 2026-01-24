@@ -21,7 +21,8 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,     // 0, 
                     MLFloat16 beta,                                       // 8
                     const MLFloat16* c_data, const TensorShape* c_shape,  // 9, 10
                     MLFloat16* y_data,                                    // 11
-                    concurrency::ThreadPool* thread_pool);                // 12
+                    concurrency::ThreadPool* thread_pool,                 // 12
+                    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);  // 13
 
 template <typename T>
 class Gemm : protected GemmBase, public OpKernel {

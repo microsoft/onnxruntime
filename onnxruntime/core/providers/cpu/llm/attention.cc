@@ -432,7 +432,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                            output,
                            &c_shape,
                            output,
-                           nullptr);
+                           nullptr, &mlas_backend_kernel_selector_config_);
           }
         }
       } else {
@@ -679,7 +679,7 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                                nullptr,
                                nullptr,
                                dest,
-                               nullptr);
+                               nullptr, &mlas_backend_kernel_selector_config_);
               }
             } else {
               ORT_THROW("Unsupported data type for attention QK*V multiplication: ",

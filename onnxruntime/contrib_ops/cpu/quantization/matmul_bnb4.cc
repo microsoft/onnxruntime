@@ -23,11 +23,14 @@ class MatMulBnb4 final : public OpKernel {
         "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
     is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
     transB_ = static_cast<bool>(info.GetAttrOrDefault("transB", static_cast<int64_t>(1)));
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
   int64_t K_;
   int64_t N_;
   int64_t block_size_;
@@ -94,7 +97,7 @@ Status MatMulBnb4::Compute(OpKernelContext* ctx) const {
     data[i].alpha = 1.f;
     data[i].beta = 0.0f;
   }
-  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), max_len, thread_pool, nullptr);
+  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), max_len, thread_pool, &mlas_backend_kernel_selector_config_);
 
   return Status::OK();
 }
