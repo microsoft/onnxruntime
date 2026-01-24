@@ -33,7 +33,6 @@ class AttentionBase {
                      int& past_sequence_length) const;
 
  protected:
-
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
   AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {
