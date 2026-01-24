@@ -1,6 +1,6 @@
 ---
-title: Plugin Execution Provider Library Packaging Guidance
-description: Packaging Guidance for Plugin EP Implementers
+title: Packaging Guidance
+description: Packaging Guidance
 grand_parent: Execution Providers
 parent: Plugin Execution Provider Libraries
 nav_order: 3

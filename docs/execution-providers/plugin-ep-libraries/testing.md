@@ -1,6 +1,6 @@
 ---
-title: Plugin Execution Provider Library Testing Guidance
-description: Testing Guidance for Plugin EP Implementers
+title: Testing Guidance
+description: Testing Guidance
 grand_parent: Execution Providers
 parent: Plugin Execution Provider Libraries
 nav_order: 2

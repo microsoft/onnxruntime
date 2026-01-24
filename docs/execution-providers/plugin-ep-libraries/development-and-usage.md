@@ -1,6 +1,6 @@
 ---
-title: Plugin Execution Provider Library Development and Usage
-description: Plugin Execution Provider Library Development and Usage
+title: Development and Usage
+description: Development and Usage
 grand_parent: Execution Providers
 parent: Plugin Execution Provider Libraries
 nav_order: 1
