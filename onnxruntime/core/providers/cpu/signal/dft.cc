@@ -422,6 +422,8 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto is_real_valued = X_shape[X_shape.NumDimensions() - 1] == 1;
   const auto is_complex_valued = X_shape[X_shape.NumDimensions() - 1] == 2;
   axis = HandleNegativeAxis(axis, X_shape.NumDimensions());
+  ORT_RETURN_IF(axis == static_cast<int64_t>(X_shape.NumDimensions()) - 1,
+                "DFT axis must refer to a signal dimension, not the last real/imag dimension.");
 
   // Validate input for IRFFT
   if (inverse && is_onesided) {
