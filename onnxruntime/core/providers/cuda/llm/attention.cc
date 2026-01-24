@@ -4,6 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/llm/attention_helper.h"
 #include "core/providers/cuda/llm/attention.h"
+#include "core/providers/cuda/llm/attention_mask_convert.h"
 #include "contrib_ops/cuda/bert/attention_data.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 
@@ -127,10 +128,27 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Note: The new Attention op uses attn_mask as attention_bias
   // The attention_bias should be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length)
   // attn_mask can be 2D, 3D, or 4D. Broadcasting aligns from the right (trailing dimensions).
+
+  // Handle boolean mask conversion
+  IAllocatorUniquePtr<T> converted_bool_mask_buffer;
+
   if (attn_mask != nullptr) {
-    // TODO(titaiwang, xadupre): attn_mask bool is not supported yet
+    // Convert boolean mask to float attention bias if needed
     if (attn_mask->IsDataType<bool>()) {
-      ORT_THROW("Boolean attn_mask is not supported yet in Attention op (CUDA).");
+      // Allocate space for converted mask
+      size_t mask_size = SafeInt<size_t>(attn_mask->Shape().Size());
+      converted_bool_mask_buffer = GetScratchBuffer<T>(mask_size, context->GetComputeStream());
+
+      // Launch CUDA kernel to convert: true->0.0f, false->mask_filter_value
+      // Note: mask_filter_value default is -10000.0f, same as MultiHeadAttention op
+      typedef typename ToCudaType<T>::MappedType CudaT;
+      const float mask_filter_value = -10000.0f;
+      ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToFloatBias<CudaT>(
+          Stream(context),
+          reinterpret_cast<CudaT*>(converted_bool_mask_buffer.get()),
+          attn_mask->Data<bool>(),
+          static_cast<int64_t>(mask_size),
+          ToCudaType<T>::FromFloat(mask_filter_value)));
     }
 
     size_t attn_mask_dims_size = attn_mask->Shape().NumDimensions();
@@ -216,7 +234,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Set additional fields
   data.bias = nullptr;  // New Attention op doesn't have bias
   if (nullptr != attn_mask) {
-    data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
+    // Use converted buffer if boolean mask was converted, otherwise use original mask
+    if (converted_bool_mask_buffer) {
+      data.attention_bias = reinterpret_cast<const CudaT*>(converted_bool_mask_buffer.get());
+    } else {
+      data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
+    }
   }
   data.qkv_format = contribop_parameters.qkv_format;
 
