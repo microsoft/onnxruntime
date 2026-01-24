@@ -209,6 +209,7 @@ MlasIsDynamicQGemmAvailable(const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKe
   return (ArmKleidiAI::UseSME2 || ArmKleidiAI::UseSME) &&
          (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai);
 #else
+  MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
   return false;
 #endif
 }
