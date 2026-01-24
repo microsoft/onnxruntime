@@ -315,11 +315,12 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         } else {
           math::GemmEx<float, ThreadPool>(
               CblasNoTrans,                   // TransA = no
-              CblasNoTrans,                   // TransB = no
-              sequence_length,                // M      = S
-              head_size,                      // N      = H
-              input_hidden_size,              // K      = D
-              1.0f,                           // alpha
+              CblasNoTrans,                            // TransA = no
+              CblasNoTrans,                            // TransB = no
+              sequence_length,                         // M      = S
+              head_size,                               // N      = H
+              input_hidden_size,                       // K      = D
+              1.0f,                                    // alpha
               CblasNoTrans,                            // TransA = no
               CblasNoTrans,                            // TransB = no
               sequence_length,                         // M      = S
