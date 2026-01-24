@@ -18,7 +18,6 @@ Abstract:
 #pragma once
 
 #include "mlasi.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 struct MLAS_SOFTMAX_DISPATCH {
     /**

@@ -9,7 +9,6 @@
 #include "core/providers/cpu/quantization/matmul_integer_base.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include <cassert>
 #include <algorithm>
@@ -160,10 +159,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
 
 class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
  public:
-  DynamicQuantizeMatMul(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) == "1";
-  }
+  DynamicQuantizeMatMul(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 

@@ -705,7 +705,7 @@ MlasDynamicQGemm (
     const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-) 
+)
 {
     MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool, BackendKernelSelectorConfig);
 }
@@ -901,7 +901,7 @@ struct MLAS_CONV_PARAMETERS {
     float Beta;
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;

@@ -13,12 +13,16 @@
 #include "core/providers/common.h"
 #include "core/common/safeint.h"
 #include "core/quantization/quantization.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
 class MatMulIntegerBase : public OpKernel {
  public:
-  MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
+  MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+  }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
