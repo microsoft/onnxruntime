@@ -8,7 +8,16 @@ nav_order: 2
 
 # Plugin Execution Provider Library Testing Guidance
 
-A plugin execution provider (EP) is responsible for ensuring that its implementation behaves correctly. This includes interacting with ONNX Runtime in the expected way as documented by the plugin EP API. It also includes the operator-level behavior as specified by the operator specification, e.g., from the ONNX standard.
+{: .no_toc }
+
+A plugin EP is responsible for ensuring that its implementation behaves correctly. This includes interacting with ONNX Runtime in the expected way as documented by the plugin EP API. It also includes the operator-level behavior as specified by the operator specification, e.g., from the ONNX standard.
+
+## Contents
+
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## EP unit testing
 

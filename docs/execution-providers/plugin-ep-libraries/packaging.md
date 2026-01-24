@@ -8,9 +8,16 @@ nav_order: 3
 
 # Plugin Execution Provider Library Packaging Guidance
 
-## Overview
+{: .no_toc }
 
-This document aims to provide guidance for ONNX Runtime (ORT) plugin Execution Provider (EP) implementers to consider with regards to packaging for a plugin EP.
+This page provides guidance for ONNX Runtime plugin EP implementers to consider with regards to packaging for a plugin EP.
+
+## Contents
+
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## General Guidance
 
