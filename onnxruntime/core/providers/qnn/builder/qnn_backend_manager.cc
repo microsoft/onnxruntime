@@ -1621,6 +1621,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     file_mapper_ = std::make_unique<WindowsFileMapper>(logger);
   }
 #else
+  ORT_UNUSED_PARAMETER(enable_file_mapped_weights);
   ORT_UNUSED_PARAMETER(rpcmem_library);
 #endif
 
