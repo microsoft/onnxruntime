@@ -256,11 +256,16 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool ProfilingEnabled() { return profiling_enabled_; }
 #endif
 
-  bool FileMappingIsEnabled() { return file_mapped_weights_enabled_; }
+  bool FileMappingIsEnabled() {
+    std::lock_guard<std::mutex> lock(file_mapping_mutex_);
+    return file_mapped_weights_enabled_;
+  }
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   Qnn_ErrorHandle_t MapDmaData(Qnn_ContextBinaryDataRequest_t request,
-                               Qnn_ContextBinaryDmaDataResponse_t* response, void* mapped_base_ptr);
+                               Qnn_ContextBinaryDmaDataResponse_t* response,
+                               void* const mapped_base_ptr,
+                               const size_t file_size);
 
   Qnn_ErrorHandle_t ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem, void* mapped_base_ptr);
 #endif
@@ -268,9 +273,21 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
   static logging::Severity MapQNNLogLevelToOrtSeverity(QnnLog_Level_t qnn_log_level);
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  typedef struct FileMappingCallbackInfo {
+    void* const mapped_file_ptr;
+    const size_t file_size;
+    QnnBackendManager* const backend_manager;
+
+    FileMappingCallbackInfo(void* ptr, size_t size, QnnBackendManager* manager)
+        : mapped_file_ptr(ptr), file_size(size), backend_manager(manager) {}
+
+  } FileMappingCallbackInfo_t;
+#endif
+
  private:
   typedef struct BufferInfo {
-    std::unique_ptr<char[]> data;
+    std::vector<char> data;
     size_t size;
   } BufferInfo_t;
 
@@ -450,6 +467,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     return Status::OK();
   }
 
+  void DisableFileMapping() {
+    std::lock_guard<std::mutex> lock(file_mapping_mutex_);
+    file_mapped_weights_enabled_ = false;
+  }
+
  private:
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
@@ -492,13 +514,15 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   bool vtcm_backup_buffer_sharing_enabled_ = false;
+
+  std::mutex file_mapping_mutex_;
   bool file_mapped_weights_enabled_ = false;
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   std::unique_ptr<FileMappingInterface> file_mapper_ = nullptr;
   // Notify params for file mapping must persist throughout lifetime of
   // QnnBackendManager for release of DMA data callback on destruction
-  std::vector<std::unique_ptr<std::pair<QnnBackendManager*, void*>>> file_mapping_notify_params_;
+  std::vector<std::unique_ptr<FileMappingCallbackInfo_t>> file_mapping_notify_params_;
 #endif
 
   // NPU backend requires quantized model

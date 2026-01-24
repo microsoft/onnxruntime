@@ -28,12 +28,6 @@ class WindowsFileMapper : public FileMappingInterface {
   Status GetContextBinMappedMemoryPtr(const std::string& bin_filepath,
                                       void** mapped_data_ptr) override;
 
-  // Given a base mapview pointer of a context binary and an offset,
-  // calcualte the aligned and unaligned memory pointers to a weight
-  // within the context binary
-  MappedWeightInfo_t GetMappedWeightMemoryPtr(void* mapped_base_ptr,
-                                              const size_t offset) override;
-
  private:
   // A container of smart pointers of mapview memory pointers to mapped context bins
   // key: filepath to context bin, value: smart pointer of mapview memory pointers

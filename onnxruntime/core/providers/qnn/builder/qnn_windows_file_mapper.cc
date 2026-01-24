@@ -107,28 +107,6 @@ Status WindowsFileMapper::GetContextBinMappedMemoryPtr(const std::string& bin_fi
 
   return Status::OK();
 }
-
-FileMappingInterface::MappedWeightInfo_t
-WindowsFileMapper::GetMappedWeightMemoryPtr(void* mapped_base_ptr,
-                                            const size_t offset) {
-  MappedWeightInfo_t mapped_weight_info;
-
-  // Align to nearest granularity boundary
-  SYSTEM_INFO sys_info;
-  GetSystemInfo(&sys_info);
-  Qnn_ContextBinarySize_t granularity = sys_info.dwAllocationGranularity;
-  SIZE_T aligned_offset = offset & ~(granularity - 1);
-  SIZE_T delta = offset - aligned_offset;
-
-  mapped_weight_info.aligned_offset = aligned_offset;
-  mapped_weight_info.delta = delta;
-
-  void* aligned_data_ptr = static_cast<char*>(mapped_base_ptr) + aligned_offset;
-  mapped_weight_info.aligned_data_ptr = aligned_data_ptr;
-  mapped_weight_info.unaligned_data_ptr = static_cast<char*>(aligned_data_ptr) + delta;
-
-  return mapped_weight_info;
-}
 }  // namespace qnn
 }  // namespace onnxruntime
 
