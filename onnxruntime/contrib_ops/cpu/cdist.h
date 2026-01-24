@@ -24,7 +24,7 @@ class CDist final : public OpKernel {
  public:
   CDist(const OpKernelInfo& info) : OpKernel(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
     std::string metric;
     ORT_ENFORCE(info.GetAttr<std::string>("metric", &metric).IsOK());
     if (metric.compare("sqeuclidean") == 0)
