@@ -6,6 +6,8 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace concurrency {
@@ -16,6 +18,8 @@ namespace contrib {
 class WordConvEmbedding final : public OpKernel {
  public:
   explicit WordConvEmbedding(const OpKernelInfo& info) : OpKernel(info) {
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -52,7 +56,8 @@ class WordConvEmbedding final : public OpKernel {
       const TensorShape& w_conv_shape,
       const TensorShape& w_char_embedding_shape) const;
 
- private:
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
   int64_t embedding_size_{Info().GetAttrOrDefault<int64_t>("embedding_size", -1)};
   int64_t conv_window_size_{Info().GetAttrOrDefault<int64_t>("conv_window_size", -1)};
   int64_t char_embedding_size_{Info().GetAttrOrDefault<int64_t>("char_embedding_size", -1)};
