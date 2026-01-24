@@ -160,19 +160,15 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
 class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
  public:
   DynamicQuantizeMatMul(const OpKernelInfo& info) : MatMulIntegerToFloatBase(info) {
-    auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasUseKleidiai);
-    use_kleidiai_ = (config_ops == "1");
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasUseKleidiaiDynamicQuantGemm) == "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
 
 #if defined(USE_KLEIDIAI)
   bool SupportsKleidiaiDynamicQuant() const override {
-    // Currently the MLAS implementation of Dynamic Quantized MatMul
-    // on ARM devices uses KleidiAI's dynamic quantized gemm functions.
-    // Hence, we return false from here if either the user has disabled
-    // KleidiAI usage or if the system does not support the required SME capabilities
-    if (!use_kleidiai_ || !MlasIsDynamicQGemmAvailable()) {
+    if (!MlasIsDynamicQGemmAvailable(&mlas_backend_kernel_selector_config_)) {
       return false;
     }
     return true;
@@ -189,6 +185,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   int GetBiasIdx() const override {
     return IN_BIAS;
   }
+
 #endif
 
   enum InputTensors : int {

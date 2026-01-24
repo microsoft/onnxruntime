@@ -869,7 +869,8 @@ typedef bool (MLASCALL MLAS_GEMM_BATCH_OVERRIDE)(
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool);
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE)(
     CBLAS_TRANSPOSE TransA,
@@ -881,7 +882,8 @@ typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
-    size_t K);
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 typedef void (MLASCALL MLAS_GEMM_PACK_B)(
     CBLAS_TRANSPOSE TransA,
@@ -899,7 +901,8 @@ typedef bool (MLASCALL MLAS_GEMM_PACK_B_OVERRIDE)(
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB);
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 extern "C" {
 

@@ -659,9 +659,8 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 MLAS_THREADPOOL* ThreadPool)
 {
     // Check if the user wants to use KleidiAI
-    if (!Parameters->use_kleidiai) {
-        KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning "
-                           "false from MlasConvPrepare.");
+    if (Parameters->BackendKernelSelectorConfig && !Parameters->BackendKernelSelectorConfig->use_kleidiai) {
+        KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning false from MlasConvPrepare.");
         return false;
     }
 
@@ -730,14 +729,13 @@ ArmKleidiAI::MlasConv(
     )
 {
     // Check if the user wants to use KleidiAI
-    if (!Parameters->use_kleidiai) {
-        KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning "
-                           "false from MlasConv.");
+    if (Parameters->BackendKernelSelectorConfig && !Parameters->BackendKernelSelectorConfig->use_kleidiai) {
+        KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning false from MlasConv.");
         return false;
     }
 
     if(!CheckCapabilitiesSme(Parameters)){
-        // Fallback to Default Mlas path
+        // Fallback to Default Mlas
         return false;
     };
     ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in

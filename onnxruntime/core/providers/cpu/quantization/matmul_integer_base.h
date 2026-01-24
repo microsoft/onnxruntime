@@ -122,8 +122,8 @@ class MatMulIntegerBase : public OpKernel {
   // have been performed
   bool can_use_dynamic_quant_mlas_{false};
 
-  // Flag to indicate if user allows usage of KleidiAI's implementation
-  bool use_kleidiai_{true};
+  // Instantiate the backend kernel selector config
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
 #if defined(USE_KLEIDIAI)
   struct KleidiaiDynamicPackContext {
@@ -229,7 +229,7 @@ class MatMulIntegerBase : public OpKernel {
 
     is_packed = false;
 
-    const size_t packed_b_size = MlasDynamicQgemmPackBSize(ctx.N, ctx.K);
+    const size_t packed_b_size = MlasDynamicQgemmPackBSize(ctx.N, ctx.K, mlas_backend_kernel_selector_config_);
     if (packed_b_size == 0) {
       can_use_dynamic_quant_mlas_ = false;
       return false;
