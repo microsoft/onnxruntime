@@ -233,6 +233,7 @@ MlasDynamicQGemmBatch (
     MLAS_UNREFERENCED_PARAMETER(DataParams);
     MLAS_UNREFERENCED_PARAMETER(BatchN);
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 }
 
 int32_t
@@ -357,6 +358,7 @@ MlasDynamicQgemmPackBSize(
 
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(K);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
     return bytes;
 }
@@ -462,6 +464,7 @@ MlasDynamicQgemmPackB(
     MLAS_UNREFERENCED_PARAMETER(Scales);
     MLAS_UNREFERENCED_PARAMETER(Bias);
     MLAS_UNREFERENCED_PARAMETER(PackedB);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 }
 
 
