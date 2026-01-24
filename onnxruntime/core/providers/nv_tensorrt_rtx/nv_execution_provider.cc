@@ -2585,6 +2585,12 @@ std::string NvExecutionProvider::GetCompiledModelCompatibilityInfo(
   // Protect read access to engine_headers_ for thread safety
   auto lock = GetApiLock();
 
+  // Compatibility info is only supported when there is exactly one engine.
+  // If multiple EPContext nodes/engines exist, return empty so validation is not applicable.
+  if (engine_headers_.size() > 1) {
+    return std::string();
+  }
+
   // If we have stored engine headers, return the first one found
   // (typically there's only one per EP context)
   if (!engine_headers_.empty()) {
