@@ -81,7 +81,7 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
   return true;
 }
 
-bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& /*logger*/) const {
+bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {1, 6, 11, 12, 13}) ||
       !graph_utils::IsSupportedProvider(node, {kCpuExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
@@ -92,6 +92,10 @@ bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, con
   const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedProvider(next_node, {kCpuExecutionProvider}) ||
       !QDQ::MatchQNode(next_node)) {
+    return false;
+  }
+
+  if (!graph_utils::CanRemoveNode(graph, node, logger)) {
     return false;
   }
 

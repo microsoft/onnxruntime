@@ -122,6 +122,7 @@
 #define INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_ORT_GRAPH_TO_PROTO_H_
 
 #include <functional>
+#include <optional>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "onnx/onnx_pb.h"
 
@@ -317,9 +318,11 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
 
       // Don't add graph inputs or graph outputs to GraphProto's list of value_infos.
       // Do add initializers (constant and non-constant) to GraphProto's list of initializer tensors.
-      // For values defined in an outer scope, just add the value info but not the initializer.
       if (is_from_outer_scope) {
         value_infos.emplace(value_name, ort_value_info);
+        if (is_constant_initializer) {
+          initializer_value_infos.emplace(value_name, ort_value_info);
+        }
       } else if (is_optional_graph_input) {
         initializer_value_infos.emplace(value_name, ort_value_info);
       } else if (is_constant_initializer) {
@@ -413,6 +416,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(value_info, *value_info_proto));
     }
 
+    // There may be initializers in the original OrtGraph that have not been added yet.
+    // For example, an initializer may not be used by any node but is still a graph output.
+    // Iterating through all nodes to collect initializer value info is therefore not sufficient,
+    // initializers must also be obtained from ort_graph.GetInitializers().
+    // Add those missing initializers and skip the ones that already in `initializer_value_infos`
+    std::vector<Ort::ConstValueInfo> ort_graph_initializers = ort_graph.GetInitializers();
+    for (const auto& initializer : ort_graph_initializers) {
+      initializer_value_infos.emplace(initializer.GetName(), initializer);
+    }
+
     // Add initializers to GraphProto as TensorProto objects.
     for (const auto& [initializer_name, initializer_value_info] : initializer_value_infos) {
       std::vector<int64_t> initializer_dims;
@@ -490,10 +503,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::ModelProto& model_proto,
                             HandleInitializerDataFunc handle_initializer_data_func) {
   try {
-    // Check that OrtGraph is a top-level graph (no parent node).
     Ort::ConstGraph ort_graph{&graph};
-    Ort::ConstNode parent_node = ort_graph.GetParentNode();
-    ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, "Cannot serialize nested OrtGraph into a ModelProto");
 
     // Set model description.
     model_proto.set_doc_string("Serialized from OrtGraph");

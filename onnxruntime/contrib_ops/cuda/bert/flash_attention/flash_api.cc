@@ -533,7 +533,6 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   params.is_seqlens_k_cumulative = seqlens_k_ == nullptr;
   if (seqlens_k_ != nullptr) {
     params.cu_seqlens_k = static_cast<int*>(seqlens_k_);
-    params.seqused_k = static_cast<int*>(seqlens_k_);
   }
 
   if (rotary_cos != nullptr) {

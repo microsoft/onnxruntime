@@ -31,7 +31,8 @@ class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"components", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32});
+      {"epsilon", ProgramUniformVariableDataType::Float32},
+      {"skip_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool hasBeta_;

@@ -1164,6 +1164,72 @@ OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
     const std::vector<ConstEpDevice>& ep_devices,
     const char* compatibility_info);
 
+/** \brief Extract EP compatibility info from a precompiled model file.
+ *
+ * Parses the model file to extract the compatibility info string for a specific execution provider
+ * from the model's metadata properties. This is only applicable to models that have been precompiled
+ * for an EP. Standard ONNX models do not contain this information.
+ *
+ * \note This operation parses the full ONNX ModelProto from disk.
+ *
+ * \param model_path Path to the ONNX model file.
+ * \param ep_type The execution provider type string. Must be non-empty.
+ *                 Use ConstEpDevice::EpName() to get this value.
+ * \param allocator Allocator to use for the output string.
+ * \return The compatibility info string, or nullptr if not found for this EP. Caller must free via allocator.
+ * \throws Ort::Exception on error.
+ */
+AllocatedStringPtr GetCompatibilityInfoFromModelAllocated(const ORTCHAR_T* model_path, const char* ep_type,
+                                                          OrtAllocator* allocator);
+
+/** \brief Extract EP compatibility info from precompiled model bytes in memory.
+ *
+ * Same as GetCompatibilityInfoFromModelAllocated but reads from a memory buffer.
+ * Useful when precompiled models are loaded from encrypted storage, network, or other non-file sources.
+ *
+ * \param model_data Pointer to the model data in memory.
+ * \param model_data_length Size of the model data in bytes.
+ * \param ep_type The execution provider type string. Must be non-empty.
+ * \param allocator Allocator to use for the output string.
+ * \return The compatibility info string, or nullptr if not found for this EP. Caller must free via allocator.
+ * \throws Ort::Exception on error.
+ */
+AllocatedStringPtr GetCompatibilityInfoFromModelBytesAllocated(const void* model_data, size_t model_data_length,
+                                                               const char* ep_type, OrtAllocator* allocator);
+
+namespace detail {
+template <typename T>
+struct EpAssignedNodeImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  std::string GetName() const;
+  std::string GetDomain() const;
+  std::string GetOperatorType() const;
+};
+}  // namespace detail
+
+/** \brief Constant wrapper around ::OrtEpAssignedNode
+ * \remarks EpAssignedNode is always read-only for ORT API users.
+ */
+using ConstEpAssignedNode = detail::EpAssignedNodeImpl<Ort::detail::Unowned<const OrtEpAssignedNode>>;
+
+namespace detail {
+template <typename T>
+struct EpAssignedSubgraphImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  std::string GetEpName() const;
+  std::vector<ConstEpAssignedNode> GetNodes() const;
+};
+}  // namespace detail
+
+/** \brief Constant wrapper around ::OrtEpAssignedSubgraph
+ * \remarks EpAssignedSubgraph is always read-only for ORT API users.
+ */
+using ConstEpAssignedSubgraph = detail::EpAssignedSubgraphImpl<Ort::detail::Unowned<const OrtEpAssignedSubgraph>>;
+
 /** \brief The Env (Environment)
  *
  * The Env holds the logging state used by all other objects.
@@ -1307,6 +1373,28 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    * \param adapter The LoraAdapter to be used as the active adapter
    */
   RunOptions& AddActiveLoraAdapter(const LoraAdapter& adapter);
+
+  /** \brief Associate a sync stream with the run options.
+   *
+   * When set, the EP uses this stream for execution, enabling proper
+   * synchronization with imported external semaphores. Wraps OrtApi::RunOptionsSetSyncStream.
+   *
+   * \param stream The OrtSyncStream to associate with these run options. May be nullptr to clear.
+   */
+  RunOptions& SetSyncStream(OrtSyncStream* stream);
+
+  /** \brief Enable profiling for this run
+   *
+   * Wraps OrtApi::RunOptionsEnableProfiling
+   * \param profile_file_prefix The prefix for the profile file
+   */
+  RunOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
+
+  /** \brief Disable profiling for this run
+   *
+   * Wraps OrtApi::RunOptionsDisableProfiling
+   */
+  RunOptions& DisableProfiling();
 };
 
 namespace detail {
@@ -1665,9 +1753,14 @@ struct ConstSessionImpl : Base<T> {
 
   int GetOpset(const std::string& domain) const;  ///< Wraps OrtApi::SessionGetOpsetForDomain
 
-  // Will move before checkin if that's the case.
   std::vector<ValueInfo> GetInputs() const;
   std::vector<ValueInfo> GetOutputs() const;
+
+  /** \brief Returns information on the subgraph/nodes assigned to execution providers in the session.
+   *
+   * \return A list of ConstEpAssignedSubgraph instances.
+   */
+  std::vector<ConstEpAssignedSubgraph> GetEpGraphAssignmentInfo() const;
 };
 
 template <typename T>
