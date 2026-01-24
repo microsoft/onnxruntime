@@ -44,7 +44,7 @@ class GQAAttentionBase {
     qk_output_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)));
 
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   int num_heads_;     // number of attention heads of Q
