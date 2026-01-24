@@ -99,7 +99,7 @@ Status Sample(AllocatorPtr& allocator,
 
   gsl::span<T>& cumulative_probs = sampling_state->cumulative_probs;
 
-  // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU 
+  // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters->batch_size,
                                     parameters->vocab_size,
                                     sorted_scores.data(),
