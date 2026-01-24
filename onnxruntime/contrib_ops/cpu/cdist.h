@@ -19,7 +19,6 @@ class CDist final : public OpKernel {
   enum class Mode { EUCLIDEAN,
                     SQEUCLIDEAN } mode_;
 
-
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
  public:
