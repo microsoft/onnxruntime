@@ -19,7 +19,7 @@ class WordConvEmbedding final : public OpKernel {
  public:
   explicit WordConvEmbedding(const OpKernelInfo& info) : OpKernel(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
