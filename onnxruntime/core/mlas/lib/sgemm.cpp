@@ -1691,6 +1691,8 @@ Return Value:
     #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
 
 
     const size_t AlignedN =
@@ -1755,6 +1757,7 @@ Return Value:
     }
 #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
 
     const size_t AlignedN =
