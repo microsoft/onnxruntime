@@ -25,7 +25,7 @@ class MatMulBnb4 final : public OpKernel {
     is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
     transB_ = static_cast<bool>(info.GetAttrOrDefault("transB", static_cast<int64_t>(1)));
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
