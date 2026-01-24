@@ -826,6 +826,7 @@ typedef struct OrtMIGraphXProviderOptions {
    *   \note If a ::OrtArenaCfg has been applied, it will override this field
    */
   int migraphx_arena_extend_strategy;
+  size_t migraphx_max_dynamic_batch;                //Max Dynamic batch size. Default 0 = disabled, nonzero = enabled
 
   // This is the legacy struct and don't add new fields here.
 } OrtMIGraphXProviderOptions;
