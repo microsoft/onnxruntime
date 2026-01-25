@@ -45,7 +45,7 @@ Status LSTMTraining<T>::Compute(OpKernelContext* context) const {
                                    attributes_.activation_funcs.Entries()[2],
                                    attributes_.clip,
                                    context->GetOperatorThreadPool(),
-                                   true
+                                   true, /*training_mode*/
                                    // TODO(hasesh): Pass through mlas backend config when available
                                    nullptr /*mlas_backend_kernel_selector_config*/);
 
