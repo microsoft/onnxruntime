@@ -9,6 +9,7 @@
 #include "core/providers/cpu/nn/pool.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/fused_activation.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -44,6 +45,8 @@ class NchwcConv final : public OpKernel {
  public:
   NchwcConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
 #if defined(__aarch64__) && defined(__linux__)
     auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
     use_fastmath_mode_ = (config_ops == "1") && MlasBf16AccelerationSupported();
@@ -56,6 +59,8 @@ class NchwcConv final : public OpKernel {
   ConvAttributes conv_attrs_;
 
   MLAS_ACTIVATION activation_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG backend_kernel_selector_config_;
+
 #if defined(__aarch64__) && defined(__linux__)
   bool use_fastmath_mode_{false};
 #endif

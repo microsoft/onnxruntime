@@ -339,6 +339,14 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
 
   // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU
+  // Currently, MLAS uses a dedicated softmax kernel for float type
+  // that does not need the mlas backend config.
+  // The backend config is only needed for the douible type softmax kernel
+  // which uses Gemm/Matmul for its implementation.
+  // At the time of writing, there is no backend other than MLAS that implements
+  // double type Gemm/Matmul. Hence, the cost of plumging thorough the session option
+  // to endable/disable a backend (like KleidiAI) is not justified.
+  // Itr is is better re-visited when it is relevant for the double type.
   ORT_RETURN_IF_ERROR(
       SoftmaxCPU<T>(
           batch_beam_size,  // rows
@@ -347,7 +355,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
           next_token_scores.data(),
           true,
           thread_pool,
-          nullptr));
+          nullptr)); // mlas_backend_kernel_selector_config
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);

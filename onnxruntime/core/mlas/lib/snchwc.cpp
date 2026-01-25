@@ -54,6 +54,7 @@ struct MLAS_NCHWC_CONV_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     size_t GroupCount;
     bool ZeroMode;
     bool UseBf16;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig;
 };
 
 //
@@ -75,6 +76,7 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
 #define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         0x00000002
 #define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       0x00000004
 #define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
+#define MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI      0x00000010
 
 size_t
 MLASCALL
@@ -402,7 +404,8 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
     unsigned
     ComputeKernelFlags(
         size_t ic,
-        size_t ChannelCount
+        size_t ChannelCount,
+        const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock = nullptr
         )
     {
         unsigned KernelFlags = 0;
@@ -438,6 +441,12 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
             } else if (ActivationKind != MlasIdentityActivation) {
                 KernelFlags |= MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION;
             }
+        }
+
+        if (WorkBlock != nullptr &&
+            WorkBlock->BackendKernelSelectorConfig != nullptr &&
+            WorkBlock->BackendKernelSelectorConfig->UseKleidaiForArm) {
+            KernelFlags |= MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI;
         }
 
         return KernelFlags;
@@ -931,7 +940,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                 InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
 
-                unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
+                unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch, WorkBlock);
 
                 //
                 // Invoke the convolution kernel.
@@ -1231,6 +1240,7 @@ MlasNchwcConv(
     const MLAS_ACTIVATION* Activation,
     bool ZeroMode,
     MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
     const bool UseBf16
     )
 /*++
@@ -1298,6 +1308,7 @@ Return Value:
     WorkBlock.Activation = Activation;
     WorkBlock.ZeroMode = ZeroMode;
     WorkBlock.UseBf16 = UseBf16;
+    WorkBlock.BackendKernelSelectorConfig = BackendKernelSelectorConfig;
 
     //
     // Capture the generic shape parameters to the work block.

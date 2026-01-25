@@ -1281,7 +1281,8 @@ MlasNchwcConv(
     const MLAS_ACTIVATION* Activation,
     bool ZeroMode,
     MLAS_THREADPOOL* ThreadPool,
-    bool UseBf16 = false
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
+    bool UseBf16,
     );
 
 void
