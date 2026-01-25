@@ -341,7 +341,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU
   // Currently, MLAS uses a dedicated softmax kernel for float type
   // that does not need the mlas backend config.
-  // The backend config is only needed for the douible type softmax kernel
+  // The backend config is only needed for the double type softmax kernel
   // which uses Gemm/Matmul for its implementation.
   // At the time of writing, there is no backend other than MLAS that implements
   // double type Gemm/Matmul. Hence, the cost of plumging thorough the session option
@@ -355,7 +355,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
           next_token_scores.data(),
           true,
           thread_pool,
-          nullptr)); // mlas_backend_kernel_selector_config
+          nullptr));  // mlas_backend_kernel_selector_config
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);

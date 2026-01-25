@@ -45,7 +45,7 @@ class NchwcConv final : public OpKernel {
   NchwcConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
 #if defined(__aarch64__) && defined(__linux__)
     auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
     use_fastmath_mode_ = (config_ops == "1") && MlasBf16AccelerationSupported();
