@@ -9,7 +9,6 @@
 #include "core/providers/cpu/nn/pool.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/fused_activation.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -59,7 +58,7 @@ class NchwcConv final : public OpKernel {
   ConvAttributes conv_attrs_;
 
   MLAS_ACTIVATION activation_;
-  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG backend_kernel_selector_config_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
 #if defined(__aarch64__) && defined(__linux__)
   bool use_fastmath_mode_{false};
