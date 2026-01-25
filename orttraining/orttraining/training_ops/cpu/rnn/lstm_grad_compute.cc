@@ -299,7 +299,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         float* grad_Xt = SafeRawPointer<T>(outputs.grad_input.begin() + X_offset,
                                            outputs.grad_input.end(), input_size_);
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_ai, Wi, input_beta, grad_Xt, thread_pool_);
+                                         hidden_size_, alpha, grad_ai, Wi, input_beta, grad_Xt, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
 
         // ao = Xto * Wo^T + Ht-1o * Ro^T + Po (.) Ct + Wbo + Rbo
         // dL/dXto = dL/dao * Wo ---------- (15)
@@ -307,21 +309,27 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // M = 1, N = input_size_, K = hidden_size_
         input_beta = 1.0f;
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_ao, Wo, input_beta, grad_Xt, thread_pool_);
+                                         hidden_size_, alpha, grad_ao, Wo, input_beta, grad_Xt, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
 
         // af = Xtf * Wf^T + Ht-1f * Rf^T + Pf (.) Ct-1 + Wbf + Rbf
         // dL/dXtf = dL/daf * Wf ---------- (16)
         // [1, input_size_] = [1, hidden_size_] * [hidden_size_, input_size_]
         // M = 1, N = input_size_, K = hidden_size_
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_af, Wf, input_beta, grad_Xt, thread_pool_);
+                                         hidden_size_, alpha, grad_af, Wf, input_beta, grad_Xt, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
 
         // ac = Xtc * Wc^T + Ht-1c * Rc^T + Wbc + Rbc
         // dL/dXtc = dL/dac * Wc ---------- (17)
         // [1, input_size_] = [1, hidden_size_] * [hidden_size_, input_size_]
         // M = 1, N = input_size_, K = hidden_size_
         ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, input_size_,
-                                         hidden_size_, alpha, grad_ac, Wc, input_beta, grad_Xt, thread_pool_);
+                                         hidden_size_, alpha, grad_ac, Wc, input_beta, grad_Xt, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
       }
 
       if (grad_weights_required) {
@@ -335,7 +343,10 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         const float* Xt = SafeRawPointer<const T>(inputs.input.begin() + X_offset,
                                                   inputs.input.end(), input_size_);
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_ai, Xt, weight_beta, grad_Wi_local, thread_pool_);
+                                         1, alpha, grad_ai, Xt, weight_beta, grad_Wi_local, thread_pool_,
+                                          // TODO(hasesh): Pass through mlas backend config when available
+                                          nullptr /*mlas_backend_kernel_selector_config*/);
+
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wi_local, grad_Wi, hidden_size_ * input_size_);
 
@@ -344,7 +355,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_ao, Xt, weight_beta, grad_Wo_local, thread_pool_);
+                                         1, alpha, grad_ao, Xt, weight_beta, grad_Wo_local, thread_pool_,
+                                          // TODO(hasesh): Pass through mlas backend config when available
+                                          nullptr /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wo_local, grad_Wo, hidden_size_ * input_size_);
 
@@ -353,7 +366,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_af, Xt, weight_beta, grad_Wf_local, thread_pool_);
+                                         1, alpha, grad_af, Xt, weight_beta, grad_Wf_local, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wf_local, grad_Wf, hidden_size_ * input_size_);
 
@@ -362,7 +377,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [hidden_size_, input_size_] = [1, hidden_size_]^T * [1, input_size_]
         // M = hidden_size_, N = input_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
-                                         1, alpha, grad_ac, Xt, weight_beta, grad_Wc_local, thread_pool_);
+                                         1, alpha, grad_ac, Xt, weight_beta, grad_Wc_local, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wc_local, grad_Wc, hidden_size_ * input_size_);
       }
@@ -382,7 +399,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_ai, Htminus1, weight_beta, grad_Ri_local, thread_pool_);
+                                         1, alpha, grad_ai, Htminus1, weight_beta, grad_Ri_local, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Ri_local, grad_Ri, hidden_size_ * hidden_size_);
 
@@ -391,7 +410,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_ao, Htminus1, weight_beta, grad_Ro_local, thread_pool_);
+                                         1, alpha, grad_ao, Htminus1, weight_beta, grad_Ro_local, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Ro_local, grad_Ro, hidden_size_ * hidden_size_);
 
@@ -400,7 +421,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_af, Htminus1, weight_beta, grad_Rf_local, thread_pool_);
+                                         1, alpha, grad_af, Htminus1, weight_beta, grad_Rf_local, thread_pool_,
+                                         // TODO(hasesh): Pass through mlas backend config when available
+                                         nullptr /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Rf_local, grad_Rf, hidden_size_ * hidden_size_);
 
@@ -409,7 +432,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // [hidden_size_, hidden_size_] = [1, hidden_size_]^T * [1, hidden_size_]
         // M = hidden_size_, N = hidden_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
-                                         1, alpha, grad_ac, Htminus1, weight_beta, grad_Rc_local, thread_pool_);
+                                         1, alpha, grad_ac, Htminus1, weight_beta, grad_Rc_local, thread_pool_,
+                                          // TODO(hasesh): Pass through mlas backend config when available
+                                          nullptr /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Rc_local, grad_Rc, hidden_size_ * hidden_size_);
       }
@@ -474,7 +499,9 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
       ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_ai, Ri, recurrence_input_beta, grad_Ht, thread_pool_);
+                                       hidden_size_, alpha, grad_ai, Ri, recurrence_input_beta, grad_Ht, thread_pool_,
+                                       // TODO(hasesh): Pass through mlas backend config when available
+                                       nullptr /*mlas_backend_kernel_selector_config*/);
 
       recurrence_input_beta = 1.0f;
 
@@ -483,21 +510,27 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
       ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_ao, Ro, recurrence_input_beta, grad_Ht, thread_pool_);
+                                       hidden_size_, alpha, grad_ao, Ro, recurrence_input_beta, grad_Ht, thread_pool_,
+                                       // TODO(hasesh): Pass through mlas backend config when available
+                                       nullptr /*mlas_backend_kernel_selector_config*/);
 
       // af = Xtf * Wf^T + Ht-1f * Rf^T + Pf (.) Ct-1 + Wbf + Rbf
       // dL/dHt-1f = dL/daf * Rf ---------- (40)
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
       ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_af, Rf, recurrence_input_beta, grad_Ht, thread_pool_);
+                                       hidden_size_, alpha, grad_af, Rf, recurrence_input_beta, grad_Ht, thread_pool_,
+                                       // TODO(hasesh): Pass through mlas backend config when available
+                                      nullptr /*mlas_backend_kernel_selector_config*/);
 
       // ac = Xtc * Wc^T + Ht-1c * Rc^T + Wbc + Rbc
       // dL/dHt-1c = dL/dac * Rc ---------- (41)
       // [1, hidden_size_] = [1, hidden_size_] * [hidden_size_, hidden_size_]
       // M = 1, N = hidden_size_, K = hidden_size_
       ::onnxruntime::math::Gemm<float>(CblasNoTrans, CblasNoTrans, 1, hidden_size_,
-                                       hidden_size_, alpha, grad_ac, Rc, recurrence_input_beta, grad_Ht, thread_pool_);
+                                       hidden_size_, alpha, grad_ac, Rc, recurrence_input_beta, grad_Ht, thread_pool_,
+                                       // TODO(hasesh): Pass through mlas backend config when available
+                                       nullptr /*mlas_backend_kernel_selector_config*/);
     }
   }
 }

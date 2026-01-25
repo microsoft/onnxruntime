@@ -290,6 +290,7 @@ struct EinsumTypedComputeProcessor {
   static void operator delete(void* p) { g_host_cpu.EinsumTypedComputeProcessor__operator_delete(reinterpret_cast<EinsumTypedComputeProcessor*>(p)); }
   static std::unique_ptr<EinsumTypedComputeProcessor> Create(OpKernelContext* context, AllocatorPtr allocator,
                                                              concurrency::ThreadPool* tp,
+                                                             const void* mlas_backend_config,
                                                              EinsumComputePreprocessor& einsum_compute_preprocessor,
                                                              void* einsum_cuda_assets);
 

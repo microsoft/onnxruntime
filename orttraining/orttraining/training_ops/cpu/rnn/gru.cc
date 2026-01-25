@@ -41,7 +41,9 @@ Status GRUTraining<T>::Compute(OpKernelContext* context) const {
                                    attributes_.activation_funcs.Entries()[1],
                                    attributes_.clip,
                                    context->GetOperatorThreadPool(),
-                                   true /*training_mode*/);
+                                   true /*training_mode*/,
+                                   // TODO(hasesh): Pass through mlas backend config when available
+                                   nullptr /*mlas_backend_kernel_selector_config*/);
   gru.Compute(gru_inputs.input,
               gru_inputs.sequence_lengths,
               attributes_.num_directions,
