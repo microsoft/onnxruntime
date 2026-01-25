@@ -7,6 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "ml_common.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace ml {
