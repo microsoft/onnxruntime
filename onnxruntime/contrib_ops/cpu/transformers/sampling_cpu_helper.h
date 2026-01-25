@@ -102,12 +102,12 @@ Status Sample(AllocatorPtr& allocator,
   // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU
   // Currently, MLAS uses a dedicated softmax kernel for float type
   // that does not need the mlas backend config.
-  // The backend config is only needed for the douible type softmax kernel
+  // The backend config is only needed for the double type softmax kernel
   // which uses Gemm/Matmul for its implementation.
   // At the time of writing, there is no backend other than MLAS that implements
-  // double type Gemm/Matmul. Hence, the cost of plumging thorough the session option
-  // to endable/disable a backend (like KleidiAI) is not justified.
-  // Itr is is better re-visited when it is relevant for the double type.
+  // double type Gemm/Matmul. Hence, the cost of plumbing through the session option
+  // to enable/disable a backend (like KleidiAI) is not justified.
+  // It is better re-visited when it is relevant for the double type.
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters->batch_size,
                                     parameters->vocab_size,
                                     sorted_scores.data(),
