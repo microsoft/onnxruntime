@@ -3720,6 +3720,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
             // this can happen to ResolveContext.inputs_and_initializers during CleanUnusedInitializersAndNodeArgs.
             graph.resolve_context_.Clear();
 
+            ORT_RETURN_IF_ERROR(PruneUnreachableNodes());
             graph.CleanUnusedInitializersAndNodeArgs(options.initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
@@ -5178,6 +5179,75 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+Status Graph::PruneUnreachableNodes() {
+  InlinedVector<const Node*> roots;
+  roots.reserve(GetOutputs().size());
+
+  // 1. Identify roots from graph outputs
+  for (const auto* output : GetOutputs()) {
+    const Node* producer = GetProducerNode(output->Name());
+    if (producer != nullptr) {
+      roots.push_back(producer);
+    } else {
+      const auto& consumers = GetConsumerNodes(output->Name());
+      for (const Node* consumer : consumers) {
+        roots.push_back(consumer);
+      }
+    }
+  }
+
+  InlinedHashSet<const Node*> live_nodes;
+  // 2. Perform backward DFS to find reachable nodes
+  ReverseDFSFrom(
+      roots,
+      [&live_nodes](const Node* n) { live_nodes.insert(n); },
+      nullptr);
+
+  // 3. Subgraph & Implicit Input propagation (Fixed-point iteration)
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (auto& node : Nodes()) {
+      if (live_nodes.find(&node) == live_nodes.end() || !node.ContainsSubgraph()) {
+        continue;
+      }
+
+      for (const auto& subgraph : node.GetSubgraphs()) {
+        for (const auto& sub_node : subgraph->Nodes()) {
+          for (const auto* implicit : sub_node.ImplicitInputDefs()) {
+            const Node* p = subgraph->GetProducerNode(implicit->Name());
+            if (p == nullptr) {
+              p = GetProducerNode(implicit->Name());
+            }
+
+            if (p != nullptr && live_nodes.insert(p).second) {
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Collect nodes for removal
+  InlinedVector<NodeIndex> to_remove;
+  for (auto& node : Nodes()) {
+    if (live_nodes.count(&node) > 0) continue;
+    if (NodeProducesGraphOutput(node)) continue;
+
+    to_remove.push_back(node.Index());
+  }
+
+  // 5. Execute pruning
+  for (NodeIndex idx : to_remove) {
+    RemoveNode(idx);
+  }
+
+  return Status::OK();
+}
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {

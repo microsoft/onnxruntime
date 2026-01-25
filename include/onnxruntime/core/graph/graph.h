@@ -1801,6 +1801,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // Iterate this Graph instance and all subgraphs, calling the provided function for each.
   common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // Prunes nodes unreachable from graph outputs to ensure consistency before resource cleanup
+  Status PruneUnreachableNodes(const logging::Logger& logger);
+#endif
+
   // Clear all unused initializers and NodeArgs
   void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
