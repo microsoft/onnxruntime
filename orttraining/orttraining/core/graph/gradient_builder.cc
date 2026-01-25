@@ -754,6 +754,15 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetBinaryCrossEntropyGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"BinaryCrossEntropyGrad", kMSDomain, 1},
+              {GO(0), O(1), I(1)},
+              {GI(0)},
+              SrcNodeAttributes())};
+}
+
+
 IMPLEMENT_GRADIENT_BUILDER(GetLogSoftmaxGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{SrcNodeOpsetVersion() < 13 ? "LogSoftmaxGrad" : "LogSoftmaxGrad_13", kMSDomain, 1},
