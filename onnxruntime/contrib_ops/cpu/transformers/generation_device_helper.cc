@@ -355,7 +355,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
           next_token_scores.data(),
           true,
           thread_pool,
-          nullptr)); // mlas_backend_kernel_selector_config
+          nullptr));  // mlas_backend_kernel_selector_config
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
