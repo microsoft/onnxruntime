@@ -404,8 +404,7 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
     unsigned
     ComputeKernelFlags(
         size_t ic,
-        size_t ChannelCount,
-        const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock = nullptr
+        size_t ChannelCount
         )
     {
         unsigned KernelFlags = 0;
@@ -940,7 +939,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                 InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
 
-                unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch, WorkBlock);
+                unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
 
                 //
                 // Invoke the convolution kernel.
