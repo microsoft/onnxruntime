@@ -165,8 +165,10 @@ LutGemmPackQuantBData(
 
     // LUT GEMM is only available for AVX2, so dispatch must be available
     const auto* Dispatch = GetMlasPlatform().LutGenKernel;
-    assert(Dispatch && Dispatch->PackQuantBData && "PackQuantBData requires AVX2 dispatch");
-    
+    if (Dispatch == nullptr || Dispatch->PackQuantBData == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "PackQuantBData requires AVX2 dispatch");
+    }
+
     Dispatch->PackQuantBData(
         N, K, bits, g, ngroups_per_elem,
         simd_n_in, simd_n_out, bm, kfactor,
@@ -212,8 +214,10 @@ LutPackScalesAndZeroPoints(
 
     // LUT GEMM is only available for AVX2, so dispatch must be available
     const auto* Dispatch = GetMlasPlatform().LutGenKernel;
-    assert(Dispatch && Dispatch->PackScalesAndZeroPoints && "PackScalesAndZeroPoints requires AVX2 dispatch");
-    
+    if (Dispatch == nullptr || Dispatch->PackScalesAndZeroPoints == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "PackScalesAndZeroPoints requires AVX2 dispatch");
+    }
+
     Dispatch->PackScalesAndZeroPoints(
         N, K, bits, BlkLen, simd_n_out, bm, HasZeroPoint,
         PackedQuantBZPBegin, QuantBScale, QuantBZeroPoint, ThreadPool
@@ -290,7 +294,11 @@ MlasIsLutGemmAvailable(
 )
 {
     const auto* lut_kernel = GetMlasPlatform().LutGenKernel;
-    if (lut_kernel == nullptr || lut_kernel->GenerateLUT == nullptr || lut_kernel->ComputeGemm == nullptr) {
+    if (lut_kernel == nullptr ||
+        lut_kernel->GenerateLUT == nullptr ||
+        lut_kernel->ComputeGemm == nullptr ||
+        lut_kernel->PackQuantBData == nullptr ||
+        lut_kernel->PackScalesAndZeroPoints == nullptr) {
         return false;
     }
 
@@ -359,7 +367,9 @@ MlasLutGemm(
     // adapted from ggml_backend_tmac_mul_mat
     const auto* Dispatch = GetMlasPlatform().LutGenKernel;
     // This should be ensured by calling MlasIsLutGemmAvailable() before MlasLutGemm()
-    assert(Dispatch && Dispatch->GenerateLUT && "TMAC not supported in this configuration.");
+    if (Dispatch == nullptr || Dispatch->GenerateLUT == nullptr || Dispatch->ComputeGemm == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "TMAC not supported in this configuration");
+    }
 
     // Calculate scales offset from packed buffer
     // TODO(vraspar): support other bitwidths

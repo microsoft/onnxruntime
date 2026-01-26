@@ -155,23 +155,23 @@ void LUTGEMM_COMPUTE(benchmark::State& state) {
 static void LutGemmPackArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames(lutgemm_bench_arg_names);
   b->ArgsProduct({
-      {128},              // BlkLen
-      {4096},             // N
-      {4096},             // K
-      {8},                // Threads
-      {int64_t{false}},   // HasZeroPoint
+      {128},             // BlkLen
+      {4096},            // N
+      {4096},            // K
+      {8},               // Threads
+      {int64_t{false}},  // HasZeroPoint
   });
 }
 
 static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames(lutgemm_compute_arg_names);
   b->ArgsProduct({
-      {128},              // BlkLen
-      {1, 32},            // M
-      {4096},             // N
-      {4096},             // K
-      {8},                // Threads
-      {int64_t{false}},   // HasZeroPoint
+      {128},             // BlkLen
+      {1, 32},           // M
+      {4096},            // N
+      {4096},            // K
+      {8},               // Threads
+      {int64_t{false}},  // HasZeroPoint
   });
 }
 

@@ -692,6 +692,7 @@ PackQuantBData_avx2(
     // Phase 1: Bit-plane decomposition with grouping by g=4
     // For 2-bit: each input byte has 4 elements, we extract bit planes and group 4 consecutive bits
     std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * K_div_g]);
+    memset(buf.get(), 0, N * bits * K_div_g);
 
     // Masks for 2-bit extraction
     const __m256i mask_2bit = _mm256_set1_epi8(0x03);  // mask for 2-bit values
@@ -808,6 +809,7 @@ PackQuantBData_avx2(
                 const uint8_t shift = static_cast<uint8_t>(new_ing * g);
                 const size_t stride = c2_fac3_div;
 
+                assert(K_div_g % kfactor == 0 && "K_div_g must be divisible by kfactor");
                 for (size_t ik = 0; ik < K_div_g; ik += kfactor) {
                     const size_t new_ik = ik / kfactor;
                     const size_t base_k = base_im + new_ik * c2_fac1_div;
