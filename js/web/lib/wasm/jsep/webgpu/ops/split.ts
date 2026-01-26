@@ -143,14 +143,22 @@ export const split = (context: ComputeContext, attributes: SplitAttributes): voi
     const axis = ShapeUtil.normalizeAxis(updatedAttributes.axis, inputShape.length);
     const inputSizeAlongAxis = inputShape[axis];
 
-    // Compute split sizes: divide input size evenly among outputs
-    const baseSplitSize = Math.floor(inputSizeAlongAxis / updatedAttributes.numOutputs);
-    const remainder = inputSizeAlongAxis % updatedAttributes.numOutputs;
+    // Compute split sizes to match CPU implementation:
+    // use ceil(inputSizeAlongAxis / numOutputs) for the base size and put any
+    // remaining elements into the last output.
+    let computedSplitSizes: number[];
+    if (inputSizeAlongAxis === 0) {
+      // If there are no elements along the axis, all splits are size 0.
+      computedSplitSizes = new Array(updatedAttributes.numOutputs).fill(0);
+    } else {
+      const baseSplitSize = Math.ceil(inputSizeAlongAxis / updatedAttributes.numOutputs);
+      const remainder = inputSizeAlongAxis % baseSplitSize;
 
-    const computedSplitSizes: number[] = [];
-    for (let i = 0; i < updatedAttributes.numOutputs; i++) {
-      // Distribute remainder to the first few outputs
-      computedSplitSizes.push(baseSplitSize + (i < remainder ? 1 : 0));
+      computedSplitSizes = new Array(updatedAttributes.numOutputs).fill(baseSplitSize);
+      if (remainder !== 0) {
+        // Assign the remainder to the last output.
+        computedSplitSizes[computedSplitSizes.length - 1] = remainder;
+      }
     }
 
     updatedAttributes = createAttributeWithCacheKey({
