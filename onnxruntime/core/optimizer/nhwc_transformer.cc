@@ -212,7 +212,7 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
   }
 
 #ifdef USE_KLEIDIAI
-  // Klediai specific block for NhwcFusedConvolutions
+  // KleidiAI specific block for NhwcFusedConvolutions
   {
     // F32 Conv -> F32 NHWC Conv
     OpKernelRegistryId nhwc_conv_fp32{
