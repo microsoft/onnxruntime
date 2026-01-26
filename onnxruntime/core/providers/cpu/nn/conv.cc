@@ -243,8 +243,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   if (channels_last_) {
-    ORT_RETURN_IF_NOT(kernel_rank == 2, "NhwcFusedConv currently supports 2D kernels.");
-    ORT_RETURN_IF_NOT(dilations[0] == 1 && dilations[1] == 1, "NhwcFusedConv currently supports dilation == 1.");
+    ORT_RETURN_IF_NOT(kernel_rank == 2, "Conv with channels_last layout currently supports 2D kernels.");
+    ORT_RETURN_IF_NOT(dilations[0] == 1 && dilations[1] == 1, "Conv with channels_last layout currently supports dilation == 1.");
   }
 
   const bool wants_channels_last = channels_last_;
