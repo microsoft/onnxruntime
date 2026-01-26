@@ -868,6 +868,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::CreateScanKernel,
     &OrtExecutionProviderApi::ReleaseKernelImpl,
     &OrtExecutionProviderApi::GetEnvConfigEntries,
+    // End of Version 24 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -875,6 +876,8 @@ static_assert(offsetof(OrtEpApi, ReleaseEpDevice) / sizeof(void*) == 1,
               "Size of version 22 API cannot change");  // initial version in ORT 1.22
 static_assert(offsetof(OrtEpApi, GetSyncIdForLastWaitOnSyncStream) / sizeof(void*) == 15,
               "Size of version 23 API cannot change");
+static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
+              "Size of version 24 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
 

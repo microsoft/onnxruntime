@@ -39,12 +39,9 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
 //   auto req = GQABufferRequirements::Compute<T>(params, use_flash, fast_decode, use_mea, disable_fused);
 //   unpacked_qkv_buffer = GetScratchBuffer<void>(req.unpacked_qkv_bytes, ...);
 //   rotary_buffer = GetScratchBuffer<void>(req.rotary_buffer_bytes, ...);
-//   position_ids_buffer = GetScratchBuffer<void>(req.position_ids_bytes, ...);
 // ============================================================================
 struct GQABufferRequirements {
-  size_t unpacked_qkv_bytes = 0;
-  size_t rotary_buffer_bytes = 0;
-  size_t position_ids_bytes = 0;
+  size_t qkv_buffer_bytes = 0;
 
   template <typename T>
   static GQABufferRequirements Compute(
@@ -53,6 +50,9 @@ struct GQABufferRequirements {
       bool use_flash_attention_fast_decode,
       bool use_memory_efficient_attention) {
     GQABufferRequirements req;
+    if (use_flash_attention_fast_decode) {
+      return req;  // All zeros - no scratch buffers needed
+    }
 
     const size_t elem_size = sizeof(T);
     const size_t batch_size = static_cast<size_t>(params.batch_size);
@@ -61,96 +61,42 @@ struct GQABufferRequirements {
     const size_t kv_num_heads = static_cast<size_t>(params.kv_num_heads);
     const size_t head_size = static_cast<size_t>(params.head_size);
 
-    // Fast decode path: Flash Attention handles everything internally
-    if (use_flash_attention_fast_decode) {
-      return req;  // All zeros - no scratch buffers needed
-    }
-
-    // Q, K, V element counts
+    // Base requirements for all paths
     const size_t q_elements = batch_size * seq_len * num_heads * head_size;
     const size_t k_elements = batch_size * seq_len * kv_num_heads * head_size;
     const size_t v_elements = k_elements;
 
     if (use_flash_attention) {
       // Flash Attention path:
-      // - unpacked_qkv_buffer is used for:
-      //   1. Unpacking packed QKV input
-      //   2. Storing rotated Q (and K for non-fused path)
-      // - rotary_buffer is NOT used (rotations go to unpacked_qkv_buffer)
-      // - position_ids_buffer is NOT used (flash attention uses implicit position IDs)
+      // qkv_buffer is used for:
+      //   1. Unpacking packed Q (and K/V if needed)
+      //   2. Storing rotated Q
+      //
+      // Logic:
+      // - we generally only need Q buffer (for rotary Q) if we can write K/V directly to cache/output.
 
-      if (params.is_packed_qkv) {
-        // Need full Q+K+V for unpacking
-        req.unpacked_qkv_bytes = elem_size * (q_elements + k_elements + v_elements);
-      } else if (params.do_rotary) {
-        // Unpacked input with RoPE: need Q+K for rotation output
-        req.unpacked_qkv_bytes = elem_size * (q_elements + k_elements);
+      if (params.do_rotary || params.is_packed_qkv) {
+        // Just Q buffer needed for rotation/unpacking.
+        // K and V are written directly to present_key/value (unpacked/rotated/quantized/appended).
+        req.qkv_buffer_bytes = elem_size * q_elements;
       }
-      // Note: unpacked + no-RoPE case does NOT need unpacked_qkv_buffer
-
     } else if (use_memory_efficient_attention) {
       // Memory Efficient Attention path:
-      // - unpacked_qkv_buffer: for unpacking packed QKV
-      // - rotary_buffer: for Q and K rotation output (separate from unpack buffer)
-      // - position_ids_buffer: for explicit position IDs if needed
+      // - qkv_buffer: for unpacking packed QKV or Q rotation
+      // MEA path usually needs Q, and also K, V if they need unpacking.
+      // Current MEA implementation can handle separate K/V, but if packed, we unpack all.
 
       if (params.is_packed_qkv) {
-        req.unpacked_qkv_bytes = elem_size * (q_elements + k_elements + v_elements);
-      }
-
-      if (params.do_rotary) {
+        req.qkv_buffer_bytes = elem_size * (q_elements + k_elements + v_elements);
+      } else if (params.do_rotary) {
         // Q rotation + K rotation
-        // Note: K uses kv_num_heads which may be less than num_heads
-        req.rotary_buffer_bytes = elem_size * (q_elements + k_elements);
-        // Position IDs space (always allocated for MEA + RoPE path)
-        req.position_ids_bytes = sizeof(int64_t) * batch_size * seq_len;
+        req.qkv_buffer_bytes = elem_size * (q_elements + k_elements);
       }
     }
 
     return req;
   }
 };
-
-// ============================================================================
-// Debug helper for tracking buffer usage
-// ============================================================================
-// Call these after buffer access to record the maximum offset used.
-// In release builds, these are no-ops.
-//
-// Example:
-//   T* unpacked_q = data.unpacked_qkv_buffer;
-//   // ... kernel writes to unpacked_q[0..Q_size-1] ...
-//   UpdateUnpackedQkvMaxUsed(data, Q_size * sizeof(T));
-// ============================================================================
-#ifndef NDEBUG
-template <typename T>
-inline void UpdateUnpackedQkvMaxUsed(GroupQueryAttentionData<T>& data, size_t bytes_used) {
-  if (bytes_used > data.unpacked_qkv_max_used) {
-    data.unpacked_qkv_max_used = bytes_used;
-  }
-}
-
-template <typename T>
-inline void UpdateRotaryMaxUsed(GroupQueryAttentionData<T>& data, size_t bytes_used) {
-  if (bytes_used > data.rotary_max_used) {
-    data.rotary_max_used = bytes_used;
-  }
-}
-
-template <typename T>
-inline void UpdatePositionIdsMaxUsed(GroupQueryAttentionData<T>& data, size_t bytes_used) {
-  if (bytes_used > data.position_ids_max_used) {
-    data.position_ids_max_used = bytes_used;
-  }
-}
-#else
-template <typename T>
-inline void UpdateUnpackedQkvMaxUsed(GroupQueryAttentionData<T>&, size_t) {}
-template <typename T>
-inline void UpdateRotaryMaxUsed(GroupQueryAttentionData<T>&, size_t) {}
-template <typename T>
-inline void UpdatePositionIdsMaxUsed(GroupQueryAttentionData<T>&, size_t) {}
-#endif
 
 Status LaunchGetSequenceLengths(
     const int* total_seq_lens_minus_one,
@@ -162,6 +108,16 @@ Status LaunchGetSequenceLengths(
     const bool is_first_prompt,
     cudaStream_t stream,
     const int max_threads_per_block);
+
+template <typename T>
+Status LaunchUnpackRoPEAppendKV(
+    const T* packed_qkv, const T* query, const T* key, const T* value,
+    T* unpacked_q, T* k_cache, T* v_cache,
+    const int num_heads, const int kv_num_heads, const int head_size,
+    const int sequence_length, const int batch_size, const int max_seqlen,
+    const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
+    const int rotary_dim, const int64_t* position_ids, const bool interleaved,
+    const bool is_cache_bnsh, cudaStream_t stream, const int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib

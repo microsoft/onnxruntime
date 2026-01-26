@@ -24,6 +24,12 @@ static const std::string PARTITION_NAME = "partition_name";
 static const std::string SDK_VERSION = "ep_sdk_version";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 
+// TensorRT does not currently expose a header size define; keep in sync with TRT engine serialization header size.
+constexpr size_t kTensorRTEngineHeaderSize = 64;
+// Helper functions for engine header validation
+std::string BinaryToHexString(const void* data, size_t size);
+std::vector<uint8_t> HexStringToBinary(const std::string& hex);
+
 bool GraphHasCtxNode(const GraphViewer& graph_viewer, size_t& node_idx);
 const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer);
 std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path);

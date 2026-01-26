@@ -335,8 +335,10 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
 
   const auto& registered_provider_types = sess.GetRegisteredProviderTypes();
 
-  // Access the execution providers through the session state (available after Initialize)
-  const auto& execution_providers = sess.GetSessionState().GetExecutionProviders();
+  // Access the execution providers directly from the session.
+  // This allows validation to run before Initialize() completes, avoiding expensive
+  // graph transformations for incompatible models. EPs are fully registered at this point.
+  const auto& execution_providers = sess.GetExecutionProviders();
 
   for (const auto& ep_type : registered_provider_types) {
     // Construct the full metadata key using the prefix + EP type
@@ -455,13 +457,19 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
         reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container)));
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
-
 #if !defined(ORT_MINIMAL_BUILD)
-  // Validate compiled model compatibility for all registered execution providers
-  // This must be done after Initialize() so the session state is available
+  // Validate compiled model compatibility for all registered execution providers BEFORE Initialize().
+  // This is an optimization to fail fast for incompatible models, avoiding expensive graph transformations,
+  // partitioning, and kernel binding that occur during Initialize().
+  // This is safe because:
+  //   1. Model metadata (containing compatibility strings) is available after Load() completes.
+  //   2. Compiling EPs are fully registered at this point.
+  //   3. Non-compiling EPs (like CPU EP, which may be implicitly added during Initialize()) don't participate
+  //      in compatibility validation - they return NOT_APPLICABLE by default.
   ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateCompiledModelCompatibility(sess));
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
 
   return nullptr;
 }

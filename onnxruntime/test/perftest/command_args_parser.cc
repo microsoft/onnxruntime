@@ -203,6 +203,7 @@ ABSL_FLAG(std::string, filter_ep_devices, "",
 ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
+ABSL_FLAG(bool, compile_only, DefaultPerformanceTestConfig().run_config.compile_only, "Only compile EP context model without running it");
 ABSL_FLAG(bool, h, false, "Print program usage.");
 
 namespace onnxruntime {
@@ -582,6 +583,9 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --compile_binary_embed
   test_config.run_config.compile_binary_embed = absl::GetFlag(FLAGS_compile_binary_embed);
+
+  // --compile_only
+  test_config.run_config.compile_only = absl::GetFlag(FLAGS_compile_only);
 
   if (positional.size() == 2) {
     test_config.model_info.model_file_path = ToPathString(positional[1]);

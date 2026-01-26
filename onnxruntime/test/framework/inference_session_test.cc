@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <filesystem>
 #include <functional>
 #include <future>
 #include <iterator>
@@ -538,6 +539,84 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
     }
     count++;
   }
+}
+
+TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfilerWithRunOptions";
+  // Note: NOT enabling session-level profiling
+  so.enable_profiling = false;
+
+  InferenceSession session_object(so, GetEnvironment());
+#ifdef USE_CUDA
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+#endif
+#ifdef USE_WEBGPU
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+#endif
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Enable profiling via RunOptions instead of SessionOptions
+  RunOptions run_options;
+  run_options.run_tag = "RunTag";
+  run_options.enable_profiling = true;
+  run_options.profile_file_prefix = "ort_run_profile_test";
+
+  RunModel(session_object, run_options);
+
+  // Find the profile file with the specified prefix
+  std::string profile_file;
+  for (const auto& entry : std::filesystem::directory_iterator(".")) {
+    std::string filename = entry.path().filename().string();
+    if (filename.find("ort_run_profile_test") == 0 && filename.find(".json") != std::string::npos) {
+      profile_file = entry.path().string();
+      break;
+    }
+  }
+
+  ASSERT_FALSE(profile_file.empty()) << "Profile file with prefix 'ort_run_profile_test' not found";
+
+  std::ifstream profile(profile_file);
+  ASSERT_TRUE(profile) << "Failed to open profile file: " << profile_file;
+
+  std::string line;
+  std::vector<std::string> lines;
+
+  while (std::getline(profile, line)) {
+    lines.push_back(line);
+  }
+
+  auto size = lines.size();
+  ASSERT_TRUE(size > 1) << "Profile file should have more than 1 line";
+  ASSERT_TRUE(lines[0].find("[") != std::string::npos) << "First line should contain '['";
+  ASSERT_TRUE(lines[size - 1].find("]") != std::string::npos) << "Last line should contain ']'";
+
+  std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
+
+  [[maybe_unused]] bool has_api_info = false;
+  for (size_t i = 1; i < size - 1; ++i) {
+    for (auto& s : tags) {
+      ASSERT_TRUE(lines[i].find(s) != std::string::npos)
+          << "Line " << i << " should contain tag '" << s << "', line content: " << lines[i];
+#ifdef USE_CUDA
+      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
+                                         lines[i].find("cudaLaunch") != std::string::npos;
+#endif
+#ifdef USE_WEBGPU
+      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos;
+#endif
+    }
+  }
+
+// Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
+#if (defined(USE_WEBGPU) && !defined(__APPLE__))
+  ASSERT_TRUE(has_api_info);
+#endif
+
+  // Clean up the profile file
+  std::remove(profile_file.c_str());
 }
 #endif  // __wasm__
 
