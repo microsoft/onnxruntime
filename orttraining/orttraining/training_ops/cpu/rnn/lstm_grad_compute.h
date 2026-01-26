@@ -4,6 +4,8 @@
 #pragma once
 
 #include "orttraining/training_ops/cpu/rnn/lstm_io_utils.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime::lstm {
 
@@ -30,6 +32,7 @@ class LSTMGradImpl {
   gsl::span<T> grad_W_span_;
   IAllocatorUniquePtr<T> grad_R_ptr_;
   gsl::span<T> grad_R_span_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime::lstm

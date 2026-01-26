@@ -16,12 +16,15 @@ void ElementwiseProduct(const float* op1, const float* op2, float* dest, int siz
 
 template <typename T>
 LSTMGradImpl<T>::LSTMGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
-                              concurrency::ThreadPool* thread_pool, AllocatorPtr allocator)
+                              concurrency::ThreadPool* thread_pool,
+                              const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
+                              AllocatorPtr allocator)
     : sequence_length_(sequence_length),
       batch_size_(batch_size),
       hidden_size_(hidden_size),
       input_size_(input_size),
       thread_pool_(thread_pool),
+      mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config),
       allocator_(allocator) {
   const size_t hidden_size_x4 = 4U * static_cast<size_t>(hidden_size_);
   const size_t weight_size = 4U * static_cast<size_t>(hidden_size_) * static_cast<size_t>(input_size_);
