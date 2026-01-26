@@ -128,7 +128,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         const std::string& input_name,
                         const ShaderIndicesHelper* batch_dims,
                         std::string_view rows,
-                        std::string_view columns,
+                        std::string_view components_per_row,
                         bool transpose,
                         bool is_vec4) {
   int components = is_vec4 ? 4 : 1;
@@ -144,9 +144,9 @@ void MatMulReadFnSource(ShaderHelper& shader,
       << "    var value = " << type_string << "(0);\n"
       << "    let col = colIn * " << components << ";\n";
   if (transpose) {
-    shader.AdditionalImplementation() << "    if(row < i32(" << columns << ") && col < i32(" << rows << ")) {\n";
+    shader.AdditionalImplementation() << "    if(row < i32(" << components_per_row << ") && col < i32(" << rows << ")) {\n";
   } else {
-    shader.AdditionalImplementation() << "    if(row < i32(" << rows << ") && col < i32(" << columns << ")) {\n";
+    shader.AdditionalImplementation() << "    if(row < i32(" << rows << ") && col < i32(" << components_per_row << ")) {\n";
   }
 
   const std::string input_indices = input_name + "_indices";
