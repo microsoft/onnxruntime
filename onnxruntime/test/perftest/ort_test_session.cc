@@ -21,6 +21,7 @@
 #include "providers.h"
 #include "TestCase.h"
 #include "strings_helper.h"
+#include "utils.h"
 
 #ifdef USE_OPENVINO
 #include "nlohmann/json.hpp"
@@ -90,102 +91,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   // Add EP devices if any (created by plugin EP)
   if (!performance_test_config.registered_plugin_eps.empty()) {
-    std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
-    // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
-    std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
-    std::unordered_set<int> added_ep_device_index_set;
-
-    auto& ep_list = performance_test_config.machine_config.plugin_provider_type_list;
-    std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
-
-    // Select EP devices by provided device index
-    if (!performance_test_config.selected_ep_device_indices.empty()) {
-      std::vector<int> device_list;
-      device_list.reserve(performance_test_config.selected_ep_device_indices.size());
-      ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
-      for (auto index : device_list) {
-        if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
-          fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
-          continue;
-        }
-
-        Ort::ConstEpDevice& device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
-          if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
-            added_ep_devices[device.EpName()].push_back(device);
-            added_ep_device_index_set.insert(index);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s, Type: %d] has been added to session.\n", static_cast<int>(index), device.EpName(), device.Device().Type());
-          }
-        } else {
-          std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
-                                performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
-          fprintf(stderr, "%s", err_msg.c_str());
-        }
-      }
-    } else if (!performance_test_config.filter_ep_device_kv_pairs.empty()) {
-      // Find and select the OrtEpDevice associated with the EP in "--filter_ep_devices".
-      for (size_t index = 0; index < ep_devices.size(); ++index) {
-        auto device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) == ep_set.end())
-          continue;
-
-        // Check both EP metadata and device metadata for a match
-        auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
-        auto device_metadata_kv_pairs = device.Device().Metadata().GetKeyValuePairs();
-        for (const auto& kv : performance_test_config.filter_ep_device_kv_pairs) {
-          auto ep_metadata_itr = ep_metadata_kv_pairs.find(kv.first);
-          auto device_metadata_itr = device_metadata_kv_pairs.find(kv.first);
-
-          if ((ep_metadata_itr != ep_metadata_kv_pairs.end() && kv.second == ep_metadata_itr->second) ||
-              (device_metadata_itr != device_metadata_kv_pairs.end() && kv.second == device_metadata_itr->second)) {
-            added_ep_devices[device.EpName()].push_back(device);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s, Type: %d] has been added to session.\n", static_cast<int>(index), device.EpName(), device.Device().Type());
-            break;
-          }
-        }
-      }
-    } else {
-      // Find and select the OrtEpDevice associated with the EP in "--plugin_eps".
-      for (size_t index = 0; index < ep_devices.size(); ++index) {
-        Ort::ConstEpDevice& device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
-          added_ep_devices[device.EpName()].push_back(device);
-          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", static_cast<int>(index), device.EpName());
-        }
-      }
-    }
-
-    if (added_ep_devices.empty()) {
-      ORT_THROW("[ERROR] [Plugin EP]: No matching EP devices found.");
-    }
-
-    std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-
-    // EP's associated provider option lists
-    std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
-    ParseEpOptions(ep_option_string, ep_options_list);
-
-    // If user only provide the EPs' provider option lists for the first several EPs,
-    // add empty provider option lists for the rest EPs.
-    if (ep_options_list.size() < ep_list.size()) {
-      for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
-        ep_options_list.emplace_back();  // Adds a new empty map
-      }
-    } else if (ep_options_list.size() > ep_list.size()) {
-      ORT_THROW("[ERROR] [Plugin EP]: Too many EP provider option lists provided.");
-    }
-
-    // EP -> associated provider options
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
-    for (size_t i = 0; i < ep_list.size(); ++i) {
-      ep_options_map.emplace(ep_list[i], ep_options_list[i]);
-    }
-
-    for (auto& ep_and_devices : added_ep_devices) {
-      auto& ep = ep_and_devices.first;
-      auto& devices = ep_and_devices.second;
-      session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
-    }
+    perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config);
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
@@ -1016,14 +922,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     input_names_[i] = input_names_str_[i].c_str();
   }
 
-  auto transform_fcn = std::function<int64_t(int64_t)>();
-  auto new_value = std::function<Ort::Value(OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&)>();
-  if (device_memory_name_.empty()) {
-    transform_fcn = [](int64_t input) { return input; };
-    new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
-      return Ort::Value(nullptr);
-    };
-  } else {
+  if (!device_memory_name_.empty()) {
     Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
     if (device_memory_name_ == CUDA) {
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
@@ -1031,22 +930,20 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
-    // Switch to custom
+    // Switch to custom allocator
     allocator_ = Ort::UnownedAllocator(custom_allocator_);
-
-    // free dimensions are treated as 1 if not overridden
-    transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
-    new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape, Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
-      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
-    };
   }
-
   for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
     Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
-    std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
-    outputs_.emplace_back(new_value(allocator_, output_shape, tensor_info));
+    auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
+    if (is_dynamic || device_memory_name_.empty()) {
+      outputs_.emplace_back(Ort::Value(nullptr));
+    } else {
+      auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
+      outputs_.emplace_back(std::move(new_value));
+    }
   }
 }
 

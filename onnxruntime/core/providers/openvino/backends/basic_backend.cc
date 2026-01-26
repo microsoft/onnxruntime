@@ -63,7 +63,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                                    hw_target,
                                                                    device_config,
                                                                    enable_causallm,
-                                                                   model_file_path());
+                                                                   model_file_path(),
+                                                                   session_context_);
       } else {
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob
@@ -308,29 +309,15 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
-                                                      const ov::PartialShape& partial_shape) const {
-  // Check if the number of dimensions matches
-  if (static_cast<int64_t>(ort_dims.size()) != partial_shape.rank().get_length()) {
-    ORT_THROW("Mismatch in number of dimensions between ORT tensor and OpenVINO PartialShape.");
-  }
-  // Validate each dimension
-  for (size_t i = 0; i < ort_dims.size(); ++i) {
-    const auto& ov_dim = partial_shape[i];  // OpenVINO dimension at index i
-    int64_t ort_dim = ort_dims[i];          // ORT dimension at index i
-
-    // Check if the ORT dimension is within the specified range
-    int64_t min_dim = ov_dim.get_min_length();
-    int64_t max_dim = ov_dim.get_max_length();
-    if (ort_dim < min_dim || ort_dim > max_dim) {
-      ORT_THROW(" ORT Dimension is out of range");
-    }
-  }
-}
-
 void BasicBackend::RewindKVCache(size_t index) {
   infer_req_pool_->forEachIdleRequest([&](OVInferRequestPtr& infer_request) {
     infer_request->RewindKVCache(index);
+  });
+}
+
+void BasicBackend::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+  infer_req_pool_->forEachIdleRequest([&](OVInferRequestPtr& infer_request) {
+    infer_request->ReorderKVCache(src_indices, dst_indices);
   });
 }
 
@@ -374,9 +361,6 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
       // Set the input shape based on the input tensor from ort
       auto tensor = context.GetInput(input_info.onnx_index);
       auto ort_shape = tensor.GetTensorTypeAndShapeInfo().GetShape();
-      if (input_info.IsBoundedDynamic()) {
-        ValidateOrtDimsAgainstPartialShape(ort_shape, input_info.shape);
-      }
       auto input_shape = ParameterShape(ort_shape);
 
       infer_request->SetTensor(input_info.name,

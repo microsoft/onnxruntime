@@ -59,6 +59,13 @@
         "^test_attention_4d_with_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
         "^test_attention_3d_with_past_and_present_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_cuda", // QK matmul + bias not supported in Attention-cuda
+        // is_causal=Truen && q_seq_len != kv_seq_len not supported in Attention-cuda
+        "^test_attention_3d_causal_cuda",
+        "^test_attention_3d_diff_heads_sizes_causal_cuda",
+        "^test_attention_4d_attn_mask_3d_causal_cuda",
+        "^test_attention_4d_attn_mask_4d_causal_cuda",
+        "^test_attention_4d_causal_cuda",
+        "^test_attention_4d_diff_heads_sizes_causal_cuda",
         "^test_tensorscatter*",  // TensorScatter(24) not implemented
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
@@ -802,7 +809,10 @@
         "^test_reduce_max_empty_set_cpu",   // DNNL result in "(shapes (2, 1, 4), (1, 0, 1) mismatch)". this is the same for test_reduce_min_empty_set which is already in the list
         "^test_reduce_min_empty_set_cpu",
         "^test_resize_upsample_sizes_nearest_not_smaller_cpu",
-        "^test_clip_min_greater_than_max_cpu"
+        "^test_clip_min_greater_than_max_cpu",
+        // Fail since v1.20.1 (new matmul 1D tests)
+        "^test_matmul_1d_1d_cpu",
+        "^test_matmul_4d_1d_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

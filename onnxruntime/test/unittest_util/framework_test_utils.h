@@ -10,6 +10,7 @@
 #include "core/framework/ort_value.h"
 
 #include <gsl/gsl>
+#include <gtest/gtest.h>
 
 #ifdef USE_CUDA
 #include "core/providers/providers.h"
@@ -127,6 +128,23 @@ inline int OpCount(const OpCountMap& op_count_map, const std::string& op_type) {
 #if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies);
 #endif  // DISABLE_SPARSE_TENSORS
+
+template <typename T = float>
+void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
+                   const std::vector<T>& expected_values) {
+  TensorShape expected_shape(expected_dims);
+  ASSERT_EQ(expected_shape, tensor.Shape());
+  const std::vector<T> found(tensor.Data<T>(),
+                             tensor.Data<T>() + expected_values.size());
+  ASSERT_EQ(expected_values, found);
+}
+
+inline void VerifySingleOutput(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
+                               const std::vector<float>& expected_values) {
+  ASSERT_EQ(1u, fetches.size());
+  auto& rtensor = fetches.front().Get<Tensor>();
+  VerifyOutputs(rtensor, expected_dims, expected_values);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

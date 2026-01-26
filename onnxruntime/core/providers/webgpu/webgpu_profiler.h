@@ -22,12 +22,10 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
   void Stop(uint64_t) override {
   }
   inline bool Enabled() const { return enabled_; }
-  inline onnxruntime::profiling::Events& Events() { return events_; }
 
  private:
   WebGpuContext& context_;
   bool enabled_{false};
-  onnxruntime::profiling::Events events_;  // cached GPU events
 };
 
 }  // namespace webgpu
