@@ -22,6 +22,7 @@ void ElementwiseProduct(const float* op1, const float* op2, float* dest, int siz
 template <typename T>
 GRUGradImpl<T>::GRUGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
                             bool linear_before_reset, concurrency::ThreadPool* thread_pool,
+                            const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
                             AllocatorPtr allocator)
     : sequence_length_(sequence_length),
       batch_size_(batch_size),
@@ -29,6 +30,7 @@ GRUGradImpl<T>::GRUGradImpl(int sequence_length, int batch_size, int hidden_size
       input_size_(input_size),
       linear_before_reset_(linear_before_reset),
       thread_pool_(thread_pool),
+      mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config),
       allocator_(allocator) {
   const size_t hidden_size_x3 = 3U * static_cast<size_t>(hidden_size_);
   const size_t weight_size = 3U * static_cast<size_t>(hidden_size_) * static_cast<size_t>(input_size_);

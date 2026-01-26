@@ -4,6 +4,8 @@
 #pragma once
 
 #include "orttraining/training_ops/cpu/rnn/gru_io_utils.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime::gru {
 
@@ -12,6 +14,7 @@ class GRUGradImpl {
  public:
   GRUGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
               bool linear_before_reset, concurrency::ThreadPool* thread_pool,
+              const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
               AllocatorPtr allocator);
 
   void ComputeGradient(const GRUGradInputs<T>& inputs, GRUGradOutputs<T>& outputs);
@@ -32,6 +35,7 @@ class GRUGradImpl {
   gsl::span<T> grad_W_span_;
   IAllocatorUniquePtr<T> grad_R_ptr_;
   gsl::span<T> grad_R_span_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime::gru

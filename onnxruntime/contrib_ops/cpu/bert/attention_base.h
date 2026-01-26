@@ -9,6 +9,7 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -53,6 +54,9 @@ class AttentionBase {
     past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
 
     require_same_hidden_size_ = require_same_hidden_size;
+
+    mlas_backend_kernel_selector_config_.use_kleidiai =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status CheckMask(const Tensor* mask_index,
