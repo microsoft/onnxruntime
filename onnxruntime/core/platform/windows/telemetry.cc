@@ -166,7 +166,7 @@ void WindowsTelemetry::SetLanguageProjection(uint32_t projection) const {
 }
 
 // This is used in https://code.visualstudio.com/docs/intelligentapps/profiling#_windows-ml-events-view
-// Please consult with that team before making breaking changes
+// Please consult with the team before making breaking changes
 void WindowsTelemetry::LogProcessInfo() const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -197,7 +197,7 @@ void WindowsTelemetry::LogProcessInfo() const {
 }
 
 // This is used in https://code.visualstudio.com/docs/intelligentapps/profiling#_windows-ml-events-view
-// Please consult with that team before making breaking changes
+// Please consult with the team before making breaking changes
 void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -212,7 +212,7 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
 }
 
 // This is used in https://code.visualstudio.com/docs/intelligentapps/profiling#_windows-ml-events-view
-// Please consult with that team before making breaking changes
+// Please consult with the team before making breaking changes
 void WindowsTelemetry::LogEvaluationStop(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -223,7 +223,7 @@ void WindowsTelemetry::LogEvaluationStop(uint32_t session_id) const {
 }
 
 // This is used in https://code.visualstudio.com/docs/intelligentapps/profiling#_windows-ml-events-view
-// Please consult with that team before making breaking changes
+// Please consult with the team before making breaking changes
 void WindowsTelemetry::LogEvaluationStart(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -234,7 +234,7 @@ void WindowsTelemetry::LogEvaluationStart(uint32_t session_id) const {
 }
 
 // This is used in https://code.visualstudio.com/docs/intelligentapps/profiling#_windows-ml-events-view
-// Please consult with that team before making breaking changes
+// Please consult with the team before making breaking changes
 void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                           const std::string& model_producer_version, const std::string& model_domain,
                                           const std::unordered_map<std::string, int>& domain_to_version_map,
