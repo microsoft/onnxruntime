@@ -339,7 +339,8 @@ TEST(GatherNDOpTest, GatherND_batch_dims_mismatch_error) {
   test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
   test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "GatherND: indices batch size (2) is not divisible by input batch size (3)");
+           "GatherND: indices batch size (2) is not divisible by input batch size (3)",
+           {kCudaExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Test for issue #23828: GatherND should return error when input batch dimension is zero
@@ -351,7 +352,8 @@ TEST(GatherNDOpTest, GatherND_zero_batch_dims_error) {
   test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
   test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "GatherND: input tensor batch dimensions cannot be zero");
+           "GatherND: input tensor batch dimensions cannot be zero",
+           {kCudaExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test
