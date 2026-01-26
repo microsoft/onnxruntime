@@ -28,6 +28,7 @@ for model_zoo_root in MODEL_ZOO_ROOTS:
             backend_type=MODEL_ZOO_BACKEND,
             rtol=None,
             atol=None,
+            cosine_similarity=None,
             enable_context=MODEL_ZOO_ENABLE_CONTEXT,
             enable_cpu_fallback=MODEL_ZOO_ENABLE_CPU_FALLBACK,
         ).tests

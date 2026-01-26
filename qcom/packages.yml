@@ -94,9 +94,9 @@ java_windows_x86_64:
   content_root: jdk-{version}
   bindir: bin
 model_zoo:
-  version: 2025-11-07
+  version: 2026-01-13
   url: http://ort-ep-win-01.na.qualcomm.com:8000/model-zoo/model-zoo-{version}.zip
-  sha256: a0502c3f52202c602e1cae3d22658c6a9a052d1d3be25ad077c1280b03990777
+  sha256: 32853861b80c1ba913591a870dad2d1626ddb1683ac4750b65b1f0148ec9c7a7
   content_root: model-zoo
 ninja_linux_aarch64:
   version: 1.12.1

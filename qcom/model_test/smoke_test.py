@@ -16,6 +16,7 @@ SMOKE_TESTS = list(
         backend_type="htp",
         rtol=None,
         atol=None,
+        cosine_similarity=None,
         enable_context=True,
         enable_cpu_fallback=False,
     ).tests

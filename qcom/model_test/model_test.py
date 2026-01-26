@@ -10,6 +10,7 @@ from collections.abc import Generator, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Literal, NamedTuple, cast, get_args
 
+import accuracy_metrics as am
 import jsonc
 import numpy as np
 import onnx
@@ -18,6 +19,7 @@ import onnxruntime
 
 DEFAULT_RTOL = 1e-3
 DEFAULT_ATOL = 1e-5
+DEFAULT_COSINE_SIMILARITY: float | None = None
 
 
 BackendT = Literal["cpu", "gpu", "htp"]
@@ -28,6 +30,7 @@ class ModelTestDef(NamedTuple):
     backend_type: BackendT
     rtol: Mapping[str, float]
     atol: Mapping[str, float]
+    cosine_similarity: Mapping[str, float]
     enable_context: bool
     enable_cpu_fallback: bool
 
@@ -43,6 +46,7 @@ class ModelTestCase:
         self.__model_root = model_def.model_root
         self.__rtol = model_def.rtol
         self.__atol = model_def.atol
+        self.__cosine_similarity = model_def.cosine_similarity
 
         session_options = onnxruntime.SessionOptions()
 
@@ -129,9 +133,14 @@ class ModelTestCase:
                     raise ValueError(f"Output {name} not found in actual.")
                 atol = self.__atol[name]
                 rtol = self.__rtol[name]
+                cosine_similarity = self.__cosine_similarity.get(name, None)
                 logging.info(f"Comparing actual outputs for {name} to reference.")
-                np.testing.assert_allclose(actual[name], expected[ds_idx][name], atol=atol, rtol=rtol)
-                logging.info(f"{name} is close enough (rtol: {rtol}; atol: {atol})")
+                if cosine_similarity is not None:
+                    am.assert_cosine_similar(actual[name], expected[ds_idx][name], cosine_similarity)
+                    logging.info(f"{name} is cosine-similar enough (threshold: {cosine_similarity})")
+                else:
+                    np.testing.assert_allclose(actual[name], expected[ds_idx][name], atol=atol, rtol=rtol)
+                    logging.info(f"{name} is close enough (rtol: {rtol}; atol: {atol})")
 
 
 class ModelTestSuite:
@@ -141,6 +150,7 @@ class ModelTestSuite:
         backend_type: BackendT,
         rtol: float | None,
         atol: float | None,
+        cosine_similarity: float | None,
         enable_context: bool,
         enable_cpu_fallback: bool,
     ) -> None:
@@ -155,13 +165,25 @@ class ModelTestSuite:
         self.__default_atol = defaultdict(
             lambda: atol if atol else cast(float, config.get("atol_default", DEFAULT_ATOL))
         )
+        self.__default_cosine_similarity = (
+            defaultdict(
+                lambda: cosine_similarity
+                if cosine_similarity
+                else cast(float, config.get("cosine_similarity", DEFAULT_COSINE_SIMILARITY))
+            )
+            if DEFAULT_COSINE_SIMILARITY
+            else {}
+        )
         self.__rtol_overrides = cast(dict[str, Mapping[str, float]], config.get("rtol_overrides", {}))
         self.__atol_overrides = cast(dict[str, Mapping[str, float]], config.get("atol_overrides", {}))
+        self.__cosine_similarity_overrides = cast(
+            dict[str, Mapping[str, float]], config.get("cosine_similarity_overrides", {})
+        )
 
     def __parse_config(self) -> dict[str, float | dict[str, float]]:
         def parse_overrides(
             overrides: dict[str, numbers.Real | dict[str, numbers.Real]],
-            default_tolerance: float,
+            default_tolerance: float | None,
         ) -> dict[str, dict[str, float]]:
             parsed = {}
             for model, tolerance in overrides.items():
@@ -170,8 +192,11 @@ class ModelTestSuite:
                     parsed[model] = defaultdict(lambda t=float(tolerance): t)
                 elif isinstance(tolerance, dict):
                     default_tol = tolerance.get("*", default_tolerance)
-                    assert isinstance(default_tol, numbers.Real)
-                    d = defaultdict(lambda t=default_tol: float(t))
+                    if default_tol is None:
+                        d = {}
+                    else:
+                        assert isinstance(default_tol, numbers.Real)
+                        d = defaultdict(lambda t=default_tol: float(t))
                     d.update({k: v for k, v in tolerance.items() if k != "*"})
                     parsed[model] = d
                 else:
@@ -185,10 +210,11 @@ class ModelTestSuite:
             return {}
         config = jsonc.load(config_path.open("rt"))
 
-        if "atol_overrides" in config:
-            config["atol_overrides"] = parse_overrides(config["atol_overrides"], config["atol_default"])
-        if "rtol_overrides" in config:
-            config["rtol_overrides"] = parse_overrides(config["rtol_overrides"], config["rtol_default"])
+        for metric in ["atol", "rtol", "cosine_similarity"]:
+            override_key = f"{metric}_overrides"
+            default_key = f"{metric}_default"
+            if override_key in config:
+                config[override_key] = parse_overrides(config[override_key], config.get(default_key, None))
 
         return config
 
@@ -198,8 +224,15 @@ class ModelTestSuite:
             model_name = test_root.name
             rtol = self.__rtol_overrides.get(model_name, self.__default_rtol)
             atol = self.__atol_overrides.get(model_name, self.__default_atol)
+            cosine_similarity = self.__cosine_similarity_overrides.get(model_name, self.__default_cosine_similarity)
             yield ModelTestDef(
-                test_root, self.__backend_type, rtol, atol, self.__enable_context, self.__enable_cpu_fallback
+                test_root,
+                self.__backend_type,
+                rtol,
+                atol,
+                cosine_similarity,
+                self.__enable_context,
+                self.__enable_cpu_fallback,
             )
 
     def run(self) -> None:
@@ -218,6 +251,11 @@ if __name__ == "__main__":
     parser.add_argument("--backend", default="htp", choices=get_args(BackendT), help="QNN backend to use.")
     parser.add_argument("--rtol", type=float, help="Relative tolerance")
     parser.add_argument("--atol", type=float, help="Absolute tolerance")
+    parser.add_argument(
+        "--cosine-similarity",
+        type=float,
+        help="Compare using cosine similarity with this tolerance instead of abs/rel tolerance.",
+    )
     parser.add_argument("--enable-context", action="store_true", help="[HTP only] Create a context cache.")
     parser.add_argument("--enable-cpu-fallback", action="store_true", help="Allow execution to fall back to CPU.")
 
@@ -232,12 +270,15 @@ if __name__ == "__main__":
     if args.model:
         rtol = args.rtol if args.rtol else DEFAULT_RTOL
         atol = args.atol if args.atol else DEFAULT_ATOL
+        cosine_similarity = args.cosine_similarity if args.cosine_similarity else DEFAULT_COSINE_SIMILARITY
+
         ModelTestCase(
             ModelTestDef(
                 args.model,
                 args.backend,
                 rtol=defaultdict(lambda: rtol),
                 atol=defaultdict(lambda: atol),
+                cosine_similarity=defaultdict(lambda: cosine_similarity) if cosine_similarity is not None else {},
                 enable_context=args.enable_context,
                 enable_cpu_fallback=args.enable_cpu_fallback,
             )
@@ -248,6 +289,7 @@ if __name__ == "__main__":
             args.backend,
             rtol=args.rtol,
             atol=args.atol,
+            cosine_similarity=args.cosine_similarity,
             enable_context=args.enable_context,
             enable_cpu_fallback=args.enable_cpu_fallback,
         ).run()
