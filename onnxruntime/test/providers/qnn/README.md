@@ -43,13 +43,22 @@ The tests are built as part of the regular ONNX Runtime build. After a successfu
 3. Verbose
     - `QNN_VERBOSE`: Sets the ONNX Runtime log level to `ORT_LOGGING_LEVEL_VERBOSE`
 
-4. You can enable any combination of these environment variables, for example:
+4. Version Check Control
+    - `QNN_SKIP_VERSION_CHECK`: Skips the QNN SDK version compatibility check during test execution
+        - This is useful for:
+            - Testing with custom or experimental QNN SDK builds
+            - Running tests across multiple QNN SDK versions during development
+            - Debugging scenarios where version validation is not the focus
+        - **Note**: Skipping version checks may lead to unexpected behavior if there are actual incompatibilities between the ONNX Runtime QNN EP and the QNN SDK version being used. Use this option with caution and only when you understand the compatibility implications.
+
+5. You can enable any combination of these environment variables, for example:
     - On Linux/macOS
         ```bash
         export QNN_DUMP_ONNX=1
         export QNN_DUMP_JSON=1
         export QNN_DUMP_DLC=1
         export QNN_VERBOSE=1
+        export QNN_SKIP_VERSION_CHECK=1
         ```
     - On Windows
         ```cmd
@@ -57,12 +66,14 @@ The tests are built as part of the regular ONNX Runtime build. After a successfu
         set QNN_DUMP_JSON=1
         set QNN_DUMP_DLC=1
         set QNN_VERBOSE=1
+        set QNN_SKIP_VERSION_CHECK=1
         ```
         ```ps1
         $Env:QNN_DUMP_ONNX = "1"
         $Env:QNN_DUMP_JSON = "1"
         $Env:QNN_DUMP_DLC = "1"
         $Env:QNN_VERBOSE = "1"
+        $Env:QNN_SKIP_VERSION_CHECK = "1"
         ```
 
 # Note
