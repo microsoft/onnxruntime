@@ -282,9 +282,9 @@ static std::unordered_map<std::string, std::unordered_map<size_t, std::vector<st
  * Otherwise return true and engine needs to be rebuilt.
  */
 static bool CompareProfiles(const std::string& file_name,
-                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
-                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
-                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
+                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
+                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
+                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
   std::ifstream profile_file(file_name, std::ios::binary | std::ios::in);
   if (!profile_file) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << file_name << " doesn't exist.";
@@ -511,8 +511,8 @@ static HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_
 }
 
 static bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
-                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
-                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
+                                  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
+                                  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
   if (profile_min_shapes.empty() && profile_max_shapes.empty() && profile_opt_shapes.empty()) {
     return true;
   }
@@ -700,7 +700,6 @@ static bool checkTrtTensorIsDynamic(nvinfer1::ITensor* tensor) {
     return checkTrtDimIsDynamic(tensor->getDimensions());
   }
 }
-
 
 struct ScopedContext {
   explicit ScopedContext(int device_id) {

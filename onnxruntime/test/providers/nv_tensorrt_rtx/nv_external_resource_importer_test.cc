@@ -1103,8 +1103,7 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
         max_shared_mem_size.c_str(),
         "1",
         aux_stream_address,
-        "0"
-    };
+        "0"};
 
     // Add the NvTensorRtRtx EP with user stream
     status = ort_api_->SessionOptionsAppendExecutionProvider_V2(

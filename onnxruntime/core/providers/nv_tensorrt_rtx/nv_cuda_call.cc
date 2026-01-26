@@ -33,7 +33,7 @@ const char* CudaErrString<cudaError_t>(cudaError_t x) {
 
 template <>
 const char* CudaErrString<CUresult>(CUresult x) {
-  const char *errorStr = NULL;
+  const char* errorStr = NULL;
   cuGetErrorString(x, &errorStr);
   return errorStr;
 }

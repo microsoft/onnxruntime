@@ -747,7 +747,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     // This method is called from OrtExternalResourceImporterImpl::ReleaseMemory
     // The Release callback in the handle will call the static ReleaseCallback
     auto mem_handle = std::unique_ptr<NvTrtRtxExternalMemoryHandle>(
-      static_cast<NvTrtRtxExternalMemoryHandle*>(handle));
+        static_cast<NvTrtRtxExternalMemoryHandle*>(handle));
 
     // Destroy the external memory object (also releases mapped buffer)
     if (mem_handle->ext_memory != nullptr) {
@@ -878,7 +878,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     }
 
     auto sem_handle = std::unique_ptr<NvTrtRtxExternalSemaphoreHandle>(
-      static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle));
+        static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle));
 
     if (sem_handle->ext_semaphore != nullptr) {
       cuDestroyExternalSemaphore(sem_handle->ext_semaphore);
