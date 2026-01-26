@@ -1779,7 +1779,9 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
         auto trt_builder = GetBuilder(trt_logger);
         auto network_flags = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] After createNetworkV2()";
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] After createNetworkV2()";
 
         bool is_model_supported = false;
 
@@ -1798,8 +1800,10 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
             ORT_THROW("'nv_use_external_data_initializer' is only supported on TensorRT RTX 1.1.x.x and above.");
 #endif
           } else {
+            LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Before supportsModelV2()";
             is_model_supported = trt_parser->supportsModelV2(string_buf.data(), string_buf.size(), model_path_);
           }
+          LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] After supportsModelV2()";
 
           // Note: Calling getNbSubgraphs or getSubgraphNodes before calling supportsModelV2 results in undefined behavior.
           auto num_subgraphs = trt_parser->getNbSubgraphs();
