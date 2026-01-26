@@ -87,7 +87,6 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   std::filesystem::path model_path = ResolveTestPath(std::filesystem::path{test_info.model_filename});
 
-  std::cerr << "RunOrtModel cwd: " << std::filesystem::current_path() << " loading: " << model_path << std::endl;
   const auto& model_path_str = model_path.native();
   if (test_info.run_use_buffer) {
     // Load the file into a buffer and use the buffer to create inference session
