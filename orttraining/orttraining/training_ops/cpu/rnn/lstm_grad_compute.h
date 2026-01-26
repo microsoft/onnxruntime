@@ -13,7 +13,9 @@ template <typename T>
 class LSTMGradImpl {
  public:
   LSTMGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
-               concurrency::ThreadPool* thread_pool, AllocatorPtr allocator);
+               concurrency::ThreadPool* thread_pool,
+               const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
+               AllocatorPtr allocator);
 
   void ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradOutputs<T>& outputs);
 
