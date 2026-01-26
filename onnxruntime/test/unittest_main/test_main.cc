@@ -129,6 +129,9 @@ static std::vector<std::unique_ptr<::testing::TestEventListener>> MakeTestEventL
 #pragma warning(push)
 #pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced format parameter.
 #pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::IPluginV2' was declared deprecated
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
 // TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for
@@ -138,6 +141,8 @@ static std::vector<std::unique_ptr<::testing::TestEventListener>> MakeTestEventL
 
 #if defined(_MSC_VER)
 #pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 class DummyLogger : public nvinfer1::ILogger {
