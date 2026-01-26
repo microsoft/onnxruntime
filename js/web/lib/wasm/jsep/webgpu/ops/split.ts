@@ -136,8 +136,7 @@ export const split = (context: ComputeContext, attributes: SplitAttributes): voi
   // Handle the case where splitSizes is empty or all zeros (dynamic shapes from C++ side)
   // In this case, we need to compute split sizes from input shape at runtime
   const hasEmptyOrZeroSplitSizes =
-    updatedAttributes.splitSizes.length === 0 ||
-    updatedAttributes.splitSizes.every((s) => s === 0);
+    updatedAttributes.splitSizes.length === 0 || updatedAttributes.splitSizes.every((s) => s === 0);
 
   if (hasEmptyOrZeroSplitSizes && updatedAttributes.numOutputs > 0) {
     const inputShape = context.inputs[0].dims;
