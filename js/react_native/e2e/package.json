@@ -11,9 +11,8 @@
     "test": "jest"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-native": "^0.73.11",
-    "react-native-fs": "^2.20.0"
+    "@dr.pogodin/react-native-fs": "^2.36.2",
+    "react-native": "^0.73.11"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
@@ -26,7 +25,7 @@
     "@types/react": "^18.2.6",
     "@types/react-test-renderer": "^18.0.0",
     "babel-jest": "^29.6.3",
-    "detox": "20.11.4",
+    "detox": "^20.46.3",
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
     "jest-junit": "16.0.0",
