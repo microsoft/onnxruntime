@@ -5,6 +5,8 @@
 
 #include "core/framework/op_kernel.h"
 #include "orttraining/training_ops/cpu/rnn/lstm_io_utils.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime::contrib {
 
@@ -18,6 +20,7 @@ class LSTMTraining final : public OpKernel {
 
  private:
   lstm::LSTMAttributes attributes_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime::contrib
