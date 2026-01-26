@@ -58,7 +58,7 @@ class DeepCpuGruOp final : public OpKernel {
                 "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
 
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                                  info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;

@@ -14,14 +14,14 @@
 
 namespace onnxruntime {
 
-void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,     // 0, 1
-                    ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,                // 2, 3, 4
-                    MLFloat16 alpha,                                      // 5
-                    const MLFloat16* a_data, const MLFloat16* b_data,     // 6, 7
-                    MLFloat16 beta,                                       // 8
-                    const MLFloat16* c_data, const TensorShape* c_shape,  // 9, 10
-                    MLFloat16* y_data,                                    // 11
-                    concurrency::ThreadPool* thread_pool,                 // 12
+void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,                                 // 0, 1
+                    ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,                                            // 2, 3, 4
+                    MLFloat16 alpha,                                                                  // 5
+                    const MLFloat16* a_data, const MLFloat16* b_data,                                 // 6, 7
+                    MLFloat16 beta,                                                                   // 8
+                    const MLFloat16* c_data, const TensorShape* c_shape,                              // 9, 10
+                    MLFloat16* y_data,                                                                // 11
+                    concurrency::ThreadPool* thread_pool,                                             // 12
                     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);  // 13
 
 template <typename T>
@@ -29,7 +29,7 @@ class Gemm : protected GemmBase, public OpKernel {
  public:
   Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                            info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;

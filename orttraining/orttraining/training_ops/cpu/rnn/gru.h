@@ -15,7 +15,7 @@ class GRUTraining final : public OpKernel {
  public:
   GRUTraining(const OpKernelInfo& info) : OpKernel(info), attributes_(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                              info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;

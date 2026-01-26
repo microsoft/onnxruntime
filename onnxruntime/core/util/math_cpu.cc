@@ -38,12 +38,12 @@ namespace onnxruntime {
 namespace math {
 
 // MatMul implementation purely based on Eigen.
-#define EIGEN_MATMUL_FUNCTION(T)                                                                                  \
-  template <>                                                                                                     \
-  void MatMul<T>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const T* A, const T* B, T* C, concurrency::ThreadPool*,   \
-                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG*) {                                                    \
-    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                                      \
-    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);                          \
+#define EIGEN_MATMUL_FUNCTION(T)                                                                                \
+  template <>                                                                                                   \
+  void MatMul<T>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const T* A, const T* B, T* C, concurrency::ThreadPool*, \
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG*) {                                                  \
+    auto C_mat = EigenMatrixMap<T>(C, N, M);                                                                    \
+    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);                        \
   }
 
 EIGEN_MATMUL_FUNCTION(int32_t)

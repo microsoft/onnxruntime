@@ -299,18 +299,18 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                           packed_weights_size_[qkv_index] * (weights_offset / head_size);
 
           MlasGemm(
-              CblasNoTrans,               // TransA = no
-              sequence_length,            // M      = S
-              head_size,                  // N      = H
-              input_hidden_size,          // K      = D
-              1.0f,                       // alpha
-              input_data + input_offset,  // A
-              input_hidden_size,          // lda    = D
-              packed_weight,              // B
-              1.0f,                       // beta
-              qkv_dest + qkv_offset,      // C
-              head_size,                  // ldc
-              nullptr,                    // use single-thread
+              CblasNoTrans,                            // TransA = no
+              sequence_length,                         // M      = S
+              head_size,                               // N      = H
+              input_hidden_size,                       // K      = D
+              1.0f,                                    // alpha
+              input_data + input_offset,               // A
+              input_hidden_size,                       // lda    = D
+              packed_weight,                           // B
+              1.0f,                                    // beta
+              qkv_dest + qkv_offset,                   // C
+              head_size,                               // ldc
+              nullptr,                                 // use single-thread
               &mlas_backend_kernel_selector_config_);  // BackendKernelSelectorConfig
         } else {
           math::GemmEx<float, ThreadPool>(

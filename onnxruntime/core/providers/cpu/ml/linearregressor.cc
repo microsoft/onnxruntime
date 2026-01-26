@@ -28,7 +28,7 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
   use_intercepts_ = intercepts_.size() == static_cast<size_t>(num_targets_);
 
   mlas_backend_kernel_selector_config_.use_kleidiai =
-                          info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+      info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts

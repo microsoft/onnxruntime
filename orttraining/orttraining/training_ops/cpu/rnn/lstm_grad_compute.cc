@@ -340,7 +340,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
                                                   inputs.input.end(), input_size_);
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, input_size_,
                                          1, alpha, grad_ai, Xt, weight_beta, grad_Wi_local, thread_pool_,
-                                          &mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
+                                         &mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
 
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Wi_local, grad_Wi, hidden_size_ * input_size_);
@@ -422,7 +422,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
         // M = hidden_size_, N = hidden_size_, K = 1
         ::onnxruntime::math::Gemm<float>(CblasTrans, CblasNoTrans, hidden_size_, hidden_size_,
                                          1, alpha, grad_ac, Htminus1, weight_beta, grad_Rc_local, thread_pool_,
-                                          &mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
+                                         &mlas_backend_kernel_selector_config_ /*mlas_backend_kernel_selector_config*/);
         // Note that the weight beta is always 0. So, we must accumulate ourselves.
         deepcpu::elementwise_sum1(grad_Rc_local, grad_Rc, hidden_size_ * hidden_size_);
       }

@@ -100,7 +100,7 @@ common::Status SoftmaxCPU<float>(size_t N,
                                  float* Ydata,
                                  bool logarithmic,
                                  onnxruntime::concurrency::ThreadPool* thread_pool,
-                                const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+                                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, false, 0.0f, thread_pool);
   return Status::OK();

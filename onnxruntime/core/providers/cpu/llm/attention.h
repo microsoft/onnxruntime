@@ -32,7 +32,6 @@ class AttentionBase : public OpKernel {
   AttentionBase(const OpKernelInfo& info) : OpKernel(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
-
   }
 
   Status ApplyAttention(OpKernelContext* context,

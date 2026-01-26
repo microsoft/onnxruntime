@@ -14,7 +14,7 @@ class MatMul final : public OpKernel {
  public:
   MatMul(const OpKernelInfo& info) : OpKernel(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                   info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -42,7 +42,7 @@ class MatMul<float> final : public OpKernel {
 #endif
 
     mlas_backend_kernel_selector_config_.use_kleidiai =
-                            info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -74,7 +74,6 @@ class MatMul<float> final : public OpKernel {
   // so a minimum of 32 elements is defined to outweigh the additional prepacking overhead
   const size_t kFastMathModeKernelsizeThreshold = 32;
 #endif
-
 };
 
 }  // namespace onnxruntime

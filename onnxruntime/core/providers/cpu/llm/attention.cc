@@ -605,8 +605,8 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                                           transposed_v ? v_head_size * kv_num_heads : v_head_size,                                       // ldb
                                           0.f,                                                                                           // beta
                                           output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size),
-                                          v_head_size * num_heads,  // ldc
-                                          nullptr,                  // Threadpool
+                                          v_head_size * num_heads,                 // ldc
+                                          nullptr,                                 // Threadpool
                                           &mlas_backend_kernel_selector_config_);  // BackendKernelSelectorConfig;
             } else if constexpr (std::is_same<T, MLFloat16>::value) {
               // This switch should probably be moved to math_cpu.h.
