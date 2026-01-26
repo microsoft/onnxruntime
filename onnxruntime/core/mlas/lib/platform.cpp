@@ -575,15 +575,11 @@ Return Value:
     // offers a tighter schedule and a specialised two-output inner loop that
     // reduces pressure on the memory system compared
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeonAsm;
-#if defined(_WIN32)
-     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
-#else
-     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeonAsm;
-#endif
     // Prefer the hand written AArch64 micro-kernel for pointwise convolution
     // as it computes multiple output positions at once and significantly
-    // reduces memory traffic
-    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeonAsm;
+    // reduces memory traffic. The AArch64 assembly kernel is picked up by
+    // heuristics in platform.cpp to avoid regressions on small convolutions.
+    // So here we set the default to the intrinsics version
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;

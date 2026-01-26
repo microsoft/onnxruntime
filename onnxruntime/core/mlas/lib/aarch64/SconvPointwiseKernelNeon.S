@@ -27,7 +27,7 @@ Abstract:
         .equ    .LPW_Bias,         16
         .equ    .LPW_Flags,        24
 
-// Kernel flag bits.  Keep these in sync with sconv.h.
+// Kernel flag bits.  Keep these in sync with sconv_nchwc_kernel_neon.h.
         .equ    .LPWFlag_Accumulate, 1
         .equ    .LPWFlag_Bias,       2
         .equ    .LPWFlag_Relu,       4

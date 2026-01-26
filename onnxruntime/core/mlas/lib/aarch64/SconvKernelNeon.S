@@ -6,10 +6,11 @@ Module Name:
     SconvKernelNeon.S
 
 Abstract:
-    Hand written AArch64 vectorised kernel used by the NCHW convolution path.  The
-    kernel computes one output row and processes up to four 16-wide filter
-    blocks (FilterCount <= 4).  The hot interior loop avoids all bounds checks
-    and the two-output path amortises filter loads when possible.
+    Hand written AArch64 vectorised kernel used by the convolution path
+    (NCHW activations and NCHWc weights).  The kernel computes one output
+    row and processes up to four 16-wide filter blocks (FilterCount <= 4).
+    The hot interior loop avoids all bounds checks and the two-output path
+    amortizes filter loads when possible.
 --*/
 
 #include "asmmacro.h"

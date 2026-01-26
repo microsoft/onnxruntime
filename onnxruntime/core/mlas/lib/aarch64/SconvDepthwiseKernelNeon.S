@@ -8,7 +8,7 @@ Module Name:
 
 Abstract:
 
-    Optimised AArch64 assembly implementation of the depthwise convolution
+    Optimized AArch64 assembly implementation of the depthwise convolution
     micro-kernel used by the NCHWc single precision path.
 
     This kernel performs the following optimisations:
@@ -17,7 +17,7 @@ Abstract:
         of 128-bit loads.
       * When an output position touches padding, only the affected 4-wide
         lanes are checked individually and loaded; others are zeroed.  This
-        mirrors the behaviour of the C++ helper LoadInputVectorWithBounds.
+        mirrors the behavior of the C++ helper LoadInputVectorWithBounds.
       * Keep the multiply/accumulate operations tightly scheduled to hide the
         load latency.
 
@@ -93,7 +93,7 @@ Abstract:
         add     x16,x16,x13
 
         // Load bias vectors when required; otherwise all zeros are used to
-        // initialise the accumulators.
+        // initialize the accumulators.
         eor     v20.16b, v20.16b, v20.16b
         eor     v21.16b, v21.16b, v21.16b
         eor     v22.16b, v22.16b, v22.16b
@@ -148,7 +148,7 @@ Abstract:
 
 .Ldw_SlowPath:
         // Zero registers and conditionally load each 4-wide vector when it is
-        // entirely within bounds.  This matches the behaviour of the C++
+        // entirely within bounds.  This matches the behavior of the C++
         // helper LoadInputVectorWithBounds.
         eor     v16.16b, v16.16b, v16.16b
         eor     v17.16b, v17.16b, v17.16b

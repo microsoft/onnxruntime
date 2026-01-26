@@ -331,6 +331,8 @@ function (setup_arm_neon_nchwc)
    # separate assembly file allows tighter control over register allocation
    # and avoids the overhead of C++/intrinsics based code generation.
    ${MLAS_SRC_DIR}/aarch64/SconvKernelNeon.S
+   ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
+   ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
   )
   list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
   set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
@@ -464,8 +466,6 @@ else()
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SgemmKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SgemvKernelNeon.S
-          ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
-          ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdotLd64.S
