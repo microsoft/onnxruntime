@@ -257,7 +257,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #endif
 
   bool FileMappingIsEnabled() {
-    std::lock_guard<std::mutex> lock(file_mapping_mutex_);
     return file_mapped_weights_enabled_;
   }
 
@@ -286,11 +285,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #endif
 
  private:
-  typedef struct BufferInfo {
-    std::vector<char> data;
-    size_t size;
-  } BufferInfo_t;
-
   Status LoadBackend();
 
   Status InitializeBackend();
@@ -310,7 +304,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status GetFileSizeIfValid(const std::string& filepath, size_t& file_size);
 
   Status ReadContextBinIfValid(const std::string& context_bin_filepath,
-                               BufferInfo_t& buffer_info);
+                               std::vector<char>& buffer);
 
   Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
                                                                         std::unique_ptr<std::vector<std::string>>>& context_bin_map);
@@ -467,11 +461,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     return Status::OK();
   }
 
-  void DisableFileMapping() {
-    std::lock_guard<std::mutex> lock(file_mapping_mutex_);
-    file_mapped_weights_enabled_ = false;
-  }
-
  private:
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
@@ -514,8 +503,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   bool vtcm_backup_buffer_sharing_enabled_ = false;
-
-  std::mutex file_mapping_mutex_;
   bool file_mapped_weights_enabled_ = false;
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE

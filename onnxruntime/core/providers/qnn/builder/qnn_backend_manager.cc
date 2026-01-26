@@ -814,7 +814,6 @@ Qnn_ErrorHandle_t QnnBackendManager::MapDmaData(Qnn_ContextBinaryDataRequest_t r
                                                 Qnn_ContextBinaryDmaDataResponse_t* response,
                                                 void* const mapped_base_ptr,
                                                 const size_t file_size) {
-  std::lock_guard<std::mutex> lock(file_mapping_mutex_);
   if (!file_mapped_weights_enabled_) {
     LOGS(*logger_, WARNING) << "Attempting to map DMA data but file mapping has been disabled, "
                             << "possibly due to an error in a previous request.";
@@ -976,21 +975,17 @@ Status QnnBackendManager::GetFileSizeIfValid(const std::string& filepath,
 }
 
 Status QnnBackendManager::ReadContextBinIfValid(const std::string& context_bin_filepath,
-                                                BufferInfo_t& buffer_info) {
+                                                std::vector<char>& buffer) {
   size_t buffer_size;
   ORT_RETURN_IF_ERROR(GetFileSizeIfValid(context_bin_filepath, buffer_size));
 
-  std::vector<char> buffer;
-  buffer.reserve(buffer_size);
+  buffer.resize(buffer_size);
 
   std::ifstream cache_file(context_bin_filepath.c_str(), std::ifstream::binary);
   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to read context binary from: ", context_bin_filepath);
 
   const auto& read_result = cache_file.read(buffer.data(), buffer_size);
   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
-
-  buffer_info.data = std::move(buffer);
-  buffer_info.size = buffer_size;
 
   return Status::OK();
 }
@@ -1032,14 +1027,11 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
                                           nullptr};
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-  if (FileMappingIsEnabled() && file_mapper_) {
+  if (file_mapped_weights_enabled_ && file_mapper_) {
     // Retry logic -- if context creation failed with file mapped weights, then retry with feature disabled
     auto res = CreateContextFromListAsyncWithCallback(configs, context_bin_map);
     if (!res.IsOK()) {
-      DisableFileMapping();
       LOGS(*logger_, WARNING) << res.ErrorMessage() << ". Retrying with feature disabled.";
-
-      file_mapped_weights_enabled_ = false;
     } else {
       return Status::OK();
     }
@@ -1062,11 +1054,11 @@ Status QnnBackendManager::CreateContextFromListAsync(const QnnContext_Config_t**
   for (auto& it : context_bin_map) {
     auto context_bin_filepath = it.first;
 
-    BufferInfo_t buffer_info;
-    ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, buffer_info));
+    std::vector<char> buffer;
+    ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, buffer));
 
-    buffer_list.push_back(std::move(buffer_info.data));
-    size_t buffer_size = buffer_info.size;
+    size_t buffer_size = buffer.size();
+    buffer_list.push_back(std::move(buffer));
 
     QnnContext_ParamsV1_t context_params_v1 = {nullptr,
                                                buffer_list.back().data(),
@@ -1367,7 +1359,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   void* bin_buffer = nullptr;
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
-  if (FileMappingIsEnabled()) {
+  if (file_mapped_weights_enabled_) {
     ORT_RETURN_IF(!file_mapper_, "Attemping to use File Mapping feature but file_mapper_ is uninitialized");
 
     ORT_RETURN_IF_ERROR(GetFileSizeIfValid(context_bin_filepath, buffer_length));
@@ -1467,7 +1459,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
     Qnn_ContextBinaryCallback_t callbacks;
-    if (FileMappingIsEnabled() && file_mapper_) {
+    if (file_mapped_weights_enabled_ && file_mapper_) {
       ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinaryWithCallback,
                     "Invalid function pointer for contextCreateFromBinaryWithCallback.");
 
@@ -1494,7 +1486,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
     std::vector<char> backup_buffer;
-    if (FileMappingIsEnabled() && file_mapper_) {
+    if (file_mapped_weights_enabled_ && file_mapper_) {
       rt = qnn_interface_.contextCreateFromBinaryWithCallback(backend_handle_,
                                                               device_handle_,
                                                               context_configs,
@@ -1506,22 +1498,19 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                                               NULL);
 
       if (rt != QNN_SUCCESS) {
-        DisableFileMapping();
         LOGS(*logger_, WARNING) << "Failed to create context with file mapping enabled. Error: "
                                 << QnnErrorHandleToString(rt) << ", Code : " << rt
                                 << ". Retrying with feature disabled.";
 
         // Read context bin from file since file mapping has failed
-        BufferInfo_t buffer_info;
-        ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, buffer_info));
-        backup_buffer = std::move(buffer_info.data);
+        ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, backup_buffer));
 
         bin_buffer = static_cast<void*>(backup_buffer.data());
       }
     }
 #endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
-    if (!FileMappingIsEnabled() || rt != QNN_SUCCESS) {
+    if (!file_mapped_weights_enabled_ || rt != QNN_SUCCESS) {
       rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                                   device_handle_,
                                                   context_configs,
