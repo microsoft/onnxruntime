@@ -914,7 +914,8 @@ TEST_F(NvExecutionProviderExternalResourceImporterTest, FullInferenceWithExterna
   for (; cuda_device_id < cuda_device_count; ++cuda_device_id) {
     cudaDeviceProp prop;
     ASSERT_EQ(cudaGetDeviceProperties(&prop, cuda_device_id), cudaSuccess);
-    uint64_t cuda_luid = *reinterpret_cast<const uint64_t*>(prop.luid);
+    uint64_t cuda_luid;
+    std::memcpy(&cuda_luid, prop.luid, sizeof(char) * 8);
     if (cuda_luid == d3d12_luid) {
       found = true;
       break;

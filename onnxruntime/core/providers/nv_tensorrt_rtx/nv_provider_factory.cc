@@ -796,7 +796,7 @@ struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
     OrtStatus* status = impl.ort_api.CreateTensorWithDataAsOrtValue(
         memory_info,
         data_ptr,
-        handle->descriptor.size_bytes - tensor_desc->offset_bytes,
+        available_size - tensor_desc->offset_bytes,
         tensor_desc->shape,
         tensor_desc->rank,
         tensor_desc->element_type,
