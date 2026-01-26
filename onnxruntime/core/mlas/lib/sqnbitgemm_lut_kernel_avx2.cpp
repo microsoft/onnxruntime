@@ -692,7 +692,6 @@ PackQuantBData_avx2(
     // Phase 1: Bit-plane decomposition with grouping by g=4
     // For 2-bit: each input byte has 4 elements, we extract bit planes and group 4 consecutive bits
     std::unique_ptr<uint8_t[]> buf(new uint8_t[N * bits * K_div_g]);
-    memset(buf.get(), 0, N * bits * K_div_g);
 
     // Masks for 2-bit extraction
     const __m256i mask_2bit = _mm256_set1_epi8(0x03);  // mask for 2-bit values
@@ -755,6 +754,14 @@ PackQuantBData_avx2(
             }
 
             // Handle remaining elements with scalar code
+            // Zero-initialize only the tail bytes that will be updated with "+="
+            // to avoid touching the full buffer.
+            const size_t tail_new_ik = ik / g;
+            if (tail_new_ik < K_div_g) {
+                const size_t tail_len = K_div_g - tail_new_ik;
+                std::memset(dst_bit0 + tail_new_ik, 0, tail_len);
+                std::memset(dst_bit1 + tail_new_ik, 0, tail_len);
+            }
             for (; ik < K; ++ik) {
                 size_t idx = ik;
                 size_t num_elem_per_byte = 4;  // 2-bit: 4 elements per byte
