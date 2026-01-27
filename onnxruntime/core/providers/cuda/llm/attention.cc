@@ -7,6 +7,8 @@
 #include "contrib_ops/cuda/bert/attention_data.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
 using namespace onnxruntime::cuda;
 
@@ -118,7 +120,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool is_gqa = parameters.kv_num_heads != parameters.q_num_heads;
 
   if (is_gqa) {
-    // Use GQA path
+    // Use GQA path with Flash Attention or Memory Efficient Attention
     // GQA only supports float16 and bfloat16 types
     if (std::is_same<T, float>::value) {
       ORT_THROW("GQA in Attention op (CUDA) does not support float32. Please use float16 or bfloat16.");
@@ -135,6 +137,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (!parameters.is_causal) {
       ORT_THROW("Non-causal attention is not supported yet in GQA path of Attention op (CUDA).");
     }
+
+    auto& device_prop = GetDeviceProp();
+
     // Bridge parameters to GroupQueryAttentionParameters
     onnxruntime::contrib::GroupQueryAttentionParameters gqa_parameters;
     gqa_parameters.batch_size = parameters.batch_size;
@@ -154,11 +159,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_parameters.qkv_format = contribop_parameters.qkv_format;
 
     // Unset or set to default values for GQA-specific fields
-    gqa_parameters.rotary_dim = 0;                     // New Attention op doesn't use rotary embeddings directly
-    gqa_parameters.is_unidirectional = true;           // GQA requires causal attention
-    gqa_parameters.past_present_share_buffer = false;  // New Attention op doesn't share buffer (unfused path)
-    gqa_parameters.is_packed_qkv = false;              // New Attention op has separate Q, K, V inputs
-    gqa_parameters.is_subsequent_prompt = false;       // Unfused path
+    gqa_parameters.rotary_dim = 0;            // New Attention op doesn't use rotary embeddings directly
+    gqa_parameters.is_unidirectional = true;  // GQA requires causal attention
+    gqa_parameters.is_packed_qkv = false;     // New Attention op has separate Q, K, V inputs
+    gqa_parameters.is_subsequent_prompt = false;
     gqa_parameters.is_first_prompt = parameters.past_sequence_length == 0;
     gqa_parameters.do_rotary = false;  // New Attention op doesn't use rotary embeddings
     gqa_parameters.rotary_interleaved = false;
@@ -168,7 +172,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_parameters.local_window_size = -1;  // No local window for standard attention
     gqa_parameters.zeros_count = 0;
     gqa_parameters.zero_ptr = nullptr;
-    gqa_parameters.num_splits = 1;  // No splits for unfused path
+    gqa_parameters.num_splits = 1;
 
     // Construct GroupQueryAttentionData
     onnxruntime::contrib::cuda::GroupQueryAttentionData<CudaT> gqa_data;
@@ -185,10 +189,142 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.present_key = (present_key == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
     gqa_data.present_value = (present_value == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
 
+    // Compute past_present_share_buffer early since it's needed for flash attention path selection
+    gqa_parameters.past_present_share_buffer = (gqa_data.past_key == gqa_data.present_key);
+
+    // Scratch buffers for flash/memory efficient attention
+    IAllocatorUniquePtr<void> k_buffer;
+    IAllocatorUniquePtr<void> v_buffer;
+    IAllocatorUniquePtr<void> fmha_buffer;
+    IAllocatorUniquePtr<void> unpacked_qkv_buffer;
+    IAllocatorUniquePtr<int> seq_lens_buffer;
+    IAllocatorUniquePtr<int> seqlens_k_buffer;
+
+    // Flash Attention buffers
+    IAllocatorUniquePtr<void> softmax_lse_buffer;
+    IAllocatorUniquePtr<void> softmax_lse_accum_buffer;
+    IAllocatorUniquePtr<void> out_accum_buffer;
+
+    // Check Flash Attention support
+#if USE_FLASH_ATTENTION
+    bool use_flash_attention = onnxruntime::flash::is_supported<T>(device_prop,
+                                                                   gqa_parameters.head_size,
+                                                                   gqa_parameters.num_heads,
+                                                                   gqa_parameters.kv_num_heads);
+
+    gqa_data.use_flash_attention = use_flash_attention;
+    gqa_data.use_flash_attention_fast_decode = use_flash_attention &&
+                                               !gqa_parameters.is_first_prompt &&
+                                               gqa_parameters.past_present_share_buffer;
+
+    if (use_flash_attention) {
+      // Allocate Flash specific buffers (Softmax LSE, Accum)
+      size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(
+          gqa_parameters.sequence_length, gqa_parameters.batch_size, gqa_parameters.num_heads);
+
+      int num_heads_for_split = gqa_data.use_flash_attention_fast_decode
+                                    ? gqa_parameters.kv_num_heads
+                                    : gqa_parameters.num_heads;
+      auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
+          onnxruntime::flash::get_num_splits_and_buffer_sizes(
+              gqa_parameters.batch_size, gqa_parameters.sequence_length,
+              gqa_parameters.total_sequence_length, num_heads_for_split,
+              gqa_parameters.head_size, device_prop.multiProcessorCount);
+
+      gqa_parameters.num_splits = static_cast<int>(num_splits);
+
+      if (gqa_data.use_flash_attention_fast_decode && num_splits > 1) {
+        // The heuristic used kv_num_heads to maximize occupancy for the GQA-aware kernel.
+        // However, the LSE and Accum buffers must store results for ALL num_heads.
+        softmax_lse_accum_bytes = onnxruntime::flash::get_softmax_lse_accum_size(
+            num_splits, gqa_parameters.batch_size, gqa_parameters.num_heads, gqa_parameters.sequence_length);
+        auto round_multiple = [](size_t x, size_t m) { return (x + m - 1) / m * m; };
+        out_accum_bytes = onnxruntime::flash::get_out_accum_size(
+            num_splits, gqa_parameters.batch_size, gqa_parameters.num_heads, gqa_parameters.sequence_length,
+            round_multiple(gqa_parameters.head_size, 32));
+      }
+
+      softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+      softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
+      out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
+
+      gqa_data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
+      gqa_data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
+      gqa_data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
+    } else {
+      gqa_data.softmax_lse = nullptr;
+      gqa_data.softmax_lse_accum = nullptr;
+      gqa_data.out_accum = nullptr;
+    }
+#else
+    gqa_data.use_flash_attention = false;
+    gqa_data.use_flash_attention_fast_decode = false;
+    gqa_data.softmax_lse = nullptr;
+    gqa_data.softmax_lse_accum = nullptr;
+    gqa_data.out_accum = nullptr;
+#endif
+
+    // Check Memory Efficient Attention support (fallback if flash attention not available)
+#if USE_MEMORY_EFFICIENT_ATTENTION
+    if (!gqa_data.use_flash_attention) {
+      int sm = (device_prop.major * 10) + device_prop.minor;
+      bool use_memory_efficient_attention =
+          onnxruntime::contrib::cuda::has_memory_efficient_attention(
+              sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
+              gqa_parameters.head_size, gqa_parameters.head_size);
+      gqa_data.use_memory_efficient_attention = use_memory_efficient_attention;
+
+      // KV buffer for head expansion (when num_heads != kv_num_heads)
+      size_t kv_buffer_bytes = (use_memory_efficient_attention &&
+                                (gqa_parameters.num_heads != gqa_parameters.kv_num_heads))
+                                   ? (sizeof(T) * gqa_parameters.batch_size * gqa_parameters.num_heads *
+                                      gqa_parameters.seqlen_present_kv_cache * gqa_parameters.head_size)
+                                   : 0;
+      // FMHA workspace
+      size_t fmha_buffer_bytes =
+          (use_memory_efficient_attention &&
+           onnxruntime::contrib::cuda::MemoryEfficientAttentionParams::need_workspace(
+               gqa_parameters.head_size, sizeof(T) == sizeof(float)))
+              ? (sizeof(float) * gqa_parameters.batch_size * gqa_parameters.sequence_length *
+                 gqa_parameters.num_heads * gqa_parameters.head_size)
+              : 0;
+
+      k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
+      v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
+      fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, context->GetComputeStream());
+
+      gqa_data.k = reinterpret_cast<CudaT*>(k_buffer.get());
+      gqa_data.v = reinterpret_cast<CudaT*>(v_buffer.get());
+      gqa_data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
+    } else {
+      gqa_data.use_memory_efficient_attention = false;
+      gqa_data.k = nullptr;
+      gqa_data.v = nullptr;
+      gqa_data.fmha_buffer = nullptr;
+    }
+#else
+    gqa_data.use_memory_efficient_attention = false;
+    gqa_data.k = nullptr;
+    gqa_data.v = nullptr;
+    gqa_data.fmha_buffer = nullptr;
+#endif
+
+    // Centralized scratch buffer allocation using GQABufferRequirements
+    auto buffer_req = onnxruntime::contrib::cuda::GQABufferRequirements::Compute<T>(
+        gqa_parameters,
+        gqa_data.use_flash_attention,
+        gqa_data.use_flash_attention_fast_decode,
+        gqa_data.use_memory_efficient_attention);
+
+    if (buffer_req.qkv_buffer_bytes > 0) {
+      unpacked_qkv_buffer = GetScratchBuffer<void>(buffer_req.qkv_buffer_bytes, context->GetComputeStream());
+      gqa_data.qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+    } else {
+      gqa_data.qkv_buffer = nullptr;
+    }
+
     // GQA only supports masking, not additive bias.
     // For bool mask, we need to convert it to sequence lengths.
-    IAllocatorUniquePtr<int> seqlens_k_buffer;
-    IAllocatorUniquePtr<int> seq_lens_buffer;
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
       // Allocate buffer for seqlens_k (total_sequence_length - 1)
       seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
@@ -213,14 +349,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       }
 
       // Process seqlens_k to compute past_seq_lens, total_seq_lens, and padded_seq_lens
-      // This follows the same pattern as GroupQueryAttention
       seq_lens_buffer = GetScratchBuffer<int>(3 * parameters.batch_size, context->GetComputeStream());
       auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
       gqa_data.past_seq_lens = seq_lens_buffer.get();
       gqa_data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
       gqa_data.padded_seq_lens = gqa_data.total_seq_lens + parameters.batch_size;
 
-      auto& device_prop = GetDeviceProp();
       ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchGetSequenceLengths(
           seqlens_k,
           gqa_data.past_seq_lens,
@@ -246,22 +380,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.head_sink = nullptr;
     gqa_data.position_ids = nullptr;
 
-    // Use unfused attention path only
-    gqa_data.use_flash_attention = false;
-    gqa_data.use_memory_efficient_attention = false;
-    gqa_data.use_flash_attention_fast_decode = false;
-
-    // Flash buffers (not used in unfused path)
-    gqa_data.softmax_lse = nullptr;
-    gqa_data.softmax_lse_accum = nullptr;
-    gqa_data.out_accum = nullptr;
-
-    // Memory efficient buffers (not used)
-    gqa_data.fmha_buffer = nullptr;
-    gqa_data.qkv_buffer = nullptr;
-    gqa_data.k = nullptr;
-    gqa_data.v = nullptr;
-
 #ifndef NDEBUG
     // Initialize debug tracking fields
     gqa_data.unpacked_qkv_buffer_size = 0;
@@ -272,8 +390,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.position_ids_max_used = 0;
 #endif
 
-    // Call GQA kernel (unfused path)
-    auto& device_prop = GetDeviceProp();
+    // Call GQA kernel (with flash or memory efficient attention)
     cublasHandle_t cublas = GetCublasHandle(context);
 
     return onnxruntime::contrib::cuda::QkvToContext<CudaT>(
