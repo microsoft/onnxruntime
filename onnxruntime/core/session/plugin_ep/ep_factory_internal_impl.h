@@ -97,6 +97,18 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
+  virtual OrtStatus* GetNumCustomOpDomains(_Out_ size_t* num_domains) const noexcept {
+    *num_domains = 0;
+    return nullptr;
+  }
+
+  virtual OrtStatus* GetCustomOpDomains(_Out_writes_all_(num_domains) OrtCustomOpDomain** domains,
+                                        _In_ size_t num_domains) const noexcept {
+    ORT_UNUSED_PARAMETER(domains);
+    ORT_UNUSED_PARAMETER(num_domains);
+    return nullptr;
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
 

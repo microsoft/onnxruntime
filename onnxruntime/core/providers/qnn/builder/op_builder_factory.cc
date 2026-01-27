@@ -233,6 +233,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateFusedMatMulOpBuilder("FusedMatMul", *this);
     CreateMatMulNBitsOpBuilder("MatMulNBits", *this);
   }
 }
