@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Licensed under the MIT License.
   if(onnxruntime_CUDA_HOME)
-    file(TO_CMAKE_PATH CUDAToolkit_ROOT ${onnxruntime_CUDA_HOME})
+    file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDAToolkit_ROOT)
   endif()
   find_package(CUDAToolkit REQUIRED)
   enable_language(CUDA)
