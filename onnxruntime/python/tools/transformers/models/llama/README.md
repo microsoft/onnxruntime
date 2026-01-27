@@ -1,3 +1,5 @@
+> **Deprecated:** This example is deprecated. Use the Olive recipes instead: https://github.com/microsoft/olive-recipes/tree/main
+
 # Contents
  - [LLaMA-2](#llama-2)
    - [Prerequisites](#prerequisites)
