@@ -20,6 +20,7 @@ Abstract:
 --*/
 
 #include <cstddef>
+#include <cstdio>
 #include <type_traits>
 #include <vector>
 // AVX2 intrinsics
@@ -524,6 +525,10 @@ TMACComputeGemm_avx2(
     // get kernel config
     const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(M, K, 2, BlkLen, HasZeroPoint);
 
+    // DEBUG: Log kernel entry
+    fprintf(stderr, "[LUT_KERNEL_DEBUG] TMACComputeGemm_avx2: K=%d, M=%d, N=%d, BlkLen=%zu, HasZeroPoint=%d\\n",
+            K, M, N, BlkLen, HasZeroPoint ? 1 : 0);
+
     // ==================== CONFIGURATION ====================
     // Fixed parameters for this kernel implementation
     bool has_zero_point = tmac_params.has_zero_point;  // Whether weights have zero-points (interleaved with scales)
@@ -543,6 +548,12 @@ TMACComputeGemm_avx2(
 
     const int32_t bm = static_cast<int32_t>(tmac_params.bm);
     int32_t m = bm / bits;
+
+    // DEBUG: Log computed config values
+    fprintf(stderr, "[LUT_KERNEL_DEBUG]   bm=%d, m=%d, bits=%d, g=%d, kfactor=%d, actk=%d\\n",
+            bm, m, bits, g, kfactor, actk);
+    fprintf(stderr, "[LUT_KERNEL_DEBUG]   q_group_size=%d, act_group_size=%d, has_scale=%d, has_zp=%d, one_scale=%d\\n",
+            q_group_size, act_group_size, has_scale ? 1 : 0, has_zero_point ? 1 : 0, one_scale ? 1 : 0);
 
     // Validate configuration
     assert(bm % bits == 0);
@@ -566,6 +577,9 @@ TMACComputeGemm_avx2(
     // ==================== CALCULATE LOOP PARAMETERS ====================
     const int32_t k_outer_max = K / (kfactor * g);
     const int32_t scale_gs = q_group_size / (kfactor * g);
+
+    // DEBUG: Log loop parameters
+    fprintf(stderr, "[LUT_KERNEL_DEBUG]   k_outer_max=%d, scale_gs=%d\\n", k_outer_max, scale_gs);
 
     // Calculate bit shift for scale indexing
     int32_t scale_idx_shfr = 0;
@@ -655,6 +669,25 @@ TMACComputeGemm_avx2(
     // Only support 2-bit in this implementation
     // TODO(vraspar): extend to other bit-widths
     tbl_g4_int8_float_gather_bit2_impl(m, C_global, CBits, C);
+
+    // DEBUG: Log final output stats
+    {
+        float c_min = C[0], c_max = C[0];
+        double c_sum = 0.0;
+        for (int i = 0; i < m; i++) {
+            c_min = std::min(c_min, C[i]);
+            c_max = std::max(c_max, C[i]);
+            c_sum += C[i];
+        }
+        fprintf(stderr, "[LUT_KERNEL_DEBUG]   Kernel output C[%d]: min=%.6f, max=%.6f, sum=%.6f\\n",
+                m, c_min, c_max, c_sum);
+        // Print first 8 values
+        fprintf(stderr, "[LUT_KERNEL_DEBUG]   C[0..7]: ");
+        for (int i = 0; i < std::min(m, 8); i++) {
+            fprintf(stderr, "%.4f ", C[i]);
+        }
+        fprintf(stderr, "\\n");
+    }
 
     // ==================== CLEANUP ====================
     delete[] C_global;
