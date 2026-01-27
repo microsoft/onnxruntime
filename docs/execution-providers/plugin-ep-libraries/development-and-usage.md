@@ -328,7 +328,7 @@ For example, if a single factory instance supports both CPU and NPU, then the ca
   - ep_device_1: (factory_0, NPU)
 
 <br/>
-<p align="center"><img width="100%" src="../../images/plugin_ep_sd_lib_reg.png" alt="Sequence diagram showing registration and unregistration of a plugin EP library"/></p>
+<p align="center"><img width="100%" src="../../../images/plugin_ep_sd_lib_reg.png" alt="Sequence diagram showing registration and unregistration of a plugin EP library"/></p>
 
 ### Session creation with explicit OrtEpDevice(s)
 The application code below uses the API function [SessionOptionsAppendExecutionProvider_V2](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a285a5da8c9a63eff55dc48e4cf3b56f6) to add an EP from a library to an ONNX Runtime session.
@@ -372,7 +372,7 @@ env.UnregisterExecutionProviderLibrary(/*...*/);
 As shown in the following sequence diagram, ONNX Runtime calls `OrtEpFactory::CreateEp()` during session creation in order to create an instance of the plugin EP.
 
 <br/>
-<p align="center"><img width="100%" src="../../images/plugin_ep_sd_appendv2.png" alt="Sequence diagram showing session creation with explicit ep devices"/></p>
+<p align="center"><img width="100%" src="../../../images/plugin_ep_sd_appendv2.png" alt="Sequence diagram showing session creation with explicit ep devices"/></p>
 
 ### Session creation with automatic EP selection
 The application code below uses the API function [SessionOptionsSetEpSelectionPolicy](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a2ae116df2c6293e4094a6742a6c46f7e) to have ONNX Runtime automatically select an EP based on the user's policy (e.g., PREFER_NPU).
@@ -395,7 +395,7 @@ env.UnregisterExecutionProviderLibrary(/*...*/);
 ```
 
 <br/>
-<p align="center"><img width="100%" src="../../images/plugin_ep_sd_autoep.png" alt="Sequence diagram showing session creation with automatic EP selection"/></p>
+<p align="center"><img width="100%" src="../../../images/plugin_ep_sd_autoep.png" alt="Sequence diagram showing session creation with automatic EP selection"/></p>
 
 ## API reference
 API header files:
