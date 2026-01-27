@@ -231,8 +231,8 @@ class WebGpuContext final {
   }
 
   void StartProfiling();
-  void CollectProfilingData(profiling::Events& events);
-  void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
+  void CollectProfilingData();
+  void EndProfiling(TimePoint, profiling::Events& events);
 
   //
   // Push error scope.
@@ -349,6 +349,7 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+  profiling::Events events_;  // cached GPU profiling events
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};

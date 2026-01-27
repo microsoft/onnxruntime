@@ -39,6 +39,7 @@ class OVCore;
 class OVInferRequest;
 class OVExeNetwork;
 struct ModelBlobWrapper;
+struct SessionContext;
 
 typedef ov::Tensor OVTensor;
 typedef ov::ProfilingInfo OVProfilingInfo;
@@ -77,7 +78,8 @@ struct OVCore : WeakSingleton<OVCore> {
                                             std::string& hw_target,
                                             const ov::AnyMap& device_config,
                                             bool enable_causallm,
-                                            std::filesystem::path model_file_path);
+                                            std::filesystem::path model_file_path,
+                                            const SessionContext& session_context);
 
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
@@ -89,10 +91,11 @@ class OVExeNetwork {
   ov::CompiledModel compiled_model_obj;
   std::string target_device;
   bool is_stateful_causallm;
+  bool is_kvcache_reorder_added = false;
 
  public:
-  explicit OVExeNetwork(ov::CompiledModel compiled_model, std::string device, bool stateful_causallm = false)
-      : compiled_model_obj(std::move(compiled_model)), target_device(std::move(device)), is_stateful_causallm(stateful_causallm) {}
+  explicit OVExeNetwork(ov::CompiledModel compiled_model, std::string device, bool stateful_causallm = false, bool kvcache_reorder_added = false)
+      : compiled_model_obj(std::move(compiled_model)), target_device(std::move(device)), is_stateful_causallm(stateful_causallm), is_kvcache_reorder_added(kvcache_reorder_added) {}
   OVExeNetwork() : compiled_model_obj(ov::CompiledModel()), is_stateful_causallm(false) {}
   ov::CompiledModel& Get() { return compiled_model_obj; }
   std::shared_ptr<OVInferRequest> CreateInferRequest();
@@ -134,14 +137,16 @@ class OVInferRequest {
     return ovInfReq;
   }
   virtual void RewindKVCache([[maybe_unused]] size_t index) {}
+  virtual void ReorderKVCache([[maybe_unused]] const std::vector<int32_t>& src_indices, [[maybe_unused]] const std::vector<int32_t>& dst_indices) {}
 };
 
 class StatefulOVInferRequest : public OVInferRequest {
  public:
-  explicit StatefulOVInferRequest(ov::InferRequest infer_request, std::string device);
+  explicit StatefulOVInferRequest(ov::InferRequest infer_request, std::string device, bool kvcache_reorder_added = false);
 
   void Infer() override;
   void RewindKVCache(size_t index) override;
+  void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
   void FillTensor(const std::string& tensor_name, const ov::element::Type& type,
                   const std::vector<size_t>& shape, int32_t fill_value);
   void CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache);
@@ -151,13 +156,19 @@ class StatefulOVInferRequest : public OVInferRequest {
 
  private:
   void PreProcessInferRequest();
+  void PostProcessInferRequest();
   std::string target_device;
+
+  std::vector<int64_t> cached_input_ids;
+  std::vector<int64_t> cached_position_ids;
+  std::vector<int32_t> kv_src_indices;
+  std::vector<int32_t> kv_dst_indices;
 
   // If prefill_use_full_chat_history is true, cache the "input_ids" & "position_ids" tensors,
   // and ensure that full chat history is passed for each prefill call.
   bool prefill_use_full_chat_history = false;
-  std::vector<int64_t> cached_input_ids;
-  std::vector<int64_t> cached_position_ids;
+  // If kvcache_reorder is added, will include kv_src/dst_indices as input
+  bool is_kvcache_reorder_added = false;
 
   bool IsNPULogitsSliceRequired();
   bool _npu_logits_slice_required = false;

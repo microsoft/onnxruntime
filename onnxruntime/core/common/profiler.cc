@@ -71,16 +71,17 @@ template void Profiler::StartProfiling<char>(const std::basic_string<char>& file
 template void Profiler::StartProfiling<wchar_t>(const std::basic_string<wchar_t>& file_name);
 #endif
 
-void Profiler::EndTimeAndRecordEvent(EventCategory category,
-                                     const std::string& event_name,
-                                     const TimePoint& start_time,
-                                     const std::initializer_list<std::pair<std::string, std::string>>& event_args,
-                                     bool /*sync_gpu*/) {
+void Profiler::EndTimeAndRecordEvent(
+    EventCategory category,
+    const std::string& event_name,
+    const TimePoint& start_time,
+    InlinedHashMap<std::string, std::string> event_args,
+    bool /*sync_gpu*/) {
   long long dur = TimeDiffMicroSeconds(start_time);
   long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
 
   EventRecord event(category, logging::GetProcessId(),
-                    logging::GetThreadId(), event_name, ts, dur, {event_args.begin(), event_args.end()});
+                    logging::GetThreadId(), event_name, ts, dur, std::move(event_args));
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
   } else {

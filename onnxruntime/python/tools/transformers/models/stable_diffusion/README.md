@@ -1,3 +1,5 @@
+> **Deprecated:** This example is deprecated. Use the Olive recipes instead: https://github.com/microsoft/olive-recipes/tree/main
+
 # Stable Diffusion GPU Optimization
 
 ONNX Runtime uses the following optimizations to speed up Stable Diffusion in CUDA:

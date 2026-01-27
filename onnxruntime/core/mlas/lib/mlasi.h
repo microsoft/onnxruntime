@@ -967,6 +967,9 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
+#if defined(__aarch64__) && defined(__linux__)
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
+#endif
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelNeon;
@@ -1372,6 +1375,9 @@ struct MLAS_PLATFORM {
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
+#if defined(__aarch64__) && defined(__linux__)
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseBf16Kernel;
+#endif
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     uint32_t NchwcBlockSize;
 #endif
@@ -1606,7 +1612,8 @@ MlasFp32FromBits(
 #pragma warning(pop)
 #endif
 
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+
 
 void
 MLASCALL

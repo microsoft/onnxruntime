@@ -115,6 +115,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+        ${MLAS_SRC_DIR}/sconv_nchw_kernel_neon.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -288,6 +289,11 @@ function(setup_kleidiai)
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+          target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
+          target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
+          list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai-qmx)
+  endif()
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 
   # If KLEIDIAI_DEBUG is enabled that implies both DEBUG and KERNEL messages.
@@ -306,13 +312,21 @@ function(setup_kleidiai)
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+    install(TARGETS kleidiai-qmx EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endfunction()
 
 function (setup_arm_neon_nchwc)
   target_sources(onnxruntime_mlas PRIVATE
-   ${MLAS_SRC_DIR}/sconv.h
-   ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
-   ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
+   ${MLAS_SRC_DIR}/sconv_nchwc_kernel_neon.h
+   ${MLAS_SRC_DIR}/sconv_nchwc_kernel_neon.cpp
+   ${MLAS_SRC_DIR}/spool_nchwc_kernel_neon.cpp
   )
   list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
   set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
@@ -464,6 +478,7 @@ else()
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+          ${MLAS_SRC_DIR}/sconv_nchw_kernel_neon.cpp
         )
 
         # Conditionally add the SVE implementation if compiler supports it
@@ -500,6 +515,7 @@ else()
             ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
             ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
+            ${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp
             ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
@@ -515,6 +531,7 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/cast_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
