@@ -380,3 +380,320 @@ To use the dumped EPContext models with weight sharing enabled, ONNX Runtime inf
     session1.run(...);
     session2.run(...);
 ```
+
+## Compile API
+ORT 1.22 introduced an explicit [model compilation API](https://github.com/microsoft/onnxruntime/blob/a5ba2ba3998820dd8da111c90c420479aac7a11e/onnxruntime/python/onnxruntime_inference_collection.py#L680-L709) that enables additional compilation options:
+- Read input model from a file or a buffer.
+- Write output model to a file, a buffer, or an output stream.
+- Provide a callback function to specify the location of each ONNX initializer in the output model.
+- Set compilation flags: "error if no nodes compiled", "error if output file already exists", etc.
+
+### Usage example: compiling a model (from file) to an output stream
+```python
+import onnxruntime as ort
+
+"""
+Compile a model (from file) to an output stream using a custom write function.
+The custom write function just saves the output model to disk.
+A custom initializer handler stores "large" initializers into an external file.
+"""
+input_model_path = "input_model.onnx"
+output_model_path = "output_model.onnx"
+output_initializer_file_path = "output_model.bin"
+
+with open(output_model_path, "wb") as output_model_fd, \
+     open(output_initializer_file_path, "wb") as output_initializer_fd:
+
+    # Custom function that ORT calls (one or more times) to stream out the model bytes in chunks.
+    # This example function simply writes the output model to a file.
+    def output_model_write_func(buffer: bytes):
+        output_model_fd.write(buffer)
+
+    # Custom function that ORT calls to determine where to store each ONNX initializer in the output model.
+    #
+    # Note: the `external_info` argument denotes the location of the initializer in the original input model.
+    # An implementation may choose to directly return the received `external_info` to use the same external weights.
+    def output_model_onnx_initializer_handler(
+        initializer_name: str,
+        initializer_value: ort.OrtValue,
+        external_info: ort.OrtExternalInitializerInfo | None,
+    ) -> ort.OrtExternalInitializerInfo | None:
+      byte_size = initializer_value.tensor_size_in_bytes()
+
+      if byte_size < 64:
+          return None  # Store small initializer within output model.
+
+      # Else, write the initializer to a new external file and return its location to ORT
+      value_np = initializer_value.numpy()
+      file_offset = output_initializer_fd.tell()
+      output_initializer_fd.write(value_np.tobytes())
+      return ort.OrtExternalInitializerInfo(output_initializer_file_path, file_offset, byte_size)
+
+    session_options = ort.SessionOptions()
+
+    # Set the EP to use in this session.
+    #
+    # Example for plugin EP:
+    #    ep_devices = ort.get_ep_devices()
+    #    selected_ep_device = next((ep_device for ep_device in ep_devices if ep_device.ep_name == "SomeEp"), None)
+    #
+    #    ep_options = {}
+    #    session_options.add_provider_for_devices([selected_ep_device], ep_options)
+    #
+    # Example for legacy "provider-bridge" EP:
+    #    ep_options = {}
+    #    session_options.add_provider("SomeEp", ep_options)
+
+    # Compile the model
+    model_compiler = ort.ModelCompiler(
+        session_options,
+        input_model_path,
+        embed_compiled_data_into_model=True,
+        get_initializer_location_func=output_model_onnx_initializer_handler,
+    )
+    model_compiler.compile_to_stream(output_model_write_func)
+
+assert os.path.exists(output_model_path) == True
+```
+
+The above snippet stores ONNX initializers for the output model into a new external file. To keep initializers in the same external file used in the original model,
+return the `external_info` argument from the `output_model_onnx_initializer_handler` function:
+
+```python
+    def output_model_onnx_initializer_handler(
+        initializer_name: str,
+        initializer_value: ort.OrtValue,
+        external_info: ort.OrtExternalInitializerInfo | None,
+    ) -> ort.OrtExternalInitializerInfo | None:
+      # The `external_info` argument denotes the location of the initializer in the original input model (if not None).
+      # Return it directly to use the same external initializer file.
+      return external_info
+
+# ...
+```
+
+#### References
+- [Additional Python usage examples in unit tests](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/python/onnxruntime_test_python_compile_api.py)
+- [Python ModelCompiler class](https://github.com/microsoft/onnxruntime/blob/a5ba2ba3998820dd8da111c90c420479aac7a11e/onnxruntime/python/onnxruntime_inference_collection.py#L680-L709)
+- [C++ API functions](https://github.com/microsoft/onnxruntime/blob/879ec0392ad5128968440a4e5b5a0bb742494ae5/include/onnxruntime/core/session/onnxruntime_cxx_api.h#L1617-L1623)
+- [C API functions](https://github.com/microsoft/onnxruntime/blob/879ec0392ad5128968440a4e5b5a0bb742494ae5/include/onnxruntime/core/session/onnxruntime_c_api.h#L7751-L7774)
+
+### Usage example: cross-compilation with a plugin EP
+By default, ONNX Runtime only allows the use of [plugin EPs](./plugin-ep-libraries.md) that are compatible with real hardware devices discovered by ONNX Runtime.
+To support the creation of compiled models targeted for hardware devices not present on the compiling machine (i.e., cross-compiling), a plugin EP may be allowed
+to create virtual hardware devices that an application can use to compile models.
+
+#### Application code
+An application grants a plugin EP library permission to create virtual hardware device by using a library registration name
+that ends in the ".virtual" suffix. A virtual hardware device created by an EP will have the metadata entry "is_virtual" set to "1".
+
+```python
+import onnxruntime as ort
+import onnxruntime_ep_contoso_ai as contoso_ep
+
+# An application uses a registration name that ends in ".virtual" to signal that virtual devices are allowed.
+ep_lib_registration_name = "contoso_ep_lib.virtual"
+ort.register_execution_provider_library(ep_lib_registration_name, contoso_ep.get_library_path())
+
+# Set the EP to use for compilation
+ep_name = contoso_ep.get_ep_names()[0]
+ep_devices = ort.get_ep_devices()
+selected_ep_device = next((ep_device for ep_device in ep_devices
+                           if ep_device.ep_name == ep_name and ep_device.device.metadata["is_virtual"] == "1"), None)
+assert selected_ep_device is not None, "Did not find ep device for target EP"
+
+ep_options = {}  # EP-specific options
+session_options = ort.SessionOptions()
+session_options.add_provider_for_devices([selected_ep_device], ep_options)
+
+# Compile the model
+model_compiler = ort.ModelCompiler(
+    session_options,
+    "input_model.onnx",
+    # ... other options ...
+)
+model_compiler.compile_to_file("output_model.onnx")
+
+# Unregister the library using the same registration name specified earlier.
+# Must only unregister a library after all `ModelCompiler` objects that use the library have been released.
+del model_compiler
+ort.unregister_execution_provider_library(ep_lib_registration_name)
+```
+
+#### Plugin EP library code
+A plugin EP library determines if the creation of virtual devices is allowed by checking if the "allow_virtual_devices" environment configuration entry
+is set to "1". The following snippet from a [reference EP implementation](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/autoep/library/example_plugin_ep_virt_gpu/ep_lib_entry.cc) shows how a plugin EP library could check environment configuration entries within the library's
+exported `CreateEpFactories` function.
+
+```c++
+#include "core/session/onnxruntime_env_config_keys.h"
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
+
+// other includes ..
+
+extern "C" {
+EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                                           const OrtLogger* default_logger,
+                                           OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
+  const OrtEpApi* ep_api = ort_api->GetEpApi();
+  const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
+
+  // Manual init for the C++ API
+  Ort::InitApi(ort_api);
+
+  if (max_factories < 1) {
+    return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Not enough space to return EP factory. Need at least one.");
+  }
+
+  Ort::KeyValuePairs env_configs = Ort::GetEnvConfigEntries();  // Wraps OrtEpApi::GetEnvConfigEntries()
+
+  // Extract a config that determines whether creating virtual hardware devices is allowed.
+  // An application can allow an EP library to create virtual devices in two ways:
+  //  1. Use an EP library registration name that ends in the suffix ".virtual". If so, ORT will automatically
+  //     set the config key "allow_virtual_devices" to "1" in the environment.
+  //  2. Directly set the config key "allow_virtual_devices" to "1" when creating the
+  //     OrtEnv via OrtApi::CreateEnvWithOptions().
+  const char* config_value = env_configs.GetValue(kOrtEnvAllowVirtualDevices);
+  const bool allow_virtual_devices = config_value != nullptr && strcmp(config_value, "1") == 0;
+
+  std::unique_ptr<OrtEpFactory> factory = std::make_unique<EpFactoryVirtualGpu>(*ort_api, *ep_api, *model_editor_api,
+                                                                                allow_virtual_devices, *default_logger);
+
+  factories[0] = factory.release();
+  *num_factories = 1;
+
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+// ...
+
+}  // extern "C"
+```
+
+An EP factory's `OrtEpFactory::GetSupportedDevices()` function may then use `OrtEpApi::CreateHardwareDevice()` to create a virtual hardware device.
+
+```c++
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+// Other includes ...
+
+/*static*/
+OrtStatus* ORT_API_CALL EpFactoryVirtualGpu::GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
+                                                                     const OrtHardwareDevice* const* /*devices*/,
+                                                                     size_t /*num_devices*/,
+                                                                     OrtEpDevice** ep_devices,
+                                                                     size_t max_ep_devices,
+                                                                     size_t* p_num_ep_devices) noexcept {
+  size_t& num_ep_devices = *p_num_ep_devices;
+  auto* factory = static_cast<EpFactoryVirtualGpu*>(this_ptr);
+
+  num_ep_devices = 0;
+
+  // Create a virtual OrtHardwareDevice if application indicated it is allowed (e.g., for cross-compiling).
+  // This example EP creates a virtual GPU OrtHardwareDevice and adds a new OrtEpDevice that uses the virtual GPU.
+  if (factory->allow_virtual_devices_ && num_ep_devices < max_ep_devices) {
+    // A virtual hardware device should have a metadata entry "is_virtual" set to "1".
+    OrtKeyValuePairs* hw_metadata = nullptr;
+    factory->ort_api_.CreateKeyValuePairs(&hw_metadata);
+    factory->ort_api_.AddKeyValuePair(hw_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
+
+    auto* status = factory->ep_api_.CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
+                                                         factory->vendor_id_,
+                                                         /*device_id*/ 0,
+                                                         factory->vendor_.c_str(),
+                                                         hw_metadata,
+                                                         &factory->virtual_hw_device_);
+    factory->ort_api_.ReleaseKeyValuePairs(hw_metadata);  // Release since ORT makes a copy.
+
+    if (status != nullptr) {
+      return status;
+    }
+
+    OrtKeyValuePairs* ep_metadata = nullptr;
+    OrtKeyValuePairs* ep_options = nullptr;
+    factory->ort_api_.CreateKeyValuePairs(&ep_metadata);
+    factory->ort_api_.CreateKeyValuePairs(&ep_options);
+
+    // made up example metadata values.
+    factory->ort_api_.AddKeyValuePair(ep_metadata, "some_metadata", "1");
+    factory->ort_api_.AddKeyValuePair(ep_options, "compile_optimization", "O3");
+
+    OrtEpDevice* virtual_ep_device = nullptr;
+    status = factory->ort_api_.GetEpApi()->CreateEpDevice(factory, factory->virtual_hw_device_, ep_metadata,
+                                                          ep_options, &virtual_ep_device);
+
+    factory->ort_api_.ReleaseKeyValuePairs(ep_metadata);
+    factory->ort_api_.ReleaseKeyValuePairs(ep_options);
+
+    if (status != nullptr) {
+      return status;
+    }
+
+    ep_devices[num_ep_devices++] = virtual_ep_device;
+  }
+
+  return nullptr;
+}
+```
+
+#### References
+- [Reference example plugin EP with virtual GPU](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/autoep/library/example_plugin_ep_virt_gpu)
+- [OrtEpApi::GetEnvConfigEntries C API function](https://github.com/microsoft/onnxruntime/blob/990ba5f0c3e0c8735fec8bf89dd11953224a9c03/include/onnxruntime/core/session/onnxruntime_ep_c_api.h#L1431-L1446)
+- [Ort::GetEnvConfigEntries C++ API function](https://github.com/microsoft/onnxruntime/blob/990ba5f0c3e0c8735fec8bf89dd11953224a9c03/include/onnxruntime/core/session/onnxruntime_cxx_api.h#L3531-L3532)
+- [Plugin EP library documentation](./plugin-ep-libraries.md)
+- [Additional Python usage examples in unit tests](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/python/onnxruntime_test_python_compile_api.py)
+- [Python ModelCompiler class](https://github.com/microsoft/onnxruntime/blob/a5ba2ba3998820dd8da111c90c420479aac7a11e/onnxruntime/python/onnxruntime_inference_collection.py#L680-L709)
+
+### Usage example: EPContext weight sharing with plugin EPs
+The compile API also supports [EPContext resource/weight sharing](./EP-Context-Design.md#epcontext-with-weight-sharing) with plugin EPs.
+
+```python
+import onnxruntime as ort
+import onnxruntime_ep_contoso_ai as contoso_ep
+
+ep_lib_registration_name = "contoso_ep_lib"
+ort.register_execution_provider_library(ep_lib_registration_name, contoso_ep.get_library_path())
+
+# The models that share resources
+input_models = ["input_model_0.onnx", "input_model_1.onnx"]
+output_models = ["output_model_0.onnx", "output_model_1.onnx"]
+
+# Set the EP to use for compilation
+ep_devices = ort.get_ep_devices()
+selected_ep_device = next((ep_device for ep_device in ep_devices if ep_device.ep_name == contoso_ep.get_ep_names()[0]), None)
+assert selected_ep_device is not None, "Did not find ep device for target EP"
+
+ep_options = {}  # EP-specific options
+session_options = ort.SessionOptions()
+session_options.add_provider_for_devices([selected_ep_device], ep_options)
+
+# Set option that tells EP to share resources (e.g., weights) across sessions.
+session_options.add_session_config_entry("ep.share_ep_contexts", "1")
+
+# Compile individual models
+for i in range(len(input_models)):
+    if i == num_models - 1:
+        # Tell EP that this is the last compiling session that will be sharing resources.
+        session_options.add_session_config_entry("ep.stop_share_ep_contexts", "1")
+
+    model_compiler = onnxrt.ModelCompiler(
+        session_options,
+        input_models[i],
+        # ... other options ...
+    )
+    model_compiler.compile_to_file(output_models[i])
+
+# Unregister the library using the same registration name specified earlier.
+# Must only unregister a library after all `ModelCompiler` objects that use the library have been released.
+ort.unregister_execution_provider_library(ep_lib_registration_name)
+```
+
+#### References
+- [Plugin EP library documentation](./plugin-ep-libraries.md)
+- [Additional Python usage examples in unit tests](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/python/onnxruntime_test_python_compile_api.py)
+- [Python ModelCompiler class](https://github.com/microsoft/onnxruntime/blob/a5ba2ba3998820dd8da111c90c420479aac7a11e/onnxruntime/python/onnxruntime_inference_collection.py#L680-L709)
