@@ -45,12 +45,7 @@ void DoNormalizeP2(
     StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
     auto norm = xVec.template lpNorm<2>();
-    if (norm != 0) {
-      yVec = xVec / norm;
-    } else {
-      // norm is zero, so set the result to zero
-      yVec.setZero();
-    }
+    yVec = xVec / norm;
   }
 };
 
@@ -67,12 +62,7 @@ void DoNormalizeP1(
     StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
     auto norm = xVec.template lpNorm<1>();
-    if (norm != 0) {
-      yVec = xVec / norm;
-    } else {
-      // norm is zero - set the result to zero
-      yVec.setZero();
-    }
+    yVec = xVec / norm;
   }
 };
 
