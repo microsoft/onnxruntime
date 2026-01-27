@@ -86,6 +86,21 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
     return ep_factory_.GetHardwareDeviceIncompatibilityDetails(&ep_factory_, hw, details);
   }
 
+  OrtStatus* ValidateCompiledModelCompatibilityInfo(
+      const OrtHardwareDevice* const* devices,
+      size_t num_devices,
+      const char* compatibility_info,
+      OrtCompiledModelCompatibility* model_compatibility) noexcept override {
+    // Forward to underlying factory if it supports validation
+    if (ep_factory_.ValidateCompiledModelCompatibilityInfo) {
+      return ep_factory_.ValidateCompiledModelCompatibilityInfo(
+          &ep_factory_, devices, num_devices, compatibility_info, model_compatibility);
+    }
+    // If not supported, return NOT_APPLICABLE
+    *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return nullptr;
+  }
+
   OrtEpFactory& ep_factory_;
   ProviderLibrary& provider_library_;
   std::optional<std::filesystem::path> library_path_;
