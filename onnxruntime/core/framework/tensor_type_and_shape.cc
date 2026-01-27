@@ -325,11 +325,21 @@ ORT_API_STATUS_IMPL(OrtApis::Value_GetTensorElementTypeAndShape, _In_ const OrtV
                                  "Output parameter `elem_type` must not be NULL");
   }
 
+  if (shape_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Output parameter `shape_data` must not be NULL");
+  }
+
+  if (shape_data_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Output parameter `shape_data_count` must not be NULL");
+  }
+
   gsl::span<const int64_t> shape_span;
   onnxruntime::MLDataType ml_data_type = nullptr;
   ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
 
-  if (v->IsTensor()) {
+  if (value->IsTensor()) {
     const Tensor& tensor = value->Get<onnxruntime::Tensor>();
     ml_data_type = tensor.DataType();
     shape_span = tensor.Shape().GetDims();
