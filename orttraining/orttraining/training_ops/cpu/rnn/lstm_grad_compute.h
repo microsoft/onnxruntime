@@ -25,6 +25,7 @@ class LSTMGradImpl {
   const int hidden_size_;
   const int input_size_;
   concurrency::ThreadPool* thread_pool_;
+  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config_;
   const AllocatorPtr allocator_;
   IAllocatorUniquePtr<T> grad_a_ptr_;
   gsl::span<T> grad_a_span_;
@@ -34,7 +35,6 @@ class LSTMGradImpl {
   gsl::span<T> grad_W_span_;
   IAllocatorUniquePtr<T> grad_R_ptr_;
   gsl::span<T> grad_R_span_;
-  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime::lstm
