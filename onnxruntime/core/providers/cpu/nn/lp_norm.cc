@@ -7,22 +7,14 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-#define REGISTER_LPNORMALISATION_VERSIONED_KERNEL(type, sinceVersion, endVersion)  \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
-      LpNormalization, sinceVersion, endVersion, type,                             \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
-      LpNorm<type>);
-
 #define REGISTER_LPNORMALISATION_KERNEL(type, sinceVersion)                        \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       LpNormalization, sinceVersion, type,                                         \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       LpNorm<type>);
 
-REGISTER_LPNORMALISATION_VERSIONED_KERNEL(float, 1, 21)
-REGISTER_LPNORMALISATION_VERSIONED_KERNEL(double, 1, 21)
-REGISTER_LPNORMALISATION_KERNEL(float, 22)
-REGISTER_LPNORMALISATION_KERNEL(double, 22)
+REGISTER_LPNORMALISATION_KERNEL(float, 1)
+REGISTER_LPNORMALISATION_KERNEL(double, 1)
 
 using InnerStride = Eigen::InnerStride<Eigen::Dynamic>;
 
@@ -45,7 +37,12 @@ void DoNormalizeP2(
     StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
     auto norm = xVec.template lpNorm<2>();
-    yVec = xVec / norm;
+    if (norm != 0) {
+      yVec = xVec / norm;
+    } else {
+      // norm is zero, so set the result to zero
+      yVec.setZero();
+    }
   }
 };
 
@@ -62,7 +59,12 @@ void DoNormalizeP1(
     StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
     auto norm = xVec.template lpNorm<1>();
-    yVec = xVec / norm;
+    if (norm != 0) {
+      yVec = xVec / norm;
+    } else {
+      // norm is zero - set the result to zero
+      yVec.setZero();
+    }
   }
 };
 
