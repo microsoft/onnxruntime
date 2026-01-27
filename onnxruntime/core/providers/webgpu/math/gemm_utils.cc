@@ -49,7 +49,7 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
     shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? bias->GetByOffset("colIn") : bias->GetByOffset("row")) << ");\n";
   }
   shader.AdditionalImplementation() << "    " << activation_snippet << "\n"
-                                    << output.SetByIndices("coords", "value") << "\n";
+                                    << "    " << output.SetByIndices("coords", "value") << "\n";
 }
 
 void HandleMatMulWithSplitK(
@@ -180,19 +180,19 @@ void MatMulWriteFnSource(ShaderHelper& shader,
                          const ShaderVariableHelper* bias,
                          bool is_gemm,
                          int c_components,
-                         int output_components,
                          bool c_is_scalar,
                          std::string activation_snippet,
                          bool is_channels_last,
                          bool use_split_k,
                          ProgramVariableDataType output_variable_type) {
+  const int output_components = output.NumComponents();
   shader.AdditionalImplementation()
-      << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) { \n";
+      << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) {\n";
 
   shader.AdditionalImplementation() << "  let col = colIn * " << output_components << ";\n";
 
-  shader.AdditionalImplementation() << "if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) { \n"
-                                    << "    var value = valueIn; \n";
+  shader.AdditionalImplementation() << "  if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) {\n"
+                                    << "    var value = valueIn;\n";
 
   if (use_split_k) {
     // Set output when MatMul is performed with Split-K.

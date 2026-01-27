@@ -20,6 +20,7 @@ import logging
 import os
 import shutil
 import tempfile
+import warnings
 from pathlib import Path
 
 import coloredlogs
@@ -569,6 +570,12 @@ def parse_arguments(argv: list[str] | None = None):
 
 
 def main(argv: list[str] | None = None):
+    warnings.warn(
+        "This example is deprecated. Use the Olive recipe instead: "
+        "https://github.com/microsoft/olive-recipes/tree/main",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     args = parse_arguments(argv)
 
     logger.info("Arguments: %s", str(args))
