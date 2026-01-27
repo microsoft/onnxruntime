@@ -24,7 +24,7 @@ class QnnModelWrapper;
 class LowPowerBlockQuantizedMatMulFusion : public IQnnNodeGroup {
  public:
   LowPowerBlockQuantizedMatMulFusion(const OrtNodeUnit& Scale_DQL_node_unit,
-                                     const OrtNodeUnit& W_QL_node_unit,
+                                     const OrtNodeUnit* W_QL_node_unit,
                                      const OrtNodeUnit& MatMul_node_unit);
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(LowPowerBlockQuantizedMatMulFusion);
 
@@ -43,6 +43,7 @@ class LowPowerBlockQuantizedMatMulFusion : public IQnnNodeGroup {
 
  private:
   std::array<const OrtNodeUnit*, 3> node_units_;
+  std::vector<const OrtNodeUnit*> filtered_node_units_;
 };
 
 }  // namespace qnn

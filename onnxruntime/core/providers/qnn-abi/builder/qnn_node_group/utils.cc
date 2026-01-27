@@ -252,5 +252,55 @@ const OrtNodeUnit* GetOnlyChildOfOutput(const QnnModelWrapper& /*qnn_model_wrapp
   return nullptr;
 }
 
+const OrtNodeUnit* GetParentOfInputByName(const QnnModelWrapper& /*qnn_model_wrapper*/,
+                                          const OrtNodeUnit& node_unit,
+                                          const std::string& input_name,
+                                          const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_unit_map,
+                                          const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
+  // Iterate through all nodes in the group
+  for (const OrtNode* node : node_unit.GetAllNodesInGroup()) {
+    // Check if this node has the input we're looking for
+    for (const Ort::ConstValueInfo& input_info : Ort::ConstNode(node).GetInputs()) {
+      if (input_info.GetName() != input_name) {
+        continue;
+      }
+
+      const Ort::ConstNode parent_node = input_info.GetProducerNode().node;
+
+      if (static_cast<const OrtNode*>(parent_node) == nullptr) {
+        // Node is not in this graph
+        return nullptr;
+      }
+
+      for (const Ort::ConstValueInfo& parent_output_info : parent_node.GetOutputs()) {
+        if (parent_output_info.IsGraphOutput()) {
+          // Node is producing a graph output
+          return nullptr;
+        }
+      }
+
+      const auto parent_node_unit_it = node_unit_map.find(parent_node);
+      if (parent_node_unit_it == node_unit_map.end()) {
+        return nullptr;
+      }
+      const OrtNodeUnit* p_parent_node_unit = parent_node_unit_it->second;
+
+      // Check if parent node has already been handled. Should not be the case if the calling
+      // fusion function has been called in topological order, but check to be safe.
+      if (qnn_node_group_map.count(p_parent_node_unit) != 0) {
+        return nullptr;
+      }
+
+      // parent must not already be part of a QDQ NodeUnit (i.e., be standalone).
+      if (p_parent_node_unit->UnitType() != OrtNodeUnit::Type::SingleNode) {
+        return nullptr;
+      }
+
+      return p_parent_node_unit;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

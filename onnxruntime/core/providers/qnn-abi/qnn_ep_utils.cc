@@ -1395,7 +1395,14 @@ bool OrtBatchNormalizationNodeGroupSelector::Check(const OrtGraph* graph, const 
                                                    const OrtNode* redundant_clip_node,
                                                    const std::vector<const OrtNode*>& dq_nodes,
                                                    const std::vector<const OrtNode*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, 3)) {
+  // BatchNormalization has 5 inputs: x, scale, bias, mean, var.
+  // Require DQ on x and scale (indices 0,1). mean, var may optionally have DQ.
+  const int num_dq_nodes = gsl::narrow_cast<int>(dq_nodes.size());
+  if (num_dq_nodes < 3 || num_dq_nodes > 5) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes, num_dq_nodes)) {
     return false;
   }
 
@@ -1505,6 +1512,22 @@ bool OrtScatterElementsNodeGroupSelector::Check(const OrtGraph* graph, const Ort
   }
 
   return true;
+}
+
+bool OrtRMSNormalizationNodeGroupSelector::Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
+                                                 const OrtNode* redundant_clip_node,
+                                                 const std::vector<const OrtNode*>& dq_nodes,
+                                                 const std::vector<const OrtNode*>& q_nodes) const {
+  if (!CheckQDQNodes(graph, ort_api, node, redundant_clip_node, dq_nodes, q_nodes)) {
+    return false;
+  }
+
+  int32_t dt_input = GetNodeIODataType(dq_nodes[0], ort_api, true, 0);
+  ;
+  int32_t dt_output = GetNodeIODataType(q_nodes[0], ort_api, false, 0);
+
+  // input and output need to be the same type.
+  return (dt_input == dt_output);
 }
 
 // Helper function to get QDQ selection for a node
@@ -1909,6 +1932,11 @@ void OrtSelectorManager::CreateSelectors() {
   OrtOpVersionsAndSelector::OpVersionsMap scatter_elements_ops = {
       {"ScatterElements", {}}};
   ort_selectors_.RegisterSelector(scatter_elements_ops, std::make_unique<OrtScatterElementsNodeGroupSelector>());
+
+  // Register rmsnormalization ops
+  OrtOpVersionsAndSelector::OpVersionsMap rmsnorm_ops = {
+      {"RMSNormalization", {}}};
+  ort_selectors_.RegisterSelector(rmsnorm_ops, std::make_unique<OrtRMSNormalizationNodeGroupSelector>());
 }
 
 void OrtSelectorManager::InitializeSelectorsMap() {

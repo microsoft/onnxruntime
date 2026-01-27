@@ -29,6 +29,7 @@
 #include "core/providers/qnn-abi/builder/op_builder_factory.h"
 #include "core/providers/qnn-abi/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
+#include "core/providers/qnn-abi/builder/qnn_htp_power_config_manager.h"
 #include "core/providers/qnn-abi/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn-abi/builder/qnn_profile_serializer.h"
 #include "core/providers/qnn-abi/ort_api.h"
@@ -151,6 +152,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         soc_model_(config.soc_model),
         op_packages_(config.op_packages),
         skip_qnn_version_check_(config.skip_qnn_version_check),
+        htp_power_config_manager_(power::HtpPowerConfigManager(logger)),
         api_ptrs_(api_ptrs),
         logger_(logger) {
   }
@@ -179,11 +181,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Ort::Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
-  Ort::Status SetHtpPowerConfig(uint32_t htp_power_config_client_id, HtpPerformanceMode htp_performance_mode);
-
-  Ort::Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
-                                 uint32_t rpc_control_latency,
-                                 uint32_t rpc_polling_time);
+  Ort::Status SetHtpPowerConfigs(uint32_t htp_power_config_client_id,
+                                 HtpPerformanceMode htp_performance_mode,
+                                 uint32_t rpc_polling_time,
+                                 uint32_t rpc_control_latency);
 
   Ort::Status SetPerThreadHtpPowerConfigs(const std::thread::id& thread_id, bool pre_run);
 
@@ -352,16 +353,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                       T** interface_provider);
 
   bool IsDevicePropertySupported();
-
-  template <typename T>
-  std::vector<std::add_pointer_t<std::add_const_t<T>>> ObtainNullTermPtrVector(const std::vector<T>& vec) {
-    std::vector<std::add_pointer_t<std::add_const_t<T>>> ret;
-    for (auto& elem : vec) {
-      ret.push_back(&elem);
-    }
-    ret.push_back(nullptr);
-    return ret;
-  }
 
   std::string GetBackendBuildId() {
     char* backend_build_id{nullptr};
@@ -534,6 +525,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
   const std::vector<OpPackage> op_packages_;
   bool skip_qnn_version_check_ = false;
+
+  power::HtpPowerConfigManager htp_power_config_manager_;
 
   // Mapping of thread id to on-run-start/end power configs
   std::mutex per_thread_power_configs_mutex_;

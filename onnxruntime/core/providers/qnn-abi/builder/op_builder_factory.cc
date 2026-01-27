@@ -51,7 +51,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Sum", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
-    CreateSimpleOpBuilder("Concat", *this);
+    CreateConcatOpBuilder("Concat", *this);
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
     CreateSimpleOpBuilder("DequantizeLinear", *this);
@@ -158,6 +158,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateLayerNormOpBuilder("LayerNormalization", *this);
+  }
+
+  {
+    CreateRMSNormOpBuilder("RMSNormalization", *this);
   }
 
   {

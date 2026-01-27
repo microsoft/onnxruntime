@@ -126,7 +126,9 @@ class QnnEp : public OrtEp, public ApiPtrs {
     QnnEp& ep;
   };
 
-  qnn::PerThreadHtpPowerConfigs_t GetPerThreadHtpPowerConfigs(const ::OrtRunOptions* run_options);
+  // Will return true if any power config options need to be updated
+  bool GetPerThreadHtpPowerConfigs(qnn::PerThreadHtpPowerConfigs_t& per_thread_htp_power_configs,
+                                   const ::OrtRunOptions* run_options);
 
   void CreateHtpPowerConfigId() const;
   // Will return false if htp_power_config_id_ has no value

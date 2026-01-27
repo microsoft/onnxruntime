@@ -21,7 +21,7 @@ namespace qnn {
 
 static Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                          const OrtNodeUnit& scale_dql_node_unit,
-                                         const OrtNodeUnit& w_ql_node_unit,
+                                         const OrtNodeUnit* w_ql_node_unit,
                                          const OrtNodeUnit& matmul_node_unit,
                                          const Ort::Logger& logger,
                                          bool validate);
@@ -46,24 +46,47 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedMatMulFusion::TryFusion(
                                                          matmul_node_unit.Inputs()[1],
                                                          node_to_node_unit,
                                                          node_unit_to_qnn_node_group);
-  if (p_w_ql_node_unit == nullptr || p_w_ql_node_unit->OpType() != "QuantizeLinear") {
-    return nullptr;
+  if (p_w_ql_node_unit != nullptr) {
+    // Check if input of QuantizeLinear is constant initializer
+    if (p_w_ql_node_unit->OpType() != "QuantizeLinear" ||
+        !qnn_model_wrapper.IsConstantInput(p_w_ql_node_unit->Inputs()[0].name)) {
+      return nullptr;
+    }
+  } else {
+    // Check if input 1 of MatMul is constant initializer
+    if (!qnn_model_wrapper.IsConstantInput(matmul_node_unit.Inputs()[1].name)) {
+      return nullptr;
+    }
   }
 
-  // Check if input of QuantizeLinear is constant initializer
-  if (!qnn_model_wrapper.IsConstantInput(p_w_ql_node_unit->Inputs()[0].name)) {
-    return nullptr;
-  }
-
-  // Get DequantizeLinear node unit contains per-block int scales and per-channel float scales
-  const std::array<std::string_view, 1> w_ql_parent_types = {"DequantizeLinear"};
-  const OrtNodeUnit* p_scale_dql_node_unit = GetParentOfType(qnn_model_wrapper,
-                                                             *p_w_ql_node_unit,
-                                                             w_ql_parent_types,
-                                                             node_to_node_unit,
-                                                             node_unit_to_qnn_node_group);
-  if (p_scale_dql_node_unit == nullptr) {
-    return nullptr;
+  const OrtNodeUnit* p_scale_dql_node_unit = nullptr;
+  if (p_w_ql_node_unit != nullptr) {
+    // Get DequantizeLinear node unit contains per-block int scales and per-channel float scales
+    const std::array<std::string_view, 1> w_ql_parent_types = {"DequantizeLinear"};
+    p_scale_dql_node_unit = GetParentOfType(qnn_model_wrapper,
+                                            *p_w_ql_node_unit,
+                                            w_ql_parent_types,
+                                            node_to_node_unit,
+                                            node_unit_to_qnn_node_group);
+    if (p_scale_dql_node_unit == nullptr) {
+      return nullptr;
+    }
+  } else {
+    // Get DequantizeLinear contains per-block int scales and per-channel float scales
+    // DequantizeLinear connects to scale (input 1) of DequantizeLinear node
+    const auto& mm_input_1 = matmul_node_unit.Inputs()[1];
+    if (!mm_input_1.quant_param.has_value() || mm_input_1.quant_param->scale == nullptr) {
+      return nullptr;
+    }
+    const std::string& scale_name = Ort::ConstValueInfo(mm_input_1.quant_param->scale).GetName();
+    p_scale_dql_node_unit = GetParentOfInputByName(qnn_model_wrapper,
+                                                   matmul_node_unit,
+                                                   scale_name,
+                                                   node_to_node_unit,
+                                                   node_unit_to_qnn_node_group);
+    if (p_scale_dql_node_unit == nullptr || p_scale_dql_node_unit->OpType() != "DequantizeLinear") {
+      return nullptr;
+    }
   }
 
   TensorInfo pc_scales_tensor_info = {};
@@ -77,7 +100,7 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedMatMulFusion::TryFusion(
 
   if (!CreateOrValidateOnQnn(qnn_model_wrapper,
                              *p_scale_dql_node_unit,
-                             *p_w_ql_node_unit,
+                             p_w_ql_node_unit,
                              matmul_node_unit,
                              logger,
                              true)
@@ -86,28 +109,35 @@ std::unique_ptr<IQnnNodeGroup> LowPowerBlockQuantizedMatMulFusion::TryFusion(
   }
 
   return std::make_unique<LowPowerBlockQuantizedMatMulFusion>(*p_scale_dql_node_unit,
-                                                              *p_w_ql_node_unit,
+                                                              p_w_ql_node_unit,
                                                               matmul_node_unit);
 }
 
 LowPowerBlockQuantizedMatMulFusion::LowPowerBlockQuantizedMatMulFusion(const OrtNodeUnit& Scale_DQL_node_unit,
-                                                                       const OrtNodeUnit& W_QL_node_unit,
+                                                                       const OrtNodeUnit* W_QL_node_unit,
                                                                        const OrtNodeUnit& MatMul_node_unit)
     : node_units_{&Scale_DQL_node_unit,
-                  &W_QL_node_unit,
+                  W_QL_node_unit,
                   &MatMul_node_unit} {
+  // Populate filtered_node_units_ immediately
+  for (size_t i = 0; i < node_units_.size(); ++i) {
+    if (node_units_[i] != nullptr) {
+      filtered_node_units_.push_back(node_units_[i]);
+    }
+  }
 }
 
 Ort::Status LowPowerBlockQuantizedMatMulFusion::IsSupported(QnnModelWrapper& qmw, const Ort::Logger& logger) const {
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], *node_units_[2], logger, true);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], node_units_[1], *node_units_[2], logger, true);
 }
 
 Ort::Status LowPowerBlockQuantizedMatMulFusion::AddToModelBuilder(QnnModelWrapper& qmw, const Ort::Logger& logger) const {
-  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], *node_units_[2], logger, false);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], node_units_[1], *node_units_[2], logger, false);
 }
 
 gsl::span<const OrtNodeUnit* const> LowPowerBlockQuantizedMatMulFusion::GetNodeUnits() const {
-  return node_units_;
+  return gsl::make_span(filtered_node_units_);
+  ;
 }
 
 const OrtNodeUnit* LowPowerBlockQuantizedMatMulFusion::GetTargetNodeUnit() const {
@@ -218,13 +248,12 @@ Ort::Status TwoDimensionTranspose(std::vector<uint8_t>& data,
 // Process LPBQWeight for ONNX MatMul that can be translated to either a QNN MatMul.
 Ort::Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
                               const OrtNodeUnit& scale_dql_node_unit,
-                              const OrtNodeUnit& w_ql_node_unit,
+                              const OrtNodeUnit* w_ql_node_unit,
                               const OrtNodeUnit& matmul_node_unit,
                               std::vector<std::string>& input_names,
                               const Ort::Logger& logger) {
   ORT_UNUSED_PARAMETER(logger);
   const OrtNodeUnitIODef& mm_input_1_def = matmul_node_unit.Inputs()[1];
-  const OrtNodeUnitIODef& w_ql_input_1_def = w_ql_node_unit.Inputs()[0];
 
   // get per_channel_float_scale value from Quant param of input[0] of DequantizeLinear
   std::vector<float> per_channel_float_scale;
@@ -255,70 +284,136 @@ Ort::Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
 
   // Extract weight datatype from zeropoint (aka offset) of Input1 Quant param
   bool is_int4_type = false;
-  if (mm_input_1_def.quant_param->zero_point != nullptr) {
+  if (mm_input_1_def.quant_param.has_value() && mm_input_1_def.quant_param->zero_point != nullptr) {
     ONNXTensorElementDataType elem_data_type;
     RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(mm_input_1_def.quant_param->zero_point, elem_data_type));
     is_int4_type = (elem_data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) ||
                    (elem_data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
   }
 
-  std::string weight_tensor_name = w_ql_input_1_def.name;
-  const OrtValueInfo* weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
   std::vector<uint32_t> weight_shape;
-  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(
-                    Ort::ConstValueInfo(weight_tensor_proto).TypeInfo().GetTensorTypeAndShapeInfo().GetShape(),
-                    weight_shape),
-                "Failed to get weight shape");
+  std::string weight_tensor_name;
+  QnnTensorWrapper weight_tensor;
 
-  // Get attributes like weight data axis, block_size from QuantizeLinear
-  OrtNodeAttrHelper helper(w_ql_node_unit.GetNode());
-  auto input_channel_axis = helper.Get("axis", static_cast<int64_t>(0));
-  if (input_channel_axis < 0) {
-    input_channel_axis = weight_shape.size() + input_channel_axis;  // QNN requires positive axis value
+  if (w_ql_node_unit != nullptr) {
+    const OrtNodeUnitIODef* w_ql_input_1_def_ptr = &w_ql_node_unit->Inputs()[0];
+    RETURN_IF_NOT(w_ql_input_1_def_ptr, "Failed to get Weight input");
+    weight_tensor_name = w_ql_input_1_def_ptr->name;
+    const OrtValueInfo* weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
+    RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(
+                      Ort::ConstValueInfo(weight_tensor_proto).TypeInfo().GetTensorTypeAndShapeInfo().GetShape(),
+                      weight_shape),
+                  "Failed to get weight shape");
+
+    // Get attributes like weight data axis, block_size from QuantizeLinear
+    OrtNodeAttrHelper helper(w_ql_node_unit->GetNode());
+    auto input_channel_axis = helper.Get("axis", static_cast<int64_t>(0));
+    if (input_channel_axis < 0) {
+      input_channel_axis = weight_shape.size() + input_channel_axis;  // QNN requires positive axis value
+    }
+    auto block_size = helper.Get("block_size", static_cast<int64_t>(0));
+
+    std::vector<uint8_t> unpacked_tensor;
+    // if input_channel_axis = 0, UnpackWeightTensorData will transpose and keep output_channel at 0
+    RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor, logger));
+
+    // Quantize weight tensor
+    size_t weight_elements = unpacked_tensor.size() / sizeof(float);
+    auto float_data = gsl::make_span<const float>(reinterpret_cast<const float*>(unpacked_tensor.data()), weight_elements);
+    std::vector<uint8_t> quant_data(weight_elements);
+
+    // weight_data_type = 4 but store in int8 buffer
+    size_t output_channel_axis = 0;  // MatMul requires axis to be rank-1
+    Qnn_DataType_t weight_data_type = is_int4_type ? QNN_DATATYPE_SFIXED_POINT_4 : QNN_DATATYPE_SFIXED_POINT_8;
+    RETURN_IF_ERROR(qnn::utils::LowPowerBlockQuantizeData(float_data,
+                                                          weight_shape,
+                                                          per_channel_float_scale,
+                                                          per_block_int_scale,
+                                                          weight_offset,
+                                                          quant_data,
+                                                          weight_data_type,
+                                                          output_channel_axis,
+                                                          block_scales_axis,
+                                                          block_size,
+                                                          block_scales_shape));
+
+    // MatMul w/ LPBQ requies MatMul(MxK, KxN) and axis = rank-1 (out channels)
+    // Transpose Weight to KxN, output_channel_axis is modified to rank-1;
+    if (input_channel_axis == 1) {
+      RETURN_IF_ERROR(TwoDimensionTranspose(quant_data, weight_shape, QNN_DATATYPE_SFIXED_POINT_8));
+      input_channel_axis = 0;
+      output_channel_axis = weight_shape.size() - 1;
+    }
+
+    // Construct Quant params for Weight
+    QnnQuantParamsWrapper weight_qparams;
+    weight_qparams = QnnQuantParamsWrapper(per_channel_float_scale, per_block_int_scale, weight_offset, output_channel_axis, block_size, is_int4_type);
+
+    // Get weight tensor type from input of w_dql_tensor or output_dql_tensor
+    Qnn_TensorType_t weight_tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
+    weight_tensor = QnnTensorWrapper(weight_tensor_name, weight_tensor_type, QNN_DATATYPE_SFIXED_POINT_8,
+                                     std::move(weight_qparams), std::move(weight_shape),
+                                     std::move(quant_data));
+  } else {
+    weight_tensor_name = mm_input_1_def.name;
+    const OrtValueInfo* weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
+    RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(
+                      Ort::ConstValueInfo(weight_tensor_proto).TypeInfo().GetTensorTypeAndShapeInfo().GetShape(),
+                      weight_shape),
+                  "Failed to get weight shape");
+
+    // Get DequantizeLinear node on Weight in MatMul node unit
+    const OrtNode* p_w_dql_node = nullptr;
+
+    for (const OrtNode* node : matmul_node_unit.GetAllNodesInGroup()) {
+      for (const Ort::ConstValueInfo& input_info : Ort::ConstNode(node).GetInputs()) {
+        if (input_info.GetName() == weight_tensor_name) {
+          p_w_dql_node = node;
+          break;
+        }
+      }
+
+      if (p_w_dql_node != nullptr) {
+        break;
+      }
+    }
+    RETURN_IF_NOT((p_w_dql_node != nullptr), "Failed to get Dequantize node on Weight");
+
+    // Get attributes like weight data axis, block_size from DequantizeLinear
+    OrtNodeAttrHelper helper(*p_w_dql_node);
+    auto input_channel_axis = helper.Get("axis", static_cast<int64_t>(0));
+    if (input_channel_axis < 0) {
+      input_channel_axis = weight_shape.size() + input_channel_axis;  // QNN requires positive axis value
+    }
+    auto block_size = helper.Get("block_size", static_cast<int64_t>(0));
+
+    // Check if the weight is a constant initializer
+    RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(weight_tensor_name), "Weight must be a constant initializer");
+
+    std::vector<uint8_t> quant_data;
+    // if input_channel_axis = 0, UnpackWeightTensorData will transpose and keep output_channel at 0
+    RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, quant_data, logger));
+
+    size_t output_channel_axis = 0;  // MatMul requires axis to be rank-1
+
+    // MatMul w/ LPBQ requires MatMul(MxK, KxN) and axis = rank-1 (out channels)
+    // Transpose Weight to KxN, output_channel_axis is modified to rank-1;
+    if (input_channel_axis == 1) {
+      RETURN_IF_ERROR(TwoDimensionTranspose(quant_data, weight_shape, QNN_DATATYPE_SFIXED_POINT_8));
+      input_channel_axis = 0;
+      output_channel_axis = weight_shape.size() - 1;
+    }
+
+    // Construct Quant params for Weight
+    QnnQuantParamsWrapper weight_qparams;
+    weight_qparams = QnnQuantParamsWrapper(per_channel_float_scale, per_block_int_scale, weight_offset, output_channel_axis, block_size, is_int4_type);
+
+    // Get weight tensor type from input of w_dql_tensor or output_dql_tensor
+    Qnn_TensorType_t weight_tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
+    weight_tensor = QnnTensorWrapper(weight_tensor_name, weight_tensor_type, QNN_DATATYPE_SFIXED_POINT_8,
+                                     std::move(weight_qparams), std::move(weight_shape),
+                                     std::move(quant_data));
   }
-  auto block_size = helper.Get("block_size", static_cast<int64_t>(0));
-
-  std::vector<uint8_t> unpacked_tensor;
-  // if input_channel_axis = 0, UnpackWeightTensorData will transpose and keep output_channel at 0
-  RETURN_IF_ERROR(UnpackWeightTensorData(qnn_model_wrapper, weight_tensor_proto, weight_shape, input_channel_axis, unpacked_tensor, logger));
-
-  // Quantize weight tensor
-  size_t weight_elements = unpacked_tensor.size() / sizeof(float);
-  auto float_data = gsl::make_span<const float>(reinterpret_cast<const float*>(unpacked_tensor.data()), weight_elements);
-  std::vector<uint8_t> quant_data(weight_elements);
-
-  // weight_data_type = 4 but store in int8 buffer
-  size_t output_channel_axis = 0;  // MatMul requires axis to be rank-1
-  Qnn_DataType_t weight_data_type = is_int4_type ? QNN_DATATYPE_SFIXED_POINT_4 : QNN_DATATYPE_SFIXED_POINT_8;
-  RETURN_IF_ERROR(qnn::utils::LowPowerBlockQuantizeData(float_data,
-                                                        weight_shape,
-                                                        per_channel_float_scale,
-                                                        per_block_int_scale,
-                                                        weight_offset,
-                                                        quant_data,
-                                                        weight_data_type,
-                                                        output_channel_axis,
-                                                        block_scales_axis,
-                                                        block_size,
-                                                        block_scales_shape));
-
-  // MatMul w/ LPBQ requies MatMul(MxK, KxN) and axis = rank-1 (out channels)
-  // Transpose Weight to KxN, output_channel_axis is modified to rank-1;
-  if (input_channel_axis == 1) {
-    RETURN_IF_ERROR(TwoDimensionTranspose(quant_data, weight_shape, QNN_DATATYPE_SFIXED_POINT_8));
-    input_channel_axis = 0;
-    output_channel_axis = weight_shape.size() - 1;
-  }
-
-  // Construct Quant params for Weight
-  QnnQuantParamsWrapper weight_qparams;
-  weight_qparams = QnnQuantParamsWrapper(per_channel_float_scale, per_block_int_scale, weight_offset, output_channel_axis, block_size, is_int4_type);
-
-  // Get weight tensor type from input of w_dql_tensor or output_dql_tensor
-  Qnn_TensorType_t weight_tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
-  QnnTensorWrapper weight_tensor(weight_tensor_name, weight_tensor_type, QNN_DATATYPE_SFIXED_POINT_8,
-                                 std::move(weight_qparams), std::move(weight_shape),
-                                 std::move(quant_data));
 
   RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(weight_tensor)), "Failed to add weight");
   input_names.emplace_back(weight_tensor_name);
@@ -328,13 +423,14 @@ Ort::Status ProcessLPBQWeight(QnnModelWrapper& qnn_model_wrapper,
 
 Ort::Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
                                   const OrtNodeUnit& scale_dql_node_unit,
-                                  const OrtNodeUnit& w_ql_node_unit,
+                                  const OrtNodeUnit* w_ql_node_unit,
                                   const OrtNodeUnit& matmul_node_unit,
                                   const Ort::Logger& logger,
                                   bool validate) {
-  assert(scale_dql_node_unit.OpType() == "DequantizeLinear" &&
-         w_ql_node_unit.OpType() == "QuantizeLinear" &&
-         matmul_node_unit.OpType() == "MatMul");
+  RETURN_IF_NOT((scale_dql_node_unit.OpType() == "DequantizeLinear") &&
+                    (!w_ql_node_unit || w_ql_node_unit->OpType() == "QuantizeLinear") &&
+                    (matmul_node_unit.OpType() == "MatMul"),
+                "Invalid Matmul LPBQ pattern identified");
 
   const auto& node_name = utils::GetUniqueName(matmul_node_unit);
 

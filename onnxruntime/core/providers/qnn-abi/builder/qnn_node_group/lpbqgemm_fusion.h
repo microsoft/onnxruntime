@@ -24,7 +24,7 @@ class QnnModelWrapper;
 class LowPowerBlockQuantizedGemmFusion : public IQnnNodeGroup {
  public:
   LowPowerBlockQuantizedGemmFusion(const OrtNodeUnit& Scale_DQL_node_unit,
-                                   const OrtNodeUnit& W_QL_node_unit,
+                                   const OrtNodeUnit* W_QL_node_unit,
                                    const OrtNodeUnit& W_DQL_node_unit,
                                    const OrtNodeUnit& Act_DQL_node_unit,
                                    const OrtNodeUnit& Gemm_node_unit,
@@ -46,6 +46,7 @@ class LowPowerBlockQuantizedGemmFusion : public IQnnNodeGroup {
 
  private:
   std::array<const OrtNodeUnit*, 6> node_units_;
+  std::vector<const OrtNodeUnit*> filtered_node_units_;
 };
 
 }  // namespace qnn

@@ -61,7 +61,7 @@ Ort::Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                             const Ort::Logger& logger,
                                             std::vector<std::string>& input_names,
                                             bool do_op_validation) const {
-  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  const bool is_qpu_backend = IsQpuBackend(qnn_model_wrapper.GetQnnBackendType());
   const auto& inputs = node_unit.Inputs();
   const std::string& input_name = inputs[0].name;
   assert(inputs.size() == 1);
@@ -109,9 +109,9 @@ Ort::Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                      is_graph_input,
                                                      false));
     input_names.push_back(reshape_output_name);
-  } else if (is_npu_backend && axis != static_cast<int32_t>(input_rank) - 1) {
+  } else if (is_qpu_backend && axis != static_cast<int32_t>(input_rank) - 1) {
     /*
-    For Onnx Softmax with opset >= 13, the QNN HTP backend only supports the axis attribute that refers to the last
+    For Onnx Softmax with opset >= 13, the QNN HTP and GPU backends only supports the axis attribute that refers to the last
     input dimension.
     QNN EP is able to support arbitrary axis attribute by wrapping transposes around the operator.
     */
@@ -153,7 +153,7 @@ Ort::Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
                                                           std::vector<std::string>&& input_names,
                                                           const Ort::Logger& logger,
                                                           bool do_op_validation) const {
-  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  const bool is_qpu_backend = IsQpuBackend(qnn_model_wrapper.GetQnnBackendType());
   const std::string& op_type = node_unit.OpType();
   const auto& outputs = node_unit.Outputs();
   const std::string& orig_output_name = outputs[0].name;
@@ -203,7 +203,7 @@ Ort::Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
                                                      do_op_validation,
                                                      false,
                                                      is_graph_output));
-  } else if (is_npu_backend && axis != static_cast<int32_t>(output_rank) - 1) {
+  } else if (is_qpu_backend && axis != static_cast<int32_t>(output_rank) - 1) {
     std::string transpose_input_name = utils::GetUniqueName(orig_output_name, "_transpose");
 
     std::vector<uint32_t> transpose_input_shape = output_info.shape;

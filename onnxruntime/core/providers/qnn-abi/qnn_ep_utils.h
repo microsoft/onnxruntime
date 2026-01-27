@@ -376,6 +376,16 @@ class OrtScatterElementsNodeGroupSelector : public OrtNodeGroupSelector {
              const std::vector<const OrtNode*>& q_nodes) const override;
 };
 
+// Input: DQ nodes for input, scale
+// Output: Q node for output
+class OrtRMSNormalizationNodeGroupSelector : public OrtNodeGroupSelector {
+ private:
+  bool Check(const OrtGraph* graph, const OrtApi& ort_api, const OrtNode* node,
+             const OrtNode* redundant_clip_node,
+             const std::vector<const OrtNode*>& dq_nodes,
+             const std::vector<const OrtNode*>& q_nodes) const override;
+};
+
 // SelectorManager for OrtGraph
 class OrtSelectorManager {
  public:
