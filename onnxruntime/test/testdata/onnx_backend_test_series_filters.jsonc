@@ -29,6 +29,8 @@
 
     // Tests that are failing temporarily and should be fixed
     "current_failing_tests": [
+        // TODO(titaiwang): onnx 1.21 should fix lpnorm zero norm issue
+        "^test_l2normalization*",  // LpNormalization(22) not implemented
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
