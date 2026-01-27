@@ -77,7 +77,7 @@ class Profiler {
   void EndTimeAndRecordEvent(EventCategory category,
                              const std::string& event_name,
                              const TimePoint& start_time,
-                             const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
+                             InlinedHashMap<std::string, std::string> event_args = {},
                              bool sync_gpu = false);
 
   /*

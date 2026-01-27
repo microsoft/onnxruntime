@@ -3,6 +3,8 @@
 
 #include "vitisai_profiler.h"
 
+#include "core/common/inlined_containers.h"
+
 namespace onnxruntime {
 namespace profiling {
 
@@ -20,7 +22,7 @@ void VitisaiProfiler::EndProfiling(TimePoint tp, Events& events) {
   std::vector<EventInfo> kernel_events;
   profiler_collect(api_events, kernel_events);
 
-  std::unordered_map<std::string, std::string> event_args;
+  InlinedHashMap<std::string, std::string> event_args;
 
   for (auto& a : api_events) {
     events.emplace_back(EventCategory::API_EVENT,

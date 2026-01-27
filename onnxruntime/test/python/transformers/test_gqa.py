@@ -22,11 +22,21 @@ from einops import rearrange, repeat
 from onnx import TensorProto, helper
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_build_info
+from onnxruntime import (
+    InferenceSession,
+    SessionOptions,
+    get_available_providers,
+    get_build_info,
+)
 
 # Set seed for reproducibility
 torch.manual_seed(0)
 random.seed(69)
+
+try:
+    from rotary_flash import apply_rotary_emb
+except ImportError:
+    apply_rotary_emb = None
 
 # Reduces number of tests to run for faster pipeline checks
 pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
@@ -34,9 +44,14 @@ pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 # Number of values per parameter (compared to pipeline mode)
 param_count = int(os.getenv("PARAM_COUNT", "3")) if not pipeline_mode else 2
 
-# When quick build is used, flash attention only supports fp16 and head_size=128
-quick_build = ", quick-build=1, " in get_build_info()
+# When quick build is used, flash attention only supports head_size=128
+quick_build = ", quick-build=" in get_build_info()
 
+enable_debug_print = quick_build
+
+enable_deterministic_check = True
+
+enable_quantized_kv_tests = True
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
@@ -50,6 +65,14 @@ ONNX_TENSOR_TYPE_MAP = {
     "int32": TensorProto.INT32,
     "int8": TensorProto.INT8,
     "int4": TensorProto.UINT8,
+}
+
+TORCH_DTYPE_TO_ONNX_MAP = {
+    torch.float32: TensorProto.FLOAT,
+    torch.float16: TensorProto.FLOAT16,
+    torch.bfloat16: TensorProto.BFLOAT16,
+    torch.int32: TensorProto.INT32,
+    torch.int8: TensorProto.INT8,
 }
 
 TORCH_DTYPE_MAP = {
@@ -156,8 +179,8 @@ class LlamaMSRotaryEmbedding(torch.nn.Module):
 
 # Triton-based implementation for CUDA
 def rotary_embedding_cuda(*args, **kwargs):
-    from rotary_flash import apply_rotary_emb  # noqa: PLC0415
-
+    if apply_rotary_emb is None:
+        raise ImportError("rotary_flash not found")
     return apply_rotary_emb(*args, **kwargs)
 
 
@@ -262,7 +285,10 @@ def create_gqa_node_and_io(
         helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
     ]
 
-    cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+    if isinstance(config.kv_cache_type, torch.dtype):
+        cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
+    else:
+        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
     if not config.packed:
         graph_input.extend(
@@ -431,12 +457,19 @@ def gqa_prompt_func(
         bind_tensor(io_binding, "key", new_k, device, ort_type)
         bind_tensor(io_binding, "value", new_v, device, ort_type)
 
-    # 3. Bind 'past_key', 'past_value' (if share_buffer and passed as k/v)
+    # 3. Bind 'past_key', 'past_value'
     if share_buffer:
         # cache_ort_type corresponds to config.kv_cache_type
-        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
-        bind_tensor(io_binding, "past_key", k, device, cache_ort_type)
-        bind_tensor(io_binding, "past_value", v, device, cache_ort_type)
+        if isinstance(config.kv_cache_type, torch.dtype):
+            cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
+        else:
+            cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+        k_to_bind = k if share_buffer else k[:, :, :0, :]
+        v_to_bind = v if share_buffer else v[:, :, :0, :]
+        bind_tensor(io_binding, "past_key", k_to_bind, device, cache_ort_type)
+        bind_tensor(io_binding, "past_value", v_to_bind, device, cache_ort_type)
+
+    # Scales are bound below in section 6
 
     # 4. Bind scalars/1D tensors
     # seqlens_k is INT32
@@ -487,8 +520,16 @@ def gqa_prompt_func(
     # Determine dtype for cache tensors
     cache_dtype = out_dtype
     cache_ort_type = ort_type
-    if config.kv_cache_type in ONNX_TENSOR_TYPE_MAP:
-        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+    if isinstance(config.kv_cache_type, torch.dtype):
+        is_valid_type = config.kv_cache_type in TORCH_DTYPE_TO_ONNX_MAP
+    else:
+        is_valid_type = config.kv_cache_type in ONNX_TENSOR_TYPE_MAP
+
+    if is_valid_type:
+        if isinstance(config.kv_cache_type, torch.dtype):
+            cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
+        else:
+            cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
     if share_buffer:
         # We bind output to the input buffer 'k' / 'v' (in-place update)
@@ -559,7 +600,10 @@ def gqa_past_func(
     # 3. Bind 'past_key', 'past_value'
     # These are required inputs for past_func
     # cache_ort_type corresponds to config.kv_cache_type
-    cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+    if isinstance(config.kv_cache_type, torch.dtype):
+        cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
+    else:
+        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
     if share_buffer:
         # If sharing buffer, we bind 'past_key' to the large buffer 'k'
@@ -615,14 +659,22 @@ def gqa_past_func(
     if share_buffer:
         present_seqlen = config.buffer_sequence_length
     else:
-        present_seqlen = total_seq_len
+        present_seqlen = total_seq_len  # For past_func, total seq len is accumulated
 
     present_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
 
     cache_dtype = out_dtype
     cache_ort_type = ort_type
-    if config.kv_cache_type in ONNX_TENSOR_TYPE_MAP:
-        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+    if isinstance(config.kv_cache_type, torch.dtype):
+        is_valid_type = config.kv_cache_type in TORCH_DTYPE_TO_ONNX_MAP
+    else:
+        is_valid_type = config.kv_cache_type in ONNX_TENSOR_TYPE_MAP
+
+    if is_valid_type:
+        if isinstance(config.kv_cache_type, torch.dtype):
+            cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
+        else:
+            cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
     if share_buffer:
         # In-place update to k/v buffers
@@ -754,9 +806,9 @@ def parity_check_gqa_prompt(
     causal,
     rtol,
     atol,
+    std=0.2,
 ):
     torch.manual_seed(0)
-    std = 0.02
     q = (
         torch.randn(
             config.batch_size,
@@ -873,24 +925,56 @@ def parity_check_gqa_prompt(
 
     # seqlens_k for GQA op is past_seq_len + seq_len - 1
     ort_seqlens = cache_seqlens - 1
-    out, present_k, present_v = gqa_prompt_func(
-        q=q_ort,
-        k=k_ort,
-        v=v_ort,
-        config=config,
-        new_k=new_k_ort,
-        new_v=new_v_ort,
-        cos=cos,
-        sin=sin,
-        seqlens_k=ort_seqlens,
-        position_ids=position_ids,
-        attention_bias=attention_bias,
-        head_sink=head_sink,
-        ep=ep,
-        device=device,
-        share_buffer=config.share_buffer,
-        ort_type=ort_type,
-    )
+    num_runs = 2 if enable_deterministic_check else 1
+    for i in range(num_runs):
+        out, present_k, present_v = gqa_prompt_func(
+            q=q_ort,
+            k=k_ort,
+            v=v_ort,
+            config=config,
+            new_k=new_k_ort,
+            new_v=new_v_ort,
+            cos=cos,
+            sin=sin,
+            seqlens_k=ort_seqlens,
+            position_ids=position_ids,
+            attention_bias=attention_bias,
+            head_sink=head_sink,
+            ep=ep,
+            device=device,
+            share_buffer=config.share_buffer,
+            ort_type=ort_type,
+        )
+        if i == 0:
+            first_out = out.clone()
+            first_present_k = present_k.clone() if present_k is not None else None
+            first_present_v = present_v.clone() if present_v is not None else None
+        else:
+            if present_k is not None:
+                try:
+                    torch.testing.assert_close(
+                        present_k, first_present_k, rtol=0, atol=0, msg="present_k mismatch between two runs"
+                    )
+                except AssertionError as e:
+                    print(e)
+                    raise e
+            if present_v is not None:
+                try:
+                    torch.testing.assert_close(
+                        present_v, first_present_v, rtol=0, atol=0, msg="present_v mismatch between two runs"
+                    )
+                except AssertionError as e:
+                    print(e)
+                    raise e
+            try:
+                torch.testing.assert_close(out, first_out, rtol=0, atol=0, msg="Output mismatch between two runs")
+            except AssertionError as e:
+                max_diff = (out - first_out).abs().max().item()
+                print(f"Output mismatch max diff: {max_diff}")
+                with open("/tmp/gqa_diff_info.txt", "w") as f:
+                    f.write(f"Max Diff: {max_diff}\n")
+                print(e)
+                raise e
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out_np = out.to(torch.float32).detach().cpu().numpy()
 
@@ -917,9 +1001,12 @@ def parity_check_gqa_prompt(
         k_cache_ref_np = k_cache_ref_np[:, :, : config.kv_sequence_length, :]
         v_cache_ref_np = v_cache_ref_np[:, :, : config.kv_sequence_length, :]
 
+    print_diff_statistics(torch.tensor(present_k_np - k_cache_ref_np), "present_k")
     numpy.testing.assert_allclose(present_k_np, k_cache_ref_np, rtol=rtol, atol=atol)
+    print_diff_statistics(torch.tensor(present_v_np - v_cache_ref_np), "present_v")
     numpy.testing.assert_allclose(present_v_np, v_cache_ref_np, rtol=rtol, atol=atol)
 
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
     numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
 
 
@@ -932,6 +1019,7 @@ def parity_check_gqa_past(
     causal,
     rtol,
     atol,
+    std=0.2,
 ):
     if ort_type == TensorProto.FLOAT16:
         torch_type = torch.float16
@@ -940,7 +1028,6 @@ def parity_check_gqa_past(
     else:
         torch_type = torch.float32
     torch.manual_seed(0)
-    std = 0.02
     # --- Test Data Generation ---
     q = (
         torch.randn(
@@ -966,10 +1053,10 @@ def parity_check_gqa_past(
     )
     v = torch.randn_like(k) * std
 
-    # Random past sequence lengths. This tests paddings in decoding.
+    # past cache sequence length is in [1, past_kv_sequence_length]
     cache_seqlens = torch.randint(
-        0,
-        config.past_kv_sequence_length - config.q_sequence_length + 1,
+        1,
+        config.past_kv_sequence_length + 1,
         (config.batch_size,),
         device=device,
         dtype=torch.long,
@@ -1056,26 +1143,49 @@ def parity_check_gqa_past(
         new_k_ort, new_v_ort = None, None
 
     ort_seqlens = cache_seqlens + config.q_sequence_length - 1
-    out, present_k, present_v = gqa_past_func(
-        q=q_ort,
-        k=k,
-        v=v,
-        config=config,
-        new_k=new_k_ort,
-        new_v=new_v_ort,
-        cos=cos,
-        sin=sin,
-        seqlens_k=ort_seqlens.int(),
-        position_ids=position_ids,
-        attention_bias=attention_bias,
-        head_sink=head_sink,
-        ep=ep,
-        device=device,
-        share_buffer=config.share_buffer,
-        ort_type=ort_type,
-    )
+    num_runs = 2 if enable_deterministic_check else 1
+    for i in range(num_runs):
+        out, present_k, present_v = gqa_past_func(
+            q=q_ort,
+            k=k,
+            v=v,
+            config=config,
+            new_k=new_k_ort,
+            new_v=new_v_ort,
+            cos=cos,
+            sin=sin,
+            seqlens_k=ort_seqlens.int(),
+            position_ids=position_ids,
+            attention_bias=attention_bias,
+            head_sink=head_sink,
+            ep=ep,
+            device=device,
+            share_buffer=config.share_buffer,
+            ort_type=ort_type,
+        )
+        if i == 0:
+            first_out = out.clone()
+            first_present_k = present_k.clone() if present_k is not None else None
+            first_present_v = present_v.clone() if present_v is not None else None
+        else:
+            torch.testing.assert_close(out, first_out, rtol=0, atol=0, msg="Output mismatch between two runs")
+            if present_k is not None:
+                torch.testing.assert_close(
+                    present_k, first_present_k, rtol=0, atol=0, msg="present_k mismatch between two runs"
+                )
+            if present_v is not None:
+                torch.testing.assert_close(
+                    present_v, first_present_v, rtol=0, atol=0, msg="present_v mismatch between two runs"
+                )
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out_np = out.to(torch.float32).detach().cpu().numpy()
+
+    if enable_debug_print:
+        print(f"[DEBUG] out_np non-zeros: {numpy.count_nonzero(out_np)} / {out_np.size}")
+        print(f"[DEBUG] out_ref_np non-zeros: {numpy.count_nonzero(out_ref_np)} / {out_ref_np.size}")
+
+    if numpy.count_nonzero(out_ref_np) > 0 and numpy.count_nonzero(out_np) == 0:
+        raise RuntimeError("Output is all zeros")
 
     # --- Comparison ---
     # Compare KV cache
@@ -1090,9 +1200,12 @@ def parity_check_gqa_past(
         k_cache_ref_np = k_cache_ref_np[:, :, :total_len, :]
         v_cache_ref_np = v_cache_ref_np[:, :, :total_len, :]
 
+    print_diff_statistics(torch.tensor(present_k_np - k_cache_ref_np), "present_k")
     numpy.testing.assert_allclose(present_k_np, k_cache_ref_np, rtol=rtol, atol=atol)
+    print_diff_statistics(torch.tensor(present_v_np - v_cache_ref_np), "present_v")
     numpy.testing.assert_allclose(present_v_np, v_cache_ref_np, rtol=rtol, atol=atol)
 
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
     numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
 
 
@@ -1241,6 +1354,51 @@ def parity_test_gqa_padding_prompt():
 
 
 # #################################################################################################
+#  Test Utilities
+# #################################################################################################
+
+
+def print_diff_statistics(diff_tensor: torch.Tensor, prefix: str = ""):
+    """
+    Print percentile statistics (75%, 95%, 99%) for a difference tensor.
+    This helps assess parity quality beyond just max difference.
+
+    Args:
+        diff_tensor: Tensor containing absolute differences between expected and actual outputs.
+        prefix: Optional prefix string for the output message.
+    """
+    if not enable_debug_print:
+        return
+
+    diff_flat = diff_tensor.flatten().float()
+    if diff_flat.numel() == 0:
+        print(f"{prefix}Diff statistics: empty tensor")
+        return
+
+    # Compute percentiles
+    sorted_diff, _ = torch.sort(diff_flat)
+    n = sorted_diff.numel()
+
+    p75_idx = min(int(n * 0.75), n - 1)
+    p90_idx = min(int(n * 0.90), n - 1)
+    p95_idx = min(int(n * 0.95), n - 1)
+    p99_idx = min(int(n * 0.99), n - 1)
+    p999_idx = min(int(n * 0.999), n - 1)
+
+    p75 = sorted_diff[p75_idx].item()
+    p90 = sorted_diff[p90_idx].item()
+    p95 = sorted_diff[p95_idx].item()
+    p99 = sorted_diff[p99_idx].item()
+    p999 = sorted_diff[p999_idx].item()
+    max_val = sorted_diff[-1].item()
+    mean_val = diff_flat.mean().item()
+
+    print(
+        f"{prefix} Diff stats - mean: {mean_val:.6f}, p75: {p75:.6f}, p90: {p90:.6f}, p95: {p95:.6f}, p99: {p99:.6f}, p999: {p999:.6f}, max: {max_val:.6f}"
+    )
+
+
+# #################################################################################################
 #  Test Case Generators
 # #################################################################################################
 
@@ -1260,11 +1418,11 @@ def get_softmax_options(allow_head_sink: bool = True):
     return options
 
 
-def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True):
+def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True, allow_local: bool = True):
     batches = [3, 1, 5]
     seqs = [(35, 35), (1, 1), (64, 64), (128, 128), (240, 240), (2000, 2000)]
     heads = [(6, 3), (3, 1), (32, 8)]
-    h_sizes = [128] if quick_build else [128, 32, 64, 256]
+    h_sizes = [128] if quick_build else [128, 32, 64, 80, 160, 256]
     smmoth_softmax__head_sink = get_softmax_options(allow_head_sink)
 
     rotary_opts = list(get_cuda_rotary_options())
@@ -1291,7 +1449,7 @@ def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True):
                     b = batches[combo_index % len(batches)]
                     sq, skv = seqs[combo_index % len(seqs)]
                     n, n2 = heads[combo_index % len(heads)]
-                    lws_opts = [-1, random.randint(1, skv)]
+                    lws_opts = [-1, random.randint(1, skv)] if allow_local else [-1]
                     lws = lws_opts[combo_index % len(lws_opts)]
                     softcap = softcap_opts[combo_index % len(softcap_opts)]
                     use_smooth_softmax, has_head_sink = smmoth_softmax__head_sink[
@@ -1327,19 +1485,21 @@ def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True):
                     yield name, config
 
 
-def gqa_cuda_past_test_cases(allow_head_sink: bool = True):
+def gqa_cuda_past_test_cases(
+    allow_head_sink: bool = True, allow_local: bool = True, enforce_share_buffer: bool = False
+):
     batches = [2, 1, 3]
-    # s: new sequence length, s2: past sequence length
+    # s: new sequence length, s2: past sequence length``
     seqs = [(1, 1), (1, 128), (1, 2048), (1, 5000)]
     subsequent_prompt_seqs = [(3, 256)]
     heads = [(32, 8), (6, 3), (9, 9)]
-    h_sizes = [128] if quick_build else [128, 40, 64, 256]
+    h_sizes = [128] if quick_build else [128, 40, 64, 80, 256]
     smmoth_softmax__head_sink = get_softmax_options(allow_head_sink)
 
     rotary_opts = list(get_cuda_rotary_options())
     packed_opts = [False, True]
     # For past test: pipeline tests share_buffer=True only, comprehensive tests both
-    share_buffer_opts = [True] if pipeline_mode else [True, False]
+    share_buffer_opts = [True] if pipeline_mode or enforce_share_buffer else [True, False]
     softcap_opts = [0.0, 50.0]
 
     # Use new strategy for both modes: iterate over key code path parameters
@@ -1367,7 +1527,7 @@ def gqa_cuda_past_test_cases(allow_head_sink: bool = True):
                         b = 1  # Force batch=1 for subsequent prompt
 
                     n, n2 = heads[combo_index % len(heads)]
-                    lws_opts = [-1, random.randint(1, s2)]
+                    lws_opts = [-1, random.randint(1, s2)] if allow_local else [-1]
                     lws = lws_opts[combo_index % len(lws_opts)]
                     softcap = softcap_opts[combo_index % len(softcap_opts)]
                     use_smooth_softmax, has_head_sink = smmoth_softmax__head_sink[
@@ -1419,9 +1579,7 @@ def has_cuda_device(min_capability: int = 80):
     return major * 10 + minor >= min_capability
 
 
-def has_flash_attention(bf16: bool = False):
-    if bf16 and quick_build:
-        return False
+def has_flash_attention():
     return has_cuda_device(80)
 
 
@@ -1460,7 +1618,7 @@ class TestFlashGQA(unittest.TestCase):
         )
 
 
-@unittest.skipIf(not has_flash_attention(bf16=True), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQABF16(unittest.TestCase):
     @parameterized.expand(gqa_cuda_prompt_test_cases())
     def test_gqa_prompt_flash_attention_bf16(self, name, config):
@@ -1561,101 +1719,9 @@ class TestMemoryEfficientGQAPaddingPrompt(unittest.TestCase):
         parity_test_gqa_padding_prompt()
 
 
-# #################################################################################################
-# Fused Kernel Parity Tests (ORT_DISABLE_FUSED_KV and ORT_DISABLE_FLASH_DECODE)
-# #################################################################################################
-
-
-def fused_kernel_test_cases():
-    """Test cases specifically for fused vs unfused kernel parity."""
-    configs = [
-        # Decoding with RoPE and shared buffer
-        GQAConfig(
-            batch_size=2,
-            q_sequence_length=1,
-            kv_sequence_length=1,
-            num_heads=16,
-            kv_num_heads=4,
-            head_size=128,
-            past_kv_sequence_length=128,
-            buffer_sequence_length=256,
-            rotary=True,
-            packed=False,
-            share_buffer=True,
-        ),
-        # Packed QKV decoding with RoPE
-        GQAConfig(
-            batch_size=2,
-            q_sequence_length=1,
-            kv_sequence_length=1,
-            num_heads=8,
-            kv_num_heads=2,
-            head_size=128,
-            past_kv_sequence_length=64,
-            buffer_sequence_length=128,
-            rotary=True,
-            packed=True,
-            share_buffer=True,
-        ),
-        # Subsequent prompt with RoPE
-        GQAConfig(
-            batch_size=1,
-            q_sequence_length=4,
-            kv_sequence_length=4,
-            num_heads=8,
-            kv_num_heads=4,
-            head_size=128,
-            past_kv_sequence_length=32,
-            buffer_sequence_length=64,
-            rotary=True,
-            packed=False,
-            share_buffer=True,
-        ),
-    ]
-    for i, config in enumerate(configs):
-        yield f"fused_config_{i}", config
-
-
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFusedKernelParity(unittest.TestCase):
     """Tests that verify fused kernels produce the same results as unfused kernels."""
-
-    @parameterized.expand(fused_kernel_test_cases())
-    def test_fused_kv_parity(self, name, config):
-        """Test ORT_DISABLE_FUSED_KV: fused vs unfused KV append kernels."""
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-
-        # Run with fused kernels (default)
-        if "ORT_DISABLE_FUSED_KV" in os.environ:
-            del os.environ["ORT_DISABLE_FUSED_KV"]
-
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
-
-        # Run with unfused kernels
-        os.environ["ORT_DISABLE_FUSED_KV"] = "1"
-
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
-
-        # Clean up
-        del os.environ["ORT_DISABLE_FUSED_KV"]
 
     def test_flash_decode_parity(self):
         """Test ORT_DISABLE_FLASH_DECODE: fast decode vs standard path."""
@@ -1707,6 +1773,50 @@ class TestFusedKernelParity(unittest.TestCase):
 
         # Clean up
         del os.environ["ORT_DISABLE_FLASH_DECODE"]
+
+
+class TestGQARegressions(unittest.TestCase):
+    """Specific regression tests for historical bugs."""
+
+    def test_gqa_rope_separate_qkv_bug(self):
+        """
+        Regression test for separate QKV + RoPE + FlashAttention bug.
+        The bug caused q_out to be nullptr when unpacking separate QKV with only Q rotation (standard GQA),
+        leading to unrotated Q being used in Attention.
+        """
+        if "CUDAExecutionProvider" not in get_available_providers():
+            self.skipTest("CUDA required")
+
+        # Config that triggers the path: Prompt phase, Separate QKV inputs, RoPE enabled
+        config = GQAConfig(
+            batch_size=1,
+            num_heads=4,
+            kv_num_heads=4,
+            head_size=128,
+            q_sequence_length=16,
+            kv_sequence_length=16,
+            past_kv_sequence_length=0,
+            buffer_sequence_length=16,
+            rotary=True,
+            rotary_interleaved=False,
+            share_buffer=True,
+        )
+
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        device = "cuda"
+
+        parity_check_gqa_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device=device,
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=1e-3,
+            atol=1e-3,
+            std=1.0,
+        )
 
 
 if __name__ == "__main__":
