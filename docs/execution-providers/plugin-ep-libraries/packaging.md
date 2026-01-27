@@ -125,9 +125,9 @@ ort.unregister_execution_provider_library(ep_registration_name)
 #### Package Naming
 NuGet packages may use a reserved ID prefix.
 
-The suggested package naming convention is "\<Vendor prefix\>.ML.OnnxRuntime.\<EP identifier\>.EP".
+The suggested package naming convention is "\<Vendor prefix\>.ML.OnnxRuntime.EP.\<EP identifier\>".
 
-For example, "Contoso.ML.OnnxRuntime.ContosoAI.EP".
+For example, "Contoso.ML.OnnxRuntime.EP.ContosoAI".
 
 #### Helper Functions
 The package should provide helper function `GetLibraryPath()` to get the EP library path.
