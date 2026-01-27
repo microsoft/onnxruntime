@@ -3,6 +3,7 @@
 
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
+#include "core/platform/env.h"
 #include <mutex>
 #include "core/util/thread_utils.h"
 #ifdef _WIN32
@@ -670,6 +671,202 @@ TEST(ThreadPoolTest, TestDefaultAffinity) {
   }
 }
 #endif
+#endif
+
+// Test for ThreadPoolWorkCallbacks - validates that callbacks are invoked
+// when work is scheduled to the thread pool.
+namespace {
+
+struct WorkCallbackTestContext {
+  std::atomic<int> enqueue_count{0};
+  std::atomic<int> start_count{0};
+  std::atomic<int> stop_count{0};
+
+  void Reset() {
+    enqueue_count = 0;
+    start_count = 0;
+    stop_count = 0;
+  }
+};
+
+void* TestOnEnqueue(void* user_context) {
+  auto* ctx = static_cast<WorkCallbackTestContext*>(user_context);
+  ctx->enqueue_count++;
+  return reinterpret_cast<void*>(static_cast<uintptr_t>(0xDEADBEEF));
+}
+
+void TestOnStart(void* user_context, void* callback_data) {
+  auto* ctx = static_cast<WorkCallbackTestContext*>(user_context);
+  ctx->start_count++;
+  EXPECT_EQ(callback_data, reinterpret_cast<void*>(static_cast<uintptr_t>(0xDEADBEEF)));
+}
+
+void TestOnStop(void* user_context, void* callback_data) {
+  auto* ctx = static_cast<WorkCallbackTestContext*>(user_context);
+  ctx->stop_count++;
+  EXPECT_EQ(callback_data, reinterpret_cast<void*>(static_cast<uintptr_t>(0xDEADBEEF)));
+}
+
+// Helper to create a thread pool with work callbacks and run a test
+void CreateThreadPoolWithCallbacksAndTest(
+    int num_threads,
+    WorkCallbackTestContext& ctx,
+    bool enable_start_stop,
+    const std::function<void(ThreadPool*)>& test_body) {
+  onnxruntime::ThreadPoolWorkCallbacks callbacks;
+  callbacks.on_enqueue = TestOnEnqueue;
+  callbacks.on_start_work = enable_start_stop ? TestOnStart : nullptr;
+  callbacks.on_stop_work = enable_start_stop ? TestOnStop : nullptr;
+  callbacks.user_context = &ctx;
+
+  onnxruntime::ThreadOptions thread_options;
+  thread_options.work_callbacks = &callbacks;
+
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         thread_options,
+                                         nullptr,
+                                         num_threads,
+                                         true);
+  test_body(tp.get());
+}
+
+}  // namespace
+
+TEST(ThreadPoolTest, TestWorkCallbacks_Schedule) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 100;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolWithCallbacksAndTest(4, ctx, true, [&](ThreadPool* tp) {
+    for (int i = 0; i < num_tasks; i++) {
+      ThreadPool::Schedule(tp, [&]() { tasks_completed++; });
+    }
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  ASSERT_EQ(ctx.enqueue_count.load(), num_tasks);
+  ASSERT_EQ(ctx.start_count.load(), num_tasks);
+  ASSERT_EQ(ctx.stop_count.load(), num_tasks);
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_OnEnqueueOnly) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 50;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolWithCallbacksAndTest(2, ctx, false, [&](ThreadPool* tp) {
+    for (int i = 0; i < num_tasks; i++) {
+      ThreadPool::Schedule(tp, [&]() { tasks_completed++; });
+    }
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  ASSERT_EQ(ctx.enqueue_count.load(), num_tasks);
+  ASSERT_EQ(ctx.start_count.load(), 0);  // Not set
+  ASSERT_EQ(ctx.stop_count.load(), 0);   // Not set
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_NoCallbacks) {
+  constexpr int num_tasks = 50;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolAndTest("NoCallbacks", 2, [&](ThreadPool* tp) {
+    for (int i = 0; i < num_tasks; i++) {
+      ThreadPool::Schedule(tp, [&]() { tasks_completed++; });
+    }
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_ParallelFor) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 100;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolWithCallbacksAndTest(4, ctx, true, [&](ThreadPool* tp) {
+    ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t) {
+      tasks_completed++;
+    });
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks);
+  // Worker threads get callbacks; main thread's fn(0) does not
+  ASSERT_GT(ctx.enqueue_count.load(), 0);
+  ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load());
+  ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
+}
+
+TEST(ThreadPoolTest, TestWorkCallbacks_ParallelSection) {
+  WorkCallbackTestContext ctx;
+  constexpr int num_tasks = 50;
+  constexpr int num_loops = 3;
+  std::atomic<int> tasks_completed{0};
+
+  CreateThreadPoolWithCallbacksAndTest(4, ctx, true, [&](ThreadPool* tp) {
+    ThreadPool::ParallelSection ps(tp);
+    for (int loop = 0; loop < num_loops; loop++) {
+      ThreadPool::TrySimpleParallelFor(tp, num_tasks, [&](std::ptrdiff_t) {
+        tasks_completed++;
+      });
+    }
+  });
+
+  ASSERT_EQ(tasks_completed.load(), num_tasks * num_loops);
+  ASSERT_GT(ctx.enqueue_count.load(), 0);
+  ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load());
+  ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
+}
+
+#ifdef _WIN32
+TEST(ThreadPoolTest, TestWorkCallbacks_ThreadPriority) {
+  struct PriorityTestContext {
+    std::atomic<int> enqueue_count{0};
+    std::atomic<int> priority_match_count{0};
+    int expected_priority = THREAD_PRIORITY_NORMAL;
+  };
+
+  auto on_enqueue = [](void* user_context) -> void* {
+    auto* ctx = static_cast<PriorityTestContext*>(user_context);
+    ctx->enqueue_count++;
+    return new int(GetThreadPriority(GetCurrentThread()));
+  };
+
+  auto on_start = [](void*, void* cb_data) {
+    if (cb_data) SetThreadPriority(GetCurrentThread(), *static_cast<int*>(cb_data));
+  };
+
+  auto on_stop = [](void*, void* cb_data) {
+    if (cb_data) {
+      delete static_cast<int*>(cb_data);
+      SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
+    }
+  };
+
+  PriorityTestContext ctx;
+  int original_priority = GetThreadPriority(GetCurrentThread());
+  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+  ctx.expected_priority = THREAD_PRIORITY_ABOVE_NORMAL;
+
+  onnxruntime::ThreadPoolWorkCallbacks callbacks{on_enqueue, on_start, on_stop, &ctx};
+  onnxruntime::ThreadOptions opts;
+  opts.work_callbacks = &callbacks;
+
+  constexpr int num_tasks = 20;
+  {
+    auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), opts, nullptr, 2, true);
+    for (int i = 0; i < num_tasks; i++) {
+      ThreadPool::Schedule(tp.get(), [&]() {
+        if (GetThreadPriority(GetCurrentThread()) == ctx.expected_priority)
+          ctx.priority_match_count++;
+      });
+    }
+  }
+
+  SetThreadPriority(GetCurrentThread(), original_priority);
+  ASSERT_EQ(ctx.enqueue_count.load(), num_tasks);
+  ASSERT_EQ(ctx.priority_match_count.load(), num_tasks);
+}
 #endif
 
 }  // namespace onnxruntime
