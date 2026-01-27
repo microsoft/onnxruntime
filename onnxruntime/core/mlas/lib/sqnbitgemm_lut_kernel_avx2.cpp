@@ -616,6 +616,19 @@ TMACComputeGemm_avx2(
         const float* lut_biases = reinterpret_cast<const float*>(LUT_Biases) +
                                   (k_outer * kfactor * g / act_group_size);
 
+        // DEBUG: Log iteration info and intermediate CBits stats before update
+        {
+            float cb_min = CBits[0], cb_max = CBits[0];
+            double cb_sum = 0.0;
+            for (int i = 0; i < bm; i++) {
+                cb_min = std::min(cb_min, CBits[i]);
+                cb_max = std::max(cb_max, CBits[i]);
+                cb_sum += CBits[i];
+            }
+            fprintf(stderr, "[LUT_KERNEL_DEBUG]   k_outer=%d: CBits before: min=%.6f, max=%.6f, sum=%.6f, lut_scale=%.6f, lut_bias=%.6f\\n",
+                    k_outer, cb_min, cb_max, cb_sum, lut_scales[0], lut_biases[0]);
+        }
+
         // Select appropriate kernel template based on configuration
         // For standard 2-bit, kfactor=16, BlkLen=64: actk = 64/4 = 16
         if (has_scale && kfactor == 16 && bits == 2 && actk == 16 && has_zero_point && !one_scale) {
@@ -661,6 +674,19 @@ TMACComputeGemm_avx2(
         } else {
             // No matching kernel template found
             MLAS_THROW_EX(std::runtime_error, "No matching kernel found for T-MAC GEMM");
+        }
+
+        // DEBUG: Log CBits stats after this k_outer iteration
+        {
+            float cb_min = CBits[0], cb_max = CBits[0];
+            double cb_sum = 0.0;
+            for (int i = 0; i < bm; i++) {
+                cb_min = std::min(cb_min, CBits[i]);
+                cb_max = std::max(cb_max, CBits[i]);
+                cb_sum += CBits[i];
+            }
+            fprintf(stderr, "[LUT_KERNEL_DEBUG]   k_outer=%d: CBits after:  min=%.6f, max=%.6f, sum=%.6f\\n",
+                    k_outer, cb_min, cb_max, cb_sum);
         }
     }
 
