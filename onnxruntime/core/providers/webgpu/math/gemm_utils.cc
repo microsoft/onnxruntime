@@ -132,7 +132,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         bool transpose) {
   const int components = input.NumComponents();
   const std::string data_type = "output_element_t";
-  const std::string type_string = MakeScalarOrVectorType(components, data_type);
+  std::string type_string = MakeScalarOrVectorType(a_components, data_type);
 
   shader.AdditionalImplementation()
       << "fn " << function_name << "(batch: i32, row: i32, colIn: i32 "
