@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 using namespace std;
@@ -136,12 +138,13 @@ void L1NormalizationWithZeroNorm() {
   test.AddAttribute("p", static_cast<int64_t>(1));
 
   // With default axis (axis = -1), one of the norms will be evaluated to zero
-  // for the following input
+  // for the following input. Per ONNX spec, 0/0 = NaN.
   vector<T> input = {2.f, 2.f, 0.f, 0.f};
   vector<int64_t> input_dims = {2, 2};
   test.AddInput<T>("input", input_dims, input);
 
-  vector<T> expected_output = {0.5f, 0.5f, 0.f, 0.f};
+  T nan_val = std::numeric_limits<T>::quiet_NaN();
+  vector<T> expected_output = {0.5f, 0.5f, nan_val, nan_val};
   test.AddOutput<T>("Y", input_dims, expected_output);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
@@ -156,12 +159,13 @@ void L2NormalizationWithZeroNorm() {
   OpTester test("LpNormalization");
 
   // With default axis (axis = -1), one of the norms will be evaluated to zero
-  // for the following input
+  // for the following input. Per ONNX spec, 0/0 = NaN.
   vector<T> input = {1.f, 0.f, 0.f, 0.f};
   vector<int64_t> input_dims = {2, 2};
   test.AddInput<T>("input", input_dims, input);
 
-  vector<T> expected_output = {1.f, 0.f, 0.f, 0.f};
+  T nan_val = std::numeric_limits<T>::quiet_NaN();
+  vector<T> expected_output = {1.f, 0.f, nan_val, nan_val};
   test.AddOutput<T>("Y", input_dims, expected_output);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
