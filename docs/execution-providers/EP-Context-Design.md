@@ -479,7 +479,7 @@ return the `external_info` argument from the `output_model_onnx_initializer_hand
 - [C API functions](https://github.com/microsoft/onnxruntime/blob/879ec0392ad5128968440a4e5b5a0bb742494ae5/include/onnxruntime/core/session/onnxruntime_c_api.h#L7751-L7774)
 
 ### Usage example: cross-compilation with a plugin EP
-By default, ONNX Runtime only allows the use of [plugin EPs](./plugin-ep-libraries.md) that are compatible with real hardware devices discovered by ONNX Runtime.
+By default, ONNX Runtime only allows the use of [plugin EPs](./plugin-ep-libraries/) that are compatible with real hardware devices discovered by ONNX Runtime.
 To support the creation of compiled models targeted for hardware devices not present on the compiling machine (i.e., cross-compiling), a plugin EP may be allowed
 to create virtual hardware devices that an application can use to compile models.
 
@@ -645,7 +645,7 @@ OrtStatus* ORT_API_CALL EpFactoryVirtualGpu::GetSupportedDevicesImpl(OrtEpFactor
 - [Reference example plugin EP with virtual GPU](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/autoep/library/example_plugin_ep_virt_gpu)
 - [OrtEpApi::GetEnvConfigEntries C API function](https://github.com/microsoft/onnxruntime/blob/990ba5f0c3e0c8735fec8bf89dd11953224a9c03/include/onnxruntime/core/session/onnxruntime_ep_c_api.h#L1431-L1446)
 - [Ort::GetEnvConfigEntries C++ API function](https://github.com/microsoft/onnxruntime/blob/990ba5f0c3e0c8735fec8bf89dd11953224a9c03/include/onnxruntime/core/session/onnxruntime_cxx_api.h#L3531-L3532)
-- [Plugin EP library documentation](./plugin-ep-libraries.md)
+- [Plugin EP library documentation](./plugin-ep-libraries/)
 - [Additional Python usage examples in unit tests](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/python/onnxruntime_test_python_compile_api.py)
 - [Python ModelCompiler class](https://github.com/microsoft/onnxruntime/blob/a5ba2ba3998820dd8da111c90c420479aac7a11e/onnxruntime/python/onnxruntime_inference_collection.py#L680-L709)
 
@@ -694,6 +694,6 @@ ort.unregister_execution_provider_library(ep_lib_registration_name)
 ```
 
 #### References
-- [Plugin EP library documentation](./plugin-ep-libraries.md)
+- [Plugin EP library documentation](./plugin-ep-libraries/)
 - [Additional Python usage examples in unit tests](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/python/onnxruntime_test_python_compile_api.py)
 - [Python ModelCompiler class](https://github.com/microsoft/onnxruntime/blob/a5ba2ba3998820dd8da111c90c420479aac7a11e/onnxruntime/python/onnxruntime_inference_collection.py#L680-L709)
