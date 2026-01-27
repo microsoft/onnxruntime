@@ -7217,6 +7217,29 @@ struct OrtApi {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
+
+  /** \brief Get the element data type and shape for an OrtValue that represents a Tensor (sparse or dense).
+   *
+   * \note Returns an error if the underlying OrtValue is not a Tensor.
+   *
+   * \note This function is an alternative to ::GetTensorTypeAndShape() that does not allocate a new array for
+   *       the shape data. The OrtValue instance's internal shape data is returned directly.
+   *
+   * \param[in] value The OrtValue instance.
+   * \param[out] elem_type Output parameter set to the tensor element data type.
+   * \param[out] shape_data Output parameter set to the OrtValue instance's internal shape data array.
+   *                        Must not be released as it is owned by the OrtValue instance. This data becomes invalid
+   *                        when the OrtValue is released.
+   * \param[out] shape_data_count Output parameter set to the number of elements in `shape_data`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(Value_GetTensorElementTypeAndShape, _In_ const OrtValue* value,
+                  _Out_ ONNXTensorElementDataType* elem_type,
+                  _Outptr_ const int64_t** shape_data,
+                  _Out_ size_t* shape_data_count);
 };
 
 /*

@@ -2233,6 +2233,17 @@ struct ConstValueImpl : Base<T> {
   const R* GetSparseTensorValues() const;
 
 #endif
+
+  /// <summary>
+  /// Wraps OrtApi::Value_GetTensorElementTypeAndShape. Returns the tensor's type and shape without allocating a new
+  /// buffer for the shape.
+  /// </summary>
+  /// <param name="elem_type"></param>
+  /// <param name="shape_data"></param>
+  /// <param name="shape_data_count"></param>
+  /// <returns></returns>
+  Ort::Status GetTensorElementTypeAndShape(ONNXTensorElementDataType& elem_type,
+                                           const int64_t*& shape_data, size_t& shape_data_count) const;
 };
 
 template <typename T>

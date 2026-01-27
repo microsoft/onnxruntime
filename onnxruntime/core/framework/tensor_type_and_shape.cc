@@ -310,6 +310,54 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
   return GetTensorShapeAndTypeHelper(type, shape, dim_params);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Value_GetTensorElementTypeAndShape, _In_ const OrtValue* value,
+                    _Out_ ONNXTensorElementDataType* elem_type,
+                    _Outptr_ const int64_t** shape_data,
+                    _Out_ size_t* shape_data_count) {
+  API_IMPL_BEGIN
+  if (!value->IsAllocated() || (!value->IsTensor() && !value->IsSparseTensor())) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "the ort_value must contain a constructed tensor or sparse tensor");
+  }
+
+  if (elem_type == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Output parameter `elem_type` must not be NULL");
+  }
+
+  gsl::span<const int64_t> shape_span;
+  onnxruntime::MLDataType ml_data_type = nullptr;
+  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+
+  if (v->IsTensor()) {
+    const Tensor& tensor = value->Get<onnxruntime::Tensor>();
+    ml_data_type = tensor.DataType();
+    shape_span = tensor.Shape().GetDims();
+  } else {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    const SparseTensor& tensor = value->Get<onnxruntime::SparseTensor>();
+    ml_data_type = tensor.DataType();
+    shape_span = tensor.DenseShape().GetDims();
+#else
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SparseTensor is not supported in this build.");
+#endif
+  }
+
+  if (ml_data_type != nullptr) {
+    type = MLDataTypeToOnnxRuntimeTensorElementDataType(ml_data_type);
+  }
+
+  if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Tensor does not have a valid or supported tensor element data type");
+  }
+
+  *elem_type = type;
+  *shape_data = shape_span.data();
+  *shape_data_count = shape_span.size();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape,
                     _In_ const OrtValue* v, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN

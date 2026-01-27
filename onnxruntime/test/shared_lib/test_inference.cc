@@ -33,6 +33,7 @@
 #include "test/shared_lib/custom_op_utils.h"
 #include "test/shared_lib/test_fixture.h"
 #include "test/shared_lib/utils.h"
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/providers.h"
 #include "test/util/include/test_allocator.h"
 
@@ -478,6 +479,27 @@ TEST(CApiTest, dim_param) {
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, ""), 0);
+}
+
+TEST(CApiTest, Value_GetTensorElementTypeAndShape) {
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  Ort::Value x_value = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+  Ort::TensorTypeAndShapeInfo type_shape_info = x_value.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  const int64_t* shape_data = nullptr;
+  size_t shape_data_count = 0;
+  ASSERT_ORTSTATUS_OK(x_value.GetTensorElementTypeAndShape(elem_type, shape_data, shape_data_count));
+
+  ASSERT_EQ(elem_type, type_shape_info.GetElementType());
+
+  std::vector<int64_t> expected_shape = type_shape_info.GetShape();
+  gsl::span<const int64_t> actual_shape(shape_data, shape_data_count);
+  ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
 }
 
 static std::pair<bool, bool> LoadAndGetInputShapePresent(const ORTCHAR_T* const model_url) {
