@@ -130,8 +130,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         std::string_view rows,
                         std::string_view components_per_row,
                         bool transpose,
-                        bool is_vec4) {
-  int components = is_vec4 ? 4 : 1;
+                        int components) {
   const std::string data_type = "output_element_t";
   const std::string type_string = MakeScalarOrVectorType(components, data_type);
 
@@ -171,8 +170,9 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         bool transA,
                         bool transB,
                         bool is_vec4) {
-  MatMulReadFnSource(shader, "mm_readA", a, "a", batch_dims, "uniforms.dim_a_outer", "uniforms.dim_inner", transA, is_vec4);
-  MatMulReadFnSource(shader, "mm_readB", b, "b", batch_dims, "uniforms.dim_inner", "uniforms.dim_b_outer", transB, is_vec4);
+  const int components = is_vec4 ? 4 : 1;
+  MatMulReadFnSource(shader, "mm_readA", a, "a", batch_dims, "uniforms.dim_a_outer", "uniforms.dim_inner", transA, components);
+  MatMulReadFnSource(shader, "mm_readB", b, "b", batch_dims, "uniforms.dim_inner", "uniforms.dim_b_outer", transB, components);
 }
 
 void MatMulWriteFnSource(ShaderHelper& shader,
