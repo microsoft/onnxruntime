@@ -51,46 +51,48 @@ void DoNormalizeP2(
       // norm is zero, so set the result to zero
       yVec.setZero();
     }
-  };
+  }
+};
 
-  template <typename T>
-  void DoNormalizeP1(
-      const T* xData,
-      T* yData,
-      const int64_t m,
-      const int64_t n,
-      const int64_t sf) {
-    for (int i = 0; i < n; ++i) {
-      auto base = (i / sf) * sf * m + (i % sf);
-      ConstStridedVec<T> xVec(xData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
-      StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
+template <typename T>
+void DoNormalizeP1(
+    const T* xData,
+    T* yData,
+    const int64_t m,
+    const int64_t n,
+    const int64_t sf) {
+  for (int i = 0; i < n; ++i) {
+    auto base = (i / sf) * sf * m + (i % sf);
+    ConstStridedVec<T> xVec(xData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
+    StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
-      auto norm = xVec.template lpNorm<1>();
-      if (norm != 0) {
-        yVec = xVec / norm;
-      } else {
-        // norm is zero, so set the result to zero
-        yVec.setZero();
-      }
-    };
-
-    template <typename T>
-    Status LpNorm<T>::Compute(OpKernelContext * p_op_kernel_context) const {
-      const auto* input = p_op_kernel_context->Input<Tensor>(0);
-      const TensorShape& input_shape = input->Shape();
-      Tensor* output = p_op_kernel_context->Output(0, input_shape);
-
-      const auto canonical_axis = HandleNegativeAxis(axis_, static_cast<int64_t>(input_shape.NumDimensions()));
-      const int64_t m = input_shape.GetDims()[onnxruntime::narrow<size_t>(canonical_axis)];
-      const int64_t n = input_shape.Size() / m;
-      const int64_t sf = input_shape.SizeFromDimension(SafeInt<size_t>(canonical_axis) + 1);
-
-      if (p_ == 1) {
-        DoNormalizeP1(input->Data<T>(), output->MutableData<T>(), m, n, sf);
-      } else if (p_ == 2) {
-        DoNormalizeP2(input->Data<T>(), output->MutableData<T>(), m, n, sf);
-      }
-
-      return Status::OK();
+    auto norm = xVec.template lpNorm<1>();
+    if (norm != 0) {
+      yVec = xVec / norm;
+    } else {
+      // norm is zero - set the result to zero
+      yVec.setZero();
     }
-  }  // namespace onnxruntime
+  }
+};
+
+template <typename T>
+Status LpNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
+  const auto* input = p_op_kernel_context->Input<Tensor>(0);
+  const TensorShape& input_shape = input->Shape();
+  Tensor* output = p_op_kernel_context->Output(0, input_shape);
+
+  const auto canonical_axis = HandleNegativeAxis(axis_, static_cast<int64_t>(input_shape.NumDimensions()));
+  const int64_t m = input_shape.GetDims()[onnxruntime::narrow<size_t>(canonical_axis)];
+  const int64_t n = input_shape.Size() / m;
+  const int64_t sf = input_shape.SizeFromDimension(SafeInt<size_t>(canonical_axis) + 1);
+
+  if (p_ == 1) {
+    DoNormalizeP1(input->Data<T>(), output->MutableData<T>(), m, n, sf);
+  } else if (p_ == 2) {
+    DoNormalizeP2(input->Data<T>(), output->MutableData<T>(), m, n, sf);
+  }
+
+  return Status::OK();
+}
+}  // namespace onnxruntime
