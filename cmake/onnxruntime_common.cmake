@@ -84,7 +84,8 @@ if (WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/device_discovery.cc")
 elseif (LINUX)
     list(APPEND onnxruntime_common_src_patterns
-         "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc")
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/wsl_device_discovery.cc")
 elseif (APPLE)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
@@ -128,6 +129,11 @@ if(WIN32)
     set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
   endif()
+endif()
+
+if(LINUX)
+    # For WSL device discovery
+    target_link_libraries(onnxruntime_common PRIVATE DirectX-Headers)
 endif()
 
 if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
