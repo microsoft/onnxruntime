@@ -20,7 +20,6 @@ Abstract:
 --*/
 
 #include <cstddef>
-#include <cstdio>
 #include <type_traits>
 #include <vector>
 // AVX2 intrinsics
@@ -192,11 +191,12 @@ void
 partial_max_g4_int8_k8(float* lut_scales, const float* b)
 {
     // TODO(vraspar): add support for arm neon
-    const __m256i vec_bi = _mm256_set_epi32(112, 96, 80, 64, 48, 32, 16, 0);
-    __m256 vec_b0 = _mm256_i32gather_ps(b + 0, vec_bi, 1);
-    __m256 vec_b1 = _mm256_i32gather_ps(b + 1, vec_bi, 1);
-    __m256 vec_b2 = _mm256_i32gather_ps(b + 2, vec_bi, 1);
-    __m256 vec_b3 = _mm256_i32gather_ps(b + 3, vec_bi, 1);
+    // Gather 8 groups of 4 contiguous values within a 32-element block
+    const __m256i vec_bi = _mm256_set_epi32(28, 24, 20, 16, 12, 8, 4, 0);
+    __m256 vec_b0 = _mm256_i32gather_ps(b + 0, vec_bi, 4);
+    __m256 vec_b1 = _mm256_i32gather_ps(b + 1, vec_bi, 4);
+    __m256 vec_b2 = _mm256_i32gather_ps(b + 2, vec_bi, 4);
+    __m256 vec_b3 = _mm256_i32gather_ps(b + 3, vec_bi, 4);
     const __m256 vec_sign = _mm256_set1_ps(-0.0f);
     __m256 vec_babs0 = _mm256_andnot_ps(vec_sign, vec_b0);
     __m256 vec_babs1 = _mm256_andnot_ps(vec_sign, vec_b1);
@@ -224,15 +224,16 @@ lut_ctor_g4_int8_impl(
 {
     __m256 vec_lut[16];
     float biases = 0.0;
-    const __m256i vec_bi = _mm256_set_epi32(112, 96, 80, 64, 48, 32, 16, 0);
+    // Gather 8 groups of 4 contiguous values within a 32-element block
+    const __m256i vec_bi = _mm256_set_epi32(28, 24, 20, 16, 12, 8, 4, 0);
     float scales = *lut_scales;
     float t_scales = scales ? 1.0f / scales : 0.0f;
 
     for (int k = 0; k < act_k / 32; ++k) {
-        __m256 vec_b0 = _mm256_i32gather_ps(b + k * 32 + 0, vec_bi, 1);
-        __m256 vec_b1 = _mm256_i32gather_ps(b + k * 32 + 1, vec_bi, 1);
-        __m256 vec_b2 = _mm256_i32gather_ps(b + k * 32 + 2, vec_bi, 1);
-        __m256 vec_b3 = _mm256_i32gather_ps(b + k * 32 + 3, vec_bi, 1);
+        __m256 vec_b0 = _mm256_i32gather_ps(b + k * 32 + 0, vec_bi, 4);
+        __m256 vec_b1 = _mm256_i32gather_ps(b + k * 32 + 1, vec_bi, 4);
+        __m256 vec_b2 = _mm256_i32gather_ps(b + k * 32 + 2, vec_bi, 4);
+        __m256 vec_b3 = _mm256_i32gather_ps(b + k * 32 + 3, vec_bi, 4);
 
         PRAGMA_UNROLL
         for (int g = 1; g < 16; g += 2) {
@@ -525,10 +526,6 @@ TMACComputeGemm_avx2(
     // get kernel config
     const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(M, K, 2, BlkLen, HasZeroPoint);
 
-    // DEBUG: Log kernel entry
-    fprintf(stderr, "[LUT_KERNEL_DEBUG] TMACComputeGemm_avx2: K=%d, M=%d, N=%d, BlkLen=%zu, HasZeroPoint=%d\\n",
-            K, M, N, BlkLen, HasZeroPoint ? 1 : 0);
-
     // ==================== CONFIGURATION ====================
     // Fixed parameters for this kernel implementation
     bool has_zero_point = tmac_params.has_zero_point;  // Whether weights have zero-points (interleaved with scales)
@@ -549,17 +546,6 @@ TMACComputeGemm_avx2(
     const int32_t bm = static_cast<int32_t>(tmac_params.bm);
     int32_t m = bm / bits;
 
-    // DEBUG: Log computed config values
-    fprintf(stderr, "[LUT_KERNEL_DEBUG]   bm=%d, m=%d, bits=%d, g=%d, kfactor=%d, actk=%d\\n",
-            bm, m, bits, g, kfactor, actk);
-    fprintf(stderr, "[LUT_KERNEL_DEBUG]   q_group_size=%d, act_group_size=%d, has_scale=%d, has_zp=%d, one_scale=%d\\n",
-            q_group_size, act_group_size, has_scale ? 1 : 0, has_zero_point ? 1 : 0, one_scale ? 1 : 0);
-
-    // Validate configuration
-    assert(bm % bits == 0);
-    assert(K % (kfactor * g) == 0);
-    assert(BlkLen % g == 0);
-
     // Validate configuration
     assert(bm % bits == 0);
     assert(K % (kfactor * g) == 0);
@@ -577,9 +563,6 @@ TMACComputeGemm_avx2(
     // ==================== CALCULATE LOOP PARAMETERS ====================
     const int32_t k_outer_max = K / (kfactor * g);
     const int32_t scale_gs = q_group_size / (kfactor * g);
-
-    // DEBUG: Log loop parameters
-    fprintf(stderr, "[LUT_KERNEL_DEBUG]   k_outer_max=%d, scale_gs=%d\\n", k_outer_max, scale_gs);
 
     // Calculate bit shift for scale indexing
     int32_t scale_idx_shfr = 0;
@@ -615,19 +598,6 @@ TMACComputeGemm_avx2(
                                   (k_outer * kfactor * g / act_group_size);
         const float* lut_biases = reinterpret_cast<const float*>(LUT_Biases) +
                                   (k_outer * kfactor * g / act_group_size);
-
-        // DEBUG: Log iteration info and intermediate CBits stats before update
-        {
-            float cb_min = CBits[0], cb_max = CBits[0];
-            double cb_sum = 0.0;
-            for (int i = 0; i < bm; i++) {
-                cb_min = std::min(cb_min, CBits[i]);
-                cb_max = std::max(cb_max, CBits[i]);
-                cb_sum += CBits[i];
-            }
-            fprintf(stderr, "[LUT_KERNEL_DEBUG]   k_outer=%d: CBits before: min=%.6f, max=%.6f, sum=%.6f, lut_scale=%.6f, lut_bias=%.6f\\n",
-                    k_outer, cb_min, cb_max, cb_sum, lut_scales[0], lut_biases[0]);
-        }
 
         // Select appropriate kernel template based on configuration
         // For standard 2-bit, kfactor=16, BlkLen=64: actk = 64/4 = 16
@@ -675,19 +645,6 @@ TMACComputeGemm_avx2(
             // No matching kernel template found
             MLAS_THROW_EX(std::runtime_error, "No matching kernel found for T-MAC GEMM");
         }
-
-        // DEBUG: Log CBits stats after this k_outer iteration
-        {
-            float cb_min = CBits[0], cb_max = CBits[0];
-            double cb_sum = 0.0;
-            for (int i = 0; i < bm; i++) {
-                cb_min = std::min(cb_min, CBits[i]);
-                cb_max = std::max(cb_max, CBits[i]);
-                cb_sum += CBits[i];
-            }
-            fprintf(stderr, "[LUT_KERNEL_DEBUG]   k_outer=%d: CBits after:  min=%.6f, max=%.6f, sum=%.6f\\n",
-                    k_outer, cb_min, cb_max, cb_sum);
-        }
     }
 
     // ==================== GATHER RESULTS ====================
@@ -695,25 +652,6 @@ TMACComputeGemm_avx2(
     // Only support 2-bit in this implementation
     // TODO(vraspar): extend to other bit-widths
     tbl_g4_int8_float_gather_bit2_impl(m, C_global, CBits, C);
-
-    // DEBUG: Log final output stats
-    {
-        float c_min = C[0], c_max = C[0];
-        double c_sum = 0.0;
-        for (int i = 0; i < m; i++) {
-            c_min = std::min(c_min, C[i]);
-            c_max = std::max(c_max, C[i]);
-            c_sum += C[i];
-        }
-        fprintf(stderr, "[LUT_KERNEL_DEBUG]   Kernel output C[%d]: min=%.6f, max=%.6f, sum=%.6f\\n",
-                m, c_min, c_max, c_sum);
-        // Print first 8 values
-        fprintf(stderr, "[LUT_KERNEL_DEBUG]   C[0..7]: ");
-        for (int i = 0; i < std::min(m, 8); i++) {
-            fprintf(stderr, "%.4f ", C[i]);
-        }
-        fprintf(stderr, "\\n");
-    }
 
     // ==================== CLEANUP ====================
     delete[] C_global;

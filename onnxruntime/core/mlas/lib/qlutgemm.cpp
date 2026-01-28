@@ -122,12 +122,6 @@ MlasInitLutGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size,
     params.has_zero_point = has_zero_point;
     params.one_scale = false;  // TODO(vraspar): support one scale case for bitnet
 
-    // DEBUG: Log kernel config initialization
-    fprintf(stderr, "[LUT_GEMM_DEBUG] MlasInitLutGemmKernelConfig: key=%s, M=%zu, N=%zu, nbits=%zu, block_size=%zu, has_zp=%d\\n",
-            key.c_str(), M, N, nbits, block_size, has_zero_point ? 1 : 0);
-    fprintf(stderr, "[LUT_GEMM_DEBUG]   threads=%zu, bm=%zu, kfactor=%zu, actk=%zu, act_group_size=%zu, n_tiles_num=%zu\\n",
-            threads, params.bm, params.kfactor, params.actk, params.act_group_size, params.n_tiles_num);
-
     tmac_kernel_configs[key] = params;
     return;
 }
@@ -504,10 +498,6 @@ MlasLutGemm(
     MLAS_THREADPOOL* threadpool
 )
 {
-    // DEBUG: Log entry
-    fprintf(stderr, "[LUT_GEMM_DEBUG] MlasLutGemm: M=%zu, N=%zu, K=%zu, BlkLen=%zu, HasZeroPoint=%d\\n",
-            M, N, K, BlkLen, HasZeroPoint ? 1 : 0);
-
     // adapted from ggml_backend_tmac_mul_mat
     const auto* Dispatch = GetMlasPlatform().LutGenKernel;
     // This should be ensured by calling MlasIsLutGemmAvailable() before MlasLutGemm()
@@ -546,44 +536,6 @@ MlasLutGemm(
     const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(N, K, 2, BlkLen, HasZeroPoint);
     const size_t lut_scales_size = K / tmac_params.act_group_size;
     size_t lut_buffer_size = CalculateLutBufferSize(N, K, M, tmac_params);
-
-    // DEBUG: Log kernel params and buffer sizes
-    fprintf(stderr, "[LUT_GEMM_DEBUG]   tmac_params: bm=%zu, kfactor=%zu, actk=%zu, act_group_size=%zu, n_tiles_num=%zu\\n",
-            tmac_params.bm, tmac_params.kfactor, tmac_params.actk, tmac_params.act_group_size, tmac_params.n_tiles_num);
-    fprintf(stderr, "[LUT_GEMM_DEBUG]   lut_scales_size=%zu, lut_buffer_size=%zu, scales_offset=%zu\\n",
-            lut_scales_size, lut_buffer_size, scales_offset);
-
-    // DEBUG: Check activation input statistics
-    {
-        const float* a_ptr = reinterpret_cast<const float*>(A);
-        float a_min = a_ptr[0], a_max = a_ptr[0];
-        double a_sum = 0.0;
-        for (size_t i = 0; i < M * K; i++) {
-            a_min = std::min(a_min, a_ptr[i]);
-            a_max = std::max(a_max, a_ptr[i]);
-            a_sum += a_ptr[i];
-        }
-        fprintf(stderr, "[LUT_GEMM_DEBUG]   Activation A[%zux%zu]: min=%.6f, max=%.6f, sum=%.6f, mean=%.6f\\n",
-                M, K, a_min, a_max, a_sum, a_sum / (M * K));
-    }
-
-    // DEBUG: Check weight scales statistics
-    {
-        const float* s_ptr = reinterpret_cast<const float*>(
-            static_cast<const std::byte*>(PackedBuf) + scales_offset
-        );
-        size_t num_scales = N * K / BlkLen;
-        if (HasZeroPoint) num_scales *= 2;  // scales + zero points interleaved
-        float s_min = s_ptr[0], s_max = s_ptr[0];
-        double s_sum = 0.0;
-        for (size_t i = 0; i < num_scales; i++) {
-            s_min = std::min(s_min, s_ptr[i]);
-            s_max = std::max(s_max, s_ptr[i]);
-            s_sum += s_ptr[i];
-        }
-        fprintf(stderr, "[LUT_GEMM_DEBUG]   Scales[%zu]: min=%.6f, max=%.6f, sum=%.6f\\n",
-                num_scales, s_min, s_max, s_sum);
-    }
 
     // make buffer of lut_buffer_size bytes
     // TODO(vraspar): other way to do it
@@ -732,33 +684,4 @@ MlasLutGemm(
             }
         }
     );
-
-    // DEBUG: Log output statistics
-    {
-        float* out_ptr = reinterpret_cast<float*>(C);
-        float out_min = out_ptr[0], out_max = out_ptr[0];
-        double out_sum = 0.0;
-        size_t out_size = M * N;
-        for (size_t i = 0; i < out_size; i++) {
-            out_min = std::min(out_min, out_ptr[i]);
-            out_max = std::max(out_max, out_ptr[i]);
-            out_sum += out_ptr[i];
-        }
-        fprintf(stderr, "[LUT_GEMM_DEBUG]   Output C[%zux%zu]: min=%.6f, max=%.6f, sum=%.6f, mean=%.6f\\n",
-                M, N, out_min, out_max, out_sum, out_sum / out_size);
-        // Print first few and last few output values
-        fprintf(stderr, "[LUT_GEMM_DEBUG]   Output[0..7]: ");
-        for (size_t i = 0; i < std::min(out_size, (size_t)8); i++) {
-            fprintf(stderr, "%.4f ", out_ptr[i]);
-        }
-        fprintf(stderr, "\\n");
-        if (out_size > 8) {
-            fprintf(stderr, "[LUT_GEMM_DEBUG]   Output[%zu..%zu]: ", out_size - 8, out_size - 1);
-            for (size_t i = out_size - 8; i < out_size; i++) {
-                fprintf(stderr, "%.4f ", out_ptr[i]);
-            }
-            fprintf(stderr, "\\n");
-        }
-    }
-    fprintf(stderr, "[LUT_GEMM_DEBUG] MlasLutGemm completed\\n");
 }
