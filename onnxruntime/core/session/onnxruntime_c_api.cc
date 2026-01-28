@@ -4802,6 +4802,8 @@ static constexpr OrtApi ort_api_1_to_24 = {
     &OrtApis::EpAssignedNode_GetDomain,
     &OrtApis::EpAssignedNode_GetOperatorType,
     &OrtApis::RunOptionsSetSyncStream,
+    &OrtApis::GetTensorElementTypeAndShapeDataReference,
+    // End of Version 24 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4838,6 +4840,7 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
+static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.24.0",
