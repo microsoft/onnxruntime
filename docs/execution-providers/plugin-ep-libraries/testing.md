@@ -56,7 +56,9 @@ Here is an example value for `ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON`:
 
 `selected_ep_name` should be set to the plugin EP's name. All available `OrtEpDevice`s (returned by [`OrtApi::GetEpDevices()`](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a52107386ff1be870f55a0140e6add8dd)) matching that EP name will be used.
 
-As an alternative to `selected_ep_name`, `selected_ep_device_indices` may be set to a list of integers representing the indices into the available `OrtEpDevice`s list. This requires knowing about what `OrtEpDevice`s are available.
+As an alternative to `selected_ep_name`, `selected_ep_device_indices` may be set to a list of integers representing the indices into the available `OrtEpDevice`s list. This requires knowing what `OrtEpDevice`s are available.
+The available `OrtEpDevices` can be obtained with [`OrtApi::GetEpDevices()`](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a52107386ff1be870f55a0140e6add8dd).
+The `onnxruntime_perf_test` tool also provides the [`--list_ep_devices`](https://github.com/microsoft/onnxruntime/blob/f83d4d06e4283d53a10c54ce84da3455cfb4e21d/onnxruntime/test/perftest/command_args_parser.cc#L195) option, which may be used in conjunction with the [`--plugin_ep_libs`](https://github.com/microsoft/onnxruntime/blob/f83d4d06e4283d53a10c54ce84da3455cfb4e21d/onnxruntime/test/perftest/command_args_parser.cc#L186-L188) option to display them.
 
 Optionally, `default_ep_options` may be set to specify EP-specific options as string key value pairs.
 
