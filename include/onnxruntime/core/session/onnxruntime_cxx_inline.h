@@ -500,6 +500,14 @@ inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustom
   return *this;
 }
 
+inline ThreadingOptions& ThreadingOptions::SetGlobalWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
+                                                                   OrtThreadPoolWorkStartFn on_start,
+                                                                   OrtThreadPoolWorkStopFn on_stop,
+                                                                   void* user_context) {
+  ThrowOnError(GetApi().SetGlobalWorkCallbacks(p_, on_enqueue, on_start, on_stop, user_context));
+  return *this;
+}
+
 inline TensorRTProviderOptions::TensorRTProviderOptions() {
   ThrowOnError(GetApi().CreateTensorRTProviderOptions(&this->p_));
 }

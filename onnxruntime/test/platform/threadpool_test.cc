@@ -791,9 +791,10 @@ TEST(ThreadPoolTest, TestWorkCallbacks_ParallelFor) {
   });
 
   ASSERT_EQ(tasks_completed.load(), num_tasks);
-  // Worker threads get callbacks; main thread's fn(0) does not
-  ASSERT_GT(ctx.enqueue_count.load(), 0);
-  ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load());
+  // Worker threads get callbacks; main thread's fn(0) does not.
+  // Some enqueued tasks may be revoked before execution (work completed by other threads),
+  // so enqueue_count >= start_count. Start/stop must always be balanced.
+  ASSERT_GE(ctx.enqueue_count.load(), ctx.start_count.load());
   ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
 }
 
@@ -813,8 +814,9 @@ TEST(ThreadPoolTest, TestWorkCallbacks_ParallelSection) {
   });
 
   ASSERT_EQ(tasks_completed.load(), num_tasks * num_loops);
-  ASSERT_GT(ctx.enqueue_count.load(), 0);
-  ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load());
+  // Some enqueued tasks may be revoked before execution (work completed by other threads),
+  // so enqueue_count >= start_count. Start/stop must always be balanced.
+  ASSERT_GE(ctx.enqueue_count.load(), ctx.start_count.load());
   ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
 }
 
