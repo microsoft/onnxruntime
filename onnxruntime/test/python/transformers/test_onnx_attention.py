@@ -74,6 +74,7 @@ TORCH_DTYPE_MAP = {
     "int4": torch.uint8,
 }
 
+
 @dataclass
 class AttentionConfig:
     batch_size: int
@@ -175,7 +176,9 @@ def create_attention_node_and_io(
     graph_input = [
         helper.make_tensor_value_info("query", ort_type, [config.batch_size, config.q_sequence_length, q_hidden_size]),
         helper.make_tensor_value_info("key", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]),
-        helper.make_tensor_value_info("value", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]),
+        helper.make_tensor_value_info(
+            "value", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
+        ),
     ]
 
     if isinstance(config.kv_cache_type, torch.dtype):
@@ -189,9 +192,7 @@ def create_attention_node_and_io(
     if config.has_attn_mask:
         mask_seq_len = present_kv_seqlen
         graph_input.append(
-            helper.make_tensor_value_info(
-                "attn_mask", TensorProto.BOOL, [config.batch_size, mask_seq_len]
-            )
+            helper.make_tensor_value_info("attn_mask", TensorProto.BOOL, [config.batch_size, mask_seq_len])
         )
 
     # past_key and past_value for ONNX Attention op
