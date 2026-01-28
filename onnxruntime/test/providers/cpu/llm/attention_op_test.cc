@@ -925,7 +925,7 @@ TEST(AttentionTest, Attention3DGqaSelfAttnCausal) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            true, false, true  // disable_cpu, disable_cuda, disable_dml
+            true, false, true  // disable_cpu, disable_cuda, disable_dml (GQA with flash attention only works on CUDA)
   );
 }
 
@@ -959,7 +959,7 @@ TEST(AttentionTest, Attention4DGqaAttnMask) {
 
   RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, m, std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
-            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
             false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
@@ -1007,7 +1007,7 @@ TEST(AttentionTest, Attention4DGqaWithPastAndPresent) {
 
   RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, m, std::initializer_list<bool>(), past_key, past_value,
-            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, std::vector<float>(),
             false, true, true  // disable_cpu, disable_cuda, disable_dml
   );
