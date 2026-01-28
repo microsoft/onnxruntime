@@ -551,6 +551,11 @@ TMACComputeGemm_avx2(
     assert(K % (kfactor * g) == 0);
     assert(BlkLen % g == 0);
 
+    // Validate configuration
+    assert(bm % bits == 0);
+    assert(K % (kfactor * g) == 0);
+    assert(BlkLen % g == 0);
+
     // ==================== ALLOCATE BUFFERS ====================
     // Use float for now (can be changed to _Float16 if needed)
 

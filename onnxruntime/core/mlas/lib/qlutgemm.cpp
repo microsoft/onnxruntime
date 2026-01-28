@@ -21,7 +21,6 @@ Abstract:
 #include "qlutgemm.h"
 
 #include <cassert>
-#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
