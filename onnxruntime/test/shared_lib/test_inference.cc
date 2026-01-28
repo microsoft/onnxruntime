@@ -480,6 +480,7 @@ TEST(CApiTest, dim_param) {
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a dense OrtValue tensor.
 TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_DenseTensor) {
   Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
 
@@ -500,7 +501,31 @@ TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_DenseTensor) {
   ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
 }
 
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a scalar OrtValue tensor.
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_Scalar) {
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+
+  std::vector<int64_t> x_shape = {};  // Scalar (no shape)
+  std::array<float, 1> x_values = {1.0f};
+  Ort::Value x_value = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+  Ort::TensorTypeAndShapeInfo type_shape_info = x_value.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  Ort::Value::Shape shape{};
+  x_value.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
+
+  ASSERT_EQ(elem_type, type_shape_info.GetElementType());
+
+  std::vector<int64_t> expected_shape = type_shape_info.GetShape();
+  gsl::span<const int64_t> actual_shape(shape.shape, shape.shape_len);
+  ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
+  ASSERT_EQ(shape.shape, nullptr);
+  ASSERT_EQ(shape.shape_len, 0);
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a sparse OrtValue tensor.
 TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_SparseTensor) {
   std::vector<int64_t> common_shape{9, 9};
   std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
