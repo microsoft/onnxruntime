@@ -2388,11 +2388,9 @@ inline const R* ConstValueImpl<T>::GetSparseTensorValues() const {
 #endif
 
 template <typename T>
-Ort::Status ConstValueImpl<T>::GetTensorElementTypeAndShape(ONNXTensorElementDataType& elem_type,
-                                                            const int64_t*& shape_data,
-                                                            size_t& shape_data_count) const {
-  Ort::Status status{GetApi().Value_GetTensorElementTypeAndShape(this->p_, &elem_type, &shape_data, &shape_data_count)};
-  return status;
+void ConstValueImpl<T>::GetTensorElementTypeAndShape(ONNXTensorElementDataType& elem_type,
+                                                     Shape& shape) const {
+  ThrowOnError(GetApi().Value_GetTensorElementTypeAndShape(this->p_, &elem_type, &shape.shape, &shape.shape_len));
 }
 
 template <typename T>

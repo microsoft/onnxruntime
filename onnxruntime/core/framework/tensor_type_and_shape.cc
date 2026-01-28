@@ -317,7 +317,7 @@ ORT_API_STATUS_IMPL(OrtApis::Value_GetTensorElementTypeAndShape, _In_ const OrtV
   API_IMPL_BEGIN
   if (!value->IsAllocated() || (!value->IsTensor() && !value->IsSparseTensor())) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "the ort_value must contain a constructed tensor or sparse tensor");
+                                 "Input parameter `value` must contain a constructed tensor or sparse tensor");
   }
 
   if (elem_type == nullptr) {

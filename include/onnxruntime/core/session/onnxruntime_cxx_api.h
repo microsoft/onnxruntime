@@ -2238,12 +2238,9 @@ struct ConstValueImpl : Base<T> {
   /// Wraps OrtApi::Value_GetTensorElementTypeAndShape. Returns the tensor's type and shape without allocating a new
   /// buffer for the shape.
   /// </summary>
-  /// <param name="elem_type"></param>
-  /// <param name="shape_data"></param>
-  /// <param name="shape_data_count"></param>
-  /// <returns></returns>
-  Ort::Status GetTensorElementTypeAndShape(ONNXTensorElementDataType& elem_type,
-                                           const int64_t*& shape_data, size_t& shape_data_count) const;
+  /// <param name="elem_type">Output parameter set to the element's data type.</param>
+  /// <param name="shape">Output parameter set to the OrtValue instance's shape data and number of elements.</param>
+  void GetTensorElementTypeAndShape(ONNXTensorElementDataType& elem_type, Shape& shape) const;
 };
 
 template <typename T>
