@@ -41,7 +41,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} pynone Tests
           path: |
@@ -66,7 +66,7 @@ jobs:
           report_paths: |
             ${{ github.workspace }}/build/qdc-${{ env.QDC_RESULTS_ARCH }}/*.results.xml
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: always() # always run even if the previous step fails
         with:
           name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} pynone Test Results

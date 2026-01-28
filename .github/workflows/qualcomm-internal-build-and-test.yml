@@ -66,17 +66,18 @@ jobs:
       target_os: linux
       target_arch: aarch64_oe_gcc11_2
 
-  build-and-test-windows-arm64:
-    if: ${{ inputs.do_all || inputs.do_windows_arm64 }}
-    uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
-    secrets: inherit
-    with:
-      nightly_build: ${{ inputs.nightly_build }}
-      build_runner_arch: ${{ inputs.windows_arm64_runner_arch }}
-      target_arch: arm64
-      upload_wheel: ${{ inputs.windows_arm64_runner_arch == 'ARM64' }}
-      target_py_vsn: ${{ inputs.windows_arm64_runner_arch == 'ARM64' && inputs.target_py_vsn || 'None' }}
-      test_runner_arch: arm64
+  # ARM64 Windows builds disabled until an appropriate runner is available
+  # build-and-test-windows-arm64:
+  #   if: ${{ inputs.do_all || inputs.do_windows_arm64 }}
+  #   uses: ./.github/workflows/qualcomm-internal-build-and-test-single-os.yml
+  #   secrets: inherit
+  #   with:
+  #     nightly_build: ${{ inputs.nightly_build }}
+  #     build_runner_arch: ${{ inputs.windows_arm64_runner_arch }}
+  #     target_arch: arm64
+  #     upload_wheel: ${{ inputs.windows_arm64_runner_arch == 'ARM64' }}
+  #     target_py_vsn: ${{ inputs.windows_arm64_runner_arch == 'ARM64' && inputs.target_py_vsn || 'None' }}
+  #     test_runner_arch: arm64
 
   build-and-test-windows-arm64ec:
     if: ${{ inputs.do_all }}
@@ -86,7 +87,8 @@ jobs:
       nightly_build: ${{ inputs.nightly_build }}
       target_arch: arm64ec
       upload_wheel: true
-      test_wheel: true
+      # test_wheel: true
+      test_wheel: false  # Disabled until an appropriate runner is available
       target_py_vsn: ${{ inputs.target_py_vsn }}
       run_tests: false  # ARM64ec unit tests are horribly broken (though model tests seem fine).
       test_runner_arch: arm64
@@ -124,7 +126,7 @@ jobs:
         run: |
           python3 qcom/build_and_test.py archive_ort_android_aarch64
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ORT android aarch64 pynone Tests
           path: |
