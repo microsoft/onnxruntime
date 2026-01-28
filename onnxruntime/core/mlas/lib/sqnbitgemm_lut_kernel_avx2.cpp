@@ -187,18 +187,18 @@ get_bias_scale()
     return 3;
 }
 
-void
-partial_max_g4_int8_k8(float* lut_scales, const float* b)
+static inline void
+_mm256_loadu_deinterleave_32ps(const float* src, __m256& v0, __m256& v1, __m256& v2, __m256& v3)
 {
-    // Process 8 quads (32 activations) contiguously using loadu + shuffle.
-    // This allows us to mix neighbors (b[4i], b[4i+1], b[4i+2], b[4i+3]) across lanes,
+    // Process 32 activations contiguously using loadu + shuffle.
+    // This allows us to mix neighbors (src[4i], src[4i+1], src[4i+2], src[4i+3]) across lanes,
     // which matches the T-MAC weight packing.
     // We use loadu + shuffle instead of gather to avoid potential issues with gather
     // on some hardware and ensure deterministic behavior.
-    __m256 vec_b0 = _mm256_loadu_ps(b + 0);
-    __m256 vec_b1 = _mm256_loadu_ps(b + 8);
-    __m256 vec_b2 = _mm256_loadu_ps(b + 16);
-    __m256 vec_b3 = _mm256_loadu_ps(b + 24);
+    __m256 vec_b0 = _mm256_loadu_ps(src + 0);
+    __m256 vec_b1 = _mm256_loadu_ps(src + 8);
+    __m256 vec_b2 = _mm256_loadu_ps(src + 16);
+    __m256 vec_b3 = _mm256_loadu_ps(src + 24);
 
     __m256 t0 = _mm256_unpacklo_ps(vec_b0, vec_b1);
     __m256 t1 = _mm256_unpackhi_ps(vec_b0, vec_b1);
@@ -210,11 +210,18 @@ partial_max_g4_int8_k8(float* lut_scales, const float* b)
     __m256 u2 = _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(t1), _mm256_castps_pd(t3)));
     __m256 u3 = _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(t1), _mm256_castps_pd(t3)));
 
-    const __m256i perm_idx = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
-    vec_b0 = _mm256_permutevar8x32_ps(u0, perm_idx);
-    vec_b1 = _mm256_permutevar8x32_ps(u1, perm_idx);
-    vec_b2 = _mm256_permutevar8x32_ps(u2, perm_idx);
-    vec_b3 = _mm256_permutevar8x32_ps(u3, perm_idx);
+    static const __m256i perm_idx = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
+    v0 = _mm256_permutevar8x32_ps(u0, perm_idx);
+    v1 = _mm256_permutevar8x32_ps(u1, perm_idx);
+    v2 = _mm256_permutevar8x32_ps(u2, perm_idx);
+    v3 = _mm256_permutevar8x32_ps(u3, perm_idx);
+}
+
+void
+partial_max_g4_int8_k8(float* lut_scales, const float* b)
+{
+    __m256 vec_b0, vec_b1, vec_b2, vec_b3;
+    _mm256_loadu_deinterleave_32ps(b, vec_b0, vec_b1, vec_b2, vec_b3);
 
     const __m256 vec_sign = _mm256_set1_ps(-0.0f);
     __m256 vec_babs0 = _mm256_andnot_ps(vec_sign, vec_b0);
@@ -253,29 +260,8 @@ lut_ctor_g4_int8_impl(
 
     for (int k = 0; k < act_k / 32; ++k) {
         const float* b_chunk = b + k * 32;
-        // Use loadu + shuffle to transparently load 32 elements and permute them
-        // into the stride-4 layout required by the algorithm.
-        // This is safe and deterministic compared to using gather.
-        __m256 vec_b0 = _mm256_loadu_ps(b_chunk + 0);
-        __m256 vec_b1 = _mm256_loadu_ps(b_chunk + 8);
-        __m256 vec_b2 = _mm256_loadu_ps(b_chunk + 16);
-        __m256 vec_b3 = _mm256_loadu_ps(b_chunk + 24);
-
-        __m256 t0 = _mm256_unpacklo_ps(vec_b0, vec_b1);
-        __m256 t1 = _mm256_unpackhi_ps(vec_b0, vec_b1);
-        __m256 t2 = _mm256_unpacklo_ps(vec_b2, vec_b3);
-        __m256 t3 = _mm256_unpackhi_ps(vec_b2, vec_b3);
-
-        __m256 u0 = _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(t0), _mm256_castps_pd(t2)));
-        __m256 u1 = _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(t0), _mm256_castps_pd(t2)));
-        __m256 u2 = _mm256_castpd_ps(_mm256_unpacklo_pd(_mm256_castps_pd(t1), _mm256_castps_pd(t3)));
-        __m256 u3 = _mm256_castpd_ps(_mm256_unpackhi_pd(_mm256_castps_pd(t1), _mm256_castps_pd(t3)));
-
-        const __m256i perm_idx = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
-        vec_b0 = _mm256_permutevar8x32_ps(u0, perm_idx);
-        vec_b1 = _mm256_permutevar8x32_ps(u1, perm_idx);
-        vec_b2 = _mm256_permutevar8x32_ps(u2, perm_idx);
-        vec_b3 = _mm256_permutevar8x32_ps(u3, perm_idx);
+        __m256 vec_b0, vec_b1, vec_b2, vec_b3;
+        _mm256_loadu_deinterleave_32ps(b_chunk, vec_b0, vec_b1, vec_b2, vec_b3);
 
         PRAGMA_UNROLL
         for (int g = 1; g < 16; g += 2) {
