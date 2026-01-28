@@ -7207,8 +7207,8 @@ struct OrtApi {
    * \param[out] elem_type Output parameter set to the tensor element data type.
    * \param[out] shape_data Output parameter set to the OrtValue instance's internal shape data array.
    *                        For a scalar, `shape_data` is NULL and `shape_data_count` is 0.
-   *                        Must not be released as it is owned by the OrtValue instance. This data becomes invalid
-   *                        when the OrtValue is released.
+   *                        Must not be released as it is owned by the OrtValue instance. This pointer becomes invalid
+   *                        when the OrtValue is released or if the underlying shape data is updated or reallocated.
    * \param[out] shape_data_count Output parameter set to the number of elements in `shape_data`.
    *                              `shape_data_count` is 0 for a scalar.
    *

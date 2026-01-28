@@ -2235,8 +2235,9 @@ struct ConstValueImpl : Base<T> {
 #endif
 
   /// <summary>
-  /// Returns the tensor's element type and a reference to the tensor's internal shape data, which is owned by the
-  /// Ort::Value and becomes invalid when the Ort::Value is destroyed.
+  /// Returns the tensor's element type and a reference to the tensor's internal shape data. The shape data is owned
+  /// by the Ort::Value and becomes invalid when the Ort::Value is destroyed or if the underlying shape data is
+  /// updated or reallocated.
   ///
   /// For a scalar, shape.shape is nullptr and shape.shape_len is 0.
   ///
