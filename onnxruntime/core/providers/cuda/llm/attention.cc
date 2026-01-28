@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <vector>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/llm/attention_helper.h"
 #include "core/providers/cuda/llm/attention.h"
@@ -137,6 +138,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (!parameters.is_causal) {
       ORT_THROW("Non-causal attention is not supported yet in GQA path of Attention op (CUDA).");
     }
+    // GQA kernel expects K/V input sequence length == Q sequence length (self-attention only)
+    // Cross-attention (kv_sequence_length != q_sequence_length) is not supported
+    if (parameters.kv_sequence_length != parameters.q_sequence_length) {
+      ORT_THROW(
+          "Cross-attention (kv_sequence_length != q_sequence_length) is not supported in GQA path of Attention op (CUDA). "
+          "kv_sequence_length=",
+          parameters.kv_sequence_length, ", q_sequence_length=", parameters.q_sequence_length);
+    }
 
     auto& device_prop = GetDeviceProp();
 
@@ -177,6 +186,19 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // Construct GroupQueryAttentionData
     onnxruntime::contrib::cuda::GroupQueryAttentionData<CudaT> gqa_data;
 
+    // Scratch buffers for flash/memory efficient attention
+    IAllocatorUniquePtr<void> k_buffer;
+    IAllocatorUniquePtr<void> v_buffer;
+    IAllocatorUniquePtr<void> fmha_buffer;
+    IAllocatorUniquePtr<void> unpacked_qkv_buffer;
+    IAllocatorUniquePtr<int> seq_lens_buffer;
+    IAllocatorUniquePtr<int> seqlens_k_buffer;
+
+    // Present KV cache buffers - GQA kernel uses these as working buffers
+    // If outputs are not provided, we allocate scratch buffers
+    IAllocatorUniquePtr<void> present_key_scratch;
+    IAllocatorUniquePtr<void> present_value_scratch;
+
     // Set input pointers
     gqa_data.query = reinterpret_cast<const CudaT*>(Q->Data<T>());
     gqa_data.key = reinterpret_cast<const CudaT*>(K->Data<T>());
@@ -186,19 +208,28 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
     // Set output pointers
     gqa_data.output = reinterpret_cast<CudaT*>(Y->MutableData<T>());
-    gqa_data.present_key = (present_key == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
-    gqa_data.present_value = (present_value == nullptr) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+
+    // GQA kernel requires present_key/present_value buffers as working storage for KV cache
+    // Allocate scratch buffers if outputs are not provided
+    size_t present_kv_size = static_cast<size_t>(parameters.batch_size) *
+                             static_cast<size_t>(parameters.kv_num_heads) *
+                             static_cast<size_t>(parameters.total_sequence_length) *
+                             static_cast<size_t>(parameters.head_size) * sizeof(CudaT);
+    if (present_key != nullptr) {
+      gqa_data.present_key = reinterpret_cast<CudaT*>(present_key->MutableData<T>());
+    } else {
+      present_key_scratch = GetScratchBuffer<void>(present_kv_size, context->GetComputeStream());
+      gqa_data.present_key = reinterpret_cast<CudaT*>(present_key_scratch.get());
+    }
+    if (present_value != nullptr) {
+      gqa_data.present_value = reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+    } else {
+      present_value_scratch = GetScratchBuffer<void>(present_kv_size, context->GetComputeStream());
+      gqa_data.present_value = reinterpret_cast<CudaT*>(present_value_scratch.get());
+    }
 
     // Compute past_present_share_buffer early since it's needed for flash attention path selection
     gqa_parameters.past_present_share_buffer = (gqa_data.past_key == gqa_data.present_key);
-
-    // Scratch buffers for flash/memory efficient attention
-    IAllocatorUniquePtr<void> k_buffer;
-    IAllocatorUniquePtr<void> v_buffer;
-    IAllocatorUniquePtr<void> fmha_buffer;
-    IAllocatorUniquePtr<void> unpacked_qkv_buffer;
-    IAllocatorUniquePtr<int> seq_lens_buffer;
-    IAllocatorUniquePtr<int> seqlens_k_buffer;
 
     // Flash Attention buffers
     IAllocatorUniquePtr<void> softmax_lse_buffer;
@@ -323,13 +354,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       gqa_data.qkv_buffer = nullptr;
     }
 
+    // Allocate CPU buffer for seqlens_k (total_sequence_length - 1) for GQA compatibility
+    // The GQA kernel expects sequence length information for flash/memory efficient attention
+    // We need a CPU buffer first, then copy to GPU
+    std::vector<int> seqlens_k_host(parameters.batch_size);
+
     // GQA only supports masking, not additive bias.
     // For bool mask, we need to convert it to sequence lengths.
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
-      // Allocate buffer for seqlens_k (total_sequence_length - 1)
-      seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
-      int* seqlens_k = seqlens_k_buffer.get();
-
       const bool* b_mask = attn_mask->Data<bool>();
 
       for (int b = 0; b < parameters.batch_size; ++b) {
@@ -345,34 +377,42 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           }
         }
         // seqlens_k is total_sequence_length - 1 for historical reasons (matching GroupQueryAttention convention)
-        seqlens_k[b] = seq_len - 1;
+        seqlens_k_host[b] = seq_len - 1;
       }
-
-      // Process seqlens_k to compute past_seq_lens, total_seq_lens, and padded_seq_lens
-      seq_lens_buffer = GetScratchBuffer<int>(3 * parameters.batch_size, context->GetComputeStream());
-      auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
-      gqa_data.past_seq_lens = seq_lens_buffer.get();
-      gqa_data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
-      gqa_data.padded_seq_lens = gqa_data.total_seq_lens + parameters.batch_size;
-
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchGetSequenceLengths(
-          seqlens_k,
-          gqa_data.past_seq_lens,
-          gqa_data.total_seq_lens,
-          gqa_data.padded_seq_lens,
-          parameters.batch_size,
-          parameters.q_sequence_length,
-          gqa_parameters.is_first_prompt,
-          cuda_stream,
-          device_prop.maxThreadsPerBlock));
     } else if (attn_mask != nullptr) {
       ORT_THROW("Non-boolean attn_mask is not supported yet in GQA path of Attention op (CUDA).");
     } else {
-      // No mask provided - set sequence length pointers to nullptr
-      gqa_data.total_seq_lens = nullptr;
-      gqa_data.past_seq_lens = nullptr;
-      gqa_data.padded_seq_lens = nullptr;
+      // No mask provided - use full sequence length for all batches
+      // seqlens_k is total_sequence_length - 1 for historical reasons (matching GroupQueryAttention convention)
+      for (int b = 0; b < parameters.batch_size; ++b) {
+        seqlens_k_host[b] = parameters.total_sequence_length - 1;
+      }
     }
+
+    // Copy seqlens_k to GPU
+    seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seqlens_k_buffer.get(), seqlens_k_host.data(),
+                                         sizeof(int) * parameters.batch_size,
+                                         cudaMemcpyHostToDevice, cuda_stream));
+
+    // Process seqlens_k to compute past_seq_lens, total_seq_lens, and padded_seq_lens
+    // This is always needed for flash/memory efficient attention
+    seq_lens_buffer = GetScratchBuffer<int>(3 * parameters.batch_size, context->GetComputeStream());
+    gqa_data.past_seq_lens = seq_lens_buffer.get();
+    gqa_data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
+    gqa_data.padded_seq_lens = gqa_data.total_seq_lens + parameters.batch_size;
+
+    ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchGetSequenceLengths(
+        seqlens_k_buffer.get(),
+        gqa_data.past_seq_lens,
+        gqa_data.total_seq_lens,
+        gqa_data.padded_seq_lens,
+        parameters.batch_size,
+        parameters.q_sequence_length,
+        gqa_parameters.is_first_prompt,
+        cuda_stream,
+        device_prop.maxThreadsPerBlock));
 
     // Set GQA-specific fields
     gqa_data.cos_cache = nullptr;  // No rotary embeddings
