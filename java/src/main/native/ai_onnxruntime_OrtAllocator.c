@@ -18,7 +18,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtAllocator_getStats
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtAllocator* allocator = (OrtAllocator*) nativeHandle;
   if (allocator->GetStats == NULL) {
-    // Throw invalid argument exception
+    // Throw an OrtException with an ORT_INVALID_ARGUMENT error code
     throwOrtException(jniEnv, 2, "This allocator does not support GetStats.");
     return NULL;
   }
