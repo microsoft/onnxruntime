@@ -362,7 +362,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorElementTypeAndShapeDataReference, _In_ con
   }
 
   *elem_type = type;
-  *shape_data = shape_span.data();
+  *shape_data = shape_span.empty() ? nullptr : shape_span.data();
   *shape_data_count = shape_span.size();
   return nullptr;
   API_IMPL_END
