@@ -2388,9 +2388,10 @@ inline const R* ConstValueImpl<T>::GetSparseTensorValues() const {
 #endif
 
 template <typename T>
-void ConstValueImpl<T>::GetTensorElementTypeAndShape(ONNXTensorElementDataType& elem_type,
-                                                     Shape& shape) const {
-  ThrowOnError(GetApi().Value_GetTensorElementTypeAndShape(this->p_, &elem_type, &shape.shape, &shape.shape_len));
+void ConstValueImpl<T>::GetTensorElementTypeAndShapeDataReference(ONNXTensorElementDataType& elem_type,
+                                                                  Shape& shape) const {
+  ThrowOnError(GetApi().GetTensorElementTypeAndShapeDataReference(this->p_, &elem_type, &shape.shape,
+                                                                  &shape.shape_len));
 }
 
 template <typename T>

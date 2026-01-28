@@ -310,7 +310,7 @@ std::unique_ptr<OrtTensorTypeAndShapeInfo> OrtTensorTypeAndShapeInfo::GetTensorS
   return GetTensorShapeAndTypeHelper(type, shape, dim_params);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Value_GetTensorElementTypeAndShape, _In_ const OrtValue* value,
+ORT_API_STATUS_IMPL(OrtApis::GetTensorElementTypeAndShapeDataReference, _In_ const OrtValue* value,
                     _Out_ ONNXTensorElementDataType* elem_type,
                     _Outptr_ const int64_t** shape_data,
                     _Out_ size_t* shape_data_count) {

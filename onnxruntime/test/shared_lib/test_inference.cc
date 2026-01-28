@@ -480,7 +480,7 @@ TEST(CApiTest, dim_param) {
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
-TEST(CApiTest, Value_GetTensorElementTypeAndShape_DenseTensor) {
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_DenseTensor) {
   Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
 
   const std::array<int64_t, 2> x_shape = {3, 2};
@@ -491,7 +491,7 @@ TEST(CApiTest, Value_GetTensorElementTypeAndShape_DenseTensor) {
 
   ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   Ort::Value::Shape shape{};
-  x_value.GetTensorElementTypeAndShape(elem_type, shape);
+  x_value.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
 
   ASSERT_EQ(elem_type, type_shape_info.GetElementType());
 
@@ -501,7 +501,7 @@ TEST(CApiTest, Value_GetTensorElementTypeAndShape_DenseTensor) {
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-TEST(CApiTest, Value_GetTensorElementTypeAndShape_SparseTensor) {
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_SparseTensor) {
   std::vector<int64_t> common_shape{9, 9};
   std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
                               10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0,
@@ -533,7 +533,7 @@ TEST(CApiTest, Value_GetTensorElementTypeAndShape_SparseTensor) {
 
   ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   Ort::Value::Shape shape{};
-  value_sparse.GetTensorElementTypeAndShape(elem_type, shape);
+  value_sparse.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
 
   ASSERT_EQ(elem_type, type_shape_info.GetElementType());
 
