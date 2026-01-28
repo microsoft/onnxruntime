@@ -13,6 +13,7 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 
+#include "onnx_ctx_model_helper.h"
 #include "nv_provider_factory.h"
 #include "nv_execution_provider.h"
 #include "nv_provider_factory_creator.h"
@@ -20,6 +21,11 @@
 #include "nv_allocator.h"
 
 using namespace onnxruntime;
+
+// External declarations
+namespace onnxruntime {
+extern TensorrtLogger& GetTensorrtLogger(bool verbose_log);
+}
 
 namespace onnxruntime {
 
@@ -541,7 +547,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     IsStreamAware = IsStreamAwareImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
-
+    ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
     ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
   }
 
@@ -584,6 +590,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
    * @return True if the device is a supported NVIDIA GPU, false otherwise.
    */
   bool IsOrtHardwareDeviceSupported(const OrtHardwareDevice& device) {
+#if _WIN32
     const auto& metadata_entries = device.metadata.Entries();
     const auto it = metadata_entries.find("LUID");
     if (it == metadata_entries.end()) {
@@ -625,6 +632,25 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     }
 
     return false;
+#else
+    const auto& metadata_entries = device.metadata.Entries();
+    const auto it = metadata_entries.find("pci_bus_id");
+    if (it == metadata_entries.end()) {
+      return false;
+    }
+    auto& target_id = it->second;
+    int cuda_device_idx = 0;
+    if (cudaDeviceGetByPCIBusId(&cuda_device_idx, target_id.c_str()) != cudaSuccess) {
+      return false;
+    }
+
+    cudaDeviceProp prop;
+    if (cudaGetDeviceProperties(&prop, cuda_device_idx) != cudaSuccess) {
+      return false;
+    }
+    // Ampere architecture or newer is required.
+    return prop.major >= 8;
+#endif
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -661,6 +687,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
         RETURN_IF_ERROR(factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
                                                                     &ep_devices[num_ep_devices]));
+
         factory->ort_api.ReleaseKeyValuePairs(ep_options);
         factory->ort_api.ReleaseKeyValuePairs(ep_metadata);
 
@@ -733,6 +760,120 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
                                                          factory.ort_api);
     *ort_stream = impl.release();
     return nullptr;
+  }
+
+  /**
+   * This function is called by the public C API GetModelCompatibilityForEpDevices.
+   * It uses TensorRT RTX runtime directly to call runtime->getEngineValidity() to check the 64-byte engine header.
+   *
+   * @param this_ptr Factory instance pointer
+   * @param devices Hardware devices (not used, validation is done against current system)
+   * @param num_devices Number of devices
+   * @param compatibility_info Hex-encoded 64-byte TensorRT RTX engine header (128 hex characters)
+   * @param model_compatibility Output parameter for compatibility status
+   * @return OrtStatus* nullptr on success, error status on failure
+   */
+  static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfoImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* const* devices,
+      size_t num_devices,
+      const char* compatibility_info,
+      OrtCompiledModelCompatibility* model_compatibility) noexcept {
+    auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    // Validate input parameters
+    if (compatibility_info == nullptr || model_compatibility == nullptr) {
+      return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                          "[NvTensorRTRTX EP] Invalid arguments: compatibility_info or model_compatibility is null");
+    }
+
+    // Device parameters not used for header validation
+    ORT_UNUSED_PARAMETER(devices);
+    ORT_UNUSED_PARAMETER(num_devices);
+
+    try {
+      // If no compatibility info provided, validation not applicable
+      if (compatibility_info[0] == '\0') {
+        *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+        return nullptr;
+      }
+
+      // Decode hex string to binary
+      std::vector<uint8_t> engine_header;
+      try {
+        engine_header = HexStringToBinary(std::string(compatibility_info));
+      } catch (const std::exception& ex) {
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to decode engine header: " << ex.what();
+        *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+        return nullptr;
+      }
+
+      // Validate header size (keep in sync with TensorRT engine header size)
+      if (engine_header.size() != kTensorRTEngineHeaderSize) {
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Invalid header size: " << engine_header.size()
+                              << " bytes (expected " << kTensorRTEngineHeaderSize << ")";
+        *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+        return nullptr;
+      }
+
+      // Create TensorRT runtime for validation
+      static std::mutex runtime_creation_mutex;
+      std::unique_ptr<nvinfer1::IRuntime> runtime;
+      {
+        std::lock_guard<std::mutex> lock(runtime_creation_mutex);
+        TensorrtLogger& trt_logger = GetTensorrtLogger(false);
+        runtime.reset(nvinfer1::createInferRuntime(trt_logger));
+      }
+
+      if (!runtime) {
+        LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Failed to create TensorRT runtime";
+        return factory.ort_api.CreateStatus(ORT_FAIL,
+                                            "[NvTensorRTRTX EP] Failed to create TensorRT runtime");
+      }
+
+      // Use TensorRT's getEngineValidity to check compatibility
+      uint64_t diagnostics = 0;
+      nvinfer1::EngineValidity validity = runtime->getEngineValidity(
+          engine_header.data(),
+          engine_header.size(),
+          &diagnostics);
+
+      // Map TensorRT validity to ORT compatibility status
+      switch (validity) {
+        case nvinfer1::EngineValidity::kVALID:
+          *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+          break;
+
+        case nvinfer1::EngineValidity::kSUBOPTIMAL:
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine compatible but recompilation recommended "
+                                << "(diagnostics: 0x" << std::hex << diagnostics << std::dec << ")";
+          *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+          break;
+
+        case nvinfer1::EngineValidity::kINVALID:
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine incompatible with this system "
+                                << "(diagnostics: 0x" << std::hex << diagnostics << std::dec << ")";
+          *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+          break;
+
+        default:
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Unknown validity status: "
+                                << static_cast<int>(validity);
+          *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+          break;
+      }
+
+      return nullptr;
+
+    } catch (const std::exception& ex) {
+      std::string error_msg = std::string("[NvTensorRTRTX EP] Exception during validation: ") + ex.what();
+      LOGS_DEFAULT(ERROR) << error_msg;
+      return factory.ort_api.CreateStatus(ORT_FAIL, error_msg.c_str());
+    } catch (...) {
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Unknown exception during validation";
+      return factory.ort_api.CreateStatus(ORT_FAIL,
+                                          "[NvTensorRTRTX EP] Unknown exception during validation");
+    }
   }
 
   OrtStatus* CreateMemoryInfoForDevices(int num_devices) {

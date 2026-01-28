@@ -63,8 +63,11 @@ stages:
         mavenVersionOption: 'Default'
 
     - task: Bash@3
-      displayName: 'Run Java Tests on Linux/macOS'
-      condition: and(succeeded(), in(variables['Agent.OS'], 'Linux', 'Darwin'))
+      displayName: 'Run Java Tests on Linux'
+#      condition: and(succeeded(), in(variables['Agent.OS'], 'Linux', 'Darwin'))
+      # MacOS packages have been removed from the JAR here:
+      # https://github.com/microsoft/onnxruntime/commit/5ed340f7a51f3cbdb62577a874daf2b3f23d6a93#diff-a14cc5ea231eb4fa49f13510a242043c47ae48516c860f8a87b0e55762632f49
+      condition: and(succeeded(), in(variables['Agent.OS'], 'Linux'))
       inputs:
         targetType: 'inline'
         script: |
@@ -85,7 +88,7 @@ stages:
           ls $(Pipeline.Workspace)/build/tests
           echo "Java Version"
           java -version
-          
+
           # Set the correct library path based on the OS
           os_name=$(uname)
           if [[ "$os_name" == "Linux" ]]; then

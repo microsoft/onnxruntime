@@ -53,6 +53,7 @@ struct MLAS_NCHWC_CONV_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     float* Output;
     size_t GroupCount;
     bool ZeroMode;
+    bool UseBf16;
 };
 
 //
@@ -881,6 +882,11 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvPointwiseFloatKernel;
+#if defined(__aarch64__) && defined(__linux__)
+        if (WorkBlock->UseBf16) {
+            Kernel = GetMlasPlatform().ConvPointwiseBf16Kernel;
+        }
+#endif
 #else
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasConvPointwiseFloatKernel;
 #endif
@@ -1224,7 +1230,8 @@ MlasNchwcConv(
     float* Output,
     const MLAS_ACTIVATION* Activation,
     bool ZeroMode,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const bool UseBf16
     )
 /*++
 
@@ -1269,6 +1276,8 @@ Arguments:
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
 
+    UseBf16 - Supplies true to use BF16 for convolutions on supported platforms.
+
 Return Value:
 
     None.
@@ -1288,6 +1297,7 @@ Return Value:
     WorkBlock.Bias = Bias;
     WorkBlock.Activation = Activation;
     WorkBlock.ZeroMode = ZeroMode;
+    WorkBlock.UseBf16 = UseBf16;
 
     //
     // Capture the generic shape parameters to the work block.

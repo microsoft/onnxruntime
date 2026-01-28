@@ -34,10 +34,13 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
       {QNN_DATATYPE_UINT_64, 8},
       {QNN_DATATYPE_FLOAT_16, 2},
       {QNN_DATATYPE_FLOAT_32, 4},
+      {QNN_DATATYPE_BFLOAT_16, 2},
       {QNN_DATATYPE_BOOL_8, 1},
+      {QNN_DATATYPE_SFIXED_POINT_4, sizeof(Int4x2)},
       {QNN_DATATYPE_SFIXED_POINT_8, 1},
       {QNN_DATATYPE_SFIXED_POINT_16, 2},
       {QNN_DATATYPE_SFIXED_POINT_32, 4},
+      {QNN_DATATYPE_UFIXED_POINT_4, sizeof(Int4x2)},
       {QNN_DATATYPE_UFIXED_POINT_8, 1},
       {QNN_DATATYPE_UFIXED_POINT_16, 2},
       {QNN_DATATYPE_UFIXED_POINT_32, 4},
@@ -104,11 +107,25 @@ size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type) {
   }
   // Unreachable
 }
+size_t GetQnnTensorDataSizeInBytes(size_t num_elements, Qnn_DataType_t element_type) {
+  SafeInt<size_t> safe_num_elements = num_elements;
+  if (element_type == QNN_DATATYPE_SFIXED_POINT_4 || element_type == QNN_DATATYPE_UFIXED_POINT_4) {
+    return (safe_num_elements + 1) / 2;
+  }
+  return (safe_num_elements * GetElementSizeByType(element_type));
+}
 
 size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
   ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
-  SafeInt<size_t> data_length = GetElementSizeByType(element_type);
-  return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
+  SafeInt<size_t> num_elements = std::accumulate(shape.begin(), shape.end(), SafeInt<size_t>{1}, std::multiplies<>{});
+  return GetQnnTensorDataSizeInBytes(num_elements, element_type);
+}
+
+size_t GetQnnTensorDataSizeInBytes(const Qnn_Tensor_t& tensor) {
+  uint32_t rank = GetQnnTensorRank(tensor);
+  uint32_t* dims = GetQnnTensorDims(tensor);
+  gsl::span<const uint32_t> shape{dims, static_cast<size_t>(rank)};
+  return GetQnnTensorDataSizeInBytes(shape, GetQnnTensorDataType(tensor));
 }
 
 bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor) {
@@ -201,6 +218,9 @@ std::ostream& operator<<(std::ostream& out, const Qnn_DataType_t& data_type) {
       break;
     case QNN_DATATYPE_FLOAT_32:
       out << "QNN_DATATYPE_FLOAT_32";
+      break;
+    case QNN_DATATYPE_BFLOAT_16:
+      out << "QNN_DATATYPE_BFLOAT_16";
       break;
     case QNN_DATATYPE_SFIXED_POINT_8:
       out << "QNN_DATATYPE_SFIXED_POINT_8";
@@ -995,7 +1015,7 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
   const size_t num_dims = shape.size();
   const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
   ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
-  size_t expected_num_quant_bytes = GetElementSizeByType(data_type) * data.size();
+  size_t expected_num_quant_bytes = GetQnnTensorDataSizeInBytes(data.size(), data_type);
   ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
                     "Cannot quantize data because output buffer is not the correct size");
 

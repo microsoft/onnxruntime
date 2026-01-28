@@ -1348,6 +1348,9 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                                    ep_option_vals,
                                                    py_sess_options.value));
 
+  ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_devices,
+                                                         py_sess_options));
+
   py_sess_options.provider_factories.push_back(std::move(provider_factory));
   return Status::OK();
 }
@@ -1891,6 +1894,47 @@ for model inference.)pbdoc");
             return std::unique_ptr<OrtSyncStream>(stream.release());
           },
           R"pbdoc(The OrtSyncStream instance for the OrtEpDevice.)pbdoc");
+
+  py::class_<OrtEpAssignedNode> py_ep_node(m, "OrtEpAssignedNode",
+                                           R"pbdoc(Contains information about a node assigned to an execution
+provider)pbdoc");
+  py_ep_node
+      .def_property_readonly(
+          "name",
+          [](const OrtEpAssignedNode* ep_node) -> std::string {
+            return ep_node->name;
+          },
+          R"pbdoc(The node's name)pbdoc")
+      .def_property_readonly(
+          "domain",
+          [](const OrtEpAssignedNode* ep_node) -> std::string {
+            return ep_node->domain;
+          },
+          R"pbdoc(The node's domain)pbdoc")
+      .def_property_readonly(
+          "op_type",
+          [](const OrtEpAssignedNode* ep_node) -> std::string {
+            return ep_node->op_type;
+          },
+          R"pbdoc(The node's operator type)pbdoc");
+
+  py::class_<OrtEpAssignedSubgraph> py_ep_subgraph(m, "OrtEpAssignedSubgraph",
+                                                   R"pbdoc(Contains information about a subgraph assigned to an
+execution provider)pbdoc");
+  py_ep_subgraph
+      .def_property_readonly(
+          "ep_name",
+          [](const OrtEpAssignedSubgraph* ep_subgraph) -> std::string {
+            return ep_subgraph->ep_name;
+          },
+          R"pbdoc(The name of the execution provider to which this subgraph is assigned.)pbdoc")
+      .def(
+          "get_nodes",
+          [](const OrtEpAssignedSubgraph* ep_subgraph) -> const std::vector<const OrtEpAssignedNode*>& {
+            return ep_subgraph->nodes;
+          },
+          py::return_value_policy::reference_internal,
+          R"pbdoc(List of nodes in the subgraph.)pbdoc");
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
@@ -2677,6 +2721,25 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def("get_provider_graph_assignment_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
+#if !defined(ORT_MINIMAL_BUILD)
+        const auto* inference_session = sess->GetSessionHandle();
+        const auto& sess_options = inference_session->GetSessionOptions();
+        bool is_enabled =
+            sess_options.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+
+        if (!is_enabled) {
+          OrtPybindThrowIfError(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, !is_enabled, "Session configuration entry '",
+                                                kOrtSessionOptionsRecordEpGraphAssignmentInfo,
+                                                "' must be set to \"1\" to retrieve EP graph assignment information."));
+        }
+        return inference_session->GetEpGraphAssignmentInfo();
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_THROW("EP graph assignment information is not supported in this build");
+#endif
+      },
+           py::return_value_policy::reference_internal, R"pbdoc(Returns information on the subgraph/nodes assigned to execution providers in the session.)pbdoc")
       .def_property_readonly("session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
             auto session_options = std::make_unique<PySessionOptions>();
             session_options->value = sess->GetSessionHandle()->GetSessionOptions();
