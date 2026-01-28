@@ -122,3 +122,76 @@ env.UnregisterExecutionProviderLibrary(/*...*/);
 
 <br/>
 <p align="center"><img width="100%" src="../../../images/plugin_ep_sd_autoep.png" alt="Sequence diagram showing session creation with automatic EP selection"/></p>
+
+## API reference
+The following table lists the API functions related to plugin EP library registration and using a plugin EP with a session.
+
+<table>
+<tr>
+<th>
+Function
+</th>
+<th>
+Description
+</th>
+</tr>
+
+<tr>
+<td>
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a7c8ea74a2ee54d03052f3d7cd1e1335d">RegisterExecutionProviderLibrary</a>
+</td>
+<td>
+Register an EP library with ORT. The library must export the <code>CreateEpFactories</code> and <code>ReleaseEpFactory</code> functions.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#acd4d148e149af2f2304a45b65891543f">UnregisterExecutionProviderLibrary</a>
+</td>
+<td>
+Unregister an EP library with ORT. Caller <b>MUST</b> ensure there are no <code>OrtSession</code> instances using the EPs created by the library before calling this function.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a52107386ff1be870f55a0140e6add8dd">GetEpDevices</a>
+</td>
+<td>
+Get the list of available OrtEpDevice instances.<br/><br/>
+Each <code>OrtEpDevice</code> instance contains details of the execution provider and the device it will use.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a285a5da8c9a63eff55dc48e4cf3b56f6">SessionOptionsAppendExecutionProvider_V2</a>
+</td>
+<td>
+Append the execution provider that is responsible for the provided <code>OrtEpDevice</code> instances to the session options.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a2ae116df2c6293e4094a6742a6c46f7e">SessionOptionsSetEpSelectionPolicy</a>
+</td>
+<td>
+Set the execution provider selection policy for the session.<br/><br/>
+Allows users to specify a device selection policy for automatic EP selection. If custom selection is required please use
+<code>SessionOptionsSetEpSelectionPolicyDelegate</code> instead.
+</td>
+</tr>
+
+<tr>
+<td>
+<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a29c026bc7aa6672f93b7f9e31fd3e4a7">SessionOptionsSetEpSelectionPolicyDelegate</a>
+</td>
+<td>
+Set the execution provider selection policy delegate for the session.<br/><br/>
+Allows users to provide a custom device selection policy for automatic EP selection.
+</td>
+</tr>
+
+</table>

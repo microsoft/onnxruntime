@@ -24,6 +24,7 @@ The ONNX Runtime repository includes a few [sample plugin EP libraries](https://
 
 ### Defining an OrtEp
 An `OrtEp` represents an instance of an EP that is used by an ONNX Runtime session to identify and execute the model operations supported by the EP.
+
 The [`OrtEp`](https://onnxruntime.ai/docs/api/c/struct_ort_ep.html) API struct is defined in [`onnxruntime_ep_c_api.h`](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_ep_c_api.h).
 
 The following table lists the **required** variables and functions that an implementer must define for an `OrtEp`.
@@ -201,6 +202,8 @@ If not implemented, ORT assumes that concurrent runs are supported.
 ### Defining an OrtEpFactory
 An `OrtEpFactory` represents an instance of an EP factory that is used by an ONNX Runtime session to query device support, create allocators, create data transfer objects, and create instances of an EP (i.e., an `OrtEp`).
 
+The [`OrtEpFactory`](https://onnxruntime.ai/docs/api/c/struct_ort_ep_factory.html) API struct is defined in [`onnxruntime_ep_c_api.h`](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_ep_c_api.h).
+
 The following table lists the **required** variables and functions that an implementer must define for an `OrtEpFactory`.
 
 <table>
@@ -302,6 +305,41 @@ An <code>OrtDataTransferImpl</code> can be used to copy data between devices tha
 <td>Creates a synchronization stream for the given <code>OrtMemoryDevice</code>.<br/><br/>
 This is use to create a synchronization stream for the <code>OrtMemoryDevice</code> that can be used for operations outside of a session.</td>
 <td><a href="https://github.com/microsoft/onnxruntime/blob/3cadbdb495761a6a54845b178f9bdb811a2c8bde/onnxruntime/test/autoep/library/ep_factory.cc#L300">ExampleEpFactory::CreateSyncStreamForDeviceImpl()</a></td>
+</tr>
+
+<tr>
+<td>GetHardwareDeviceIncompatibilityDetails</td>
+<td>
+Check for known incompatibility reasons between a hardware device and this execution provider.<br/><br/>
+This function allows an execution provider to check if a specific hardware device is compatible with the execution provider. The EP can set specific incompatibility reasons via the <code>OrtDeviceEpIncompatibilityDetails</code> parameter using <code><a href="https://onnxruntime.ai/docs/api/c/struct_ort_ep_api.html#a6f089e88e76dc58c9bf1e7f5102fb6d7">OrtEpApi::DeviceEpIncompatibilityDetails_SetDetails</a></code>.
+</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/0b9e85feea12aca69d5ba3ddaf46e0bd2f058647/onnxruntime/test/autoep/library/example_plugin_ep/ep_factory.cc#L377">ExampleEpFactory::GetHardwareDeviceIncompatibilityDetailsImpl()</a></td>
+</tr>
+
+<tr>
+<td>CreateExternalResourceImporterForDevice</td>
+<td>
+Create an <code>OrtExternalResourceImporterImpl</code> for external resource import.<br/><br/>
+This is used to create an external resource importer that enables zero-copy import of external GPU memory (e.g., D3D12 shared resources) and synchronization primitives (e.g., D3D12 timeline fences).<br/><br/>
+EPs that support external resource import (via CUDA, HIP, Vulkan, or D3D12 APIs) can implement this to allow applications to share GPU resources without copies.
+</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/0b9e85feea12aca69d5ba3ddaf46e0bd2f058647/onnxruntime/test/autoep/library/example_plugin_ep/ep_factory.cc#L400">ExampleEpFactory::CreateExternalResourceImporterForDeviceImpl()</a></td>
+</tr>
+
+<tr>
+<td>GetNumCustomOpDomains</td>
+<td>
+Gets the number of EP-specific <code>OrtCustomOpDomain</code>s provided by the factory.
+</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/0b9e85feea12aca69d5ba3ddaf46e0bd2f058647/onnxruntime/test/autoep/library/example_plugin_ep/ep_factory.cc#L335">ExampleEpFactory::GetNumCustomOpDomainsImpl()</a></td>
+</tr>
+
+<tr>
+<td>GetCustomOpDomains</td>
+<td>
+Gets the EP-specific <code>OrtCustomOpDomain</code>s provided by the factory.
+</td>
+<td><a href="https://github.com/microsoft/onnxruntime/blob/0b9e85feea12aca69d5ba3ddaf46e0bd2f058647/onnxruntime/test/autoep/library/example_plugin_ep/ep_factory.cc#L344">ExampleEpFactory::GetCustomOpDomainsImpl()</a></td>
 </tr>
 
 </table>
@@ -582,78 +620,3 @@ Opaque type that represents an ONNX operator attribute.
 </tr>
 
 </table>
-
-
-### Plugin EP Library Registration APIs
-The following table lists the API functions used for registration of a plugin EP library.
-
-<table>
-<tr>
-<th>
-Function
-</th>
-<th>
-Description
-</th>
-</tr>
-
-<tr>
-<td>
-<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a7c8ea74a2ee54d03052f3d7cd1e1335d">RegisterExecutionProviderLibrary</a>
-</td>
-<td>
-Register an EP library with ORT. The library must export the <code>CreateEpFactories</code> and <code>ReleaseEpFactory</code> functions.
-</td>
-</tr>
-
-<tr>
-<td>
-<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#acd4d148e149af2f2304a45b65891543f">UnregisterExecutionProviderLibrary</a>
-</td>
-<td>
-Unregister an EP library with ORT. Caller <b>MUST</b> ensure there are no <code>OrtSession</code> instances using the EPs created by the library before calling this function.
-</td>
-</tr>
-
-<tr>
-<td>
-<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a52107386ff1be870f55a0140e6add8dd">GetEpDevices</a>
-</td>
-<td>
-Get the list of available OrtEpDevice instances.<br/><br/>
-Each <code>OrtEpDevice</code> instance contains details of the execution provider and the device it will use.
-</td>
-</tr>
-
-<tr>
-<td>
-<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a285a5da8c9a63eff55dc48e4cf3b56f6">SessionOptionsAppendExecutionProvider_V2</a>
-</td>
-<td>
-Append the execution provider that is responsible for the provided <code>OrtEpDevice</code> instances to the session options.
-</td>
-</tr>
-
-<tr>
-<td>
-<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a2ae116df2c6293e4094a6742a6c46f7e">SessionOptionsSetEpSelectionPolicy</a>
-</td>
-<td>
-Set the execution provider selection policy for the session.<br/><br/>
-Allows users to specify a device selection policy for automatic EP selection. If custom selection is required please use
-<code>SessionOptionsSetEpSelectionPolicyDelegate</code> instead.
-</td>
-</tr>
-
-<tr>
-<td>
-<a href="https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a29c026bc7aa6672f93b7f9e31fd3e4a7">SessionOptionsSetEpSelectionPolicyDelegate</a>
-</td>
-<td>
-Set the execution provider selection policy delegate for the session.<br/><br/>
-Allows users to provide a custom device selection policy for automatic EP selection.
-</td>
-</tr>
-
-</table>
-
