@@ -3,7 +3,7 @@ title: Packaging Guidance
 description: Packaging Guidance
 grand_parent: Execution Providers
 parent: Plugin Execution Provider Libraries
-nav_order: 3
+nav_order: 4
 ---
 
 # Plugin Execution Provider Library Packaging Guidance

@@ -3,6 +3,7 @@ title: Plugin Execution Provider Libraries
 parent: Execution Providers
 has_children: true
 nav_order: 17
+redirect_from: /docs/reference/execution-providers/Plugin-EP-Libraries
 ---
 
 # Plugin Execution Provider Libraries
