@@ -7200,7 +7200,7 @@ struct OrtApi {
    *
    * \param[in] options
    * \param[in] profile_file_prefix The prefix for the profile file. The actual filename will be:
-   *                                <profile_file_prefix>_<timestamp>.json
+   *                                [profile_file_prefix]_[timestamp].json
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
