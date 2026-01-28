@@ -8,6 +8,7 @@
 #include <iterator>
 #include <optional>
 #include <regex>
+#include <string>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -130,9 +131,9 @@ Status GetPciBusId(const std::filesystem::path& sysfs_path, std::optional<std::s
     pci_bus_id = {};
     LOGS_DEFAULT(WARNING) << MakeString("Skipping pci_bus_id for PCI path at \"",
                                         pci_bus_id_path.string(),
-                                        "\" because filename \"", pci_bus_id_filename, "\" dit not match expected pattern of ",
+                                        "\" because filename \"", pci_bus_id_filename, "\" did not match expected pattern of ",
                                         regex_pattern);
-  };
+  }
 
   return Status::OK();
 }
