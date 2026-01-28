@@ -3,7 +3,7 @@
 #include "core/common/make_string.h"
 
 #if !defined(DUMP_TENSOR_LEVEL)
-#define DUMP_TENSOR_LEVEL 1
+#define DUMP_TENSOR_LEVEL 0
 #endif
 
 #define DUMP_CPU_TENSOR_LEVEL DUMP_TENSOR_LEVEL
