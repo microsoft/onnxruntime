@@ -833,7 +833,7 @@ void BaseTester::ExecuteModelForEps(
     auto ep_only_uses_kernel_registry = [](const IExecutionProvider& ep) {
       const auto& provider_type = ep.Type();
 
-      constexpr std::array kEpsThatDoNotUseKernelRegistryForAllNodes{
+      constexpr std::array kEpsThatCompileNodes{
           kOpenVINOExecutionProvider,
           kTensorrtExecutionProvider,  // uses kernel registry for Memcpy* nodes, but compiles all others.
           kNnapiExecutionProvider,
@@ -844,11 +844,10 @@ void BaseTester::ExecuteModelForEps(
           kSnpeExecutionProvider,
       };
 
-      // check list of known EPs that do not use a kernel registry for all nodes
-      if (const auto ep_it = std::find(kEpsThatDoNotUseKernelRegistryForAllNodes.begin(),
-                                       kEpsThatDoNotUseKernelRegistryForAllNodes.end(),
+      // check list of known EPs that compile nodes
+      if (const auto ep_it = std::find(kEpsThatCompileNodes.begin(), kEpsThatCompileNodes.end(),
                                        provider_type);
-          ep_it != kEpsThatDoNotUseKernelRegistryForAllNodes.end()) {
+          ep_it != kEpsThatCompileNodes.end()) {
         return false;
       }
 
