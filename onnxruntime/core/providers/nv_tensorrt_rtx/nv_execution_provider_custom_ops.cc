@@ -32,13 +32,17 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
   static std::unique_ptr<OrtCustomOpDomain> native_custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   static std::vector<std::unique_ptr<TensorRTCustomOp>> native_custom_op_list;
+  static bool native_custom_ops_initialized = false;
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
+
+  // Add already-initialized native ops to domain list
+  if (native_custom_ops_initialized) {
+    domain_list.push_back(native_custom_op_domain.get());
+  }
+
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain.get());
-    if (native_custom_op_domain->domain_ != "" && native_custom_op_domain->custom_ops_.size() > 0) {
-      domain_list.push_back(native_custom_op_domain.get());
-    }
     return Status::OK();
   }
 
@@ -132,35 +136,34 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   }
 
   // Register native custom ops (register these independent of TRT plugin library availability)
-  const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
-  int num_native_custom_ops = std::size(native_custom_ops_names);
+  if (!native_custom_ops_initialized) {
+    const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
+    int num_native_custom_ops = std::size(native_custom_ops_names);
 
-  for (int i = 0; i < num_native_custom_ops; i++) {
-    native_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kNvTensorRTRTXExecutionProvider, nullptr));
-    native_custom_op_list.back()->SetName(native_custom_ops_names[i]);
-    native_custom_op_domain->custom_ops_.push_back(native_custom_op_list.back().get());
+    for (int i = 0; i < num_native_custom_ops; i++) {
+      native_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kNvTensorRTRTXExecutionProvider, nullptr));
+      native_custom_op_list.back()->SetName(native_custom_ops_names[i]);
+      native_custom_op_domain->custom_ops_.push_back(native_custom_op_list.back().get());
+    }
+
+    native_custom_op_domain->domain_ = "trt";
+    domain_list.push_back(native_custom_op_domain.get());
+    native_custom_ops_initialized = true;
   }
 
-  native_custom_op_domain->domain_ = "trt";
-  domain_list.push_back(native_custom_op_domain.get());
   return Status::OK();
 }
 
 void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain) {
-  if (domain != nullptr) {
-    for (auto ptr : domain->custom_ops_) {
-      if (ptr != nullptr) {
-        delete ptr;
-      }
-    }
-    delete domain;
-  }
+  (void)domain;  // Suppress unused parameter warning
+  // The custom ops (TensorRTCustomOp) and domain (OrtCustomOpDomain) are marked as static
+  // with unique_ptr at the time of creation in CreateTensorRTCustomOpDomainList() function.
+  // Deleting them here can cause double-delete.
 }
 
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) {
-  for (auto ptr : custom_op_domain_list) {
-    ReleaseTensorRTCustomOpDomain(ptr);
-  }
+  // Only clear the reference vector, don't delete the static domain objects.
+  custom_op_domain_list.clear();
 }
 
 }  // namespace onnxruntime
