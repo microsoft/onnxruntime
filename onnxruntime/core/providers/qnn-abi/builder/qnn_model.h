@@ -37,6 +37,7 @@ class QnnModel {
                            const OrtNode& fused_node,
                            const qnn::ModelSettings& model_settings,
                            const Ort::Logger& logger,
+                           std::unordered_map<std::string, std::string>* tensor_name_overrides = nullptr,
                            const QnnGraph_Config_t** graph_configs = nullptr,
                            const std::string& json_qnn_graph_path = "");
 

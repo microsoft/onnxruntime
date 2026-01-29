@@ -50,7 +50,8 @@ class QnnModelWrapper {
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
                   QnnBackendType qnn_backend_type,
-                  const ModelSettings& model_settings)
+                  const ModelSettings& model_settings,
+                  std::unordered_map<std::string, std::string>* tensor_name_overrides = nullptr)
       : ort_graph_(ort_graph),
         logger_(logger),
         qnn_interface_(qnn_interface),
@@ -59,7 +60,8 @@ class QnnModelWrapper {
         output_index_map_(output_index_map),
         qnn_backend_type_(qnn_backend_type),
         model_settings_(model_settings),
-        api_ptrs_(ApiPtrs{api_ptrs.ort_api, api_ptrs.ep_api, api_ptrs.model_editor_api}) {
+        api_ptrs_(ApiPtrs{api_ptrs.ort_api, api_ptrs.ep_api, api_ptrs.model_editor_api}),
+        tensor_name_overrides_(tensor_name_overrides) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -373,6 +375,9 @@ class QnnModelWrapper {
                                     /*out*/ bool& is_per_channel,
                                     /*out*/ int64_t& axis) const;
 
+  // Maps internal QNN tensor name to original ONNX name. Used by offload_graph_io_quantization.
+  void SetTensorNameOverride(const std::string& internal, const std::string& original) const;
+
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
                                    const std::vector<std::string>& names,
@@ -427,6 +432,8 @@ class QnnModelWrapper {
 
   bool ProcessBF16Conversions(std::vector<QnnOpProperty>& final_ops);
 
+  const std::string* GetTensorNameOverride(const std::string& internal) const;
+
   const OrtGraph& ort_graph_;
   const Ort::Logger& logger_;
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
@@ -454,6 +461,8 @@ class QnnModelWrapper {
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
   const ApiPtrs api_ptrs_;
+
+  std::unordered_map<std::string, std::string>* tensor_name_overrides_ = nullptr;
 };  // QnnModelWrapper
 
 template <typename T>

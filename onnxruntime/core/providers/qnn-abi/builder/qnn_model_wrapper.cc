@@ -57,6 +57,22 @@ bool QnnModelWrapper::QnnParamExists(const std::string& param_tensor_name) const
   return model_params_map_.find(param_tensor_name) != model_params_map_.end();
 }
 
+void QnnModelWrapper::SetTensorNameOverride(const std::string& internal,
+                                            const std::string& original) const {
+  if (tensor_name_overrides_ != nullptr && !internal.empty() && !original.empty() &&
+      tensor_name_overrides_->find(internal) == tensor_name_overrides_->end()) {
+    tensor_name_overrides_->emplace(internal, original);
+  }
+}
+
+const std::string* QnnModelWrapper::GetTensorNameOverride(const std::string& internal) const {
+  if (tensor_name_overrides_ == nullptr) {
+    return nullptr;
+  }
+  auto it = tensor_name_overrides_->find(internal);
+  return it != tensor_name_overrides_->end() ? &it->second : nullptr;
+}
+
 Ort::Status QnnModelWrapper::MakeTensorWrapper(const OrtNodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const {
   const std::string& tensor_name = tensor.name;
 
@@ -165,6 +181,11 @@ bool QnnModelWrapper::CreateQnnInputOutputTensors(const std::string& qnn_node_na
     // During graph partitioning, we only need to do op validation, it's not required to create Qnn graph tensor
     // We only need to create the Qnn graph tensor during Compile to create Qnn graph
     if (!do_op_validation) {
+      if (const std::string* name = model_settings_.offload_graph_io_quantization
+                                        ? GetTensorNameOverride(tensor_name)
+                                        : nullptr) {
+        it->second.SetResolvedTensorName(*name);
+      }
       std::string error_string;
       auto rt = it->second.CreateQnnGraphTensor(qnn_interface_, graph_, qnn_node_name, tensor_created_map_, error_string);
       if (!rt) {
@@ -877,6 +898,12 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
     if (it == model_tensors_map_.end()) {
       ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_ERROR, ("Model input or output name not exist: " + tensor_name + ". Could cause execution error.").c_str());
       break;
+    }
+
+    if (const std::string* name = model_settings_.offload_graph_io_quantization
+                                      ? GetTensorNameOverride(tensor_name)
+                                      : nullptr) {
+      it->second.SetResolvedTensorName(*name);
     }
     // It's safe to move QnnTensorWrapper out of model_tensors_map_
     // since this call happens when QnnModelWrapper end of live

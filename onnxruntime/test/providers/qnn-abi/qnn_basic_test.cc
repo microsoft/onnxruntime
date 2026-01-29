@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
+
+#include "nlohmann/json.hpp"
 
 #include "core/graph/constants.h"
 #include "core/graph/node_attr_utils.h"
@@ -1403,6 +1406,110 @@ TEST_F(QnnABIHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
                                        &graph_checker);
     }
   }
+}
+
+// Test that DLC I/O tensor names match original ONNX names when offload_graph_io_quantization=1.
+TEST_F(QnnABIHTPBackendTests, OffloadGraphIoQuantizationTensorNameOverrides) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "1";
+
+  const std::filesystem::path dump_dir = "OffloadGraphIoQuantizationTensorNameOverrides";
+  provider_options["json_qnn_graph_dir"] = dump_dir.string();
+  provider_options["dump_json_qnn_graph"] = "1";
+
+  std::filesystem::remove_all(dump_dir);
+  ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
+
+  auto cleanup = gsl::finally([&dump_dir]() { std::filesystem::remove_all(dump_dir); });
+
+  // Build QDQ Sigmoid: x -> Q -> DQ -> Sigmoid -> Q -> DQ -> out
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 21}};
+  auto& logging_manager = DefaultLoggingManager();
+
+  onnxruntime::Model qdq_model("OffloadGraphIoQuantizationTensorNameOverrides",
+                               false,
+                               ModelMetaData(),
+                               PathString(),
+                               IOnnxRuntimeOpSchemaRegistryList(),
+                               domain_to_version,
+                               {},
+                               logging_manager.DefaultLogger());
+  ModelTestBuilder builder(qdq_model.MainGraph());
+
+  const std::string expected_input_name = "input";
+  const std::string expected_output_name = "output";
+
+  std::vector<int64_t> shape = {1, 2, 2, 2};
+  std::vector<float> data = GetFloatDataInRangeABI(0.0f, 1.0f, 8);
+  NodeArg* x = builder.MakeInput<float>(shape, data);
+
+  float scale = 1.0f / 255.0f;
+  uint8_t zero_point = 0;
+
+  NodeArg* q_out = builder.MakeIntermediate();
+  builder.AddQuantizeLinearNode<uint8_t>(x, scale, zero_point, q_out);
+
+  NodeArg* dq1_out = builder.MakeIntermediate();
+  builder.AddDequantizeLinearNode<uint8_t>(q_out, scale, zero_point, dq1_out);
+
+  NodeArg* sigmoid_out = builder.MakeIntermediate();
+  builder.AddNode("Sigmoid", {dq1_out}, {sigmoid_out});
+
+  NodeArg* q2_out = builder.MakeIntermediate();
+  builder.AddQuantizeLinearNode<uint8_t>(sigmoid_out, scale, zero_point, q2_out);
+
+  NodeArg* out = builder.MakeOutput();
+  builder.AddDequantizeLinearNode<uint8_t>(q2_out, scale, zero_point, out);
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
+
+  std::string model_data;
+  qdq_model.ToProto().SerializeToString(&model_data);
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  Ort::SessionOptions so;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, provider_options);
+
+  Ort::Session session(*ort_env, model_data.data(), model_data.size(), so);
+
+  std::filesystem::path json_file_path;
+  for (const auto& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
+    if (dir_entry.is_regular_file() && dir_entry.path().extension().string() == ".json" &&
+        dir_entry.path().filename().string().find("_tensor_log") == std::string::npos) {
+      json_file_path = dir_entry.path();
+      break;
+    }
+  }
+  ASSERT_FALSE(json_file_path.empty()) << "No JSON graph file found in " << dump_dir;
+
+  std::set<std::string> tensor_names;
+  {
+    std::ifstream json_file(json_file_path);
+    ASSERT_TRUE(json_file.is_open()) << "Failed to open JSON file: " << json_file_path;
+
+    nlohmann::json root_json;
+    json_file >> root_json;
+
+    ASSERT_TRUE(root_json.contains("graph")) << "JSON missing 'graph' field";
+    const auto& graph_json = root_json["graph"];
+    ASSERT_TRUE(graph_json.contains("tensors")) << "JSON graph missing 'tensors' field";
+
+    for (const auto& [name, tensor] : graph_json["tensors"].items()) {
+      tensor_names.insert(name);
+    }
+  }
+
+  // Verify original ONNX names appear in DLC (not internal quantized names)
+  EXPECT_TRUE(tensor_names.count(expected_input_name))
+      << "Expected input '" << expected_input_name << "' not found.";
+  EXPECT_TRUE(tensor_names.count(expected_output_name))
+      << "Expected output '" << expected_output_name << "' not found.";
 }
 
 // TODO: Test will be re-enabled for Linux once QNN API issue is resolved

@@ -120,6 +120,7 @@ Ort::Status QnnModel::ComposeGraph(const OrtGraph& ort_graph,
                                    const OrtNode& fused_node,
                                    const qnn::ModelSettings& model_settings,
                                    const Ort::Logger& logger,
+                                   std::unordered_map<std::string, std::string>* tensor_name_overrides,
                                    const QnnGraph_Config_t** graph_configs,
                                    const std::string& json_qnn_graph_path) {
   ORT_CXX_LOG(logger,
@@ -143,7 +144,8 @@ Ort::Status QnnModel::ComposeGraph(const OrtGraph& ort_graph,
                                                       model_input_index_map_,
                                                       model_output_index_map_,
                                                       qnn_backend_manager_->GetQnnBackendType(),
-                                                      model_settings);
+                                                      model_settings,
+                                                      tensor_name_overrides);
 
   qnn::profile::ProfilingInfo profiling_info;
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED

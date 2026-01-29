@@ -86,9 +86,12 @@ Ort::Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
     RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Inputs()[0], is_per_chan_quant, quant_axis));
     RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone DQ op with per-channel quantization");
 
-    if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization) {
-      RETURN_IF(qnn_model_wrapper.IsGraphOutput(node_unit.Outputs()[0].name),
-                "QNN EP is configured to not take DQ nodes that generate a graph output.");
+    if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization &&
+        qnn_model_wrapper.IsGraphOutput(node_unit.Outputs()[0].name)) {
+      // Map internal (quantized) tensor name to original name in ONNX
+      qnn_model_wrapper.SetTensorNameOverride(/*internal=*/node_unit.Inputs()[0].name,
+                                              /*external=*/node_unit.Outputs()[0].name);
+      return MAKE_EP_FAIL("QNN EP is configured to not take DQ nodes that generate a graph output.");
     }
   }
 
@@ -98,9 +101,12 @@ Ort::Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
     RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Outputs()[0], is_per_chan_quant, quant_axis));
     RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone Q op with per-channel quantization");
 
-    if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization) {
-      RETURN_IF(qnn_model_wrapper.IsGraphInput(node_unit.Inputs()[0].name),
-                "QNN EP is configured to not take Q nodes that consume a graph input.");
+    if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization &&
+        qnn_model_wrapper.IsGraphInput(node_unit.Inputs()[0].name)) {
+      // Map internal (quantized) tensor name to original name in ONNX
+      qnn_model_wrapper.SetTensorNameOverride(/*internal=*/node_unit.Outputs()[0].name,
+                                              /*external=*/node_unit.Inputs()[0].name);
+      return MAKE_EP_FAIL("QNN EP is configured to not take Q nodes that consume a graph input.");
     }
   }
 

@@ -1017,7 +1017,8 @@ OrtStatus* QnnEp::GetSupportedNodes(const OrtGraph* graph,
                                                 model_input_index_map,
                                                 model_output_index_map,
                                                 qnn_backend_manager_->GetQnnBackendType(),
-                                                model_settings_);
+                                                model_settings_,
+                                                &tensor_name_overrides_);
 
   std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_size);
@@ -1715,6 +1716,7 @@ OrtStatus* ORT_API_CALL QnnEp::CompileImpl(_In_ OrtEp* this_ptr,
                                              *fused_node,
                                              ep->model_settings_,
                                              ep->logger_,
+                                             &ep->tensor_name_overrides_,
                                              all_graph_configs_ptr,
                                              json_graph_filepath));
     RETURN_IF_NOT_OK(qnn_model->FinalizeGraphs(ep->logger_));

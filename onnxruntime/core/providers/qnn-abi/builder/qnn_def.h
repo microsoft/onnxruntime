@@ -296,6 +296,18 @@ class QnnTensorWrapper {
 
   const std::string& GetName() const { return tensor_name_; }
 
+  const std::string& GetResolvedTensorName() const {
+    return tensor_name_override_.empty() ? tensor_name_ : tensor_name_override_;
+  }
+
+  void SetResolvedTensorName(const std::string& resolved_name) {
+    if (resolved_name.empty() || tensor_name_override_ == resolved_name) {
+      return;
+    }
+    tensor_name_override_ = resolved_name;
+    SetQnnTensorName(qnn_tensor_, tensor_name_override_.c_str());
+  }
+
   Qnn_TensorType_t GetTensorType() const { return GetQnnTensorType(qnn_tensor_); }
   Qnn_DataType_t GetTensorDataType() const { return GetQnnTensorDataType(qnn_tensor_); }
   uint32_t GetTensorRank() const { return static_cast<uint32_t>(dimensions_.size()); }
@@ -306,24 +318,26 @@ class QnnTensorWrapper {
                             const std::string& node_name,
                             std::unordered_map<std::string, bool>& tensors_created_table,
                             std::string& error_msg) {
-    return CreateTensorInQnnGraph(qnn_interface, graph, node_name, tensor_name_,
+    return CreateTensorInQnnGraph(qnn_interface, graph, node_name, GetResolvedTensorName(),
                                   qnn_tensor_, tensors_created_table, error_msg);
   }
 
  private:
   void SwapOther(QnnTensorWrapper&& other) noexcept {
     std::swap(tensor_name_, other.tensor_name_);
+    std::swap(tensor_name_override_, other.tensor_name_override_);
     std::swap(dimensions_, other.dimensions_);
     std::swap(client_buf_, other.client_buf_);
     std::swap(quant_params_, other.quant_params_);
     std::swap(qnn_tensor_, other.qnn_tensor_);
-    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+    SetQnnTensorName(qnn_tensor_, GetResolvedTensorName().c_str());
     SetQnnTensorDim(qnn_tensor_, dimensions_);
     SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
     SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());
   }
 
-  std::string tensor_name_;
+  std::string tensor_name_;           // The tensor's actual name used inside QNN graph
+  std::string tensor_name_override_;  // Optional override to original ONNX tensor name
   std::vector<uint32_t> dimensions_;
   std::vector<uint8_t> client_buf_;
   Qnn_Tensor_t qnn_tensor_ = QNN_TENSOR_INIT;
