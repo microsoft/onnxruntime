@@ -281,7 +281,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
                 graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
           },
           sess_options.config_options,
-          DefaultLoggingManager().DefaultLogger()));
+          DefaultLoggingManager().DefaultLogger(), nullptr /*layering_index*/));
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
@@ -368,7 +368,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
                                                              cpu_allocator, debug_graph_fn);
         },
         sess_options.config_options,
-        default_logger));
+        default_logger,
+        nullptr /*layering_index*/));
 
     EXPECT_STATUS_OK(session_state.FinalizeSessionState(model.ModelPath(), krm));
 
@@ -456,7 +457,8 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   layout_transformation::DebugGraphFn debug_graph_fn;
   ASSERT_STATUS_OK(
       partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
-                            sess_options.config_options, default_logger, GraphPartitioner::Mode::kNormal,
+                            sess_options.config_options, default_logger, nullptr /*layering_index*/,
+                            GraphPartitioner::Mode::kNormal,
                             epctx::ModelGenOptions{},
                             debug_graph_fn));
 

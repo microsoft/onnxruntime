@@ -2021,6 +2021,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             transform_layout_fn,
                                             sess_options.config_options,
                                             logger,
+                                            nullptr /*layering_index*/,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
