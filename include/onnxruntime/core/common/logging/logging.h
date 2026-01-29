@@ -56,9 +56,7 @@ struct OrtLogger;  // opaque API type. is always an instance of Logger
 namespace onnxruntime {
 namespace logging {
 
-using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
-
-// C++20 has operator<< in std::chrono for Timestamp type but we need to check if usage is valid.
+// C++20 has std::chrono::operator<< for std::chrono::system_clock::time_point but we need to check if usage is valid.
 // define temporary macro ORT_USE_CXX20_STD_CHRONO to determine whether to use the std::chrono or date implementation.
 #define ORT_USE_CXX20_STD_CHRONO __cpp_lib_chrono >= 201803L
 
@@ -85,12 +83,30 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 #endif  // __APPLE__
 
 #if ORT_USE_CXX20_STD_CHRONO
-namespace timestamp_ns = std::chrono;
+namespace timestamp_stream_insertion_op_ns = std::chrono;
 #else
-namespace timestamp_ns = ::date;
+namespace timestamp_stream_insertion_op_ns = ::date;
 #endif
 
 #undef ORT_USE_CXX20_STD_CHRONO
+
+// This class wraps `std::chrono::system_clock::time_point` and provides `operator<<`.
+// It is a workaround for the inconsistent availability of `std::chrono::operator<<` for
+// `std::chrono::system_clock::time_point`.
+// When all builds support `std::chrono::operator<<`, we can simplify to this:
+//   `using Timestamp = std::chrono::system_clock::time_point;`
+class Timestamp {
+ public:
+  using TimePoint = std::chrono::system_clock::time_point;
+  Timestamp(const TimePoint& time_point) noexcept : time_point_{time_point} {}
+
+  friend std::ostream& operator<<(std::ostream& os, const Timestamp& time_stamp) {
+    return timestamp_stream_insertion_op_ns::operator<<(os, time_stamp.time_point_);
+  }
+
+ private:
+  TimePoint time_point_{};
+};
 
 #ifndef NDEBUG
 ORT_ATTRIBUTE_UNUSED static bool vlog_enabled = true;  // Set directly based on your needs.
