@@ -1774,6 +1774,7 @@ class TestFusedKernelParity(unittest.TestCase):
         # Clean up
         del os.environ["ORT_DISABLE_FLASH_DECODE"]
 
+
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestGQARegressions(unittest.TestCase):
     """Specific regression tests for historical bugs."""
