@@ -21,11 +21,6 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
   endif()
 endif()
 
-# Needed for Java
-if (NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_C_STANDARD 99)
-endif()
-
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
@@ -33,10 +28,6 @@ include(FetchContent)
 include(CheckFunctionExists)
 include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
-
-if (NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 20)
-endif()
 
 if (MSVC)
   #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
@@ -248,6 +239,24 @@ option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is com
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
+
+# Set C/C++ standard versions
+if (NOT CMAKE_C_STANDARD)
+  # Needed for Java
+  set(CMAKE_C_STANDARD 99)
+endif()
+
+if (NOT CMAKE_CXX_STANDARD)
+  # TODO move all builds to C++20
+  if (MSVC AND onnxruntime_USE_CUDA)
+    # There's a compilation error from CUTLASS header "cute/tensor.hpp" when attempting to use C++20:
+    #   cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type template
+    #   argument
+    set(CMAKE_CXX_STANDARD 17)
+  else()
+    set(CMAKE_CXX_STANDARD 20)
+  endif()
+endif()
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
