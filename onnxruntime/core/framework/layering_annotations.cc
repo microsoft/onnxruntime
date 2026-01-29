@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/graph/constants.h"
 #include "core/common/narrow.h"
@@ -433,7 +433,10 @@ Status LayeringIndex::Create(Graph& graph,
     const auto& rule = rules.rules[i];
 
     // 1. Try matching against ep_devices (from session options)
-    std::optional<std::string> matched_ep = EpLayeringMatcher::Match(ep_devices, rule);
+    std::optional<std::string> matched_ep;
+    if (!ep_devices.empty()) {
+      matched_ep = EpLayeringMatcher::Match(ep_devices, rule);
+    }
 
     // 2. If not matched, try matching against Registered EPs
     if (!matched_ep) {
@@ -464,7 +467,7 @@ Status LayeringIndex::Create(Graph& graph,
   return Status::OK();
 }
 
-// Process to to bottom-up assign layering indices to nodes
+// Process top to bottom-up assign layering indices to nodes
 void LayeringIndex::ProcessGraph(Graph& graph, const LayeringRuleMatcher& matcher,
                                  std::optional<size_t> parent_layer_id) {
   // 3. Create entry for this graph instance
@@ -514,4 +517,4 @@ void LayeringIndex::ProcessGraph(Graph& graph, const LayeringRuleMatcher& matche
 
 }  // namespace onnxruntime
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
@@ -254,4 +254,8 @@ class LayeringIndex {
 
 }  // namespace onnxruntime
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#else
+namespace onnxruntime {
+class LayeringIndex;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

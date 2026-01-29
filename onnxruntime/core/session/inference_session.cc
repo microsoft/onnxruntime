@@ -1495,7 +1495,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 
   LayeringIndex* layering_index = nullptr;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::optional<LayeringIndex> layering_index_storage;
   const auto layering_config = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsLayerAssignmentSettings, "");
   if (!layering_config.empty()) {
@@ -1505,7 +1505,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       layering_index = &layering_index_storage.value();
     }
   }
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,

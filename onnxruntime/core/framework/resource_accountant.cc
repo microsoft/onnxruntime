@@ -102,7 +102,7 @@ class WeightsSizeBasedAccountant : public IResourceAccountant {
       if (!input_def->Exists()) continue;
 
       const auto& name = input_def->Name();
-      bool check_outer_scope = true;
+      constexpr bool check_outer_scope = true;
       const auto* tensor_proto = graph->GetInitializer(name, check_outer_scope);
 
       if (tensor_proto) {
