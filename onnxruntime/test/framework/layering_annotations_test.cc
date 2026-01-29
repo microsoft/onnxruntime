@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/layering_annotations.h"
 #include "core/session/abi_devices.h"
@@ -955,3 +957,5 @@ TEST(LayeringRulesTest, FromConfigString_IgnoresEmptyEntries) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // ORT_MINIMAL_BUILD

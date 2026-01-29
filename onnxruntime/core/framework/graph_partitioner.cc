@@ -16,6 +16,7 @@
 #include "core/framework/kernel_lookup.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/layering_annotations.h"
 #include "core/framework/resource_accountant.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
@@ -69,6 +70,7 @@ struct PartitionParams {
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::reference_wrapper<const OnPartitionAssignmentFunction> on_partition_assignment_fn;
+  LayeringIndex* layering_index;
 };
 }  // namespace
 
@@ -150,6 +152,7 @@ struct GetCapabilityForEPParams {
   IResourceAccountant* resource_accountant;
   std::reference_wrapper<const GraphOptimizerRegistry> graph_optimizer_registry;
   std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
+  LayeringIndex* layering_index;  // Added member
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
@@ -430,7 +433,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const OnPartitionAssignmentFunction& on_partition_assignment_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
                                            const GraphOptimizerRegistry& graph_optimizer_registry,
-                                           bool disable_model_compile) {
+                                           bool disable_model_compile,
+                                           LayeringIndex* layering_index) {  // Added arg
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -448,7 +452,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        check_load_cancellation_fn,
                                                        on_partition_assignment_fn,
                                                        logger, resource_accountant,
-                                                       graph_optimizer_registry, disable_model_compile));
+                                                       graph_optimizer_registry, disable_model_compile,
+                                                       layering_index));  // Pass through
     }
   }
 
@@ -474,7 +479,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::cref(debug_graph_fn),
       resource_accountant,
       std::ref(graph_optimizer_registry),
-      std::cref(check_load_cancellation_fn)};
+      std::cref(check_load_cancellation_fn),
+      layering_index};  // Pass param
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
   if (capabilities.empty()) {
@@ -663,8 +669,8 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
     }
   }
 
-  // See if the node with no provider can be inlined. If one such nodes can be
-  // successfully inlined, we re-run the partitioner on the modified graph.
+  // See if the node with no provider can be inlined. If one such nodes can be successfully inlined,
+  // we re-run the partitioner on the modified graph.
   // NOTE: Inlining the function will change the nodes in the Graph instance, so we can't do that while iterating
   // using graph.Nodes().
   InlinedVector<Node*> nodes_to_inline;
@@ -1018,7 +1024,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
-                                       const logging::Logger& logger, bool disable_model_compile) {
+                                       const logging::Logger& logger, bool disable_model_compile) {  // Added arg
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -1046,7 +1052,8 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        check_load_cancellation_fn,
                                                        on_partition_assignment_fn,
                                                        logger, resource_accountant, graph_optimizer_registry,
-                                                       disable_model_compile));
+                                                       disable_model_compile,
+                                                       partition_params.layering_index));  // Pass param
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -1259,9 +1266,10 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                                    const ConfigOptions& config_options,
                                    const logging::Logger& logger,
+                                   LayeringIndex* layering_index,
                                    Mode mode,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
-                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {
+                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {  // Added arg
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -1292,7 +1300,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
       std::cref(debug_graph_fn),
-      std::cref(on_partition_assignment_fn_)};
+      std::cref(on_partition_assignment_fn_),
+      layering_index};
 
 #else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1328,7 +1337,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
                                                  ep_acc_map, *graph_optimizer_registry_, logger,
-                                                 disable_model_compile));
+                                                 disable_model_compile));  // Pass param
 
     if (ep_context_gen_options.enable) {
       ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));

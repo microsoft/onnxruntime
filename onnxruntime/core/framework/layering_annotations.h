@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
@@ -251,3 +253,5 @@ class LayeringIndex {
 };
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

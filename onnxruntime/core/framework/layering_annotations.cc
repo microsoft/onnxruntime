@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/graph/constants.h"
 #include "core/common/narrow.h"
 #include "core/common/string_utils.h"
@@ -511,3 +513,5 @@ void LayeringIndex::ProcessGraph(Graph& graph, const LayeringRuleMatcher& matche
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
