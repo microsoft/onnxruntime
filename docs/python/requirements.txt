@@ -11,7 +11,6 @@ furo
 pyquickhelper
 pandas
 pydot
-coloredlogs
 flatbuffers
 numpy<2.0.0
 packaging
