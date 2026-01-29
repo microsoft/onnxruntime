@@ -197,13 +197,37 @@ class GQAAttentionBase {
       unit_cost.bytes_stored += bytes_to_copy_key;
     }
 
+    if (present_key) {
+      // Parallelize over KV heads to avoid race conditions. In GQA, multiple query heads share the same KV head.
+      // If we prepared the KV cache within the query head loop (as before), multiple threads would concurrently
+      // write to the same memory location in the present KV buffer.
+      const size_t kv_loop_len = batch_size * kv_num_heads_;
+      ThreadPool::TryParallelFor(tp, kv_loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t i = begin; i != end; ++i) {
+          const size_t batch_index = i / kv_num_heads_;
+          const size_t head_index = i % kv_num_heads_;
+          const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
+          const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;
+          const size_t past_chunk_length = past_seqlen * head_size;
+
+          const T* k;
+          if (packed_qkv) {
+            k = K + packed_batch_stride * batch_index + kv_input_chunk_length * head_index;
+          } else {
+            k = K + kv_input_chunk_length * i;
+          }
+          ConcatStateChunkGQA(past_key, k, present_key, present_buff_chunk_length, past_buff_chunk_length,
+                              past_chunk_length, kv_input_chunk_length, past_present_share_buffer, i);
+        }
+      });
+    }
+
     ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
         const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
         const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;  // Assume no padding sequence length
-        const size_t past_chunk_length = past_seqlen * head_size;
 
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * present_buffer_sequence_length;
         U* output = attention_probs + output_offset;
@@ -232,15 +256,14 @@ class GQAAttentionBase {
         }
 
         const T* k;
-        if (packed_qkv) {
-          k = K + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
+        if (present_key) {
+          k = present_key + (batch_index * kv_num_heads_ + head_index / kv_num_heads_factor) * present_buff_chunk_length;
         } else {
-          k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
-        }
-        if (nullptr != present_key) {
-          k = ConcatStateChunkGQA(past_key, k, present_key, present_buff_chunk_length, past_buff_chunk_length,
-                                  past_chunk_length, kv_input_chunk_length, past_present_share_buffer,
-                                  i / kv_num_heads_factor);
+          if (packed_qkv) {
+            k = K + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
+          } else {
+            k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
+          }
         }
 
         // Compute Q*K' + AttentionMask
@@ -374,9 +397,9 @@ class GQAAttentionBase {
   template <typename T, typename U>
   void ComputeVxAttentionScore(T* output,                                    // buffer for the result with size BxSxNxH
                                const U* attention_probs,                     // Attention probs with size BxNxSxT
-                               const T* V,                                   // V value with size BxN_kvxSxH
+                               const T* V,                                   // V data. Its size is BxN_kvxLxH
                                const int32_t* seqlens_k,                     // total - 1 sequence lengths tensor
-                               const size_t batch_size,                      // batch size
+                               const size_t batch_size,                      // batch size of self-attention
                                const size_t sequence_length,                 // sequence length
                                const size_t past_buffer_sequence_length,     // sequence length in past state
                                const size_t present_buffer_sequence_length,  // sequence length in past state
@@ -419,6 +442,28 @@ class GQAAttentionBase {
       unit_cost.bytes_stored += bytes_to_copy_value;
     }
 
+    if (present_value) {
+      const size_t kv_loop_len = batch_size * kv_num_heads_;
+      ThreadPool::TryParallelFor(tp, kv_loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t i = begin; i != end; ++i) {
+          const size_t batch_index = i / kv_num_heads_;
+          const size_t head_index = i % kv_num_heads_;
+          const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
+          const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;
+          const size_t past_chunk_length = past_seqlen * head_size;
+
+          const T* v;
+          if (packed_qkv) {
+            v = V + packed_batch_stride * batch_index + kv_input_chunk_length * head_index;
+          } else {
+            v = V + kv_input_chunk_length * i;
+          }
+          ConcatStateChunkGQA(past_value, v, present_value, present_buff_chunk_length, past_buff_chunk_length,
+                              past_chunk_length, kv_input_chunk_length, past_present_share_buffer, i);
+        }
+      });
+    }
+
     const size_t bytes_to_copy_trans = SafeInt<size_t>(head_size) * sizeof(T);
     double bytes_to_copy_trans_all = static_cast<double>(sequence_length * bytes_to_copy_trans);
     unit_cost.bytes_loaded += bytes_to_copy_trans_all;
@@ -436,19 +481,16 @@ class GQAAttentionBase {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
         const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
-        const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;  // Assume no padding sequence length
-        const size_t past_chunk_length = past_seqlen * head_size;
 
         const T* v;
-        if (packed_qkv) {
-          v = V + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
+        if (present_value) {
+          v = present_value + (batch_index * kv_num_heads_ + head_index / kv_num_heads_factor) * present_buff_chunk_length;
         } else {
-          v = V + kv_input_chunk_length * (i / kv_num_heads_factor);
-        }
-        if (nullptr != present_value) {
-          v = ConcatStateChunkGQA(past_value, v, present_value, present_buff_chunk_length, past_buff_chunk_length,
-                                  past_chunk_length, kv_input_chunk_length, past_present_share_buffer,
-                                  i / kv_num_heads_factor);
+          if (packed_qkv) {
+            v = V + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
+          } else {
+            v = V + kv_input_chunk_length * (i / kv_num_heads_factor);
+          }
         }
 
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;

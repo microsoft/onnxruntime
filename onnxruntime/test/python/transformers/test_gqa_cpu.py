@@ -2679,5 +2679,144 @@ class TestGQA(unittest.TestCase):
         )
 
 
+class TestGQADeterminism(unittest.TestCase):
+    def test_gqa_determinism(self):
+        # Stressful configuration to trigger race conditions:
+        # - High num_heads to kv_num_heads ratio (64:1) to maximize thread contention on shared KV buffers.
+        # - Large head_size and sequence length to increase the window for memory corruption.
+        # - batch_size > 1 to test multi-batch parallelization.
+        batch_size = 4
+        num_heads = 64
+        kv_num_heads = 1
+        head_size = 128
+        sequence_length = 1
+        past_sequence_length = 2047
+        do_rotary = 1
+
+        # MLFloat16 (float16) is more likely to show bitwise differences if memory is corrupted or uninitialized.
+        dtype = numpy.float16
+
+        def run_once():
+            # Create Session
+            sess_options = SessionOptions()
+            sess_options.intra_op_num_threads = 16
+
+            # Use a slightly different seed or noise if we want, but here we want to see if the SAME input
+            # produces DIFFERENT output across runs.
+            numpy.random.seed(42)
+
+            # GQA Inputs
+            query = numpy.random.randn(batch_size, sequence_length, num_heads * head_size).astype(dtype)
+            key = numpy.random.randn(batch_size, sequence_length, kv_num_heads * head_size).astype(dtype)
+            value = numpy.random.randn(batch_size, sequence_length, kv_num_heads * head_size).astype(dtype)
+            past_key = numpy.random.randn(batch_size, kv_num_heads, past_sequence_length, head_size).astype(dtype)
+            past_value = numpy.random.randn(batch_size, kv_num_heads, past_sequence_length, head_size).astype(dtype)
+            seqlens_k = numpy.array([past_sequence_length] * batch_size, dtype=numpy.int32)
+            total_sequence_length = numpy.array([past_sequence_length + sequence_length], dtype=numpy.int32)
+
+            cos_cache = numpy.random.randn(2048, head_size // 2).astype(dtype)
+            sin_cache = numpy.random.randn(2048, head_size // 2).astype(dtype)
+
+            # Create Model
+
+            input_names = [
+                "query",
+                "key",
+                "value",
+                "past_key",
+                "past_value",
+                "seqlens_k",
+                "total_sequence_length",
+                "cos_cache",
+                "sin_cache",
+            ]
+            output_names = ["output", "present_key", "present_value"]
+
+            node = helper.make_node(
+                "GroupQueryAttention",
+                input_names,
+                output_names,
+                "gqa_node",
+                domain="com.microsoft",
+                num_heads=num_heads,
+                kv_num_heads=kv_num_heads,
+                do_rotary=do_rotary,
+            )
+
+            graph = helper.make_graph(
+                [node],
+                "gqa_graph",
+                [
+                    helper.make_tensor_value_info(
+                        "query", TensorProto.FLOAT16, [batch_size, sequence_length, num_heads * head_size]
+                    ),
+                    helper.make_tensor_value_info(
+                        "key", TensorProto.FLOAT16, [batch_size, sequence_length, kv_num_heads * head_size]
+                    ),
+                    helper.make_tensor_value_info(
+                        "value", TensorProto.FLOAT16, [batch_size, sequence_length, kv_num_heads * head_size]
+                    ),
+                    helper.make_tensor_value_info(
+                        "past_key", TensorProto.FLOAT16, [batch_size, kv_num_heads, past_sequence_length, head_size]
+                    ),
+                    helper.make_tensor_value_info(
+                        "past_value", TensorProto.FLOAT16, [batch_size, kv_num_heads, past_sequence_length, head_size]
+                    ),
+                    helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size]),
+                    helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
+                    helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, [2048, head_size // 2]),
+                    helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, [2048, head_size // 2]),
+                ],
+                [
+                    helper.make_tensor_value_info(
+                        "output", TensorProto.FLOAT16, [batch_size, sequence_length, num_heads * head_size]
+                    ),
+                    helper.make_tensor_value_info(
+                        "present_key",
+                        TensorProto.FLOAT16,
+                        [batch_size, kv_num_heads, past_sequence_length + sequence_length, head_size],
+                    ),
+                    helper.make_tensor_value_info(
+                        "present_value",
+                        TensorProto.FLOAT16,
+                        [batch_size, kv_num_heads, past_sequence_length + sequence_length, head_size],
+                    ),
+                ],
+            )
+
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+            sess = InferenceSession(model.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
+
+            inputs = {
+                "query": query,
+                "key": key,
+                "value": value,
+                "past_key": past_key,
+                "past_value": past_value,
+                "seqlens_k": seqlens_k,
+                "total_sequence_length": total_sequence_length,
+                "cos_cache": cos_cache,
+                "sin_cache": sin_cache,
+            }
+
+            return sess.run(None, inputs)
+
+        # Run multiple times and check for bitwise identity
+        outputs = []
+        print(
+            f"Running stressful GQA determinism check with past_seqlen={past_sequence_length}, heads={num_heads}:{kv_num_heads}..."
+        )
+        for i in range(100):
+            outputs.append(run_once())
+            if i > 0:
+                for j in range(len(outputs[0])):
+                    numpy.testing.assert_array_equal(
+                        outputs[0][j],
+                        outputs[i][j],
+                        err_msg=f"Non-deterministic output detected at run {i}, output index {j}",
+                    )
+        print("Determinism check passed over 10 runs.")
+
+
 if __name__ == "__main__":
     unittest.main()

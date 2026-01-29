@@ -173,6 +173,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       k_input = q_input + num_heads_ * sequence_length * head_size;
       q_rotary = RotaryQKV.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = q_rotary + num_heads_ * sequence_length * head_size;
+      // Zero-initialize the rotary buffer to avoid using uninitialized memory when handling sinks or sliding windows.
+      // Use static_cast<void*> to avoid class-memaccess warnings with non-trivial types like MLFloat16.
+      memset(static_cast<void*>(q_rotary), 0, RotaryQKV.Get<Tensor>().SizeInBytes());
     } else {
       Tensor::InitOrtValue(element_type, TensorShape({batch_size, num_heads_, sequence_length, head_size}), allocator, RotaryQ);
       Tensor::InitOrtValue(element_type, TensorShape({batch_size, kv_num_heads_, sequence_length, head_size}), allocator, RotaryK);
@@ -180,7 +183,12 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       k_input = K.Get<Tensor>().Data<T>();
       q_rotary = RotaryQ.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = RotaryK.GetMutable<Tensor>()->MutableData<T>();
+      // Zero-initialize the rotary buffers to avoid using uninitialized memory when handling sinks or sliding windows.
+      // Use static_cast<void*> to avoid class-memaccess warnings with non-trivial types like MLFloat16.
+      memset(static_cast<void*>(q_rotary), 0, RotaryQ.Get<Tensor>().SizeInBytes());
+      memset(static_cast<void*>(k_rotary), 0, RotaryK.Get<Tensor>().SizeInBytes());
     }
+
     // Run rotary embedding for Q and K
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
                                               pos_ids_data, cos_cache->Data<T>(),
