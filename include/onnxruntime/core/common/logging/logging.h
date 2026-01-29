@@ -17,7 +17,6 @@
 #include "core/common/logging/macros.h"
 #include "core/common/logging/severity.h"
 #include "core/common/logging/sink_types.h"
-#include "date/date.h"
 
 /*
 
@@ -56,40 +55,6 @@ struct OrtLogger;  // opaque API type. is always an instance of Logger
 namespace onnxruntime {
 namespace logging {
 
-// C++20 has std::chrono::operator<< for std::chrono::system_clock::time_point but we need to check if usage is valid.
-// define temporary macro ORT_USE_CXX20_STD_CHRONO to determine whether to use the std::chrono or date implementation.
-#define ORT_USE_CXX20_STD_CHRONO __cpp_lib_chrono >= 201803L
-
-// Apply constraints for Apple builds
-#if __APPLE__
-#include <TargetConditionals.h>
-
-// iOS check must be first as it also has TARGET_OS_MAC set
-#if TARGET_OS_IOS
-// iOS requires version 16.3
-#if (defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED < 160300)
-#undef ORT_USE_CXX20_STD_CHRONO
-#endif
-
-#elif TARGET_OS_MAC
-// Xcode added support for C++20's std::chrono::operator<< in SDK version 14.4,
-// but the target macOS version must also be >= 13.3 for it to be used.
-#if (defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED < 140400) || \
-    (defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED < 130300)
-#undef ORT_USE_CXX20_STD_CHRONO
-#endif
-
-#endif
-#endif  // __APPLE__
-
-#if ORT_USE_CXX20_STD_CHRONO
-namespace timestamp_stream_insertion_op_ns = std::chrono;
-#else
-namespace timestamp_stream_insertion_op_ns = ::date;
-#endif
-
-#undef ORT_USE_CXX20_STD_CHRONO
-
 // This class wraps `std::chrono::system_clock::time_point` and provides `operator<<`.
 // It is a workaround for the inconsistent availability of `std::chrono::operator<<` for
 // `std::chrono::system_clock::time_point`.
@@ -101,10 +66,12 @@ class Timestamp {
   Timestamp(const TimePoint& time_point) noexcept : time_point_{time_point} {}
 
   friend std::ostream& operator<<(std::ostream& os, const Timestamp& time_stamp) {
-    return timestamp_stream_insertion_op_ns::operator<<(os, time_stamp.time_point_);
+    return time_stamp.WriteToStream(os);
   }
 
  private:
+  std::ostream& WriteToStream(std::ostream& os) const;
+
   TimePoint time_point_{};
 };
 
