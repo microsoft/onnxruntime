@@ -269,7 +269,7 @@ __device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx,  int
   auto PixelOffset3D = [bIdx, cIdx, C, D, H, W](int64_t z, int64_t y, int64_t x) -> int64_t {
     return Layout == LAYOUT_NCHW
                ? (bIdx * C * D * H * W + cIdx * D * H * W + z * H * W + y * W + x)
-               : 0; // Placeholder for NHWC layout in 3D, to be implemented as needed
+               : (bIdx * D * H * W * C + z * H * W * C + y * W * C + x * C + cIdx);
   };
 
   if (padding_mode == 0) {  // zeros
@@ -292,8 +292,6 @@ __device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx,  int
   return pixel;
 }
 
-// Currently only supports NCHW layout for 3D grid sampling
-// TODO(hasesh): Implement NHWC layout support if needed
 template <typename T, bool Layout>
 __global__ void _GridSampleKernel3D(
     const T* __restrict__ input_data,
@@ -311,29 +309,39 @@ __global__ void _GridSampleKernel3D(
     const int64_t W_out,
     T* __restrict__ output_data) {
 
-  if constexpr (Layout == LAYOUT_NHWC) {
-    // NHWC layout for 3D is not implemented
-    return;
-  }
-
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * D_out * H_out * W_out);
 
   // extract batch index, channel index, y index, x index, z index for current thread
   int BIdx, cIdx, zIdx, yIdx, xIdx;
+  if constexpr (Layout == LAYOUT_NCHW) {
+    BIdx = idx / (C * D_out * H_out * W_out);
+    int tmpBCnt = BIdx * (C * D_out * H_out * W_out);
 
-  BIdx = idx / (C * D_out * H_out * W_out);
-  int tmpBCnt = BIdx * (C * D_out * H_out * W_out);
+    cIdx = (idx - tmpBCnt) / (D_out * H_out * W_out);
+    int tmpCCnt = tmpBCnt + cIdx * (D_out * H_out * W_out);
 
-  cIdx = (idx - tmpBCnt) / (D_out * H_out * W_out);
-  int tmpCCnt = tmpBCnt + cIdx * (D_out * H_out * W_out);
+    zIdx = (idx - tmpCCnt) / (H_out * W_out);
+    int tmpDCnt = tmpCCnt + zIdx * (H_out * W_out);
 
-  zIdx = (idx - tmpCCnt) / (H_out * W_out);
-  int tmpDCnt = tmpCCnt + zIdx * (H_out * W_out);
+    yIdx = (idx - tmpDCnt) / (W_out);
+    int tmpHCnt = tmpDCnt + yIdx * W_out;
 
-  yIdx = (idx - tmpDCnt) / (W_out);
-  int tmpHCnt = tmpDCnt + yIdx * W_out;
+    xIdx = (idx - tmpHCnt);
+  } else { // Layout == LAYOUT_NHWC
+    BIdx = idx / (D_out * H_out * W_out * C);
+    int tmpBCnt = BIdx * (D_out * H_out * W_out * C);
 
-  xIdx = (idx - tmpHCnt);
+    zIdx = (idx - tmpBCnt) / (H_out * W_out * C);
+    int tmpDCnt = tmpBCnt + zIdx * (H_out * W_out * C);
+
+    yIdx = (idx - tmpDCnt) / (W_out * C);
+    int tmpHCnt = tmpDCnt + yIdx * (W_out * C);
+
+    xIdx = (idx - tmpHCnt) / C;
+    int tmpWCnt = tmpHCnt + xIdx * C;
+
+    cIdx = (idx - tmpWCnt);
+  }
 
   int grid_idx = BIdx * D_out * H_out * W_out +  zIdx * H_out * W_out + yIdx * W_out + xIdx;
 
@@ -470,14 +478,31 @@ void GridSampleImpl3D(
     const int64_t W_out,
     T* output_data) {
 
-  // Currently only NCHW layout is supported for 3D grid sampling
-  assert(IsNHWC == false);
+  int64_t N = 0;
+  int64_t C = 0;
+  int64_t D_in = 0;
+  int64_t H_in = 0;
+  int64_t W_in = 0;
+
+  if constexpr (IsNHWC) {
+    N = dims[0];
+    D_in = dims[1];
+    H_in = dims[2];
+    W_in = dims[3];
+    C = dims[4];
+  } else {
+    N = dims[0];
+    C = dims[1];
+    D_in = dims[2];
+    H_in = dims[3];
+    W_in = dims[4];
+  }
 
   int blocksPerGrid = static_cast<int>(
-      ceil(static_cast<T>(dims[0] * dims[1] * D_out * H_out * W_out) / GridDim::maxThreadsPerBlock));
+      ceil(static_cast<T>(N * C * D_out * H_out * W_out) / GridDim::maxThreadsPerBlock));
   _GridSampleKernel3D<T, IsNHWC><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_data, grid_data, mode, padding_mode, align_corners,
-      dims[0], dims[1], dims[2], dims[3], dims[4],
+      N, C, D_in, H_in, W_in,
       D_out, H_out, W_out, output_data);
 }
 

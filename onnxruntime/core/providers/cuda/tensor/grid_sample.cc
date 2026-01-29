@@ -109,6 +109,11 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Grid batch size does not match input batch size ");
   }
 
+  if ((dims_input.size() == 4 && dims_grid[3] != 2) || (dims_input.size() == 5 && dims_grid[4] != 3)) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Last dimension of grid input must match the number of "
+                                                                 "spatial dimensions in the input (2 for 2D, 3 for 3D).");
+  }
+
   if (dims_input.size() != 4 && dims_input.size() != 5) {
     return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "Only 4-D and 5-D input tensors are supported");
   }
@@ -120,11 +125,6 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "Cubic mode is only supported in 4-D cases.");
   }
 
-  if ((dims_input.size() == 4 && dims_grid[3] != 2) || (dims_input.size() == 5 && dims_grid[4] != 3)) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Last dimension of grid input must match the number of "
-                                                                 "spatial dimensions in the input (2 for 2D, 3 for 3D).");
-  }
-
   using Ch = Channels<IsNHWC>;
 
   TensorShapeVector dims_output(dims_input.size());
@@ -134,12 +134,12 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
     dims_output[Ch::H] = dims_grid[1 /* Grid::H */];
     dims_output[Ch::W] = dims_grid[2 /* Grid::W */];
   } else {
-    // 5D NCHW layout: N, C, D, H, W
+    // 5D input - deal with both NCHW and NHWC layouts
     dims_output[0] = dims_input[0];
-    dims_output[1] = dims_input[1];
-    dims_output[2] = dims_grid[1 /* Grid::D */];
-    dims_output[3] = dims_grid[2 /* Grid::H */];
-    dims_output[4] = dims_grid[3 /* Grid::W */];
+    dims_output[1] = !IsNHWC ? dims_input[1] : dims_grid[1];
+    dims_output[2] = !IsNHWC ? dims_grid[1] : dims_grid[2];
+    dims_output[3] = !IsNHWC ? dims_grid[2] : dims_grid[3];
+    dims_output[4] = !IsNHWC ? dims_grid[3] : dims_input[4];
   }
   Tensor* Y = context->Output(0, dims_output);
 
