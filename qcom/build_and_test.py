@@ -788,7 +788,7 @@ class TaskLibrary:
     if (is_host_linux() and is_host_x86_64()) or is_host_mac():
 
         @task
-        @depends(["archive_ort_linux_aarch64_oe_gcc11_2"])
+        @depends(["create_qdc_venv", "archive_ort_linux_aarch64_oe_gcc11_2"])
         def test_ort_qdc_linux_aarch64_oe_gcc11_2(self, plan: Plan) -> str:
             return plan.add_step(
                 CompositeTask(
