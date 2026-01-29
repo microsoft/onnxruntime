@@ -313,6 +313,9 @@ Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo
 #ifdef USE_QNN
   result.Set(result.Length(), createObject("qnn", true));
 #endif
+#ifdef USE_OPENVINO
+  result.Set(result.Length(), createObject("openvino", false));
+#endif
 
   return scope.Escape(result);
 }
