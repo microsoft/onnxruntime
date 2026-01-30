@@ -69,8 +69,13 @@ class Timestamp {
     return time_stamp.WriteToStream(os);
   }
 
+  friend std::wostream& operator<<(std::wostream& os, const Timestamp& time_stamp) {
+    return time_stamp.WriteToWStream(os);
+  }
+
  private:
   std::ostream& WriteToStream(std::ostream& os) const;
+  std::wostream& WriteToWStream(std::wostream& os) const;
 
   TimePoint time_point_{};
 };

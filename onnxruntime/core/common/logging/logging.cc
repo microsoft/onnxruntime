@@ -71,6 +71,10 @@ std::ostream& Timestamp::WriteToStream(std::ostream& os) const {
   return timestamp_stream_insertion_op_ns::operator<<(os, time_point_);
 }
 
+std::wostream& Timestamp::WriteToWStream(std::wostream& os) const {
+  return timestamp_stream_insertion_op_ns::operator<<(os, time_point_);
+}
+
 const char* Category::onnxruntime = "onnxruntime";
 const char* Category::System = "System";
 
