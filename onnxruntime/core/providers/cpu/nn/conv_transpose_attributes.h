@@ -99,6 +99,17 @@ struct ConvTransposeAttributes : public ConvAttributes {
                              " group: ", group);
     }
 
+    // Bias shape validation (It should be a 1D tensor with size M)
+    // See https://github.com/microsoft/onnxruntime/issues/26144
+    if (B != nullptr) {
+      if (B->Shape().NumDimensions() != 1 || B->Shape()[0] != num_output_channels) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Bias shape is not compatible with number of output channels.",
+                               " Bias: ", B->Shape().ToString().c_str(),
+                               " num_output_channels: ", num_output_channels);
+      }
+    }
+
     TensorShapeVector kernel_shape;
     ORT_RETURN_IF_ERROR(ComputeKernelShape(F_Shape, kernel_shape, is_nhwc));
 
