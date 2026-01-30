@@ -556,9 +556,10 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_1) {
                       "Bias shape is not compatible with number of output channels. "
                       "It should be a 1-D tensor with size num_output_channels(M).",
                       // The EP exclusions are along the same lines as ConvTranspose_InvalidKernelShape which
-                      // also tests for invalid shapes.
+                      // also tests for invalid shapes. It also includes XnnPack which seems to have its own
+                      // way of dealing with incorreclty shaped bias.
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider});
+                       kDmlExecutionProvider, kXnnPackExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_2) {
@@ -588,9 +589,10 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_2) {
                       "Bias shape is not compatible with number of output channels. "
                       "It should be a 1-D tensor with size num_output_channels(M).",
                       // The EP exclusions are along the same lines as ConvTranspose_InvalidKernelShape which
-                      // also tests for invalid shapes.
+                      // also tests for invalid shapes. It also includes XnnPack which seems to have its own
+                      // way of dealing with incorreclty shaped bias.
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider});
+                       kDmlExecutionProvider, kXnnPackExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_onnx) {
