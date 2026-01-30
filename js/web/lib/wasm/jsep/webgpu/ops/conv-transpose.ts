@@ -132,7 +132,7 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
     typeof attributes.autoPad == 'undefined' ? 0 : (attributes.autoPad as number)
   ];
   const dilations = attributes.dilations as [number, number];
-  const group = (attributes.group as number) ?? 1;  // default to 1 per ONNX spec
+  const group = (attributes.group as number) ?? 1; // default to 1 per ONNX spec
   const kernelShape = attributes.kernelShape as [number, number];
   const pads = attributes.pads as [number, number, number, number];
   const strides = attributes.strides as [number, number];
@@ -185,7 +185,9 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
     }
     const featureMaps = inputs[1].dims[1] * attributes.group;
     if (inputs[2].dims[0] !== featureMaps) {
-      throw new Error(`invalid bias: bias size (${inputs[2].dims[0]}) must be equal to output channels (${featureMaps})`);
+      throw new Error(
+        `invalid bias: bias size (${inputs[2].dims[0]}) must be equal to output channels (${featureMaps})`,
+      );
     }
   }
 
