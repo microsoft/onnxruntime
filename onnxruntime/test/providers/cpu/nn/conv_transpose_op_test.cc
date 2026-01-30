@@ -560,7 +560,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_1) {
                       // way of dealing with incorreclty shaped bias.
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
                        kDmlExecutionProvider, kXnnpackExecutionProvider,
-                       kWebGpuExecutionProvider}); // Remove when https://github.com/microsoft/onnxruntime/issues/27210 is fixed
+                       kWebGpuExecutionProvider});  // Remove when https://github.com/microsoft/onnxruntime/issues/27210 is fixed
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_2) {
