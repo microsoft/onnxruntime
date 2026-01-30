@@ -64,7 +64,7 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias: bias must be 1D tensor");
     }
     if (bias_shape[0] != num_output_channels) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias: bias size (", bias_shape[0], 
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias: bias size (", bias_shape[0],
                              ") must be equal to output channels (", num_output_channels, ")");
     }
   }
