@@ -69,7 +69,6 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
                              ") must be equal to output channels (", num_output_channels, ")");
     }
   }
-  
   if (input_shape.NumDimensions() == 3 && filter_shape.NumDimensions() == 3) {
     // ConvTranspose1D
     TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
