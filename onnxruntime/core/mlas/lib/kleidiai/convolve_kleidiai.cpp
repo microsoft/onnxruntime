@@ -472,9 +472,13 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
     // Using a thread_local grow-only buffer to avoid cross-thread interference and ensure sizing is correct.
     thread_local std::vector<float> pad_ptr;
     const float* old_pad_ptr = pad_ptr.data();
+    bool has_pad_ptr_changed = false;
 
     if (pad_ptr.size() < padsize) {
         pad_ptr.resize(padsize, 0.f);
+        if (pad_ptr.data() != old_pad_ptr) {
+            has_pad_ptr_changed = true;
+        }
     } else {
         // Ensure any previously-used region remains zeroed (grow-only means it should already be zeros,
         // but keep this explicit for safety).
@@ -500,7 +504,7 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
     // Cache of computed lhs ptr offsets.  thread_local to prevent interference from parallel sessions.
     thread_local std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
 
-    if (pad_ptr.data() != old_pad_ptr)
+    if (has_pad_ptr_changed)
     {
         // If the pad buffer was resized and a re-allocation has occurred, the cached lhs ptrs are invalid as they
         // would be referencing the old pad buffer.
