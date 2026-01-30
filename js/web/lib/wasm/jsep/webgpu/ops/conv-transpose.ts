@@ -178,11 +178,19 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
     throw new Error('FILTER_IN_CHANNEL should be equal to DATA_CHANNEL');
   }
 
-  const featureMaps = inputs[1].dims[1] * attributes.group;
-
   // if bias is provided it should be 1D and the number of elements should be equal to the number of feature maps
-  if (inputs.length === 3 && (inputs[2].dims.length !== 1 || inputs[2].dims[0] !== featureMaps)) {
-    throw new Error('invalid bias');
+  if (inputs.length === 3) {
+    if (!inputs[2] || !inputs[2].dims) {
+      throw new Error('invalid bias: bias tensor is malformed');
+    }
+    if (inputs[2].dims.length !== 1) {
+      throw new Error('invalid bias: bias must be 1D tensor');
+    }
+    const group = attributes.group || 1;  // default to 1 if not specified
+    const featureMaps = inputs[1].dims[1] * group;
+    if (inputs[2].dims[0] !== featureMaps) {
+      throw new Error(`invalid bias: bias size (${inputs[2].dims[0]}) must be equal to output channels (${featureMaps})`);
+    }
   }
 
   const spatialRank = inputs[0].dims.length - 2;
