@@ -16,8 +16,8 @@ namespace cuda {
 // 3. True values should be contiguous, followed by contiguous False (padding) values
 // 4. The mask must be broadcastable to (batch_size, num_heads, q_seq_len, total_seq_len)
 //
-// For 2D mask (batch_size, total_seq_len): uses the mask directly
-// For 3D mask (X, q_seq_len, total_seq_len): uses the first q position (index 0)
+// For 2D mask (batch_size, total_seq_len): uses the mask directly per batch
+// For 3D mask (num_heads, q_seq_len, total_seq_len): broadcasts across batches, uses first head/q
 // For 4D mask (B, H, q_seq_len, total_seq_len): uses first head, first q position
 //
 // Parameters:
@@ -26,9 +26,9 @@ namespace cuda {
 //   batch_size: Number of batches
 //   total_seq_len: Total sequence length (last dimension of mask)
 //   mask_dims: Number of dimensions in the mask (2, 3, or 4)
-//   mask_dim0: First dimension of mask (batch_size for 2D/4D, or broadcast dim for 3D)
-//   mask_dim1: Second dimension (num_heads for 4D, q_seq_len for 3D, or 0 for 2D)
-//   mask_dim2: Third dimension (q_seq_len for 4D, or 0 for 2D/3D)
+//   mask_dim0: First dimension of mask (batch_size for 2D, num_heads for 3D, batch_size for 4D)
+//   mask_dim1: Second dimension (0 for 2D, q_seq_len for 3D, num_heads for 4D)
+//   mask_dim2: Third dimension (0 for 2D/3D, q_seq_len for 4D)
 //   stream: CUDA stream
 //   max_threads_per_block: Maximum threads per block
 //

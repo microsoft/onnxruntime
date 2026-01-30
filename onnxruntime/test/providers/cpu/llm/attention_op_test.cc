@@ -929,7 +929,6 @@ TEST(AttentionTest, Attention3DGqaSelfAttnCausal) {
   );
 }
 
-// GQA only supports fp16 and bf16 in current implementation.
 TEST(AttentionTest, Attention4DGqaAttnMask) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 9;           // Q.shape[1]
@@ -965,7 +964,6 @@ TEST(AttentionTest, Attention4DGqaAttnMask) {
   );
 }
 
-// GQA only supports fp16 and bf16 in current implementation.
 TEST(AttentionTest, Attention4DGqaWithPastAndPresent) {
   int batch_size = 2;             // Q.shape[0]
   int q_num_heads = 9;            // Q.shape[1]

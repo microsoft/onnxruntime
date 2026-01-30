@@ -121,10 +121,8 @@ def create_attention_node_and_io(
     """
     # For ONNX Attention op, present KV cache grows (not fixed buffer like GQA)
     if is_past:
-        past_kv_seqlen = config.past_kv_sequence_length
         present_kv_seqlen = config.past_kv_sequence_length + config.kv_sequence_length
-    else:  # Prompt
-        past_kv_seqlen = 0
+    else:  # Prompt (no past KV cache)
         present_kv_seqlen = config.kv_sequence_length
 
     if not config.kv_cache_type:
@@ -208,7 +206,7 @@ def create_attention_node_and_io(
     # past_key and past_value for ONNX Attention op
     # Shape: [batch, num_heads, past_seq_len, head_size] (4D BNSH format)
     if is_past:
-        past_k_shape = [config.batch_size, config.kv_num_heads, past_kv_seqlen, config.head_size]
+        past_k_shape = [config.batch_size, config.kv_num_heads, config.past_kv_sequence_length, config.head_size]
         graph_input.extend(
             [
                 helper.make_tensor_value_info("past_key", cache_ort_type, past_k_shape),
@@ -340,7 +338,6 @@ def attention_prompt_func(
     # Bind Outputs
     hidden_size = config.q_num_heads * config.head_size
 
-    out_dtype = torch.float16
     if ort_type == TensorProto.BFLOAT16:
         out_dtype = torch.bfloat16
     elif ort_type == TensorProto.FLOAT16:
@@ -444,7 +441,6 @@ def attention_past_func(
     # Bind Outputs
     hidden_size = config.q_num_heads * config.head_size
 
-    out_dtype = torch.float16
     if ort_type == TensorProto.BFLOAT16:
         out_dtype = torch.bfloat16
     elif ort_type == TensorProto.FLOAT16:

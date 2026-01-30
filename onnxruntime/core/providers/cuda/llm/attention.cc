@@ -125,27 +125,38 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // Use GQA path with Flash Attention or Memory Efficient Attention
     // GQA only supports float16 and bfloat16 types
     if (std::is_same<T, float>::value) {
-      ORT_THROW("GQA in Attention op (CUDA) does not support float32. Please use float16 or bfloat16.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "GQA in Attention op (CUDA) does not support float32. "
+                             "Please use float16 or bfloat16.");
+    }
+    // GQA only supports 3D inputs (B, S, D) in BSNH format, not 4D inputs (B, num_heads, S, head_size) in BNSH format
+    if (!parameters.transpose_output) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "4D QKV inputs (BNSH format) are not supported yet in GQA path of Attention op (CUDA). "
+                             "Please use 3D inputs (B, S, hidden_size) instead.");
     }
     // For now, GQA doesn't support qk_matmul_output_mode other than kNone
     if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone) {
-      ORT_THROW("qk_matmul_output_mode is not supported yet in GQA path of Attention op (CUDA).");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "qk_matmul_output_mode is not supported yet in GQA path of Attention op (CUDA).");
     }
     // GQA doesn't support softmax_precision yet
     if (parameters.softmax_precision != 0) {
-      ORT_THROW("softmax_precision is not supported yet in GQA path of Attention op (CUDA).");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "softmax_precision is not supported yet in GQA path of Attention op (CUDA).");
     }
     // causal attention is required for GQA
     if (!parameters.is_causal) {
-      ORT_THROW("Non-causal attention is not supported yet in GQA path of Attention op (CUDA).");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Non-causal attention is not supported yet in GQA path of Attention op (CUDA).");
     }
     // GQA kernel expects K/V input sequence length == Q sequence length (self-attention only)
     // Cross-attention (kv_sequence_length != q_sequence_length) is not supported
     if (parameters.kv_sequence_length != parameters.q_sequence_length) {
-      ORT_THROW(
-          "Cross-attention (kv_sequence_length != q_sequence_length) is not supported in GQA path of Attention op (CUDA). "
-          "kv_sequence_length=",
-          parameters.kv_sequence_length, ", q_sequence_length=", parameters.q_sequence_length);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Cross-attention (kv_sequence_length != q_sequence_length) is not supported in "
+                             "GQA path of Attention op (CUDA). kv_sequence_length=",
+                             parameters.kv_sequence_length, ", q_sequence_length=", parameters.q_sequence_length);
     }
 
     auto& device_prop = GetDeviceProp();
@@ -378,7 +389,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         mask_dim1 = 0;
         mask_dim2 = 0;
       } else if (mask_dims == 3) {
-        // Shape: (batch_size or 1, q_seq_len, total_seq_len)
+        // Shape: (num_heads or 1, q_seq_len, total_seq_len)
         mask_dim0 = mask_shape[0];
         mask_dim1 = mask_shape[1];
         mask_dim2 = 0;

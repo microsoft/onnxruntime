@@ -25,7 +25,8 @@ constexpr int kValidationErrorNotContiguous = 2;
 //
 // Handle broadcasting:
 // - 2D mask (batch_size, total_seq_len): stride = total_seq_len, batch_idx = threadIdx
-// - 3D mask (X, q_seq_len, total_seq_len): we look at first q position only
+// - 3D mask (num_heads, q_seq_len, total_seq_len): broadcasts to [1, num_heads, q_seq, total_seq]
+//   No per-batch variation; uses first head, first q position for all batches
 // - 4D mask (B, H, q_seq_len, total_seq_len): we look at first head, first q position
 __global__ void ConvertMaskToSeqlensKernel(
     const bool* __restrict__ attn_mask,
@@ -52,15 +53,16 @@ __global__ void ConvertMaskToSeqlensKernel(
     int effective_batch = (mask_dim0 == 1) ? 0 : batch_idx;
     mask_row = attn_mask + effective_batch * total_seq_len;
   } else if (mask_dims == 3) {
-    // Shape: (X, q_seq_len, total_seq_len)
-    // X could be batch_size or 1 (broadcast)
-    // We look at the first q position (q_idx = 0)
-    int effective_batch = (mask_dim0 == 1) ? 0 : batch_idx;
+    // Shape: (num_heads, q_seq_len, total_seq_len)
+    // This broadcasts to [1, num_heads, q_seq, total_seq] - same mask for all batches
+    // We look at first head (h_idx = 0) and first q position (q_idx = 0)
+    int h_idx = 0;  // First head
     int q_idx = 0;  // First query position
-    // Stride: q_seq_len * total_seq_len per batch
-    int64_t batch_stride = mask_dim1 * total_seq_len;
+    // Stride: q_seq_len * total_seq_len per head
+    int64_t head_stride = mask_dim1 * total_seq_len;  // mask_dim1 = q_seq_len
     int64_t q_stride = total_seq_len;
-    mask_row = attn_mask + effective_batch * batch_stride + q_idx * q_stride;
+    // Same mask row for all batches since 3D has no batch dimension
+    mask_row = attn_mask + h_idx * head_stride + q_idx * q_stride;
   } else {
     // 4D: Shape (B, H, q_seq_len, total_seq_len)
     // B could be batch_size or 1 (broadcast)
