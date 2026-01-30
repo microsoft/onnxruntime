@@ -196,10 +196,78 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   auto& capabilities = params.capabilities.get();
   const auto& graph_optimizer_registry = params.graph_optimizer_registry.get();
 
+  InlinedVector<NodeIndex> assigned_filteredin_nodes;
+  // Helper to create a GraphViewer that filters nodes based on layering_index if present.
+  auto create_graph_viewer = [&](std::unique_ptr<IndexedSubGraph>& sub_graph_holder) -> std::unique_ptr<GraphViewer> {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    if (params.layering_index) {
+      sub_graph_holder = std::make_unique<IndexedSubGraph>();
+      sub_graph_holder->nodes.reserve(graph.NumberOfNodes());
+
+      auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
+
+      for (auto& node : graph.Nodes()) {
+        auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node.Index());
+        bool include = true;
+        if (rule_idx_opt) {
+          // If node has an assignment, include it only if it is assigned to this EP
+          if (!rules_opt || rules_opt->get().count(*rule_idx_opt) == 0) {
+            include = false;
+          } else {
+            assigned_filteredin_nodes.push_back(node.Index());
+          }
+        }
+        // If node has no assignment, it is included (available to any EP)
+
+        if (include) {
+          sub_graph_holder->nodes.push_back(node.Index());
+        }
+      }
+      return std::make_unique<GraphViewer>(graph, *sub_graph_holder);
+    }
+#endif
+    return std::make_unique<GraphViewer>(graph);
+  };
+
+  // Helper to unassign nodes that were assigned to this EP but not claimed by updated capabilities.
+  auto reset_assignment_unclaimed_nodes = [&]() {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    if (params.layering_index) {
+      auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
+      if (rules_opt) {
+        const auto& ep_rules = rules_opt->get();
+        InlinedHashSet<NodeIndex> claimed;
+        for (const auto& cap : capabilities) {
+          if (cap && cap->sub_graph) {
+            for (auto idx : cap->sub_graph->nodes) claimed.insert(idx);
+          }
+        }
+
+        // Check if all assigned filtered-in nodes are claimed
+        // and if not make them available for subsequent EPs
+        for (auto& node_index : assigned_filteredin_nodes) {
+          if (claimed.count(node_index) == 0) {
+            auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node_index);
+            if (rule_idx_opt && ep_rules.count(*rule_idx_opt) > 0) {
+              params.layering_index->MakeNodeUnassigned(graph, node_index);
+            }
+          }
+        }
+        assigned_filteredin_nodes.clear();
+      }
+    }
+#endif
+  };
+
   {
-    const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
+    std::unique_ptr<IndexedSubGraph> sub_graph_holder;
+    auto graph_viewer = create_graph_viewer(sub_graph_holder);
+
+    capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
+
+    reset_assignment_unclaimed_nodes();
+
     if (params.check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "Graph partitioning was canceled by user request");
@@ -244,9 +312,25 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     capabilities.clear();
 
-    const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
+    if (params.layering_index && end_node > first_new_node) {
+      // We need to update the LayeringIndex with newly created nodes
+      // as the layout transformation may have created new nodes
+      // with inherited annotations
+      InlinedVector<NodeIndex> new_node_indices;
+      for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
+        new_node_indices.push_back(idx);
+      }
+      params.layering_index->Update(graph, new_node_indices);
+    }
+
+    std::unique_ptr<IndexedSubGraph> sub_graph_holder;
+    auto graph_viewer = create_graph_viewer(sub_graph_holder);
+
+    capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
+
+    reset_assignment_unclaimed_nodes();
+
     if (params.check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
@@ -1150,6 +1234,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       // TODO: Could avoid the topological sort in the GraphViewer ctor by constructing from an existing
       // GraphViewer instance instead of the Graph (copying the topological order instead of recalculating).
       auto viewer = std::make_unique<GraphViewer>(graph, indexed_sub_graph);
+
       compilation_entries.push_back(CompilationEntry{std::move(viewer), fused_node, *capability});
 #else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Compiling capabilities is not supported in this build.");
