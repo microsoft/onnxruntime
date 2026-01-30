@@ -13,18 +13,18 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& b,
                         const ShaderIndicesHelper* batch_dims,
                         bool transA,
-                        bool transB,
-                        bool is_vec4);
+                        bool transB);
 
 void MatMulWriteFnSource(ShaderHelper& shader,
                          const ShaderVariableHelper& output,
-                         bool has_bias,
+                         const ShaderVariableHelper* bias,
                          bool is_gemm,
                          int c_components,
-                         int output_components,
                          bool c_is_scalar,
                          std::string activation_snippet = "",
-                         bool is_channels_last = false);
+                         bool is_channels_last = false,
+                         bool use_split_k = false,
+                         ProgramVariableDataType output_variable_type = ProgramVariableDataType::Float32x4);
 
 // The two following functions are used to generate shader code for vec4 and scalar.
 // It is used in GEMM, Matmul, and Conv.

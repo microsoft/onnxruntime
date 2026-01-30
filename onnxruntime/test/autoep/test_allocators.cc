@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// registration/selection is only supported on windows as there's no device discovery on other platforms
-#ifdef _WIN32
-
 #include <algorithm>
 #include <gsl/gsl>
 #include <gmock/gmock.h>
@@ -61,7 +58,7 @@ struct DummyAllocator : OrtAllocator {
 // validate CreateSharedAllocator allows adding an arena to the shared allocator
 TEST(SharedAllocators, AddArenaToSharedAllocator) {
   RegisteredEpDeviceUniquePtr example_ep;
-  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep);
 
   Ort::ConstEpDevice example_ep_device{example_ep.get()};
 
@@ -134,5 +131,3 @@ TEST(SharedAllocators, GetSharedAllocator) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif  // _WIN32

@@ -53,14 +53,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kRocmExecutionProvider,
-#ifdef USE_ROCM
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kOpenVINOExecutionProvider,
 #ifdef USE_OPENVINO
             true,
@@ -166,7 +158,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         },
         {
             kWebGpuExecutionProvider,
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
             true,
 #else
             false,

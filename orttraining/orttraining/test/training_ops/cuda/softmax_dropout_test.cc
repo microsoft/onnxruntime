@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
 #include <ctime>
 #include <cstdlib>
@@ -74,8 +74,6 @@ void LaunchBiasSoftmaxDropoutTester(const std::vector<int64_t>& input_dims, cons
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
 #ifdef USE_CUDA
   eps.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  eps.push_back(DefaultRocmExecutionProvider());
 #endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
 }
@@ -175,8 +173,6 @@ void LaunchSoftmaxDropoutGradTester(const std::vector<int64_t>& dims, const std:
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }

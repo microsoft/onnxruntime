@@ -32,7 +32,7 @@ const isMultiThreadSupported = (): boolean => {
         2, 0, 26, 11,
       ]),
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -59,7 +59,7 @@ const isSimdSupported = (): boolean => {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 253, 186, 1, 26, 11,
       ]),
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -87,7 +87,7 @@ const isRelaxedSimdSupported = (): boolean => {
         15, 65, 3, 253, 15, 253, 147, 2, 11,
       ]),
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 };

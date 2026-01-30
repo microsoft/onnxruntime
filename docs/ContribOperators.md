@@ -4534,9 +4534,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Quantized mixture of experts (MoE).
   
-        Only weights are quantized with symmetric quantization.
         The quantized weights are stored in column major order per expert.
         The quantization block size can be specified. If not provided, column wise quantization is used.
+  
+        The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
+          dequantized_weight = (quantized_weight - zero_point) * scale
+        When zero_point is not provided, the default value is 2^(bits-1): 8 for 4 bits, 128 for 8 bits.
+  
+        If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
+        the dequantization is performed per block of size block_size along the K (input feature) dimension.
+  
+        If block_size and zero_point are provided, both hidden_size and inter_size must be divisible by block_size * pack_size,
+        where pack_size = 8 / expert_weight_bits.
   
         The SwiGLU (Swish-Gated Linear Unit) activation function is like:
            g = xW + b
@@ -4579,7 +4588,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether to use sparse mixer</dd>
 </dl>
 
-#### Inputs (7 - 11)
+#### Inputs (7 - 14)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -4604,6 +4613,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D optional tensor with shape (num_experts, inter_size), or 3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided.</dd>
 <dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, inter_size)</dd>
+<dt><tt>fc1_zero_points</tt> (optional) : T1</dt>
+<dd>2D tensor with shape (num_experts, fusion_size * inter_size / pack_size), or 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size / pack_size) when block_size is provided.</dd>
+<dt><tt>fc2_zero_points</tt> (optional) : T1</dt>
+<dd>2D tensor with shape (num_experts, hidden_size / pack_size), or 3D tensor with shape (num_experts, hidden_size, inter_size / block_size / pack_size) when block_size is provided.</dd>
+<dt><tt>fc3_zero_points</tt> (optional) : T1</dt>
+<dd>2D optional tensor with shape (num_experts, inter_size / pack_size), or 3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.</dd>
 </dl>
 
 #### Outputs

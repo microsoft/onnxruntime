@@ -39,15 +39,15 @@ parameters:
 variables:
   - template: templates/common-variables.yml
   - name: win_trt_folder
-    ${{ if eq(parameters.CudaVersion, '13.0') }}:
-      value: ${{ variables.win_trt_folder_cuda13 }}
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: ${{ variables.win_trt_folder_cuda12 }}
-  - name: setup_env_script
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
-      value: 'setup_env_cuda13.bat'
+      value: ${{ variables.win_trt_folder_cuda13 }}
+  - name: setup_env_script
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
       value: 'setup_env_cuda12.bat'
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: 'setup_env_cuda13.bat'
 
 jobs:
 - job: 'build'

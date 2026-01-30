@@ -883,7 +883,7 @@ typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
     size_t N,
     size_t K);
 
-typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
+typedef void (MLASCALL MLAS_GEMM_PACK_B)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -892,7 +892,7 @@ typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
     size_t ldb,
     void* PackedB);
 
-typedef bool (MLASCALL MLAS_GEMM_PACK_B_KERNEL_OVERRIDE)(
+typedef bool (MLASCALL MLAS_GEMM_PACK_B_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -967,6 +967,9 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
+#if defined(__aarch64__) && defined(__linux__)
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
+#endif
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelNeon;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelNeon;
@@ -1153,6 +1156,8 @@ struct MLAS_GEMM_QUANT_DISPATCH;
 
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchLSX;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchLSX;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8U8DispatchLSX;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
@@ -1235,6 +1240,10 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512;
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchLasx;
+
+struct MLAS_QNBIT_LUT_GEMM_DISPATCH;
+
+extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2;
 
 //
 // Rotary embedding dispatch structure.
@@ -1327,7 +1336,7 @@ struct MLAS_PLATFORM {
     // Mlas overrides initialisation
     MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
     MLAS_GEMM_PACK_B_SIZE_OVERRIDE* MlasGemmPackBSizeOverride = nullptr;
-    MLAS_GEMM_PACK_B_KERNEL_OVERRIDE* MlasGemmPackBOverride = nullptr;
+    MLAS_GEMM_PACK_B_OVERRIDE* MlasGemmPackBOverride = nullptr;
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
 
@@ -1337,6 +1346,8 @@ struct MLAS_PLATFORM {
 #if defined(MLAS_TARGET_LARCH64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8U8Dispatch;
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
@@ -1364,6 +1375,9 @@ struct MLAS_PLATFORM {
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
+#if defined(__aarch64__) && defined(__linux__)
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseBf16Kernel;
+#endif
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     uint32_t NchwcBlockSize;
 #endif
@@ -1439,6 +1453,7 @@ struct MLAS_PLATFORM {
     const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
 
     const MLAS_QNBIT_GEMM_DISPATCH* QNBitGemmDispatch{nullptr};
+    const MLAS_QNBIT_LUT_GEMM_DISPATCH* LutGenKernel{nullptr};
 
     MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
@@ -1597,7 +1612,8 @@ MlasFp32FromBits(
 #pragma warning(pop)
 #endif
 
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+
 
 void
 MLASCALL

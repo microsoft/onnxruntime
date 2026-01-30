@@ -41,9 +41,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias_optional, nullptr,
-      fc2_experts_weights, fc2_experts_bias_optional, nullptr,
-      fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr,
+      fc1_experts_weights, fc1_experts_bias_optional, nullptr, nullptr,
+      fc2_experts_weights, fc2_experts_bias_optional, nullptr, nullptr,
+      fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr, nullptr,
       1,  //  no quantization so pack size is 1
       activation_type_ == ort_fastertransformer::ActivationType::SwiGLU,
       0));  // no block-wise quantization for regular MoE

@@ -122,6 +122,7 @@
 #define INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_ORT_GRAPH_TO_PROTO_H_
 
 #include <functional>
+#include <optional>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "onnx/onnx_pb.h"
 
@@ -184,6 +185,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             onnx::ModelProto& model_proto,
                             HandleInitializerDataFunc handle_initializer_data_func = nullptr);
+/// <summary>
+/// Convert the endianess of data based of tensor element type. Mainly used in BE systems.
+/// </summary>
+/// <param name="value_info">OrtValueInfo for the initializer. Can be used to query name, type, shape,
+///                           and consumer nodes.</param>
+/// <param name="data">Pointer to data buffer.</param>
+/// <param name="bytes">Length of data buffer.</param>
+/// <returns>An Ort::Status indicating success or an error.</returns>
+Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes);
+
 }  // namespace OrtEpUtils
 
 // End of header
@@ -229,6 +240,23 @@ static Ort::Status GetOrtValueInfoTensorTypeShape(Ort::ConstValueInfo vi,
                                                   /*out*/ bool& has_shape);
 static Ort::Status OrtValueInfoToProto(Ort::ConstValueInfo ort_value_info, onnx::ValueInfoProto& value_info_proto);
 static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr ort_attr, onnx::AttributeProto& attr_proto);
+static Ort::Status GetTensorElementSize(const ONNXTensorElementDataType& element_type, size_t& element_size);
+static void SwapByteOrderInplace(void* data, const size_t& data_len, const size_t& element_size);
+
+// Below endian enum class is referenced from include/onnxruntime/core/framework/endian.h
+enum class endian {
+#if defined(_WIN32)
+  little = 0,
+  big = 1,
+  native = little,
+#elif defined(__GNUC__) || defined(__clang__)
+  little = __ORDER_LITTLE_ENDIAN__,
+  big = __ORDER_BIG_ENDIAN__,
+  native = __BYTE_ORDER__,
+#else
+#error onnxruntime::endian is not implemented in this environment.
+#endif
+};
 
 Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::GraphProto& graph_proto,
@@ -290,9 +318,11 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
 
       // Don't add graph inputs or graph outputs to GraphProto's list of value_infos.
       // Do add initializers (constant and non-constant) to GraphProto's list of initializer tensors.
-      // For values defined in an outer scope, just add the value info but not the initializer.
       if (is_from_outer_scope) {
         value_infos.emplace(value_name, ort_value_info);
+        if (is_constant_initializer) {
+          initializer_value_infos.emplace(value_name, ort_value_info);
+        }
       } else if (is_optional_graph_input) {
         initializer_value_infos.emplace(value_name, ort_value_info);
       } else if (is_constant_initializer) {
@@ -386,6 +416,16 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       ORT_EP_UTILS_CXX_RETURN_IF_ERROR(OrtValueInfoToProto(value_info, *value_info_proto));
     }
 
+    // There may be initializers in the original OrtGraph that have not been added yet.
+    // For example, an initializer may not be used by any node but is still a graph output.
+    // Iterating through all nodes to collect initializer value info is therefore not sufficient,
+    // initializers must also be obtained from ort_graph.GetInitializers().
+    // Add those missing initializers and skip the ones that already in `initializer_value_infos`
+    std::vector<Ort::ConstValueInfo> ort_graph_initializers = ort_graph.GetInitializers();
+    for (const auto& initializer : ort_graph_initializers) {
+      initializer_value_infos.emplace(initializer.GetName(), initializer);
+    }
+
     // Add initializers to GraphProto as TensorProto objects.
     for (const auto& [initializer_name, initializer_value_info] : initializer_value_infos) {
       std::vector<int64_t> initializer_dims;
@@ -437,7 +477,17 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
       } else {
         // User wants to store data inline the TensorProto's raw_data
         tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
-        tensor_proto->set_raw_data(data, data_bytes);
+        if constexpr (endian::native == endian::big) {
+          size_t element_size = 0;
+          GetTensorElementSize(initializer_elem_type, element_size);
+          // create local copy of data and do endianess conversion
+          auto raw_data_buf = std::make_unique<unsigned char[]>(data_bytes);
+          std::memcpy(raw_data_buf.get(), data, data_bytes);
+          SwapByteOrderInplace(raw_data_buf.get(), data_bytes, element_size);
+          tensor_proto->set_raw_data(raw_data_buf.get(), data_bytes);
+        } else {
+          tensor_proto->set_raw_data(data, data_bytes);
+        }
       }
     }
   } catch (const Ort::Exception& ex) {
@@ -453,10 +503,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& graph,
                             onnx::ModelProto& model_proto,
                             HandleInitializerDataFunc handle_initializer_data_func) {
   try {
-    // Check that OrtGraph is a top-level graph (no parent node).
     Ort::ConstGraph ort_graph{&graph};
-    Ort::ConstNode parent_node = ort_graph.GetParentNode();
-    ORT_EP_UTILS_C_RETURN_IF(parent_node != nullptr, "Cannot serialize nested OrtGraph into a ModelProto");
 
     // Set model description.
     model_proto.set_doc_string("Serialized from OrtGraph");
@@ -699,7 +746,17 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
         const size_t data_bytes = tensor.GetTensorSizeInBytes();
 
         // Copy the Ortvalue to TensorProto as raw data
-        tensor_proto.set_raw_data(data, data_bytes);
+        if constexpr (endian::native == endian::big) {
+          size_t element_size = 0;
+          GetTensorElementSize(element_type, element_size);
+          // create local copy of data and do endianess conversion
+          auto raw_data_buf = std::make_unique<unsigned char[]>(data_bytes);
+          std::memcpy(raw_data_buf.get(), data, data_bytes);
+          SwapByteOrderInplace(raw_data_buf.get(), data_bytes, element_size);
+          tensor_proto.set_raw_data(raw_data_buf.get(), data_bytes);
+        } else {
+          tensor_proto.set_raw_data(data, data_bytes);
+        }
 
         *(attr_proto.mutable_t()) = std::move(tensor_proto);
         break;
@@ -716,6 +773,76 @@ static Ort::Status OrtOpAttrToProto(Ort::ConstOpAttr attr, onnx::AttributeProto&
   }
 
   return Ort::Status{nullptr};
+}
+
+Ort::Status ConvertExternalData(const OrtValueInfo* value_info, void* data, size_t bytes) {
+#if !defined(_WIN32)
+  if constexpr (endian::native == endian::little) {
+    return Ort::Status{nullptr};
+  }
+  std::vector<int64_t> initializer_dims;
+  std::vector<std::string> initializer_sym_dims;
+  ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  size_t element_size = 0;
+  Ort::ConstValueInfo ort_value_info{value_info};
+  bool has_shape{false};
+  ORT_EP_UTILS_CXX_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, false,
+                                                                  initializer_elem_type, initializer_dims,
+                                                                  initializer_sym_dims, has_shape));
+  GetTensorElementSize(initializer_elem_type, element_size);
+  if (element_size != 1) {
+    SwapByteOrderInplace(data, bytes, element_size);
+  }
+#else
+  (value_info);
+  (data);
+  (bytes);
+#endif
+  return Ort::Status{nullptr};
+}
+
+static Ort::Status GetTensorElementSize(const ONNXTensorElementDataType& element_type, size_t& element_size) {
+  using TensorElemDataMap = std::unordered_map<ONNXTensorElementDataType, size_t>;
+  static TensorElemDataMap tensor_elem_data_size{
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, sizeof(int8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, sizeof(int16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, sizeof(uint16_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, sizeof(uint32_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, sizeof(int64_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, sizeof(uint64_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, sizeof(double)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, sizeof(uint8_t)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, sizeof(uint8_t)},
+  };
+  auto pos = tensor_elem_data_size.find(element_type);
+  if (pos == tensor_elem_data_size.end()) {
+    std::string err_msg = "Unexpected ONNXTensorElementDataType with value " + std::to_string(static_cast<int>(element_type));
+    return Ort::Status(err_msg.c_str(), ORT_FAIL);
+  }
+  element_size = pos->second;
+  return Ort::Status{nullptr};
+}
+
+static void SwapByteOrderInplace(void* data, const size_t& data_len, const size_t& element_size) {
+  char* bytes = reinterpret_cast<char*>(data);
+  size_t num_elements = data_len / element_size;
+  for (size_t i = 0; i < num_elements; ++i) {
+    char* start_byte = bytes + i * element_size;
+    char* end_byte = start_byte + element_size - 1;
+    for (size_t count = 0; count < element_size / 2; ++count) {
+      std::swap(*start_byte++, *end_byte--);
+    }
+  }
 }
 
 }  // namespace OrtEpUtils

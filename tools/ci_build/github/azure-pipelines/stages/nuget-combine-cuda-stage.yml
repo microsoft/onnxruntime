@@ -45,6 +45,12 @@ parameters:
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
 
+- name: CudaArchs
+  type: string
+- name: win_cudnn_home
+  type: string
+  default: ''
+
 stages:
 - template: nuget-linux-cuda-packaging-stage.yml
   parameters:
@@ -67,6 +73,8 @@ stages:
     buildJava: ${{ parameters.buildJava }}
     PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+    CudaArchs: ${{ parameters.CudaArchs }}
+    win_cudnn_home: ${{ parameters.win_cudnn_home }}
 
 - template: nuget-cuda-packaging-stage.yml
   parameters:

@@ -56,11 +56,11 @@ stages:
     - ${{if contains(parameters.StageSuffix , 'GPU') }}:
       - template: ../../templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2404_gpu
           Context: tools/ci_build/github/linux/docker/
           ${{ if eq(parameters.CudaVersion, '12.8') }}:
             DockerBuildArgs: "
-            --build-arg BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu20.04
+            --build-arg BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
             --build-arg TRT_VERSION=${{ replace(variables.linux_trt_version_cuda12, '-1.', '-1+') }}
             --build-arg BUILD_UID=$( id -u )
             "

@@ -73,6 +73,21 @@ TensorProto ToScalarTensor(TensorProto_DataType datatype, int32_t value) {
     return t;                                                                                                   \
   }
 
+// 2-bit types use the same storage pattern as 4-bit types
+#define TO_TENSOR_ORT_TYPE_2BIT_TYPE(TYPE)                                                                      \
+  template <>                                                                                                   \
+  TensorProto ToTensor<onnxruntime::TYPE>(const onnxruntime::TYPE& value) {                                     \
+    return ToScalarTensor(ToTensorProtoElementType<onnxruntime::TYPE>(), static_cast<int32_t>(value.ToBits())); \
+  }                                                                                                             \
+  template <>                                                                                                   \
+  TensorProto ToTensor<onnxruntime::TYPE>(const std::vector<onnxruntime::TYPE>& values) {                       \
+    TensorProto t = ToTensorInitialize(ToTensorProtoElementType<onnxruntime::TYPE>());                          \
+    for (const onnxruntime::TYPE& val : values) {                                                               \
+      t.add_int32_data(static_cast<int32_t>(val.ToBits()));                                                     \
+    }                                                                                                           \
+    return t;                                                                                                   \
+  }
+
 namespace ONNX_NAMESPACE {
 
 // Provide template specializations for onnxruntime-specific types.
@@ -89,6 +104,9 @@ TO_TENSOR_ORT_TYPE_4BIT_TYPE(Float4E2M1x2)
 #endif
 TO_TENSOR_ORT_TYPE_4BIT_TYPE(Int4x2)
 TO_TENSOR_ORT_TYPE_4BIT_TYPE(UInt4x2)
+
+TO_TENSOR_ORT_TYPE_2BIT_TYPE(Int2x4)
+TO_TENSOR_ORT_TYPE_2BIT_TYPE(UInt2x4)
 
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
@@ -166,6 +184,10 @@ Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_len, size_t
 
 DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Int4x2, CalcNumInt4Pairs)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(UInt4x2, CalcNumInt4Pairs)
+
+// 2-bit types use the same pattern - CalcNumInt2Quads gives number of packed bytes
+DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Int2x4, CalcNumInt2Quads)
+DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(UInt2x4, CalcNumInt2Quads)
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
@@ -306,6 +328,27 @@ Status TensorProtoWithExternalDataToTensorProto(
   return Status::OK();
 }
 
+Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
+                                const std::filesystem::path& location) {
+  // Reject absolute paths
+  ORT_RETURN_IF(location.is_absolute(),
+                "Absolute paths not allowed for external data location");
+  if (!base_dir.empty()) {
+    // Resolve and verify the path stays within model directory
+    auto base_canonical = std::filesystem::weakly_canonical(base_dir);
+    // If the symlink exists, it resolves to the target path;
+    // so if the symllink is outside the directory it would be caught here.
+    auto resolved = std::filesystem::weakly_canonical(base_dir / location);
+    // Check that resolved path starts with base directory
+    auto [base_end, resolved_it] = std::mismatch(
+        base_canonical.begin(), base_canonical.end(),
+        resolved.begin(), resolved.end());
+    ORT_RETURN_IF(base_end != base_canonical.end(),
+                  "External data path: ", location, " escapes model directory: ", base_dir);
+  }
+  return Status::OK();
+}
+
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            const std::filesystem::path& tensor_proto_dir,
                            std::basic_string<ORTCHAR_T>& external_file_path,
@@ -351,66 +394,94 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   void* bytes = NULL;
   size_t num_elements = 0;
 
-  switch (tensor.data_type()) {
-    case TensorProto_DataType_FLOAT:
-      bytes = tensor.mutable_float_data()->mutable_data();
-      num_elements = tensor.float_data_size();
-      element_size = sizeof(float);
-      break;
-
-    case TensorProto_DataType_UINT8:
-    case TensorProto_DataType_INT8:
-      bytes = tensor.mutable_int32_data()->mutable_data();
-      num_elements = tensor.int32_data_size();
-      element_size = sizeof(uint8_t);
-      break;
-
-    case TensorProto_DataType_UINT16:
-    case TensorProto_DataType_INT16:
-    case TensorProto_DataType_FLOAT16:
-    case TensorProto_DataType_BFLOAT16:
-    case TensorProto_DataType_INT32:
-      bytes = tensor.mutable_int32_data()->mutable_data();
-      num_elements = tensor.int32_data_size();
-      // We are setting this to int32_t size because we need to swap all 4 bytes
-      // to represent 16 bits within 32 bits correctly on a LE/BE system.
-      element_size = sizeof(int32_t);
-      break;
-
-    // uint32_t is stored in uint64_t
-    case TensorProto_DataType_UINT32:
-    case TensorProto_DataType_UINT64:
-      bytes = tensor.mutable_uint64_data()->mutable_data();
-      num_elements = tensor.uint64_data_size();
-      element_size = sizeof(uint64_t);
-      break;
-
-    case TensorProto_DataType_INT64:
-      bytes = tensor.mutable_int64_data()->mutable_data();
-      num_elements = tensor.int64_data_size();
-      element_size = sizeof(int64_t);
-      break;
-
-    case TensorProto_DataType_DOUBLE:
-      bytes = tensor.mutable_double_data()->mutable_data();
-      num_elements = tensor.double_data_size();
-      element_size = sizeof(double);
-      break;
-
-    case TensorProto_DataType_COMPLEX64:
-      bytes = tensor.mutable_float_data()->mutable_data();
-      num_elements = tensor.float_data_size();
-      element_size = sizeof(float);
-      break;
-  }
-
-  if (element_size == 1) {
-    return;
-  }
-
-  if (tensor.has_raw_data()) {
+  // For some data_type, element size differs for raw data vs
+  // data set using the add_<data_type>data() API
+  if (HasRawData(tensor)) {
+    static std::unordered_map<size_t, size_t> tensorproto_data_size{
+        {TensorProto_DataType_FLOAT, sizeof(float)},
+        {TensorProto_DataType_UINT8, sizeof(uint8_t)},
+        {TensorProto_DataType_INT8, sizeof(int8_t)},
+        {TensorProto_DataType_UINT16, sizeof(uint16_t)},
+        {TensorProto_DataType_INT16, sizeof(int16_t)},
+        {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
+        {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
+        {TensorProto_DataType_INT32, sizeof(int32_t)},
+        {TensorProto_DataType_UINT32, sizeof(uint32_t)},
+        {TensorProto_DataType_UINT64, sizeof(uint64_t)},
+        {TensorProto_DataType_INT64, sizeof(int64_t)},
+        {TensorProto_DataType_DOUBLE, sizeof(double)},
+        {TensorProto_DataType_BOOL, sizeof(uint8_t)},
+        {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
+        {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
+        {TensorProto_DataType_FLOAT8E5M2, sizeof(uint8_t)},
+        {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
+        {TensorProto_DataType_UINT4, sizeof(uint8_t)},
+        {TensorProto_DataType_INT4, sizeof(uint8_t)},
+        {TensorProto_DataType_UINT2, sizeof(uint8_t)},
+        {TensorProto_DataType_INT2, sizeof(uint8_t)},
+    };
+    auto pos = tensorproto_data_size.find(tensor.data_type());
+    if (pos == tensorproto_data_size.end()) {
+      return;
+    }
+    element_size = pos->second;
+    if (element_size == 1) {
+      return;
+    }
     num_elements = tensor.raw_data().size() / element_size;
     bytes = tensor.mutable_raw_data()->data();
+  } else {  // HasRawData(tensor)
+
+    switch (tensor.data_type()) {
+      case TensorProto_DataType_FLOAT:
+        bytes = tensor.mutable_float_data()->mutable_data();
+        num_elements = tensor.float_data_size();
+        element_size = sizeof(float);
+        break;
+
+      case TensorProto_DataType_BOOL:
+      case TensorProto_DataType_UINT4:
+      case TensorProto_DataType_INT4:
+      case TensorProto_DataType_UINT2:
+      case TensorProto_DataType_INT2:
+      case TensorProto_DataType_UINT8:
+      case TensorProto_DataType_INT8:
+      case TensorProto_DataType_UINT16:
+      case TensorProto_DataType_INT16:
+      case TensorProto_DataType_FLOAT16:
+      case TensorProto_DataType_BFLOAT16:
+      case TensorProto_DataType_FLOAT8E4M3FN:
+      case TensorProto_DataType_FLOAT8E4M3FNUZ:
+      case TensorProto_DataType_FLOAT8E5M2:
+      case TensorProto_DataType_FLOAT8E5M2FNUZ:
+      case TensorProto_DataType_INT32:
+        bytes = tensor.mutable_int32_data()->mutable_data();
+        num_elements = tensor.int32_data_size();
+        // We are setting this to int32_t size because we need to swap all 4 bytes
+        // to represent 16 bits within 32 bits correctly on a LE/BE system.
+        element_size = sizeof(int32_t);
+        break;
+
+      // uint32_t is stored in uint64_t
+      case TensorProto_DataType_UINT32:
+      case TensorProto_DataType_UINT64:
+        bytes = tensor.mutable_uint64_data()->mutable_data();
+        num_elements = tensor.uint64_data_size();
+        element_size = sizeof(uint64_t);
+        break;
+
+      case TensorProto_DataType_INT64:
+        bytes = tensor.mutable_int64_data()->mutable_data();
+        num_elements = tensor.int64_data_size();
+        element_size = sizeof(int64_t);
+        break;
+
+      case TensorProto_DataType_DOUBLE:
+        bytes = tensor.mutable_double_data()->mutable_data();
+        num_elements = tensor.double_data_size();
+        element_size = sizeof(double);
+        break;
+    }
   }
 
   gsl::span<std::byte> span = gsl::make_span(reinterpret_cast<std::byte*>(bytes), num_elements * element_size);
@@ -469,6 +540,10 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
 
 DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Int4x2, CalcNumInt4Pairs)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(UInt4x2, CalcNumInt4Pairs)
+
+// 2-bit types
+DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Int2x4, CalcNumInt2Quads)
+DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(UInt2x4, CalcNumInt2Quads)
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
@@ -854,6 +929,41 @@ DEFINE_INT4_UNPACK_TENSOR_IMPL(Int4x2, TensorProto_DataType_INT4)
 // UnpackTensor<UInt4x2>
 DEFINE_INT4_UNPACK_TENSOR_IMPL(UInt4x2, TensorProto_DataType_UINT4)
 
+// 2-bit type unpack implementation
+#define DEFINE_INT2_UNPACK_TENSOR_IMPL(INT2_TYPE, ONNX_INT2_TYPE)                                           \
+  template <>                                                                                               \
+  Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, \
+                      /*out*/ INT2_TYPE* p_data, size_t expected_num_elems) {                               \
+    if (nullptr == p_data) {                                                                                \
+      const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();                    \
+      return size == 0 ? Status::OK() : Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);              \
+    }                                                                                                       \
+    if (ONNX_NAMESPACE::ONNX_INT2_TYPE != tensor.data_type()) {                                             \
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);                                         \
+    }                                                                                                       \
+                                                                                                            \
+    size_t expected_int2_quads = INT2_TYPE::CalcNumInt2Quads(expected_num_elems);                           \
+                                                                                                            \
+    if (raw_data != nullptr) {                                                                              \
+      return UnpackTensorWithRawData(raw_data, raw_data_len, expected_num_elems, p_data);                   \
+    }                                                                                                       \
+                                                                                                            \
+    ORT_RETURN_IF_NOT(static_cast<size_t>(tensor.int32_data_size()) == expected_int2_quads,                 \
+                      "UnpackTensor: the pre-allocated size does not match the size in proto");             \
+                                                                                                            \
+    for (int i = 0; i < static_cast<int>(tensor.int32_data_size()); i++) {                                  \
+      p_data[i] = INT2_TYPE(static_cast<std::byte>(tensor.int32_data()[i]));                                \
+    }                                                                                                       \
+                                                                                                            \
+    return Status::OK();                                                                                    \
+  }
+
+// UnpackTensor<Int2x4>
+DEFINE_INT2_UNPACK_TENSOR_IMPL(Int2x4, TensorProto_DataType_INT2)
+
+// UnpackTensor<UInt2x4>
+DEFINE_INT2_UNPACK_TENSOR_IMPL(UInt2x4, TensorProto_DataType_UINT2)
+
 #if !defined(DISABLE_FLOAT4_TYPES)
 
 template <>
@@ -940,6 +1050,9 @@ INSTANTIATE_UNPACK_TENSOR(Float8E5M2FNUZ)
 INSTANTIATE_UNPACK_TENSOR(Int4x2)
 INSTANTIATE_UNPACK_TENSOR(UInt4x2)
 
+INSTANTIATE_UNPACK_TENSOR(Int2x4)
+INSTANTIATE_UNPACK_TENSOR(UInt2x4)
+
 #define CASE_PROTO_TRACE(X, Y)                                                                     \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                             \
     if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) {          \
@@ -962,6 +1075,14 @@ INSTANTIATE_UNPACK_TENSOR(UInt4x2)
     }                                                                                                            \
     break;
 #endif
+
+// 2-bit types
+#define CASE_PROTO_TRACE_INT2(X, Y)                                                                            \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                         \
+    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(Y::CalcNumInt2Quads(size), sizeof(Y), out)) { \
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");             \
+    }                                                                                                          \
+    break;
 
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorShapeAndType(const TensorShape& shape, int32_t element_type, size_t* out) {
@@ -989,6 +1110,8 @@ common::Status GetSizeInBytesFromTensorShapeAndType(const TensorShape& shape, in
 #endif
     CASE_PROTO_TRACE_INT4(UINT4, UInt4x2);
     CASE_PROTO_TRACE_INT4(INT4, Int4x2);
+    CASE_PROTO_TRACE_INT2(UINT2, UInt2x4);
+    CASE_PROTO_TRACE_INT2(INT2, Int2x4);
 
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_PROTO_TRACE_FLOAT4(FLOAT4E2M1, Float4E2M1x2);
@@ -1383,6 +1506,8 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
 #endif
     CASE_PROTO(INT4, Int4x2);
     CASE_PROTO(UINT4, UInt4x2);
+    CASE_PROTO(INT2, Int2x4);
+    CASE_PROTO(UINT2, UInt2x4);
 
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_PROTO(FLOAT4E2M1, Float4E2M1x2);
@@ -1468,6 +1593,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 #endif
     CASE_TYPE(UINT4)
     CASE_TYPE(INT4)
+    CASE_TYPE(UINT2)
+    CASE_TYPE(INT2)
 
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_TYPE(FLOAT4E2M1)
@@ -2028,11 +2155,14 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
     break;                                                                                                           \
   }
 
-#define CASE_UNPACK_4BIT_TYPE(TYPE, ELEMENT_TYPE, DATA_SIZE, CALC_PAIR_FUN)                                          \
+// Sub-byte types (2-bit and 4-bit) are stored in a packed format.
+// This unpacking code is shared for INT4, UINT4, FLOAT4E2M1, INT2, and UINT2.
+// CALC_PACKED_UNITS_FUN specifies the function to calculate packed byte count from element count.
+#define CASE_UNPACK_SUBBYTE_TYPE(TYPE, ELEMENT_TYPE, DATA_SIZE, CALC_PACKED_UNITS_FUN)                               \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {                                          \
     TensorShape tensor_shape = GetTensorShapeFromTensorProto(initializer);                                           \
     size_t element_count = static_cast<size_t>(tensor_shape.Size());                                                 \
-    size_t packed_element_count = ELEMENT_TYPE::CALC_PAIR_FUN(element_count);                                        \
+    size_t packed_element_count = ELEMENT_TYPE::CALC_PACKED_UNITS_FUN(element_count);                                \
     unpacked_tensor.resize(packed_element_count * sizeof(ELEMENT_TYPE));                                             \
     return onnxruntime::utils::UnpackTensor(initializer,                                                             \
                                             initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,    \
@@ -2075,11 +2205,13 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
 #endif
-    CASE_UNPACK_4BIT_TYPE(INT4, Int4x2, int32_data_size, CalcNumInt4Pairs);
-    CASE_UNPACK_4BIT_TYPE(UINT4, UInt4x2, int32_data_size, CalcNumInt4Pairs);
+    CASE_UNPACK_SUBBYTE_TYPE(INT4, Int4x2, int32_data_size, CalcNumInt4Pairs);
+    CASE_UNPACK_SUBBYTE_TYPE(UINT4, UInt4x2, int32_data_size, CalcNumInt4Pairs);
+    CASE_UNPACK_SUBBYTE_TYPE(INT2, Int2x4, int32_data_size, CalcNumInt2Quads);
+    CASE_UNPACK_SUBBYTE_TYPE(UINT2, UInt2x4, int32_data_size, CalcNumInt2Quads);
 
 #if !defined(DISABLE_FLOAT4_TYPES)
-    CASE_UNPACK_4BIT_TYPE(FLOAT4E2M1, Float4E2M1x2, int32_data_size, CalcNumFloat4Pairs);
+    CASE_UNPACK_SUBBYTE_TYPE(FLOAT4E2M1, Float4E2M1x2, int32_data_size, CalcNumFloat4Pairs);
 #endif
 
     default:

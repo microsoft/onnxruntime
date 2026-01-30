@@ -249,7 +249,7 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   }
 
 // CUDA/WEBGPU does not support bias for MatMulNBits
-#if !defined(USE_CUDA) && !defined(USE_WEBGPU)
+#if !defined(USE_CUDA)
   {
     TestOptions8Bits opts = base_opts;
     opts.has_zero_point = false;

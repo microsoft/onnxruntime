@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <regex>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -114,6 +115,28 @@ std::optional<bool> IsGpuDiscrete(uint16_t vendor_id, uint16_t device_id) {
   return std::nullopt;
 }
 
+Status GetPciBusId(const std::filesystem::path& sysfs_path, std::optional<std::string>& pci_bus_id) {
+  constexpr const char* regex_pattern{R"([0-9a-f]+:[0-9a-f]+:[0-9a-f]+[.][0-9a-f]+)"};
+  static const std::regex pci_bus_id_regex(regex_pattern);
+
+  std::error_code error_code;
+  auto pci_bus_id_path = std::filesystem::canonical(sysfs_path / "device", error_code);  // resolves symlink to PCI bus id, e.g. 0000:65:00.0
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+
+  auto pci_bus_id_filename = pci_bus_id_path.filename();
+  if (std::regex_match(pci_bus_id_filename.string(), pci_bus_id_regex)) {
+    pci_bus_id = pci_bus_id_filename.string();
+  } else {
+    pci_bus_id = {};
+    LOGS_DEFAULT(WARNING) << MakeString("Skipping pci_bus_id for PCI path at \"",
+                                        pci_bus_id_path.string(),
+                                        "\" because filename \"", pci_bus_id_filename, "\" dit not match expected pattern of ",
+                                        regex_pattern);
+  };
+
+  return Status::OK();
+}
+
 Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevice& gpu_device_out) {
   OrtHardwareDevice gpu_device{};
   const auto& sysfs_path = path_info.path;
@@ -138,6 +161,12 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
   if (const auto is_gpu_discrete = IsGpuDiscrete(vendor_id, device_id);
       is_gpu_discrete.has_value()) {
     gpu_device.metadata.Add("Discrete", (*is_gpu_discrete ? "1" : "0"));
+  }
+
+  std::optional<std::string> pci_bus_id;
+  ORT_RETURN_IF_ERROR(GetPciBusId(sysfs_path, pci_bus_id));
+  if (pci_bus_id) {
+    gpu_device.metadata.Add("pci_bus_id", std::move(*pci_bus_id));
   }
 
   gpu_device.type = OrtHardwareDeviceType_GPU;

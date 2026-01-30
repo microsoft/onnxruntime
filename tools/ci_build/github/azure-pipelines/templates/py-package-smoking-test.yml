@@ -32,6 +32,8 @@ jobs:
         PythonVersion: '3.12'
       Python313:
         PythonVersion: '3.13'
+      Python314:
+        PythonVersion: '3.14'
   steps:
   - checkout: none
 
@@ -52,10 +54,9 @@ jobs:
         FILE_NAME="${files[0]}"
         FILE_NAME=$(basename $FILE_NAME)
         PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
-        python3 -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
+        python3 -m pip install flatbuffers numpy packaging protobuf sympy
         python3 -m pip install --no-index --find-links . $PYTHON_PACKAGE_NAME
         python3 -m pip show $PYTHON_PACKAGE_NAME
         python3 -c "import onnxruntime as ort; print(ort.__version__)"
       workingDirectory: $(Pipeline.Workspace)/build/onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}
     displayName: Test Package Installation
-

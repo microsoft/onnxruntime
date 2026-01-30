@@ -35,7 +35,7 @@ static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
-  ort_env = OrtEnv::GetInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr);
+  ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr).release();
   if (!status.IsOK()) return status;
   // Keep the ort_env alive, don't free it. It's ok to leak the memory.
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
@@ -102,7 +102,12 @@ static constexpr bool HAS_COLLECTIVE_OPS = false;
 
 void CreateQuantPybindModule(py::module& m);
 
+// Check if we are building with GIL disabled (Free-threaded)
+#ifdef Py_GIL_DISABLED
+PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()) {
+#else
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
+#endif
   auto st = CreateInferencePybindStateModule(m);
   if (!st.IsOK())
     throw pybind11::import_error(st.ErrorMessage());

@@ -28,6 +28,97 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
                        cudaStream_t stream, const int max_threads_per_block);
 
+// ============================================================================
+// GQABufferRequirements: Centralized buffer size calculation
+// ============================================================================
+// This struct provides a single source of truth for scratch buffer allocation.
+// It ensures allocation logic in group_query_attention.cc stays in sync with
+// kernel usage in group_query_attention_impl.cu.
+//
+// Usage:
+//   auto req = GQABufferRequirements::Compute<T>(params, use_flash, fast_decode, use_mea, disable_fused);
+//   unpacked_qkv_buffer = GetScratchBuffer<void>(req.unpacked_qkv_bytes, ...);
+//   rotary_buffer = GetScratchBuffer<void>(req.rotary_buffer_bytes, ...);
+// ============================================================================
+struct GQABufferRequirements {
+  size_t qkv_buffer_bytes = 0;
+
+  template <typename T>
+  static GQABufferRequirements Compute(
+      const GroupQueryAttentionParameters& params,
+      bool use_flash_attention,
+      bool use_flash_attention_fast_decode,
+      bool use_memory_efficient_attention) {
+    GQABufferRequirements req;
+    if (use_flash_attention_fast_decode) {
+      return req;  // All zeros - no scratch buffers needed
+    }
+
+    const size_t elem_size = sizeof(T);
+    const size_t batch_size = static_cast<size_t>(params.batch_size);
+    const size_t seq_len = static_cast<size_t>(params.sequence_length);
+    const size_t num_heads = static_cast<size_t>(params.num_heads);
+    const size_t kv_num_heads = static_cast<size_t>(params.kv_num_heads);
+    const size_t head_size = static_cast<size_t>(params.head_size);
+
+    // Base requirements for all paths
+    const size_t q_elements = batch_size * seq_len * num_heads * head_size;
+    const size_t k_elements = batch_size * seq_len * kv_num_heads * head_size;
+    const size_t v_elements = k_elements;
+
+    if (use_flash_attention) {
+      // Flash Attention path:
+      // qkv_buffer is used for:
+      //   1. Unpacking packed Q (and K/V if needed)
+      //   2. Storing rotated Q
+      //
+      // Logic:
+      // - we generally only need Q buffer (for rotary Q) if we can write K/V directly to cache/output.
+
+      if (params.do_rotary || params.is_packed_qkv) {
+        // Just Q buffer needed for rotation/unpacking.
+        // K and V are written directly to present_key/value (unpacked/rotated/quantized/appended).
+        req.qkv_buffer_bytes = elem_size * q_elements;
+      }
+    } else if (use_memory_efficient_attention) {
+      // Memory Efficient Attention path:
+      // - qkv_buffer: for unpacking packed QKV or Q rotation
+      // MEA path usually needs Q, and also K, V if they need unpacking.
+      // Current MEA implementation can handle separate K/V, but if packed, we unpack all.
+
+      if (params.is_packed_qkv) {
+        req.qkv_buffer_bytes = elem_size * (q_elements + k_elements + v_elements);
+      } else if (params.do_rotary) {
+        // Q rotation + K rotation
+        req.qkv_buffer_bytes = elem_size * (q_elements + k_elements);
+      }
+    }
+
+    return req;
+  }
+};
+
+Status LaunchGetSequenceLengths(
+    const int* total_seq_lens_minus_one,
+    int* past_seq_lens,
+    int* total_seq_lens,
+    int* padded_seq_lens,
+    const int batch_size,
+    const int sequence_length,
+    const bool is_first_prompt,
+    cudaStream_t stream,
+    const int max_threads_per_block);
+
+template <typename T>
+Status LaunchUnpackRoPEAppendKV(
+    const T* packed_qkv, const T* query, const T* key, const T* value,
+    T* unpacked_q, T* k_cache, T* v_cache,
+    const int num_heads, const int kv_num_heads, const int head_size,
+    const int sequence_length, const int batch_size, const int max_seqlen,
+    const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
+    const int rotary_dim, const int64_t* position_ids, const bool interleaved,
+    const bool is_cache_bnsh, cudaStream_t stream, const int max_threads_per_block);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

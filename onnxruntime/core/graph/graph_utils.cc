@@ -285,7 +285,7 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
   return GetOrCreateNodeArg(graph, new_initializer);
 }
 
-NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   const bool has_external_data = utils::HasExternalData(new_initializer);
   ORT_ENFORCE(!has_external_data, "Expecting an initializer that contains data inline");
 
@@ -293,11 +293,11 @@ NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::Tens
   ORT_THROW_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), graph.ModelPath(),
                                                         new_initializer, tensor));
   auto tensor_proto_with_ptr = utils::TensorToTensorProto(tensor, new_initializer.name(), true);
-  return AddInitializerWithExternalData(graph, tensor_proto_with_ptr, std::move(tensor));
+  return AddInitializerWithOrtValue(graph, tensor_proto_with_ptr, std::move(tensor));
 }
 
-NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
-                                        Tensor&& tensor) {
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                    Tensor&& tensor) {
   OrtValue ort_value;
   if (utils::HasExternalDataInMemory(new_initializer)) {
     Tensor::InitOrtValue(std::move(tensor), ort_value);
@@ -307,8 +307,8 @@ NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::Tens
   return GetOrCreateNodeArg(graph, new_initializer);
 }
 
-NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
-                                        OrtValue ort_value) {
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                    OrtValue ort_value) {
   ORT_THROW_IF_ERROR(graph.AddInitializedOrtValue(new_initializer, ort_value));
   return GetOrCreateNodeArg(graph, new_initializer);
 }

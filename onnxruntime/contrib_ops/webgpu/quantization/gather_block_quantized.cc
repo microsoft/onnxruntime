@@ -17,7 +17,7 @@ using onnxruntime::webgpu::ComputeContext;
 Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
   const auto& x_shape = shader.AddIndices("input_shape", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  const auto& indices = shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseIndicesToOffset);
+  const auto& indices = shader.AddInput("indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseIndicesToOffset | ShaderUsage::UseValueTypeAlias);
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
@@ -38,17 +38,23 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
     shader.MainFunctionBody()
         << "let indices_indices = " << output.IndicesGet("output_indices", "uniforms.gather_axis") << ";\n";
   }
+
   shader.MainFunctionBody()
-      << "var data_indices = input_shape_indices_t(0);\n"
-      << "for (var i: u32 = 0; i < uniforms.gather_axis; i++) {\n"
-      << "  let index = " << output.IndicesGet("output_indices", "i") << ";\n  "
-      << x_shape.IndicesSet("data_indices", "i", "index") << ";\n};\n"
-      << "var index_from_indices = " << indices.GetByIndices("indices_indices") << ";\n"
-      << "if (index_from_indices < 0) { index_from_indices += " << x_shape_[gather_axis_] << ";}\n"
-      << x_shape.IndicesSet("data_indices", "uniforms.gather_axis", "u32(index_from_indices)") << ";\n"
-      << "for (var i = uniforms.gather_axis + 1; i < " << output_shape_.NumDimensions() << "; i++) {\n"
-      << "  let index = " << output.IndicesGet("output_indices", "i + " + std::to_string(indices_rank_ - 1)) << ";\n  "
-      << x_shape.IndicesSet("data_indices", "i", "index") << ";\n};\n"
+      << "var index = " << indices.GetByIndices("indices_indices") << ";\n"
+      << "if (index < 0) { index += indices_value_t(" << x_shape.IndicesGet("uniforms.input_shape_shape", gather_axis_) << ");}\n"
+      << "var data_indices = input_shape_indices_t(0);\n";
+
+  for (int i = 0, j = 0; i < x_shape.Rank(); i++) {
+    if (static_cast<int>(i) == gather_axis_) {
+      shader.MainFunctionBody() << "  " << x_shape.IndicesSet("data_indices", i, "u32(index)") << ";\n";
+      j += indices.Rank();
+    } else {
+      shader.MainFunctionBody() << "  " << x_shape.IndicesSet("data_indices", i, output.IndicesGet("output_indices", j)) << ";\n";
+      j++;
+    }
+  }
+
+  shader.MainFunctionBody()
       << "  let data_offset = " << x_shape.IndicesToOffset("data_indices") << ";\n";
 
   if (is_4bit) {

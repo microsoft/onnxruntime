@@ -559,6 +559,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Gelu, 1,
                                     {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+                                .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
                                 .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
                                   // gelu(x) = x * Phi(x) = x * 1/2(1+erf(x/sqrt(2)))
                                   auto* tp = ctx.getInputType(0);
@@ -614,6 +615,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+        .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
         .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema,
                                                    FunctionProto& functionProto) {
           auto* tp = ctx.getInputType(0);
@@ -1427,9 +1429,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* qMoE_ver1_doc = R"DOC(
       Quantized mixture of experts (MoE).
 
-      Only weights are quantized with symmetric quantization.
       The quantized weights are stored in column major order per expert.
       The quantization block size can be specified. If not provided, column wise quantization is used.
+
+      The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
+        dequantized_weight = (quantized_weight - zero_point) * scale
+      When zero_point is not provided, the default value is 2^(bits-1): 8 for 4 bits, 128 for 8 bits.
+
+      If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
+      the dequantization is performed per block of size block_size along the K (input feature) dimension.
+
+      If block_size and zero_point are provided, both hidden_size and inter_size must be divisible by block_size * pack_size,
+      where pack_size = 8 / expert_weight_bits.
 
       The SwiGLU (Swish-Gated Linear Unit) activation function is like:
          g = xW + b
@@ -1539,6 +1550,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "fc3_experts_bias",
                "2D optional tensor with shape (num_experts, inter_size)",
                "T",
+               OpSchema::Optional)
+        .Input(11,
+               "fc1_zero_points",
+               "2D tensor with shape (num_experts, fusion_size * inter_size / pack_size), or "
+               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
+               "T1",
+               OpSchema::Optional)
+        .Input(12,
+               "fc2_zero_points",
+               "2D tensor with shape (num_experts, hidden_size / pack_size), or "
+               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size / pack_size) when block_size is provided.",
+               "T1",
+               OpSchema::Optional)
+        .Input(13,
+               "fc3_zero_points",
+               "2D optional tensor with shape (num_experts, inter_size / pack_size), or "
+               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
+               "T1",
                OpSchema::Optional)
         .Output(0,
                 "output",
@@ -2970,6 +2999,7 @@ void RegisterContribSchemas() {
             saved_inv_std_dev_shape->mutable_dim(static_cast<int>(d))->set_dim_value(1);
         }
       })
+      .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
             // LayerNormalization <axis, epsilon, stash_type> (X, Scale, B) => (Y, Mean?, InvStdDev?)

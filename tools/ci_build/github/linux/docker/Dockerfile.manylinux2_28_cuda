@@ -5,7 +5,7 @@
 ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubi8
 
 FROM $BASEIMAGE
-ARG TRT_VERSION=10.9.0.34-1.cuda12.8
+ARG TRT_VERSION=10.14.1.48-1.cuda12.9
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
@@ -33,7 +33,7 @@ else \
 fi
 
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
-#Add our own dependencies
+
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 

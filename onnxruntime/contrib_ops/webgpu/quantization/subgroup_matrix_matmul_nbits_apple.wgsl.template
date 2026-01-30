@@ -1,0 +1,220 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// tile/subtile sizes and work distribution are inspired from metal shaders in llama.cpp (kernel_mul_mm)
+// https://github.com/ggml-org/llama.cpp/blob/d04e7163c85a847bc61d58c22f2c503596db7aa8/ggml/src/ggml-metal/ggml-metal.metal#L6066
+
+#param n_bits
+#param has_zero_points
+#param has_bias
+#param has_weight_idx
+
+#use .getByOffset .setByOffset
+
+#include "quantization/matmul_nbits_zero_pt.wgsl.template"
+
+const tile_cols = 64;
+const tile_rows = 32;
+const tile_k = 32;
+const subtile_cols = 32;
+const subtile_rows = 16;
+const quantization_block_size = 32;
+alias compute_precision = output_element_t;
+
+var<workgroup> tile_A: array<compute_precision, tile_rows * tile_k>;       // 32 x 32 - RxC
+var<workgroup> tile_B: array<compute_precision, tile_cols * tile_k>;       // 64 x 32 - RxC
+var<workgroup> scratch: array<array<array<compute_precision, 64>, 4>, 4>;  // 64 * 4 * 4
+
+fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
+    let a_global = tile_base + row;
+    if (a_global >= uniforms.M) {
+        return;
+    }
+    // Each call loads 8 columns, starting at col.
+    var col = c_idx * 8;
+    // 128 threads need to load 32 x 32. 4 threads per row or 8 col per thread.
+    for (var col_offset:u32 = 0; col_offset < 8; col_offset++) {
+       tile_A[row * tile_k + col + col_offset] = compute_precision(a.getByOffset(a_global * uniforms.K + k_idx + col + col_offset));
+    }
+}
+
+#if n_bits == 4
+fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
+    let b_global = tile_base + row;
+    if (b_global >= uniforms.N) {
+        return;
+    }
+    // Each call loads 16 columns, starting at col.
+    var col = c_idx * 16;
+    // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
+    // Stored in column major fashion.
+#if has_weight_idx
+    let b_base_offset = uniforms.weight_idx * uniforms.K * uniforms.N;
+    let scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
+#else
+    const b_base_offset : u32 = 0;
+    const scale_offset : u32 = 0;
+#endif
+    let b_idx = u32((b_global*uniforms.K + k_idx + col)/8) + b_base_offset / 8;
+    let scale = compute_precision(scales_b.getByOffset((b_global * uniforms.K + k_idx + col) / quantization_block_size + scale_offset));
+    let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
+    for (var step:u32 = 0; step < 2; step++) {
+      var b_value = b.getByOffset(b_idx+step);
+      var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
+      var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
+      let tile_b_base = row * tile_k + col + step * 8;
+      tile_B[tile_b_base] = b_value_lower[0];
+      tile_B[tile_b_base + 1] = b_value_upper[0];
+      tile_B[tile_b_base + 2] = b_value_lower[1];
+      tile_B[tile_b_base + 3] = b_value_upper[1];
+      tile_B[tile_b_base + 4] = b_value_lower[2];
+      tile_B[tile_b_base + 5] = b_value_upper[2];
+      tile_B[tile_b_base + 6] = b_value_lower[3];
+      tile_B[tile_b_base + 7] = b_value_upper[3];
+    }
+}
+#endif
+
+#if n_bits == 8
+fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
+    let b_global = tile_base + row;
+    if (b_global >= uniforms.N) {
+        return;
+    }
+    // Each call loads 16 columns, starting at col.
+    var col = c_idx * 16;
+    // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
+    // Stored in column major fashion.
+#if has_weight_idx
+    let b_base_offset = uniforms.weight_idx * uniforms.K * uniforms.N;
+    let scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
+#else
+    const b_base_offset : u32 = 0;
+    const scale_offset : u32 = 0;
+#endif
+    let b_idx = u32((b_global*uniforms.K + k_idx + col)/8) + b_base_offset / 8;
+    let scale = compute_precision(scales_b.getByOffset((b_global * uniforms.K + k_idx + col) / quantization_block_size + scale_offset));
+    let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
+    for (var step : u32 = 0; step < 2; step++) {
+      var b_value = b.getByOffset(b_idx+step);
+      var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(zero)) * scale;
+      var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(zero)) * scale;
+      let tile_b_base = row * tile_k + col + step * 8;
+      tile_B[tile_b_base]     = b_value0[0];
+      tile_B[tile_b_base + 1] = b_value0[1];
+      tile_B[tile_b_base + 2] = b_value0[2];
+      tile_B[tile_b_base + 3] = b_value0[3];
+      tile_B[tile_b_base + 4] = b_value1[0];
+      tile_B[tile_b_base + 5] = b_value1[1];
+      tile_B[tile_b_base + 6] = b_value1[2];
+      tile_B[tile_b_base + 7] = b_value1[3];
+    }
+}
+#endif
+
+fn storeOutput(offset:u32, row: u32, col:u32, src_slot:u32, row_limit:i32) {
+  if (row_limit > 0 && row < u32(row_limit)) {
+    let col2 = col + 1;
+#if has_bias
+    let col_base = offset % uniforms.N + uniforms.weight_idx * uniforms.N;
+
+    output.setByOffset(offset + row * uniforms.N + col, output_element_t(scratch[src_slot][0][row * 8 + col]) + bias[col_base + col]);
+    output.setByOffset(offset + row * uniforms.N + col + 8, output_element_t(scratch[src_slot][1][row * 8 + col]) + bias[col_base + col + 8]);
+    output.setByOffset(offset + row * uniforms.N + col + 16, output_element_t(scratch[src_slot][2][row * 8 + col]) + bias[col_base + col + 16]);
+    output.setByOffset(offset + row * uniforms.N + col + 24, output_element_t(scratch[src_slot][3][row * 8 + col]) + bias[col_base + col + 24]);
+
+    output.setByOffset(offset + row * uniforms.N + col2, output_element_t(scratch[src_slot][0][row * 8 + col2]) + bias[col_base + col2]);
+    output.setByOffset(offset + row * uniforms.N + col2 + 8, output_element_t(scratch[src_slot][1][row * 8 + col2]) + bias[col_base + col2 + 8]);
+    output.setByOffset(offset + row * uniforms.N + col2 + 16, output_element_t(scratch[src_slot][2][row * 8 + col2]) + bias[col_base + col2 + 16]);
+    output.setByOffset(offset + row * uniforms.N + col2 + 24, output_element_t(scratch[src_slot][3][row * 8 + col2]) + bias[col_base + col2 + 24]);
+#else
+    output.setByOffset(offset + row * uniforms.N + col, output_element_t(scratch[src_slot][0][row * 8 + col]));
+    output.setByOffset(offset + row * uniforms.N + col + 8, output_element_t(scratch[src_slot][1][row * 8 + col]));
+    output.setByOffset(offset + row * uniforms.N + col + 16, output_element_t(scratch[src_slot][2][row * 8 + col]));
+    output.setByOffset(offset + row * uniforms.N + col + 24, output_element_t(scratch[src_slot][3][row * 8 + col]));
+    output.setByOffset(offset + row * uniforms.N + col2, output_element_t(scratch[src_slot][0][row * 8 + col2]));
+    output.setByOffset(offset + row * uniforms.N + col2 + 8, output_element_t(scratch[src_slot][1][row * 8 + col2]));
+    output.setByOffset(offset + row * uniforms.N + col2 + 16, output_element_t(scratch[src_slot][2][row * 8 + col2]));
+    output.setByOffset(offset + row * uniforms.N + col2 + 24, output_element_t(scratch[src_slot][3][row * 8 + col2]));
+#endif
+  }
+}
+
+$MAIN {
+  let a_global_base = workgroup_id.y * tile_rows;
+  let b_global_base = workgroup_id.x * tile_cols;
+
+  let subtile_id =  u32(local_idx / sg_size);
+  let subtile_idx = u32(subtile_id / 2);
+  let subtile_idy = subtile_id % 2;
+  let base_A = subtile_idy * subtile_rows;
+  let base_B = subtile_idx * subtile_cols;
+
+  var matC00: subgroup_matrix_result<compute_precision, 8, 8>;
+  var matC01: subgroup_matrix_result<compute_precision, 8, 8>;
+  var matC02: subgroup_matrix_result<compute_precision, 8, 8>;
+  var matC03: subgroup_matrix_result<compute_precision, 8, 8>;
+  var matC10: subgroup_matrix_result<compute_precision, 8, 8>;
+  var matC11: subgroup_matrix_result<compute_precision, 8, 8>;
+  var matC12: subgroup_matrix_result<compute_precision, 8, 8>;
+  var matC13: subgroup_matrix_result<compute_precision, 8, 8>;
+  for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
+      // Load Phase
+      loadSHMA(a_global_base, kidx, local_idx/4, local_idx%4);
+      loadSHMB(b_global_base, kidx, local_idx/2, local_idx%2);
+      workgroupBarrier();
+
+      for (var step: u32 = 0; step < tile_k; step+=8){
+          // Load to local memory phase
+          let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
+          // Syntax: subgroupMatrixLoad src_ptr,src_offset,is_col_major,src_stride
+          var matA0: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
+          var matA1: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
+
+          // tile_B is stored as column major.
+          // [col0-0:32][col1-0:32][col2-0:32]..[col63-0:32]
+          var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
+          var matB0: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
+          var matB1: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset +  8 * tile_k, true, tile_k);
+          var matB2: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
+          var matB3: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
+
+          // Compute Phase
+          // Syntax: subgroupMatrixMultiplyAccumulate left, right, accumulate -> accumulate
+          matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
+          matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
+          matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
+          matC03 = subgroupMatrixMultiplyAccumulate(matA0, matB3, matC03);
+
+          matC10 = subgroupMatrixMultiplyAccumulate(matA1, matB0, matC10);
+          matC11 = subgroupMatrixMultiplyAccumulate(matA1, matB1, matC11);
+          matC12 = subgroupMatrixMultiplyAccumulate(matA1, matB2, matC12);
+          matC13 = subgroupMatrixMultiplyAccumulate(matA1, matB3, matC13);
+      }
+      workgroupBarrier();
+  }
+
+  // Write out
+  // Write out top block
+  subgroupMatrixStore(&scratch[subtile_id][0], 0, matC00, false, 8);
+  subgroupMatrixStore(&scratch[subtile_id][1], 0, matC01, false, 8);
+  subgroupMatrixStore(&scratch[subtile_id][2], 0, matC02, false, 8);
+  subgroupMatrixStore(&scratch[subtile_id][3], 0, matC03, false, 8);
+  workgroupBarrier();
+  let row = u32(sg_id / 4);
+  var col = u32(sg_id % 4) * 2;
+  var matrix_c_offset = (a_global_base+base_A) * uniforms.N + b_global_base + base_B;
+  var row_limit:i32 = i32(uniforms.M) - i32(a_global_base + base_A);
+  storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+  workgroupBarrier();
+
+  // Write out bottom block
+  subgroupMatrixStore(&scratch[subtile_id][0], 0, matC10, false, 8);
+  subgroupMatrixStore(&scratch[subtile_id][1], 0, matC11, false, 8);
+  subgroupMatrixStore(&scratch[subtile_id][2], 0, matC12, false, 8);
+  subgroupMatrixStore(&scratch[subtile_id][3], 0, matC13, false, 8);
+  workgroupBarrier();
+  matrix_c_offset = matrix_c_offset + 8 * uniforms.N;
+  row_limit = i32(uniforms.M) - i32(a_global_base + base_A + 8);
+  storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+}  // MAIN

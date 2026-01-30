@@ -553,7 +553,6 @@ export class ShapeUtil {
       // size cannot be 0 or negative.
       if (dims[i] <= 0) {
         throw new Error(
-          // eslint-disable-next-line max-len
           'cannot get valid size from specified dimension range. Most likely the range contains 0 or negative values in them.',
         );
       }

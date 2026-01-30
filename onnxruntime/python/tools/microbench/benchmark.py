@@ -32,12 +32,12 @@ def add_arguments(parser: ArgumentParser):
         "--provider",
         required=False,
         type=str,
-        choices=["cuda", "rocm", "cpu", None],
+        choices=["cuda", "cpu", None],
         default=None,
         help=(
             "Execution provider to use. By default, a "
             "provider is selected in the priority order "
-            "(cuda|rocm, cpu) depending on availability."
+            "(cuda, cpu) depending on availability."
         ),
     )
     parser.add_argument(
@@ -60,7 +60,6 @@ def add_arguments(parser: ArgumentParser):
 def provider_name(name):
     provider_map = {
         "cuda": "CUDAExecutionProvider",
-        "rocm": "ROCMExecutionProvider",
         "cpu": "CPUExecutionProvider",
     }
     return provider_map[name]
@@ -69,8 +68,6 @@ def provider_name(name):
 def get_default_provider():
     if "CUDAExecutionProvider" in ort.get_available_providers():
         return "CUDAExecutionProvider"
-    if "ROCMExecutionProvider" in ort.get_available_providers():
-        return "ROCMExecutionProvider"
     return "CPUExecutionProvider"
 
 
@@ -85,7 +82,7 @@ class Benchmark:
         self.outputs = outputs
 
     def create_input_output_tensors(self):
-        on_gpu = self.provider == "CUDAExecutionProvider" or self.provider == "ROCMExecutionProvider"
+        on_gpu = self.provider == "CUDAExecutionProvider"
         device = "cuda" if on_gpu else "cpu"
         input_tensors = {name: torch.from_numpy(array).to(device) for name, array in self.inputs.items()}
         output_tensors = {name: torch.from_numpy(array).to(device) for name, array in self.outputs.items()}

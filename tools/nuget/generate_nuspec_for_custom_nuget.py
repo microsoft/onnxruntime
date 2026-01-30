@@ -18,15 +18,16 @@ def generate_files(lines, args):
         "osx-arm64": args.osx_arm64,
     }
 
-    avoid_keywords = {"pdb"}
+    avoid_keywords = {"pdb", "onnxruntime_providers_cuda"}
     processed_includes = set()
     for platform, platform_dir in platform_map.items():
         for file in glob.glob(os.path.join(platform_dir, "lib", "*")):
             if not os.path.isfile(file):
                 continue
-            if any(keyword in file for keyword in avoid_keywords):
-                continue
+
             file_name = os.path.basename(file)
+            if any(keyword in file_name for keyword in avoid_keywords):
+                continue
 
             files_list.append(f'<file src="{file}" target="runtimes/{platform}/native/{file_name}" />')
 

@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
@@ -21,7 +22,7 @@ class Tensor;
 
 namespace webgpu {
 class WebGpuContext;
-class ComputeContext;
+class ComputeContextBase;
 class ProgramBase;
 
 // Definition for CapturedCommandInfo in the webgpu namespace
@@ -33,26 +34,50 @@ struct CapturedCommandInfo {
   WGPUBuffer indirect_buffer;  // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
 };
 
-struct WebGpuContextConfig {
-  int context_id;
-  WGPUInstance instance;
-  WGPUDevice device;
-  const void* dawn_proc_table;
-  ValidationMode validation_mode;
-  bool preserve_device;
-  bool small_storage_buffer_binding_size_for_testing;
-  int power_preference;
-};
-
 struct WebGpuBufferCacheConfig {
   struct ConfigEntry {
     BufferCacheMode mode;
-    std::string config_string;
+    std::string config_string;  // preserved for customized configuration, eg. bucket sizes
   };
-  ConfigEntry storage;
-  ConfigEntry uniform;
-  ConfigEntry query_resolve;
-  ConfigEntry default_entry;
+  ConfigEntry storage{BufferCacheMode::Bucket, {}};
+  ConfigEntry uniform{BufferCacheMode::Simple, {}};
+  ConfigEntry query_resolve{BufferCacheMode::Disabled, {}};
+  ConfigEntry default_entry{BufferCacheMode::Disabled, {}};
+};
+
+/// <summary>
+/// Represents the configuration options for creating a WebGpuContext.
+/// </summary>
+struct WebGpuContextConfig {
+  int context_id{0};
+  WGPUInstance instance{nullptr};
+  WGPUDevice device{nullptr};
+  const void* dawn_proc_table{nullptr};
+  ValidationMode validation_mode{
+#ifndef NDEBUG
+      webgpu::ValidationMode::Full  // for debug build, enable full validation by default
+#else
+      webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
+#endif  // !NDEBUG
+  };
+  bool preserve_device{false};
+  uint64_t max_storage_buffer_binding_size{0};
+  WebGpuBufferCacheConfig buffer_cache_config{};
+  int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
+  int backend_type{
+#ifdef _WIN32
+  // Setup Windows default backend type based on the build configuration
+#if defined(DAWN_ENABLE_D3D12)
+      static_cast<int>(WGPUBackendType_D3D12)
+#elif defined(DAWN_ENABLE_VULKAN)
+      static_cast<int>(WGPUBackendType_Vulkan)
+#else
+      0
+#endif
+#else
+      0
+#endif
+  };
 };
 
 class WebGpuContextFactory {
@@ -62,12 +87,27 @@ class WebGpuContextFactory {
     int ref_count;
   };
 
+  /// <summary>
+  /// Create a new WebGPU context for the specified context ID if not present, or return the existing one. (ref-count based)
+  /// </summary>
   static WebGpuContext& CreateContext(const WebGpuContextConfig& config);
+
+  /// <summary>
+  /// Get the WebGPU context for the specified context ID. Throw if not present.
+  /// </summary>
   static WebGpuContext& GetContext(int context_id);
 
+  /// <summary>
+  /// Release the WebGPU context. (ref-count based)
+  /// </summary>
   static void ReleaseContext(int context_id);
 
   static void Cleanup();
+
+  /// <summary>
+  /// Return the default context. Create if not present.
+  /// </summary>
+  static WebGpuContext& DefaultContext();
 
  private:
   WebGpuContextFactory() {}
@@ -81,8 +121,6 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
-  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture);
-
   Status Wait(wgpu::Future f);
 
   const wgpu::Device& Device() const { return device_; }
@@ -150,9 +188,16 @@ class WebGpuContext final {
     return validation_mode_;
   }
 
+  //
+  // Get Split-K configuration.
+  //
+  const SplitKConfig& GetSplitKConfig() const {
+    return *split_k_config_;
+  }
+
   void StartProfiling();
-  void CollectProfilingData(profiling::Events& events);
-  void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
+  void CollectProfilingData();
+  void EndProfiling(TimePoint, profiling::Events& events);
 
   //
   // Push error scope.
@@ -168,8 +213,14 @@ class WebGpuContext final {
   //
   Status PopErrorScope();
 
-  Status Run(ComputeContext& context, ProgramBase& program);
-  void OnRunEnd();
+  Status Run(ComputeContextBase& context, const ProgramBase& program);
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  std::unique_ptr<WebGpuPIXFrameGenerator> CreatePIXFrameGenerator() {
+    return std::make_unique<WebGpuPIXFrameGenerator>(instance_,
+                                                     Device());
+  }
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
  private:
   enum class TimestampQueryType {
@@ -178,9 +229,23 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode, bool preserve_device, bool small_storage_buffer_binding_size_for_testing = false, int power_preference = static_cast<int>(wgpu::PowerPreference::HighPerformance))
-      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None}, preserve_device_{preserve_device}, small_storage_buffer_binding_size_for_testing_{small_storage_buffer_binding_size_for_testing}, power_preference_{power_preference} {}
+  WebGpuContext(WGPUInstance instance,
+                WGPUDevice device,
+                webgpu::ValidationMode validation_mode,
+                bool preserve_device,
+                uint64_t max_storage_buffer_binding_size)
+      : instance_{instance},
+        device_{device},
+        validation_mode_{validation_mode},
+        query_type_{TimestampQueryType::None},
+        preserve_device_{preserve_device},
+        max_storage_buffer_binding_size_{max_storage_buffer_binding_size} {
+    ORT_ENFORCE(max_storage_buffer_binding_size_ == 0 || max_storage_buffer_binding_size_ >= 134217728,
+                "max_storage_buffer_binding_size must be 0 or at least 128MB");
+  }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
+
+  void Initialize(const WebGpuContextConfig& config);
 
   void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
                              const std::vector<WGPUBuffer>& bind_buffers,
@@ -203,7 +268,17 @@ class WebGpuContext final {
                       std::string_view cache_key,
                       const std::vector<ProgramInput>& inputs,
                       const std::vector<ProgramOutput>& outputs)
-        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs} {}
+        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key} {
+      // Store shape information instead of tensor pointers to avoid accessing released tensors
+      input_shapes.reserve(inputs.size());
+      for (const auto& input : inputs) {
+        input_shapes.emplace_back(input.use_override_shape ? input.override_shape : input.tensor->Shape());
+      }
+      output_shapes.reserve(outputs.size());
+      for (const auto& output : outputs) {
+        output_shapes.emplace_back(output.use_override_shape ? output.override_shape : output.tensor->Shape());
+      }
+    }
 
     PendingKernelInfo(PendingKernelInfo&&) = default;
     PendingKernelInfo& operator=(PendingKernelInfo&&) = default;
@@ -211,8 +286,8 @@ class WebGpuContext final {
 
     std::string name;
     std::string cache_key;
-    std::vector<ProgramInput> inputs;
-    std::vector<ProgramOutput> outputs;
+    std::vector<TensorShape> input_shapes;
+    std::vector<TensorShape> output_shapes;
   };
 
   struct PendingQueryInfo {
@@ -254,6 +329,8 @@ class WebGpuContext final {
   uint32_t num_pending_dispatches_ = 0;
   const uint32_t max_num_pending_dispatches_ = 16;
 
+  std::unique_ptr<SplitKConfig> split_k_config_;
+
   // profiling
   TimestampQueryType query_type_;
   wgpu::QuerySet query_set_;
@@ -266,17 +343,13 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+  profiling::Events events_;  // cached GPU profiling events
   bool preserve_device_;
-  bool small_storage_buffer_binding_size_for_testing_;
-  int power_preference_;
+  uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 
   // External vector to store captured commands, owned by EP
   std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
-
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 };
 
 }  // namespace webgpu

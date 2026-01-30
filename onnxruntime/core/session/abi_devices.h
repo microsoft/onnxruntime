@@ -75,3 +75,9 @@ struct OrtEpDevice {
   // get/create methods to be as flexible as possible. this helper converts to a non-const factory instance.
   OrtEpFactory* GetMutableFactory() const { return ep_factory; }
 };
+
+struct OrtDeviceEpIncompatibilityDetails {
+  uint32_t reasons_bitmask{0};  // Bitmask of OrtDeviceEpIncompatibilityReason values
+  int32_t error_code{0};        // EP-specific error code (0 = no error)
+  std::string notes;            // Additional human-readable notes
+};

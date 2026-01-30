@@ -41,7 +41,7 @@ const std::vector<float> GetExpectedResult(const std::vector<float>& input_data,
   return ComputeGelu(add_bias_data);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 static void RunFastGeluGpuTest(const std::vector<float>& input_data, const std::vector<float>& bias_data,
                                const std::vector<float>& output_data, const std::vector<int64_t>& input_dims,
                                const std::vector<int64_t>& bias_dims, const std::vector<int64_t>& output_dims,
@@ -73,8 +73,6 @@ static void RunFastGeluGpuTest(const std::vector<float>& input_data, const std::
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_WEBGPU
   execution_providers.push_back(DefaultWebGpuExecutionProvider());
 #endif
@@ -144,7 +142,7 @@ static void RunFastGeluTest(
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};
   std::vector<int64_t> output_dims = input_dims;
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
   RunFastGeluGpuTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, has_bias);
 #endif
   RunFastGeluCpuTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, has_bias);
@@ -247,8 +245,8 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat32) {
   RunFastGeluTest(input_data, bias_data, batch_size, sequence_length, hidden_size);
 }
 
-// CUDA, ROCm and WebGPU only for Float16 type.
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
+// CUDA and WebGPU only for Float16 type.
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 TEST(FastGeluTest, FastGeluWithBiasFloat16_2) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -385,8 +383,8 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16_8) {
 }
 #endif
 
-// CUDA and ROCm only for BFloat16 type.
-#if defined(USE_CUDA) || defined(USE_ROCM)
+// CUDA only for BFloat16 type.
+#if defined(USE_CUDA)
 TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 800;
@@ -433,15 +431,13 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
 
-// CUDA and ROCm only for double type.
-#if defined(USE_CUDA) || defined(USE_ROCM)
+// CUDA only for double type.
+#if defined(USE_CUDA)
 TEST(FastGeluTest, FastGeluWithBias_Double) {
   OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
 
@@ -471,8 +467,6 @@ TEST(FastGeluTest, FastGeluWithBias_Double) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }

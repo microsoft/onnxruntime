@@ -9,6 +9,8 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/provider_options.h"
+#include "core/platform/env.h"
+#include "core/platform/telemetry.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -96,10 +98,66 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
   return Status::OK();
 }
+
+Status GetCustomOpDomainsFromEpDevice(const OrtEpDevice& ep_device, InlinedVector<OrtCustomOpDomain*>& domains_out) {
+  InlinedVector<OrtCustomOpDomain*> domains{};
+
+  // Get custom op domain provided by EP factory if any.
+  // OrtEpFactory::GetNumCustomOpDomains and OrtEpFactory::GetCustomOpDomains were added in ORT 1.24.
+  OrtEpFactory* ep_factory = ep_device.ep_factory;
+  if (ep_factory &&
+      ep_factory->ort_version_supported >= 24 &&
+      ep_factory->GetNumCustomOpDomains != nullptr &&
+      ep_factory->GetCustomOpDomains != nullptr) {
+    size_t num_domains = 0;
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->GetNumCustomOpDomains(ep_factory, &num_domains)));
+
+    domains.resize(num_domains);
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory->GetCustomOpDomains(ep_factory, domains.data(),
+                                                                          domains.size())));
+  }
+
+  domains_out = std::move(domains);
+  return Status::OK();
+}
+
+bool DoesDomainWithNameExist(const std::string& domain_name, gsl::span<const OrtCustomOpDomain* const> domains) {
+  for (auto ptr : domains) {
+    if (domain_name == ptr->domain_) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ShouldAddDomain(const OrtCustomOpDomain* domain_to_add,
+                     gsl::span<const OrtCustomOpDomain* const> existing_domains) {
+  if (!domain_to_add) {
+    return false;
+  }
+
+  if (domain_to_add->custom_ops_.size() == 0) {
+    LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain_to_add->domain_
+                          << "': custom ops is empty.";
+    return false;
+  }
+
+  if (DoesDomainWithNameExist(domain_to_add->domain_, existing_domains)) {
+    LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << domain_to_add->domain_
+                          << "': domain already exists in session options.";
+    return false;
+  }
+
+  return true;
+}
 }  // namespace
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
+  if (size == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "`size` argument is NULL");
+  }
+
   const size_t str_len = str.size();
   const size_t req_size = str_len + 1;
 
@@ -134,18 +192,29 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
 
-  // If ep.context_enable is set, then ep.context_file_path is expected, otherwise ORT don't know where to generate the _ctx.onnx file
+  // Check EPContext model generation options when the input model is loaded from memory (no input model path).
   if (options && model_path == nullptr) {
     epctx::ModelGenOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
 
-    // This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
-    // the user used the older SessionOptions' configuration entries to generate a compiled model.
-    if (ep_ctx_gen_options.enable && !ep_ctx_gen_options.HasOutputModelLocation()) {
-      return OrtApis::CreateStatus(ORT_FAIL,
-                                   "Inference session was configured with EPContext model generation enabled but "
-                                   "without a valid location (e.g., file or buffer) for the output model. "
-                                   "Please specify a valid ep.context_file_path via SessionOption configs "
-                                   "or use the OrtCompileApi to compile a model to a file or buffer.");
+    if (ep_ctx_gen_options.enable) {
+      auto* output_model_path = ep_ctx_gen_options.TryGetOutputModelPath();
+
+      // If the user does not provide an output model location, ORT normally generates an output model file path based
+      // on the input model's path (i.e., replace ".onnx" with "_ctx.onnx"). However, because there is no input model
+      // path, we require the application to explicitly set the output model's location.
+      //
+      // Note: This is checked by the OrtCompileApi's CompileModel() function, but we check again here in case
+      // the user used the older SessionOptions' configuration entries to generate a compiled model.
+      if (!ep_ctx_gen_options.HasOutputModelLocation() ||               // No output model location (file, buffer, etc.)
+          (output_model_path != nullptr && output_model_path->empty())  // Has an output file, but it is empty.
+      ) {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "Inference session with a model loaded from bytes was configured with EPContext "
+                                     "model generation enabled but without a valid location (e.g., file or buffer) "
+                                     "for the output model. Please specify a valid ep.context_file_path via "
+                                     "SessionOption configs or use the OrtCompileApi to compile a model to a "
+                                     "file or buffer.");
+      }
     }
   }
 
@@ -175,6 +244,31 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
+  }
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Add custom domains for all OrtEpDevice instances to inference session.
+  // The custom domains should be registered before model load for ORT to validate the custom ops.
+  if (options != nullptr &&
+      options->provider_factories.empty() &&
+      options->value.ep_selection_policy.enable) {
+    InlinedVector<OrtCustomOpDomain*> all_ep_custom_op_domains;
+
+    for (const OrtEpDevice* ep_device : env.GetOrtEpDevices()) {
+      InlinedVector<OrtCustomOpDomain*> domains;
+      ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
+
+      for (auto domain : domains) {
+        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
+          all_ep_custom_op_domains.push_back(domain);
+        }
+      }
+    }
+
+    if (!all_ep_custom_op_domains.empty()) {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(all_ep_custom_op_domains));
+    }
   }
 #endif
 
@@ -241,8 +335,10 @@ static Status ValidateCompiledModelCompatibility(InferenceSession& sess) {
 
   const auto& registered_provider_types = sess.GetRegisteredProviderTypes();
 
-  // Access the execution providers through the session state (available after Initialize)
-  const auto& execution_providers = sess.GetSessionState().GetExecutionProviders();
+  // Access the execution providers directly from the session.
+  // This allows validation to run before Initialize() completes, avoiding expensive
+  // graph transformations for incompatible models. EPs are fully registered at this point.
+  const auto& execution_providers = sess.GetExecutionProviders();
 
   for (const auto& ep_type : registered_provider_types) {
     // Construct the full metadata key using the prefix + EP type
@@ -361,13 +457,19 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
         reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container)));
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
-
 #if !defined(ORT_MINIMAL_BUILD)
-  // Validate compiled model compatibility for all registered execution providers
-  // This must be done after Initialize() so the session state is available
+  // Validate compiled model compatibility for all registered execution providers BEFORE Initialize().
+  // This is an optimization to fail fast for incompatible models, avoiding expensive graph transformations,
+  // partitioning, and kernel binding that occur during Initialize().
+  // This is safe because:
+  //   1. Model metadata (containing compatibility strings) is available after Load() completes.
+  //   2. Compiling EPs are fully registered at this point.
+  //   3. Non-compiling EPs (like CPU EP, which may be implicitly added during Initialize()) don't participate
+  //      in compatibility validation - they return NOT_APPLICABLE by default.
   ORT_API_RETURN_IF_STATUS_NOT_OK(ValidateCompiledModelCompatibility(sess));
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess.Initialize());
 
   return nullptr;
 }
@@ -377,24 +479,56 @@ namespace onnxruntime {
 Status CompileModel(const Environment& env, const ModelCompilationOptions& model_compile_options) {
   ORT_RETURN_IF_ERROR(model_compile_options.Check());
 
+  const Telemetry& telemetry_provider = Env::Default().GetTelemetryProvider();
+
   std::unique_ptr<onnxruntime::InferenceSession> session;
   const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
 
+  Status status;
+
   if (model_compile_options.InputModelComesFromFile()) {
     const std::filesystem::path& input_model_path = model_compile_options.GetInputModelPath();
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
-                                                                         input_model_path.c_str(),
-                                                                         nullptr, 0, session)));
+    status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
+                                                              input_model_path.c_str(),
+                                                              nullptr, 0, session));
   } else {
-    ORT_RETURN_IF_ERROR(
-        ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
-                                                         model_compile_options.GetInputModelData(),
-                                                         model_compile_options.GetInputModelDataSize(),
-                                                         session)));
+    status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
+                                                              model_compile_options.GetInputModelData(),
+                                                              model_compile_options.GetInputModelDataSize(),
+                                                              session));
   }
 
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(InitializeSession(session_options, *session)));
-  return Status::OK();
+  if (!status.IsOK()) {
+    telemetry_provider.LogCompileModelComplete(
+        0,  // No session ID available
+        false,
+        static_cast<uint32_t>(status.Code()),
+        static_cast<uint32_t>(status.Category()),
+        status.ErrorMessage());
+    return status;
+  }
+
+  // Log start event now that we have the session ID and can get registered EP types
+  telemetry_provider.LogCompileModelStart(
+      session->GetCurrentSessionId(),
+      model_compile_options.GetInputSourceForTelemetry(),
+      model_compile_options.GetOutputTargetForTelemetry(),
+      model_compile_options.GetFlagsForTelemetry(),
+      model_compile_options.GetGraphOptimizationLevelForTelemetry(),
+      model_compile_options.GetEmbedEpContextForTelemetry(),
+      model_compile_options.HasExternalInitializersFileForTelemetry(),
+      session->GetRegisteredProviderTypes());
+
+  status = ToStatusAndRelease(InitializeSession(session_options, *session));
+
+  telemetry_provider.LogCompileModelComplete(
+      session->GetCurrentSessionId(),
+      status.IsOK(),
+      status.IsOK() ? 0 : static_cast<uint32_t>(status.Code()),
+      status.IsOK() ? 0 : static_cast<uint32_t>(status.Category()),
+      status.IsOK() ? "" : status.ErrorMessage());
+
+  return status;
 }
 
 Status LoadPluginOrProviderBridge(const std::string& registration_name,
@@ -492,6 +626,23 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
       }
 
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
+                                          OrtSessionOptions& ort_session_options) {
+  for (const OrtEpDevice* ep_device : ep_devices) {
+    // Add custom domains if EP factory has any.
+    InlinedVector<OrtCustomOpDomain*> domains;
+    ORT_RETURN_IF_ERROR(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
+
+    for (auto domain : domains) {
+      if (ShouldAddDomain(domain, ort_session_options.custom_op_domains_)) {
+        ort_session_options.custom_op_domains_.push_back(domain);
+      }
     }
   }
 

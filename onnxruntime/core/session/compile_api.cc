@@ -342,11 +342,14 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::ModelCompilationOptions_SetGraphOptimizationLevel,
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelWriteFunc,
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
+    // End of Version 23 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
 static_assert(offsetof(OrtCompileApi, CompileModel) / sizeof(void*) == 8,
               "Size of version 22 Api cannot change");  // initial version in ORT 1.22
+static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc) / sizeof(void*) == 13,
+              "Size of version 23 of Api cannot change");
 
 ORT_API(const OrtCompileApi*, OrtCompileAPI::GetCompileApi) {
   return &ort_compile_api;

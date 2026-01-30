@@ -15,7 +15,7 @@ bool WebGpuProfiler::StartProfiling(TimePoint) {
 }
 
 void WebGpuProfiler::EndProfiling(TimePoint tp, onnxruntime::profiling::Events& events) {
-  context_.EndProfiling(tp, events, events_);
+  context_.EndProfiling(tp, events);
   enabled_ = false;
 }
 

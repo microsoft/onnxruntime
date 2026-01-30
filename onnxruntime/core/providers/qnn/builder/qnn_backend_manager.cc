@@ -29,8 +29,17 @@
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+#include "core/providers/qnn/builder/qnn_windows_file_mapper.h"
+#endif
+
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
+
+// Ensure that we have a recent enough version of QNN
+static_assert(QNN_API_VERSION_MAJOR > 2 ||
+                  (QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR >= 29),
+              "Minimum required QAIRT SDK version is 2.39.0");
 
 namespace onnxruntime {
 namespace qnn {
@@ -231,6 +240,12 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
   ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == *interface_providers || 0 == num_providers),
                 "Failed to get QNN providers.");
 
+  if (skip_qnn_version_check_) {
+    // When skipping version check, use the first available provider.
+    *interface_provider = interface_providers[0];
+    return Status::OK();
+  }
+
   bool found_valid_interface{false};
   for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
     Qnn_Version_t interface_version = GetQnnInterfaceApiVersion(interface_providers[pIdx]);
@@ -282,6 +297,25 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
 }
 
 Status QnnBackendManager::LoadBackend() {
+#if defined(__aarch64__) && defined(__linux__)
+  // QNN requires ADSP_LIBRARY_PATH to be set in order to find skel libs on Linux
+  static std::once_flag set_adsp_path_once;
+
+  std::call_once(set_adsp_path_once, []() {
+    constexpr std::string_view kAdspLibraryPathEnvVar{"ADSP_LIBRARY_PATH"};
+    const char* existing_path = getenv(kAdspLibraryPathEnvVar.data());
+    if (existing_path != nullptr) {
+      LOGS_DEFAULT(WARNING) << "Using existing ADSP_LIBRARY_PATH setting of " << existing_path
+                            << ", which may cause the HTP backend to fail.";
+      return;
+    }
+
+    std::filesystem::path qnn_lib_path(GetDefaultEnv().GetRuntimePath());
+    LOGS_DEFAULT(INFO) << "Setting " << kAdspLibraryPathEnvVar << " = " << qnn_lib_path;
+    setenv(kAdspLibraryPathEnvVar.data(), qnn_lib_path.c_str(), 1);
+  });
+#endif
+
   QnnInterface_t* backend_interface_provider{nullptr};
   auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
                                     QnnInterface_t>(backend_path_.c_str(),
@@ -411,7 +445,6 @@ void QnnLogging(const char* format,
                 QnnLog_Level_t level,
                 uint64_t timestamp,
                 va_list argument_parameter) {
-  ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
   if (!::onnxruntime::logging::LoggingManager::HasDefaultLogger()) {
@@ -421,7 +454,8 @@ void QnnLogging(const char* format,
   }
 
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
-  const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
+  // Map QNN log level to ORT severity
+  logging::Severity severity = QnnBackendManager::MapQNNLogLevelToOrtSeverity(level);
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
   if (logger.OutputIsEnabled(severity, data_type)) {
@@ -492,6 +526,22 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
     case logging::Severity::kFATAL:
     default:
       return QNN_LOG_LEVEL_ERROR;
+  }
+}
+
+/* static */ logging::Severity QnnBackendManager::MapQNNLogLevelToOrtSeverity(QnnLog_Level_t qnn_log_level) {
+  // Map QNN log level to ORT log severity
+  switch (qnn_log_level) {
+    case QNN_LOG_LEVEL_VERBOSE:
+    case QNN_LOG_LEVEL_DEBUG:
+      return logging::Severity::kVERBOSE;
+    case QNN_LOG_LEVEL_INFO:
+      return logging::Severity::kINFO;
+    case QNN_LOG_LEVEL_WARN:
+      return logging::Severity::kWARNING;
+    case QNN_LOG_LEVEL_ERROR:
+    default:
+      return logging::Severity::kERROR;
   }
 }
 
@@ -740,22 +790,148 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
   return Status::OK();
 }
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+// Callback required for allocating file mapping resources
+static Qnn_ErrorHandle_t MapDmaDataCallback(Qnn_ContextBinaryDataRequest_t request,
+                                            Qnn_ContextBinaryDmaDataResponse_t* response, void* notify_param) {
+  if (notify_param == nullptr) {
+    LOGS_DEFAULT(ERROR) << "MapDmaDataCallback: notify_param is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+  auto callback_info = reinterpret_cast<QnnBackendManager::FileMappingCallbackInfo_t*>(notify_param);
+
+  if (callback_info->backend_manager == nullptr) {
+    LOGS_DEFAULT(ERROR) << "MapDmaDataCallback: QnnBackendManager is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  return callback_info->backend_manager->MapDmaData(request, response,
+                                                    callback_info->mapped_file_ptr,
+                                                    callback_info->file_size);
+}
+
+Qnn_ErrorHandle_t QnnBackendManager::MapDmaData(Qnn_ContextBinaryDataRequest_t request,
+                                                Qnn_ContextBinaryDmaDataResponse_t* response,
+                                                void* const mapped_base_ptr,
+                                                const size_t file_size) {
+  if (!file_mapped_weights_enabled_) {
+    LOGS(*logger_, WARNING) << "Attempting to map DMA data but file mapping has been disabled, "
+                            << "possibly due to an error in a previous request.";
+    return QNN_CONTEXT_ERROR_ABORTED;
+  }
+
+  if (mapped_base_ptr == nullptr) {
+    LOGS(*logger_, ERROR) << "Attempting to map DMA data for null memory mapped base pointer";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  LOGS(*logger_, INFO) << "Mapping DMA data for request: memory mapped base pointer("
+                       << mapped_base_ptr << "), offset(" << request.offset
+                       << "), size(" << request.size << "), total file size("
+                       << file_size << ") isBackendMappingNeeded("
+                       << request.isBackendMappingNeeded << ")";
+
+  auto size = request.size;
+  if (size == 0 || !request.isBackendMappingNeeded) {
+    LOGS(*logger_, ERROR) << "Mapping request size must be > 0 with backend mapping required";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  // offset & size are type uint64_t
+  // Should never be an issue, but if this occurs then there is something inherently wrong with QNN
+  if ((UINT64_MAX - request.offset) < size) {
+    LOGS(*logger_, ERROR) << "Critical error in QNN: mapping request offset + size will overflow 64 bits";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  // file_size will be promoted to 64 bits on 32-bit systems
+  if ((request.offset + size) > file_size) {
+    LOGS(*logger_, ERROR) << "Requested offset and size includes memory outside of mapped file";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  void* unaligned_data_ptr = static_cast<char*>(mapped_base_ptr) + request.offset;
+  rpcmem_library_->Api().register_buf(unaligned_data_ptr, size, NULL,
+                                      rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
+
+  auto fd = rpcmem_library_->Api().to_fd(unaligned_data_ptr);
+  if (fd == -1) {
+    LOGS(*logger_, ERROR) << "Failed to register DMA data mapping to RPCMEM";
+    return QNN_COMMON_ERROR_SYSTEM;
+  }
+
+  LOGS(*logger_, INFO) << "Created DMA data mapping with address: " << unaligned_data_ptr;
+
+  response->dmaBuffer.fd = fd;
+  response->dmaBuffer.data = unaligned_data_ptr;
+  response->dataStartOffset = 0;
+  response->alignedSize = size;
+
+  return QNN_SUCCESS;
+}
+
+// Callback required for releasing file mapping resources
+static Qnn_ErrorHandle_t ReleaseDmaDataCallback(Qnn_ContextBinaryDmaDataMem_t data_mem, void* notify_param) {
+  if (notify_param == nullptr) {
+    LOGS_DEFAULT(ERROR) << "ReleaseDmaDataCallback: notify_param is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  auto callback_info = reinterpret_cast<QnnBackendManager::FileMappingCallbackInfo_t*>(notify_param);
+
+  if (callback_info->backend_manager == nullptr) {
+    LOGS_DEFAULT(ERROR) << "ReleaseDmaDataCallback: QnnBackendManager is null";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  return callback_info->backend_manager->ReleaseDmaData(data_mem, callback_info->mapped_file_ptr);
+}
+
+// Use LOGS_DEFAULT here as this function will be called during destruction of QnnBackendManager
+// At time of destruction, usage of logger_ will not be available and will result in a seg fault
+Qnn_ErrorHandle_t QnnBackendManager::ReleaseDmaData(Qnn_ContextBinaryDmaDataMem_t data_mem,
+                                                    void* mapped_base_ptr) {
+  if (mapped_base_ptr == nullptr) {
+    LOGS_DEFAULT(ERROR) << "Attempting to release DMA data for null memory mapped pointer";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  LOGS_DEFAULT(INFO) << "Releasing DMA data mapping for memory mapped pointer("
+                     << mapped_base_ptr << "), address(" << data_mem.dmaBuffer.data
+                     << "), size: (" << data_mem.memSize << ")";
+
+  if (data_mem.dmaBuffer.data == nullptr || data_mem.memSize == 0) {
+    LOGS_DEFAULT(ERROR) << "Mapping release request address must not be null and size must be > 0";
+    return QNN_CONTEXT_ERROR_INVALID_ARGUMENT;
+  }
+
+  // Deregister file mapped data from NPU regardless of file_mapped_weights_enabled_
+  // as there may be file mapped data registered to the NPU prior to any mapping error
+  void* unaligned_data_ptr = data_mem.dmaBuffer.data;
+  rpcmem_library_->Api().register_buf(unaligned_data_ptr, data_mem.memSize, -1,
+                                      rpcmem::RPCMEM_ATTR_IMPORT_BUFFER | rpcmem::RPCMEM_ATTR_READ_ONLY);
+
+  auto fd = rpcmem_library_->Api().to_fd(unaligned_data_ptr);
+  if (fd != -1) {
+    LOGS_DEFAULT(ERROR) << "Failed to deregister buffer from RPCMEM: " << unaligned_data_ptr;
+    return QNN_CONTEXT_ERROR_MEM_ALLOC;
+  }
+  return QNN_SUCCESS;
+}
+#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+
 // callback required to add context handles to class list
 // when using contextCreateFromBinaryListAsync()
-void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
-                                Qnn_GraphHandle_t graph,
-                                const char* graphName,
-                                QnnContext_createFromBinaryAsyncNotifyType_t notifyType,
-                                void* notifyParam,
-                                Qnn_ErrorHandle_t status) {
+static void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
+                                       Qnn_GraphHandle_t /* graph */,
+                                       const char* /* graph_name */,
+                                       QnnContext_createFromBinaryAsyncNotifyType_t /* notify_type */,
+                                       void* notify_param,
+                                       Qnn_ErrorHandle_t /* status */) {
   auto qnn_backend_manager = SharedContext::GetInstance().GetSharedQnnBackendManager();
 
   if (context) {
-    qnn_backend_manager->ProcessContextFromBinListAsync(context, notifyParam);
-  }
-
-  if (nullptr == graphName || graph || notifyType || status) {
-    // Avoid compilation unused var warning error
+    qnn_backend_manager->ProcessContextFromBinListAsync(context, notify_param);
   }
 }
 
@@ -777,6 +953,41 @@ void QnnBackendManager::ProcessContextFromBinListAsync(Qnn_ContextHandle_t conte
   if (s != Status::OK()) {
     LOGS(*logger_, WARNING) << "Unable to add context " << context;
   }
+}
+
+Status QnnBackendManager::GetFileSizeIfValid(const std::string& filepath,
+                                             size_t& file_size) {
+  std::error_code ec;
+  ORT_RETURN_IF(!std::filesystem::exists(filepath, ec), "Context binary does not exist: ", filepath);
+  ORT_RETURN_IF(ec, "Failed to read file: ", filepath,
+                ", error: ", ec.message());
+
+  auto size = std::filesystem::file_size(filepath, ec);
+  ORT_RETURN_IF(ec, "Failed to retrieve size of file: ", filepath,
+                ", error: ", ec.message());
+
+  ORT_RETURN_IF(size == 0, "File is empty: ", filepath);
+  ORT_RETURN_IF(size > SIZE_MAX, "File (", filepath, ") file size (", size,
+                " bytes) exceeds maximum value of size_t for this platform (", SIZE_MAX, " bytes).");
+
+  file_size = static_cast<size_t>(size);
+  return Status::OK();
+}
+
+Status QnnBackendManager::ReadContextBinIfValid(const std::string& context_bin_filepath,
+                                                std::vector<char>& buffer) {
+  size_t buffer_size;
+  ORT_RETURN_IF_ERROR(GetFileSizeIfValid(context_bin_filepath, buffer_size));
+
+  buffer.resize(buffer_size);
+
+  std::ifstream cache_file(context_bin_filepath.c_str(), std::ifstream::binary);
+  ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to read context binary from: ", context_bin_filepath);
+
+  const auto& read_result = cache_file.read(buffer.data(), buffer_size);
+  ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
+
+  return Status::OK();
 }
 
 Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
@@ -815,10 +1026,27 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
 #endif
                                           nullptr};
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  if (file_mapped_weights_enabled_ && file_mapper_) {
+    // Retry logic -- if context creation failed with file mapped weights, then retry with feature disabled
+    auto res = CreateContextFromListAsyncWithCallback(configs, context_bin_map);
+    if (!res.IsOK()) {
+      LOGS(*logger_, WARNING) << res.ErrorMessage() << ". Retrying with feature disabled.";
+    } else {
+      return Status::OK();
+    }
+  }
+#endif
+  return CreateContextFromListAsync(configs, context_bin_map);
+}
+
+Status QnnBackendManager::CreateContextFromListAsync(const QnnContext_Config_t** configs,
+                                                     std::unordered_map<std::string,
+                                                                        std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
   std::vector<QnnContext_Params_t> context_params_list;
   std::vector<QnnContext_ParamsV1_t> context_paramsv1_list;
   std::vector<const QnnContext_Params_t*> context_params_ptr_list;
-  std::vector<std::unique_ptr<char[]>> buffer_list;
+  std::vector<std::vector<char>> buffer_list;
 
   context_params_list.reserve(context_bin_map.size());
   context_params_ptr_list.reserve(context_bin_map.size() + 1);
@@ -826,22 +1054,14 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
   for (auto& it : context_bin_map) {
     auto context_bin_filepath = it.first;
 
-    std::ifstream cache_file(context_bin_filepath.c_str(), std::ifstream::binary);
-    ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to retrieve context binary from: ", context_bin_filepath);
+    std::vector<char> buffer;
+    ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, buffer));
 
-    cache_file.seekg(0, cache_file.end);
-    size_t buffer_size = static_cast<size_t>(cache_file.tellg());
-    ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+    size_t buffer_size = buffer.size();
+    buffer_list.push_back(std::move(buffer));
 
-    cache_file.seekg(0, cache_file.beg);
-    std::unique_ptr<char[]> buffer = std::make_unique<char[]>(buffer_size);
-    ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
-    const auto& read_result = cache_file.read(buffer.get(), buffer_size);
-    ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
-
-    cache_file.close();
     QnnContext_ParamsV1_t context_params_v1 = {nullptr,
-                                               buffer.get(),
+                                               buffer_list.back().data(),
                                                buffer_size,
                                                nullptr,
                                                ContextCreateAsyncCallback,
@@ -850,7 +1070,6 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
     QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_1,
                                           {context_params_v1}};
 
-    buffer_list.push_back(std::move(buffer));
     context_params_list.push_back(std::move(context_params));
     context_paramsv1_list.push_back(std::move(context_params_v1));
     context_params_ptr_list.push_back(&context_params_list.back());
@@ -862,14 +1081,75 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
                                                                 configs,
                                                                 nullptr);
 
-  context_params_ptr_list.clear();
-  context_paramsv1_list.clear();
-  context_params_list.clear();
-  buffer_list.clear();
-
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
   return Status::OK();
 }
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+Status QnnBackendManager::CreateContextFromListAsyncWithCallback(const QnnContext_Config_t** configs,
+                                                                 std::unordered_map<std::string,
+                                                                                    std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
+  std::vector<QnnContext_Params_t> context_params_list;
+  std::vector<QnnContext_ParamsV2_t> context_paramsv2_list;
+  std::vector<Qnn_ContextBinaryCallback_t> context_callbacks_list;
+  std::vector<const QnnContext_Params_t*> context_params_ptr_list;
+
+  context_params_list.reserve(context_bin_map.size());
+  context_paramsv2_list.reserve(context_bin_map.size());
+  context_callbacks_list.reserve(context_bin_map.size());
+  context_params_ptr_list.reserve(context_bin_map.size() + 1);
+
+  for (auto& it : context_bin_map) {
+    auto context_bin_filepath = it.first;
+
+    size_t buffer_size;
+    ORT_RETURN_IF_ERROR(GetFileSizeIfValid(context_bin_filepath, buffer_size));
+
+    void* buffer;
+    ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappedMemoryPtr(context_bin_filepath, &buffer));
+
+    auto notify_param_ptr = std::make_unique<FileMappingCallbackInfo_t>(buffer, buffer_size, this);
+
+    Qnn_ContextBinaryCallback_t context_file_map_callbacks;
+    context_file_map_callbacks.type = QNN_CONTEXT_CALLBACK_DMA_BUFFER;
+    context_file_map_callbacks.dmaBufferCallback.version = QNN_CONTEXT_CALLBACK_DMA_BUFFER_VERSION_1;
+    context_file_map_callbacks.dmaBufferCallback.v1.dataProvide = MapDmaDataCallback;
+    context_file_map_callbacks.dmaBufferCallback.v1.dataRelease = ReleaseDmaDataCallback;
+    context_file_map_callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(notify_param_ptr.get());
+
+    file_mapping_notify_params_.push_back(std::move(notify_param_ptr));
+    context_callbacks_list.push_back(std::move(context_file_map_callbacks));
+
+    // Callbacks require QnnContext_ParamsV2_t which is new to QNN API 2.32
+    QnnContext_ParamsV2_t context_params_v2 = {nullptr,
+                                               buffer,
+                                               buffer_size,
+                                               nullptr,
+                                               ContextCreateAsyncCallback,
+                                               it.second.get(),
+                                               &context_callbacks_list.back()};
+
+    QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_2,
+                                          {}};
+
+    context_paramsv2_list.push_back(std::move(context_params_v2));
+
+    context_params.v2 = &context_paramsv2_list.back();
+    context_params_list.push_back(std::move(context_params));
+    context_params_ptr_list.push_back(&(context_params_list.back()));
+  }
+  context_params_ptr_list.push_back(nullptr);
+  auto result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
+                                                                device_handle_,
+                                                                context_params_ptr_list.data(),
+                                                                configs,
+                                                                nullptr);
+
+  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context with file mapping enabled. Error: ",
+                QnnErrorHandleToString(result), ", Code:", result);
+  return Status::OK();
+}
+#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
 
 Status QnnBackendManager::SetContextPriority(ContextPriority context_priority) {
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
@@ -1068,6 +1348,7 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
 }
 
 Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                                         const std::string& context_bin_filepath,
                                                          std::string node_name,
                                                          QnnModelLookupTable& qnn_models,
                                                          int64_t max_spill_fill_size) {
@@ -1076,6 +1357,24 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                 nullptr == qnn_sys_interface_.systemContextFree;
   ORT_RETURN_IF(result, "Failed to get valid function pointer.");
 
+  void* bin_buffer = nullptr;
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  if (file_mapped_weights_enabled_) {
+    ORT_RETURN_IF(!file_mapper_, "Attemping to use File Mapping feature but file_mapper_ is uninitialized");
+
+    ORT_RETURN_IF_ERROR(GetFileSizeIfValid(context_bin_filepath, buffer_length));
+
+    ORT_RETURN_IF(buffer_length == 0, "Context bin has a size of 0 bytes: ", context_bin_filepath);
+    ORT_RETURN_IF_ERROR(file_mapper_->GetContextBinMappedMemoryPtr(context_bin_filepath, &bin_buffer));
+
+  } else {
+    ORT_RETURN_IF(buffer == nullptr, "Attempting to load QNN context from buffer but buffer is null");
+    bin_buffer = static_cast<void*>(buffer);
+  }
+#else
+  bin_buffer = static_cast<void*>(buffer);
+#endif
+
   QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create system handle.");
@@ -1083,7 +1382,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
-                                                     static_cast<void*>(buffer),
+                                                     bin_buffer,
                                                      buffer_length,
                                                      &binary_info,
                                                      &binary_info_size);
@@ -1158,6 +1457,26 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                   "Invalid function pointer for contextCreateFromBinary.");
 
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+    Qnn_ContextBinaryCallback_t callbacks;
+    if (file_mapped_weights_enabled_ && file_mapper_) {
+      ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinaryWithCallback,
+                    "Invalid function pointer for contextCreateFromBinaryWithCallback.");
+
+      auto notify_param_ptr = std::make_unique<FileMappingCallbackInfo_t>(bin_buffer, buffer_length, this);
+
+      callbacks.type = QNN_CONTEXT_CALLBACK_DMA_BUFFER;
+      callbacks.dmaBufferCallback.version = QNN_CONTEXT_CALLBACK_DMA_BUFFER_VERSION_1;
+      callbacks.dmaBufferCallback.v1.dataProvide = MapDmaDataCallback;
+      callbacks.dmaBufferCallback.v1.dataRelease = ReleaseDmaDataCallback;
+      callbacks.dmaBufferCallback.v1.notifyParam = reinterpret_cast<void*>(notify_param_ptr.get());
+
+      file_mapping_notify_params_.push_back(std::move(notify_param_ptr));
+    }
+#else
+  ORT_UNUSED_PARAMETER(context_bin_filepath);
+#endif
+
     qnn::profile::ProfilingInfo profiling_info;
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
     if (ProfilingEnabled()) {
@@ -1165,13 +1484,41 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     }
 #endif
 
-    rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
-                                                device_handle_,
-                                                context_configs,
-                                                static_cast<void*>(buffer),
-                                                buffer_length,
-                                                &context,
-                                                profile_backend_handle_);
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+    std::vector<char> backup_buffer;
+    if (file_mapped_weights_enabled_ && file_mapper_) {
+      rt = qnn_interface_.contextCreateFromBinaryWithCallback(backend_handle_,
+                                                              device_handle_,
+                                                              context_configs,
+                                                              &callbacks,
+                                                              bin_buffer,
+                                                              buffer_length,
+                                                              &context,
+                                                              profile_backend_handle_,
+                                                              NULL);
+
+      if (rt != QNN_SUCCESS) {
+        LOGS(*logger_, WARNING) << "Failed to create context with file mapping enabled. Error: "
+                                << QnnErrorHandleToString(rt) << ", Code : " << rt
+                                << ". Retrying with feature disabled.";
+
+        // Read context bin from file since file mapping has failed
+        ORT_RETURN_IF_ERROR(ReadContextBinIfValid(context_bin_filepath, backup_buffer));
+
+        bin_buffer = static_cast<void*>(backup_buffer.data());
+      }
+    }
+#endif  // QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+
+    if (!file_mapped_weights_enabled_ || rt != QNN_SUCCESS) {
+      rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
+                                                  device_handle_,
+                                                  context_configs,
+                                                  bin_buffer,
+                                                  buffer_length,
+                                                  &context,
+                                                  profile_backend_handle_);
+    }
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
     if (ProfilingEnabled()) {
@@ -1219,6 +1566,8 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool need_load_system_lib,
                                        bool share_ep_contexts,
                                        bool enable_vtcm_backup_buffer_sharing,
+                                       bool enable_file_mapped_weights,
+                                       std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library,
                                        std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
@@ -1258,6 +1607,20 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   } else {
     status = LoadQnnSerializerBackend();
   }
+
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  // Backend is determined after LoadBackend() or LoadQnnSerializerBackend()
+  if (enable_file_mapped_weights && !file_mapper_ && GetQnnBackendType() == QnnBackendType::HTP) {
+    ORT_RETURN_IF(!rpcmem_library, "RPCMem Library is required for file mapping but is uninitialized.");
+    rpcmem_library_ = rpcmem_library;
+    file_mapped_weights_enabled_ = true;
+    file_mapper_ = std::make_unique<WindowsFileMapper>(logger);
+  }
+#else
+  ORT_UNUSED_PARAMETER(enable_file_mapped_weights);
+  ORT_UNUSED_PARAMETER(rpcmem_library);
+#endif
+
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "LoadBackend succeed.";
   }
@@ -1354,194 +1717,82 @@ Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_
   return Status::OK();
 }
 
-Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
-                                            HtpPerformanceMode htp_performance_mode) {
+Status QnnBackendManager::SetHtpPowerConfigs(uint32_t htp_power_config_client_id,
+                                             HtpPerformanceMode htp_performance_mode,
+                                             uint32_t rpc_polling_time,
+                                             uint32_t rpc_control_latency) {
   // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
   // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
   // set an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
   ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP power config ID if backend setup is not complete.");
-  QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
-  auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
-  ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
 
-  auto* htp_infra = static_cast<QnnHtpDevice_Infrastructure_t*>(qnn_device_infra);
-  ORT_RETURN_IF(QNN_HTP_DEVICE_INFRASTRUCTURE_TYPE_PERF != htp_infra->infraType,
-                "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
-  QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
-
-  constexpr const int kNumConfigs = 1;
-  std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> power_configs(
-      kNumConfigs);
-  QnnHtpPerfInfrastructure_PowerConfig_t& dcvs_config = power_configs[0];
-  dcvs_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
-  QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = dcvs_config.dcvsV3Config;
-  dcvs_v3.contextId = htp_power_config_client_id;
-  dcvs_v3.setSleepDisable = 0;
-  dcvs_v3.sleepDisable = 0;
-  dcvs_v3.setDcvsEnable = 1;
-  dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_PERFORMANCE_MODE;
-  // choose performance mode
-  switch (htp_performance_mode) {
-    case HtpPerformanceMode::kHtpBurst:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMinLatency;
-      dcvs_v3.dcvsEnable = kDcvsDisable;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_MAX_VOLTAGE_CORNER;
-      break;
-    case HtpPerformanceMode::kHtpSustainedHighPerformance:
-    case HtpPerformanceMode::kHtpHighPerformance:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepLowLatency;
-      dcvs_v3.dcvsEnable = kDcvsDisable;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_TURBO;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_TURBO;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_TURBO;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_TURBO;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_TURBO;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_TURBO;
-      break;
-    case HtpPerformanceMode::kHtpBalanced:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.dcvsEnable = kDcvsEnable;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM_PLUS;
-      break;
-    case HtpPerformanceMode::kHtpLowBalanced:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.dcvsEnable = kDcvsEnable;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_NOM;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_NOM;
-      break;
-    case HtpPerformanceMode::kHtpHighPowerSaver:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.dcvsEnable = kDcvsEnable;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
-      break;
-    case HtpPerformanceMode::kHtpPowerSaver:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.dcvsEnable = kDcvsEnable;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS;
-      break;
-    case HtpPerformanceMode::kHtpLowPowerSaver:
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.dcvsEnable = kDcvsEnable;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS2;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS2;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS2;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_VCORNER_SVS2;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS2;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS2;
-      break;
-    case HtpPerformanceMode::kHtpExtremePowerSaver:
-      dcvs_v3.powerMode = QNN_HTP_PERF_INFRASTRUCTURE_POWERMODE_POWER_SAVER_MODE;
-      dcvs_v3.setSleepLatency = 1;  // true
-      dcvs_v3.sleepLatency = kSleepMediumLatency;
-      dcvs_v3.dcvsEnable = kDcvsEnable;
-      dcvs_v3.setBusParams = 1;
-      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_CORNER_DISABLE;
-      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_CORNER_DISABLE;
-      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_CORNER_DISABLE;
-      dcvs_v3.setCoreParams = 1;
-      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_CORNER_DISABLE;
-      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_CORNER_DISABLE;
-      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_CORNER_DISABLE;
-      break;
-    default:
-      ORT_THROW("Invalid performance profile %d", static_cast<int>(htp_performance_mode));
-      break;
-  }
-  std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr = ObtainNullTermPtrVector(power_configs);
-  status = htp_perf_infra.setPowerConfig(htp_power_config_client_id, perf_power_configs_ptr.data());
-  ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for HTP performance mode.");
+  ORT_RETURN_IF_ERROR(htp_power_config_manager_.AddRpcPollingTime(rpc_polling_time));
+  ORT_RETURN_IF_ERROR(htp_power_config_manager_.AddRpcControlLatency(rpc_control_latency));
+  ORT_RETURN_IF_ERROR(htp_power_config_manager_.AddHtpPerformanceMode(htp_performance_mode, htp_power_config_client_id));
+  ORT_RETURN_IF_ERROR(htp_power_config_manager_.SetPowerConfig(htp_power_config_client_id, GetQnnInterface()));
 
   return Status::OK();
 }
 
-Status QnnBackendManager::SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
-                                             uint32_t rpc_control_latency,
-                                             uint32_t rpc_polling_time) {
-  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
-  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
-  // set RPC control latency. Otherwise, this causes a segfault because the QNN backend library is unloaded.
-  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP RPC control latency if backend setup is not complete.");
-
-  constexpr int kNumRpcPollingPowerConfigs = 2;
-  std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> rpc_power_configs;
-  rpc_power_configs.reserve(kNumRpcPollingPowerConfigs);
-
-  // Set rpc control latency here
-  if (rpc_control_latency != 0) {
-    auto& rpc_control_latency_cfg = rpc_power_configs.emplace_back();
-    rpc_control_latency_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
-    rpc_control_latency_cfg.rpcControlLatencyConfig = rpc_control_latency;
+Status QnnBackendManager::SetPerThreadHtpPowerConfigs(const std::thread::id& thread_id, bool pre_run) {
+  PerThreadHtpPowerConfigs_t htp_power_configs;
+  if (!GetPerThreadHtpPowerConfigMapping(thread_id, htp_power_configs)) {
+    return Status::OK();
   }
 
-  // Note: v68 does not support rpc polling mode
-  if (rpc_polling_time != 0) {
-    auto& rpc_polling_time_cfg = rpc_power_configs.emplace_back();
-    rpc_polling_time_cfg.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
-    rpc_polling_time_cfg.rpcPollingTimeConfig = rpc_polling_time;
+  auto htp_power_config_id = htp_power_configs.power_config_id;
+  if (pre_run) {
+    if (htp_power_configs.pre_run_perf_mode.has_value()) {
+      ORT_RETURN_IF_ERROR(htp_power_config_manager_.AddHtpPerformanceMode(*htp_power_configs.pre_run_perf_mode,
+                                                                          htp_power_config_id));
+    }
+
+    if (htp_power_configs.rpc_control_latency.has_value()) {
+      ORT_RETURN_IF_ERROR(htp_power_config_manager_.AddRpcControlLatency(*htp_power_configs.rpc_control_latency));
+    }
+
+    if (htp_power_configs.rpc_polling_time.has_value()) {
+      ORT_RETURN_IF_ERROR(htp_power_config_manager_.AddRpcPollingTime(*htp_power_configs.rpc_polling_time));
+    }
+  } else if (htp_power_configs.post_run_perf_mode.has_value()) {
+    ORT_RETURN_IF_ERROR(htp_power_config_manager_.AddHtpPerformanceMode(*htp_power_configs.post_run_perf_mode,
+                                                                        htp_power_config_id));
   }
 
-  if (rpc_power_configs.size() > 0) {
-    QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
-    auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
-    ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
-
-    auto* htp_infra = static_cast<QnnHtpDevice_Infrastructure_t*>(qnn_device_infra);
-    ORT_RETURN_IF(QNN_HTP_DEVICE_INFRASTRUCTURE_TYPE_PERF != htp_infra->infraType,
-                  "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
-    QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
-
-    std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr =
-        ObtainNullTermPtrVector(rpc_power_configs);
-    status = htp_perf_infra.setPowerConfig(htp_power_config_client_id, perf_power_configs_ptr.data());
-    ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for RPC control latency.");
-  }
+  ORT_RETURN_IF_ERROR(htp_power_config_manager_.SetPowerConfig(htp_power_config_id, GetQnnInterface()));
 
   return Status::OK();
+}
+
+Status QnnBackendManager::AddPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                                            const PerThreadHtpPowerConfigs_t& htp_power_configs) {
+  std::lock_guard<std::mutex> lock(per_thread_power_configs_mutex_);
+
+  auto res = per_thread_power_configs_.find(thread_id);
+  ORT_RETURN_IF(res != per_thread_power_configs_.end(), "Trying to set HtpPowerConfigs for thread id ", thread_id,
+                " but one already exists!");
+
+  per_thread_power_configs_.emplace(thread_id, std::move(htp_power_configs));
+
+  return Status::OK();
+}
+
+bool QnnBackendManager::GetPerThreadHtpPowerConfigMapping(const std::thread::id& thread_id,
+                                                          PerThreadHtpPowerConfigs_t& htp_power_configs) {
+  std::lock_guard<std::mutex> lock(per_thread_power_configs_mutex_);
+
+  auto it = per_thread_power_configs_.find(thread_id);
+  if (it == per_thread_power_configs_.end()) {
+    return false;
+  }
+
+  htp_power_configs = it->second;
+  return true;
+}
+
+void QnnBackendManager::RemovePerThreadHtpPowerConfigMapping(const std::thread::id& thread_id) {
+  std::lock_guard<std::mutex> lock(per_thread_power_configs_mutex_);
+  per_thread_power_configs_.erase(thread_id);
 }
 
 Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) {
@@ -1611,7 +1862,6 @@ void QnnBackendManager::ReleaseResources() {
   }
 
   backend_setup_completed_ = false;
-
   return;
 }
 

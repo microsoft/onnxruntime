@@ -153,32 +153,46 @@ struct GroupQueryAttentionData {
   const T* value = nullptr;
   const T* past_key = nullptr;
   const T* past_value = nullptr;
-  int* seqlens_k = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
+
+  // Total sequence length for each batch. It has shape [batch_size].
+  int* total_seq_lens = nullptr;
+
+  // Past sequence length for each batch (i.e., the offset to append new tokens). Shape [batch_size].
+  // For first prompt: past_seq_lens[b] = 0
+  // For token generation or subsequent prompt: past_seq_lens[b] = total_seq_lens[b] - sequence_length
+  int* past_seq_lens = nullptr;
+
+  // Padded sequence length for each batch. Shape [batch_size].
+  // Only used for first prompt: padded_seq_lens[b] = sequence_length
+  int* padded_seq_lens = nullptr;
 
   // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
-  int* seqlens_k_buff = nullptr;
+
+  // Position IDs from Input
+  const int64_t* position_ids = nullptr;
 
   // Memory Efficient buffers
   T* fmha_buffer = nullptr;
-  T* unpacked_qkv_buffer = nullptr;
-  T* rotary_buffer = nullptr;
+  T* qkv_buffer = nullptr;
+
   T* k = nullptr;
   T* v = nullptr;
 
   // Output Tensors
   T* output = nullptr;
-  T* present_key = nullptr;
-  T* present_value = nullptr;
+  void* present_key = nullptr;
+  void* present_value = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
+  bool use_flash_attention_fast_decode = false;
 };
 
 template <typename T>

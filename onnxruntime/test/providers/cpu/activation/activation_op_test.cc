@@ -172,7 +172,7 @@ TEST_F(ActivationOpTest, Relu) {
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST_F(ActivationOpTest, Sigmoid_fp16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -262,7 +262,7 @@ TEST_F(ActivationOpTest, Relu_fp16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+#if defined(USE_CUDA) || defined(USE_DNNL)
 TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -299,8 +299,6 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif
@@ -339,8 +337,6 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif
@@ -379,14 +375,12 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif  // USE_CUDA || USE_ROCM || USE_DNNL
+#endif  // USE_CUDA || USE_DNNL
 
 #if defined(USE_DNNL)
 TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {

@@ -23,7 +23,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import coloredlogs
 from fusion_options import FusionOptions
 from onnx import ModelProto, load_model
 from onnx_model import OnnxModel
@@ -111,7 +110,7 @@ def optimize_by_onnxruntime(
         use_gpu
         and provider is None
         and set(onnxruntime.get_available_providers()).isdisjoint(
-            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
+            ["CUDAExecutionProvider", "MIGraphXExecutionProvider"]
         )
     ):
         logger.error("There is no gpu for onnxruntime to do optimization.")
@@ -172,10 +171,8 @@ def optimize_by_onnxruntime(
     elif provider is not None:
         if provider == "dml":
             providers = ["DmlExecutionProvider"]
-        elif provider == "rocm":
-            providers = ["ROCMExecutionProvider"]
         elif provider == "migraphx":
-            providers = ["MIGraphXExecutionProvider", "ROCMExecutionProvider"]
+            providers = ["MIGraphXExecutionProvider"]
         elif provider == "cuda":
             providers = ["CUDAExecutionProvider"]
         elif provider == "tensorrt":
@@ -189,7 +186,6 @@ def optimize_by_onnxruntime(
 
         if torch_version.hip:
             providers.append("MIGraphXExecutionProvider")
-            providers.append("ROCMExecutionProvider")
         else:
             providers.append("CUDAExecutionProvider")
 
@@ -565,12 +561,11 @@ def _parse_arguments():
 
 def _setup_logger(verbose):
     if verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        logging.basicConfig(
+            format="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s", level=logging.DEBUG, force=True
         )
     else:
-        coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+        logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO, force=True)
 
 
 def main():

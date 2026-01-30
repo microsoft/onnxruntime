@@ -6,12 +6,12 @@
 #include <filesystem>
 #include <optional>
 #include <string_view>
+#include <thread>
 #include <unordered_set>
 
 #include "core/common/string_utils.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
@@ -176,6 +176,8 @@ static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevic
     qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V73;
   } else if (htp_arch_string == "75") {
     qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V75;
+  } else if (htp_arch_string == "81") {
+    qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V81;
   } else {
     LOGS_DEFAULT(WARNING) << "Invalid HTP architecture: " << htp_arch_string;
   }
@@ -423,6 +425,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   auto htp_performance_mode_pos = provider_options_map.find(HTP_PERFORMANCE_MODE);
   if (htp_performance_mode_pos != provider_options_map.end()) {
     ParseHtpPerformanceMode(htp_performance_mode_pos->second, default_htp_performance_mode_);
+
+    if (qnn::HtpPerformanceMode::kHtpBurst == default_htp_performance_mode_) {
+      default_rpc_polling_time_ = 9999;
+    }
   }
 
   htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -468,6 +474,21 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
 #endif
   }
+
+  static const std::string DISABLE_FILE_MAPPED_WEIGHTS = "disable_file_mapped_weights";
+  auto disable_file_mapped_weights_pos = provider_options_map.find(DISABLE_FILE_MAPPED_WEIGHTS);
+  if (disable_file_mapped_weights_pos != provider_options_map.end()) {
+    if ("1" == disable_file_mapped_weights_pos->second) {
+      enable_file_mapped_weights_ = false;
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified disable_file_mapped_weights: " << enable_file_mapped_weights_;
+  }
+
+#ifndef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  enable_file_mapped_weights_ = false;
+  LOGS_DEFAULT(WARNING) << "File mapped weights feature is only available on Windows arm64 devices for QNN API versions >= 2.32. "
+                        << "Feature will be disabled by default";
+#endif
 
   static const std::string QNN_DEVICE_ID = "device_id";
   auto dev_id_pos = provider_options_map.find(QNN_DEVICE_ID);
@@ -535,6 +556,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", true,
                                                                   provider_options_map);
 
+  model_settings_.htp_bf16_enable = ParseBoolOption("htp_bf16_enable", false, provider_options_map);
+
   if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
     LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
                        << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
@@ -544,11 +567,24 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
-  if (ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map)) {
+  enable_htp_shared_mem_allocator_ = ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map);
+  if (enable_htp_shared_mem_allocator_) {
     // Initialize rpcmem_library_.
     // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
-    model_settings_.htp_shared_memory = true;
+    model_settings_.htp_shared_memory = enable_htp_shared_mem_allocator_;
+  }
+
+  if (enable_file_mapped_weights_ && !rpcmem_library_) {
+    // Attempt to init rpcmem_library_ if needed. If this fails, then
+    // disable file mapped weights and proceed with normal operation
+    try {
+      rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    } catch (const std::exception& e) {
+      LOGS_DEFAULT(WARNING) << "Unable to load RPCMem library: " << e.what()
+                            << " - Disabling file mapped weights.";
+      enable_file_mapped_weights_ = false;
+    }
   }
 
   dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);
@@ -565,6 +601,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                             << "but did not enable dumping of QNN JSON graphs.";
     }
   }
+
+  // Option to skip QNN API interface version check to use other QNN library other than default.
+  static const std::string SKIP_QNN_VERSION_CHECK = "skip_qnn_version_check";
+  auto skip_qnn_version_check = ParseBoolOption(SKIP_QNN_VERSION_CHECK, false, provider_options_map);
 
   // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
   // So that all graphs from later sessions will be compiled into the same QNN context
@@ -585,7 +625,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                      device_id_,
                                      htp_arch,
                                      soc_model,
-                                     op_packages});
+                                     op_packages,
+                                     skip_qnn_version_check});
     if (enable_vtcm_backup_buffer_sharing_) {
       SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_);
     }
@@ -642,12 +683,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {
-  // clean up thread local context caches
-  std::lock_guard<std::mutex> lock(context_state_.mutex);
-  for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
-    const auto cache = cache_weak.lock();
-    if (!cache) continue;
-    ORT_IGNORE_RETURN_VALUE(cache->erase(this));
+  if (qnn_backend_manager_) {
+    auto thread_id = std::this_thread::get_id();
+    qnn_backend_manager_->RemovePerThreadHtpPowerConfigMapping(thread_id);
+
+    std::lock_guard<std::mutex> lock(config_id_mutex_);
+    if (htp_power_config_id_.has_value()) {
+      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(*htp_power_config_id_));
+    }
   }
 
   // Unregister the ETW callback
@@ -893,6 +936,25 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
 
   const auto& logger = *GetLogger();
+
+  // Check BF16 compatibility early
+  if (model_settings_.htp_bf16_enable) {
+    // Check SoC model
+    uint32_t soc_model = qnn_backend_manager_->GetSocModel();
+    if (soc_model == QNN_SOC_MODEL_UNKNOWN) {
+      LOGS(logger, WARNING) << "BF16 mode is enabled but soc_model is not specified. "
+                            << "Both parameters must be set together for BF16 support. "
+                            << "QNN EP will not handle any nodes.";
+      return result;  // Empty result means QNN EP won't handle any nodes
+    } else if (soc_model < 88) {
+      LOGS(logger, WARNING) << "BF16 mode is enabled but SoC model is " << soc_model
+                            << " (expected 88 and above). QNN EP will not handle any nodes.";
+      return result;  // Empty result means QNN EP won't handle any nodes
+    }
+
+    LOGS(logger, INFO) << "BF16 mode enabled with compatible hardware: SoC " << soc_model;
+  }
+
   bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
 
   const auto gen_metadef_name = [&]() {
@@ -913,7 +975,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>> context_bin_map;
-  if (enable_vtcm_backup_buffer_sharing_) {
+  if (enable_vtcm_backup_buffer_sharing_ || enable_file_mapped_weights_) {
     std::unordered_set<const Node*> ep_ctx_nodes;
     GetMainEPCtxNodes(graph_viewer, ep_ctx_nodes, logger);
 
@@ -926,7 +988,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       NodeAttrHelper node_helper(*ep_ctx_node);
       std::string context_bin_filepath(parent_path.string());
       context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
-
       if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {
         context_bin_map.emplace(context_bin_filepath, std::make_unique<std::vector<std::string>>());
         // Push context bin filepath for lookup between sessions
@@ -943,6 +1004,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
                                                context_cache_enabled_ && enable_spill_fill_buffer_,
                                                share_ep_contexts_,
                                                enable_vtcm_backup_buffer_sharing_,
+                                               enable_file_mapped_weights_,
+                                               rpcmem_library_,
                                                context_bin_map);
 
   context_bin_map.clear();
@@ -955,7 +1018,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   if (IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
     // Set the power config id and the default power mode from provider option for main thread,
     // otherwise it will mess up the power mode if user just create session without run it.
-    GetPerThreadContext();
+    CreateHtpPowerConfigId();
   }
 
   // Report error if QNN CPU backend is loaded while CPU fallback is disabled
@@ -1355,93 +1418,6 @@ const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const
   return ep_context_nodes;
 }
 
-QNNExecutionProvider::PerThreadContext::PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
-                                                         uint32_t device_id,
-                                                         uint32_t core_id,
-                                                         qnn::HtpPerformanceMode default_htp_performance_mode,
-                                                         uint32_t default_rpc_control_latency,
-                                                         uint32_t default_rpc_polling_time)
-    : qnn_backend_manager_(qnn_backend_manager) {
-  Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id, core_id, htp_power_config_id_);
-  is_htp_power_config_id_valid_ = rt.IsOK();
-  // default_htp_performance_mode and default_rpc_control_latency are from QNN EP option.
-  // set it once only for each thread as default so user don't need to set it for every session run
-  if (is_htp_power_config_id_valid_) {
-    if (qnn::HtpPerformanceMode::kHtpDefault != default_htp_performance_mode) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetHtpPowerConfig(htp_power_config_id_,
-                                                                      default_htp_performance_mode));
-    }
-    if (default_rpc_control_latency > 0 || default_rpc_polling_time > 0) {
-      ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->SetRpcPowerConfigs(htp_power_config_id_,
-                                                                       default_rpc_control_latency,
-                                                                       default_rpc_polling_time));
-    }
-  }
-}
-
-QNNExecutionProvider::PerThreadContext::~PerThreadContext() {
-  if (is_htp_power_config_id_valid_) {
-    ORT_IGNORE_RETURN_VALUE(qnn_backend_manager_->DestroyHTPPowerConfigID(htp_power_config_id_));
-  }
-}
-
-QNNExecutionProvider::PerThreadContext& QNNExecutionProvider::GetPerThreadContext() const {
-  const auto& per_thread_context_cache = PerThreadContextCache();
-
-  // try to use cached context
-  auto cached_context_it = per_thread_context_cache->find(this);
-  if (cached_context_it != per_thread_context_cache->end()) {
-    auto cached_context = cached_context_it->second.lock();
-    ORT_ENFORCE(cached_context);
-    return *cached_context;
-  }
-
-  // get context and update cache
-  std::shared_ptr<PerThreadContext> context;
-  {
-    std::lock_guard<std::mutex> lock(context_state_.mutex);
-
-    // get or create a context
-    if (context_state_.retired_context_pool.empty()) {
-      uint32_t core_id = 0;
-      context = std::make_shared<PerThreadContext>(qnn_backend_manager_.get(), device_id_, core_id,
-                                                   default_htp_performance_mode_, default_rpc_control_latency_,
-                                                   default_rpc_polling_time_);
-    } else {
-      context = context_state_.retired_context_pool.back();
-      context_state_.retired_context_pool.pop_back();
-    }
-
-    // insert into active_contexts, should not already be present
-    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
-    ORT_ENFORCE(active_contexts_insert_result.second);
-
-    // insert into caches_to_update_on_destruction, may already be present
-    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache));
-  }
-
-  per_thread_context_cache->insert(std::make_pair(this, context));
-
-  return *context;
-}
-
-void QNNExecutionProvider::ReleasePerThreadContext() const {
-  const auto& per_thread_context_cache = PerThreadContextCache();
-
-  auto cached_context_it = per_thread_context_cache->find(this);
-  ORT_ENFORCE(cached_context_it != per_thread_context_cache->end());
-  auto cached_context = cached_context_it->second.lock();
-  ORT_ENFORCE(cached_context);
-
-  {
-    std::lock_guard<std::mutex> lock(context_state_.mutex);
-    context_state_.active_contexts.erase(cached_context);
-    context_state_.retired_context_pool.push_back(cached_context);
-  }
-
-  per_thread_context_cache->erase(cached_context_it);
-}
-
 static bool TryGetConfigEntry(const ConfigOptions& config_options, const std::string& key, std::string& value) {
   std::optional<std::string> new_value = config_options.GetConfigEntry(key);
   if (!new_value.has_value()) {
@@ -1452,6 +1428,51 @@ static bool TryGetConfigEntry(const ConfigOptions& config_options, const std::st
   return true;
 }
 
+bool QNNExecutionProvider::GetPerThreadHtpPowerConfigs(qnn::PerThreadHtpPowerConfigs_t& per_thread_htp_power_configs,
+                                                       const ConfigOptions& config_options) {
+  qnn::HtpPerformanceMode pre_run_htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+  qnn::HtpPerformanceMode post_run_htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
+
+  bool configs_set = false;
+  std::string htp_perf_mode = "";
+  if (TryGetConfigEntry(config_options, kOrtRunOptionsConfigQnnPerfMode, htp_perf_mode)) {
+    ParseHtpPerformanceMode(htp_perf_mode, pre_run_htp_performance_mode);
+  }
+
+  if (TryGetConfigEntry(config_options, kOrtRunOptionsConfigQnnPerfModePostRun, htp_perf_mode)) {
+    ParseHtpPerformanceMode(htp_perf_mode, post_run_htp_performance_mode);
+  }
+
+  std::string rpc_latency = "";
+  uint32_t rpc_control_latency = 0;
+  if (TryGetConfigEntry(config_options, kOrtRunOptionsConfigQnnRpcControlLatency, rpc_latency)) {
+    rpc_control_latency = static_cast<uint32_t>(std::stoul(rpc_latency));
+    per_thread_htp_power_configs.rpc_control_latency = rpc_control_latency;
+    configs_set = true;
+
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
+  }
+
+  uint32_t rpc_polling_time = 0;
+  if (qnn::HtpPerformanceMode::kHtpBurst == pre_run_htp_performance_mode) {
+    rpc_polling_time = 9999;
+  }
+
+  if (qnn::HtpPerformanceMode::kHtpDefault != pre_run_htp_performance_mode) {
+    per_thread_htp_power_configs.pre_run_perf_mode = pre_run_htp_performance_mode;
+    // rpc polling time will only be updated with perf mode changes
+    per_thread_htp_power_configs.rpc_polling_time = rpc_polling_time;
+    configs_set = true;
+  }
+
+  if (qnn::HtpPerformanceMode::kHtpDefault != post_run_htp_performance_mode) {
+    per_thread_htp_power_configs.post_run_perf_mode = post_run_htp_performance_mode;
+    configs_set = true;
+  }
+
+  return configs_set;
+}
+
 Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   auto backend_type = qnn_backend_manager_->GetQnnBackendType();
   if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
@@ -1460,35 +1481,14 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
 
   const ConfigOptions& config_options = RunOptions__GetConfigOptions(run_options);
 
-  std::string htp_perf_mode = "";
-  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
-  if (TryGetConfigEntry(config_options, kOrtRunOptionsConfigQnnPerfMode, htp_perf_mode)) {
-    // set power mode
-    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
-  }
-
-  std::string rpc_latency = "";
-  uint32_t rpc_control_latency = 0;
-  if (TryGetConfigEntry(config_options, kOrtRunOptionsConfigQnnRpcControlLatency, rpc_latency)) {
-    rpc_control_latency = static_cast<uint32_t>(std::stoul(rpc_latency));
-    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
-  }
-
-  uint32_t rpc_polling_time = 0;
-  if (qnn::HtpPerformanceMode::kHtpBurst == htp_performance_mode) {
-    rpc_polling_time = 9999;
-  }
-
-  if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
-    if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                  htp_performance_mode));
-    }
-
-    if (rpc_control_latency > 0 || rpc_polling_time > 0) {
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetRpcPowerConfigs(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                   rpc_control_latency,
-                                                                   rpc_polling_time));
+  uint32_t htp_power_config_id = 0;
+  if (GetHtpPowerConfigId(htp_power_config_id)) {
+    auto thread_id = std::this_thread::get_id();
+    qnn::PerThreadHtpPowerConfigs_t per_thread_htp_power_configs;
+    if (GetPerThreadHtpPowerConfigs(per_thread_htp_power_configs, config_options)) {
+      per_thread_htp_power_configs.power_config_id = htp_power_config_id;
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->AddPerThreadHtpPowerConfigMapping(thread_id,
+                                                                                  per_thread_htp_power_configs));
     }
   }
 
@@ -1502,26 +1502,17 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
 }
 
 Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& run_options) {
+  ORT_UNUSED_PARAMETER(run_options);
+
   auto backend_type = qnn_backend_manager_->GetQnnBackendType();
   if (qnn::QnnBackendType::HTP != backend_type && qnn::QnnBackendType::DSP != backend_type) {
     return Status::OK();
   }
 
-  const ConfigOptions& config_options = RunOptions__GetConfigOptions(run_options);
-
-  std::string htp_perf_mode = "";
-  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
-  if (TryGetConfigEntry(config_options, kOrtRunOptionsConfigQnnPerfModePostRun, htp_perf_mode)) {
-    // set power mode
-    ParseHtpPerformanceMode(htp_perf_mode, htp_performance_mode);
-  }
-
-  if (qnn::HtpPerformanceMode::kHtpDefault != htp_performance_mode) {
-    if (!GetPerThreadContext().IsHtpPowerConfigIdValid()) {
-      return Status::OK();
-    }
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                htp_performance_mode));
+  uint32_t htp_power_config_id;
+  if (GetHtpPowerConfigId(htp_power_config_id)) {
+    auto thread_id = std::this_thread::get_id();
+    qnn_backend_manager_->RemovePerThreadHtpPowerConfigMapping(thread_id);
   }
 
   return Status::OK();
@@ -1586,9 +1577,18 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
       }
       qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
       ParseHtpPerformanceMode(value, htp_performance_mode);
-      if (GetPerThreadContext().IsHtpPowerConfigIdValid()) {
-        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfig(GetPerThreadContext().GetHtpPowerConfigId(),
-                                                                    htp_performance_mode));
+
+      uint32_t rpc_polling_time = 0;
+      if (htp_performance_mode == qnn::HtpPerformanceMode::kHtpBurst) {
+        rpc_polling_time = 9999;
+      }
+
+      uint32_t htp_power_config_id = 0;
+      if (GetHtpPowerConfigId(htp_power_config_id)) {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetHtpPowerConfigs(htp_power_config_id,
+                                                                     htp_performance_mode,
+                                                                     rpc_polling_time,
+                                                                     default_rpc_control_latency_));
       }
     } else {
       LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
@@ -1600,6 +1600,43 @@ Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> ke
   }
 
   return Status::OK();
+}
+
+bool QNNExecutionProvider::GetHtpPowerConfigId(uint32_t& htp_power_config_id) {
+  std::lock_guard<std::mutex> lock(config_id_mutex_);
+  if (!htp_power_config_id_.has_value()) {
+    return false;
+  }
+
+  htp_power_config_id = *htp_power_config_id_;
+  return true;
+}
+
+void QNNExecutionProvider::CreateHtpPowerConfigId() const {
+  std::lock_guard<std::mutex> lock(config_id_mutex_);
+  if (htp_power_config_id_.has_value()) {
+    return;
+  }
+
+  constexpr uint32_t core_id = 0;
+  uint32_t htp_power_config_id;
+
+  Status rt = qnn_backend_manager_->CreateHtpPowerCfgId(device_id_, core_id, htp_power_config_id);
+
+  if (rt.IsOK()) {
+    htp_power_config_id_ = htp_power_config_id;
+
+    rt = qnn_backend_manager_->SetHtpPowerConfigs(htp_power_config_id,
+                                                  default_htp_performance_mode_,
+                                                  default_rpc_polling_time_,
+                                                  default_rpc_control_latency_);
+
+    if (!rt.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Unable to set HTP power configurations.";
+    }
+  } else {
+    LOGS_DEFAULT(ERROR) << "Failed to create HTP power config id.";
+  }
 }
 
 }  // namespace onnxruntime
