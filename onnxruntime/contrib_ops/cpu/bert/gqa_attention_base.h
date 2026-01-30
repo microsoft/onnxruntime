@@ -193,31 +193,30 @@ class GQAAttentionBase {
 
     if (present_key) {
       double bytes_to_copy_key = static_cast<double>(sizeof(T) * present_buff_chunk_length);
-      unit_cost.bytes_loaded += bytes_to_copy_key;
-      unit_cost.bytes_stored += bytes_to_copy_key;
-    }
+      TensorOpCost unit_cost_kv;
+      unit_cost_kv.bytes_loaded = bytes_to_copy_key;
+      unit_cost_kv.bytes_stored = bytes_to_copy_key;
+      // The cost of running ConcatStateChunkGQA which is a memcpy.
 
-    if (present_key) {
-      // Parallelize over KV heads to avoid race conditions. In GQA, multiple query heads share the same KV head.
-      // If we prepared the KV cache within the query head loop (as before), multiple threads would concurrently
-      // write to the same memory location in the present KV buffer.
-      const size_t kv_loop_len = batch_size * kv_num_heads_;
-      ThreadPool::TryParallelFor(tp, kv_loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      const ptrdiff_t loop_len_kv = batch_size * kv_num_heads_;
+      ThreadPool::TryParallelFor(tp, loop_len_kv, unit_cost_kv, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const size_t batch_index = i / kv_num_heads_;
-          const size_t head_index = i % kv_num_heads_;
+          const size_t kv_head_index = i % kv_num_heads_;
+          const size_t idx = batch_index * kv_num_heads_ + kv_head_index;
+
           const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
-          const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;
+          const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;  // Assume no padding sequence length
           const size_t past_chunk_length = past_seqlen * head_size;
 
           const T* k;
           if (packed_qkv) {
-            k = K + packed_batch_stride * batch_index + kv_input_chunk_length * head_index;
+            k = K + packed_batch_stride * batch_index + kv_input_chunk_length * kv_head_index;
           } else {
-            k = K + kv_input_chunk_length * i;
+            k = K + kv_input_chunk_length * idx;
           }
           ConcatStateChunkGQA(past_key, k, present_key, present_buff_chunk_length, past_buff_chunk_length,
-                              past_chunk_length, kv_input_chunk_length, past_present_share_buffer, i);
+                              past_chunk_length, kv_input_chunk_length, past_present_share_buffer, idx);
         }
       });
     }
@@ -227,7 +226,7 @@ class GQAAttentionBase {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
         const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
-        const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;  // Assume no padding sequence length
+        const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;
 
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * present_buffer_sequence_length;
         U* output = attention_probs + output_offset;
