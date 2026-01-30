@@ -471,6 +471,7 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
     // pad_ptr must be at least 'ci' floats for padding pixels.
     // Using a thread_local grow-only buffer to avoid cross-thread interference and ensure sizing is correct.
     thread_local std::vector<float> pad_ptr;
+    const float* old_pad_ptr = pad_ptr.data();
 
     if (pad_ptr.size() < padsize) {
         pad_ptr.resize(padsize, 0.f);
@@ -498,6 +499,16 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     // Cache of computed lhs ptr offsets.  thread_local to prevent interference from parallel sessions.
     thread_local std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
+
+    if (pad_ptr.data() != old_pad_ptr)
+    {
+        // If the pad buffer was resized and a re-allocation has occurred, the cached lhs ptrs are invalid as they
+        // would be referencing the old pad buffer.
+        // See discussion in https://github.com/microsoft/onnxruntime/pull/27214.
+        // TODO(hasesh / JonathanC-ARM): A better approach would be to include the pad buffer address in the cache key
+        // or any other approach that would reduce unnecessary cache invalidations.
+        lhs_ptrs_cache.clear();
+    }
 
     std::shared_ptr<const void*[]> lhs_ptrs;
     if (auto found = lhs_ptrs_cache.find(key); found != lhs_ptrs_cache.end()) {
