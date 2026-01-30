@@ -395,7 +395,6 @@ static std::shared_ptr<const void*[]> LhsPtrFill(const size_t ci, const size_t i
     auto lhs_ptrs = std::shared_ptr<const void*[]>(new const void*[lhs_ptrs_k * lhs_ptrs_m],
                                                 std::default_delete<const void*[]>());
 
-
     // Initialize all padding entries. For partial tiles (m < m_step),
     // the kai LHS packing kernel may still read pointer entries beyond the logically
     // filled 'm' positions. Leaving these uninitialized can cause non-deterministic
