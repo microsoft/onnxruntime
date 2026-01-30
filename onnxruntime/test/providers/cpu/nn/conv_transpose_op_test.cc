@@ -559,7 +559,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_1) {
                       // also tests for invalid shapes. It also includes XnnPack which seems to have its own
                       // way of dealing with incorreclty shaped bias.
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider, kXnnPackExecutionProvider});
+                       kDmlExecutionProvider, kXnnpackExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_2) {
@@ -592,7 +592,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_2) {
                       // also tests for invalid shapes. It also includes XnnPack which seems to have its own
                       // way of dealing with incorreclty shaped bias.
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider, kXnnPackExecutionProvider});
+                       kDmlExecutionProvider, kXnnpackExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_onnx) {
