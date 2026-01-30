@@ -115,7 +115,6 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     // If the output tensor is empty, we can return early.
     return Status::OK();
   }
-  bool has_bias = context.InputCount() > 2;
 
   if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
 
@@ -136,18 +135,11 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const int64_t a_rows = a->Shape().NumDimensions() > 1 ? a->Shape()[a->Shape().NumDimensions() - 2] : 1;
     TensorShape output_shape_shader({batch_size, a_rows, helper.N() / components});
 
-    MatMulNaiveProgram program{Activation(), output_rank, output_number, has_bias};
-
+    MatMulNaiveProgram program{Activation(), output_rank, output_number, /*has_bias*/ false};
     program
         .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
-
-    if (has_bias) {
-      const auto* bias = context.Input(2);
-      program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
-    }
-    program
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, components}})
         .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None, output_shape_shader, components}})
         .SetDispatchGroupSize(CeilDiv(output_size, 64u))
         .AddIndices(outer_dims)
@@ -156,14 +148,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     return context.RunProgram(program);
   }
 
-  std::vector<const Tensor*> inputs(has_bias ? 3 : 2);
-  inputs[0] = a;
-  inputs[1] = b;
-  if (has_bias) {
-    const auto* bias = context.Input(2);
-    inputs.push_back(bias);
-  }
-
+  std::vector<const Tensor*> inputs = {a, b};
   if (intel::CanApplyMatMulIntel(context, helper.M(), helper.N(), helper.K())) {
     return intel::ApplyMatMulIntel(context, Activation(), inputs, output_tensor);
   }
