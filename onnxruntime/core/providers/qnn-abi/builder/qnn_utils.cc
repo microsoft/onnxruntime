@@ -1618,6 +1618,7 @@ Ort::Status UnpackInitializerData(const OrtApi& ort_api,
   ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetValueInfoTypeInfo(initializer, &type_info));
   const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info = nullptr;
   ORT_CXX_RETURN_ON_API_FAIL(ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_type_and_shape_info));
+  RETURN_IF(tensor_type_and_shape_info == nullptr, "initializer is not a tensor.");
   ONNXTensorElementDataType onnx_data_type;
   ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type));
 

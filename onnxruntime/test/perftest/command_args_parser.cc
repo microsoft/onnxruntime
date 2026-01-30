@@ -19,7 +19,7 @@
 #include <core/session/onnxruntime_run_options_config_keys.h>
 
 #include "test_configuration.h"
-#include "strings_helper.h"
+#include "test/onnx/utils/strings_helper.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -233,8 +233,8 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   absl::SetFlagsUsageConfig(config);
   absl::SetProgramUsageMessage(CustomUsageMessage());
 
-  auto utf8_argv_strings = utils::ConvertArgvToUtf8Strings(argc, argv);
-  auto utf8_argv = utils::CStringsFromStrings(utf8_argv_strings);
+  auto utf8_argv_strings = test::utils::ConvertArgvToUtf8Strings(argc, argv);
+  auto utf8_argv = test::utils::CStringsFromStrings(utf8_argv_strings);
   auto positional = absl::ParseCommandLine(static_cast<int>(utf8_argv.size()), utf8_argv.data());
 
   // -f
@@ -245,7 +245,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
       // To preserve the previous usage of '-f', where users may specify it multiple times to override different dimension names,
       // we need to manually parse argv.
       std::string option = "f";
-      if (!ParseDimensionOverrideFromArgv(argc, utf8_argv_strings, option, test_config.run_config.free_dim_name_overrides)) {
+      if (!test::utils::ParseDimensionOverrideFromArgv(argc, utf8_argv_strings, option, test_config.run_config.free_dim_name_overrides)) {
         return false;
       }
     }
@@ -257,7 +257,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     if (!dim_override_str.empty()) {
       // Same reason as '-f' above to manully parse argv.
       std::string option = "F";
-      if (!ParseDimensionOverrideFromArgv(argc, utf8_argv_strings, option, test_config.run_config.free_dim_denotation_overrides)) {
+      if (!test::utils::ParseDimensionOverrideFromArgv(argc, utf8_argv_strings, option, test_config.run_config.free_dim_denotation_overrides)) {
         return false;
       }
     }
@@ -493,7 +493,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     const auto& session_configs = absl::GetFlag(FLAGS_C);
     if (!session_configs.empty()) {
       ORT_TRY {
-        ParseSessionConfigs(session_configs, test_config.run_config.session_config_entries);
+        test::utils::ParseSessionConfigs(session_configs, test_config.run_config.session_config_entries);
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
@@ -537,7 +537,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   // --plugin_eps
   {
     const auto& plugin_eps = absl::GetFlag(FLAGS_plugin_eps);
-    if (!plugin_eps.empty()) ParseEpList(plugin_eps, test_config.machine_config.plugin_provider_type_list);
+    if (!plugin_eps.empty()) test::utils::ParseEpList(plugin_eps, test_config.machine_config.plugin_provider_type_list);
   }
 
   // --plugin_ep_options
@@ -563,7 +563,7 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
     const auto& filter_ep_devices = absl::GetFlag(FLAGS_filter_ep_devices);
     if (!filter_ep_devices.empty()) {
       ORT_TRY {
-        ParseEpDeviceFilterKeyValuePairs(filter_ep_devices, test_config.filter_ep_device_kv_pairs);
+        test::utils::ParseEpDeviceFilterKeyValuePairs(filter_ep_devices, test_config.filter_ep_device_kv_pairs);
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {

@@ -9,6 +9,75 @@ source "${REPO_ROOT}/qcom/scripts/linux/tools.sh"
 
 set_strict_mode
 
+declare -i errors=0
+#
+# Run a command and increment ${errors} if it fails.
+#
+function count_errors() {
+    set +e
+    "$@"
+    rc=$?
+    set -e
+
+    if [ ${rc} -ne 0 ]; then
+        errors=$(($errors+1))
+    fi
+}
+
+#
+# Run a model test with onnxruntime_plugin_ep_onnx_test
+#
+function run_model_test() {
+    local backend="${1}"
+    local suite="${2}"
+    local test_path="${3:-testdata/${suite}}"
+
+    log_info "-=-=-=- Running onnx/models ${suite} tests with the ABI-stable EP plugin -=-=-=-=-"
+
+    # We don't use count_errors() because both sides of a piped command get run
+    # in subshells so ${errors} wouldn't get updated.
+    set +e
+    "${build_dir}/onnxruntime_plugin_ep_onnx_test" \
+        -j 1 \
+        -e qnn \
+        --plugin_ep_libs "qnn|libonnxruntime_providers_qnn_abi.so" \
+        --plugin_eps qnn \
+        -i "backend_type|${backend}" \
+        "${test_path}" 2>&1 | tee "${build_dir}/${suite}_model_tests.log"
+    rc=$?
+    set -e
+
+    if [ ${rc} -ne 0 ]; then
+        errors=$(($errors+1))
+    fi
+}
+
+#
+# Run a model test with onnx_test_runner.
+#
+function run_legacy_model_test() {
+    local backend="${1}"
+    local suite="${2}"
+    local test_path="${3:-testdata/${suite}}"
+
+    log_info "-=-=-=- Running onnx/models ${suite} tests with the legacy ProviderBridge EP -=-=-=-=-"
+
+    # We don't use count_errors() because both sides of a piped command get run
+    # in subshells so ${errors} wouldn't get updated.
+    set +e
+    "${build_dir}/onnx_test_runner" \
+        -j 1 \
+        -e qnn \
+        -i "backend_type|${backend}" \
+        "${test_path}" 2>&1 | tee "${build_dir}/${suite}_model_tests.log"
+    rc=$?
+    set -e
+
+    if [ ${rc} -ne 0 ]; then
+        errors=$(($errors+1))
+    fi
+}
+
 python_exe=python3
 
 for i in "$@"; do
@@ -38,7 +107,7 @@ exclude_args=()
 if [ "$(uname -m)" == "aarch64" ]; then
     exclude_args+=(--exclude-regex "onnxruntime_provider_test")
 fi
-./ctest --verbose --timeout 10800 --stop-on-failure "${exclude_args[@]}"
+count_errors ./ctest --verbose --timeout 10800 --stop-on-failure "${exclude_args[@]}"
 
 log_info "-=-=-=- Running Python tests -=-=-=-"
 mapfile -t PYTHON_TEST_FILES < "python_test_files.txt"
@@ -50,7 +119,7 @@ for python_file in "${PYTHON_TEST_FILES[@]}"; do
             log_warn "Skipping ${python_file} due to known failures."
         else
             log_debug "Running ${python_file}..."
-            "${python_exe}" ${python_file}
+            count_errors "${python_exe}" ${python_file}
         fi
     else
         log_warn "Failed to find ${python_file} - may be OK on platforms which do not support Python."
@@ -59,40 +128,28 @@ done
 
 if [ -d "quantization" ]; then
     # Quantization tests ran calling unittest directly in MSFT build.py
-    "${python_exe}" -m unittest discover -s quantization
+    count_errors "${python_exe}" -m unittest discover -s quantization
 else
     log_warn "Failed to find directory 'quantization' - may be OK on platforms which do not support Python."
 fi
 
 log_info "-=-=-=- Running ONNX model tests -=-=-=-=-"
-"${build_dir}/onnx_test_runner" \
-    -j 1 \
-    -e qnn \
-    -i "backend_type|cpu" \
-    "${REPO_ROOT}/cmake/external/onnx/onnx/backend/test/data/node"
 
-log_info "-=-=-=- Running onnx/models float32 tests -=-=-=-=-"
 cd "${onnx_models_root}"
-"${build_dir}/onnx_test_runner" \
-    -j 1 \
-    -e qnn \
-    -i "backend_type|cpu" \
-    "testdata/float32"
 
-if [ "$(uname -m)" != "aarch64" ]; then  # TODO: [AISW-164203] ORT test failures on Rubik Pi
-  log_info "-=-=-=- Running onnx/models qdq tests -=-=-=-=-"
-  "${build_dir}/onnx_test_runner" \
-      -j 1 \
-      -e qnn \
-      -i "backend_type|htp" \
-      "testdata/qdq"
-fi
+declare -a model_test_runners=("run_legacy_model_test" "run_model_test")
+for runner in "${model_test_runners[@]}"; do
+    "${runner}" cpu node "${REPO_ROOT}/cmake/external/onnx/onnx/backend/test/data/node"
 
-log_info "-=-=-=- Running onnx/models qdq tests with context cache enabled -=-=-=-=-"
-log_debug "Scrubbing old context caches"
-find "testdata/qdq-with-context-cache" -name "*_ctx.onnx" -print -delete
-"${build_dir}/onnx_test_runner" \
-    -j 1 \
-    -e qnn \
-    -f -i "backend_type|htp" \
-    "testdata/qdq-with-context-cache"
+    "${runner}" cpu float32
+
+    if [ "$(uname -m)" != "aarch64" ]; then  # TODO: [AISW-164203] ORT test failures on Rubik Pi
+        "${runner}" htp qdq
+    fi
+
+    log_debug "Scrubbing old context caches"
+    find "testdata/qdq-with-context-cache" -name "*_ctx.onnx" -print -delete
+    "${runner}" htp qdq-with-context-cache
+done
+
+exit "${errors}"

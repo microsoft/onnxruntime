@@ -39,6 +39,9 @@ OrtStatus* ParseOrtValueInfo(const OrtValueInfo* io,
 
   const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
   RETURN_IF_NOT_NULL(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
+  if (type_shape == nullptr) {
+    return ort_api.CreateStatus(ORT_FAIL, "io is not a tensor.");
+  }
 
   ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   RETURN_IF_NOT_NULL(ort_api.GetTensorElementType(type_shape, &elem_type));

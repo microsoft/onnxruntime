@@ -24,8 +24,10 @@ $CTestExe = (Join-Path $RootDir "ctest.exe")
 # of the rest of the ONNX Runtime build.
 if (Test-Path (Join-Path $RootDir "onnx_test_runner.exe")) {
     $OnnxTestRunnerExe = (Join-Path $RootDir "onnx_test_runner.exe")
+    $OnnxEpTestRunnerExe = (Join-Path $RootDir "onnxruntime_plugin_ep_onnx_test.exe")
 } else {
     $OnnxTestRunnerExe = (Join-Path (Join-Path $RootDir $Config) "onnx_test_runner.exe")
+    $OnnxEpTestRunnerExe = (Join-Path (Join-Path $RootDir $Config) "onnxruntime_plugin_ep_onnx_test.exe")
 }
 
 $CTestTestFile = (Join-Path $RootDir "CTestTestfile.cmake")
@@ -57,7 +59,10 @@ if ((Get-CimInstance Win32_operatingsystem).OSArchitecture -eq "ARM 64-bit Proce
 
 $Failed = $false
 
-# Run CTest
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# CTest
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
 Push-Location $RootDir
 Write-Host "--=-=-=- Running unit tests -=--=-=-"
 & $CTestExe --build-config $Config --verbose --timeout $TimeoutSec
@@ -66,6 +71,10 @@ if (-not $?) {
     Write-Host "Unit tests failed. Will exit with error after running model tests."
     $Failed = $true
 }
+
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# Python tests
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 # AISW-152430 - Do not run Python tests on Windows ARM for now due to frankenstein build process for ARM Python wheel
 if ((Get-CimInstance Win32_Processor).Architecture -ne 12) {  # Architecture code 12 corresponds to ARM64
@@ -115,56 +124,83 @@ if ((Get-CimInstance Win32_Processor).Architecture -ne 12) {  # Architecture cod
     Write-Warning "Host is Windows ARM - skipping Python testing for now."
 }
 
-Write-Host "--=-=-=- Running ONNX model tests -=--=-=-"
-& $OnnxTestRunnerExe `
-    -j 1 `
-    -e qnn `
-    -i "backend_type|cpu" `
-    "$RepoRoot\cmake\external\onnx\onnx\backend\test\data\node"
-if (-not $?) {
-    $Failed = $true
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# Model tests
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+$TestModelsViaEpPlugin = {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("cpu", "gpu", "htp")]
+        [string]$Backend,
+        [Parameter(Mandatory = $true)]
+        [string]$Suite,
+        [string]$TestPath = "testdata/$Suite"
+    )
+
+    Write-Host "--=-=-=- Running ONNX model $Suite tests with the legacy ProviderBridge EP -=--=-=-"
+    & $OnnxEpTestRunnerExe `
+        -j 1 `
+        -e qnn `
+        --plugin_ep_libs "qnn|onnxruntime_providers_qnn_abi.dll" `
+        --plugin_eps qnn `
+        -i "backend_type|$Backend" `
+        $TestPath | Write-Host
+    if (-not $?) {
+        return $true
+    }
+    return $false
 }
 
-Write-Host "-=-=-=- Running onnx/models float32 tests -=-=-=-"
+$TestModelsViaLegacy = {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("cpu", "gpu", "htp")]
+        [string]$Backend,
+        [Parameter(Mandatory = $true)]
+        [string]$Suite,
+        [string]$TestPath = "testdata/$Suite"
+    )
+
+    Write-Host "--=-=-=- Running ONNX model $Suite tests with the legacy ProviderBridge EP -=--=-=-"
+    & $OnnxTestRunnerExe `
+        -j 1 `
+        -e qnn `
+        -i "backend_type|$Backend" `
+        $TestPath | Write-Host
+    if (-not $?) {
+        return $true
+    }
+    return $false
+}
+
+
+Write-Host "--=-=-=- Running ONNX model tests -=--=-=-"
+
 Push-Location $OnnxModelsRoot
 if (-not $?) {
     throw "Could not cd to $OnnxModelsRoot"
 }
 
-& $OnnxTestRunnerExe `
-    -j 1 `
-    -e qnn `
-    -i "backend_type|cpu" `
-    "testdata\float32"
-if (-not $?) {
-    $Failed = $true
-}
+foreach ($RunModelTests in ($TestModelsViaLegacy, $TestModelsViaEpPlugin)) {
+    $Failed = $Failed -or (& $RunModelTests -Backend cpu -Suite node -TestPath "$RepoRoot\cmake\external\onnx\onnx\backend\test\data\node")
+    $Failed = $Failed -or (& $RunModelTests -Backend cpu -Suite float32)
+    $Failed = $Failed -or (& $RunModelTests -Backend $QdqBackend -Suite qdq)
 
-Write-Host "-=-=-=- Running onnx/models qdq tests -=-=-=-"
-& $OnnxTestRunnerExe `
-    -j 1 `
-    -e qnn `
-    -i "backend_type|$QdqBackend" `
-    "testdata\qdq"
-if (-not $?) {
-    $Failed = $true
-}
+    if ($QdqBackend -ne "cpu") {
+        Write-Host "-=-=-=- Running onnx/models qdq tests with context cache enabled -=-=-=-"
+        # Scrub old context caches
+        Get-ChildItem -Path "testdata\qdq-with-context-cache" -Recurse -Filter "*_ctx.onnx" | Remove-Item -Force
 
-if ($QdqBackend -ne "cpu") {
-    Write-Host "-=-=-=- Running onnx/models qdq tests with context cache enabled -=-=-=-"
-    # Scrub old context caches
-    Get-ChildItem -Path "testdata\qdq-with-context-cache" -Recurse -Filter "*_ctx.onnx" | Remove-Item -Force
-    & $OnnxTestRunnerExe `
-        -j 1 `
-        -e qnn `
-        -f -i "backend_type|$QdqBackend" `
-        "testdata\qdq-with-context-cache"
-    if (-not $?) {
-        $Failed = $true
+        $Failed = $Failed -or (& $RunModelTests -Backend $QdqBackend -Suite qdq-with-context-cache)
+    } else {
+        Write-Host "Not running onnx/models qdq tests with context cache enabled on CPU backend."
     }
-} else {
-    Write-Host "Not running onnx/models qdq tests with context cache enabled on CPU backend."
 }
+
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# QDC Logs
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 # If it looks like we're running in QDC, copy logs to the directory they'll scan to find them.
 if (Test-Path "C:\Temp\TestContent") {
@@ -189,6 +225,10 @@ if (Test-Path "C:\Temp\TestContent") {
     Write-Host "Copying logs $LocalLogsDir\*.xml --> $QdcLogsDir"
     Copy-Item $LocalLogsDir\*.xml $QdcLogsDir
 }
+
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# All done
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 if ($Failed) {
     throw "Tests failed"

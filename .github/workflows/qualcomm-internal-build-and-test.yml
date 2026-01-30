@@ -55,8 +55,11 @@ jobs:
       - name: Build and Test OE Linux
         env:
           QDC_API_TOKEN: ${{ secrets.QDC_API_TOKEN }}
+        # TODO: [AISW-167150] Cannot use HTP on QDC qcs6490
+        # run: |
+        #   python3 qcom/build_and_test.py test_ort_qdc_linux_aarch64_oe_gcc11_2
         run: |
-          python3 qcom/build_and_test.py test_ort_qdc_linux_aarch64_oe_gcc11_2
+          python3 qcom/build_and_test.py build_ort_linux_aarch64_oe_gcc11_2
 
   # ARM64 Windows builds disabled until an appropriate runner is available
   # build-and-test-windows-arm64:

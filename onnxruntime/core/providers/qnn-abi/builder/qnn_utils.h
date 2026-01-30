@@ -542,7 +542,7 @@ Ort::Status RequantizeBiasTensor(const std::vector<uint8_t>& original_bias_data,
     }                                                                                                          \
     const OrtTensorTypeAndShapeInfo* tensor_type_and_shape_info_##TYPE = nullptr;                              \
     status = ort_api.CastTypeInfoToTensorInfo(type_info_##TYPE, &tensor_type_and_shape_info_##TYPE);           \
-    if (status != nullptr) {                                                                                   \
+    if (status != nullptr || tensor_type_and_shape_info_##TYPE == nullptr) {                                   \
       return MAKE_EP_FAIL("Failed to cast type info to tensor info");                                          \
     }                                                                                                          \
     size_t num_dims_##TYPE = 0;                                                                                \
@@ -568,7 +568,7 @@ Ort::Status RequantizeBiasTensor(const std::vector<uint8_t>& original_bias_data,
     /* Get tensor data */                                                                                      \
     const OrtValue* initializer_value = nullptr;                                                               \
     status = ort_api.ValueInfo_GetInitializerValue(initializer, &initializer_value);                           \
-    if (status != nullptr) {                                                                                   \
+    if (status != nullptr || initializer_value == nullptr) {                                                   \
       return MAKE_EP_FAIL("Failed to get initializer value");                                                  \
     }                                                                                                          \
     const void* data = nullptr;                                                                                \

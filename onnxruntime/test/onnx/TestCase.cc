@@ -1469,6 +1469,26 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded", "unknown version"});
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded", "unknown version"});
     broken_tests->insert({"convinteger_with_padding", "unknown version"});
+    // TODO: [AISW-167042] [ORT ABI] Model test failures on ABI path
+    broken_tests->insert({"affine_grid_2d_align_corners_expanded", "ORT Tensor data size does not match QNN tensor data size"});
+    broken_tests->insert({"affine_grid_3d_align_corners_expanded", "ORT Tensor data size does not match QNN tensor data size"});
+    broken_tests->insert({"attention_4d_fp16", "output=Y:idx: 121, expected 0.459229, got 0.459717, diff: 0.000488281, tol=0.000469229"});
+    broken_tests->insert({"dft", "output=y:expected 7.10543e-15 (28000000), got 0.000160893 (3928b56c), diff: 0.000160893, tol=1e-05 idx=119. 20 of 200 differ"});
+    broken_tests->insert({"dft_axis", "output=y:expected 0 (0), got -0.000236511 (b9780000), diff: 0.000236511, tol=1e-05 idx=181. 20 of 200 differ"});
+    broken_tests->insert({"dft_axis_opset19", "output=y:expected 0 (0), got -0.000236511 (b9780000), diff: 0.000236511, tol=1e-05 idx=181. 20 of 200 differ"});
+    broken_tests->insert({"dft_inverse", "y:expected 0 (0), got -1.71661e-05 (b7900000), diff: 1.71661e-05, tol=1e-05 idx=19. 10 of 200 differ"});
+    broken_tests->insert({"dft_inverse_opset19", "y:expected 0 (0), got -1.71661e-05 (b7900000), diff: 1.71661e-05, tol=1e-05 idx=19. 10 of 200 differ"});
+    broken_tests->insert({"dft_opset19", "y:expected 7.10543e-15 (28000000), got 0.000160893 (3928b56c), diff: 0.000160893, tol=1e-05 idx=119. 20 of 200 differ"});
+    broken_tests->insert({"reduce_l2_default_axes_keepdims_example_expanded", "reduced:shape mismatch, expect {1,1,1} got {}"});
+    broken_tests->insert({"reduce_l2_default_axes_keepdims_random_expanded", "reduced:shape mismatch, expect {1,1,1} got {}"});
+    broken_tests->insert({"reduce_l2_do_not_keepdims_example_expanded", "ORT Tensor data size does not match QNN tensor data size"});
+    broken_tests->insert({"reduce_l2_do_not_keepdims_random_expanded", "ORT Tensor data size does not match QNN tensor data size"});
+    broken_tests->insert({"reduce_l2_keep_dims_example_expanded", "ORT Tensor data size does not match QNN tensor data size"});
+    broken_tests->insert({"reduce_l2_keep_dims_random_expanded", "ORT Tensor data size does not match QNN tensor data size"});
+    broken_tests->insert({"reduce_l2_negative_axes_keep_dims_example_expanded", "reduced:shape mismatch, expect {1,1,1} got {}"});
+    broken_tests->insert({"reduce_l2_negative_axes_keep_dims_random_expanded", "ORT Tensor data size does not match QNN tensor data size"});
+    broken_tests->insert({"stft", "expected 0 (0), got 8.39259e-05 (38b0015b), diff: 8.39259e-05, tol=1e-05 idx=269. 14 of 270 differ"});
+    broken_tests->insert({"stft_with_window", "expected 0 (0), got 4.19629e-05 (3830015b), diff: 4.19629e-05, tol=1e-05 idx=269. 12 of 270 differ"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
