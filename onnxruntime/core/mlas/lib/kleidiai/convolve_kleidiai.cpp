@@ -437,7 +437,6 @@ static std::shared_ptr<const void*[]> LhsPtrFill(const size_t ci, const size_t i
     };
 
     size_t m_{0};
-    auto lhs_ptrs_ = lhs_ptrs.get();
     for (size_t ih_ = 0; ih_ < ih_out_size; ih_ += sh) {
         for (size_t iw_ = 0; iw_ < iw_out_size; iw_ += sw, ++m_) {
             size_t k_{0};
