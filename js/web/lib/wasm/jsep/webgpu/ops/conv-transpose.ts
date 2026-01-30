@@ -180,13 +180,10 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
 
   // if bias is provided it should be 1D and the number of elements should be equal to the number of feature maps
   if (inputs.length === 3) {
-    if (!inputs[2] || !inputs[2].dims) {
-      throw new Error('invalid bias: bias tensor is malformed');
-    }
     if (inputs[2].dims.length !== 1) {
       throw new Error('invalid bias: bias must be 1D tensor');
     }
-    const group = attributes.group || 1;  // default to 1 if not specified
+    const group = attributes.group ?? 1;  // default to 1 if not specified (per ONNX spec)
     const featureMaps = inputs[1].dims[1] * group;
     if (inputs[2].dims[0] !== featureMaps) {
       throw new Error(`invalid bias: bias size (${inputs[2].dims[0]}) must be equal to output channels (${featureMaps})`);
