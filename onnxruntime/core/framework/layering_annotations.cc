@@ -469,7 +469,17 @@ Status LayeringIndex::Create(Graph& graph,
 // Process top to bottom-up assign layering indices to nodes
 void LayeringIndex::ProcessGraph(Graph& graph, std::optional<size_t> parent_layer_id) {
   // 3. Create entry for this graph instance
-  GraphLayeringIndex& current_graph_index = graph_index_[&graph];
+  bool was_updated = false;
+  std::optional<GraphLayeringIndex> new_index;
+  GraphLayeringIndex* current_graph_index_ptr = nullptr;
+  auto found = graph_index_.find(&graph);
+  if (found != graph_index_.end()) {
+    current_graph_index_ptr = &found->second;
+  } else {
+    new_index.emplace();
+    current_graph_index_ptr = &(*new_index);
+  }
+  GraphLayeringIndex& current_graph_index = *current_graph_index_ptr;
 
   for (auto& node : graph.Nodes()) {
     std::optional<size_t> matched_rule_idx = std::nullopt;
@@ -496,6 +506,7 @@ void LayeringIndex::ProcessGraph(Graph& graph, std::optional<size_t> parent_laye
       if (layering_index_to_ep_name_.count(rule_idx)) {
         ORT_IGNORE_RETURN_VALUE(current_graph_index.node_to_layering_index_.insert_or_assign(node.Index(), rule_idx));
         ORT_IGNORE_RETURN_VALUE(current_graph_index.layer_to_node_ids_[rule_idx].insert(node.Index()));
+        was_updated = true;
       } else {
         // reset since no valid EP mapping
         // so it does not propagate to sub-graphs if any
@@ -511,8 +522,64 @@ void LayeringIndex::ProcessGraph(Graph& graph, std::optional<size_t> parent_laye
       }
     }
   }
+  if (was_updated && new_index) {
+    graph_index_.emplace(&graph, std::move(*new_index));
+  }
 }
 
+void LayeringIndex::Update(Graph& graph, gsl::span<const NodeIndex> nodes) {
+  // Ensure we have an entry for this graph (creating it if it doesn't exist, though typically it should)
+  bool was_updated = false;
+  std::optional<GraphLayeringIndex> new_index;
+  GraphLayeringIndex* current_graph_index_ptr = nullptr;
+  auto found = graph_index_.find(&graph);
+  if (found != graph_index_.end()) {
+    current_graph_index_ptr = &found->second;
+  } else {
+    new_index.emplace();
+    current_graph_index_ptr = &(*new_index);
+  }
+
+  auto& current_graph_index = *current_graph_index_ptr;
+
+  for (NodeIndex node_index : nodes) {
+    // GetMutableNode because we want to ClearLayeringAnnotation if we use it
+    Node* node = graph.GetNode(node_index);
+    if (!node) {
+      continue;
+    }
+
+    const std::string& annotation = node->GetLayeringAnnotation();
+    if (!annotation.empty()) {
+      auto matched_rule_idx = matcher_.Match(annotation);
+      // Consume the annotation
+      node->ClearLayeringAnnotation();
+
+      if (matched_rule_idx) {
+        const size_t rule_idx = *matched_rule_idx;
+
+        // Only assign if this rule maps to a valid EP in our configuration
+        if (layering_index_to_ep_name_.count(rule_idx)) {
+          // Check if already assigned to a DIFFERENT rule, if so clean up old mapping
+          auto prev_assign = current_graph_index.node_to_layering_index_.find(node_index);
+          if (prev_assign != current_graph_index.node_to_layering_index_.end()) {
+            size_t old_rule = prev_assign->second;
+            if (old_rule != rule_idx) {
+              current_graph_index.layer_to_node_ids_[old_rule].erase(node_index);
+            }
+          }
+
+          ORT_IGNORE_RETURN_VALUE(current_graph_index.node_to_layering_index_.insert_or_assign(node_index, rule_idx));
+          ORT_IGNORE_RETURN_VALUE(current_graph_index.layer_to_node_ids_[rule_idx].insert(node_index));
+          was_updated = true;
+        }
+      }
+    }
+  }
+  if (was_updated && new_index) {
+    graph_index_.emplace(&graph, std::move(*new_index));
+  }
+}
 }  // namespace onnxruntime
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

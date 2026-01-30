@@ -174,8 +174,6 @@ class LayeringIndex {
   std::optional<size_t> GetNodeAssignment(const Graph& graph, NodeIndex node_id) const {
     auto hit = graph_index_.find(&graph);
     if (hit == graph_index_.end()) {
-      // this should not be possible
-      assert(false);
       return {};
     }
 
@@ -194,8 +192,6 @@ class LayeringIndex {
   void MakeNodeUnassigned(const Graph& graph, NodeIndex node_id) {
     auto hit = graph_index_.find(&graph);
     if (hit == graph_index_.end()) {
-      // this should not be possible
-      assert(false);
       return;
     }
     auto& graph_layering_index = hit->second;
@@ -206,7 +202,6 @@ class LayeringIndex {
       layer_idx = node_to_layer_hit->second;
       graph_layering_index.node_to_layering_index_.erase(node_to_layer_hit);
     }
-
     // Remove node from layer collection
     if (layer_idx) {
       auto layer_to_nodes_hit = graph_layering_index.layer_to_node_ids_.find(*layer_idx);
@@ -215,6 +210,15 @@ class LayeringIndex {
       }
     }
   }
+
+  /// <summary>
+  /// Updates the layering index for a specific set of nodes in a graph.
+  /// This checks if the nodes have annotations, and if so, matches them against the rules
+  /// and updates the assignment.
+  /// </summary>
+  /// <param name="graph">The graph containing the nodes.</param>
+  /// <param name="nodes">Pixels of nodes to check and update.</param>
+  void Update(Graph& graph, gsl::span<const NodeIndex> nodes);
 
  private:
   LayeringRules rules_;

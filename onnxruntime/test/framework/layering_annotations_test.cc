@@ -854,6 +854,49 @@ TEST(LayeringIndexTest, SubgraphOverride) {
   EXPECT_EQ(*assign_sub, 1u);
 }
 
+TEST(LayeringIndexTest, UpdateIndex) {
+  // 1. Setup Graph with one node
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 12;
+  Model model("test_model", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  NodeArg* input_arg = &graph.GetOrCreateNodeArg("input", &type_proto);
+  NodeArg* output_arg = &graph.GetOrCreateNodeArg("output", &type_proto);
+
+  Node& node = graph.AddNode("node", "Abs", "Node", {input_arg}, {output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // 2. Setup Rules and Index
+  LayeringRules rules;
+  rules.rules.push_back({"DeviceA", "RuleA", false});  // Index 0
+
+  LayeringIndex::EpNameToLayeringIndices ep_map;
+  ep_map["DeviceA"].insert(0);
+  LayeringIndex::LayeringIndexToEpName rule_map;
+  rule_map[0] = "DeviceA";
+
+  // Creates index (node has no annotation, so not assigned)
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
+  EXPECT_FALSE(index.GetNodeAssignment(graph, node.Index()).has_value());
+
+  // 3. Update Node with Annotation
+  node.SetLayeringAnnotation("RuleA");
+
+  // 4. Call Update
+  std::vector<NodeIndex> nodes_to_update = {node.Index()};
+  index.Update(graph, nodes_to_update);
+
+  // 5. Verify Assignment
+  auto assignment = index.GetNodeAssignment(graph, node.Index());
+  ASSERT_TRUE(assignment.has_value());
+  EXPECT_EQ(*assignment, 0u);
+}
+
 TEST(LayeringRulesTest, LayeringRulesParsing) {
   // Test empty string
   {

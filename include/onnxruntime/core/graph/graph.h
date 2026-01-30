@@ -174,10 +174,11 @@ class Node {
   */
   void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
 
-#if !defined(ORT_MINIMAL_BUILD)
   void SetLayeringAnnotation(std::string annotation) { layering_annotation_ = std::move(annotation); }
 
-  const std::string& GetLayeringAnnotation() const { return layering_annotation_; }
+  const std::string& GetLayeringAnnotation() const noexcept { return layering_annotation_; }
+
+#if !defined(ORT_MINIMAL_BUILD)
 
   void ClearLayeringAnnotation() {
     std::string t;
@@ -696,9 +697,7 @@ class Node {
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
 
-#if !defined(ORT_MINIMAL_BUILD)
   std::string layering_annotation_;
-#endif
 
   // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
   bool can_be_saved_;
