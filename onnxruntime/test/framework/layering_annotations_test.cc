@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/layering_annotations.h"
@@ -625,7 +625,7 @@ TEST(LayeringIndexTest, AssignNodesBasedOnAnnotations) {
   rule_map[1] = "DeviceB";
 
   // 4. Create LayeringIndex
-  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), matcher);
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
 
   // 5. Verify Assignments
   // Node 0: Annotated "RuleA" -> Index 0 -> DeviceA
@@ -668,7 +668,6 @@ TEST(LayeringIndexTest, AssignNodeWithInvalidEpMapping) {
   // 2. Setup Rules: RuleX exists at index 0, maps to "PhantomDevice"
   LayeringRules rules;
   rules.rules.push_back({"PhantomDevice", "RuleX", false});  // Index 0
-  LayeringRuleMatcher matcher(rules);
 
   // 3. Setup Mappings: But "PhantomDevice" is NOT in the mappings (simulating EP unavailable)
   LayeringIndex::EpNameToLayeringIndices ep_map;
@@ -678,8 +677,7 @@ TEST(LayeringIndexTest, AssignNodeWithInvalidEpMapping) {
   // rule_map[0] is missing
 
   // 4. Create Index
-  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), matcher);
-
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
   // 5. Verify: Node should NOT be assigned because the mapped EP is missing
   auto assign = index.GetNodeAssignment(graph, node.Index());
   EXPECT_FALSE(assign.has_value());
@@ -744,7 +742,6 @@ TEST(LayeringIndexTest, SubgraphInheritance) {
   // 2. Setup Rules
   LayeringRules rules;
   rules.rules.push_back({"DeviceA", "RuleA", false});  // Index 0
-  LayeringRuleMatcher matcher(rules);
 
   LayeringIndex::EpNameToLayeringIndices ep_map;
   ep_map["DeviceA"].insert(0);
@@ -752,7 +749,7 @@ TEST(LayeringIndexTest, SubgraphInheritance) {
   rule_map[0] = "DeviceA";
 
   // 3. Create Index
-  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), matcher);
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
 
   // 4. Verify Parent Assignment
   auto assign_parent = index.GetNodeAssignment(graph, if_node.Index());
@@ -836,7 +833,6 @@ TEST(LayeringIndexTest, SubgraphOverride) {
   LayeringRules rules;
   rules.rules.push_back({"DeviceA", "RuleA", false});
   rules.rules.push_back({"DeviceB", "RuleB", false});
-  LayeringRuleMatcher matcher(rules);
 
   LayeringIndex::EpNameToLayeringIndices ep_map;
   ep_map["DeviceA"].insert(0);
@@ -845,7 +841,7 @@ TEST(LayeringIndexTest, SubgraphOverride) {
   rule_map[0] = "DeviceA";
   rule_map[1] = "DeviceB";
 
-  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), matcher);
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
 
   // Verify Parent = 0
   auto assign_parent = index.GetNodeAssignment(graph, if_node.Index());

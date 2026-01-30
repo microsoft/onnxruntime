@@ -139,7 +139,7 @@ class LayeringIndex {
   static LayeringIndex Create(Graph& graph,
                               EpNameToLayeringIndices ep_map,
                               LayeringIndexToEpName rule_map,
-                              const LayeringRuleMatcher& matcher);
+                              LayeringRules layering_rules);
 
   /// <summary>
   /// Factory method that creates a LayeringIndex by parsing configuration, matching rules against
@@ -217,6 +217,8 @@ class LayeringIndex {
   }
 
  private:
+  LayeringRules rules_;
+  LayeringRuleMatcher matcher_;
   // These stay constant
   EpNameToLayeringIndices ep_name_to_layering_indices_;
   LayeringIndexToEpName layering_index_to_ep_name_;
@@ -242,14 +244,16 @@ class LayeringIndex {
 
   LayeringIndex() = default;
 
-  LayeringIndex(EpNameToLayeringIndices ep_name_to_layering_indices, LayeringIndexToEpName layering_index_to_ep_name)
-      : ep_name_to_layering_indices_(std::move(ep_name_to_layering_indices)),
+  LayeringIndex(LayeringRules layering_rules, EpNameToLayeringIndices ep_name_to_layering_indices, LayeringIndexToEpName layering_index_to_ep_name)
+      : rules_(std::move(layering_rules)),
+        matcher_(rules_),
+        ep_name_to_layering_indices_(std::move(ep_name_to_layering_indices)),
         layering_index_to_ep_name_(std::move(layering_index_to_ep_name)) {}
 
   // Graph and sub-graphs mapping to their indices
   InlinedHashMap<const Graph*, GraphLayeringIndex> graph_index_;
 
-  void ProcessGraph(Graph& graph, const LayeringRuleMatcher& matcher, std::optional<size_t> parent_layer_id);
+  void ProcessGraph(Graph& graph, std::optional<size_t> parent_layer_id);
 };
 
 }  // namespace onnxruntime

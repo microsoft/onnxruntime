@@ -396,12 +396,12 @@ std::optional<std::string> EpLayeringMatcher::Match(const ExecutionProviders& pr
 LayeringIndex LayeringIndex::Create(Graph& graph,
                                     EpNameToLayeringIndices ep_map,
                                     LayeringIndexToEpName rule_map,
-                                    const LayeringRuleMatcher& matcher) {
+                                    LayeringRules layering_rules) {
   // 1. Create LayeringIndex instance with pre-computed maps
-  LayeringIndex index(std::move(ep_map), std::move(rule_map));
+  LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map));
 
   // 2. Traverse the graph and index nodes
-  index.ProcessGraph(graph, matcher, std::nullopt);
+  index.ProcessGraph(graph, std::nullopt);
 
   return index;
 }
@@ -462,14 +462,12 @@ Status LayeringIndex::Create(Graph& graph,
   LOGS(logger, INFO) << "LayeringIndex created. Matched " << matched_rule_count
                      << " out of " << rules.rules.size() << " rules to available Execution Providers.";
 
-  LayeringRuleMatcher matcher(rules);
-  layering_index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), matcher);
+  layering_index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
   return Status::OK();
 }
 
 // Process top to bottom-up assign layering indices to nodes
-void LayeringIndex::ProcessGraph(Graph& graph, const LayeringRuleMatcher& matcher,
-                                 std::optional<size_t> parent_layer_id) {
+void LayeringIndex::ProcessGraph(Graph& graph, std::optional<size_t> parent_layer_id) {
   // 3. Create entry for this graph instance
   GraphLayeringIndex& current_graph_index = graph_index_[&graph];
 
@@ -480,7 +478,7 @@ void LayeringIndex::ProcessGraph(Graph& graph, const LayeringRuleMatcher& matche
     const std::string& annotation = node.GetLayeringAnnotation();
     if (!annotation.empty()) {
       // If it has an annotation try to match it
-      matched_rule_idx = matcher.Match(annotation);
+      matched_rule_idx = matcher_.Match(annotation);
       // Save memory and clear the annotation since it's no longer needed
       node.ClearLayeringAnnotation();
     }
@@ -509,7 +507,7 @@ void LayeringIndex::ProcessGraph(Graph& graph, const LayeringRuleMatcher& matche
     if (node.ContainsSubgraph()) {
       const std::optional<size_t> subgraph_parent_assignment = matched_rule_idx;
       for (auto& [attr_name, subgraph] : node.GetMutableMapOfAttributeNameToSubgraph()) {
-        ProcessGraph(*subgraph, matcher, subgraph_parent_assignment);
+        ProcessGraph(*subgraph, subgraph_parent_assignment);
       }
     }
   }
