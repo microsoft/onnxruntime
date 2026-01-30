@@ -578,7 +578,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_2) {
   vector<float> W = {1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
   vector<int64_t> W_shape = {1, 1, 1, 5};
   vector<float> B = {1.0f, 2.0f};
-  vector<int64_t> B_shape = {1, 2};   // invalid bias rank (it should be 1-D)
+  vector<int64_t> B_shape = {1, 2};  // invalid bias rank (it should be 1-D)
   vector<int64_t> Y_shape = {2, 1, 1, 14};
   vector<float> expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f,
                                  11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
