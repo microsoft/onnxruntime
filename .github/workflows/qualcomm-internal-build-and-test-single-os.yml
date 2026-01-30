@@ -126,7 +126,7 @@ jobs:
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4.0.4
-        if: ${{ inputs.run_tests && inputs.build_test_same_runner }} # always run even if the previous step fails
+        if: ${{ always() && inputs.run_tests && inputs.build_test_same_runner }} # always run even if the previous step fails
         with:
           check_name: ${{inputs.target_os}}-${{inputs.target_arch}}-py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}}-test-results
           report_paths: |
