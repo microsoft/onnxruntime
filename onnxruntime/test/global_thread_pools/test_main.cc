@@ -17,6 +17,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
+#include <atomic>
 #include <thread>
 
 std::unique_ptr<Ort::Env> ort_env;
@@ -57,7 +58,49 @@ void JoinThreadCustomized(OrtCustomThreadHandle handle) {
 
 }  // namespace TestGlobalCustomThreadHooks
 
+namespace TestGlobalWorkCallbacks {
+
+constexpr uintptr_t kCbDataMagic = 0xCAFEBABE;
+constexpr uintptr_t kUserContextMagic = 0xDEADBEEF;
+
+std::atomic<int> enqueue_count{0};
+std::atomic<int> start_count{0};
+std::atomic<int> stop_count{0};
+std::atomic<int> cb_data_mismatch_count{0};
+std::atomic<int> user_context_mismatch_count{0};
+
+void* OnEnqueue(void* user_context) {
+  if (reinterpret_cast<uintptr_t>(user_context) != kUserContextMagic) {
+    user_context_mismatch_count++;
+  }
+  enqueue_count++;
+  return reinterpret_cast<void*>(kCbDataMagic);
+}
+
+void OnStart(void* user_context, void* cb_data) {
+  if (reinterpret_cast<uintptr_t>(user_context) != kUserContextMagic) {
+    user_context_mismatch_count++;
+  }
+  if (reinterpret_cast<uintptr_t>(cb_data) != kCbDataMagic) {
+    cb_data_mismatch_count++;
+  }
+  start_count++;
+}
+
+void OnStop(void* user_context, void* cb_data) {
+  if (reinterpret_cast<uintptr_t>(user_context) != kUserContextMagic) {
+    user_context_mismatch_count++;
+  }
+  if (reinterpret_cast<uintptr_t>(cb_data) != kCbDataMagic) {
+    cb_data_mismatch_count++;
+  }
+  stop_count++;
+}
+
+}  // namespace TestGlobalWorkCallbacks
+
 using namespace TestGlobalCustomThreadHooks;
+using namespace TestGlobalWorkCallbacks;
 
 int main(int argc, char** argv) {
   int status = 0;
@@ -112,6 +155,11 @@ int main(int argc, char** argv) {
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
     st_ptr.reset(g_ort->SetGlobalDenormalAsZero(tp_options));
+    ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
+
+    // Set work callbacks for testing thread pool context preservation
+    void* user_ctx = reinterpret_cast<void*>(kUserContextMagic);
+    st_ptr.reset(g_ort->SetGlobalWorkCallbacks(tp_options, OnEnqueue, OnStart, OnStop, user_ctx));
     ORT_RETURN_IF_NON_NULL_STATUS(st_ptr);
 
     ort_env.reset(new Ort::Env(tp_options, ORT_LOGGING_LEVEL_VERBOSE, "Default"));  // this is the only change from test/providers/test_main.cc

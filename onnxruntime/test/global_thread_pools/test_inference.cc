@@ -283,3 +283,60 @@ TEST_P(CApiTestGlobalThreadPoolsWithProvider, simple3) {
 INSTANTIATE_TEST_SUITE_P(CApiTestGlobalThreadPoolsWithProviders,
                          CApiTestGlobalThreadPoolsWithProvider,
                          ::testing::Values(0, 1, 2, 3, 4));
+
+// Access work callback counters from test_main.cc
+namespace TestGlobalWorkCallbacks {
+extern std::atomic<int> enqueue_count;
+extern std::atomic<int> start_count;
+extern std::atomic<int> stop_count;
+extern std::atomic<int> cb_data_mismatch_count;
+extern std::atomic<int> user_context_mismatch_count;
+}  // namespace TestGlobalWorkCallbacks
+
+// Test that verifies SetGlobalWorkCallbacks are invoked during inference
+// The callbacks are registered in test_main.cc when creating the global Ort::Env
+TEST(WorkCallbacksTest, CallbacksInvokedDuringInference) {
+  using namespace TestGlobalWorkCallbacks;
+
+  // Record initial counts (other tests may have run before this one)
+  int initial_enqueue = enqueue_count.load();
+  int initial_start = start_count.load();
+  int initial_stop = stop_count.load();
+  int initial_cb_data_mismatch = cb_data_mismatch_count.load();
+  int initial_user_context_mismatch = user_context_mismatch_count.load();
+
+  // Run a single inference that should use the thread pool
+  std::vector<Input> inputs;
+  std::vector<int64_t> expected_dims_y;
+  std::vector<float> expected_values_y;
+  std::string output_name;
+  GetInputsAndExpectedOutputs(inputs, expected_dims_y, expected_values_y, output_name);
+
+  // Create session with default provider (provider_type=0)
+  Ort::Session session = GetSessionObj<PATH_TYPE, float>(*ort_env, MODEL_URI, 0);
+  ASSERT_TRUE(session != nullptr) << "Session creation failed";
+
+  // Run inference
+  TestInference<PATH_TYPE, float>(session, inputs, output_name.c_str(), expected_dims_y, expected_values_y);
+
+  // Verify callbacks were invoked during this inference
+  int delta_enqueue = enqueue_count.load() - initial_enqueue;
+  int delta_start = start_count.load() - initial_start;
+  int delta_stop = stop_count.load() - initial_stop;
+  int delta_cb_data_mismatch = cb_data_mismatch_count.load() - initial_cb_data_mismatch;
+  int delta_user_context_mismatch = user_context_mismatch_count.load() - initial_user_context_mismatch;
+
+  // Callbacks should have been invoked
+  EXPECT_GT(delta_enqueue, 0) << "OnEnqueue should be called during inference";
+  EXPECT_EQ(delta_start, delta_stop) << "OnStart and OnStop counts must be balanced";
+  EXPECT_GE(delta_enqueue, delta_start) << "Enqueue count should be >= start count (some work may run inline)";
+
+  // Verify cb_data and user_context were correctly passed through
+  EXPECT_EQ(delta_cb_data_mismatch, 0) << "cb_data from OnEnqueue must be passed to OnStart/OnStop";
+  EXPECT_EQ(delta_user_context_mismatch, 0) << "user_context must be passed to all callbacks";
+
+  std::cout << "WorkCallbacksTest summary:" << std::endl;
+  std::cout << "  Work items submitted: " << delta_enqueue << std::endl;
+  std::cout << "  Work items on worker threads: " << delta_start << std::endl;
+  std::cout << "  Work items run inline: " << (delta_enqueue - delta_start) << std::endl;
+}
