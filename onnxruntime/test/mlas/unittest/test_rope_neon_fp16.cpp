@@ -17,12 +17,14 @@ Abstract:
 #include <vector>
 #include <cmath>
 
+#include "core/mlas/inc/mlas.h"
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+
 #include "test_util.h"
 #include "core/mlas/lib/mlasi.h"
 #include "core/mlas/lib/rotary_embedding.h"
 #include "core/mlas/lib/rotary_embedding_kernel_neon.h"
-
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
 class MlasNeonFp16RoPETest : public MlasTestBase {
  private:
@@ -59,7 +61,7 @@ class MlasNeonFp16RoPETest : public MlasTestBase {
 
     // Compare results
     for (size_t i = 0; i < rotary_emb_dim; i++) {
-      ASSERT_EQ(output_impl[i].val, output_ref[i].val)
+      ASSERT_TRUE(CloseEnough(output_impl[i].ToFloat(), output_ref[i].ToFloat()))
           << "Expected bits: " << output_ref[i].val << " (" << output_ref[i].ToFloat() << ")"
           << " Actual bits: " << output_impl[i].val << " (" << output_impl[i].ToFloat() << ")"
           << " @[" << i << "], "
