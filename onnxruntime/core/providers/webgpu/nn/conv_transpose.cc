@@ -57,7 +57,6 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
 
   bool has_bias = context.InputCount() > 2;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
-  
   // Validate bias shape if provided
   if (has_bias) {
     const auto& bias_shape = bias->Shape();
