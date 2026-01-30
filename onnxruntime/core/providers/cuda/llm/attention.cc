@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/llm/attention_helper.h"
 #include "core/providers/cuda/llm/attention.h"
+#include "core/providers/cuda/llm/attention_mask_impl.h"
 #include "contrib_ops/cuda/bert/attention_data.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
@@ -354,47 +355,90 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       gqa_data.qkv_buffer = nullptr;
     }
 
-    // Allocate CPU buffer for seqlens_k (total_sequence_length - 1) for GQA compatibility
+    // Allocate GPU buffer for seqlens_k (total_sequence_length - 1) for GQA compatibility
     // The GQA kernel expects sequence length information for flash/memory efficient attention
-    // We need a CPU buffer first, then copy to GPU
-    std::vector<int> seqlens_k_host(parameters.batch_size);
+    seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
 
     // GQA only supports masking, not additive bias.
-    // For bool mask, we need to convert it to sequence lengths.
+    // For bool mask, we need to convert it to sequence lengths on GPU.
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
-      const bool* b_mask = attn_mask->Data<bool>();
+      // Allocate validation result buffer on GPU
+      auto validation_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+
+      // Get mask dimensions for broadcasting
+      // attn_mask can be 2D, 3D, or 4D and broadcasts to (batch_size, num_heads, q_seq_len, total_seq_len)
+      const auto& mask_shape = attn_mask->Shape();
+      int mask_dims = static_cast<int>(mask_shape.NumDimensions());
+      int64_t mask_dim0 = 0, mask_dim1 = 0, mask_dim2 = 0;
+
+      if (mask_dims == 2) {
+        // Shape: (batch_size or 1, total_seq_len)
+        mask_dim0 = mask_shape[0];
+        mask_dim1 = 0;
+        mask_dim2 = 0;
+      } else if (mask_dims == 3) {
+        // Shape: (batch_size or 1, q_seq_len, total_seq_len)
+        mask_dim0 = mask_shape[0];
+        mask_dim1 = mask_shape[1];
+        mask_dim2 = 0;
+      } else if (mask_dims == 4) {
+        // Shape: (batch_size or 1, num_heads or 1, q_seq_len, total_seq_len)
+        mask_dim0 = mask_shape[0];
+        mask_dim1 = mask_shape[1];
+        mask_dim2 = mask_shape[2];
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Boolean attn_mask must be 2D, 3D, or 4D. Got ", mask_dims, "D.");
+      }
+
+      // Launch CUDA kernel to convert mask to seqlens_k and validate
+      ORT_RETURN_IF_ERROR(LaunchConvertMaskToSeqlensK(
+          attn_mask->Data<bool>(),
+          seqlens_k_buffer.get(),
+          validation_buffer.get(),
+          parameters.batch_size,
+          parameters.total_sequence_length,
+          mask_dims,
+          mask_dim0,
+          mask_dim1,
+          mask_dim2,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+
+      // Copy validation results to CPU and check for errors
+      std::vector<int> validation_host(parameters.batch_size);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(validation_host.data(), validation_buffer.get(),
+                                           sizeof(int) * parameters.batch_size,
+                                           cudaMemcpyDeviceToHost, cuda_stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
       for (int b = 0; b < parameters.batch_size; ++b) {
-        const bool* row = b_mask + b * parameters.total_sequence_length;
-        int seq_len = 0;
-
-        // Find the actual sequence length by looking for the last valid (true) position
-        // Mask convention per Attention spec: true = valid (should participate), false = masked out
-        for (int i = parameters.total_sequence_length - 1; i >= 0; --i) {
-          if (row[i]) {
-            seq_len = i + 1;
-            break;
-          }
+        if (validation_host[b] == 1) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Boolean attn_mask for batch ", b,
+                                 " does not start with True. "
+                                 "GQA path only supports right-padding masks where valid tokens come first.");
+        } else if (validation_host[b] == 2) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Boolean attn_mask for batch ", b,
+                                 " is not contiguous. "
+                                 "GQA path only supports right-padding masks with contiguous True values "
+                                 "followed by contiguous False values (no interleaving).");
         }
-        // seqlens_k is total_sequence_length - 1 for historical reasons (matching GroupQueryAttention convention)
-        seqlens_k_host[b] = seq_len - 1;
       }
     } else if (attn_mask != nullptr) {
-      ORT_THROW("Non-boolean attn_mask is not supported yet in GQA path of Attention op (CUDA).");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Non-boolean attn_mask is not supported yet in GQA path of Attention op (CUDA).");
     } else {
       // No mask provided - use full sequence length for all batches
       // seqlens_k is total_sequence_length - 1 for historical reasons (matching GroupQueryAttention convention)
-      for (int b = 0; b < parameters.batch_size; ++b) {
-        seqlens_k_host[b] = parameters.total_sequence_length - 1;
-      }
+      // Fill on GPU using cudaMemset-like approach or a simple kernel
+      std::vector<int> seqlens_k_host(parameters.batch_size, parameters.total_sequence_length - 1);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seqlens_k_buffer.get(), seqlens_k_host.data(),
+                                           sizeof(int) * parameters.batch_size,
+                                           cudaMemcpyHostToDevice, cuda_stream));
     }
-
-    // Copy seqlens_k to GPU
-    seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
-    auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seqlens_k_buffer.get(), seqlens_k_host.data(),
-                                         sizeof(int) * parameters.batch_size,
-                                         cudaMemcpyHostToDevice, cuda_stream));
 
     // Process seqlens_k to compute past_seq_lens, total_seq_lens, and padded_seq_lens
     // This is always needed for flash/memory efficient attention

@@ -88,6 +88,7 @@ class AttentionConfig:
     softcap: float = 0.0
     kv_cache_type: str = ""
     has_attn_mask: bool = False
+    attn_mask_dims: int = 2  # 2D, 3D, or 4D boolean mask
 
 
 # #################################################################################################
@@ -187,13 +188,22 @@ def create_attention_node_and_io(
         cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
     # attn_mask for ONNX Attention op - boolean padding mask
-    # GQA path expects shape: [batch, total_seq_len] - True for valid, False for masked
+    # GQA path expects boolean mask: True for valid, False for masked
+    # Supports 2D, 3D, or 4D masks that broadcast to (batch, q_num_heads, q_seq, total_seq):
+    #   2D: [batch_size, total_seq_len] - broadcasts across heads and query positions
+    #   3D: [q_num_heads, q_seq_len, total_seq_len] - broadcasts across batches (ONNX aligns from right)
+    #   4D: [batch_size, q_num_heads, q_seq_len, total_seq_len] - no broadcasting needed
     # The kernel converts this to seqlens_k internally
     if config.has_attn_mask:
         mask_seq_len = present_kv_seqlen
-        graph_input.append(
-            helper.make_tensor_value_info("attn_mask", TensorProto.BOOL, [config.batch_size, mask_seq_len])
-        )
+        if config.attn_mask_dims == 2:
+            mask_shape = [config.batch_size, mask_seq_len]
+        elif config.attn_mask_dims == 3:
+            # 3D mask: [q_num_heads, q_seq_len, total_seq_len] broadcasts to [1, q_num_heads, q_seq_len, total_seq_len]
+            mask_shape = [config.q_num_heads, config.q_sequence_length, mask_seq_len]
+        else:  # 4D
+            mask_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, mask_seq_len]
+        graph_input.append(helper.make_tensor_value_info("attn_mask", TensorProto.BOOL, mask_shape))
 
     # past_key and past_value for ONNX Attention op
     # Shape: [batch, num_heads, past_seq_len, head_size] (4D BNSH format)
@@ -882,6 +892,325 @@ def print_diff_statistics(diff_tensor: torch.Tensor, prefix: str = ""):
 
 
 # #################################################################################################
+#  Attention Mask Helper Functions
+# #################################################################################################
+
+
+def create_boolean_mask_from_seqlens(
+    seqlens: torch.Tensor,
+    total_seq_len: int,
+    mask_dims: int,
+    q_seq_len: int = 1,
+    num_heads: int = 1,
+    device: str = "cuda",
+) -> torch.Tensor:
+    """
+    Create a boolean attention mask from sequence lengths.
+
+    ONNX broadcasting aligns dimensions from the right (trailing dimensions).
+    Target broadcast shape: (batch_size, q_num_heads, q_seq_len, total_seq_len)
+
+    Args:
+        seqlens: Tensor of shape [batch_size] containing the valid sequence length for each batch.
+        total_seq_len: The total sequence length (last dimension of the mask).
+        mask_dims: Number of dimensions for the mask (2, 3, or 4).
+        q_seq_len: Query sequence length (for 3D/4D masks).
+        num_heads: Number of q_heads (for 3D/4D masks).
+        device: Device for the tensor.
+
+    Returns:
+        Boolean mask where True = valid, False = padding.
+        - 2D: [batch_size, total_seq_len] - broadcasts to [batch, 1, 1, total_seq]
+        - 3D: [num_heads, q_seq_len, total_seq_len] - broadcasts to [1, num_heads, q_seq, total_seq]
+        - 4D: [batch_size, num_heads, q_seq_len, total_seq_len] - no broadcasting
+    """
+    batch_size = seqlens.shape[0]
+
+    # Create base 2D mask [batch_size, total_seq_len]
+    # mask[b, i] = True if i < seqlens[b]
+    arange = torch.arange(total_seq_len, device=device).unsqueeze(0)  # [1, total_seq_len]
+    seqlens_expanded = seqlens.unsqueeze(1)  # [batch_size, 1]
+    mask_2d = arange < seqlens_expanded  # [batch_size, total_seq_len]
+
+    if mask_dims == 2:
+        return mask_2d
+    elif mask_dims == 3:
+        # 3D mask: [num_heads, q_seq_len, total_seq_len]
+        # For right-padding tests, all batches should have the same mask pattern per position.
+        # Since seqlens can vary per batch, we use the first batch's pattern and expand across heads.
+        # This is valid for testing because the 3D mask broadcasts across batches (dim 0 becomes 1).
+        # For a more general case, 3D masks would need uniform seqlens across batches.
+        mask_1d = mask_2d[0:1, :]  # Take first batch pattern [1, total_seq_len]
+        mask_3d = mask_1d.unsqueeze(0).expand(num_heads, q_seq_len, total_seq_len).contiguous()
+        return mask_3d
+    else:  # 4D
+        # Expand to [batch_size, num_heads, q_seq_len, total_seq_len]
+        # The mask is the same for all heads and query positions
+        return mask_2d.unsqueeze(1).unsqueeze(1).expand(batch_size, num_heads, q_seq_len, total_seq_len).contiguous()
+
+
+def parity_check_attention_prompt_with_padding(
+    config: AttentionConfig,
+    seqlens: torch.Tensor,
+    ep,
+    device,
+    torch_type,
+    ort_type,
+    rtol,
+    atol,
+    std=0.2,
+):
+    """
+    Parity check for ONNX Attention op in prompt phase with padding.
+
+    This tests that the ONNX Attention op correctly handles boolean padding masks
+    where some batches have shorter valid sequences than others (right-padding).
+
+    Args:
+        config: AttentionConfig with model parameters (has_attn_mask should be True).
+        seqlens: Tensor of shape [batch_size] containing valid sequence lengths for each batch.
+        ep: Execution provider.
+        device: Device string.
+        torch_type: PyTorch dtype.
+        ort_type: ONNX tensor type.
+        rtol: Relative tolerance for comparison.
+        atol: Absolute tolerance for comparison.
+        std: Standard deviation for random input generation.
+    """
+    torch.manual_seed(0)
+
+    # Generate Q, K, V tensors in BSNH format (batch, seq, num_heads, head_size)
+    q = (
+        torch.randn(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    k = (
+        torch.randn(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    v = torch.randn_like(k) * std
+
+    # Zero out padded positions in K, V for proper comparison
+    for b in range(config.batch_size):
+        valid_len = seqlens[b].item()
+        if valid_len < config.kv_sequence_length:
+            k[b, valid_len:, :, :] = 0
+            v[b, valid_len:, :, :] = 0
+
+    # Create boolean attention mask based on seqlens
+    attn_mask = create_boolean_mask_from_seqlens(
+        seqlens=seqlens,
+        total_seq_len=config.kv_sequence_length,
+        mask_dims=config.attn_mask_dims,
+        q_seq_len=config.q_sequence_length,
+        num_heads=config.q_num_heads,
+        device=device,
+    )
+
+    # Create key_padding_mask for reference (always 2D for attention_ref)
+    key_padding_mask = create_boolean_mask_from_seqlens(
+        seqlens=seqlens,
+        total_seq_len=config.kv_sequence_length,
+        mask_dims=2,
+        device=device,
+    )
+
+    # --- PyTorch Reference Path ---
+    out_ref, _ = attention_ref(
+        q=q,
+        k=k,
+        v=v,
+        key_padding_mask=key_padding_mask,
+        causal=config.is_causal == 1,
+        softcap=config.softcap,
+    )
+
+    # --- ONNX Runtime Path ---
+    out, present_k, present_v = attention_prompt_func(
+        q=q,
+        k=k,
+        v=v,
+        config=config,
+        attn_mask=attn_mask,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+    )
+
+    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+
+    # --- Comparison ---
+    # Zero out padded positions in both outputs for fair comparison
+    for b in range(config.batch_size):
+        valid_len = seqlens[b].item()
+        if valid_len < config.q_sequence_length:
+            out[b, valid_len:, :, :] = 0
+            out_ref[b, valid_len:, :, :] = 0
+
+    out_np = out.to(torch.float32).detach().cpu().numpy()
+    out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+    numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
+
+def parity_check_attention_past_with_padding(
+    config: AttentionConfig,
+    past_seqlens: torch.Tensor,
+    ep,
+    device,
+    torch_type,
+    ort_type,
+    rtol,
+    atol,
+    std=0.2,
+):
+    """
+    Parity check for ONNX Attention op in decoding phase with padding.
+
+    This tests that the ONNX Attention op correctly handles boolean padding masks
+    during token generation with KV cache.
+
+    Args:
+        config: AttentionConfig with model parameters (has_attn_mask should be True).
+        past_seqlens: Tensor of shape [batch_size] containing valid past sequence lengths.
+        ep: Execution provider.
+        device: Device string.
+        torch_type: PyTorch dtype.
+        ort_type: ONNX tensor type.
+        rtol: Relative tolerance for comparison.
+        atol: Absolute tolerance for comparison.
+        std: Standard deviation for random input generation.
+    """
+    torch.manual_seed(0)
+
+    # Generate query for new tokens
+    q = (
+        torch.randn(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+
+    # Past KV cache in BNSH format
+    past_k = (
+        torch.randn(
+            config.batch_size,
+            config.kv_num_heads,
+            config.past_kv_sequence_length,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    past_v = torch.randn_like(past_k) * std
+
+    # Zero out padded positions in past KV cache
+    for b in range(config.batch_size):
+        valid_past_len = past_seqlens[b].item()
+        if valid_past_len < config.past_kv_sequence_length:
+            past_k[b, :, valid_past_len:, :] = 0
+            past_v[b, :, valid_past_len:, :] = 0
+
+    # New K/V for current tokens in BSNH format
+    new_k = (
+        torch.randn(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    new_v = torch.randn_like(new_k) * std
+
+    # Total sequence lengths = past_seqlens + new_seq_len
+    total_seqlens = past_seqlens + config.kv_sequence_length
+    total_seq_len = config.past_kv_sequence_length + config.kv_sequence_length
+
+    # Create boolean attention mask based on total seqlens
+    attn_mask = create_boolean_mask_from_seqlens(
+        seqlens=total_seqlens,
+        total_seq_len=total_seq_len,
+        mask_dims=config.attn_mask_dims,
+        q_seq_len=config.q_sequence_length,
+        num_heads=config.q_num_heads,
+        device=device,
+    )
+
+    # Create key_padding_mask for reference (always 2D)
+    key_padding_mask = create_boolean_mask_from_seqlens(
+        seqlens=total_seqlens,
+        total_seq_len=total_seq_len,
+        mask_dims=2,
+        device=device,
+    )
+
+    # --- PyTorch Reference Path ---
+    # Concatenate past and new KV
+    new_k_bnsh = new_k.transpose(1, 2)
+    new_v_bnsh = new_v.transpose(1, 2)
+    full_k_bnsh = torch.cat([past_k, new_k_bnsh], dim=2)
+    full_v_bnsh = torch.cat([past_v, new_v_bnsh], dim=2)
+    full_k_bsnh = full_k_bnsh.transpose(1, 2)
+    full_v_bsnh = full_v_bnsh.transpose(1, 2)
+
+    out_ref, _ = attention_ref(
+        q=q,
+        k=full_k_bsnh,
+        v=full_v_bsnh,
+        key_padding_mask=key_padding_mask,
+        causal=config.is_causal == 1,
+        softcap=config.softcap,
+    )
+
+    # --- ONNX Runtime Path ---
+    out, present_k, present_v = attention_past_func(
+        q=q,
+        past_k=past_k,
+        past_v=past_v,
+        new_k=new_k,
+        new_v=new_v,
+        config=config,
+        attn_mask=attn_mask,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+    )
+
+    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+
+    # --- Comparison ---
+    out_np = out.to(torch.float32).detach().cpu().numpy()
+    out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+    numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
+
+# #################################################################################################
 #  Test Case Generators
 # #################################################################################################
 
@@ -969,6 +1298,85 @@ def attention_past_test_cases():
                     )
                     name = f"b{b}_s{s}_past{s2}_nh{n}_{n2}_h{h}_sc{softcap}"
                     yield name, config
+
+
+def attention_prompt_padding_test_cases():
+    """
+    Generate test cases for ONNX Attention op with boolean padding masks.
+
+    Tests 2D, 3D, and 4D boolean masks for right-padding scenarios.
+    ONNX broadcasting aligns from the right:
+    - 2D [batch, total_seq] broadcasts to [batch, 1, 1, total_seq]
+    - 3D [num_heads, q_seq, total_seq] broadcasts to [1, num_heads, q_seq, total_seq]
+    - 4D [batch, num_heads, q_seq, total_seq] - no broadcasting
+
+    Note: 3D mask tests use uniform seqlens since 3D broadcasts across batches.
+    """
+    # Test configurations
+    batches = [2]  # Need multiple batches to test different padding per batch
+    seqs = [(16, 16)]  # (q_seq_len, kv_seq_len)
+    heads = [(8, 2)]  # (q_heads, kv_heads)
+    h_sizes = [128]
+    # Test 2D, 3D, and 4D masks
+    mask_dims_options = [2, 3, 4]
+
+    for h in h_sizes:
+        for b in batches:
+            for sq, skv in seqs:
+                for n, n2 in heads:
+                    for mask_dims in mask_dims_options:
+                        config = AttentionConfig(
+                            batch_size=b,
+                            q_sequence_length=sq,
+                            kv_sequence_length=skv,
+                            past_kv_sequence_length=0,
+                            q_num_heads=n,
+                            kv_num_heads=n2,
+                            head_size=h,
+                            is_causal=1,
+                            has_attn_mask=True,
+                            attn_mask_dims=mask_dims,
+                        )
+                        name = f"b{b}_sq{sq}_skv{skv}_nh{n}_{n2}_h{h}_mask{mask_dims}d"
+                        yield name, config
+
+
+def attention_past_padding_test_cases():
+    """
+    Generate test cases for ONNX Attention op with boolean padding masks in decoding phase.
+
+    Note: Past/decoding phase with per-batch variable padding is complex because
+    the ONNX Attention op expects uniform past_sequence_length across all batches.
+    These tests use the full past sequence length for all batches (no per-batch variation).
+
+    ONNX broadcasting for 3D masks: [num_heads, q_seq, total_seq] -> [1, num_heads, q_seq, total_seq]
+    """
+    batches = [2]
+    seqs = [(1, 32)]  # (new_seq_len, past_seq_len)
+    heads = [(8, 2)]
+    h_sizes = [128]
+    # Test 2D, 3D, and 4D masks
+    mask_dims_options = [2, 3, 4]
+
+    for h in h_sizes:
+        for b in batches:
+            for s, s2 in seqs:
+                for n, n2 in heads:
+                    for mask_dims in mask_dims_options:
+                        config = AttentionConfig(
+                            batch_size=b,
+                            q_sequence_length=s,
+                            kv_sequence_length=s,
+                            past_kv_sequence_length=s2,
+                            q_num_heads=n,
+                            kv_num_heads=n2,
+                            head_size=h,
+                            is_causal=1,
+                            has_attn_mask=True,
+                            attn_mask_dims=mask_dims,
+                        )
+                        name = f"b{b}_s{s}_past{s2}_nh{n}_{n2}_h{h}_mask{mask_dims}d"
+                        yield name, config
 
 
 # #################################################################################################
@@ -1122,6 +1530,124 @@ class TestONNXAttentionMemoryEfficientGQABF16(unittest.TestCase):
             causal=True,
             rtol=rtol["bf16"],
             atol=atol["bf16"],
+        )
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestONNXAttentionPaddingMask(unittest.TestCase):
+    """
+    Test ONNX Attention op (opset 23) with boolean padding masks.
+
+    These tests verify that the boolean attn_mask is correctly converted to
+    sequence lengths on GPU and that the attention computation respects the
+    padding. Tests cover 2D, 3D, and 4D mask shapes.
+    """
+
+    @parameterized.expand(attention_prompt_padding_test_cases())
+    def test_attention_prompt_padding_flash(self, name, config):
+        """Test prompt phase with padding mask using Flash Attention."""
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+
+        # Create sequence lengths: first batch has shorter sequence
+        # e.g., for batch_size=2, kv_seq_len=16: seqlens = [10, 16]
+        seqlens = torch.tensor(
+            [config.kv_sequence_length - 6, config.kv_sequence_length],
+            dtype=torch.int32,
+            device="cuda",
+        )
+
+        parity_check_attention_prompt_with_padding(
+            config=config,
+            seqlens=seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(attention_past_padding_test_cases())
+    def test_attention_past_padding_flash(self, name, config):
+        """Test decoding phase with padding mask using Flash Attention."""
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+
+        # For past/decoding tests, use uniform past sequence length across all batches
+        # (per-batch variable past length is complex with ONNX Attention's fixed-shape past tensors)
+        past_seqlens = torch.full(
+            (config.batch_size,),
+            config.past_kv_sequence_length,
+            dtype=torch.int32,
+            device="cuda",
+        )
+
+        parity_check_attention_past_with_padding(
+            config=config,
+            past_seqlens=past_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
+@unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
+class TestONNXAttentionPaddingMaskMemoryEfficient(unittest.TestCase):
+    """
+    Test ONNX Attention op (opset 23) with boolean padding masks using Memory Efficient Attention.
+
+    These tests verify that the boolean attn_mask is correctly converted to
+    sequence lengths on GPU and that the attention computation respects the
+    padding. Tests cover 2D, 3D, and 4D mask shapes.
+    """
+
+    @parameterized.expand(attention_prompt_padding_test_cases())
+    def test_attention_prompt_padding_mea(self, name, config):
+        """Test prompt phase with padding mask using Memory Efficient Attention."""
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+
+        # Create sequence lengths: first batch has shorter sequence
+        seqlens = torch.tensor(
+            [config.kv_sequence_length - 6, config.kv_sequence_length],
+            dtype=torch.int32,
+            device="cuda",
+        )
+
+        parity_check_attention_prompt_with_padding(
+            config=config,
+            seqlens=seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(attention_past_padding_test_cases())
+    def test_attention_past_padding_mea(self, name, config):
+        """Test decoding phase with padding mask using Memory Efficient Attention."""
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+
+        # For past/decoding tests, use uniform past sequence length across all batches
+        past_seqlens = torch.full(
+            (config.batch_size,),
+            config.past_kv_sequence_length,
+            dtype=torch.int32,
+            device="cuda",
+        )
+
+        parity_check_attention_past_with_padding(
+            config=config,
+            past_seqlens=past_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
         )
 
 
