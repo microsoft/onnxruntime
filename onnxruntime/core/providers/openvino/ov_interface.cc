@@ -12,16 +12,21 @@
 #include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/ov_stateful_patch_utils.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "core/providers/openvino/exceptions.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
 
-template <typename Func, typename... Args>
+template <bool typed, typename Func, typename... Args>
 inline auto OvExceptionBoundary(Func&& func, std::format_string<Args...>&& fmt, Args&&... args) {
   try {
     return func();
   } catch (const ov::Exception& e) {
-    ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)) + ": " + std::string(e.what()));
+    if constexpr (typed) {
+      throw ovep_exception(e, ovep_exception::type::import_model);
+    } else {
+      ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)) + ": " + std::string(e.what()));
+    }
   } catch (...) {
     ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)));
   }
@@ -70,7 +75,7 @@ std::optional<bool> queryOVProperty(const std::string& property, const std::stri
 }
 
 std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
-  return OvExceptionBoundary([&]() {
+  return OvExceptionBoundary<false>([&]() {
     std::istringstream modelStringStream(std::move(model));
     std::istream& modelStream = modelStringStream;
     // Try to load with FrontEndManager
@@ -88,7 +93,7 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::str
       ORT_THROW(log_tag + "Unknown exception while Reading network");
     }
   },
-                             "Exception while Reading network");
+                                    "Exception while Reading network");
 }
 
 OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
@@ -104,9 +109,13 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
 
   bool model_status = IsStateful(model);
   LOGS_DEFAULT(INFO) << log_tag << "Model IsStateful() Status:\t" << (model_status ? "True" : "False");
+  // Flag to add Gather+ScatterElementsUpdate subgraph to reorder KV cache for LLM speculative decoding
+  bool should_add_kvcache_reorder = false;
   if (!model_status) {
     LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
-    PatchStatefulDecoder(model);
+    // TO-DO: extend to NPU device when OpenVINO NPU has related optimization
+    should_add_kvcache_reorder = hw_target.find("GPU") != std::string::npos;
+    PatchStatefulDecoder(model, should_add_kvcache_reorder);
   }
 
   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -147,7 +156,7 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
 
   LOGS_DEFAULT(INFO) << log_tag << "Compiling OV Model using Stateful Transformation flow";
   compiled_model = OVCore::Get()->core.compile_model(model, hw_target, config);
-  OVExeNetwork exe(compiled_model, hw_target, true);
+  OVExeNetwork exe(compiled_model, hw_target, true, should_add_kvcache_reorder);
   return exe;
 }
 
@@ -156,7 +165,7 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
                                   ov::AnyMap& device_config,
                                   bool enable_causallm,
                                   const std::string& name) {
-  return OvExceptionBoundary([&]() {
+  return OvExceptionBoundary<false>([&]() {
     OVExeNetwork exe;
     if (enable_causallm) {
       auto mutable_model = ie_cnn_network->clone();
@@ -172,14 +181,14 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
 
     return exe;
   },
-                             "Exception while Loading Network for graph {}", name);
+                                    "Exception while Loading Network for graph {}", name);
 }
 
 OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
                                   std::string& hw_target,
                                   ov::AnyMap& device_config,
                                   const std::string& name) {
-  return OvExceptionBoundary([&]() {
+  return OvExceptionBoundary<false>([&]() {
     ov::CompiledModel obj;
 
     obj = core.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
@@ -189,23 +198,23 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
     OVExeNetwork exe(obj, hw_target);
     return exe;
   },
-                             "Exception while Loading Network for graph {}", name);
+                                    "Exception while Loading Network for graph {}", name);
 }
 
 OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
                                  std::string name) {
-  return OvExceptionBoundary([&]() {
+  return OvExceptionBoundary<true>([&]() {
     ov::CompiledModel obj;
 #if (OPENVINO_VERSION_MAJOR > 2025 || (OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR >= 3))
-    if (!model_blob.maybe_native_blob_path_.empty()) {
-      obj = core.import_model(ov::read_tensor_data(model_blob.maybe_native_blob_path_), hw_target, device_config);
+    if (model_blob.tensor_) {
+      obj = core.import_model(model_blob.tensor_, hw_target, device_config);
     } else {
       obj = core.import_model(*model_blob.stream_, hw_target, device_config);
     }
 #else
-    obj = core.import_model(*model_blob.stream_, hw_target, device_config);
+      obj = core.import_model(*model_blob.stream_, hw_target, device_config);
 #endif
     OVExeNetwork exe(obj, hw_target);
 
@@ -214,15 +223,16 @@ OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
 #endif
     return exe;
   },
-                             "Exception while Loading Network for graph {}", name);
+                                   "Exception while Loading Network for graph {}", name);
 }
 
 OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
                                                   std::string& hw_target,
                                                   const ov::AnyMap& device_config,
                                                   bool enable_causallm,
-                                                  std::filesystem::path model_file_path) {
-  return OvExceptionBoundary([&]() {
+                                                  std::filesystem::path model_file_path,
+                                                  const SessionContext& session_context) {
+  return OvExceptionBoundary<false>([&]() {
     OVExeNetwork exe;
 
     bool isXML = backend_utils::IsModelStreamXML(model_stream);
@@ -254,6 +264,11 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
       // Load the model explicitly with XML contents
       std::shared_ptr<ov::Model> model = core.read_model(xml_file_path.string());
 
+      if (!session_context.reshape.empty()) {
+        LOGS_DEFAULT(INFO) << log_tag << "Reshaping OV-IR model to specified shape";
+        model->reshape(session_context.reshape);
+      }
+
       if (enable_causallm) {
         exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
       } else {
@@ -267,7 +282,7 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
 #endif
     return exe;
   },
-                             "Exception while Loading Network from OVIR model file: {}", model_file_path.string());
+                                    "Exception while Loading Network from OVIR model file: {}", model_file_path.string());
 }
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
@@ -317,42 +332,42 @@ void OVCore::SetStreams(const std::string& device_type, int num_streams) {
 }
 
 std::shared_ptr<OVInferRequest> OVExeNetwork::CreateInferRequest() {
-  return OvExceptionBoundary([&]() {
+  return OvExceptionBoundary<false>([&]() {
     auto infReq = compiled_model_obj.create_infer_request();
     std::shared_ptr<OVInferRequest> ovInfReq;
     if (is_stateful_causallm) {
-      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), target_device);
+      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), target_device, is_kvcache_reorder_added);
     } else {
       ovInfReq = std::make_shared<OVInferRequest>(std::move(infReq));
     }
     return ovInfReq;
   },
 
-                             "Exception while creating InferRequest object");
+                                    "Exception while creating InferRequest object");
 }
 
 OVTensorPtr OVInferRequest::GetTensor(const std::string& input_name) {
-  return OvExceptionBoundary([&]() {
+  return OvExceptionBoundary<false>([&]() {
     auto tobj = ovInfReq.get_tensor(input_name);
     OVTensorPtr blob = std::make_shared<OVTensor>(tobj);
     return blob;
   },
-                             " Cannot access IE Blob for input: {}", input_name);
+                                    " Cannot access IE Blob for input: {}", input_name);
 }
 
 std::string OVInferRequest::GetInputTensorName(uint32_t index) {
-  return OvExceptionBoundary([&]() -> const std::string& {
+  return OvExceptionBoundary<false>([&]() {
     const auto& model = ovInfReq.get_compiled_model();
     return *model.input(index).get_names().begin();
   },
-                             " Cannot access IE Blob for input number: {}", index);
+                                    " Cannot access IE Blob for input number: {}", index);
 }
 
 void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
-  OvExceptionBoundary([&]() {
+  OvExceptionBoundary<false>([&]() {
     ovInfReq.set_tensor(name, *(blob.get()));
   },
-                      " Cannot set Remote Blob for output: {}", name);
+                             " Cannot set Remote Blob for output: {}", name);
 }
 
 uint32_t OVInferRequest::GetNumInputs() {
@@ -360,18 +375,49 @@ uint32_t OVInferRequest::GetNumInputs() {
 }
 
 void OVInferRequest::Infer() {
-  OvExceptionBoundary([&]() {
+  OvExceptionBoundary<false>([&]() {
     ovInfReq.infer();
   },
-                      "In Error Couldn't start Inference");
+                             "In Error Couldn't start Inference");
 }
 
-StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device)
-    : OVInferRequest(std::move(infer_request)), target_device(device) {
+StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device, bool kvcache_reorder_added)
+    : OVInferRequest(std::move(infer_request)), target_device(device), is_kvcache_reorder_added(kvcache_reorder_added) {
   bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
-  if (gpu_or_npu) {
+
+  _npu_logits_slice_required = IsNPULogitsSliceRequired();
+
+  // check if there is input_ids tensors and if the tensor type is int64,
+  // because logic prefill_use_full_chat_history is only for specific inputs and data type
+  auto input_ids_opt = FindTensor("input_ids");
+  if (gpu_or_npu && input_ids_opt.has_value() && input_ids_opt->get_element_type() == ov::element::i64) {
     prefill_use_full_chat_history = true;
   }
+}
+
+static inline bool IsNPUWSliceOutEnabled(const ov::CompiledModel& compiled_model) {
+  auto slice_out_val = compiled_model.get_property("NPUW_SLICE_OUT");
+  if (!slice_out_val.empty()) {
+    if (slice_out_val.is<std::string>()) {
+      return (slice_out_val.as<std::string>() == "YES");
+    } else if (slice_out_val.is<bool>()) {
+      return slice_out_val.as<bool>();
+    }
+  }
+
+  return false;
+}
+
+bool StatefulOVInferRequest::IsNPULogitsSliceRequired() {
+  if (target_device.find("NPU") != std::string::npos) {
+    const auto& model = ovInfReq.get_compiled_model();
+    // If NPUW_SLICE_OUT is enabled, it means that it's not required to slice within OVEP.
+    // Otherwise, if NPUW_SLICE_OUT is NOT enabled, then we need to perform some explicit logit
+    // slicing in OVEP.
+    return !IsNPUWSliceOutEnabled(model);
+  }
+
+  return false;
 }
 
 void StatefulOVInferRequest::FillTensor(const std::string& tensor_name, const ov::element::Type& type,
@@ -427,6 +473,32 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
   // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
   FillTensor("beam_idx", ov::element::i32, {1}, 0);
 
+  if (is_kvcache_reorder_added) {
+    ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
+    const auto kv_num_heads = dst_idx_shape[1];
+    const auto kv_head_size = dst_idx_shape[3];
+    if (kv_src_indices.size() > 0) {
+      ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
+      const auto src_idx_ptr = src_idx_tensor.data<int32_t>();
+      for (size_t i = 0; i < kv_src_indices.size(); ++i) {
+        src_idx_ptr[i] = static_cast<int32_t>(kv_src_indices[i]);
+      }
+      ovInfReq.set_tensor("src_idx", src_idx_tensor);
+
+      ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
+      const auto dst_idx_ptr = dst_idx_tensor.data<int32_t>();
+      for (size_t i = 0; i < kv_num_heads; ++i) {
+        for (size_t j = 0; j < kv_dst_indices.size(); ++j) {
+          std::fill_n(dst_idx_ptr + (i * kv_dst_indices.size() + j) * kv_head_size, kv_head_size, kv_dst_indices[j]);
+        }
+      }
+      ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
+    } else {
+      FillTensor("src_idx", ov::element::i32, {0}, 0);
+      FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
+    }
+  }
+
   // If 'prefill use full chat history' mode is enabled, we need to cache input_ids and position_ids.
   if (prefill_use_full_chat_history) {
     auto input_ids_tensor = ovInfReq.get_tensor("input_ids");
@@ -463,6 +535,31 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
 void StatefulOVInferRequest::Infer() {
   PreProcessInferRequest();
   OVInferRequest::Infer();
+  PostProcessInferRequest();
+}
+
+void StatefulOVInferRequest::PostProcessInferRequest() {
+  if (is_kvcache_reorder_added) {
+    kv_src_indices.clear();
+    kv_dst_indices.clear();
+  }
+}
+
+void StatefulOVInferRequest::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+  // Validate input parameters
+  if (src_indices.size() != dst_indices.size()) {
+    ORT_THROW(log_tag +
+              "ReorderKVCache: src_indices and dst_indices must have the same size. "
+              "Got src_indices.size()=" +
+              std::to_string(src_indices.size()) +
+              ", dst_indices.size()=" + std::to_string(dst_indices.size()));
+  }
+
+  LOGS_DEFAULT(INFO) << log_tag << "ReorderKVCache: Reordering OpenVINO-internal KVCache state with "
+                     << src_indices.size() << " index pairs";
+
+  kv_src_indices = src_indices;
+  kv_dst_indices = dst_indices;
 }
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
@@ -514,5 +611,45 @@ void StatefulOVInferRequest::RewindKVCache(size_t index) {
     }
   }
 }
+
+OVTensorPtr StatefulOVInferRequest::GetTensor(const std::string& input_name) {
+  auto tobj = OVInferRequest::GetTensor(input_name);
+
+  if (_npu_logits_slice_required) {
+    if (input_name == "logits") {
+      if (tobj->get_shape().size() != 3) {
+        ORT_THROW(log_tag + std::format("Expected logits to have shape of rank 3, but it has shape of rank {}",
+                                        tobj->get_shape().size()));
+      }
+
+      // When _npu_logits_slice_required is true, it means that prefill may produce logits of shape:
+      // [<batch_size>, sequence_length, <vocab_size>]
+      // (Where 'sequence_length' is number of input tokens to prefill)
+      // But, ORT GenAI is expecting to receive logits of shape:
+      // [<batch_size>, 1, <vocab_size>]
+      // In this case, detect when shape[1] is not 1. When it is, create a slice of shape [<batch_size>, 1, <vocab_size>]
+      if (tobj->get_shape()[1] > 1) {
+        return OvExceptionBoundary<false>([&]() {
+          const ov::Coordinate begin = {0, tobj->get_shape()[1] - 1, 0};
+          const ov::Coordinate end = {tobj->get_shape()[0], tobj->get_shape()[1], tobj->get_shape()[2]};
+          auto sliced_tensor = ov::Tensor(*tobj, begin, end);
+          if (sliced_tensor.is_continuous()) {
+            OVTensorPtr blob = std::make_shared<OVTensor>(sliced_tensor);
+            return blob;
+          } else {
+            auto continuous_sliced_tensor = ov::Tensor(sliced_tensor.get_element_type(), sliced_tensor.get_shape());
+            sliced_tensor.copy_to(continuous_sliced_tensor);
+            OVTensorPtr blob = std::make_shared<OVTensor>(continuous_sliced_tensor);
+            return blob;
+          }
+        },
+                                          "Could not create sliced logits tensor");
+      }
+    }
+  }
+
+  return tobj;
+}
+
 }  // namespace openvino_ep
 }  // namespace onnxruntime

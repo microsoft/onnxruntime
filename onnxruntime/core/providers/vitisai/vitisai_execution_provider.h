@@ -48,6 +48,20 @@ class VitisAIExecutionProvider : public IExecutionProvider {
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  /**
+   * Get compiled model compatibility information.
+   * This method collects compatibility info from all vaip_core execution providers
+   * and returns it as a JSON string.
+   */
+  std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const override;
+
+  /**
+   * Validate compiled model compatibility information.
+   * This method validates the compatibility info against the current runtime environment.
+   */
+  common::Status ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
+                                                        OrtCompiledModelCompatibility& model_compatibility) const override;
+
  private:
   using my_ep_t = vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>;
   using my_ep_uptr_t = std::shared_ptr<my_ep_t>;

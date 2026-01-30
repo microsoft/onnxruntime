@@ -27,6 +27,7 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/program.h"
@@ -37,13 +38,13 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture) {
-  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
+void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
+  std::call_once(init_flag_, [this, &config]() {
     if (device_ == nullptr) {
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
-      req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
-      req_adapter_options.powerPreference = static_cast<wgpu::PowerPreference>(power_preference_);
+      req_adapter_options.backendType = static_cast<wgpu::BackendType>(config.backend_type);
+      req_adapter_options.powerPreference = static_cast<wgpu::PowerPreference>(config.power_preference);
 
 #if !defined(__wasm__)
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
@@ -134,18 +135,21 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                               buffer_cache_config.storage.mode,
-                                               buffer_cache_config.uniform.mode,
-                                               buffer_cache_config.query_resolve.mode);
+                                               config.buffer_cache_config.storage.mode,
+                                               config.buffer_cache_config.uniform.mode,
+                                               config.buffer_cache_config.query_resolve.mode);
 
-    // create initializer buffer manager. cache is always disabled for initializer buffer manager
+    // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                                           BufferCacheMode::Disabled,
-                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::Disabled);
 
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(*this);
+
+    // create split-k config
+    split_k_config_ = std::make_unique<SplitKConfig>(adapter_info_);
 
     // set query type
 #if !defined(__wasm__)
@@ -158,15 +162,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     } else {
       query_type_ = TimestampQueryType::None;
     }
-    if (enable_pix_capture) {
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-      // set pix frame generator
-      pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
-                                                                       Device());
-#else
-    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
-    }
   });
 }
 
@@ -178,7 +173,7 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
+Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -288,8 +283,8 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
 
   if (is_profiling_) {
-    PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
-                                          context.KernelContext().GetOpType(),
+    PendingKernelInfo pending_kernel_info(context.NodeName(),
+                                          context.OpType(),
                                           program.Name(),
                                           key,
                                           inputs,
@@ -442,7 +437,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
   WGPUBuffer uniform_buffer = nullptr;
-  const webgpu::BufferManager& buffer_mgr = ComputeContext::BufferManagerAccessor::Get(context);
+  const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   if (uniform_buffer_total_size > 0) {
     std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
 
@@ -617,7 +612,7 @@ void WebGpuContext::StartProfiling() {
   }
 }
 
-void WebGpuContext::CollectProfilingData(profiling::Events& events) {
+void WebGpuContext::CollectProfilingData() {
   if (!pending_queries_.empty()) {
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
@@ -634,17 +629,15 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
 
       for (size_t i = 0; i < pending_kernels.size(); i++) {
         const PendingKernelInfo& pending_kernel_info = pending_kernels[i];
-        const auto& inputs = pending_kernel_info.inputs;
-        const auto& outputs = pending_kernel_info.outputs;
+        const auto& input_shapes = pending_kernel_info.input_shapes;
+        const auto& output_shapes = pending_kernel_info.output_shapes;
 
         SS(shapes, 128);
-        for (size_t s = 0; s < inputs.size(); s++) {
-          const auto& input = inputs[s];
-          shapes << "inputs[" << s << "] = " << input.override_shape.ToString() << " ";
+        for (size_t s = 0; s < input_shapes.size(); s++) {
+          shapes << "inputs[" << s << "] = " << input_shapes[s].ToString() << " ";
         }
-        for (size_t s = 0; s < outputs.size(); s++) {
-          const auto& output = outputs[s];
-          shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
+        for (size_t s = 0; s < output_shapes.size(); s++) {
+          shapes << "outputs[" << s << "] = " << output_shapes[s].ToString() << " ";
         }
 
         if (gpu_timestamp_offset_ == 0) {
@@ -654,7 +647,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
         uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
         uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
 
-        const std::unordered_map<std::string, std::string>& event_args = {
+        InlinedHashMap<std::string, std::string> event_args = {
             {"shapes", SS_GET(shapes)},
             {"cache_key", pending_kernel_info.cache_key},
         };
@@ -666,7 +659,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                      static_cast<int64_t>(std::round(start_time / 1000.0)),
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
-        events.emplace_back(std::move(event));
+        events_.emplace_back(std::move(event));
       }
 
       query_read_buffer.Unmap();
@@ -679,7 +672,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   is_profiling_ = false;
 }
 
-void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, profiling::Events& cached_events) {
+void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) {
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
@@ -688,10 +681,10 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
     ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
 
     events.insert(events.end(),
-                  std::make_move_iterator(cached_events.begin()),
-                  std::make_move_iterator(cached_events.end()));
+                  std::make_move_iterator(events_.begin()),
+                  std::make_move_iterator(events_.end()));
 
-    cached_events.clear();
+    events_.clear();
   } else {
     LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
   }
@@ -752,14 +745,6 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   }
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
-}
-
-void WebGpuContext::OnRunEnd() {
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  if (pix_frame_generator_) {
-    pix_frame_generator_->GeneratePIXFrame();
-  }
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 }
 
 void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
@@ -925,7 +910,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                          dawn_proc_table = config.dawn_proc_table
 #endif
   ]() {
-  // Step.1 - setup dawn proc table (only for non-WASM build)
+  // Setup dawn proc table (only for non-WASM build)
 
 #if !defined(__wasm__)
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
@@ -942,8 +927,12 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     dawnProcSetProcs(dawn_procs);
 #endif
 #endif
+  });
 
-    // Step.2 - Create wgpu::Instance
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (default_instance_ == nullptr) {
+    // Create wgpu::Instance
     wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.requiredFeatures = required_instance_features;
@@ -951,7 +940,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     default_instance_ = wgpu::CreateInstance(&instance_desc);
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
-  });
+  }
 
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
@@ -965,8 +954,6 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                 "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
@@ -974,8 +961,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     device,
                                                                     config.validation_mode,
                                                                     config.preserve_device,
-                                                                    config.max_storage_buffer_binding_size,
-                                                                    config.power_preference));
+                                                                    config.max_storage_buffer_binding_size));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
@@ -983,6 +969,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
   it->second.ref_count++;
+
+  // perform initialization
+  it->second.context->Initialize(config);
+
   return *it->second.context;
 }
 
@@ -1010,6 +1000,11 @@ void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
   contexts_.clear();
   default_instance_ = nullptr;
+}
+
+WebGpuContext& WebGpuContextFactory::DefaultContext() {
+  WebGpuContextConfig config{};
+  return WebGpuContextFactory::CreateContext(config);
 }
 
 void CleanupWebGpuContexts() {

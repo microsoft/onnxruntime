@@ -37,7 +37,7 @@ TEST(Random, RandomNormal2DDouble) {
   // The expected_output is generated using std lib, which is used by CPU kernel only.
   // So we need to exclude other EPs here. Ditto for other places.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider});
 }
 
 void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
@@ -74,7 +74,7 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomNormalLike3DDouble) {
@@ -112,7 +112,7 @@ TEST(Random, RandomUniform1DFloat) {
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
 }
 
 void RunRandomUniformLikeTest(bool infer_dtype = false) {
@@ -146,7 +146,7 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
 
   // TensorRT does not support seed parameter and there will be result mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomUniformLike2DDouble) {
@@ -333,7 +333,7 @@ TEST(Random, MultinomialInvalidDtype) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "Output type must be int32 or int64");
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 // We cannot call CUDA lib from UT, so just do some simple verification on output tensor.
 void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, const float scale, const float seed,
                             TensorProto_DataType dtype, bool is_random_like, bool infer_dtype) {

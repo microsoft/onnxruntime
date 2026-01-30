@@ -18,8 +18,20 @@
 #include "openvino/frontend/manager.hpp"
 #include "openvino/core/dimension.hpp"
 #include "openvino/core/partial_shape.hpp"
+#include "weak_singleton.h"
 
 #include <string>
+
+// Helper macro to test OpenVINO version at compile time.
+// Usage: #if OPENVINO_VERSION_AT_LEAST(2025, 3)
+// Falls back to 0 if OPENVINO_VERSION_MAJOR/MINOR are not defined.
+#if defined(OPENVINO_VERSION_MAJOR) && defined(OPENVINO_VERSION_MINOR)
+#define OPENVINO_VERSION_AT_LEAST(major, minor) \
+  ((OPENVINO_VERSION_MAJOR > (major)) ||        \
+   (OPENVINO_VERSION_MAJOR == (major) && OPENVINO_VERSION_MINOR >= (minor)))
+#else
+#define OPENVINO_VERSION_AT_LEAST(major, minor) 0
+#endif
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -27,6 +39,7 @@ class OVCore;
 class OVInferRequest;
 class OVExeNetwork;
 struct ModelBlobWrapper;
+struct SessionContext;
 
 typedef ov::Tensor OVTensor;
 typedef ov::ProfilingInfo OVProfilingInfo;
@@ -35,32 +48,6 @@ typedef std::shared_ptr<OVInferRequest> OVInferRequestPtr;
 typedef std::shared_ptr<OVTensor> OVTensorPtr;
 
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
-
-template <typename T>
-class WeakSingleton {
- public:
-  static std::shared_ptr<T> Get() {
-    static std::weak_ptr<T> instance;
-    static std::mutex mutex;
-
-    auto ptr = instance.lock();
-    if (!ptr) {
-      std::lock_guard<std::mutex> lock(mutex);
-      // ensure another thread didn't create an instance while this thread was waiting
-      ptr = instance.lock();
-      if (!ptr) {
-        ptr = std::make_shared<T>();
-        instance = ptr;
-      }
-    }
-    return ptr;
-  }
-
- protected:
-  WeakSingleton() = default;
-  virtual ~WeakSingleton() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WeakSingleton);
-};
 
 struct OVCore : WeakSingleton<OVCore> {
   ov::Core core;
@@ -91,7 +78,8 @@ struct OVCore : WeakSingleton<OVCore> {
                                             std::string& hw_target,
                                             const ov::AnyMap& device_config,
                                             bool enable_causallm,
-                                            std::filesystem::path model_file_path);
+                                            std::filesystem::path model_file_path,
+                                            const SessionContext& session_context);
 
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
@@ -103,10 +91,11 @@ class OVExeNetwork {
   ov::CompiledModel compiled_model_obj;
   std::string target_device;
   bool is_stateful_causallm;
+  bool is_kvcache_reorder_added = false;
 
  public:
-  explicit OVExeNetwork(ov::CompiledModel compiled_model, std::string device, bool stateful_causallm = false)
-      : compiled_model_obj(std::move(compiled_model)), target_device(std::move(device)), is_stateful_causallm(stateful_causallm) {}
+  explicit OVExeNetwork(ov::CompiledModel compiled_model, std::string device, bool stateful_causallm = false, bool kvcache_reorder_added = false)
+      : compiled_model_obj(std::move(compiled_model)), target_device(std::move(device)), is_stateful_causallm(stateful_causallm), is_kvcache_reorder_added(kvcache_reorder_added) {}
   OVExeNetwork() : compiled_model_obj(ov::CompiledModel()), is_stateful_causallm(false) {}
   ov::CompiledModel& Get() { return compiled_model_obj; }
   std::shared_ptr<OVInferRequest> CreateInferRequest();
@@ -124,7 +113,7 @@ class OVInferRequest {
 
  public:
   uint32_t GetNumInputs();
-  OVTensorPtr GetTensor(const std::string& name);
+  virtual OVTensorPtr GetTensor(const std::string& name);
   std::string GetInputTensorName(uint32_t index);
 
   // Set tensor call infer req tensor if ort_ptr differs from last set ptr.
@@ -144,33 +133,45 @@ class OVInferRequest {
   virtual void Infer();
   explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
   OVInferRequest() : ovInfReq(ov::InferRequest()) {}
-  ov::InferRequest& GetNewObj() {
+  ov::InferRequest& GetInfReq() {
     return ovInfReq;
   }
   virtual void RewindKVCache([[maybe_unused]] size_t index) {}
+  virtual void ReorderKVCache([[maybe_unused]] const std::vector<int32_t>& src_indices, [[maybe_unused]] const std::vector<int32_t>& dst_indices) {}
 };
 
 class StatefulOVInferRequest : public OVInferRequest {
  public:
-  explicit StatefulOVInferRequest(ov::InferRequest infer_request, std::string device);
+  explicit StatefulOVInferRequest(ov::InferRequest infer_request, std::string device, bool kvcache_reorder_added = false);
 
   void Infer() override;
   void RewindKVCache(size_t index) override;
+  void ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) override;
   void FillTensor(const std::string& tensor_name, const ov::element::Type& type,
                   const std::vector<size_t>& shape, int32_t fill_value);
   void CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache);
   void SetTensorFromCache(const std::string& tensor_name, const std::vector<int64_t>& cache_data);
   std::optional<ov::Tensor> FindTensor(const std::string& tensor_name);
+  OVTensorPtr GetTensor(const std::string& name) override;
 
  private:
   void PreProcessInferRequest();
+  void PostProcessInferRequest();
   std::string target_device;
+
+  std::vector<int64_t> cached_input_ids;
+  std::vector<int64_t> cached_position_ids;
+  std::vector<int32_t> kv_src_indices;
+  std::vector<int32_t> kv_dst_indices;
 
   // If prefill_use_full_chat_history is true, cache the "input_ids" & "position_ids" tensors,
   // and ensure that full chat history is passed for each prefill call.
   bool prefill_use_full_chat_history = false;
-  std::vector<int64_t> cached_input_ids;
-  std::vector<int64_t> cached_position_ids;
+  // If kvcache_reorder is added, will include kv_src/dst_indices as input
+  bool is_kvcache_reorder_added = false;
+
+  bool IsNPULogitsSliceRequired();
+  bool _npu_logits_slice_required = false;
 };
 
 }  // namespace openvino_ep

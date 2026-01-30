@@ -36,6 +36,12 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  GetHardwareDeviceIncompatibilityDetails = GetHardwareDeviceIncompatibilityDetailsImpl;
+
+  CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
+
+  GetNumCustomOpDomains = GetNumCustomOpDomainsImpl;
+  GetCustomOpDomains = GetCustomOpDomainsImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
@@ -68,6 +74,22 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
                                                      OrtDeviceMemoryType_HOST_ACCESSIBLE,
                                                      /*alignment*/ 0,
                                                      OrtAllocatorType::OrtDeviceAllocator};
+  // Custom Op Domains
+  custom_op_domains_[0] = Ort::CustomOpDomain{"test"};
+  custom_op_domains_[1] = Ort::CustomOpDomain{"test2"};
+
+  std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list;
+  created_custom_op_list.push_back(std::make_unique<ExampleEpCustomOp>(ep_name_.c_str(), this));
+  created_custom_op_list.back().get()->SetName("Custom_Mul");
+  custom_op_domains_[0].Add(created_custom_op_list.back().get());
+
+  std::vector<std::unique_ptr<ExampleEpCustomOp>> created_custom_op_list_2;
+  created_custom_op_list_2.push_back(std::make_unique<ExampleEpCustomOp>(ep_name_.c_str(), this));
+  created_custom_op_list_2.back().get()->SetName("Custom_Mul2");
+  custom_op_domains_[1].Add(created_custom_op_list_2.back().get());
+
+  created_custom_op_lists_[0] = std::move(created_custom_op_list);
+  created_custom_op_lists_[1] = std::move(created_custom_op_list_2);
 }
 
 /*static*/
@@ -305,6 +327,93 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
     auto sync_stream = std::make_unique<StreamImpl>(factory, /*OrtEp**/ nullptr, stream_options);
     *stream = sync_stream.release();
   }
+
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetNumCustomOpDomainsImpl(OrtEpFactory* this_ptr,
+                                                                    _Out_ size_t* num_domains) noexcept {
+  auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+  *num_domains = factory->custom_op_domains_.size();
+
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetCustomOpDomainsImpl(
+    OrtEpFactory* this_ptr,
+    _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
+    _Out_ size_t num_domains) noexcept {
+  auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+
+  // The `num_domains` should be 2 as ORT calls GetNumCustomOpDomainsImpl() to get the number prior to
+  // call this function.
+  gsl::span<OrtCustomOpDomain*> domains_span(domains, num_domains);
+  domains_span[0] = factory->custom_op_domains_[0];
+  domains_span[1] = factory->custom_op_domains_[1];
+
+  return nullptr;
+}
+
+OrtStatusPtr ExampleEpCustomOp::CreateKernelV2(const OrtApi& /*api*/,
+                                               const OrtKernelInfo* /*info*/,
+                                               void** op_kernel) const {
+  std::string node_input_0 = "X";
+  std::string node_input_1 = "W";
+  auto custom_kernel_op = std::make_unique<CustomMulKernel>(factory_->ort_api,
+                                                            factory_->default_logger_,
+                                                            float_initializers_,
+                                                            node_input_0,
+                                                            node_input_1);
+  *op_kernel = custom_kernel_op.release();
+  return nullptr;
+}
+
+OrtStatusPtr ExampleEpCustomOp::KernelComputeV2(void* op_kernel, OrtKernelContext* context) const {
+  return static_cast<CustomMulKernel*>(op_kernel)->ComputeV2(context);
+}
+
+OrtStatus* ORT_API_CALL ExampleEpFactory::GetHardwareDeviceIncompatibilityDetailsImpl(
+    OrtEpFactory* this_ptr,
+    const OrtHardwareDevice* hw,
+    OrtDeviceEpIncompatibilityDetails* details) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  // Example: This EP only supports CPU devices. Report incompatibility for non-CPU devices.
+  OrtHardwareDeviceType device_type = factory.ort_api.HardwareDevice_Type(hw);
+
+  if (device_type != OrtHardwareDeviceType_CPU) {
+    // Report that the device type is not supported
+    uint32_t reasons = OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE;
+    return factory.ep_api.DeviceEpIncompatibilityDetails_SetDetails(
+        details,
+        reasons,
+        static_cast<int32_t>(device_type),  // Use device type as the error code for testing
+        "ExampleEP only supports CPU devices");
+  }
+
+  // Device is compatible - details are already initialized with default values by ORT
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDeviceImpl(
+    OrtEpFactory* this_ptr,
+    const OrtEpDevice* /*ep_device*/,
+    OrtExternalResourceImporterImpl** out_importer) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  if (out_importer == nullptr) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "out_importer cannot be nullptr");
+  }
+
+  // Create the external resource importer
+  // NOTE: For production multi-GPU EPs, you should capture ep_device in the importer
+  // to enable proper device validation and support multiple physical devices.
+  // This example EP only supports a single device, so we don't store it.
+  auto importer = std::make_unique<ExampleExternalResourceImporter>(factory);
+  *out_importer = importer.release();
 
   return nullptr;
 }

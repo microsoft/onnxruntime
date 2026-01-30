@@ -369,7 +369,9 @@ if (CPUINFO_SUPPORTED)
       PATCH_COMMAND
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
         # https://github.com/pytorch/cpuinfo/pull/324
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
+        # https://github.com/pytorch/cpuinfo/pull/348
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   else()
@@ -843,6 +845,12 @@ if(onnxruntime_USE_KLEIDIAI)
 
   onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
   onnxruntime_fetchcontent_makeavailable(kleidiai)
+  # Fetch Qualcomm's kleidiai library
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+          onnxruntime_fetchcontent_declare(kleidiai-qmx URL ${DEP_URL_kleidiai-qmx} URL_HASH SHA1=${DEP_SHA1_kleidiai-qmx}
+                  EXCLUDE_FROM_ALL)
+          onnxruntime_fetchcontent_makeavailable(kleidiai-qmx)
+  endif()
 endif()
 
 set(onnxruntime_LINK_DIRS)

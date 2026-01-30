@@ -10,6 +10,10 @@
 #include "core/providers/providers.h"
 #include "core/providers/webgpu/buffer_manager.h"
 
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+#include "core/providers/webgpu/webgpu_pix_frame_generator.h"
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
+
 struct pthreadpool;
 namespace onnxruntime {
 namespace webgpu {
@@ -27,18 +31,11 @@ struct CapturedCommandInfo;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
-  WebGpuExecutionProviderConfig(DataLayout data_layout, bool enable_graph_capture, bool enable_pix_capture)
-      : data_layout{data_layout},
-        enable_graph_capture{enable_graph_capture},
-        enable_pix_capture{enable_pix_capture} {}
-  WebGpuExecutionProviderConfig(WebGpuExecutionProviderConfig&&) = default;
-  WebGpuExecutionProviderConfig& operator=(WebGpuExecutionProviderConfig&&) = default;
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(WebGpuExecutionProviderConfig);
-
-  DataLayout data_layout;
-  bool enable_graph_capture;
-  bool enable_pix_capture;
-  std::vector<std::string> force_cpu_node_names;
+  DataLayout data_layout{DataLayout::NHWC};  // preferred layout is NHWC by default
+  bool enable_graph_capture{false};          // graph capture feature is disabled by default
+  bool enable_pix_capture{false};            // PIX capture is disabled by default
+  bool enable_int64{false};                  // int64 ops are not enabled by default
+  std::vector<std::string> force_cpu_node_names{};
 };
 
 class WebGpuExecutionProvider : public IExecutionProvider {
@@ -84,6 +81,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
   webgpu::BufferManager& BufferManager() const;
+  AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
 
  private:
   bool IsGraphCaptureAllowed() const;
@@ -91,20 +89,28 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   int context_id_;
   webgpu::WebGpuContext& context_;
-  webgpu::WebGpuProfiler* profiler_ = nullptr;
+  webgpu::WebGpuProfiler* session_profiler_{nullptr};
   DataLayout preferred_data_layout_;
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
+  bool enable_int64_ = false;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
   int m_current_graph_annotation_id = 0;
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
   // Buffer manager specifically for graph capture mode
   std::unique_ptr<webgpu::BufferManager> graph_buffer_mgr_ = nullptr;
 
   // Store captured commands directly in the EP instead of in WebGpuContext
   std::vector<webgpu::CapturedCommandInfo> captured_commands_;
+
+  // Allocator for prepacked weights (uses buffers without mapping)
+  AllocatorPtr prepack_allocator_;
 };
 
 }  // namespace onnxruntime

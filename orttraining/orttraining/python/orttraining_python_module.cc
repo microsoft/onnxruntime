@@ -33,11 +33,6 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
                                                              const ProviderOptionsMap& provider_options_map);
 #endif
 
-#ifdef USE_ROCM
-const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
-                                                             const ProviderOptionsMap& provider_options_map);
-#endif
-
 void addGlobalMethods(py::module& m);
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForTraining(py::module& m);
@@ -77,7 +72,7 @@ bool GetDynamicExecutionProviderHash(
 bool GetProviderInstanceHash(const std::string& type,
                              const ProviderOptionsMap& provider_options_map,
                              size_t& hash) {
-  // for built-in execution provider, currently only cpu / cuda / rocm support hash.
+  // for built-in execution provider, currently only cpu / cuda support hash.
   if (type == kCpuExecutionProvider) {
     // for CPU, only 1 instance
     hash = 0;
@@ -88,15 +83,6 @@ bool GetProviderInstanceHash(const std::string& type,
       const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
                                                                           provider_options_map);
       hash = std::hash<CUDAExecutionProviderInfo>{}(info);
-      return true;
-    }
-#endif
-  } else if (type == kRocmExecutionProvider) {
-#ifdef USE_ROCM
-    if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
-      const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
-                                                                          provider_options_map);
-      hash = std::hash<ROCMExecutionProviderInfo>{}(info);
       return true;
     }
 #endif
@@ -123,7 +109,7 @@ bool GetProviderInstanceHash(const std::string& type,
   return false;
 }
 
-ORTTrainingPythonEnv::ORTTrainingPythonEnv(std::unique_ptr<OrtEnv> ort_env) : ort_env_(std::move(ort_env)) {
+ORTTrainingPythonEnv::ORTTrainingPythonEnv(OrtEnvPtr ort_env) : ort_env_(std::move(ort_env)) {
   const auto& builtinEPs = GetAvailableExecutionProviderNames();
   available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
 }
@@ -187,7 +173,7 @@ static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
-  std::unique_ptr<OrtEnv> ort_env(OrtEnv::GetInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr));
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr);
   if (!status.IsOK()) return status;
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {

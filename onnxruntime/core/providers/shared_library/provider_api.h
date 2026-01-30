@@ -30,6 +30,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
 #include "core/framework/float4.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
@@ -79,6 +80,9 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_UINT4 = 21,
   TensorProto_DataType_INT4 = 22,
   TensorProto_DataType_FLOAT4E2M1 = 23,
+  TensorProto_DataType_FLOAT8E8M0 = 24,
+  TensorProto_DataType_UINT2 = 25,
+  TensorProto_DataType_INT2 = 26,
 };
 
 enum TensorProto_DataLocation : int {
@@ -98,7 +102,8 @@ enum Version : int {
   IR_VERSION_2021_7_31 = 8,
   IR_VERSION_2023_5_5 = 9,
   IR_VERSION_2024_3_25 = 10,
-  IR_VERSION = 11
+  IR_VERSION_2025_05_12 = 11,
+  IR_VERSION = 12
 };
 
 enum OperatorStatus : int {
@@ -298,7 +303,6 @@ constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
-constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNvTensorRTRTXExecutionProvider = "NvTensorRTRTXExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
@@ -317,9 +321,6 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
-
-std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
@@ -412,6 +413,15 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
 }
 
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
+}
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2;
+}
+
 inline std::vector<std::unique_ptr<ComputeCapability>>
 CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::unordered_set<const Node*>& supported_nodes,
@@ -441,6 +451,11 @@ inline Status GetTensorProtoWithDataIfInMemory(
 
 inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return g_host->Utils__HasExternalDataInMemory(ten_proto);
+}
+
+inline Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
+                                       const std::filesystem::path& location) {
+  return g_host->Utils__ValidateExternalDataPath(base_dir, location);
 }
 
 }  // namespace utils

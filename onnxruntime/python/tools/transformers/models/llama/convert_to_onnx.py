@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import warnings
 from itertools import chain
 
 import onnx
@@ -631,7 +632,7 @@ def get_args():
         "--execution_provider",
         required=False,
         default="cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
         help="Execution provider to verify parity with",
     )
 
@@ -801,6 +802,12 @@ def get_args():
 
 
 def main():
+    warnings.warn(
+        "This example is deprecated. Use the Olive recipe instead: "
+        "https://github.com/microsoft/olive-recipes/tree/main",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if version.parse(torch.__version__) < version.parse("2.2.0"):
         logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
         return

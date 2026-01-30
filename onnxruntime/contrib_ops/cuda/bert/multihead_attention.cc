@@ -305,10 +305,10 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                              nullptr == cache_indirection &&
                              nullptr == output_qk &&
                              parameters.head_size == parameters.v_head_size &&
-                             onnxruntime::flash::is_supported(device_prop,
-                                                              parameters.head_size,
-                                                              parameters.num_heads,
-                                                              parameters.num_heads);
+                             onnxruntime::flash::is_supported<T>(device_prop,
+                                                                 parameters.head_size,
+                                                                 parameters.num_heads,
+                                                                 parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster than flash attention when sequence length <= 512.
   DUMP_STRING("Use flash attn = ", (use_flash_attention == true));
   if (use_flash_attention && parameters.qkv_format == AttentionQkvFormat::QKV_BS3NH &&
@@ -443,6 +443,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       (nullptr == key_padding_mask || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       nullptr == past_sequence_length && nullptr == cache_indirection && nullptr == output_qk &&
       has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value,
+                                     std::is_same<T, BFloat16>::value,
                                      parameters.head_size, parameters.v_head_size);
   DUMP_STRING("Use memory efficient attention = ", (use_memory_efficient_attention == true));
   if (use_memory_efficient_attention) {

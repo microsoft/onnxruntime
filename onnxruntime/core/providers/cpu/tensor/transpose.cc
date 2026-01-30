@@ -18,6 +18,15 @@ namespace {
 using DefaultDataTypes = element_type_lists::All;
 }  // namespace
 
+namespace {
+// Define a type list that extends AllIRv10 with INT2 types
+using AllIRv10WithInt2 =
+    boost::mp11::mp_push_back<
+        element_type_lists::AllIRv10,
+        UInt2x4,
+        Int2x4>;
+}  // namespace
+
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
@@ -39,6 +48,14 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Transpose, 21, Input, 0,
     element_type_lists::AllIRv10);
 
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Transpose, 25, Input, 0,
+    AllIRv10WithInt2);
+
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Transpose, 25, Input, 0,
+    AllIRv10WithInt2);
+
 }  // namespace op_kernel_type_control
 
 namespace {
@@ -47,6 +64,8 @@ using EnabledDataTypesAllOpsets = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS
                                                                                  Transpose, Input, 0);
 using EnabledDataTypesOpset21 = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
                                                                     Transpose, 21, Input, 0);
+using EnabledDataTypesOpset25 = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
+                                                                    Transpose, 25, Input, 0);
 }  // namespace
 
 /* A permutation [a,b,c,...] indicates that
@@ -371,38 +390,38 @@ static Status TransposeImpl(const gsl::span<const size_t>& permutations, const T
   return DoUntypedTranspose(permutations, input, output, input_shape_override);
 }
 
-template <typename Int4Type>
-static Status UnpackInt4Tensor(const Tensor& src, Tensor& dst, AllocatorPtr cpu_allocator) {
-  using UnpackedType = typename Int4Type::UnpackedType;
+template <typename SubByteType>
+static Status UnpackSubByteTensor(const Tensor& src, Tensor& dst, AllocatorPtr cpu_allocator) {
+  using UnpackedType = typename SubByteType::UnpackedType;
   MLDataType int8_elem_type = DataTypeImpl::GetType<UnpackedType>();
   const TensorShape& shape = src.Shape();
   Tensor int8_tensor(int8_elem_type, shape, cpu_allocator);
 
-  ORT_RETURN_IF_NOT(Int4Type::Unpack(int8_tensor.MutableDataAsSpan<UnpackedType>(), src.DataAsSpan<Int4Type>()),
-                    "Failed to unpack Int4x2 Tensor to an int8_t Tensor");
+  ORT_RETURN_IF_NOT(SubByteType::Unpack(int8_tensor.MutableDataAsSpan<UnpackedType>(), src.DataAsSpan<SubByteType>()),
+                    "Failed to unpack sub-byte Tensor to an int8_t/uint8_t Tensor");
 
   dst = std::move(int8_tensor);
 
   return Status::OK();
 }
 
-template <typename Int4Type>
-static Status DoTransposeInt4(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                              const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
-  using Int8Type = typename Int4Type::UnpackedType;
+template <typename SubByteType>
+static Status DoTransposeSubByte(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
+                                 const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
+  using UnpackedType = typename SubByteType::UnpackedType;
 
-  ORT_RETURN_IF_NOT(input.IsDataType<Int4Type>() && output.IsDataType<Int4Type>(),
-                    "Expected to transpose int4 tensor");
+  ORT_RETURN_IF_NOT(input.IsDataType<SubByteType>() && output.IsDataType<SubByteType>(),
+                    "Expected to transpose sub-byte tensor");
 
-  // Convert to Tensor<Int8Type>, transpose, and then repack back to Tensor<Int4Type>.
+  // Convert to Tensor<UnpackedType>, transpose, and then repack back to Tensor<SubByteType>.
   AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   Tensor input_unpacked;
-  Tensor output_unpacked(DataTypeImpl::GetType<Int8Type>(), output.Shape(), cpu_allocator);
+  Tensor output_unpacked(DataTypeImpl::GetType<UnpackedType>(), output.Shape(), cpu_allocator);
 
-  ORT_RETURN_IF_ERROR((UnpackInt4Tensor<Int4Type>(input, input_unpacked, cpu_allocator)));
+  ORT_RETURN_IF_ERROR((UnpackSubByteTensor<SubByteType>(input, input_unpacked, cpu_allocator)));
   ORT_RETURN_IF_ERROR(TransposeImpl(permutations, input_unpacked, output_unpacked, input_shape_override, tp));
-  ORT_RETURN_IF_NOT(Int4Type::Pack(output.MutableDataAsSpan<Int4Type>(), output_unpacked.DataAsSpan<Int8Type>()),
-                    "Failed to pack 8-bit Tensor into 4-bit Tensor");
+  ORT_RETURN_IF_NOT(SubByteType::Pack(output.MutableDataAsSpan<SubByteType>(), output_unpacked.DataAsSpan<UnpackedType>()),
+                    "Failed to pack 8-bit Tensor into sub-byte Tensor");
 
   return Status::OK();
 }
@@ -417,12 +436,23 @@ Status TransposeBase::DoTranspose(const gsl::span<const size_t>& permutations, c
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatched data types between input and output Tensors. ",
                            input_type, " != ", output_type);
   }
+
+  // Handle int4 types
   if (input.IsDataType<Int4x2>()) {
-    return DoTransposeInt4<Int4x2>(permutations, input, output, input_shape_override, tp);
+    return DoTransposeSubByte<Int4x2>(permutations, input, output, input_shape_override, tp);
   }
 
   if (input.IsDataType<UInt4x2>()) {
-    return DoTransposeInt4<UInt4x2>(permutations, input, output, input_shape_override, tp);
+    return DoTransposeSubByte<UInt4x2>(permutations, input, output, input_shape_override, tp);
+  }
+
+  // Handle int2 types
+  if (input.IsDataType<Int2x4>()) {
+    return DoTransposeSubByte<Int2x4>(permutations, input, output, input_shape_override, tp);
+  }
+
+  if (input.IsDataType<UInt2x4>()) {
+    return DoTransposeSubByte<UInt2x4>(permutations, input, output, input_shape_override, tp);
   }
 
   return TransposeImpl(permutations, input, output, input_shape_override, tp);
@@ -485,11 +515,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
     Transpose);
 
-// Opset 24
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     24,
+    24,
     KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset21>()),
+    Transpose);
+
+// Opset 25
+ONNX_CPU_OPERATOR_KERNEL(
+    Transpose,
+    25,
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypesOpset25>()),
     Transpose);
 
 }  // namespace onnxruntime
