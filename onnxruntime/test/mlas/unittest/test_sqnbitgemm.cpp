@@ -265,7 +265,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* Workspace = nullptr;
-    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
+    if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, !Symmetric, ComputeType, nullptr);
         WorkspaceSize > 0) {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
@@ -277,7 +277,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       bool has_zp_input = QuantBZeroPoint != nullptr;
       MlasQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
                                   QuantBScale, has_zp_input, QuantBZeroPoint,
-                                  GetMlasThreadPool());
+                                  GetMlasThreadPool(), nullptr);
     }
 
     CallGemm(M, N, K,

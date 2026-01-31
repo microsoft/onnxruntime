@@ -582,7 +582,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     constexpr size_t Lda = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t PackACount = M * Lda;
     constexpr size_t ScaleCount = M * BlkCount;
-    const size_t BufferSize = MlasQNBitGemmBatchWorkspaceSize(M, 1, K, 1, Bits, BlkLen, true, SQNBIT_CompInt8);
+    const size_t BufferSize = MlasQNBitGemmBatchWorkspaceSize(M, 1, K, 1, Bits, BlkLen, true, SQNBIT_CompInt8, nullptr);
     const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
 
     const auto* inputA = inputA_.GetFilledBuffer(M * K, [this](float* p, size_t t) {
