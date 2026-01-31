@@ -13,6 +13,11 @@
 namespace onnxruntime {
 namespace qnn {
 
+namespace {
+constexpr const char* kNpuBF16InterpolationLimitations =
+    "QNN EP: Resize support BF16 inputs with linear mode only on the NPU.";
+}
+
 class ResizeOpBuilder : public BaseOpBuilder {
  public:
   ResizeOpBuilder() : BaseOpBuilder("ResizeOpBuilder") {}
@@ -50,6 +55,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   static const OnnxAttrInfo<std::string> onnx_nearest_mode_attr;
   static const OnnxAttrInfo<int64_t> onnx_antialias_attr;
   static const OnnxAttrInfo<int64_t> onnx_exclude_outside_attr;
+  static const OnnxAttrInfo<float> onnx_cubic_coeff_a_attr;
 
   // Tables that map an ONNX attribute value (string) to the corresponding integer (enum) QNN parameter value.
   // Ex: The "half_pixel" coordinate_transformation_mode is represented as the value 0 in QNN.
@@ -61,7 +67,8 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
 const std::unordered_map<std::string, uint32_t> ResizeOpBuilder::supported_modes = {
     {"nearest", QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST},
-    {"linear", QNN_OP_RESIZE_INTERPOLATION_MODE_LINEAR}};
+    {"linear", QNN_OP_RESIZE_INTERPOLATION_MODE_LINEAR},
+    {"cubic", QNN_OP_RESIZE_INTERPOLATION_MODE_CUBIC}};
 
 const std::unordered_map<std::string, uint32_t> ResizeOpBuilder::supported_coord_transf_modes = {
     {"half_pixel", QNN_OP_RESIZE_TRANSFORMATION_MODE_HALF_PIXEL},
@@ -82,6 +89,7 @@ const OnnxAttrInfo<std::string> ResizeOpBuilder::onnx_nearest_mode_attr = {"near
                                                                            "round_prefer_floor"};
 const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_antialias_attr = {"antialias", 0};
 const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_exclude_outside_attr = {"exclude_outside", 0};
+const OnnxAttrInfo<float> ResizeOpBuilder::onnx_cubic_coeff_a_attr = {"cubic_coeff_a", -0.75f};
 
 // Returns the QNN parameter integer value that corresponds to the given ONNX attribute mode string value.
 static Ort::Status GetQnnModeValFromOnnxString(const std::unordered_map<std::string, uint32_t>& supported_qnn_modes,
@@ -230,6 +238,11 @@ Ort::Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                           " is not supported for Resize operator in CPU backend.";
   RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, input_data_type, error_msg));
 
+  if (is_npu_backend && interp_mode != "linear" &&
+      input_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16) {
+    return MAKE_EP_FAIL(kNpuBF16InterpolationLimitations);
+  }
+
   return Ort::Status();
 }
 
@@ -356,6 +369,11 @@ Ort::Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
     param_tensor_names.push_back(qnn_interp_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_interp_mode_param));
 
+    if (is_npu_backend && qnn_interp_mode.uint32Value == QNN_OP_RESIZE_INTERPOLATION_MODE_CUBIC) {
+      const ONNXTensorElementDataType input_dtype = node_unit.Inputs()[0].type;
+      RETURN_IF(input_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, kNpuBF16InterpolationLimitations);
+    }
+
     // Parameter 'nearest_mode'. Processed only when 'interpolation_mode' is NEAREST(0).
     if (qnn_interp_mode.uint32Value == 0) {
       Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
@@ -367,6 +385,16 @@ Ort::Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                                              qnn_nearest_mode);
       param_tensor_names.push_back(qnn_nearest_mode_param.GetParamTensorName());
       qnn_model_wrapper.AddParamWrapper(std::move(qnn_nearest_mode_param));
+    }
+
+    if (qnn_interp_mode.uint32Value == QNN_OP_RESIZE_INTERPOLATION_MODE_CUBIC) {
+      const float cubic_coeff = GetOnnxAttr(node_helper, onnx_cubic_coeff_a_attr);
+      RETURN_IF_ERROR(AddQnnScalar<float>(qnn_model_wrapper,
+                                          node_unit.Index(),
+                                          node_unit.Name(),
+                                          cubic_coeff,
+                                          QNN_OP_RESIZE_PARAM_CUBIC_COEFF,
+                                          param_tensor_names));
     }
   }
 
