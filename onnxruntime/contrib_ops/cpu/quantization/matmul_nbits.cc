@@ -268,7 +268,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       auto scale_ptr = scales ? scales->DataRaw() : nullptr;
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
-                                  has_zp_input_, nullptr, threadpool_ptr);
+                                  has_zp_input_, nullptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
     }
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
@@ -285,7 +285,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
         auto sptr = tensor.Data<float>();
         MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
-                                    has_zp_input_, nullptr, nullptr);
+                                    has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
         is_packed = false;
       }
 
@@ -293,7 +293,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
         auto zptr = tensor.Data<uint8_t>();
         MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), nullptr,
-                                    has_zp_input_, zptr, nullptr);
+                                    has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
         is_packed = false;
       }
     }
@@ -458,7 +458,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
 
   IAllocatorUniquePtr<std::byte> workspace{};
   const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(
-      M, N, K, batch_count, nbits_, block_size_, zero_points, compute_type_);
+      M, N, K, batch_count, nbits_, block_size_, zero_points, compute_type_, &mlas_backend_kernel_selector_config_);
   if (workspace_size > 0) {
     // Use reserve since no caching is needed
     workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size, true);
@@ -479,7 +479,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
     data[i].ldc = N;
   }
   MlasQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type_, data.data(), workspace.get(),
-                     thread_pool);
+                     thread_pool, &mlas_backend_kernel_selector_config_);
   return Status::OK();
 }
 

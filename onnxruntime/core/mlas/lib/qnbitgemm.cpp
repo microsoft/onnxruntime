@@ -166,10 +166,11 @@ QNBitGemmPerGemmWorkspaceStride(
     size_t BlkBitWidth,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
-    const auto Size = QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, HasZeroPoint, ComputeType);
+    const auto Size = QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, HasZeroPoint, ComputeType, BackendKernelSelectorConfig);
     const auto Alignment = QNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
     return MlasDivRoundup(Size, Alignment) * Alignment;
 }
@@ -185,11 +186,12 @@ MlasQNBitGemmBatchWorkspaceSize(
     size_t BlkBitWidth,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     const size_t PerGemmWorkspaceStride =
-        QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, HasZeroPoint, ComputeType);
+        QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, HasZeroPoint, ComputeType, BackendKernelSelectorConfig);
     if (PerGemmWorkspaceStride == 0) {
         return 0;
     }
@@ -208,7 +210,8 @@ MlasQNBitGemmPackQuantBDataSize(
     size_t BlkBitWidth,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     const auto* Dispatch = GetMlasPlatform().QNBitGemmDispatch;
@@ -218,11 +221,13 @@ MlasQNBitGemmPackQuantBDataSize(
 
     if (BlkBitWidth == 4 && Dispatch->Q4BitGemmPackQuantBDataSize != nullptr) {
         return Dispatch->Q4BitGemmPackQuantBDataSize(
-            N, K, BlkLen, HasZeroPoint, ComputeType
+            N, K, BlkLen, HasZeroPoint, ComputeType,
+            BackendKernelSelectorConfig
         );
     } else if (BlkBitWidth == 8 && Dispatch->Q8BitGemmPackQuantBDataSize != nullptr) {
         return Dispatch->Q8BitGemmPackQuantBDataSize(
-            N, K, BlkLen, HasZeroPoint, ComputeType
+            N, K, BlkLen, HasZeroPoint, ComputeType,
+            BackendKernelSelectorConfig
         );
     }
 
@@ -256,7 +261,8 @@ MlasQNBitGemmPackQuantBData(
     const void* QuantBScale,
     bool HasZeroPoint,
     const void* QuantBZeroPoint,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     const auto* Dispatch = GetMlasPlatform().QNBitGemmDispatch;
@@ -278,7 +284,8 @@ MlasQNBitGemmPackQuantBData(
                 HasZeroPoint,
                 static_cast<const std::byte*>(QuantBZeroPoint),
                 packed_quant_b,
-                ThreadPool
+                ThreadPool,
+                BackendKernelSelectorConfig
             );
         } else if (ComputeType == HQNBIT_CompFp16 && Dispatch->HQ4BitGemmPackQuantBData != nullptr) {
             Dispatch->HQ4BitGemmPackQuantBData(
@@ -288,7 +295,8 @@ MlasQNBitGemmPackQuantBData(
                 ComputeType,
                 static_cast<const std::byte*>(QuantBData),
                 static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
-                ThreadPool
+                ThreadPool,
+                BackendKernelSelectorConfig
             );
         } else if (Dispatch->SQ4BitGemmPackQuantBData != nullptr) {
           // TODO: these assertions are true if called from matmul_nbits kernel but not from mlas tests.
@@ -301,7 +309,8 @@ MlasQNBitGemmPackQuantBData(
                 ComputeType,
                 static_cast<const std::byte*>(QuantBData),
                 static_cast<std::byte*>(PackedQuantBDataAndOrBlkSumWorkspace),
-                ThreadPool
+                ThreadPool,
+                BackendKernelSelectorConfig
             );
             return;
         }
@@ -320,7 +329,8 @@ MlasQNBitGemmPackQuantBData(
                 HasZeroPoint,
                 static_cast<const std::byte*>(QuantBZeroPoint),
                 packed_quant_b,
-                ThreadPool
+                ThreadPool,
+                BackendKernelSelectorConfig
             );
         }
     }
@@ -389,11 +399,13 @@ SQ4BitGemm_CompFp32(
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
-    const size_t RangeCountN
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     constexpr size_t BlkBitWidth = 4;
 
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspace);
 
     const size_t lda = DataParams->lda;
@@ -508,11 +520,13 @@ HQ4BitGemm_CompFp16(
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
-    const size_t RangeCountN
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     constexpr size_t BlkBitWidth = 4;
     MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspace);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
     const size_t lda = DataParams->lda;
     const size_t ldc = DataParams->ldc;
@@ -581,12 +595,13 @@ SQ4BitGemm_CompInt8(
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
-    const size_t RangeCountN
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
     const auto SQ4BitGemm = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_Packed_CompInt8;
-    if (UsePacked && SQ4BitGemm && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
+    if (UsePacked && SQ4BitGemm && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig)) {
         const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace);
         SQ4BitGemm(BlkLen, QuantA, DataParams->PackedQuantBData,
             DataParams->C, RangeStartM, RangeCountM, RangeStartN, RangeCountN, K,
@@ -720,9 +735,11 @@ SQ8BitGemm_CompInt8(
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
-    const size_t RangeCountN
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     PerGemmQuantAWorkspace* const per_gemm_quant_a_workspace = static_cast<PerGemmQuantAWorkspace*>(PerGemmWorkspace);
     constexpr size_t BlkBitWidth = 8;
 
@@ -808,7 +825,8 @@ InitializeWorkspace_CompInt8(
     void* Workspace,
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool,
-    size_t BlkBitWidth
+    size_t BlkBitWidth,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 template <>
@@ -823,7 +841,8 @@ InitializeWorkspace_CompInt8<float>(
     void* Workspace,
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool,
-    size_t BlkBitWidth
+    size_t BlkBitWidth,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -837,13 +856,13 @@ InitializeWorkspace_CompInt8<float>(
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
     // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
-    if (BlkBitWidth == 4 && UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
+    if (BlkBitWidth == 4 && UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig)) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
 
             const float* ARowPtr = data.A;
             std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
-            QuantizeA_Packed(BlkLen, ARowPtr, M, K, QuantARowPtr);
+            QuantizeA_Packed(BlkLen, ARowPtr, M, K, QuantARowPtr, BackendKernelSelectorConfig);
         });
     } else {
         // TODO(hasesh): Clean-up the following logic so that it is clean AND it works as expected on all platforms
@@ -916,7 +935,8 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
     void* Workspace,
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool,
-    size_t BlkBitWidth
+    size_t BlkBitWidth,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 ) {
     MLAS_UNREFERENCED_PARAMETER(M);
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -928,6 +948,7 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
     MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspaceStride);
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
     MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 }
 
 template <typename T>
@@ -941,7 +962,8 @@ using InitializeWorkspaceFn = std::function<void(
     void* Workspace,
     size_t PerGemmWorkspaceStride,
     MLAS_THREADPOOL* ThreadPool,
-    size_t BlkBitWidth
+    size_t BlkBitWidth,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )>;
 
 template <typename T>
@@ -982,7 +1004,8 @@ using QNBitGemmFn = std::function<void(
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
-    const size_t RangeCountN
+    const size_t RangeCountN,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )>;
 
 template <typename T>
@@ -1030,7 +1053,8 @@ MlasQNBitGemmBatch(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const MLAS_QNBIT_GEMM_DATA_PARAMS<T>* DataParams,
     void* Workspace,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     const auto Variant = GetQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
@@ -1049,12 +1073,12 @@ MlasQNBitGemmBatch(
 
     const bool has_zp_input = DataParams->QuantBZeroPoint;
     const size_t PerGemmWorkspaceStride =
-        QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, has_zp_input, ComputeType);
+        QNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, has_zp_input, ComputeType, BackendKernelSelectorConfig);
 
     if (const auto InitializeWorkspaceOperation = GetInitializeWorkspace<T>(Variant);
         InitializeWorkspaceOperation != nullptr) {
         InitializeWorkspaceOperation(
-            M, N, K, BatchN, BlkLen, DataParams, Workspace, PerGemmWorkspaceStride, ThreadPool, BlkBitWidth
+            M, N, K, BatchN, BlkLen, DataParams, Workspace, PerGemmWorkspaceStride, ThreadPool, BlkBitWidth, BackendKernelSelectorConfig
         );
     }
 
@@ -1073,7 +1097,7 @@ MlasQNBitGemmBatch(
                 const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBBlkSum = packed_quant_b.QuantBBlkSum;
                 const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
                 PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
-                ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
+                ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N, BackendKernelSelectorConfig);
             } else if (Variant == SQ8BitGemmVariant_CompInt8 && GetMlasPlatform().QNBitGemmDispatch->SQ8BitGemmKernel_BlkSum_CompInt8 != nullptr) {
                 PackedQuantBDataStruct<T, 8> packed_quant_b(const_cast<void*>(Data->QuantBDataWorkspace), N, BlockCountK, BlkLen, GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned);
                 const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
@@ -1082,9 +1106,9 @@ MlasQNBitGemmBatch(
                 const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->BlkUnsignedQuantAZeroPointCorrection = packed_quant_b.BlkUnsignedQuantAZeroPointCorrection;
 
                 PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
-                ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
+                ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N, BackendKernelSelectorConfig);
             } else {
-                ComputeOperation(BlkLen, K, Data, PerGemmWorkspace, 0, M, 0, N);
+                ComputeOperation(BlkLen, K, Data, PerGemmWorkspace, 0, M, 0, N, BackendKernelSelectorConfig);
             }
         }
         return;
@@ -1154,7 +1178,7 @@ MlasQNBitGemmBatch(
             const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->QuantBScale = packed_quant_b.PackedQuantBScale;
 
             PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
-            ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+            ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN, BackendKernelSelectorConfig);
         } else if (Variant == SQ8BitGemmVariant_CompInt8 && GetMlasPlatform().QNBitGemmDispatch->SQ8BitGemmKernel_BlkSum_CompInt8 != nullptr) {
             PackedQuantBDataStruct<T, 8> packed_quant_b(const_cast<void*>(Data->QuantBDataWorkspace), N, BlockCountK, BlkLen, GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned);
             const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->PackedQuantBData = packed_quant_b.PackedQuantBData;
@@ -1163,9 +1187,9 @@ MlasQNBitGemmBatch(
             const_cast<MLAS_QNBIT_GEMM_DATA_PARAMS<T>*>(Data)->BlkUnsignedQuantAZeroPointCorrection = packed_quant_b.BlkUnsignedQuantAZeroPointCorrection;
 
             PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
-            ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+            ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN, BackendKernelSelectorConfig);
         } else {
-            ComputeOperation(BlkLen, K, Data, PerGemmWorkspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+            ComputeOperation(BlkLen, K, Data, PerGemmWorkspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN, BackendKernelSelectorConfig);
         }
     });
 }
@@ -1182,7 +1206,8 @@ MlasQNBitGemmBatch(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* DataParams,
     void* Workspace,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 template
@@ -1197,5 +1222,6 @@ MlasQNBitGemmBatch(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const MLAS_QNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* DataParams,
     void* Workspace,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );

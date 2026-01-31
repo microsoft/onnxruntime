@@ -109,7 +109,8 @@ SQ4BitGemmPackQuantBData(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -190,7 +191,6 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 #ifndef USE_KLEIDIAI
     MLAS_UNREFERENCED_PARAMETER(QuantBScaleBegin);
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
-    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 #endif
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
@@ -224,7 +224,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 #endif
     {
         std::byte* PackedQuantBDataBegin = reinterpret_cast<std::byte*>(PackedQuantB.QuantBWorkspace_);
-        SQ4BitGemmPackQuantBData(N, K, BlkLen, ComputeType, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool);
+        SQ4BitGemmPackQuantBData(N, K, BlkLen, ComputeType, QuantBDataBegin, PackedQuantBDataBegin, ThreadPool, BackendKernelSelectorConfig);
     }
 }
 
@@ -351,7 +351,8 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 8>& PackedQuantB,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
