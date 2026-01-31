@@ -557,7 +557,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_1) {
                       "It should be a 1-D tensor with size num_output_channels(M).",
                       // The EP exclusions are along the same lines as ConvTranspose_InvalidKernelShape which
                       // also tests for invalid shapes. It also includes XnnPack which seems to have its own
-                      // way of dealing with incorreclty shaped bias.
+                      // way of dealing with incorrectly shaped bias.
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
                        kDmlExecutionProvider, kXnnpackExecutionProvider,
                        kWebGpuExecutionProvider});  // Remove when https://github.com/microsoft/onnxruntime/issues/27210 is fixed
