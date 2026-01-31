@@ -142,7 +142,7 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         condition: always()
 
-      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
+      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas]'
         displayName: 'Install dashboard dependencies'
 
       - script: |
@@ -165,7 +165,7 @@ jobs:
 
     - ${{ if eq(parameters.PostToDashboard, true) }}:
 
-      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
+      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas]'
         displayName: 'Install dashboard dependencies'
 
       - script: |
