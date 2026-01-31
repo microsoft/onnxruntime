@@ -106,7 +106,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Bias shape is not compatible with number of output channels."
                                " It should be a 1-D tensor with size num_output_channels(M).",
-                               " Bias: ", B->Shape().ToString().c_str(),
+                               " Bias: ", B->Shape(),
                                " num_output_channels: ", num_output_channels);
       }
     }
