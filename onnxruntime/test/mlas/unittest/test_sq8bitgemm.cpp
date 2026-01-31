@@ -784,7 +784,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     })
                          : nullptr;
 
-    const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, 8, BlkLen, HasZp, SQNBIT_CompInt8);
+    const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, 8, BlkLen, HasZp, SQNBIT_CompInt8, nullptr);
     auto* workspace = workspace_.GetBuffer(workspace_size, true);
 
     MLAS_QNBIT_GEMM_DATA_PARAMS<float> data;
