@@ -798,7 +798,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     data.C = C;
     data.ldc = ldc;
 
-    MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, nullptr);
+    MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, nullptr, nullptr);
 
     MatMul<M, K, N, BlkLen>(A, lda, B, bias, ref, ldc);
     Check<M, K, N, BlkLen>(C, ref, ldc, 0.01f, 0.02f);
