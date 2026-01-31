@@ -240,7 +240,8 @@ Do not modify directly.*
 |||[13, 15]|**B** = tensor(bool)<br/> **I** = tensor(int64)<br/> **V** = seq(tensor(bfloat16)), seq(tensor(bool)), seq(tensor(double)), seq(tensor(float)), seq(tensor(float16)), seq(tensor(int16)), seq(tensor(int32)), seq(tensor(int64)), seq(tensor(int8)), seq(tensor(string)), seq(tensor(uint16)), seq(tensor(uint32)), seq(tensor(uint64)), seq(tensor(uint8)), tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[11, 12]|**B** = tensor(bool)<br/> **I** = tensor(int64)<br/> **V** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[1, 10]|**B** = tensor(bool)<br/> **I** = tensor(int64)<br/> **V** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
-|LpNormalization|*in* input:**T**<br> *out* output:**T**|1+|**T** = tensor(double), tensor(float)|
+|LpNormalization|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[1, 21]|**T** = tensor(double), tensor(float)|
 |LpPool|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float)|
 |||[18, 21]|**T** = tensor(float)|
 |||[11, 17]|**T** = tensor(float)|
@@ -746,7 +747,9 @@ Do not modify directly.*
 |||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
 |GreaterOrEqual|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|16+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
 |||[12, 15]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
-|GridSample|*in* X:**T1**<br> *in* grid:**T2**<br> *out* Y:**T1**|16+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
+|GridSample|*in* X:**T1**<br> *in* grid:**T2**<br> *out* Y:**T1**|22+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
+|||[20, 21]|**T1** = tensor(float)<br/> **T2** = tensor(float)|
+|||[16, 19]|**T1** = tensor(float)<br/> **T2** = tensor(float)|
 |HardSigmoid|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |||[6, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
 |HardSwish|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
@@ -1061,7 +1064,9 @@ Do not modify directly.*
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |GlobalAveragePool|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
 |GlobalMaxPool|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
-|GridSample|*in* X:**T1**<br> *in* grid:**T2**<br> *out* Y:**T1**|16+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
+|GridSample|*in* X:**T1**<br> *in* grid:**T2**<br> *out* Y:**T1**|22+|**T1** = tensor(float)<br/> **T2** = tensor(float)|
+|||[20, 21]|**T1** = tensor(float)<br/> **T2** = tensor(float)|
+|||[16, 19]|**T1** = tensor(float)<br/> **T2** = tensor(float)|
 |LRN|*in* X:**T**<br> *out* Y:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |MaxPool|*in* X:**T**<br> *out* Y:**T**<br><br>or<br><br>*in* X:**T**<br> *out* Y:**T**<br> *out* Indices:**I**|12+|**I** = tensor(int64)<br/> **T** = tensor(float), tensor(float16), tensor(int8), tensor(uint8)|
