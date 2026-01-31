@@ -112,7 +112,8 @@ bool
 UsePacked_CompInt8(
     size_t K,
     size_t BlkLen,
-    bool HasZp
+    bool HasZp,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 void
@@ -176,7 +177,8 @@ QuantizeA_Packed_CompInt8(
     const float* A,
     size_t CountM,
     size_t CountK,
-    std::byte* QuantA
+    std::byte* QuantA,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 void
@@ -196,7 +198,7 @@ SQ4BitGemmKernel_Packed_CompInt8(
 #endif
 
 bool
-UseKleidiAI(size_t K, size_t BlkLen, bool HasZp);
+UseKleidiAI(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 //
 // General helpers.

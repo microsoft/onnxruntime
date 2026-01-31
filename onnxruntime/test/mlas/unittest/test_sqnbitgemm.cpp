@@ -271,7 +271,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* PackedQuantBDataWorkspace = nullptr;
-    if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
+    if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric, ComputeType, nullptr);
         PackedQuantBDataSize > 0) {
       PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
       bool has_zp_input = QuantBZeroPoint != nullptr;

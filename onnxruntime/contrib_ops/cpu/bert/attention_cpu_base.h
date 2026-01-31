@@ -9,7 +9,6 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {

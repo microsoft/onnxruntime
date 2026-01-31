@@ -20,6 +20,7 @@
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 #include "core/platform/threadpool.h"
 #include "core/util/thread_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -259,7 +260,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       }
     } else {
-      packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_, compute_type_);
+      packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_, compute_type_, &mlas_backend_kernel_selector_config_);
       if (packed_b_size_ == 0) {
         return Status::OK();
       }
@@ -299,7 +300,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
 #if defined(MLAS_TARGET_ARM64)
     if (input_idx == InputIndex::scales && packed_b_ != nullptr &&
-        MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
+        MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_,
+                                  has_zp_input_, &mlas_backend_kernel_selector_config_)) {
       scales_are_packed_ = true;
       is_packed = true;
     }
@@ -362,7 +364,8 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
   if (input_idx == InputIndex::B) {
     const Tensor* scales = nullptr;
     OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
-    if (scales && MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
+    if (scales && MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_,
+                                            has_zp_input_, &mlas_backend_kernel_selector_config_)) {
       auto sptr = scales->Data<MLFloat16>();
       auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
       auto ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
@@ -370,7 +373,8 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
       scales_fp32_ = std::move(ptr);
     }
 
-    packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_, compute_type_);
+    packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_,
+                                                     has_zp_input_, compute_type_, &mlas_backend_kernel_selector_config_);
     if (packed_b_size_ == 0) {
       return Status::OK();
     }

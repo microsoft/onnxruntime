@@ -123,7 +123,8 @@ QNBitGemmPerGemmWorkspaceSize(
     size_t BlkBitWidth,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
     const auto* Dispatch = GetMlasPlatform().QNBitGemmDispatch;
@@ -132,7 +133,7 @@ QNBitGemmPerGemmWorkspaceSize(
     }
 
     if (BlkBitWidth == 4 || BlkBitWidth == 8) {
-        return Dispatch->QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, HasZeroPoint, ComputeType, BlkBitWidth);
+        return Dispatch->QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, HasZeroPoint, ComputeType, BlkBitWidth, BackendKernelSelectorConfig);
     }
 
     return 0;
@@ -307,7 +308,7 @@ MlasQNBitGemmPackQuantBData(
     } else if (BlkBitWidth == 8) {
         if (ComputeType == SQNBIT_CompInt8 && Dispatch->SQ8BitGemmPackQuantBDataAndBlkSum != nullptr) {
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-            PackedQuantBDataStruct<float, 8> packed_quant_b(PackedQuantBDataAndOrBlkSumWorkspace, N, BlockCountK, 
+            PackedQuantBDataStruct<float, 8> packed_quant_b(PackedQuantBDataAndOrBlkSumWorkspace, N, BlockCountK,
                                                             BlkLen, GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned);
             Dispatch->SQ8BitGemmPackQuantBDataAndBlkSum(
                 N,
@@ -331,12 +332,13 @@ MlasQNBitGemmScalesPacked(
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    bool HasZeroPoint
+    bool HasZeroPoint,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 ) {
 #ifdef MLAS_TARGET_ARM64
     if (BlkBitWidth == 4 && ComputeType == SQNBIT_CompInt8) {
       const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
-      return UsePacked && UsePacked(K, BlkLen, HasZeroPoint);
+      return UsePacked && UsePacked(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig);
     }
 #else
     MLAS_UNREFERENCED_PARAMETER(K);
@@ -344,6 +346,7 @@ MlasQNBitGemmScalesPacked(
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
     MLAS_UNREFERENCED_PARAMETER(ComputeType);
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 #endif  // MLAS_TARGET_ARM64
     return false;
 }
@@ -743,7 +746,7 @@ SQ8BitGemm_CompInt8(
             : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
     const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
     const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
-    const float* BlkUnsignedQuantAZeroPointCorrection = 
+    const float* BlkUnsignedQuantAZeroPointCorrection =
         DataParams->BlkUnsignedQuantAZeroPointCorrection ? DataParams->BlkUnsignedQuantAZeroPointCorrection + RangeStartN * k_blks : nullptr;
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
@@ -875,7 +878,7 @@ InitializeWorkspace_CompInt8<float>(
                         QuantARowScalePtr += BlockCountK;
                         QuantARowBlkSum += BlockCountK;
                     }
-                });            
+                });
             }
         } else if (BlkBitWidth == 8) {
             if (QuantizeARow2) {
@@ -898,7 +901,7 @@ InitializeWorkspace_CompInt8<float>(
                 });
             }
         }
-    } 
+    }
 }
 
 template <>
