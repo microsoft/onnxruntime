@@ -13,9 +13,9 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders() {
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
 #ifdef USE_CUDA
-    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #ifdef ENABLE_CUDA_NHWC_OPS
-    execution_providers.push_back(DefaultCudaNHWCExecutionProvider());
+  execution_providers.push_back(DefaultCudaNHWCExecutionProvider());
 #endif
 #endif
 

@@ -23,16 +23,16 @@ namespace cuda {
 
 #define REGISTER_KERNEL_VERSIONED_TYPED(T, FROM_VERSION, TO_VERSION, LAYOUT, DOMAIN) \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                           \
-    GridSample,                                                                    \
-    DOMAIN,                                                                        \
-    FROM_VERSION,                                                                  \
-    TO_VERSION,                                                                    \
-    T,                                                                             \
-    kCudaExecutionProvider,                                                        \
-    (*KernelDefBuilder::Create())                                                  \
-      .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())                    \
-      .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),                   \
-    onnxruntime::contrib::cuda::GridSample<T, LAYOUT>);
+      GridSample,                                                                    \
+      DOMAIN,                                                                        \
+      FROM_VERSION,                                                                  \
+      TO_VERSION,                                                                    \
+      T,                                                                             \
+      kCudaExecutionProvider,                                                        \
+      (*KernelDefBuilder::Create())                                                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())                    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),                   \
+      onnxruntime::contrib::cuda::GridSample<T, LAYOUT>);
 
 REGISTER_KERNEL_TYPED(float, 1, LAYOUT_NCHW, kMSDomain)
 
@@ -110,14 +110,14 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if ((dims_input.size() == 4 && dims_grid[3] != 2) || (dims_input.size() == 5 && dims_grid[4] != 3)) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Last dimension of grid input must match the number of "
-                                                                 "spatial dimensions in the input (2 for 2D, 3 for 3D).");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "Last dimension of grid input must match the number of "
+                  "spatial dimensions in the input (2 for 2D, 3 for 3D).");
   }
 
   if (dims_input.size() != 4 && dims_input.size() != 5) {
     return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "Only 4-D and 5-D input tensors are supported");
   }
-
 
   if (dims_input.size() == 5 && mode_i_ == 2) {
     // This is common for CPU and CUDA to not support Cubic mode for 5D input
@@ -152,7 +152,7 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
   CudaT* Y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
   if (dims_input.size() == 4) {
-      // sample 2d
+    // sample 2d
     GridSampleImpl<CudaT, IsNHWC>(
         Stream(context),
         reinterpret_cast<const CudaT*>(X->Data<T>()),
@@ -179,7 +179,6 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
         dims_grid[3],
         Y_data);
   }
-
 
   return Status::OK();
 }

@@ -262,8 +262,8 @@ SPECIALIZED_IMPL(float, false)  // NCHW
 SPECIALIZED_IMPL(float, true)   // NHWC
 
 template <typename T, bool Layout>
-__device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx,  int64_t z, int64_t y, int64_t x,
-                         int64_t padding_mode, int64_t N, int64_t C, int64_t D, int64_t H, int64_t W, float border[6]) {
+__device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t z, int64_t y, int64_t x,
+                           int64_t padding_mode, int64_t N, int64_t C, int64_t D, int64_t H, int64_t W, float border[6]) {
   T pixel = 0.0f;
 
   auto PixelOffset3D = [bIdx, cIdx, C, D, H, W](int64_t z, int64_t y, int64_t x) -> int64_t {
@@ -308,7 +308,6 @@ __global__ void _GridSampleKernel3D(
     const int64_t H_out,
     const int64_t W_out,
     T* __restrict__ output_data) {
-
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * D_out * H_out * W_out);
 
   // extract batch index, channel index, y index, x index, z index for current thread
@@ -327,7 +326,7 @@ __global__ void _GridSampleKernel3D(
     int tmpHCnt = tmpDCnt + yIdx * W_out;
 
     xIdx = (idx - tmpHCnt);
-  } else { // Layout == LAYOUT_NHWC
+  } else {  // Layout == LAYOUT_NHWC
     BIdx = idx / (D_out * H_out * W_out * C);
     int tmpBCnt = BIdx * (D_out * H_out * W_out * C);
 
@@ -343,7 +342,7 @@ __global__ void _GridSampleKernel3D(
     cIdx = (idx - tmpWCnt);
   }
 
-  int grid_idx = BIdx * D_out * H_out * W_out +  zIdx * H_out * W_out + yIdx * W_out + xIdx;
+  int grid_idx = BIdx * D_out * H_out * W_out + zIdx * H_out * W_out + yIdx * W_out + xIdx;
 
   // ONNX spec guideline about ordering of grid indices:
   // Following computer vision convention, the coordinates in the length-r location vector
@@ -381,7 +380,7 @@ __global__ void _GridSampleKernel3D(
     x_max = float(W_in) - 1.0f;
   }
 
-  float border[] = {z_min, y_min, x_min, z_max,  y_max, x_max};  // zmin,ymin,xmin,zmax,ymax,xmax
+  float border[] = {z_min, y_min, x_min, z_max, y_max, x_max};  // zmin,ymin,xmin,zmax,ymax,xmax
   if (grid_z_volSpace < z_min || grid_z_volSpace > z_max ||
       grid_y_volSpace < y_min || grid_y_volSpace > y_max ||
       grid_x_volSpace < x_min || grid_x_volSpace > x_max) {  // out of bound
@@ -434,7 +433,7 @@ __global__ void _GridSampleKernel3D(
     w_lb_back = w_b * w_l * w_back;
     w_rb_back = w_b * w_r * w_back;
 
-    T lt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x1, padding_mode, N, C,D_in, H_in, W_in,  border);
+    T lt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
     T rt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
     T lb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
     T rb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
@@ -460,7 +459,7 @@ __global__ void _GridSampleKernel3D(
     return;
   }
   if (mode == 2) {  // cubic
-      // Not implemented for 3D input. But will not reach here per input validation
+                    // Not implemented for 3D input. But will not reach here per input validation
   }
 }
 
@@ -477,7 +476,6 @@ void GridSampleImpl3D(
     const int64_t H_out,
     const int64_t W_out,
     T* output_data) {
-
   int64_t N = 0;
   int64_t C = 0;
   int64_t D_in = 0;
@@ -507,14 +505,14 @@ void GridSampleImpl3D(
 }
 
 template void GridSampleImpl3D<float, false>(cudaStream_t stream, const float* input_data, const float* grid_data,
-                                        const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
-                                        const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
-                                        float* output_data);
+                                             const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
+                                             const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
+                                             float* output_data);
 
 template void GridSampleImpl3D<float, true>(cudaStream_t stream, const float* input_data, const float* grid_data,
-                                        const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
-                                        const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
-                                        float* output_data);
+                                            const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
+                                            const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
+                                            float* output_data);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
