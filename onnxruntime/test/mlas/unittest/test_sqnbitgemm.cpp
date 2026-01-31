@@ -81,7 +81,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
 
-    MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
+    MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool, nullptr);
   }
 
   void QuantizeA(size_t M, size_t K, const float* A, int8_t* QuantAData, float* QuantAScale) {

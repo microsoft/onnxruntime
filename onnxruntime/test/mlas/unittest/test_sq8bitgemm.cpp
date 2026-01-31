@@ -389,15 +389,14 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     // The inputScale and zero points will be ignored while prepacking the weights (if they are provided).
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, hasZp, inputZp, nullptr);
+        inputScale, hasZp, inputZp, nullptr, nullptr);
 
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        inputScale, hasZp, nullptr, nullptr);
-
+        inputScale, hasZp, nullptr, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        nullptr, hasZp, inputZp, nullptr);
+        nullptr, hasZp, inputZp, nullptr, nullptr);
 
     PrepackB<K, N, BlkLen, SubBlkLen>(inputB, refB, refBlkUnsignedQuantAZeroPointCorrection);
     PrepackBlkSumAndScale<K, N, BlkLen, SubBlkLen>(inputScale, inputZp, refScale, refBlkSum, refBlkUnsignedQuantAZeroPointCorrection);
@@ -751,7 +750,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
         N,
         nullptr);
 
-    size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8);
+    size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8, nullptr);
     auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
 
     // Models the packing calls from MatmulNBits operator - we will have 3 separate calls
@@ -763,15 +762,14 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     // The inputScale and zero points will be ignored while prepacking the weights (if they are provided).
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, HasZp, inputZp, nullptr);
+        inputScale, HasZp, inputZp, nullptr, nullptr);
 
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        inputScale, HasZp, nullptr, nullptr);
-
+        inputScale, HasZp, nullptr, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        nullptr, HasZp, inputZp, nullptr);
+        nullptr, HasZp, inputZp, nullptr, nullptr);
 
     const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
     PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, isQuantAUnsigned);
