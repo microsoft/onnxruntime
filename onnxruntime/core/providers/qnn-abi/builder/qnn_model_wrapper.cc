@@ -125,17 +125,7 @@ bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
     return true;
   }
 
-  const Qnn_TensorType_t& qnn_tensor_type = tensor_wrapper.GetTensorType();
-  // save created tensors for later lookup to populate graph node construction
   model_tensors_map_.emplace(tensor_name, std::move(tensor_wrapper));
-
-  // save network input/outputs tensors to use for setting the Qnn graph's
-  // input and output tensors for populating GraphInfo for caller
-  if (qnn_tensor_type == QNN_TENSOR_TYPE_APP_WRITE) {
-    model_input_names_.push_back(tensor_name);
-  } else if (qnn_tensor_type == QNN_TENSOR_TYPE_APP_READ) {
-    model_output_names_.push_back(tensor_name);
-  }
 
   return true;
 }
@@ -584,9 +574,52 @@ bool QnnModelWrapper::ProcessBF16Conversions(std::vector<QnnOpProperty>& final_o
   return true;
 }
 
+// Register graph inputs/outputs in ONNX declaration order. This ensures DLC
+// serialization preserves the original input/output ordering. Must be called
+// before processing ops, tensorCreateGraphTensor() order determines ordering
+bool QnnModelWrapper::RegisterGraphInputOutputInOrder() {
+  auto run = [this](const std::vector<std::string>& sorted_names,
+                    Qnn_TensorType_t expected_type,
+                    const char* io_type) -> bool {
+    for (const auto& name : sorted_names) {
+      auto it = model_tensors_map_.find(name);
+      if (it == model_tensors_map_.end()) {
+        continue;
+      }
+      if (it->second.GetTensorType() != expected_type) {
+        continue;
+      }
+      if (tensor_created_map_.count(name)) {
+        continue;
+      }
+
+      if (model_settings_.offload_graph_io_quantization) {
+        if (const auto* override_name = GetTensorNameOverride(name)) {
+          it->second.SetResolvedTensorName(*override_name);
+        }
+      }
+
+      std::string error;
+      if (!it->second.CreateQnnGraphTensor(qnn_interface_, graph_, io_type, tensor_created_map_, error)) {
+        ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_ERROR,
+                    (std::string("Failed to pre-register ") + io_type + ": " + name + ". " + error).c_str());
+        return false;
+      }
+    }
+    return true;
+  };
+
+  return run(graph_inputs_.names, QNN_TENSOR_TYPE_APP_WRITE, "input") &&
+         run(graph_outputs_.names, QNN_TENSOR_TYPE_APP_READ, "output");
+}
+
 bool QnnModelWrapper::ComposeQnnGraph(bool build_json_qnn_graph) {
   ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_VERBOSE, "Compose Qnn Graph.");
   if (qnn_op_property_list_.empty()) {
+    return false;
+  }
+
+  if (!RegisterGraphInputOutputInOrder()) {
     return false;
   }
 

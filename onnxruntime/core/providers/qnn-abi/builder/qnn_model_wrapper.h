@@ -5,6 +5,7 @@
 
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "nlohmann/json.hpp"
@@ -47,8 +48,8 @@ class QnnModelWrapper {
                   const Ort::Logger& logger,
                   const QNN_INTERFACE_VER_TYPE& qnn_interface,
                   const Qnn_BackendHandle_t& backend_handle,
-                  const std::unordered_map<std::string, size_t>& input_index_map,
-                  const std::unordered_map<std::string, size_t>& output_index_map,
+                  const GraphInputOutputInfo& graph_inputs,
+                  const GraphInputOutputInfo& graph_outputs,
                   QnnBackendType qnn_backend_type,
                   const ModelSettings& model_settings,
                   std::unordered_map<std::string, std::string>* tensor_name_overrides = nullptr)
@@ -56,8 +57,8 @@ class QnnModelWrapper {
         logger_(logger),
         qnn_interface_(qnn_interface),
         backend_handle_(backend_handle),
-        input_index_map_(input_index_map),
-        output_index_map_(output_index_map),
+        graph_inputs_(graph_inputs),
+        graph_outputs_(graph_outputs),
         qnn_backend_type_(qnn_backend_type),
         model_settings_(model_settings),
         api_ptrs_(ApiPtrs{api_ptrs.ort_api, api_ptrs.ep_api, api_ptrs.model_editor_api}),
@@ -111,15 +112,13 @@ class QnnModelWrapper {
 
   Qnn_ContextHandle_t GetQnnGraphContext() const { return graph_context_; }
 
-  // Move input tensor wrappers to GraphInfo, QnnModelWrapper end of live
   std::vector<QnnTensorWrapper>&& GetGraphInputTensorWrappers() {
-    GetGraphInputOutputTensorWrapper(model_input_names_, model_input_tensor_wrappers_);
+    GetGraphInputOutputTensorWrapper(graph_inputs_.names, model_input_tensor_wrappers_);
     return std::move(model_input_tensor_wrappers_);
   }
 
-  // Move output tensor wrappers to GraphInfo, QnnModelWrapper end of live
   std::vector<QnnTensorWrapper>&& GetGraphOutputTensorWrappers() {
-    GetGraphInputOutputTensorWrapper(model_output_names_, model_output_tensor_wrappers_);
+    GetGraphInputOutputTensorWrapper(graph_outputs_.names, model_output_tensor_wrappers_);
     return std::move(model_output_tensor_wrappers_);
   }
 
@@ -198,11 +197,11 @@ class QnnModelWrapper {
   bool IsQnnTensorWrapperExist(const std::string& tensor_name) const;
 
   bool IsGraphOutput(const std::string& tensor_name) const {
-    return output_index_map_.find(tensor_name) != output_index_map_.end();
+    return graph_outputs_.indices.find(tensor_name) != graph_outputs_.indices.end();
   }
 
   bool IsGraphInput(const std::string& tensor_name) const {
-    return input_index_map_.find(tensor_name) != input_index_map_.end();
+    return graph_inputs_.indices.find(tensor_name) != graph_inputs_.indices.end();
   }
 
   const nlohmann::json& GetQnnJSONGraph() {
@@ -402,6 +401,10 @@ class QnnModelWrapper {
   void GetGraphInputOutputTensorWrapper(const std::vector<std::string>& names,
                                         std::vector<QnnTensorWrapper>& wrappers_list);
 
+  // Register graph inputs and outputs in ONNX declaration order. Must be called before
+  // processing ops, as tensorCreateGraphTensor() order determines tensor IDs in DLC.
+  bool RegisterGraphInputOutputInOrder();
+
   // BF16 conversion helper methods
   bool IsBF16ConversionEnabled() const {
     return model_settings_.htp_bf16_enable &&
@@ -443,8 +446,6 @@ class QnnModelWrapper {
   // QNN context that holds the QNN graph referenced by `graph_`
   Qnn_ContextHandle_t graph_context_ = nullptr;
 
-  std::vector<std::string> model_input_names_;
-  std::vector<std::string> model_output_names_;
   std::vector<QnnTensorWrapper> model_input_tensor_wrappers_;
   std::vector<QnnTensorWrapper> model_output_tensor_wrappers_;
   // All QnnTensorWrapper for the graph
@@ -455,8 +456,8 @@ class QnnModelWrapper {
   // <tensor_name, qnn_tensor_created> -- true means qnn tensor created in qnn graph
   // it includs normal qnn_tensors and qnn_tensors inside param_tensors
   std::unordered_map<std::string, bool> tensor_created_map_;
-  const std::unordered_map<std::string, size_t>& input_index_map_;
-  const std::unordered_map<std::string, size_t>& output_index_map_;
+  const GraphInputOutputInfo& graph_inputs_;
+  const GraphInputOutputInfo& graph_outputs_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;

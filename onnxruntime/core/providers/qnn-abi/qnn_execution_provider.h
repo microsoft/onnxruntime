@@ -189,8 +189,11 @@ class QnnEp : public OrtEp, public ApiPtrs {
   // Format: <BackendId>:<SDK>:<BackendApi>:<ContextBlob>:<HtpArch>:<IsHtpUsrDrv>.
   std::string compatibility_info_string_ = "";
 
-  // Used by offload_graph_io_quantization to map internal QNN names to original ONNX names.
+  // Transient state captured in GetCapability() and consumed in Compile().
+  // Only one model is ever in-flight per EP instance (one EP per session).
   mutable std::unordered_map<std::string, std::string> tensor_name_overrides_;
+  // ONNX graph I/O names in declaration order: {input_names, output_names}.
+  mutable std::optional<std::pair<std::vector<std::string>, std::vector<std::string>>> onnx_graph_io_names_;
 };
 
 }  // namespace onnxruntime

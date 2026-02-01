@@ -1919,6 +1919,327 @@ TEST(QnnABISaverBackendTests, DISABLED_QnnSaver_OutputFiles) {
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
 }
 
+// Verifies QNN graph I/O order matches ONNX declaration order.
+TEST_F(QnnABICPUBackendTests, GraphInputOutputOrderMatchesOnnx) {
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+  auto& logging_manager = DefaultLoggingManager();
+  onnxruntime::Model model("GraphInputOutputOrderMatchesOnnx", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto type1;
+  type1.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  type1.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  type1.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  auto& i1 = graph.GetOrCreateNodeArg("i1", &type1);
+
+  ONNX_NAMESPACE::TypeProto type2;
+  type2.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  type2.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  type2.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(5);
+  auto& i2 = graph.GetOrCreateNodeArg("i2", &type2);
+
+  ONNX_NAMESPACE::TypeProto type3;
+  type3.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  type3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  type3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(7);
+  auto& i3 = graph.GetOrCreateNodeArg("i3", &type3);
+
+  auto& o1 = graph.GetOrCreateNodeArg("o1", &type1);
+  graph.AddNode("relu1", "Relu", "", {&i1}, {&o1});
+
+  auto& o3 = graph.GetOrCreateNodeArg("o3", &type3);
+  graph.AddNode("relu3", "Relu", "", {&i3}, {&o3});
+
+  auto& o2 = graph.GetOrCreateNodeArg("o2", &type2);
+  graph.AddNode("relu2", "Relu", "", {&i2}, {&o2});
+
+  graph.SetInputs({&i2, &i1, &i3});
+  graph.SetOutputs({&o2, &o1, &o3});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << "Graph resolve failed: " << status.ErrorMessage();
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  const std::filesystem::path tmp_dir = "qnn_io_order_test";
+  std::filesystem::remove_all(tmp_dir);
+  std::filesystem::create_directory(tmp_dir);
+
+  auto cleanup = gsl::finally([&tmp_dir]() { std::filesystem::remove_all(tmp_dir); });
+
+  Ort::SessionOptions so;
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnCpu.dll";
+#else
+  options["backend_path"] = "libQnnCpu.so";
+#endif
+  options["json_qnn_graph_dir"] = tmp_dir.string();
+  options["dump_json_qnn_graph"] = "1";
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, options);
+
+  Ort::Session session(*ort_env, model_data.data(), model_data.size(), so);
+
+  std::filesystem::path json_path;
+  for (const auto& entry : std::filesystem::directory_iterator{tmp_dir}) {
+    if (entry.is_regular_file() && entry.path().extension() == ".json" &&
+        entry.path().filename().string().find("_tensor_log") == std::string::npos) {
+      json_path = entry.path();
+      break;
+    }
+  }
+  ASSERT_FALSE(json_path.empty()) << "No JSON file found in " << tmp_dir;
+
+  std::vector<std::pair<std::string, int>> inputs_with_id, outputs_with_id;
+  {
+    std::ifstream json_file(json_path);
+    ASSERT_TRUE(json_file.is_open());
+
+    nlohmann::json root;
+    json_file >> root;
+
+    for (const auto& [name, tensor] : root["graph"]["tensors"].items()) {
+      int type = tensor.value("type", -1);
+      int id = tensor.value("id", -1);
+      if (type == 0) {
+        inputs_with_id.emplace_back(name, id);  // QNN_TENSOR_TYPE_APP_WRITE
+      } else if (type == 1) {
+        outputs_with_id.emplace_back(name, id);  // QNN_TENSOR_TYPE_APP_READ
+      }
+    }
+  }
+
+  // Sort by tensor ID to recover registration order.
+  std::sort(inputs_with_id.begin(), inputs_with_id.end(),
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+  std::sort(outputs_with_id.begin(), outputs_with_id.end(),
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+
+  std::vector<std::string> input_names, output_names;
+  for (const auto& [name, id] : inputs_with_id) {
+    input_names.push_back(name);
+  }
+  for (const auto& [name, id] : outputs_with_id) {
+    output_names.push_back(name);
+  }
+
+  // Verify correct count.
+  ASSERT_EQ(input_names.size(), 3u) << "Expected 3 inputs";
+  ASSERT_EQ(output_names.size(), 3u) << "Expected 3 outputs";
+
+  // Verify ordering matches ONNX declaration: {i2, i1, i3} and {o2, o1, o3}.
+  EXPECT_EQ(input_names[0], "i2");
+  EXPECT_EQ(input_names[1], "i1");
+  EXPECT_EQ(input_names[2], "i3");
+
+  EXPECT_EQ(output_names[0], "o2");
+  EXPECT_EQ(output_names[1], "o1");
+  EXPECT_EQ(output_names[2], "o3");
+}
+
+// Verifies QNN graph I/O order matches ONNX declaration order with offload_graph_io_quantization=1.
+TEST_F(QnnABICPUBackendTests, GraphInputOutputOrderMatchesOnnxOffloadGraphIoQuantization) {
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 21}, {kMSDomain, 1}};
+  auto& logging_manager = DefaultLoggingManager();
+  onnxruntime::Model model("GraphInputOutputOrderMatchesOnnxOffloadGraphIoQuantization",
+                           false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_type1;
+  float_type1.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_type1.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  float_type1.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  auto& i1 = graph.GetOrCreateNodeArg("i1", &float_type1);
+
+  ONNX_NAMESPACE::TypeProto float_type2;
+  float_type2.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_type2.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  float_type2.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(5);
+  auto& i2 = graph.GetOrCreateNodeArg("i2", &float_type2);
+
+  ONNX_NAMESPACE::TypeProto float_type3;
+  float_type3.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_type3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  float_type3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(7);
+  auto& i3 = graph.GetOrCreateNodeArg("i3", &float_type3);
+
+  ONNX_NAMESPACE::TypeProto scale_type;
+  scale_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  scale_type.mutable_tensor_type()->mutable_shape();  // scalar
+
+  ONNX_NAMESPACE::TypeProto zp_type;
+  zp_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  zp_type.mutable_tensor_type()->mutable_shape();  // scalar
+
+  ONNX_NAMESPACE::TypeProto uint8_type1;
+  uint8_type1.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  uint8_type1.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  uint8_type1.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  ONNX_NAMESPACE::TypeProto uint8_type2;
+  uint8_type2.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  uint8_type2.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  uint8_type2.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(5);
+
+  ONNX_NAMESPACE::TypeProto uint8_type3;
+  uint8_type3.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  uint8_type3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  uint8_type3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(7);
+
+  float scale_val = 1.0f / 255.0f;
+  uint8_t zp_val = 128;
+
+  ONNX_NAMESPACE::TensorProto scale_tensor;
+  scale_tensor.set_name("scale");
+  scale_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  scale_tensor.add_float_data(scale_val);
+  graph.AddInitializedTensor(scale_tensor);
+  auto& scale_arg = graph.GetOrCreateNodeArg("scale", &scale_type);
+
+  ONNX_NAMESPACE::TensorProto zp_tensor;
+  zp_tensor.set_name("zero_point");
+  zp_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  zp_tensor.add_int32_data(zp_val);
+  graph.AddInitializedTensor(zp_tensor);
+  auto& zp_arg = graph.GetOrCreateNodeArg("zero_point", &zp_type);
+
+  auto& q1_out = graph.GetOrCreateNodeArg("q1_out", &uint8_type1);
+  graph.AddNode("q1", "QuantizeLinear", "", {&i1, &scale_arg, &zp_arg}, {&q1_out});
+  auto& dq1_out = graph.GetOrCreateNodeArg("dq1_out", &float_type1);
+  graph.AddNode("dq1", "DequantizeLinear", "", {&q1_out, &scale_arg, &zp_arg}, {&dq1_out});
+  auto& sigmoid1_out = graph.GetOrCreateNodeArg("sigmoid1_out", &float_type1);
+  graph.AddNode("sigmoid1", "Sigmoid", "", {&dq1_out}, {&sigmoid1_out});
+  auto& q1_out2 = graph.GetOrCreateNodeArg("q1_out2", &uint8_type1);
+  graph.AddNode("q1_2", "QuantizeLinear", "", {&sigmoid1_out, &scale_arg, &zp_arg}, {&q1_out2});
+  auto& o1 = graph.GetOrCreateNodeArg("o1", &float_type1);
+  graph.AddNode("dq1_2", "DequantizeLinear", "", {&q1_out2, &scale_arg, &zp_arg}, {&o1});
+
+  auto& q3_out = graph.GetOrCreateNodeArg("q3_out", &uint8_type3);
+  graph.AddNode("q3", "QuantizeLinear", "", {&i3, &scale_arg, &zp_arg}, {&q3_out});
+  auto& dq3_out = graph.GetOrCreateNodeArg("dq3_out", &float_type3);
+  graph.AddNode("dq3", "DequantizeLinear", "", {&q3_out, &scale_arg, &zp_arg}, {&dq3_out});
+  auto& sigmoid3_out = graph.GetOrCreateNodeArg("sigmoid3_out", &float_type3);
+  graph.AddNode("sigmoid3", "Sigmoid", "", {&dq3_out}, {&sigmoid3_out});
+  auto& q3_out2 = graph.GetOrCreateNodeArg("q3_out2", &uint8_type3);
+  graph.AddNode("q3_2", "QuantizeLinear", "", {&sigmoid3_out, &scale_arg, &zp_arg}, {&q3_out2});
+  auto& o3 = graph.GetOrCreateNodeArg("o3", &float_type3);
+  graph.AddNode("dq3_2", "DequantizeLinear", "", {&q3_out2, &scale_arg, &zp_arg}, {&o3});
+
+  auto& q2_out = graph.GetOrCreateNodeArg("q2_out", &uint8_type2);
+  graph.AddNode("q2", "QuantizeLinear", "", {&i2, &scale_arg, &zp_arg}, {&q2_out});
+  auto& dq2_out = graph.GetOrCreateNodeArg("dq2_out", &float_type2);
+  graph.AddNode("dq2", "DequantizeLinear", "", {&q2_out, &scale_arg, &zp_arg}, {&dq2_out});
+  auto& sigmoid2_out = graph.GetOrCreateNodeArg("sigmoid2_out", &float_type2);
+  graph.AddNode("sigmoid2", "Sigmoid", "", {&dq2_out}, {&sigmoid2_out});
+  auto& q2_out2 = graph.GetOrCreateNodeArg("q2_out2", &uint8_type2);
+  graph.AddNode("q2_2", "QuantizeLinear", "", {&sigmoid2_out, &scale_arg, &zp_arg}, {&q2_out2});
+  auto& o2 = graph.GetOrCreateNodeArg("o2", &float_type2);
+  graph.AddNode("dq2_2", "DequantizeLinear", "", {&q2_out2, &scale_arg, &zp_arg}, {&o2});
+
+  graph.SetInputs({&i2, &i1, &i3});
+  graph.SetOutputs({&o2, &o1, &o3});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << "Graph resolve failed: " << status.ErrorMessage();
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  const std::filesystem::path tmp_dir = "qnn_io_order_qdq_test";
+  std::filesystem::remove_all(tmp_dir);
+  std::filesystem::create_directory(tmp_dir);
+
+  auto cleanup = gsl::finally([&tmp_dir]() { std::filesystem::remove_all(tmp_dir); });
+
+  Ort::SessionOptions so;
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnCpu.dll";
+#else
+  options["backend_path"] = "libQnnCpu.so";
+#endif
+  options["offload_graph_io_quantization"] = "1";
+  options["json_qnn_graph_dir"] = tmp_dir.string();
+  options["dump_json_qnn_graph"] = "1";
+
+  RegisteredEpDeviceUniquePtr registered_ep_device;
+  RegisterQnnEpLibrary(registered_ep_device, so, onnxruntime::kQnnABIExecutionProvider, options);
+
+  Ort::Session session(*ort_env, model_data.data(), model_data.size(), so);
+
+  std::filesystem::path json_path;
+  for (const auto& entry : std::filesystem::directory_iterator{tmp_dir}) {
+    if (entry.is_regular_file() && entry.path().extension() == ".json" &&
+        entry.path().filename().string().find("_tensor_log") == std::string::npos) {
+      json_path = entry.path();
+      break;
+    }
+  }
+  ASSERT_FALSE(json_path.empty()) << "No JSON file found in " << tmp_dir;
+
+  std::vector<std::pair<std::string, int>> inputs_with_id, outputs_with_id;
+  {
+    std::ifstream json_file(json_path);
+    ASSERT_TRUE(json_file.is_open());
+
+    nlohmann::json root;
+    json_file >> root;
+
+    for (const auto& [name, tensor] : root["graph"]["tensors"].items()) {
+      int type = tensor.value("type", -1);
+      int id = tensor.value("id", -1);
+      if (type == 0) {
+        inputs_with_id.emplace_back(name, id);  // QNN_TENSOR_TYPE_APP_WRITE
+      } else if (type == 1) {
+        outputs_with_id.emplace_back(name, id);  // QNN_TENSOR_TYPE_APP_READ
+      }
+    }
+  }
+
+  std::sort(inputs_with_id.begin(), inputs_with_id.end(),
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+  std::sort(outputs_with_id.begin(), outputs_with_id.end(),
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+
+  std::vector<std::string> input_names, output_names;
+  for (const auto& [name, id] : inputs_with_id) {
+    input_names.push_back(name);
+  }
+  for (const auto& [name, id] : outputs_with_id) {
+    output_names.push_back(name);
+  }
+
+  ASSERT_EQ(input_names.size(), 3u) << "Expected 3 inputs";
+  ASSERT_EQ(output_names.size(), 3u) << "Expected 3 outputs";
+
+  std::set<std::string> expected_input_set = {"i1", "i2", "i3"};
+  std::set<std::string> actual_input_set(input_names.begin(), input_names.end());
+  EXPECT_EQ(actual_input_set, expected_input_set);
+
+  std::set<std::string> expected_output_set = {"o1", "o2", "o3"};
+  std::set<std::string> actual_output_set(output_names.begin(), output_names.end());
+  EXPECT_EQ(actual_output_set, expected_output_set);
+
+  EXPECT_EQ(input_names[0], "i2");
+  EXPECT_EQ(input_names[1], "i1");
+  EXPECT_EQ(input_names[2], "i3");
+
+  EXPECT_EQ(output_names[0], "o2");
+  EXPECT_EQ(output_names[1], "o1");
+  EXPECT_EQ(output_names[2], "o3");
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace test

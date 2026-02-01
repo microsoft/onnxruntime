@@ -22,6 +22,44 @@
 namespace onnxruntime {
 namespace qnn {
 
+namespace {
+
+// Resolves the correct I/O order, preferring ONNX declaration order when available.
+// When names don't match directly (e.g., with offload_graph_io_quantization), uses
+// tensor_name_overrides_reversed to translate ONNX names to internal tensor names.
+std::vector<std::string> ResolveGraphInputOutputOrder(
+    const std::vector<std::string>* onnx_names,
+    const std::unordered_set<std::string>& fused_names,
+    const std::vector<std::string>& fused_order,
+    const std::unordered_map<std::string, std::string>& tensor_name_overrides_reversed) {
+  if (!onnx_names) {
+    return fused_order;
+  }
+
+  bool names_match = std::all_of(onnx_names->begin(), onnx_names->end(),
+                                 [&](const std::string& n) { return fused_names.count(n) > 0; });
+  if (names_match) {
+    return *onnx_names;
+  }
+
+  if (!tensor_name_overrides_reversed.empty()) {
+    std::vector<std::string> mapped_order;
+    for (const auto& onnx_name : *onnx_names) {
+      auto it = tensor_name_overrides_reversed.find(onnx_name);
+      if (it != tensor_name_overrides_reversed.end() && fused_names.count(it->second)) {
+        mapped_order.push_back(it->second);
+      }
+    }
+    if (mapped_order.size() == onnx_names->size()) {
+      return mapped_order;
+    }
+  }
+
+  return fused_order;
+}
+
+}  // namespace
+
 bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const Ort::Logger& /* logger */) {
   bool rt = true;
 
@@ -34,74 +72,100 @@ bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const Ort::
   return rt;
 }
 
-Ort::Status QnnModel::SetGraphInputOutputInfo(const OrtGraph& ort_graph,
-                                              const OrtNode& fused_node,
-                                              const Ort::Logger& logger) {
-  size_t num_inputs = 0;
-  ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.Node_GetNumInputs(&fused_node, &num_inputs));
-  std::vector<const OrtValueInfo*> input_defs(num_inputs);
-  ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.Node_GetInputs(&fused_node, input_defs.data(), input_defs.size()));
-  RETURN_IF_ERROR(ParseGraphInputOrOutput(ort_graph, input_defs, input_names_, inputs_info_,
-                                          model_input_index_map_, logger, true));
+Ort::Status QnnModel::SetGraphInputOutputInfo(const QnnModelContext& context) {
+  const OrtGraph& ort_graph = context.ort_graph;
 
-  size_t num_outputs = 0;
-  ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.Node_GetNumOutputs(&fused_node, &num_outputs));
+  graph_inputs_.Clear();
+  graph_outputs_.Clear();
 
-  std::vector<const OrtValueInfo*> output_defs(num_outputs);
-  ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.Node_GetOutputs(&fused_node, output_defs.data(), output_defs.size()));
-  RETURN_IF_ERROR(ParseGraphInputOrOutput(ort_graph, output_defs, output_names_, outputs_info_,
-                                          model_output_index_map_, logger));
+  Ort::ConstNode fused_node{&context.fused_node};
+  std::vector<Ort::ConstValueInfo> input_defs = fused_node.GetInputs();
 
-  return Ort::Status();
-}
-
-Ort::Status QnnModel::ParseGraphInputOrOutput(const OrtGraph& ort_graph,
-                                              std::vector<const OrtValueInfo*> input_output_defs,
-                                              std::vector<std::string>& input_output_names,
-                                              std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
-                                              std::unordered_map<std::string, size_t>& input_output_index_map,
-                                              const Ort::Logger& logger,
-                                              bool is_input) {
-  for (size_t i = 0, end = input_output_defs.size(), index = 0; i < end; ++i) {
-    const OrtValueInfo* input_output_def_data = input_output_defs[i];
-    const char* input_output_def_name = nullptr;
-    ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.GetValueInfoName(input_output_def_data, &input_output_def_name));
-
-    const auto name = std::string(input_output_def_name);
-    if (is_input) {
-      if (IsConstantInitializer(ort_graph, name)) {
-        continue;  // exclude initializer inputs
-      }
+  // Collect non-initializer inputs
+  std::unordered_set<std::string> fused_input_names;
+  std::vector<std::string> fused_input_order;
+  for (const auto& input : input_defs) {
+    std::string name = input.GetName();
+    if (!IsConstantInitializer(ort_graph, name)) {
+      fused_input_names.insert(name);
+      fused_input_order.push_back(name);
     }
-    // Validate input/output shape
-    ORT_CXX_LOG(logger,
+  }
+
+  std::unordered_map<std::string, std::string> tensor_name_overrides_reversed;
+  if (context.tensor_name_overrides) {
+    for (const auto& [internal, onnx] : *context.tensor_name_overrides) {
+      tensor_name_overrides_reversed[onnx] = internal;
+    }
+  }
+
+  const std::vector<std::string> input_order = ResolveGraphInputOutputOrder(
+      context.onnx_input_names, fused_input_names, fused_input_order, tensor_name_overrides_reversed);
+
+  for (size_t idx = 0; idx < input_order.size(); ++idx) {
+    const auto& name = input_order[idx];
+    ORT_CXX_LOG(context.logger,
                 ORT_LOGGING_LEVEL_VERBOSE,
-                ((is_input ? "input " : "output ") + std::to_string(i) + " " + name).c_str());
-    input_output_index_map.emplace(name, index++);
+                ("input " + std::to_string(idx) + " " + name).c_str());
+    graph_inputs_.indices.emplace(name, idx);
+    graph_inputs_.names.push_back(name);
+  }
 
-    const OrtTypeInfo* type_info = nullptr;
-    ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.GetValueInfoTypeInfo(input_output_def_data, &type_info));
+  for (size_t i = 0; i < input_defs.size(); ++i) {
+    const auto& value_info = input_defs[i];
+    std::string name = value_info.GetName();
+    if (IsConstantInitializer(ort_graph, name)) continue;
 
-    const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-    ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
+    auto shape_info = value_info.TypeInfo().GetTensorTypeAndShapeInfo();
+    ONNXTensorElementDataType elem_type = shape_info.GetElementType();
+    std::vector<int64_t> shape = shape_info.GetShape();
 
-    ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.GetTensorElementType(type_shape, &elem_type));
+    for (const auto& s : shape) {
+      RETURN_IF(s < 0, ("Dynamic shape is not supported yet, for input: " + name).c_str());
+    }
 
-    size_t num_dims = 0;
-    ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.GetDimensionsCount(type_shape, &num_dims));
+    graph_inputs_.tensors.emplace(std::piecewise_construct,
+                                  std::forward_as_tuple(name),
+                                  std::forward_as_tuple(i, static_cast<int32_t>(elem_type), std::move(shape)));
+  }
 
-    std::vector<int64_t> shape;
-    shape.resize(num_dims, 0);
-    ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.GetDimensions(type_shape, shape.data(), shape.size()));
+  std::vector<Ort::ConstValueInfo> output_defs = fused_node.GetOutputs();
+
+  std::unordered_set<std::string> fused_output_names;
+  std::vector<std::string> fused_output_order;
+  for (const auto& output : output_defs) {
+    std::string name = output.GetName();
+    fused_output_names.insert(name);
+    fused_output_order.push_back(name);
+  }
+
+  const std::vector<std::string> output_order = ResolveGraphInputOutputOrder(
+      context.onnx_output_names, fused_output_names, fused_output_order, tensor_name_overrides_reversed);
+
+  for (size_t idx = 0; idx < output_order.size(); ++idx) {
+    const auto& name = output_order[idx];
+    ORT_CXX_LOG(context.logger,
+                ORT_LOGGING_LEVEL_VERBOSE,
+                ("output " + std::to_string(idx) + " " + name).c_str());
+    graph_outputs_.indices.emplace(name, idx);
+    graph_outputs_.names.push_back(name);
+  }
+
+  for (size_t i = 0; i < output_defs.size(); ++i) {
+    const auto& value_info = output_defs[i];
+    std::string name = value_info.GetName();
+
+    auto shape_info = value_info.TypeInfo().GetTensorTypeAndShapeInfo();
+    ONNXTensorElementDataType elem_type = shape_info.GetElementType();
+    std::vector<int64_t> shape = shape_info.GetShape();
+
     for (const auto& s : shape) {
       RETURN_IF(s < 0, ("Dynamic shape is not supported yet, for output: " + name).c_str());
     }
-    // use index i so that for graph input, it has initializers included
-    input_output_info_table.emplace(std::piecewise_construct,
-                                    std::forward_as_tuple(name),
-                                    std::forward_as_tuple(i, static_cast<int32_t>(elem_type), std::move(shape)));
-    input_output_names.push_back(name);
+
+    graph_outputs_.tensors.emplace(std::piecewise_construct,
+                                   std::forward_as_tuple(name),
+                                   std::forward_as_tuple(i, static_cast<int32_t>(elem_type), std::move(shape)));
   }
 
   return Ort::Status();
@@ -116,13 +180,15 @@ const OrtNodeUnit& QnnModel::GetNodeUnit(const OrtNode* node,
   return *node_unit_it->second;
 }
 
-Ort::Status QnnModel::ComposeGraph(const OrtGraph& ort_graph,
-                                   const OrtNode& fused_node,
-                                   const qnn::ModelSettings& model_settings,
-                                   const Ort::Logger& logger,
-                                   std::unordered_map<std::string, std::string>* tensor_name_overrides,
-                                   const QnnGraph_Config_t** graph_configs,
-                                   const std::string& json_qnn_graph_path) {
+Ort::Status QnnModel::ComposeGraph(const QnnModelContext& context) {
+  RETURN_IF(context.onnx_input_names == nullptr, "onnx_input_names is required for ComposeGraph");
+  RETURN_IF(context.onnx_output_names == nullptr, "onnx_output_names is required for ComposeGraph");
+  RETURN_IF(context.model_settings == nullptr, "model_settings is required for ComposeGraph");
+
+  const OrtGraph& ort_graph = context.ort_graph;
+  const OrtNode& fused_node = context.fused_node;
+  const Ort::Logger& logger = context.logger;
+
   ORT_CXX_LOG(logger,
               ORT_LOGGING_LEVEL_VERBOSE,
               ("ComposeGraph Graph name: " + Ort::ConstGraph(&ort_graph).GetName()).c_str());
@@ -136,16 +202,16 @@ Ort::Status QnnModel::ComposeGraph(const OrtGraph& ort_graph,
 
   // This name must be same with the EPContext node name
   const auto& graph_name = Ort::ConstNode(&fused_node).GetName();
-  RETURN_IF_ERROR(SetGraphInputOutputInfo(ort_graph, fused_node, logger));
+  RETURN_IF_ERROR(SetGraphInputOutputInfo(context));
 
   QnnModelWrapper qnn_model_wrapper = QnnModelWrapper(ort_graph, api_ptrs_, logger,
                                                       qnn_backend_manager_->GetQnnInterface(),
                                                       qnn_backend_manager_->GetQnnBackendHandle(),
-                                                      model_input_index_map_,
-                                                      model_output_index_map_,
+                                                      graph_inputs_,
+                                                      graph_outputs_,
                                                       qnn_backend_manager_->GetQnnBackendType(),
-                                                      model_settings,
-                                                      tensor_name_overrides);
+                                                      *context.model_settings,
+                                                      context.tensor_name_overrides);
 
   qnn::profile::ProfilingInfo profiling_info;
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
@@ -155,7 +221,7 @@ Ort::Status QnnModel::ComposeGraph(const OrtGraph& ort_graph,
   }
 #endif
 
-  bool rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, graph_configs);
+  bool rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, context.graph_configs);
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   if (qnn_backend_manager_->ProfilingEnabled()) {
@@ -190,14 +256,14 @@ Ort::Status QnnModel::ComposeGraph(const OrtGraph& ort_graph,
     }
   }
 
-  const bool build_json_graph = !json_qnn_graph_path.empty();
+  const bool build_json_graph = !context.json_qnn_graph_path.empty();
   RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(build_json_graph), "Failed to compose Qnn graph.");
 
-  LogTensorDetails(qnn_model_wrapper, graph_name, json_qnn_graph_path, logger);
+  LogTensorDetails(qnn_model_wrapper, graph_name, context.json_qnn_graph_path, logger);
 
   if (build_json_graph) {
     const nlohmann::json& json_graph = qnn_model_wrapper.GetQnnJSONGraph();
-    std::ofstream ofs(json_qnn_graph_path);
+    std::ofstream ofs(context.json_qnn_graph_path);
 
     if (ofs.is_open()) {
       ofs << json_graph.dump();
@@ -205,7 +271,7 @@ Ort::Status QnnModel::ComposeGraph(const OrtGraph& ort_graph,
     } else {
       ORT_CXX_LOG(logger,
                   ORT_LOGGING_LEVEL_WARNING,
-                  ("Could not open JSON graph file: " + json_qnn_graph_path).c_str());
+                  ("Could not open JSON graph file: " + context.json_qnn_graph_path).c_str());
     }
   }
 
@@ -489,8 +555,7 @@ Ort::Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
   size_t tensor_count = tensor_wrappers.size();
   RETURN_IF(0 == tensor_count, "Zero tensor size!");
   if (is_input) {
-    // Resize qnn_tensor_infos according to the number of graph inputs.
-    auto input_count = GetGraphInputCount();
+    auto input_count = graph_inputs_.indices.size();
     RETURN_IF(input_count < tensor_count, "The count of graph inputs should be at least the count of tensor_wrapper!");
     qnn_tensor_infos.resize(input_count);
   } else {
