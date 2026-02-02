@@ -107,6 +107,7 @@ class WindowsTelemetry : public Telemetry {
   static uint32_t global_register_count_;
   static bool enabled_;
   static uint32_t projection_;
+  static bool is_debugger_present_;
 
   static std::vector<const EtwInternalCallback*> callbacks_;
   static std::mutex callbacks_mutex_;

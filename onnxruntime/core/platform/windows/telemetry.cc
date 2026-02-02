@@ -68,12 +68,15 @@ bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
 UCHAR WindowsTelemetry::level_ = 0;
 UINT64 WindowsTelemetry::keyword_ = 0;
+bool WindowsTelemetry::is_debugger_present_ = false;
 std::vector<const WindowsTelemetry::EtwInternalCallback*> WindowsTelemetry::callbacks_;
 std::mutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (global_register_count_ == 0) {
+    // Cache debugger state at initialization
+    is_debugger_present_ = (IsDebuggerPresent() != FALSE);
     // TraceLoggingRegister is fancy in that you can only register once GLOBALLY for the whole process
     HRESULT hr = TraceLoggingRegisterEx(telemetry_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
     if (SUCCEEDED(hr)) {
@@ -187,7 +190,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingBool(IsDebuggerPresent(), "isDebuggerAttached"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
                     TraceLoggingBool(isRedist, "isRedist"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 
@@ -204,7 +207,9 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingLevel(WINEVENT_LEVEL_INFO));
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogEvaluationStop(uint32_t session_id) const {
@@ -213,7 +218,9 @@ void WindowsTelemetry::LogEvaluationStop(uint32_t session_id) const {
 
   TraceLoggingWrite(telemetry_provider_handle,
                     "EvaluationStop",
-                    TraceLoggingUInt32(session_id, "sessionId"));
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogEvaluationStart(uint32_t session_id) const {
@@ -222,7 +229,9 @@ void WindowsTelemetry::LogEvaluationStart(uint32_t session_id) const {
 
   TraceLoggingWrite(telemetry_provider_handle,
                     "EvaluationStart",
-                    TraceLoggingUInt32(session_id, "sessionId"));
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
@@ -304,7 +313,9 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   } else {
     TraceLoggingWrite(telemetry_provider_handle,
                       "SessionCreation_CaptureState",
@@ -330,7 +341,9 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   }
 }
 
@@ -371,7 +384,9 @@ void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
                     TraceLoggingInt32(graph_optimization_level, "graphOptimizationLevel"),
                     TraceLoggingBool(embed_ep_context, "embedEpContext"),
                     TraceLoggingBool(has_external_initializers_file, "hasExternalInitializersFile"),
-                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
@@ -394,7 +409,9 @@ void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
                     TraceLoggingBool(success, "success"),
                     TraceLoggingUInt32(error_code, "errorCode"),
                     TraceLoggingUInt32(error_category, "errorCategory"),
-                    TraceLoggingString(error_message.c_str(), "errorMessage"));
+                    TraceLoggingString(error_message.c_str(), "errorMessage"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
@@ -419,7 +436,9 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
-                    TraceLoggingInt32(line, "line"));
+                    TraceLoggingInt32(line, "line"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 #else
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeError",
@@ -435,7 +454,9 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
-                    TraceLoggingInt32(line, "line"));
+                    TraceLoggingInt32(line, "line"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 #endif
 }
 
@@ -465,7 +486,9 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(total_runs_since_last, "totalRuns"),
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"),
-                    TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"));
+                    TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
@@ -479,7 +502,9 @@ void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
                     TraceLoggingUInt32(adapterLuid->LowPart, "adapterLuidLowPart"),
-                    TraceLoggingUInt32(adapterLuid->HighPart, "adapterLuidHighPart"));
+                    TraceLoggingUInt32(adapterLuid->HighPart, "adapterLuidHighPart"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogDriverInfoEvent(const std::string_view device_class, const std::wstring_view& driver_names, const std::wstring_view& driver_versions) const {
@@ -496,7 +521,9 @@ void WindowsTelemetry::LogDriverInfoEvent(const std::string_view device_class, c
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(device_class.data(), "deviceClass"),
                     TraceLoggingWideString(driver_names.data(), "driverNames"),
-                    TraceLoggingWideString(driver_versions.data(), "driverVersions"));
+                    TraceLoggingWideString(driver_versions.data(), "driverVersions"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
@@ -541,7 +568,9 @@ void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingString(selection_policy.c_str(), "selectionPolicy"),
                     TraceLoggingString(requested_execution_provider_string.c_str(), "requestedExecutionProviderIds"),
-                    TraceLoggingString(available_execution_provider_string.c_str(), "availableExecutionProviderIds"));
+                    TraceLoggingString(available_execution_provider_string.c_str(), "availableExecutionProviderIds"),
+                    TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const std::string& provider_options_string, bool captureState) const {
@@ -560,7 +589,9 @@ void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const 
                       // Telemetry info
                       TraceLoggingUInt8(0, "schemaVersion"),
                       TraceLoggingString(provider_id.c_str(), "providerId"),
-                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"));
+                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"),
+                      TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   } else {
     TraceLoggingWrite(telemetry_provider_handle,
                       "ProviderOptions_CaptureState",
@@ -572,7 +603,9 @@ void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const 
                       // Telemetry info
                       TraceLoggingUInt8(0, "schemaVersion"),
                       TraceLoggingString(provider_id.c_str(), "providerId"),
-                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"));
+                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"),
+                      TraceLoggingBool(is_debugger_present_, "isDebuggerAttached"),
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   }
 }
 
