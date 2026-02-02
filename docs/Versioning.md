@@ -11,9 +11,9 @@ The version number of the current stable release can be found
 ## Release cadence
 See [Release Management](ReleaseManagement.md)
 
-## Updating the Version for a Release Branch
+## Updating the Version for a Release
 
-When creating a release branch, follow these steps to update the version number across the codebase:
+When preparing a release, follow these steps to update the version number across the codebase. This applies both when creating an initial release branch (updating `main`) and when preparing patch releases on release branches:
 
 ### Prerequisites
 - Node.js (check [js/.nvmrc](../js/.nvmrc) for the required version)
@@ -59,7 +59,7 @@ npm --version    # Should be v8.0 or newer
 
 4. **Review all changes**
 
-   Run `git status` to review all modified files. Verify:
+   Review all modified files. Verify:
    - Version numbers are correct in all updated files
    - The release notes URL format is correct (e.g., `https://github.com/Microsoft/onnxruntime/releases/tag/vX.Y.Z`)
 
