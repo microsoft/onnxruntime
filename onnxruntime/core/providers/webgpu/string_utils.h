@@ -75,7 +75,7 @@ class FastOStringStream {
 
   // Integer types
   template <typename T>
-  std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, char> && !std::is_same_v<T, bool>, FastOStringStream&>
+  std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, char>, FastOStringStream&>
   operator<<(T value) {
     std::array<char, 32> buffer;
     auto [ptr, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
@@ -90,12 +90,6 @@ class FastOStringStream {
     std::array<char, 64> buffer;
     auto [ptr, ec] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
     str_.append(buffer.data(), ptr - buffer.data());
-    return *this;
-  }
-
-  // Boolean
-  FastOStringStream& operator<<(bool value) {
-    str_.push_back(value ? 't' : 'f');
     return *this;
   }
 
