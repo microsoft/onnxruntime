@@ -180,7 +180,7 @@ class WebGpuContext final {
 
       wgpu::ComputePassDescriptor compute_pass_desc{};
 
-      if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses) {
+      if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses && graph_capture_state_ != GraphCaptureState::Capturing) {
         wgpu::PassTimestampWrites timestampWrites = {
             nullptr,
             query_set_,

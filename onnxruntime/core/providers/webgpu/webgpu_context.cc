@@ -472,7 +472,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   ++num_pending_dispatches_;
 
   // Update profiling data after LaunchComputePipeline
-  if (is_profiling_ || graph_capture_state_ == GraphCaptureState::Capturing) {
+  if (is_profiling_) {
     PendingKernelInfo pending_kernel_info(context.NodeName(),
                                           context.OpType(),
                                           program.Name(),
@@ -588,7 +588,7 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
 }
 
 void WebGpuContext::WriteTimestamp(uint32_t query_index) {
-  if (!is_profiling_ || query_type_ != TimestampQueryType::InsidePasses) {
+  if (!is_profiling_ || graph_capture_state_ == GraphCaptureState::Capturing || query_type_ != TimestampQueryType::InsidePasses) {
     return;
   }
 
@@ -725,7 +725,7 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
 
   EndComputePass();
 
-  if (is_profiling_ && num_pending_dispatches_ > 0) {
+  if (is_profiling_ && num_pending_dispatches_ > 0 && graph_capture_state_ != GraphCaptureState::Capturing) {
     ORT_ENFORCE(num_pending_dispatches_ == pending_kernels_.size(),
                 "Number of pending dispatches (", num_pending_dispatches_,
                 ") does not match pending kernels size (", pending_kernels_.size(), ")");
@@ -846,8 +846,6 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
     external_captured_commands_->clear();
   }
 
-  // Temporarily disable active profiling during capture; profiling data is deferred and used during replay
-  is_profiling_ = false;
   graph_capture_state_ = GraphCaptureState::Capturing;
 }
 
