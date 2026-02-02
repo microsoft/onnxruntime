@@ -247,11 +247,24 @@ if (NOT CMAKE_C_STANDARD)
 endif()
 
 if (NOT CMAKE_CXX_STANDARD)
-  # TODO move all builds to C++20
-  if (MSVC AND onnxruntime_USE_CUDA)
-    # There's a compilation error from CUTLASS header "cute/tensor.hpp" when attempting to use C++20:
-    #   cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type template
-    #   argument
+  # TODO: enable C++20 for all builds
+  # set(CMAKE_CXX_STANDARD 20)
+
+  if (onnxruntime_USE_CUDA)
+    # Known issues when updating from C++17 to C++20:
+    # - MSVC + onnxruntime_USE_CUDA:
+    #   - Compilation error from CUTLASS header "cute/tensor.hpp" when attempting to use C++20:
+    #       cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type
+    #       template argument
+    # - GCC + onnxruntime_USE_CUDA:
+    #   - Compilation error from onnxruntime/contrib_ops/cuda/llm/cutlass_heuristic.cc when adding an element to
+    #     `std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>` in
+    #     onnxruntime/contrib_ops/cuda/llm/cutlass_heuristic.cc:
+    #       /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/stl_construct.h:97:14: error: writing 1 byte into a
+    #       region of size 0 [-Werror=stringop-overflow=]
+    #   - Possibly a spurious warning
+    #
+    # When the CUDA EP becomes an independent plugin EP, we can keep building it with C++17 if needed.
     set(CMAKE_CXX_STANDARD 17)
   else()
     set(CMAKE_CXX_STANDARD 20)
