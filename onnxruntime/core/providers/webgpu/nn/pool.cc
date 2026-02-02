@@ -84,14 +84,8 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   constexpr const size_t kStringInitialSize = 128;
   if (is_max_pool_) {
-    std::string f16_min = "f16(-65504)";
-
-    SS(f32_min_ss, kStringInitialSize);
-    f32_min_ss << "f32(" << std::numeric_limits<float>::lowest() << ")";
-    std::string f32_min = SS_GET(f32_min_ss);
-
     SS(var_decl_ss, kStringInitialSize);
-    var_decl_ss << "  var value = " << (is_float16_ ? f16_min : f32_min) << ";\n";
+    var_decl_ss << "  var value = " << (is_float16_ ? "-65504.0h" : "-3.4028234663852886e+38f") << ";\n";
     var_decl_code = SS_GET(var_decl_ss);
 
     sampling_code = "      value = max(value, x_val);\n";
