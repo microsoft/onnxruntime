@@ -475,16 +475,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.head_sink = nullptr;
     gqa_data.position_ids = nullptr;
 
-#ifndef NDEBUG
-    // Initialize debug tracking fields
-    gqa_data.unpacked_qkv_buffer_size = 0;
-    gqa_data.rotary_buffer_size = 0;
-    gqa_data.position_ids_buffer_size = 0;
-    gqa_data.unpacked_qkv_max_used = 0;
-    gqa_data.rotary_max_used = 0;
-    gqa_data.position_ids_max_used = 0;
-#endif
-
     // Call GQA kernel (with flash or memory efficient attention)
     cublasHandle_t cublas = GetCublasHandle(context);
 
