@@ -264,7 +264,8 @@ if (NOT CMAKE_CXX_STANDARD)
     #       region of size 0 [-Werror=stringop-overflow=]
     #   - Possibly a spurious warning
     #
-    # When the CUDA EP becomes an independent plugin EP, we can keep building it with C++17 if needed.
+    # When the CUDA EP becomes an independent plugin EP, hopefully we can update all of onnxruntime to C++20.
+    # We can keep building the CUDA plugin EP with C++17 if needed.
     set(CMAKE_CXX_STANDARD 17)
   else()
     set(CMAKE_CXX_STANDARD 20)
