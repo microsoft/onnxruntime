@@ -659,7 +659,12 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
+#ifdef USE_NV
+          // Only include NV TRT RTX EP when is ORT is built with the provider-bridge
+          // version of the EP (i.e., USE_NV is defined). This allows use of the plugin EP version of the EP
+          // when ORT is not built any provider-bridge EPs.
           kNvTensorRTRTXExecutionProvider,
+#endif
           kOpenVINOExecutionProvider,
           kDmlExecutionProvider,
           kAclExecutionProvider,
@@ -835,7 +840,10 @@ void BaseTester::ExecuteModelForEps(
 
       constexpr std::array kEpsThatCompileNodes{
           kOpenVINOExecutionProvider,
-          kTensorrtExecutionProvider,  // uses kernel registry for Memcpy* nodes, but compiles all others.
+          kTensorrtExecutionProvider,  // uses kernel registry for Memcpy* nodes only
+#ifdef USE_NV
+          kNvTensorRTRTXExecutionProvider,  // uses kernel registry for Memcpy* nodes only
+#endif
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
           kCoreMLExecutionProvider,
