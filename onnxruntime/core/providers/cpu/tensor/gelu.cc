@@ -17,7 +17,7 @@
 #include <memory>
 
 #if defined(_WIN32)
-  #include <malloc.h>
+#include <malloc.h>
 #endif
 
 inline void* AlignedAlloc(size_t alignment, size_t size) {
@@ -154,15 +154,15 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
   void* raw = AlignedAlloc(alignment, aligned_size);
   if (!raw) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                          "Failed to allocate aligned temporary buffer.");
+                           "Failed to allocate aligned temporary buffer.");
   }
 
-auto deleter = [](MLFloat16* p) {
-  AlignedFree(p);
-};
+  auto deleter = [](MLFloat16* p) {
+    AlignedFree(p);
+  };
 
-std::unique_ptr<MLFloat16, decltype(deleter)> temp_fp16_aligned(
-    static_cast<MLFloat16*>(raw), deleter);
+  std::unique_ptr<MLFloat16, decltype(deleter)> temp_fp16_aligned(
+      static_cast<MLFloat16*>(raw), deleter);
 
   concurrency::ThreadPool::TryBatchParallelFor(
       tp,
@@ -174,7 +174,6 @@ std::unique_ptr<MLFloat16, decltype(deleter)> temp_fp16_aligned(
         int64_t count = std::min(length_per_task, elem_count - start);
         MLFloat16* p_temp = temp_fp16_aligned.get() + start;
         MlasComputeFP16Gelu(p_input, p_output, p_temp, count, approximation_algorithm_);
-
       },
       0);
   return Status::OK();
