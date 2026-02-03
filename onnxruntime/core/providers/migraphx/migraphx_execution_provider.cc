@@ -2062,9 +2062,14 @@ static void handle_input_shape_mismatch(
       mgx_state->int8_calibration_cache_available,
       mgx_state->dynamic_range_map,
       mgx_state->exhaustive_tune,
-      mgx_state->model_cache_dir,
+      //mgx_state->model_cache_dir,
+      model_path,
       &ctx,
-      &map_input_name_index);
+      &map_input_name_index,
+      {},  // input_names
+      {},  // all_input_base_shapes  
+      0,   // batch_size
+      mgx_state->max_dynamic_batch);
 
   // Store the compiled/loaded program in the in-memory cached_programs cache
   if (mgx_state->cached_programs_ref.has_value()) {
@@ -2887,7 +2892,8 @@ static void compile_dynamic_batch_models(
         nullptr,  // map_input_name_index not needed
         input_names,
         all_input_base_shapes,
-        batch_size);
+        batch_size,
+        mgx_state->max_dynamic_batch);
     
     // Store in cache
     if (mgx_state->cached_programs_ref.has_value()) {
