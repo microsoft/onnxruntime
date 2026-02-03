@@ -12,8 +12,10 @@ Abstract:
 
 --*/
 
+#pragma once
+
 #include "fp16_common.h"
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 #include "erf_neon_fp16.h"
 
 void

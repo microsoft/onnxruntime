@@ -2009,7 +2009,7 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
         const float* p_input = input_data + start;
         float* p_output = output_data + start;
         const std::ptrdiff_t count = std::min(length_per_task, elem_count - start);
-        MlasComputeErf(p_input, p_output, count);
+        MlasComputeErf(p_input, p_output, static_cast<size_t>(count));
       },
       0);
 

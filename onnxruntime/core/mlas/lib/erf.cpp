@@ -27,7 +27,7 @@ Abstract:
 #include "sve/mlasi_sve.h"
 #endif
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 #include "erf_neon_fp16.h"
 #endif
 
@@ -286,7 +286,7 @@ MlasComputeFP16Erf(
 {
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
 
-#if defined(MLAS_USE_SVE)
+#if defined(MLAS_USE_SVE) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
         MlasSveErfF16Kernel(
             reinterpret_cast<const _mlas_fp16_*>(Input),
@@ -297,7 +297,7 @@ MlasComputeFP16Erf(
     }
 #endif
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
     MlasNeonErfF16Kernel(
         reinterpret_cast<const _mlas_fp16_*>(Input),
         reinterpret_cast<_mlas_fp16_*>(Output),
@@ -315,3 +315,4 @@ MlasComputeFP16Erf(
     MlasConvertFloatToHalfBuffer(output_fp32.data(), Output, N);
 #endif
 }
+ 
