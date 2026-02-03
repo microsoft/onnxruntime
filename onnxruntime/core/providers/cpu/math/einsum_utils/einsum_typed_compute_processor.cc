@@ -10,6 +10,13 @@ namespace onnxruntime {
 template <typename T>
 void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_output,
                                                     const gsl::span<const int64_t>& ordered_subscript_indices_in_candidate) {
+  
+  ORT_ENFORCE(candidate_output.Shape().NumDimensions() == ordered_subscript_indices_in_candidate.size(),
+              "Einsum op: The candidate output's rank has to be the as same number of elements as "
+              "the ordered subscript indices in the candidate output. Hitting this error points to an "
+              "internal bug in the Einsum op's implementation. "
+              "Please open a bug report with appropriate repro steps");
+
   const std::vector<int64_t>& subscript_indices_to_output_indices =
       einsum_compute_preprocessor_.GetMappedSubscriptIndicesToOutputindices();
   const auto output_dims = einsum_compute_preprocessor_.GetOutputDims();
@@ -75,7 +82,7 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
 static bool IsTransposeReshapeForEinsum(const gsl::span<const size_t>& perm,
                                         gsl::span<const int64_t> input_dims,
                                         TensorShapeVector& new_shape) {
-  // As long as the dims with values > 1 stay in the same order, it's a reshape.
+  // As long as the dims with values > 1 stay in the same relative order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
   size_t last_permuted_axis = 0;
   for (size_t i = 0; i < perm.size(); ++i) {
@@ -361,17 +368,19 @@ Status EinsumTypedComputeProcessor<T>::Run() {
   std::unique_ptr<const Tensor> result;
 
   {
-    TensorShapeVector reduced_dims;
-    TensorShapeVector preserved_dims;                                           // dims which were not reduced
-    reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));    // num_subscript_labels is the upper bound. No harm in over-reserving.
-    preserved_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving.
+    TensorShapeVector reduced_dims;                                           // All dims of the input that are reduced using the `ReduceSum` op
+    reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving
+
+    TensorShapeVector all_dims;                                               // Expanded dimensions of `num_subscript_labels` {0, 1, ..., num_subscript_labels}
+    all_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));      // num_subscript_labels is the number of elements
 
     for (size_t i = 0; i < onnxruntime::narrow<size_t>(num_subscript_labels); ++i) {
       if (mapped_indices_to_last_input_index[i] == 0) {
         reduced_dims.push_back(i);
-      } else {
-        preserved_dims.push_back(i);
       }
+
+      // ReduceSum operation preserves even the reduced dims with reduced dim shape value being 1
+      all_dims.push_back(i);
     }
 
     // Reduce the dims that are last seen in the first input alone
@@ -391,7 +400,7 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     if (num_inputs == 1) {
       // Finalize the output by applying any transpose required to get
       // it to the required output ordering and move it to the op's output
-      FinalizeOutput(result ? *result : *raw_inputs[0], preserved_dims);
+      FinalizeOutput(result ? *result : *raw_inputs[0], all_dims);
 
       return Status::OK();
     }
