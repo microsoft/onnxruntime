@@ -17,12 +17,11 @@
 #include "core/graph/ep_api_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
-#include "core/optimizer/graph_optimizer_registry.h"
-#include "core/optimizer/graph_transformer_level.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
@@ -265,13 +264,9 @@ void InferenceModelCPU(const std::string& model_data,
                        const char* log_id,
                        ExpectedEPNodeAssignment expected_ep_assignment,
                        const NameMLValMap& feeds,
-                       std::vector<OrtValue>& output_vals,
-                       std::optional<GraphOptimizationLevel> graph_optimization_level) {
+                       std::vector<OrtValue>& output_vals) {
   SessionOptions so;
   so.session_logid = log_id;
-  if (graph_optimization_level.has_value()) {
-    so.graph_optimization_level = static_cast<TransformerLevel>(*graph_optimization_level);
-  }
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
@@ -313,14 +308,10 @@ void InferenceModelABI(const std::string& model_data,
                        const NameMLValMap& feeds,
                        std::vector<OrtValue>& output_vals,
                        const std::unordered_map<std::string, std::string>& session_option_pairs,
-                       std::optional<GraphOptimizationLevel> graph_optimization_level,
                        std::function<void(const Graph&)>* graph_checker) {
   RegisteredEpDeviceUniquePtr registered_ep_device;
   const std::string& registration_name = onnxruntime::kQnnABIExecutionProvider;
   Ort::SessionOptions session_options;
-  if (graph_optimization_level.has_value()) {
-    session_options.SetGraphOptimizationLevel(*graph_optimization_level);
-  }
   RegisterQnnEpLibrary(registered_ep_device, session_options, registration_name, provider_options);
 
   session_options.SetLogId(log_id);
