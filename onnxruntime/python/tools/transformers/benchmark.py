@@ -206,7 +206,7 @@ def run_onnxruntime(
             if not is_valid_onnx_model:
                 continue
 
-            provider_options = {"MIGraphXExecutionProvider": {"migraphx_max_dynamic_batch": "32"}} if provider == "migraphx" else None
+            provider_options = {"MIGraphXExecutionProvider": {"migraphx_max_dynamic_batch": str(max(batch_sizes))}} if provider == "migraphx" else None
 
             ort_session = create_onnxruntime_session(
                 onnx_model_file,
