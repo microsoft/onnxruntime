@@ -3493,8 +3493,9 @@ static inline std::string precompile_model_for_batch(
       nullptr,  // map_input_name_index not needed
       input_names,
       all_input_base_shapes,
-      batch_size);
-  
+      batch_size,
+      0);
+
   // Store in memory cache
   cached_programs[cache_hash] = std::move(batch_prog);
   LOGS_DEFAULT(VERBOSE) << "[precompile_model_for_batch] ✓ Stored batch " << batch_size << " in cache";
@@ -3523,7 +3524,8 @@ static inline void precompile_all_dynamic_batch_models(
     const std::filesystem::path& model_path,
     const std::filesystem::path& model_cache_path,
     const std::string& mxr_filename_prefix,
-    std::unordered_map<std::string, migraphx::program>& cached_programs)
+    std::unordered_map<std::string, migraphx::program>& cached_programs,
+    size_t max_dynamic_batch)
 {
   LOGS_DEFAULT(INFO) << "[precompile_all_dynamic_batch_models] Processing " 
                      << power_of_two_batch_sizes.size() << " power-of-two batch models...";
@@ -3654,7 +3656,8 @@ static inline void precompile_all_dynamic_batch_models(
           nullptr,  // map_input_name_index not needed
           input_names,
           all_input_base_shapes,
-          info.batch_size);
+          info.batch_size,
+          max_dynamic_batch);
       
       LOGS_DEFAULT(INFO) << "[precompile_all_dynamic_batch_models] ✓ Compiled batch size " 
                          << info.batch_size;
@@ -3806,7 +3809,8 @@ static inline void precompile_static_model(
       nullptr,
       ordered_names,
       base_shapes,
-      static_cast<std::size_t>(batch_size));
+      static_cast<std::size_t>(batch_size),
+      0);
   
   // Store in cache
   cached_programs[cache_hash] = std::move(prog);
@@ -3912,7 +3916,8 @@ static inline bool handle_precompilation_decision(
             model_path,
             model_cache_path,
             mxr_filename_prefix,
-            cached_programs);
+            cached_programs,
+            max_dynamic_batch);
         
         // Precompilation complete - disable deferred compilation
         LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] ✓✓✓ Dynamic batch precompilation COMPLETE for node '" 
