@@ -258,7 +258,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                          "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
                          "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
                          "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
-                         "json_qnn_graph_dir", "disable_file_mapped_weights", "htp_bf16_enable", "enable_vtcm_backup_buffer_sharing"});
+                         "json_qnn_graph_dir", "disable_file_mapped_weights", "htp_bf16_enable", "enable_vtcm_backup_buffer_sharing", "extended_udma"});
+
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -323,6 +324,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                  key == "enable_htp_spill_fill_buffer" ||
                  key == "enable_htp_shared_memory_allocator" ||
                  key == "dump_json_qnn_graph" ||
+                 key == "extended_udma" ||
                  key == "disable_file_mapped_weights" ||
                  key == "enable_vtcm_backup_buffer_sharing") {
         std::set<std::string> supported_options = {"0", "1"};
