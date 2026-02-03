@@ -6,7 +6,6 @@ numpy==2.2.6; python_version < "3.14"
 numpy==2.3.2; python_version >= "3.14"
 torch==2.8.0
 torchvision==0.23.0
-coloredlogs==15.0
 transformers==4.52.1
 parameterized>=0.8.1
 sentencepiece
