@@ -296,8 +296,9 @@ struct EinsumTypedComputeProcessor {
   void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
                         const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
                         const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
-                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func) {
-    g_host_cpu.EinsumTypedComputeProcessor__SetDeviceHelpers(this, device_transpose_func, device_matmul_func, device_reduce_sum_func, device_data_copy_func);
+                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
+                        const EinsumOp::DeviceHelpers::Zeroing& zero_input_buffer_func) {
+    g_host_cpu.EinsumTypedComputeProcessor__SetDeviceHelpers(this, device_transpose_func, device_matmul_func, device_reduce_sum_func, device_data_copy_func, zero_input_buffer_func);
   }
 
   Status Run() { return g_host_cpu.EinsumTypedComputeProcessor__Run(this); }
