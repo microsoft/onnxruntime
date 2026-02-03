@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cpu/llm/attention.h"
 #include "core/providers/cpu/llm/attention_helper.h"
 #include "core/providers/cuda/llm/attention.h"
 #include "core/providers/cuda/llm/attention_mask_convert.h"
@@ -140,15 +141,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       converted_bool_mask_buffer = GetScratchBuffer<T>(mask_size, context->GetComputeStream());
 
       // Launch CUDA kernel to convert: true->0.0f, false->mask_filter_value
-      // Note: mask_filter_value default is -10000.0f, same as MultiHeadAttention op
       typedef typename ToCudaType<T>::MappedType CudaT;
-      const float mask_filter_value = -10000.0f;
       ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToFloatBias<CudaT>(
           Stream(context),
           reinterpret_cast<CudaT*>(converted_bool_mask_buffer.get()),
           attn_mask->Data<bool>(),
           static_cast<int64_t>(mask_size),
-          ToCudaType<T>::FromFloat(mask_filter_value)));
+          ToCudaType<T>::FromFloat(mask_filter_value<float>())));
     }
 
     size_t attn_mask_dims_size = attn_mask->Shape().NumDimensions();
@@ -175,7 +174,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     contribop_parameters.broadcast_attn_bias_dim_1 = false;
   }
 
-  contribop_parameters.mask_filter_value = -10000.0f;
+  contribop_parameters.mask_filter_value = mask_filter_value<float>();
   contribop_parameters.scale = parameters.scale;
   contribop_parameters.use_tf32 = UseTF32();
 
@@ -234,10 +233,15 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Set additional fields
   data.bias = nullptr;  // New Attention op doesn't have bias
   if (nullptr != attn_mask) {
-    // Use converted buffer if boolean mask was converted, otherwise use original mask
+    // Use converted buffer if boolean mask was converted, otherwise use original mask.
+    // The else branch is safe because: if attn_mask is bool, we convert it above and
+    // converted_bool_mask_buffer becomes non-null. So this else branch is only reached
+    // when attn_mask is of type T (per TypeConstraint U = bool | T).
     if (converted_bool_mask_buffer) {
       data.attention_bias = reinterpret_cast<const CudaT*>(converted_bool_mask_buffer.get());
     } else {
+      ORT_ENFORCE(!attn_mask->IsDataType<bool>(),
+                  "Boolean mask should have been converted to float bias above.");
       data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
     }
   }

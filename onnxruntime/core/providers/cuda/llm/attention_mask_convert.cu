@@ -12,9 +12,9 @@ template <typename T>
 __global__ void ConvertBoolMaskToFloatBiasKernel(
     T* output,
     const bool* input,
-    int64_t size,
+    CUDA_LONG size,
     T mask_filter_value) {
-  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   if (idx < size) {
     // Boolean mask semantics: true = attend (bias 0.0), false = mask out (bias mask_filter_value)
     output[idx] = input[idx] ? static_cast<T>(0.0f) : mask_filter_value;
@@ -28,11 +28,15 @@ Status LaunchConvertBoolMaskToFloatBias(
     const bool* input,
     int64_t size,
     T mask_filter_value) {
-  constexpr int block_size = 256;
-  const int grid_size = static_cast<int>((size + block_size - 1) / block_size);
+  if (size <= 0) {
+    return Status::OK();
+  }
 
-  ConvertBoolMaskToFloatBiasKernel<T><<<grid_size, block_size, 0, stream>>>(
-      output, input, size, mask_filter_value);
+  // Use CeilDiv to safely compute grid size and avoid integer overflow
+  int grid_size = static_cast<int>(CeilDiv(size, static_cast<int64_t>(GridDim::maxThreadsPerBlock)));
+
+  ConvertBoolMaskToFloatBiasKernel<T><<<grid_size, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      output, input, static_cast<CUDA_LONG>(size), mask_filter_value);
 
   return CUDA_CALL(cudaGetLastError());
 }
@@ -44,10 +48,8 @@ template Status LaunchConvertBoolMaskToFloatBias<float>(
 template Status LaunchConvertBoolMaskToFloatBias<half>(
     cudaStream_t stream, half* output, const bool* input, int64_t size, half mask_filter_value);
 
-#if !defined(DISABLE_FLOAT8_TYPES)
 template Status LaunchConvertBoolMaskToFloatBias<BFloat16>(
     cudaStream_t stream, BFloat16* output, const bool* input, int64_t size, BFloat16 mask_filter_value);
-#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime
