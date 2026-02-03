@@ -1703,8 +1703,7 @@ migraphx::program CompileProgramWithBatch(
     const std::unordered_map<std::string, std::size_t>* map_input_name_index = nullptr,
     const std::vector<std::string>& input_names = {},
     const std::vector<std::vector<std::int64_t>>& all_input_base_shapes = {},
-    size_t batch_size = 0,
-  size_t max_dynamic_batch = 0)
+    size_t batch_size = 0)
 {
   LOGS_DEFAULT(VERBOSE) << "[CompileBatch] Starting compilation";
 
