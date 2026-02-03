@@ -1703,7 +1703,8 @@ migraphx::program CompileProgramWithBatch(
     const std::unordered_map<std::string, std::size_t>* map_input_name_index = nullptr,
     const std::vector<std::string>& input_names = {},
     const std::vector<std::vector<std::int64_t>>& all_input_base_shapes = {},
-    size_t batch_size = 0)
+    size_t batch_size = 0,
+    size_t max_dynamic_batch = 0)
 {
   LOGS_DEFAULT(VERBOSE) << "[CompileBatch] Starting compilation";
 
@@ -1799,7 +1800,8 @@ static migraphx::program load_or_compile_model(
     const std::unordered_map<std::string, std::size_t>* map_input_name_index = nullptr,
     const std::vector<std::string>& input_names = {},
     const std::vector<std::vector<std::int64_t>>& all_input_base_shapes = {},
-    size_t batch_size = 0)
+    size_t batch_size = 0,
+    size_t max_dynamic_batch = 0)
 {
   migraphx::program prog;
 
@@ -1832,7 +1834,8 @@ static migraphx::program load_or_compile_model(
         map_input_name_index,
         input_names,
         all_input_base_shapes,
-        batch_size);
+        batch_size,
+        max_dynamic_batch);
 
     LOGS_DEFAULT(VERBOSE) << "[load_or_compile_model] Compilation finished";
     
