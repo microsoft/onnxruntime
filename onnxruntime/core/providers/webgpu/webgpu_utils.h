@@ -13,7 +13,6 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class ComputeContext;
 class ShaderVariableHelper;
 
 template <typename T>

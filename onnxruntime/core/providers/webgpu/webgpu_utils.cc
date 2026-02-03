@@ -3,7 +3,6 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #include <sstream>
-#include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/shader_variable.h"
 
 namespace onnxruntime {
