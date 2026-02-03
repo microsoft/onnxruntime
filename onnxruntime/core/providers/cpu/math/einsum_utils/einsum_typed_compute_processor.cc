@@ -370,7 +370,7 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     TensorShapeVector reduced_dims;                                           // All dims of the input that are reduced using the `ReduceSum` op
     reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving
 
-    TensorShapeVector all_dims;                                           // Expanded dimensions of `num_subscript_labels` {0, 1, ..., num_subscript_labels}
+    TensorShapeVector all_dims;                                           // All dimension indices from 0 to num_subscript_labels - 1
     all_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the number of elements
 
     for (size_t i = 0; i < onnxruntime::narrow<size_t>(num_subscript_labels); ++i) {
