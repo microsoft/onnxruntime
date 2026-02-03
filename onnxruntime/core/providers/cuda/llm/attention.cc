@@ -585,12 +585,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
   data.qkv_format = contribop_parameters.qkv_format;
 
-  // TODO: Determine which kernel to use (Flash Attention, Memory Efficient Attention, etc.)
   // For now, set flags to false and let QkvToContext use the unfused path
   data.use_flash_attention = false;
   data.use_memory_efficient_attention = false;
   data.fused_runner = nullptr;
   data.fused_cross_attention_kernel = nullptr;
+  data.kernel_type = onnxruntime::contrib::AttentionKernelType::AttentionKernel_Unfused;
 
   // Allocate workspace for Q, K, V processing and scratch buffer
   const bool no_qkv_workspace = onnxruntime::contrib::cuda::NoQkvWorkspace(contribop_parameters, data);
