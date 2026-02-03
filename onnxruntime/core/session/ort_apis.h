@@ -122,6 +122,9 @@ ORT_API_STATUS_IMPL(RunOptionsGetRunTag, _In_ const OrtRunOptions*, _Out_ const 
 
 ORT_API_STATUS_IMPL(RunOptionsSetTerminate, _Inout_ OrtRunOptions* options);
 ORT_API_STATUS_IMPL(RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
+ORT_API(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
+ORT_API_STATUS_IMPL(RunOptionsEnableProfiling, _Inout_ OrtRunOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
+ORT_API_STATUS_IMPL(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
 
 ORT_API_STATUS_IMPL(CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
                     _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
@@ -428,9 +431,9 @@ ORT_API_STATUS_IMPL(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
-ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                     _Inout_ size_t* size);
-ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_opt_ char* out,
                     _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
                     _Outptr_ OrtTypeInfo** type_info);
@@ -455,7 +458,7 @@ ORT_API_STATUS_IMPL(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOp
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions*);
 
-ORT_API_STATUS_IMPL(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_opt_ char* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger);
 ORT_API_STATUS_IMPL(KernelContext_GetLogger, _In_ const OrtKernelContext* context, _Outptr_ const OrtLogger** logger);
 
@@ -479,6 +482,20 @@ ORT_API_STATUS_IMPL(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value
 ORT_API_STATUS_IMPL(KernelContext_GetAllocator, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out);
 
 ORT_API(const char*, GetBuildInfoString);
+
+ORT_API_STATUS_IMPL(GetNumHardwareDevices, _In_ const OrtEnv* env, _Out_ size_t* num_devices);
+
+ORT_API_STATUS_IMPL(GetHardwareDevices, _In_ const OrtEnv* env, _Out_writes_(num_devices) const OrtHardwareDevice** devices, _In_ size_t num_devices);
+
+ORT_API_STATUS_IMPL(GetHardwareDeviceEpIncompatibilityDetails, _In_ const OrtEnv* env, _In_ const char* ep_name, _In_ const OrtHardwareDevice* hw, _Outptr_ OrtDeviceEpIncompatibilityDetails** details);
+
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_GetReasonsBitmask, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Out_ uint32_t* reasons_bitmask);
+
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_GetNotes, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Outptr_result_maybenull_ const char** notes);
+
+ORT_API_STATUS_IMPL(DeviceEpIncompatibilityDetails_GetErrorCode, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Out_ int32_t* error_code);
+
+ORT_API(void, ReleaseDeviceEpIncompatibilityDetails, _Frees_ptr_opt_ OrtDeviceEpIncompatibilityDetails*);
 
 ORT_API_STATUS_IMPL(CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out);
 ORT_API_STATUS_IMPL(UpdateROCMProviderOptions, _Inout_ OrtROCMProviderOptions* rocm_options,
@@ -645,6 +662,17 @@ ORT_API_STATUS_IMPL(GetModelCompatibilityForEpDevices,
                     _In_ size_t num_ep_devices,
                     _In_ const char* compatibility_info,
                     _Out_ OrtCompiledModelCompatibility* out_status);
+ORT_API_STATUS_IMPL(GetCompatibilityInfoFromModel,
+                    _In_ const ORTCHAR_T* model_path,
+                    _In_ const char* ep_type,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_result_maybenull_ char** compatibility_info);
+ORT_API_STATUS_IMPL(GetCompatibilityInfoFromModelBytes,
+                    _In_reads_(model_data_length) const void* model_data,
+                    _In_ size_t model_data_length,
+                    _In_ const char* ep_type,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_result_maybenull_ char** compatibility_info);
 ORT_API_STATUS_IMPL(Graph_GetModelPath, _In_ const OrtGraph* graph, _Outptr_ const ORTCHAR_T** model_path);
 ORT_API_STATUS_IMPL(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
 ORT_API_STATUS_IMPL(Graph_GetNumOperatorSets, _In_ const OrtGraph* graph, _Out_ size_t* num_operator_sets);
@@ -754,5 +782,37 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
                     _In_ size_t num_tensors);
 
 ORT_API_STATUS_IMPL(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
+ORT_API_STATUS_IMPL(KernelInfo_GetOperatorDomain, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                    _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetOperatorType, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
+                    _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetOperatorSinceVersion, _In_ const OrtKernelInfo* info,
+                    _Out_ int* since_version);
 
+// Interop API
+ORT_API(const OrtInteropApi*, GetInteropApi);
+
+ORT_API_STATUS_IMPL(SessionGetEpDeviceForOutputs, _In_ const OrtSession* session,
+                    _Out_writes_(num_outputs) const OrtEpDevice** outputs_ep_devices,
+                    _In_ size_t num_outputs);
+
+// OrtEnv
+ORT_API_STATUS_IMPL(CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out);
+
+// APIs to get EP graph assignment info
+ORT_API_STATUS_IMPL(Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
+                    _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                    _Out_ size_t* num_ep_subgraphs);
+ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
+ORT_API_STATUS_IMPL(EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+
+ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtValue* value,
+                    _Out_ ONNXTensorElementDataType* elem_type,
+                    _Outptr_result_maybenull_ const int64_t** shape_data,
+                    _Out_ size_t* shape_data_count);
 }  // namespace OrtApis

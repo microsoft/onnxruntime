@@ -19,6 +19,39 @@ inline const OrtDataType* GetTensorType(ONNXTensorElementDataType elem_type) {
 }
 
 /// <summary>
+/// Copy a tensor using a OrtDataTransferImpl instance. Used by kernel implementations to copy
+/// tensors that my reside on different devices.
+/// </summary>
+/// <param name="data_transfer_impl"></param>
+/// <param name="src_tensor"></param>
+/// <param name="dst_tensor"></param>
+/// <returns></returns>
+inline OrtStatus* CopyTensor(OrtDataTransferImpl& data_transfer_impl,
+                             Ort::ConstValue src_tensor, Ort::UnownedValue dst_tensor) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  const OrtMemoryDevice* src_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(src_tensor.GetTensorMemoryInfo());
+  const OrtMemoryDevice* dst_device = Ort::GetEpApi().MemoryInfo_GetMemoryDevice(dst_tensor.GetTensorMemoryInfo());
+
+  RETURN_IF(!data_transfer_impl.CanCopy(&data_transfer_impl, src_device, dst_device), Ort::GetApi(),
+            "OrtDataTransferImpl cannot copy src tensor to dst tensor.");
+
+  auto src_type_shape = src_tensor.GetTensorTypeAndShapeInfo();
+  auto dst_type_shape = dst_tensor.GetTensorTypeAndShapeInfo();
+  bool same_elem_type = src_type_shape.GetElementType() == dst_type_shape.GetElementType();
+  bool same_elem_count = src_type_shape.GetElementCount() == dst_type_shape.GetElementCount();
+  RETURN_IF(!same_elem_type || !same_elem_count, Ort::GetApi(), "Cannot copy tensors of different types or size.");
+
+  std::array<const OrtValue*, 1> src_tensors = {src_tensor};
+  std::array<OrtValue*, 1> dst_tensors = {dst_tensor};
+
+  RETURN_IF_ERROR(data_transfer_impl.CopyTensors(&data_transfer_impl, src_tensors.data(), dst_tensors.data(),
+                                                 /*streams*/ nullptr, src_tensors.size()));
+
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+/// <summary>
 /// Contains information to create a kernel: kernel definition, creation function + state.
 /// </summary>
 struct KernelCreateInfo {
@@ -73,11 +106,11 @@ static constexpr const char* kOnnxDomain = "";
                                                                                                     \
       auto kernel_create_func = [](void* state, const OrtKernelInfo* info,                          \
                                    OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {             \
-        *kernel_out = nullptr;                                                                      \
+        RETURN_IF(kernel_out == nullptr, Ort::GetApi(),                                             \
+                  "OrtKernelCreateFunc received a NULL kernel_out argument");                       \
                                                                                                     \
-        std::unique_ptr<kernel_class> kernel;                                                       \
-        RETURN_IF_ERROR(kernel_class::Create(info, state, kernel));                                 \
-        *kernel_out = kernel.release();                                                             \
+        *kernel_out = nullptr;                                                                      \
+        RETURN_IF_ERROR(kernel_class::CreateKernelImpl(info, state, *kernel_out));                  \
         return nullptr;                                                                             \
       };                                                                                            \
                                                                                                     \

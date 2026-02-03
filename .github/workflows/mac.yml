@@ -72,15 +72,15 @@ jobs:
       matrix:
         target_arch: [x86_64, arm64]
 
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
           cmake-version: '3.31.8'
           cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
           add-cmake-to-path: 'true'
@@ -127,8 +127,8 @@ jobs:
         uses: actions/checkout@v6
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
-          vcpkg-version: '2025.06.13'
-          vcpkg-hash: 735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
           cmake-version: '3.31.8'
           cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
           add-cmake-to-path: 'true'

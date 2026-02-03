@@ -1201,6 +1201,39 @@ struct ConstGraphNodes final {
   PROVIDER_DISALLOW_ALL(ConstGraphNodes)
 };
 
+class ExternalDataInfo {
+ public:
+  static void operator delete(void* p) {
+    g_host->ExternalDataInfo__operator_delete(reinterpret_cast<ExternalDataInfo*>(p));
+  }
+
+  const PathString& GetRelPath() const {
+    return g_host->ExternalDataInfo__GetRelPath(this);
+  }
+
+  int64_t GetOffset() const {
+    return g_host->ExternalDataInfo__GetOffset(this);
+  }
+
+  size_t GetLength() const {
+    return g_host->ExternalDataInfo__GetLength(this);
+  }
+
+  const std::string& GetChecksum() const {
+    return g_host->ExternalDataInfo__GetChecksum(this);
+  }
+
+  static Status Create(
+      const ONNX_NAMESPACE::StringStringEntryProtos& input,
+      std::unique_ptr<ExternalDataInfo>& out) {
+    return g_host->ExternalDataInfo__Create(input, out);
+  }
+
+  ExternalDataInfo() = delete;
+  ExternalDataInfo(const ExternalDataInfo&) = delete;
+  ExternalDataInfo& operator=(const ExternalDataInfo& v) = delete;
+};
+
 class Initializer {
  public:
   Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
@@ -1491,6 +1524,10 @@ inline bool Tensor::IsDataType<Int4x2>() const { return g_host->Tensor__IsDataTy
 template <>
 inline bool Tensor::IsDataType<UInt4x2>() const { return g_host->Tensor__IsDataType_UInt4x2(this); }
 template <>
+inline bool Tensor::IsDataType<Int2x4>() const { return g_host->Tensor__IsDataType_Int2x4(this); }
+template <>
+inline bool Tensor::IsDataType<UInt2x4>() const { return g_host->Tensor__IsDataType_UInt2x4(this); }
+template <>
 inline bool Tensor::IsDataType<int8_t>() const { return g_host->Tensor__IsDataType_int8(this); }
 template <>
 inline bool Tensor::IsDataType<uint8_t>() const { return g_host->Tensor__IsDataType_uint8(this); }
@@ -1538,6 +1575,10 @@ inline Int4x2* Tensor::MutableData<Int4x2>() { return g_host->Tensor__MutableDat
 template <>
 inline UInt4x2* Tensor::MutableData<UInt4x2>() { return g_host->Tensor__MutableData_UInt4x2(this); }
 template <>
+inline Int2x4* Tensor::MutableData<Int2x4>() { return g_host->Tensor__MutableData_Int2x4(this); }
+template <>
+inline UInt2x4* Tensor::MutableData<UInt2x4>() { return g_host->Tensor__MutableData_UInt2x4(this); }
+template <>
 inline int8_t* Tensor::MutableData<int8_t>() { return g_host->Tensor__MutableData_int8(this); }
 template <>
 inline uint8_t* Tensor::MutableData<uint8_t>() { return g_host->Tensor__MutableData_uint8(this); }
@@ -1584,6 +1625,10 @@ template <>
 inline const Int4x2* Tensor::Data<Int4x2>() const { return g_host->Tensor__Data_Int4x2(this); }
 template <>
 inline const UInt4x2* Tensor::Data<UInt4x2>() const { return g_host->Tensor__Data_UInt4x2(this); }
+template <>
+inline const Int2x4* Tensor::Data<Int2x4>() const { return g_host->Tensor__Data_Int2x4(this); }
+template <>
+inline const UInt2x4* Tensor::Data<UInt2x4>() const { return g_host->Tensor__Data_UInt2x4(this); }
 template <>
 inline const int8_t* Tensor::Data<int8_t>() const { return g_host->Tensor__Data_int8(this); }
 template <>

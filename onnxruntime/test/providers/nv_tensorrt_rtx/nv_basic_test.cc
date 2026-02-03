@@ -9,6 +9,7 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
 #include "test/common/random_generator.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
 
 #include <thread>
@@ -21,6 +22,21 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 
 namespace test {
+
+// Helper function to check if GPU is Blackwell (SM 12.0+) or above
+// Returns true if requirement is met
+// Returns false if CUDA is unavailable or GPU is below SM 12.0
+static bool IsBlackwellOrAbove() {
+  constexpr int kBlackwellMinCapability = 1200;  // SM 12.0 = 12 * 100 + 0 * 10
+  int cuda_arch = GetCudaArchitecture();
+
+  // Check if CUDA is available
+  if (cuda_arch == -1) {
+    return false;
+  }
+
+  return cuda_arch >= kBlackwellMinCapability;
+}
 
 TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
   PathString model_name = ORT_TSTR("nv_execution_provider_test.onnx");
@@ -217,6 +233,9 @@ TEST(NvExecutionProviderTest, TestSessionOutputs) {
   {
     Ort::SessionOptions session_options;
     session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    // topk_and_multiple_graph_outputs.onnx contains input with dynamic dimension N
+    // setting override to avoid shape mismatch
+    session_options.AddFreeDimensionOverrideByName("N", 300);
 
     auto model_path = ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx");
     Ort::Session session(*ort_env, model_path, session_options);
@@ -259,7 +278,6 @@ INSTANTIATE_TEST_SUITE_P(NvExecutionProviderTest, TypeTests,
                                            ),
                          [](const testing::TestParamInfo<TypeTests::ParamType>& info) { return getTypeAsName(info.param); });
 
-#ifdef _WIN32
 static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   // Access the underlying InferenceSession.
   const OrtSession* ort_session = session;
@@ -276,7 +294,6 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
 }
 
 // Tests autoEP feature to automatically select an EP that supports the GPU.
-// Currently only works on Windows.
 TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
   PathString model_name = ORT_TSTR("nv_execution_provider_auto_ep.onnx");
   std::string graph_name = "test";
@@ -286,7 +303,11 @@ TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
   CreateBaseModel(model_name, graph_name, dims);
 
   {
+#if _WIN32
     ort_env->RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
+#else
+    ort_env->RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("libonnxruntime_providers_nv_tensorrt_rtx.so"));
+#endif
 
     Ort::SessionOptions so;
     so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
@@ -442,6 +463,10 @@ TEST(NvExecutionProviderTest, DataTransfer) {
 }
 
 TEST(NvExecutionProviderTest, FP8CustomOpModel) {
+  if (!IsBlackwellOrAbove()) {
+    GTEST_SKIP() << "Test requires SM 12.0+ GPU (Blackwell+)";
+  }
+
   PathString model_name = ORT_TSTR("nv_execution_provider_fp8_quantize_dequantize_test.onnx");
   clearFileIfExists(model_name);
   std::string graph_name = "nv_execution_provider_fp8_quantize_dequantize_graph";
@@ -509,6 +534,10 @@ TEST(NvExecutionProviderTest, FP8CustomOpModel) {
 }
 
 TEST(NvExecutionProviderTest, FP4CustomOpModel) {
+  if (!IsBlackwellOrAbove()) {
+    GTEST_SKIP() << "Test requires SM 12.0+ GPU (Blackwell+)";
+  }
+
   PathString model_name = ORT_TSTR("nv_execution_provider_fp4_dynamic_quantize_test.onnx");
   clearFileIfExists(model_name);
   std::string graph_name = "nv_execution_provider_fp4_dynamic_quantize_graph";
@@ -574,8 +603,6 @@ TEST(NvExecutionProviderTest, FP4CustomOpModel) {
 
   LOGS_DEFAULT(INFO) << "[NvExecutionProviderTest] TRT FP4 dynamic quantize model run completed successfully";
 }
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

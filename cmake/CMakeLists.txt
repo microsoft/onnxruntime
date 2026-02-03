@@ -91,6 +91,7 @@ option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
 option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
+option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -102,6 +103,7 @@ cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention ke
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" OFF)
+option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -142,6 +144,7 @@ option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternat
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
 option(onnxruntime_WGSL_TEMPLATE "Specify the code generator for WGSL template. Default is static." "static")
+option(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB "Build WebGPU EP as a static library" OFF)
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
@@ -537,25 +540,6 @@ if(onnxruntime_USE_KLEIDIAI)
       set(${is_supported_var} FALSE PARENT_SCOPE)
       return()
     endif()
-
-    # check for compiler support
-    if(MSVC)
-      # TODO detect on MSVC
-    else()
-      check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-      check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-      if(NOT HAS_ARM64_DOTPROD)
-        message(WARNING "The compiler doesn't support dotprod instructions.")
-      endif()
-      if(NOT HAS_ARM64_I8MM)
-        message(WARNING "The compiler doesn't support i8mm instructions.")
-      endif()
-      if(NOT HAS_ARM64_DOTPROD OR NOT HAS_ARM64_I8MM)
-        set(${is_supported_var} FALSE PARENT_SCOPE)
-        return()
-      endif()
-    endif()
-
     set(${is_supported_var} TRUE PARENT_SCOPE)
   endfunction()
 
@@ -788,6 +772,11 @@ if (onnxruntime_USE_CUDA)
       message( STATUS "Enable FpA IntB Gemm for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
     endif()
+
+    if (onnxruntime_QUICK_BUILD)
+      message( STATUS "Quick build mode: Flash attention limited to fp16 only")
+      list(APPEND ORT_PROVIDER_FLAGS -DORT_QUICK_BUILD=1)
+    endif()
 endif()
 
 if (onnxruntime_USE_CUDA_INTERFACE AND (NOT onnxruntime_USE_CUDA))
@@ -891,11 +880,12 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libHtpPrepare.so"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/HtpPrepare.dll")
       if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc" OR ${QNN_ARCH_ABI} STREQUAL "arm64x-windows-msvc")
-        list(APPEND QNN_LIB_FILES "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
+        file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
                                   "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so"
                                   "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libqnnhtpv73.cat"
                                   "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so"
                                   "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libqnnhtpv81.cat")
+        list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
       elseif(${QNN_ARCH_ABI} STREQUAL "aarch64-ubuntu-gcc9.4")
         list(APPEND QNN_LIB_FILES "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so")
       endif()
@@ -978,8 +968,13 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
-    list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_SHARED_LIBRARY=1)
+    if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+      list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_SHARED_LIBRARY=1)
+    else()
+      message(FATAL_ERROR "onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=OFF is not supported with onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON")
+    endif()
   endif()
+
   if (onnxruntime_USE_EXTERNAL_DAWN)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_EXTERNAL_DAWN=1)
   endif()
@@ -1212,7 +1207,7 @@ function(onnxruntime_configure_target target_name)
 
   # Keep BinSkim happy
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
-    target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>" "$<$<LINK_LANGUAGE:CUDA>:-Xlinker=/CETCOMPAT>")
+    target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>")
   endif()
 
 endfunction()
@@ -1435,6 +1430,9 @@ if (Git_FOUND)
       OUTPUT_VARIABLE ORT_GIT_BRANCH)
   string(STRIP "${ORT_GIT_BRANCH}" ORT_GIT_BRANCH)
   string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
+  if (onnxruntime_QUICK_BUILD)
+    string(APPEND ORT_BUILD_INFO "quick-build=1, ")
+  endif()
 endif()
 string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)

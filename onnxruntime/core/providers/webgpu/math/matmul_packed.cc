@@ -33,8 +33,8 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
   // declare the read and write functions
-  MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false, is_vec4_);
-  MatMulWriteFnSource(shader, output, bias, /* is_gemm = */ false, 1, is_vec4_ ? 4 : 1, false, apply_activation, is_channels_last_, need_split_k, output_var_type);
+  MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
+  MatMulWriteFnSource(shader, output, bias, /* is_gemm = */ false, 1, false, apply_activation, is_channels_last_, need_split_k, output_var_type);
   std::string data_type = "a_element_t";
   // generate the main function
   if (is_vec4_) {
@@ -63,13 +63,13 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
   // Handle bias with `MatMulWriteFnSource()`.
   // Here `use_split_k` is false because we just initialize `output` with bias.
   // `use_split_k` is true only when we do the actual MatMul with Split-K.
-  // Currently we only support bias in vec4 and channels last format for Split-K MatMul.
+  const uint32_t bias_components = output_components_;
   MatMulWriteFnSource(
-      shader, output, bias, /*is_gemm*/ false, /*c_components*/ 4, /*output_components*/ 4, /*c_is_scalar*/ false,
+      shader, output, bias, is_gemm_, bias_components, bias_is_scalar_,
       /*activation_snippet*/ "", /*is_channels_last*/ true, /*use_split_k*/ false);
 
+  shader.MainFunctionBody() << "  let output_components = " << output_components_ << ";\n";
   shader.MainFunctionBody() << R"(
-  let output_components = 4;
   let output_id = i32(global_idx);
 
   let dim_a_outer = i32(uniforms.dim_a_outer);

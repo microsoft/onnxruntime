@@ -3221,6 +3221,37 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
   test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
 }
 
+// Test skip removing node when min/max come from DequantizeLinear nodes instead of initializers.
+TEST(QDQTransformerTests, ClipQuantFusion_MultipleInputEdges) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // Clip's min coming from another DQ node (creating 2 input edges to Clip)
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 2, 2}, std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max());
+    auto* data_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.04f, static_cast<uint8_t>(0), data_dq);
+    auto* min_q = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* min_dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(min_q, 0.04f, static_cast<uint8_t>(0), min_dq);
+    auto* clip_output = builder.MakeIntermediate();
+    builder.AddNode("Clip", {data_dq, min_dq}, {clip_output});
+    auto* output_q = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(clip_output, 0.04f, static_cast<uint8_t>(0), output_q);
+    auto* output_arg = builder.MakeOutput();
+    builder.AddDequantizeLinearNode<uint8_t>(output_q, 0.04f, static_cast<uint8_t>(0), output_arg);
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // ClipQuantFusion should skip it due to CanRemoveNode check
+    EXPECT_EQ(op_to_count["Clip"], 1);
+  };
+
+  TransformerTester(build_test_case, check_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level2,
+                    18);  // opset
+}
+
 template <typename ScaleType, typename ZpType>
 void TestWhereWithDqInput(bool is_dq_1,
                           bool is_dq_2,
@@ -5931,6 +5962,114 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight_Bias) {
 
   test_case(false);
   test_case(true);
+}
+
+TEST(QDQTransformerTests, QDQ_Selector_Test_Clip_With_Quantized_MinMax) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  {  // Clip with min from QDQ, max not provided
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_quant = builder.MakeInitializer<uint8_t>({1, 3, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                          std::numeric_limits<uint8_t>::max());
+      auto* data_dq = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(data_quant, 0.0078f, static_cast<uint8_t>(128), data_dq, false);
+
+      auto* min_quant = builder.MakeScalarInitializer<uint8_t>(0);
+      auto* min_dq = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(min_quant, 0.004f, static_cast<uint8_t>(128), min_dq, false);
+
+      auto* clip_output = builder.MakeIntermediate();
+      builder.AddNode("Clip", {data_dq, min_dq}, {clip_output});
+
+      auto* output_q = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<uint8_t>(clip_output, 0.0078f, static_cast<uint8_t>(128), output_q, false);
+    };
+
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    Model model("ClipQDQTest", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    const Node* clip_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Clip") {
+        clip_node = &node;
+        break;
+      }
+    }
+    ASSERT_NE(nullptr, clip_node);
+
+    onnxruntime::QDQ::ClipNodeGroupSelector clip_selector;
+    const auto result = clip_selector.GetQDQSelection(whole_graph_viewer, *clip_node);
+    ASSERT_TRUE(result.has_value());
+    const auto& qdq_group = *result;
+
+    ASSERT_EQ(clip_node->Index(), qdq_group.target_node);
+    ASSERT_EQ(2, qdq_group.dq_nodes.size());
+    ASSERT_EQ(1, qdq_group.q_nodes.size());
+
+    onnxruntime::QDQ::UnaryNodeGroupSelector unary_selector;
+    const auto unary_result = unary_selector.GetQDQSelection(whole_graph_viewer, *clip_node);
+    ASSERT_FALSE(unary_result.has_value());
+  }
+
+  {  // Clip with min and max from QDQ
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_quant = builder.MakeInitializer<uint8_t>({1, 3, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                          std::numeric_limits<uint8_t>::max());
+      auto* data_dq = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(data_quant, 0.0078f, static_cast<uint8_t>(128), data_dq, false);
+
+      auto* min_quant = builder.MakeScalarInitializer<uint8_t>(0);
+      auto* min_dq = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(min_quant, 0.004f, static_cast<uint8_t>(128), min_dq, false);
+
+      auto* max_quant = builder.MakeScalarInitializer<uint8_t>(255);
+      auto* max_dq = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(max_quant, 0.004f, static_cast<uint8_t>(128), max_dq, false);
+
+      auto* clip_output = builder.MakeIntermediate();
+      builder.AddNode("Clip", {data_dq, min_dq, max_dq}, {clip_output});
+
+      auto* output_q = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<uint8_t>(clip_output, 0.0078f, static_cast<uint8_t>(128), output_q, false);
+    };
+
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    Model model("ClipQDQTest", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    const Node* clip_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Clip") {
+        clip_node = &node;
+        break;
+      }
+    }
+    ASSERT_NE(nullptr, clip_node);
+
+    onnxruntime::QDQ::ClipNodeGroupSelector clip_selector;
+    const auto result = clip_selector.GetQDQSelection(whole_graph_viewer, *clip_node);
+    ASSERT_TRUE(result.has_value());
+    const auto& qdq_group = *result;
+
+    ASSERT_EQ(clip_node->Index(), qdq_group.target_node);
+    ASSERT_EQ(3, qdq_group.dq_nodes.size());
+    ASSERT_EQ(1, qdq_group.q_nodes.size());
+  }
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

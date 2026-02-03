@@ -73,6 +73,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
 }
 
 struct TestOptions {
+  int64_t batch_count{1};
   int64_t M{1};
   int64_t N{1};
   int64_t K{1};
@@ -91,7 +92,8 @@ struct TestOptions {
 };
 
 [[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
-  return os << "M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
+  return os << "batch_count:" << opts.batch_count
+            << ", M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
@@ -116,12 +118,13 @@ void RunTest(const TestOptions& opts,
 
   const bool zp_is_4bit = opts.zp_is_4bit || opts.has_g_idx;
 
+  const int64_t batch_count = opts.batch_count;
   const int64_t M = opts.M;
   const int64_t K = opts.K;
   const int64_t N = opts.N;
 
   RandomValueGenerator random{1234};
-  std::vector<float> input0_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input0_vals(random.Gaussian<float>(AsSpan({batch_count, M, K}), 0.0f, 0.25f));
   std::vector<float> input1_f_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
 
   int64_t k_blocks = (K + opts.block_size - 1) / opts.block_size;
@@ -151,14 +154,16 @@ void RunTest(const TestOptions& opts,
     return std::nullopt;
   }();
 
-  std::vector<float> expected_vals(M * N);
-  for (int64_t m = 0; m < M; m++) {
-    for (int64_t n = 0; n < N; n++) {
-      float sum = 0.0f;
-      for (int64_t k = 0; k < K; k++) {
-        sum += input0_vals[m * K + k] * input1_f_vals[n * K + k];
+  std::vector<float> expected_vals(batch_count * M * N);
+  for (int64_t b = 0; b < batch_count; b++) {
+    for (int64_t m = 0; m < M; m++) {
+      for (int64_t n = 0; n < N; n++) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; k++) {
+          sum += input0_vals[b * M * K + m * K + k] * input1_f_vals[n * K + k];
+        }
+        expected_vals[b * M * N + m * N + n] = sum + (bias.has_value() ? (*bias)[n] : 0.0f);
       }
-      expected_vals[m * N + n] = sum + (bias.has_value() ? (*bias)[n] : 0.0f);
     }
   }
 
@@ -170,11 +175,11 @@ void RunTest(const TestOptions& opts,
   test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
 
   if constexpr (std::is_same_v<T1, float>) {
-    test.AddInput<T1>("A", {M, K}, input0_vals, false);
+    test.AddInput<T1>("A", {batch_count, M, K}, input0_vals, false);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
-    test.AddInput<T1>("A", {M, K}, FloatsToMLFloat16s(input0_vals), false);
+    test.AddInput<T1>("A", {batch_count, M, K}, FloatsToMLFloat16s(input0_vals), false);
   } else if constexpr (std::is_same<T1, BFloat16>::value) {
-    test.AddInput<T1>("A", {M, K}, FloatsToBFloat16s(input0_vals), false);
+    test.AddInput<T1>("A", {batch_count, M, K}, FloatsToBFloat16s(input0_vals), false);
   }
 
   test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, input1_vals, true);
@@ -249,11 +254,11 @@ void RunTest(const TestOptions& opts,
   }
 
   if constexpr (std::is_same<T1, float>::value) {
-    test.AddOutput<T1>("Y", {M, N}, expected_vals);
+    test.AddOutput<T1>("Y", {batch_count, M, N}, expected_vals);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
-    test.AddOutput<T1>("Y", {M, N}, FloatsToMLFloat16s(expected_vals));
+    test.AddOutput<T1>("Y", {batch_count, M, N}, FloatsToMLFloat16s(expected_vals));
   } else if constexpr (std::is_same<T1, BFloat16>::value) {
-    test.AddOutput<T1>("Y", {M, N}, FloatsToBFloat16s(expected_vals));
+    test.AddOutput<T1>("Y", {batch_count, M, N}, FloatsToBFloat16s(expected_vals));
   }
 
   if (opts.output_abs_error.has_value()) {
@@ -498,6 +503,84 @@ TEST(MatMulNBits, LegacyShape_4b) {
   TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4, legacy_shape>();
 }
 
+// Batch tests for DP4A path (accuracy_level 4)
+TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
+  // Test batch support with DP4A requirements:
+  // - accuracy_level == 4
+  // - block_size % 32 == 0
+  // - K % 128 == 0
+  // - N % 16 == 0
+
+  // Small batch tests
+  TestOptions opts{};
+  opts.accuracy_level = 4;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+
+  // Batch=2 tests
+  opts.batch_count = 2;
+  opts.M = 1;
+  opts.N = 16;
+  opts.K = 128;
+  opts.block_size = 32;
+  RunTest<float>(opts);
+
+  opts.M = 2;
+  opts.N = 32;
+  opts.K = 128;
+  opts.block_size = 32;
+  RunTest<float>(opts);
+
+  opts.M = 32;
+  opts.N = 64;
+  opts.K = 256;
+  opts.block_size = 64;
+  RunTest<float>(opts);
+
+  opts.M = 100;
+  opts.N = 288;
+  opts.K = 1024;
+  opts.block_size = 128;
+  RunTest<float>(opts);
+
+  // Batch=4 tests
+  opts.batch_count = 4;
+  opts.M = 1;
+  opts.N = 16;
+  opts.K = 128;
+  opts.block_size = 32;
+  RunTest<float>(opts);
+
+  opts.M = 32;
+  opts.N = 64;
+  opts.K = 256;
+  opts.block_size = 64;
+  RunTest<float>(opts);
+
+  opts.M = 100;
+  opts.N = 288;
+  opts.K = 1024;
+  opts.block_size = 128;
+  RunTest<float>(opts);
+
+  // Batch=8 test
+  opts.batch_count = 8;
+  opts.M = 32;
+  opts.N = 128;
+  opts.K = 256;
+  opts.block_size = 64;
+  RunTest<float>(opts);
+
+  // Test with bias
+  opts.batch_count = 2;
+  opts.M = 32;
+  opts.N = 64;
+  opts.K = 256;
+  opts.block_size = 64;
+  opts.has_bias = true;
+  RunTest<float>(opts);
+}
+
 #endif
 #endif
 #endif
@@ -731,6 +814,62 @@ TEST(MatMulNBits, BFloat16_Int4_NoZeroPoint) {
 #endif
 
 #endif  // defined(USE_CUDA) || defined(USE_DML)
+
+#if defined(USE_QNN) && defined(_M_ARM64)
+
+namespace {
+// QNN-EP Test Function
+// This has too many parameters of the same type that must be specified in the correct order.
+// Consider using the overload with a TestOptions parameter.
+void RunQnnEpTest(int64_t M, int64_t N, int64_t K, bool has_zeropoint = true, float abs_error = 0.05f) {
+  TestOptions opts{};
+  opts.M = M;
+  opts.N = N;
+  opts.K = K;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.has_zero_point = has_zeropoint;
+  opts.zp_is_4bit = true;
+  opts.has_g_idx = false;
+  opts.has_bias = false;
+
+  if (abs_error > 0.f) {
+    opts.output_abs_error = abs_error;
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "gpu";
+  provider_options["offload_graph_io_quantization"] = "0";
+  execution_providers.push_back(QnnExecutionProviderWithOptions(provider_options));
+
+  RunTest<float>(opts, std::move(execution_providers));
+}
+}  // namespace
+
+// QNN GPU Only support FP16 activations and Q4_0 weights, with zero_points = 8
+// Accumulation with larger channel accumulates more error. Set higher abs_error with respect to K.
+TEST(MatMulNBits, Basic_M1_N128_K512_withZp) {
+  constexpr float abs_error = 0.05f;
+  RunQnnEpTest(1, 128, 512, true, abs_error);
+}
+
+TEST(MatMulNBits, Basic_M1_N128_K512) {
+  constexpr float abs_error = 0.05f;
+  RunQnnEpTest(1, 128, 512, false, abs_error);
+}
+
+TEST(MatMulNBits, Basic_M10_N128_K512_withZp) {
+  constexpr float abs_error = 0.05f;
+  RunQnnEpTest(10, 128, 512, true, abs_error);
+}
+
+TEST(MatMulNBits, Basic_M10_N128_K512) {
+  constexpr float abs_error = 0.05f;
+  RunQnnEpTest(10, 128, 512, false, abs_error);
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
 

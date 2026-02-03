@@ -1,5 +1,6 @@
 // Inspired by https://github.com/NVIDIA/DALI/blob/main/include/dali/core/static_switch.h
 // and https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/Dispatch.h
+
 #pragma once
 
 /// @param COND       - a boolean expression to switch by
@@ -12,6 +13,7 @@
 ///     some_function<BoolConst>(...);
 /// });
 /// ```
+
 #define BOOL_SWITCH(COND, CONST_NAME, ...)      \
   [&] {                                         \
     if (COND) {                                 \
@@ -64,6 +66,14 @@
 #define LOCAL_SWITCH BOOL_SWITCH
 #endif
 
+#ifdef ORT_QUICK_BUILD
+// Quick build mode: only fp16 kernels are compiled
+#define FP16_SWITCH(COND, ...)         \
+  [&] {                                \
+    using elem_type = cutlass::half_t; \
+    return __VA_ARGS__();              \
+  }()
+#else
 #define FP16_SWITCH(COND, ...)               \
   [&] {                                      \
     if (COND) {                              \
@@ -74,7 +84,16 @@
       return __VA_ARGS__();                  \
     }                                        \
   }()
+#endif
 
+#ifdef ORT_QUICK_BUILD
+// Quick build mode: only hdim128 kernels are compiled
+#define HEADDIM_SWITCH(HEADDIM, ...)     \
+  [&] {                                  \
+    constexpr static int kHeadDim = 128; \
+    return __VA_ARGS__();                \
+  }()
+#else
 #define HEADDIM_SWITCH(HEADDIM, ...)       \
   [&] {                                    \
     if (HEADDIM <= 32) {                   \
@@ -89,17 +108,12 @@
     } else if (HEADDIM <= 128) {           \
       constexpr static int kHeadDim = 128; \
       return __VA_ARGS__();                \
-    } else if (HEADDIM <= 160) {           \
-      constexpr static int kHeadDim = 160; \
-      return __VA_ARGS__();                \
     } else if (HEADDIM <= 192) {           \
       constexpr static int kHeadDim = 192; \
-      return __VA_ARGS__();                \
-    } else if (HEADDIM <= 224) {           \
-      constexpr static int kHeadDim = 224; \
       return __VA_ARGS__();                \
     } else if (HEADDIM <= 256) {           \
       constexpr static int kHeadDim = 256; \
       return __VA_ARGS__();                \
     }                                      \
   }()
+#endif

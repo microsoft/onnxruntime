@@ -189,6 +189,15 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     params.arena_cfg = default_memory_arena_cfg;
     return CUDAExecutionProvider::CreateCudaAllocator(params);
   }
+
+  std::shared_ptr<IAllocator> CreateCudaPinnedAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, const OrtArenaCfg* default_memory_arena_cfg) override {
+    CUDAExecutionProvider::CUDAAllocatorParams params{};
+    params.device_id = device_id;
+    params.cuda_mem_threshold = gpu_mem_limit;
+    params.arena_extend_strategy = arena_extend_strategy;
+    params.arena_cfg = default_memory_arena_cfg;
+    return CUDAExecutionProvider::CreateCudaPinnedAllocator(params);
+  }
 } g_info;
 
 struct CUDA_Provider : Provider {
