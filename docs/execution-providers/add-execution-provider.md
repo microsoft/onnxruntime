@@ -1,12 +1,12 @@
 ---
 title: Add a new provider
-description: Instructions to add a new execution provider to ONNX Runtime
+description: Instructions to add a new execution provider
 parent: Execution Providers
 nav_order: 15
 redirect_from: /docs/how-to/add-execution-provider
 ---
 
-# Add a new Execution Provider to ONNX Runtime
+# Add a new Execution Provider
 {: .no_toc }
 
 ## Contents
@@ -15,7 +15,13 @@ redirect_from: /docs/how-to/add-execution-provider
 * TOC placeholder
 {:toc}
 
-## Create the Execution Provider
+## Add a Plugin Execution Provider
+
+Since ONNX Runtime 1.23, a new execution provider should be implemented as a plugin execution provider. Refer to the [plugin execution provider library documentation](./plugin-ep-libraries/).
+
+## Add an Execution Provider to ONNX Runtime
+
+__IMPORTANT__: Directly adding a new execution provider to the ONNX Runtime code is no longer recommended since ONNX Runtime 1.23. Add a [plugin execution provider](#add-a-plugin-execution-provider) instead.
 
 1. Create a folder under onnxruntime/core/providers
 2. Create a folder under include/onnxruntime/core/providers, it should has the same name as the first step.
@@ -31,7 +37,7 @@ Examples:
 * [CUDA Execution Provider](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/cuda/cuda_execution_provider.h)               
 * [DNNL Execution Provider](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/dnnl/dnnl_execution_provider.h)               
 
-## Use the Execution Provider
+### Use the Execution Provider
 
 1. Create a factory for that provider, by using the c function you exported in 'symbols.txt'
 2. Put the provider factory into session options
@@ -50,7 +56,7 @@ Example:
   OrtCreateSession(env, model_path, session_option, &session);
 ```
 
-## Test the Execution Provider
+### Test the Execution Provider
 
 To ease the testing of your execution provider, you can add a new case for it to the `onnx_test_runner` command,
 do this by adding it to `onnxruntime/test/onnx/main.cc` file, following the pattern for other existing providers.
