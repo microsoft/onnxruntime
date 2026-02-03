@@ -135,8 +135,6 @@ stages:
     pool:
       name: 'Onnxruntime-Linux-GPU-A10'
       os: linux
-      demands:
-        - ImageOverride -equals onnxruntime-ubuntu2204-CUDA-A10-Test
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR
@@ -150,11 +148,6 @@ stages:
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
-
-    - bash: |
-        nvidia-smi
-      displayName: 'Check GPU availability'
-
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
       submodules: false
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
