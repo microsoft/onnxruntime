@@ -31,6 +31,14 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   return Status::OK();
 }
 
+
+// CUDA EP specific Zeroing helper
+Status Zeroing(Tensor& input, void* einsum_cuda_assets) {
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(input.MutableDataRaw(), 0, input.SizeInBytes(),
+                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream()));
+  return Status::OK();
+}
+
 // CUDA EP specific Transpose helper
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
