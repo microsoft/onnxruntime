@@ -39,6 +39,8 @@ jobs:
 - job: 'BUILD_QNN_EP'
   pool:
     name: 'onnxruntime-qnn-windows-vs-2022-arm64'
+    demands:
+      - Agent.Version -equals 4.264.2
   variables:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     buildArch: arm64
