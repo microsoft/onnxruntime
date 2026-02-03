@@ -377,20 +377,22 @@ Status EinsumTypedComputeProcessor<T>::Run() {
       Tensor& output = *context_->Output(0, output_dims);
 
       if (output.Location().device.Type() != OrtDevice::CPU) {
+          // Get CPU allocator to allocate a staging buffer on CPU
           AllocatorPtr cpu_allocator;
           ORT_RETURN_IF_ERROR(context_->GetTempSpaceCPUAllocator(&cpu_allocator));
 
-          // If this Einsum node is partitioned to a non-CPU EP, we will use an intermediate CPU
-          // buffer to stage the zero buffer results which we will then copy over to the op's output
-          // allocated on the non-CPU device using the device data copy abstraction
-          Tensor candidate_output(raw_inputs[0]->DataType(), output_dims, cpu_allocator);
-          ZeroInputBuffer<T>(candidate_output);
+        // If this Einsum node is partitioned to a non-CPU EP, we will use an intermediate CPU
+        // buffer to stage the zero buffer results which we will then copy over to the op's output
+        // allocated on the non-CPU device using the device data copy abstraction
+        Tensor candidate_output(raw_inputs[0]->DataType(), output_dims, cpu_allocator);
+        ZeroInputBuffer<T>(candidate_output);
 
-          auto status = device_data_copy_func_(candidate_output, output, einsum_ep_assets_);
-          ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ",
-                      status.ErrorMessage());
-      } else { // Zero out the op's output buffer
-          ZeroInputBuffer<T>(output);
+        // Copy zeroed buffer to the output buffer
+        auto status = device_data_copy_func_(candidate_output, output, einsum_ep_assets_);
+        ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ",
+                    status.ErrorMessage());
+      } else {  // Zero out the op's output buffer
+        ZeroInputBuffer<T>(output);
       }
 
       return Status::OK();
