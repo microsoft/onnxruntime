@@ -163,10 +163,10 @@ LutGemmPackQuantBData(
     const size_t bm = tmac_params.bm;
     const size_t kfactor = tmac_params.kfactor;
 
-    // LUT GEMM is only available for AVX2, so dispatch must be available
+    // LUT GEMM requires a valid LUT dispatch implementation, so dispatch must be available
     const auto* Dispatch = GetMlasPlatform().LutGenKernel;
     if (Dispatch == nullptr || Dispatch->PackQuantBData == nullptr) {
-        MLAS_THROW_EX(std::runtime_error, "PackQuantBData requires AVX2 dispatch");
+        MLAS_THROW_EX(std::runtime_error, "PackQuantBData requires LUT GEMM dispatch support");
     }
 
     Dispatch->PackQuantBData(
