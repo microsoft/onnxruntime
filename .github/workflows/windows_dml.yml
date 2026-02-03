@@ -27,7 +27,7 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
     runs-on: [
         "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+        "1ES.Pool=onnxruntime-github-Win2022-webgpu-A10",
         "JobId=windows-dml-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     steps:
