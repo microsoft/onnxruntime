@@ -4,10 +4,13 @@ parameters:
   type: string
   default: 'onnxruntime-qnn-windows-vs-2022-arm64'
 
+- name: POOL_VERSION
+  type: string
+
 - name: PYTHON_VERSION
   type: string
   default: '3.11'
-  
+
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
@@ -32,6 +35,8 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
     os: windows
     hostArchitecture: Arm64
+    demands:
+      - ImageVersionOverride -equals ${{ parameters.POOL_VERSION }}
   templateContext:
     sdl:
       codeSignValidation:
