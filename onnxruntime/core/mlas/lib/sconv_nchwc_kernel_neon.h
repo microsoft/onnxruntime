@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    sconv.h
+    sconv_nchwc_kernel_neon.h
 
 Abstract:
 

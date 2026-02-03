@@ -80,7 +80,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
 
-  bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
+  bool IsHtpSharedMemoryAllocatorAvailable() const { return enable_htp_shared_mem_allocator_ && rpcmem_library_ != nullptr; }
 
  private:
   // Will return true if any power config options need to be updated
@@ -119,6 +119,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool share_ep_contexts_ = false;
   bool stop_share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
+  bool enable_file_mapped_weights_ = true;
+  bool enable_htp_shared_mem_allocator_ = false;
 #if defined(_WIN32)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
