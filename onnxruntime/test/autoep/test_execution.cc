@@ -537,6 +537,124 @@ TEST(OrtEpLibrary, PluginEp_CompatibilityInfo_ValidatedOnLoad) {
   std::filesystem::remove(compiled_model_file);
 }
 
+// Test that loading a compiled model with ep_context_enable=1 returns an error.
+// This is an invalid configuration: the user is asking to generate EP context from a model
+// that already contains EPContext nodes.
+TEST(OrtEpLibrary, PluginEp_Error_LoadCompiledModelWithEpContextEnabled) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_recompile_test.onnx");
+  std::filesystem::remove(compiled_model_file);
+
+  // Step 1: Compile the original model (CompileModel API implicitly generates EPContext nodes)
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+  }
+
+  // Step 2: Attempt to load the compiled model with ep.context_enable=1 - should fail
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");  // Request EP context generation
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Loading a compiled model with ep_context_enable=1 should fail
+    try {
+      Ort::Session session(*ort_env, compiled_model_file, session_options);
+      FAIL() << "Expected error when loading compiled model with ep_context_enable=1";
+    } catch (const Ort::Exception& e) {
+      std::string error_msg = e.what();
+      // Verify error message mentions the issue
+      EXPECT_TRUE(error_msg.find("EPContext") != std::string::npos ||
+                  error_msg.find("already") != std::string::npos ||
+                  error_msg.find("re-compile") != std::string::npos)
+          << "Error should mention EPContext or re-compilation: " << error_msg;
+    }
+  }
+
+  std::filesystem::remove(compiled_model_file);
+}
+
+// Test that EPContext inference returns expected "not implemented" error.
+// This documents that the example EP does not fully support EPContext execution.
+TEST(OrtEpLibrary, PluginEp_EpContextInference_NotImplemented) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_inference_test.onnx");
+  std::filesystem::remove(compiled_model_file);
+
+  // Step 1: Compile the model with EP context enabled
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+  }
+
+  // Step 2: Load compiled model and attempt inference - should fail with clear error
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, compiled_model_file, session_options);
+
+    // Prepare inputs - mul_1.onnx has input X of shape [3,2]
+    std::vector<float> input_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    std::vector<int64_t> input_shape = {3, 2};
+
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+    Ort::Value input_x_tensor = Ort::Value::CreateTensor<float>(
+        memory_info, input_x.data(), input_x.size(),
+        input_shape.data(), input_shape.size());
+
+    const char* input_names[] = {"X"};
+    const char* output_names[] = {"Y"};
+    std::vector<Ort::Value> input_tensors;
+    input_tensors.push_back(std::move(input_x_tensor));
+
+    // Inference should fail with NOT_IMPLEMENTED - verify exception content
+    try {
+      auto outputs = session.Run(Ort::RunOptions{nullptr},
+                                 input_names, input_tensors.data(), input_tensors.size(),
+                                 output_names, 1);
+      FAIL() << "Expected exception for EPContext inference, but Run() succeeded";
+    } catch (const Ort::Exception& e) {
+      std::string msg = e.what();
+      // Verify error mentions the limitation
+      EXPECT_TRUE(msg.find("not implemented") != std::string::npos ||
+                  msg.find("NOT_IMPLEMENTED") != std::string::npos ||
+                  msg.find("EPContext") != std::string::npos)
+          << "Expected NOT_IMPLEMENTED or EPContext in error, got: " << msg;
+    }
+  }
+
+  std::filesystem::remove(compiled_model_file);
+}
+
 // Uses the original compiling approach with session option configs (instead of explicit compile API).
 // Test that ORT does not overwrite an output model if it already exists.
 // Notably, this tests the case in which ORT automatically generates the output model name.
