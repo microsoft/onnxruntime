@@ -7,12 +7,15 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#include "core/session/onnxruntime_env_config_keys.h"
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
+extern "C" void ortenv_setup();
+extern "C" void ortenv_teardown();
 
 namespace onnxruntime {
 namespace test {
@@ -94,8 +97,8 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   const std::string& registration_name = "example_plugin_ep_virt_gpu";
   const std::string& ep_name = Utils::example_ep_virt_gpu_info.ep_name;
 
-  auto get_plugin_ep_devices = [&]() -> std::vector<Ort::ConstEpDevice> {
-    std::vector<Ort::ConstEpDevice> all_ep_devices = ort_env->GetEpDevices();
+  auto get_plugin_ep_devices = [&](Ort::Env& env) -> std::vector<Ort::ConstEpDevice> {
+    std::vector<Ort::ConstEpDevice> all_ep_devices = env.GetEpDevices();
     std::vector<Ort::ConstEpDevice> ep_devices;
 
     std::copy_if(all_ep_devices.begin(), all_ep_devices.end(), std::back_inserter(ep_devices),
@@ -123,7 +126,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
     ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
 
     // Find ep devices for this EP. Should not get any.
-    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices();
+    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices(*ort_env);
     ASSERT_EQ(ep_devices.size(), 0);
 
     ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
@@ -138,7 +141,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
     ort_env->RegisterExecutionProviderLibrary(registration_name_for_virtual_devices.c_str(), library_path.c_str());
 
     // Find ep devices for this EP. Should get a virtual gpu.
-    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices();
+    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices(*ort_env);
     ASSERT_EQ(ep_devices.size(), 1);
 
     auto virt_gpu_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
@@ -166,6 +169,43 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
 
     ort_env->UnregisterExecutionProviderLibrary(registration_name_for_virtual_devices.c_str());
   }
+
+  // Test using OrtApi::CreateEnvWithOptions to explicitly set a config that enables virtual devices.
+  // The EP should return a OrtEpDevice for a virtual GPU.
+
+  ortenv_teardown();  // Release current OrtEnv as we need to recreate it.
+
+  auto run_test = [&]() -> void {
+    // Create OrtEnv with config entry to enable virtual devices.
+    Ort::KeyValuePairs env_configs;
+    env_configs.Add(kOrtEnvAllowVirtualDevices, "1");
+
+    OrtEnvCreationOptions env_options{};
+    env_options.version = ORT_API_VERSION;
+    env_options.logging_severity_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO;
+    env_options.log_id = "LoadUnloadPluginVirtGpuLibraryCxxApi";
+    env_options.config_entries = env_configs.GetConst();
+
+    Ort::Env tmp_env(&env_options);
+
+    // Register EP library. It should be able to extract the env config entry that enables virtual devices.
+    tmp_env.RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+    // Find ep devices for this EP. Should get a virtual gpu.
+    std::vector<Ort::ConstEpDevice> ep_devices = get_plugin_ep_devices(tmp_env);
+    ASSERT_EQ(ep_devices.size(), 1);
+
+    auto virt_gpu_ep_device = std::find_if(ep_devices.begin(), ep_devices.end(),
+                                           [](Ort::ConstEpDevice& ep_device) {
+                                             return ep_device.Device().Type() == OrtHardwareDeviceType_GPU;
+                                           });
+
+    ASSERT_TRUE(is_hw_device_virtual(virt_gpu_ep_device->Device()));
+    tmp_env.UnregisterExecutionProviderLibrary(registration_name.c_str());
+  };
+
+  EXPECT_NO_FATAL_FAILURE(run_test());
+  ortenv_setup();  // Restore OrtEnv
 }
 }  // namespace test
 }  // namespace onnxruntime
