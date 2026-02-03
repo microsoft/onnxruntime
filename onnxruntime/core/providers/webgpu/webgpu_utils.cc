@@ -72,7 +72,6 @@ uint32_t SplitKConfig::GetMaxDimInnerWithSplitK() const {
 }
 
 bool SplitKConfig::UseSplitK(
-    ComputeContext* context,
     bool is_vec4,
     ActivationKind activation_kind,
     uint64_t batch_size,
@@ -81,11 +80,6 @@ bool SplitKConfig::UseSplitK(
     uint32_t dim_a_outer,
     uint32_t dim_b_outer,
     uint32_t dim_inner) const {
-  // Current Split-K implementation relies on atomic operations, which are not deterministic.
-  if (context->KernelContext().GetUseDeterministicCompute()) {
-    return false;
-  }
-
   if (!enable_split_k_) {
     return false;
   }
