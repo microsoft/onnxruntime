@@ -178,8 +178,8 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   GetCapability = GetCapabilityImpl;
   Compile = CompileImpl;
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
-  CreateAllocator = CreateAllocatorImpl;                      // optional. can be nullptr
-  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;  // optional. can be nullptr
+  CreateAllocator = CreateAllocatorImpl;                                      // optional. can be nullptr
+  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;                  // optional. can be nullptr
   GetCompiledModelCompatibilityInfo = GetCompiledModelCompatibilityInfoImpl;  // compatibility info for compiled models
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
