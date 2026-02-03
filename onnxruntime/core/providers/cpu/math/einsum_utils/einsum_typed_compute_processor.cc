@@ -10,7 +10,6 @@ namespace onnxruntime {
 template <typename T>
 void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_output,
                                                     const gsl::span<const int64_t>& ordered_subscript_indices_in_candidate) {
-  
   ORT_ENFORCE(candidate_output.Shape().NumDimensions() == ordered_subscript_indices_in_candidate.size(),
               "Einsum op: The candidate output's rank has to be the as same number of elements as "
               "the ordered subscript indices in the candidate output. Hitting this error points to an "
