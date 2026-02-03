@@ -378,9 +378,7 @@ Status EinsumTypedComputeProcessor<T>::Run() {
 
       if (output.Location().device.Type() != OrtDevice::CPU) {
           AllocatorPtr cpu_allocator;
-          // TODO(hasesh): I think this is the bug - need to use GetTempSpaceCPUAllocator
-          ORT_RETURN_IF_ERROR(context_->GetTempSpaceAllocator(&cpu_allocator));
-
+          ORT_RETURN_IF_ERROR(context_->GetTempSpaceCPUAllocator(&cpu_allocator));
 
           // If this Einsum node is partitioned to a non-CPU EP, we will use an intermediate CPU
           // buffer to stage the zero buffer results which we will then copy over to the op's output
