@@ -258,7 +258,6 @@ stages:
         QNN_SDK: ${{ parameters.qnn_sdk_version }}
         BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
         PYTHON_VERSION: '3.11'
-        POOL_VERSION: 204.0.0
 
     - template: ../templates/py-win-arm64-qnn.yml
       parameters:
@@ -266,7 +265,6 @@ stages:
         QNN_SDK: ${{ parameters.qnn_sdk_version }}
         BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
         PYTHON_VERSION: '3.12'
-        POOL_VERSION: 204.0.0
 
     - template: ../templates/py-win-arm64-qnn.yml
       parameters:
@@ -274,7 +272,6 @@ stages:
         QNN_SDK: ${{ parameters.qnn_sdk_version }}
         BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
         PYTHON_VERSION: '3.13'
-        POOL_VERSION: 204.0.0
 
     - template: ../templates/py-win-arm64-qnn.yml
       parameters:
@@ -282,7 +279,6 @@ stages:
         QNN_SDK: ${{ parameters.qnn_sdk_version }}
         BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
         PYTHON_VERSION: '3.14'
-        POOL_VERSION: 204.0.0
 
 - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
   - stage: Python_Packaging_Windows_arm64ec_QNN

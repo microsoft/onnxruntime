@@ -39,8 +39,6 @@ jobs:
 - job: 'BUILD_QNN_EP'
   pool:
     name: 'onnxruntime-qnn-windows-vs-2022-arm64'
-    demands:
-      - ImageVersionOverride -equals 204.0.0
   variables:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     buildArch: arm64

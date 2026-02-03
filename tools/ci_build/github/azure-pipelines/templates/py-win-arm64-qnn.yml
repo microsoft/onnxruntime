@@ -4,9 +4,6 @@ parameters:
   type: string
   default: 'onnxruntime-qnn-windows-vs-2022-arm64'
 
-- name: POOL_VERSION
-  type: string
-
 - name: PYTHON_VERSION
   type: string
   default: '3.11'
