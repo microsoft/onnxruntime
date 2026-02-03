@@ -3702,7 +3702,8 @@ static inline void precompile_static_model(
     const std::filesystem::path& model_path,
     const std::filesystem::path& model_cache_path,
     const std::string& mxr_filename_prefix,
-    std::unordered_map<std::string, migraphx::program>& cached_programs)
+    std::unordered_map<std::string, migraphx::program>& cached_programs,
+    size_t max_dynamic_batch)
 {
   LOGS_DEFAULT(INFO) << "[precompile_static_model] Precompiling static model...";
   
