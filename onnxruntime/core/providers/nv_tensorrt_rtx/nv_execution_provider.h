@@ -345,6 +345,13 @@ class NvExecutionProvider : public IExecutionProvider {
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
+  // Engine compatibility validation methods
+  std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const override;
+
+  common::Status ValidateCompiledModelCompatibilityInfo(
+      const std::string& compatibility_info,
+      OrtCompiledModelCompatibility& model_compatibility) const override;
+
  private:
   mutable NvExecutionProviderInfo info_;
   bool external_stream_ = false;
@@ -423,6 +430,10 @@ class NvExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
+
+  // Storage for engine headers (64 bytes) for compatibility validation
+  // Maps fused_node_name -> hex-encoded engine header
+  mutable std::unordered_map<std::string, std::string> engine_headers_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
