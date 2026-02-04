@@ -338,12 +338,12 @@ TEST(GatherNDOpTest, GatherND_batch_dims_mismatch_error) {
   test.AddInput<float>("data", {3, 3}, {0.f, 1.f, 2.f, 10.f, 11.f, 12.f, 20.f, 21.f, 22.f});
   test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
   test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
-  test.ConfigEp(DefaultCpuExecutionProvider());
-  if (!DefaultCpuExecutionProvider()) {
-    GTEST_SKIP() << "Test only valid for CPU EP";
-  }
+  // Run only on CPU provider since validation logic is CPU-specific
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "GatherND: indices batch size (2) is not divisible by input batch size (3)");
+           "GatherND: indices batch size (2) is not divisible by input batch size (3)",
+           std::unordered_set<std::string>({kCudaExecutionProvider, kDnnlExecutionProvider,
+                                             kOpenVINOExecutionProvider, kTensorrtExecutionProvider,
+                                             kQnnExecutionProvider, kDmlExecutionProvider}));
 }
 
 // Test for issue #23828: GatherND should return error when input batch dimension is zero
@@ -354,12 +354,12 @@ TEST(GatherNDOpTest, GatherND_zero_batch_dims_error) {
   test.AddInput<float>("data", {0, 3}, {});
   test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
   test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
-  test.ConfigEp(DefaultCpuExecutionProvider());
-  if (!DefaultCpuExecutionProvider()) {
-    GTEST_SKIP() << "Test only valid for CPU EP";
-  }
+  // Run only on CPU provider since validation logic is CPU-specific
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "GatherND: input tensor batch dimensions cannot be zero");
+           "GatherND: input tensor batch dimensions cannot be zero",
+           std::unordered_set<std::string>({kCudaExecutionProvider, kDnnlExecutionProvider,
+                                             kOpenVINOExecutionProvider, kTensorrtExecutionProvider,
+                                             kQnnExecutionProvider, kDmlExecutionProvider}));
 }
 
 }  // namespace test
