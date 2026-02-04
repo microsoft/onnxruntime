@@ -30,7 +30,7 @@ std::string GetSafeIntegerDivision(ResizeCoordinateTransformationMode transform_
   }
 }
 
-void TransformCoordinate(std::ostream& os, ResizeCoordinateTransformationMode transform_coordinate) {
+void TransformCoordinate(OStringStream& os, ResizeCoordinateTransformationMode transform_coordinate) {
   std::string params;
   std::string body;
   switch (transform_coordinate) {
@@ -110,7 +110,7 @@ std::string GetCoordinateCaller(ResizeCoordinateTransformationMode transform_coo
   return caller_ss.str();
 }
 
-void CalcNearestPixel(std::ostream& os, ResizeNearestMode mode) {
+void CalcNearestPixel(OStringStream& os, ResizeNearestMode mode) {
   std::string params = "x_original: f32";
   std::string body;
   switch (mode) {

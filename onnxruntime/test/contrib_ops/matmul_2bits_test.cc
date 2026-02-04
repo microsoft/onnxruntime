@@ -371,6 +371,9 @@ TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_256x256) {
   TestMatMul2BitsLutGemm<float>(1, 256, 256, 32, false);
 }
 
+// This test was previously disabled due to accuracy issues related to non-deterministic
+// gather operations. It is now re-enabled after replacing gather with deterministic
+// load+shuffle operations to improve determinism and stability.
 TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_256x256) {
   TestMatMul2BitsLutGemm<float>(1, 256, 256, 32, true);
 }

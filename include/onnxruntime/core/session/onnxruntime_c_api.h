@@ -970,10 +970,6 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
-/** \addtogroup Global
- * @{
- */
-
 /** \brief External memory handle type for importing GPU resources.
  *
  * \todo Add OPAQUE_WIN32 for Windows Vulkan-specific memory handles
@@ -1041,8 +1037,6 @@ typedef struct OrtExternalTensorDescriptor {
                                                Enables multiple tensors from the same imported memory handle. */
 } OrtExternalTensorDescriptor;
 
-/// @}
-
 /*
  * Public enum for compiled model compatibility across EPs.
  */
@@ -1068,8 +1062,8 @@ typedef struct OrtEnvCreationOptions {
    * \note Logging messages which are less severe than the `logging_severity_level` are not emitted.
    *
    * \note Serves as the default logging severity level for session creation and runs.
-   *       Use ::SetSessionLogSeverityLevel() to set a logging severity level for the creation of specific session.
-   *       Use ::RunOptionsSetRunLogSeverityLevel() to set a logging severity level for a specific session run.
+   *       Use OrtApi::SetSessionLogSeverityLevel to set a logging severity level for the creation of specific session.
+   *       Use OrtApi::RunOptionsSetRunLogSeverityLevel to set a logging severity level for a specific session run.
    *
    * \since Version 1.24.
    */
@@ -1122,7 +1116,7 @@ typedef struct OrtEnvCreationOptions {
    * \note Refer to onnxruntime_env_config_keys.h for common config entry keys and their supported values.
    *
    * \note An application provides environment-level configuration options for execution provider libraries by
-   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       using keys with the prefix 'ep_factory.\\<ep_name\\>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
    *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
    *       the specific execution provider's documentation for valid keys and values.
    *
@@ -6100,7 +6094,8 @@ struct OrtApi {
   /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
    *
    * \note The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
-   * the same underlying graph.
+   * the same underlying graph. "dst_graph" preserves the input order of "src_graph", and
+   * its output order corresponds to the outputs produced by the nodes in "nodes" with the given order.
    *
    * \param[in] src_graph The source OrtGraph instance.
    * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
@@ -6389,6 +6384,9 @@ struct OrtApi {
   /** \brief Get the node's parent OrtGraph instance.
    *
    * Can return NULL if the OrtNode was created without an owning graph.
+   * In another case, this API may also return NULL if `node` is obtained by calling Graph_GetParentNode()
+   * on an OrtGraph that is a subgraph of a control-flow op, and the parent graph has not been created yet,
+   * for example during ORT's GetCapability() when processing the innermost subgraph.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] graph Output parameter set to the node's OrtGraph. Can be set to NULL
@@ -7005,6 +7003,77 @@ struct OrtApi {
 
   /// @}
 
+  /// \name Model Compatibility APIs
+  /// @{
+
+  /** \brief Extract EP compatibility info from a precompiled model file.
+   *
+   * Parses the model file to extract the compatibility info string for a specific execution provider
+   * from the model's metadata properties. This is only applicable to models that have been precompiled
+   * for an EP (e.g., via OrtCompileApi). Standard ONNX models do not contain this information.
+   *
+   * The compatibility info string must be valid UTF-8 without embedded NUL characters.
+   *
+   * \note This API performs standalone model parsing, separate from session creation. This means
+   * the protobuf parsing cost is incurred here and again during session creation. It is intended
+   * for scenarios where applications need to check compatibility before deciding whether to proceed
+   * with session creation, such as providing early user feedback.
+   *
+   * \note This operation parses the full ONNX ModelProto from disk. For very large models, consider
+   * using GetCompatibilityInfoFromModelBytes with a pre-loaded buffer if the model is already in memory.
+   *
+   * The compatibility info can then be passed to GetModelCompatibilityForEpDevices to check if a
+   * precompiled model is compatible with the current system.
+   *
+   * \param[in] model_path Path to the ONNX model file.
+   * \param[in] ep_type The execution provider type string. Must be non-empty.
+   *                    Use OrtApi::EpDevice_EpName to get this value from an OrtEpDevice.
+   * \param[in] allocator Allocator to use for the output string. Use OrtApi::GetAllocatorWithDefaultOptions.
+   * \param[out] compatibility_info Output pointer to the compatibility info string.
+   *                                Returns nullptr if no compatibility info exists for the specified EP.
+   *                                Caller must free with OrtApi::AllocatorFree when non-null.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetCompatibilityInfoFromModel,
+                  _In_ const ORTCHAR_T* model_path,
+                  _In_ const char* ep_type,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_result_maybenull_ char** compatibility_info);
+
+  /** \brief Extract EP compatibility info from precompiled model bytes in memory.
+   *
+   * Same as GetCompatibilityInfoFromModel but reads from a memory buffer instead of a file.
+   * Useful when precompiled models are loaded from encrypted storage, network, or other non-file sources.
+   *
+   * \note This API performs standalone model parsing, separate from session creation. This means
+   * the protobuf parsing cost is incurred here and again during session creation. It is intended
+   * for scenarios where applications need to check compatibility before deciding whether to proceed
+   * with session creation, such as providing early user feedback.
+   *
+   * \param[in] model_data Pointer to the model data in memory.
+   * \param[in] model_data_length Size of the model data in bytes.
+   * \param[in] ep_type The execution provider type string. Must be non-empty.
+   * \param[in] allocator Allocator to use for the output string. Use OrtApi::GetAllocatorWithDefaultOptions.
+   * \param[out] compatibility_info Output pointer to the compatibility info string.
+   *                                Returns nullptr if no compatibility info exists for the specified EP.
+   *                                Caller must free with OrtApi::AllocatorFree when non-null.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetCompatibilityInfoFromModelBytes,
+                  _In_reads_(model_data_length) const void* model_data,
+                  _In_ size_t model_data_length,
+                  _In_ const char* ep_type,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_result_maybenull_ char** compatibility_info);
+
+  /// @}
+
   /** \brief Create an OrtEnv instance with the given options.
    *
    * \note Invoking this function will return the same instance of the environment as that returned by a previous call
@@ -7113,6 +7182,66 @@ struct OrtApi {
    * \since Version 1.24.
    */
   ORT_API2_STATUS(EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node, _Outptr_ const char** out);
+
+  /** \brief Sets OrtSyncStream for the run options
+   *
+   * OrtSyncStream is used to synchronize the execution of the model run for the device
+   * of the stream. It overrides the existing stream for the duration of the Run().
+   * The stream instance must be alive for the duration of the Run() call.
+   *
+   * \param[in] options
+   * \param[in] sync_stream The synchronization stream. Pass nullptr to clear previous setting.
+   *
+   * \since 1.24
+   */
+  ORT_API_T(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
+
+  /** \brief Get the element data type and shape for an OrtValue that represents a Tensor (scalar, dense, or sparse).
+   *
+   * \note This function is an alternative to ::GetTensorTypeAndShape() that does not allocate a new array for
+   *       the shape data. The OrtValue instance's internal shape data is returned directly.
+   *
+   * \note Returns an error if the underlying OrtValue is not a Tensor.
+   *
+   * \param[in] value The OrtValue instance.
+   * \param[out] elem_type Output parameter set to the tensor element data type.
+   * \param[out] shape_data Output parameter set to the OrtValue instance's internal shape data array.
+   *                        For a scalar, `shape_data` is NULL and `shape_data_count` is 0.
+   *                        Must not be released as it is owned by the OrtValue instance. This pointer becomes invalid
+   *                        when the OrtValue is released or if the underlying shape data is updated or reallocated.
+   * \param[out] shape_data_count Output parameter set to the number of elements in `shape_data`.
+   *                              `shape_data_count` is 0 for a scalar.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetTensorElementTypeAndShapeDataReference, _In_ const OrtValue* value,
+                  _Out_ ONNXTensorElementDataType* elem_type,
+                  _Outptr_result_maybenull_ const int64_t** shape_data,
+                  _Out_ size_t* shape_data_count);
+
+  /** \brief Enable profiling for this run
+   *
+   * \param[in] options
+   * \param[in] profile_file_prefix The prefix for the profile file. The actual filename will be:
+   *                                [profile_file_prefix]_[timestamp].json
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(RunOptionsEnableProfiling, _Inout_ OrtRunOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
+
+  /** \brief Disable profiling for this run
+   *
+   * \param[in] options
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
 };
 
 /*
@@ -7968,7 +8097,7 @@ struct OrtInteropApi {
 
   /** \brief Release an OrtExternalResourceImporter instance.
    *
-   * \param[in] importer The OrtExternalResourceImporter instance to release. May be nullptr.
+   * \param[in] input The OrtExternalResourceImporter instance to release. May be nullptr.
    *
    * \since Version 1.24.
    */
@@ -8011,7 +8140,7 @@ struct OrtInteropApi {
 
   /** \brief Release an OrtExternalMemoryHandle instance.
    *
-   * \param[in] handle The OrtExternalMemoryHandle instance to release. May be nullptr.
+   * \param[in] input The OrtExternalMemoryHandle instance to release. May be nullptr.
    *
    * \since Version 1.24.
    */
@@ -8077,7 +8206,7 @@ struct OrtInteropApi {
 
   /** \brief Release an OrtExternalSemaphoreHandle instance.
    *
-   * \param[in] handle The OrtExternalSemaphoreHandle instance to release. May be nullptr.
+   * \param[in] input The OrtExternalSemaphoreHandle instance to release. May be nullptr.
    *
    * \since Version 1.24.
    */

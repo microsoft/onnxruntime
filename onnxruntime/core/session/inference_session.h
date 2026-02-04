@@ -505,6 +505,19 @@ class InferenceSession {
    */
   const std::vector<std::string>& GetRegisteredProviderTypes() const;
 
+  /**
+   * Get the registered Execution Providers.
+   *
+   * This method can be called after EP registration but before Initialize() completes.
+   * Used only for early validation of compiled model compatibility where accessing
+   * EPs through session state is not yet possible.
+   *
+   * @return const reference to the ExecutionProviders collection.
+   */
+  const ExecutionProviders& GetExecutionProviders() const noexcept {
+    return execution_providers_;
+  }
+
   /*
    * Get the options this session was initialized with.
    */

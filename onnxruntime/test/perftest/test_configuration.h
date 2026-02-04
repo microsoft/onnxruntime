@@ -77,6 +77,7 @@ struct RunConfig {
   bool compile_ep_context{false};
   std::basic_string<ORTCHAR_T> compile_model_path;
   bool compile_binary_embed{false};
+  bool compile_only{false};
   struct CudaMempoolArenaConfig {
     std::string release_threshold;
     std::string bytes_to_keep;

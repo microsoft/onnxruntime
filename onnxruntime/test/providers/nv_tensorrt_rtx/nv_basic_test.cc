@@ -233,6 +233,9 @@ TEST(NvExecutionProviderTest, TestSessionOutputs) {
   {
     Ort::SessionOptions session_options;
     session_options.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    // topk_and_multiple_graph_outputs.onnx contains input with dynamic dimension N
+    // setting override to avoid shape mismatch
+    session_options.AddFreeDimensionOverrideByName("N", 300);
 
     auto model_path = ORT_TSTR("testdata/topk_and_multiple_graph_outputs.onnx");
     Ort::Session session(*ort_env, model_path, session_options);
@@ -275,7 +278,6 @@ INSTANTIATE_TEST_SUITE_P(NvExecutionProviderTest, TypeTests,
                                            ),
                          [](const testing::TestParamInfo<TypeTests::ParamType>& info) { return getTypeAsName(info.param); });
 
-#ifdef _WIN32
 static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   // Access the underlying InferenceSession.
   const OrtSession* ort_session = session;
@@ -292,7 +294,6 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
 }
 
 // Tests autoEP feature to automatically select an EP that supports the GPU.
-// Currently only works on Windows.
 TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
   PathString model_name = ORT_TSTR("nv_execution_provider_auto_ep.onnx");
   std::string graph_name = "test";
@@ -302,7 +303,11 @@ TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
   CreateBaseModel(model_name, graph_name, dims);
 
   {
+#if _WIN32
     ort_env->RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
+#else
+    ort_env->RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("libonnxruntime_providers_nv_tensorrt_rtx.so"));
+#endif
 
     Ort::SessionOptions so;
     so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
@@ -598,8 +603,6 @@ TEST(NvExecutionProviderTest, FP4CustomOpModel) {
 
   LOGS_DEFAULT(INFO) << "[NvExecutionProviderTest] TRT FP4 dynamic quantize model run completed successfully";
 }
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

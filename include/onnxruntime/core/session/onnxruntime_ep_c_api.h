@@ -43,11 +43,9 @@ ORT_RUNTIME_CLASS(ExternalResourceImporterImpl);
  * \since Version 1.24.
  */
 struct OrtExternalMemoryHandle {
-  uint32_t version;                         ///< Must be ORT_API_VERSION
-  const OrtEpDevice* ep_device;             ///< EP device that created this handle
-  OrtExternalMemoryHandleType handle_type;  ///< Original handle type for tracking
-  size_t size_bytes;                        ///< Size of the imported memory
-  size_t offset_bytes;                      ///< Offset into the imported memory
+  uint32_t version;                        ///< Must be ORT_API_VERSION
+  const OrtEpDevice* ep_device;            ///< EP device that created this handle
+  OrtExternalMemoryDescriptor descriptor;  ///< External memory descriptor
 
   /** \brief Release callback for this handle. EP sets this to its release function.
    *
@@ -72,9 +70,9 @@ struct OrtExternalMemoryHandle {
  * \since Version 1.24.
  */
 struct OrtExternalSemaphoreHandle {
-  uint32_t version;               ///< Must be ORT_API_VERSION
-  const OrtEpDevice* ep_device;   ///< EP device that created this handle
-  OrtExternalSemaphoreType type;  ///< Original semaphore type
+  uint32_t version;                           ///< Must be ORT_API_VERSION
+  const OrtEpDevice* ep_device;               ///< EP device that created this handle
+  OrtExternalSemaphoreDescriptor descriptor;  ///< External semaphore descriptor
 
   /** \brief Release callback for this handle. EP sets this to its release function.
    *
@@ -666,7 +664,7 @@ struct OrtLoopKernelHelper;
 typedef struct OrtLoopKernelHelper OrtLoopKernelHelper;
 
 /**
- * \brief Contains helper functions for a Loop OrtKernelImpl created via ::CreateLoopKernel().
+ * \brief Contains helper functions for a Loop OrtKernelImpl created via OrtEpApi::CreateLoopKernel.
  * \since Version 1.24.
  */
 struct OrtLoopKernelHelper {
@@ -709,7 +707,7 @@ struct OrtScanKernelHelper;
 typedef struct OrtScanKernelHelper OrtScanKernelHelper;
 
 /**
- * \brief Contains helper functions for a Scan OrtKernelImpl created via ::CreateScanKernel().
+ * \brief Contains helper functions for a Scan OrtKernelImpl created via OrtEpApi::CreateScanKernel.
  * \since Version 1.24.
  */
 struct OrtScanKernelHelper {
@@ -1433,13 +1431,13 @@ struct OrtEpApi {
   /** \brief Gets a new OrtKeyValuePairs instance containing a copy of all configuration entries set on the environment.
    *
    * \note An application provides environment-level configuration options for execution provider libraries by
-   *       using keys with the prefix 'ep_factory.<ep_name>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
+   *       using keys with the prefix 'ep_factory.\\<ep_name\\>.'. Ex: the key 'ep_factory.my_ep.some_ep_key' represents
    *       a key named 'some_ep_key' that is meant to be consumed by an execution provider named 'my_ep'. Refer to
    *       the specific execution provider's documentation for valid keys and values.
    *
    * \note Refer to onnxruntime_env_config_keys.h for common configuration entry keys and their supported values.
    *
-   * \param[out] out Output parameter set to the OrtKeyValuePairs instance containing all configuration entries.
+   * \param[out] config_entries Output parameter set to the OrtKeyValuePairs instance containing all configuration entries.
    *                 Must be released via OrtApi::ReleaseKeyValuePairs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -2048,6 +2046,65 @@ struct OrtEpFactory {
   ORT_API2_STATUS(CreateExternalResourceImporterForDevice, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device,
                   _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** out_importer);
+
+  /** \brief Returns the number of OrtCustomOpDomains that this factory provides.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[out] num_domains Output parameter set to the number of provided OrtCustomOpDomain instances.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetNumCustomOpDomains, _In_ OrtEpFactory* this_ptr, _Out_ size_t* num_domains);
+
+  /** \brief Gets the EP-specific OrtCustomOpDomains.
+   *
+   * This function is used when running inference on a model that contains EP-specific custom operations.
+   *
+   * Workflow:
+   * 1. The EP factory implements this function to supply a list of OrtCustomOpDomain instances.
+   * 2. The application either 1) calls SessionOptionsAppendExecutionProvider_V2() with an OrtEpDevice containing
+   *    the plugin EP's factory or 2) enables auto ep selection.
+   * 3. 1) SessionOptionsAppendExecutionProvider_V2() appends the provided OrtCustomOpDomains to the
+   *    session options or 2) ORT registers the OrtCustomOpDomains provided by the EP devices
+   *    that could be potentially selected.
+   *
+   * As a result, any session created from these session options will have these custom op domains registered
+   * in ORT, ensuring that the custom ops are properly recognized and validated when the model is loaded.
+   *
+   * Plugin EPs can provide two types of custom ops:
+   *  1. A full OrtCustomOp with a concrete kernel implementation
+   *    - A Plugin EP can supply an OrtCustomOp and a corresponding CustomKernel::Compute() implementation.
+   *    - In GetCapability(), it calls EpGraphSupportInfo_AddSingleNode() to inform ORT
+   *      that the custom node should NOT be fused or compiled. Instead, ORT should invoke
+   *      the custom node's Compute() function at runtime.
+   *
+   *  2. A "placeholder" OrtCustomOp with an empty kernel implementation
+   *    - A compile-based Plugin EP can supply an OrtCustomOp whose CustomKernel::Compute()
+   *      does nothing. The purpose is to satisfy model validation during model loading by
+   *      registering the custom op as a valid operator in the session.
+   *    - In GetCapability(), the EP should call EpGraphSupportInfo_AddNodesToFuse() to
+   *      notify ORT that this custom node should be fused and compiled by the EP.
+   *    - In Compile(), the EP executes its compiled bits to perform inference for
+   *      the fused custom node.
+   *
+   * Note: The OrtCustomOpDomain instances must be valid while any session is using them.
+           EP factory has the responsibility to release OrtCustomOpDomain instances it creates. It happens
+   *       automatically if using the C++ Ort::CustomOpDomain class.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[out] domains Array of `num_domains` elements pre-allocated by ORT that should be filled with
+                         OrtCustomOpDomain instances created by the EP. The `num_domains` is the value returned by
+                         GetNumCustomOpDomains().
+   * \param[in] num_domains The size of the `domains` array pre-allocated by ORT.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(GetCustomOpDomains, _In_ OrtEpFactory* this_ptr,
+                  _Out_writes_all_(num_domains) OrtCustomOpDomain** domains, _In_ size_t num_domains);
 };
 
 #ifdef __cplusplus

@@ -27,6 +27,7 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/program.h"
@@ -138,10 +139,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                                                config.buffer_cache_config.uniform.mode,
                                                config.buffer_cache_config.query_resolve.mode);
 
-    // create initializer buffer manager. cache is always disabled for initializer buffer manager
+    // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                                           BufferCacheMode::Disabled,
-                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::Disabled);
 
     // create program manager
@@ -611,7 +612,7 @@ void WebGpuContext::StartProfiling() {
   }
 }
 
-void WebGpuContext::CollectProfilingData(profiling::Events& events) {
+void WebGpuContext::CollectProfilingData() {
   if (!pending_queries_.empty()) {
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
@@ -646,7 +647,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
         uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
         uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
 
-        const std::unordered_map<std::string, std::string>& event_args = {
+        InlinedHashMap<std::string, std::string> event_args = {
             {"shapes", SS_GET(shapes)},
             {"cache_key", pending_kernel_info.cache_key},
         };
@@ -658,7 +659,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                      static_cast<int64_t>(std::round(start_time / 1000.0)),
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
-        events.emplace_back(std::move(event));
+        events_.emplace_back(std::move(event));
       }
 
       query_read_buffer.Unmap();
@@ -671,7 +672,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   is_profiling_ = false;
 }
 
-void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, profiling::Events& cached_events) {
+void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) {
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
@@ -680,10 +681,10 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
     ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
 
     events.insert(events.end(),
-                  std::make_move_iterator(cached_events.begin()),
-                  std::make_move_iterator(cached_events.end()));
+                  std::make_move_iterator(events_.begin()),
+                  std::make_move_iterator(events_.end()));
 
-    cached_events.clear();
+    events_.clear();
   } else {
     LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
   }

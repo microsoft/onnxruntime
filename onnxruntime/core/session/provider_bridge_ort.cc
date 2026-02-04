@@ -92,9 +92,9 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+
 #include "core/providers/shared_library/provider_interfaces.h"
 #include "core/providers/partitioning_utils.h"
-
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/dnnl/dnnl_provider_factory_creator.h"
@@ -117,6 +117,10 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
+
+#if defined(_WIN32) && !defined(NDEBUG) && defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#include "core/platform/windows/debug_alloc.h"
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) &&                                        \
     (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
@@ -279,8 +283,13 @@ struct ProviderHostImpl : ProviderHost {
     return Status::OK();
   };
 
+#if defined(_WIN32) && !defined(NDEBUG) && defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  void* HeapAllocate(size_t size) override { return DebugHeapAlloc(size, 1); }
+  void HeapFree(void* p) override { DebugHeapFree(p); }
+#else
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
+#endif
 
   logging::Logger* LoggingManager_GetDefaultLogger() override {
     return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());

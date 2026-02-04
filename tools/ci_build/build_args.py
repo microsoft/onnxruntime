@@ -372,7 +372,7 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.21", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.23", help="Specify version of emsdk.")
     parser.add_argument(
         "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
     )
@@ -761,6 +761,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     acl_group.add_argument("--acl_libs", help="Path to ACL libraries directory.")
     acl_group.add_argument(
         "--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL/ArmNN)."
+    )
+
+    # --- Qualcomm QMX Library ---
+    qmx_group = parser.add_argument_group("QMX kernel library")
+    qmx_group.add_argument(
+        "--use_qmx", action="store_true", help="Enable Qualcomm QMX kernel to coexist with Arm KleidiAI."
     )
 
     # --- RKNPU ---
