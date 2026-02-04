@@ -150,7 +150,7 @@ ShaderVariableHelper::ShaderVariableHelper(std::string_view name, ProgramVariabl
   ORT_ENFORCE(num_components_ > 0, "Invalid number of components for variable ", name_);
 }
 
-void ShaderIndicesHelper::Impl(std::ostream& ss) const {
+void ShaderIndicesHelper::Impl(OStringStream& ss) const {
   // Start generating code
 
   const std::string shape = (usage_ & ShaderUsage::UseUniform) ? "uniforms." + name_ + "_shape" : name_ + "_shape";
@@ -249,7 +249,7 @@ void ShaderIndicesHelper::Impl(std::ostream& ss) const {
   }
 }
 
-void ShaderVariableHelper::Impl(std::ostream& ss) const {
+void ShaderVariableHelper::Impl(OStringStream& ss) const {
   ShaderIndicesHelper::Impl(ss);
 
   // Implementation of "fn set_{name}"

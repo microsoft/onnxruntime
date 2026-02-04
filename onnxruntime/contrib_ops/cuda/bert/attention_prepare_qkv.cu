@@ -258,7 +258,9 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
   assert(data.past_value == nullptr);
   assert(data.present_key == nullptr);
   assert(data.present_value == nullptr);
-  assert(!parameters.is_unidirectional);
+  // Note: is_unidirectional (causal) is supported by flash attention, memory efficient attention,
+  // cuDNN flash attention, and unfused kernel. TRT fused runner is only used when !is_unidirectional
+  // (enforced in MultiHeadAttention::ComputeInternal).
   assert(data.has_qkv_workspace == !NoQkvWorkspace_MHA_NoPast(data));
 
   if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH) {
