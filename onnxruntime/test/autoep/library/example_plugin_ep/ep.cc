@@ -430,9 +430,9 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
       // Create MulKernel for Mul nodes
       ep->mul_kernels_.emplace(fused_node_name,
                                std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
-                                                          ep->float_initializers_,
-                                                          node_inputs[0].GetName(),
-                                                          node_inputs[1].GetName()));
+                                                           ep->float_initializers_,
+                                                           node_inputs[0].GetName(),
+                                                           node_inputs[1].GetName()));
 
       // Use ExampleNodeComputeInfo for Mul nodes
       auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
