@@ -31,15 +31,16 @@ Write-Host "Extracting $arm64ZipFile to $arm64ExtractPath..."
 # It finds all .nupkg files that do not contain "Managed" in their name.
 $nupkgFiles = Get-ChildItem -Path . -Filter *.nupkg | Where-Object { ($_.Name -notlike "*Managed*") -and ($_.Name -notlike "*.symbols.nupkg") }
 
-# 3. Validate that exactly one package was found.
-Write-Host "Found $($nupkgFiles.Count) non-managed nupkg file(s):"
-$nupkgFiles | ForEach-Object { Write-Host "  - $($_.FullName)" }
-if ($nupkgFiles.Count -ne 1) {
-    Write-Error "Error: Expected to find exactly one non-managed NuGet package, but found $($nupkgFiles.Count)."
+# 3. Select the best package (shortest name prefers Release over Dev, and Main over Symbols)
+if ($nupkgFiles.Count -eq 0) {
+    Write-Error "Error: No matching NuGet packages found."
     exit 1
 }
-$nupkg = $nupkgFiles[0]
-Write-Host "Found package to process: $($nupkg.Name)"
+if ($nupkgFiles.Count -gt 1) {
+    Write-Warning "Found multiple packages. Selecting the one with the shortest filename."
+}
+$nupkg = $nupkgFiles | Sort-Object {$_.Name.Length} | Select-Object -First 1
+Write-Host "Selected package: $($nupkg.Name)"
 
 # 4. Validate the package name matches the expected format.
 if ($nupkg.Name -notlike "Microsoft.ML.OnnxRuntime.DirectML*.nupkg") {
