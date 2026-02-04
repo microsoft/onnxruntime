@@ -1,0 +1,427 @@
+
+(py314t) d:\git\onnxruntime>IF "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\" == "" call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" 
+
+(py314t) d:\git\onnxruntime>build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_dir build\cpu --build_wheel           --parallel 4 --nvcc_threads 1 --build_shared_lib           --skip_tests           --use_binskim_compliant_compile_flags           --cmake_extra_defines "onnxruntime_BUILD_UNIT_TESTS=OFF"           --cmake_extra_defines "FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER" 
+Synchronizing submodule url for 'cmake/external/emsdk'
+Synchronizing submodule url for 'cmake/external/libprotobuf-mutator'
+Synchronizing submodule url for 'cmake/external/onnx'
+Requirement already satisfied: setuptools in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 1)) (80.9.0)
+Requirement already satisfied: flatbuffers in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 2)) (25.9.23)
+Requirement already satisfied: wheel==0.45.1 in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 3)) (0.45.1)
+Requirement already satisfied: pytest in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 4)) (9.0.2)
+Requirement already satisfied: numpy>=1.19.0 in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 5)) (2.3.5)
+Requirement already satisfied: sympy>=1.10 in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 6)) (1.14.0)
+Requirement already satisfied: packaging in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 7)) (25.0)
+Requirement already satisfied: cerberus in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 8)) (1.3.8)
+Requirement already satisfied: psutil in d:\py314t\lib\site-packages (from -r requirements/pybind/requirements.txt (line 9)) (7.1.3)
+Requirement already satisfied: colorama>=0.4 in d:\py314t\lib\site-packages (from pytest->-r requirements/pybind/requirements.txt (line 4)) (0.4.6)
+Requirement already satisfied: iniconfig>=1.0.1 in d:\py314t\lib\site-packages (from pytest->-r requirements/pybind/requirements.txt (line 4)) (2.3.0)
+Requirement already satisfied: pluggy<2,>=1.5 in d:\py314t\lib\site-packages (from pytest->-r requirements/pybind/requirements.txt (line 4)) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in d:\py314t\lib\site-packages (from pytest->-r requirements/pybind/requirements.txt (line 4)) (2.19.2)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in d:\py314t\lib\site-packages (from sympy>=1.10->-r requirements/pybind/requirements.txt (line 6)) (1.3.0)
+-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- onnxruntime_target_platform = x64
+-- Loading Dependencies URLs ...
+-- Loading Dependencies ...
+-- Fetch abseil_cpp from https://github.com/abseil/abseil-cpp/archive/refs/tags/20250512.0.zip
+-- Abseil source dir:D:/git/onnxruntime/build/cpu/Release/_deps/abseil_cpp-src
+-- Fetch re2 from https://github.com/google/re2/archive/refs/tags/2024-07-02.zip
+-- Fetch Protobuf from https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip
+-- 
+-- 3.21.12.0
+-- Could NOT find ZLIB (missing: ZLIB_LIBRARY ZLIB_INCLUDE_DIR) 
+-- Fetch date from https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip
+-- Fetch mp11 from https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip
+-- Fetch nlohmann_json from https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.zip
+-- Using the multi-header code from D:/git/onnxruntime/build/cpu/Release/_deps/nlohmann_json-src/include/
+-- Fetch pytorch_cpuinfo from https://github.com/pytorch/cpuinfo/archive/877328f188a3c7d1fa855871a278eb48d530c4c0.zip
+-- Fetch GSL from https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip
+-- Fetch safeint from https://github.com/dcleblanc/SafeInt/archive/refs/tags/3.0.28.zip
+-- Fetch flatbuffers from https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.zip
+-- Proceeding with version: 23.5.26.0
+-- CMAKE_CXX_FLAGS: /MP4 /guard:cf /DWIN32 /D_WINDOWS /DWINAPI_FAMILY=100 /DWINVER=0x0A00 /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A000000 /Qspectre /O2 /Ob2 /DNDEBUG /EHsc /Zc:__cplusplus /EHsc /wd26812 -DEIGEN_HAS_C99_MATH
+-- Fetch pybind11_project from https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.zip
+-- pybind11 v2.13.6 
+-- Fetch onnx from https://github.com/onnx/onnx/archive/refs/tags/v1.19.1.zip
+-- ONNX_PROTOC_EXECUTABLE: $<TARGET_FILE:protobuf::protoc>
+-- 
+-- ******** Summary ********
+--   CMake version                     : 4.2.0
+--   CMake command                     : D:/py314t/Lib/site-packages/cmake/data/bin/cmake.exe
+--   System                            : Windows
+--   C++ compiler                      : C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe
+--   C++ compiler version              : 19.44.35220.0
+--   Build type                        : Release
+--   CMAKE_INSTALL_PREFIX              : C:/Program Files/onnxruntime
+--   CMAKE_MODULE_PATH                 : D:/git/onnxruntime/cmake/external;D:/git/onnxruntime/build/cpu/Release/_deps/onnx-src/cmake/external
+-- 
+--   ONNX version                      : 1.19.1
+--   ONNX NAMESPACE                    : onnx
+--   ONNX_USE_LITE_PROTO               : ON
+--   ONNX_USE_PROTOBUF_SHARED_LIBS     : OFF
+--   ONNX_DISABLE_EXCEPTIONS           : OFF
+--   ONNX_DISABLE_STATIC_REGISTRATION  : OFF
+--   ONNX_WERROR                       : OFF
+--   ONNX_BUILD_TESTS                  : OFF
+--   ONNX_USE_UNITY_BUILD              : OFF
+--   BUILD_SHARED_LIBS                 : OFF
+-- 
+--   onnx compile options              : $<$<COMPILE_LANGUAGE:CXX,C>:/W3>;$<$<COMPILE_LANGUAGE:CXX>:/GR>;/MP;/utf-8;/nologo;/wd5287;/Zc:lambda;$<$<NOT:$<CONFIG:Debug>>:/MD>;$<$<CONFIG:Debug>:/MDd>
+--   onnx_proto compile options        : $<$<COMPILE_LANGUAGE:CXX,C>:/W3>;$<$<COMPILE_LANGUAGE:CXX>:/GR>;/MP;/utf-8;/nologo;/wd5287;/Zc:lambda;$<$<NOT:$<CONFIG:Debug>>:/MD>;$<$<CONFIG:Debug>:/MDd>
+--   onnx compile definitions          : ONNX_NAMESPACE=onnx;ONNX_ML=1;ONNX_USE_LITE_PROTO=1
+--   onnx_proto compile definitions    : ONNX_NAMESPACE=onnx;ONNX_ML=1;ONNX_USE_LITE_PROTO=1
+--   onnx link libraries               : onnx_proto
+--   onnx_proto link libraries         : protobuf::libprotobuf-lite
+-- 
+--   Protobuf version                   : 
+--   ONNX_BUILD_PYTHON                 : OFF
+-- Fetch Eigen3 from https://github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33/eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip
+-- 
+-- Configured Eigen 3.4.90
+-- 
+-- Fetch microsoft_wil from https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.zip
+-- dlpack is enabled.
+-- Fetch dlpack from https://github.com/dmlc/dlpack/archive/5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip
+-- C++11 support has been enabled by default.
+-- Finished fetching external dependencies
+-- Python Build is enabled
+-- Python_EXECUTABLE: D:\py314t\Scripts\python.exe
+-- Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state
+-- Configuring done (35.2s)
+-- Generating done (14.4s)
+-- Build files have been written to: D:/git/onnxruntime/build/cpu/Release
+MSBuild version 17.14.23+b0019275e for .NET Framework
+
+  Checking File Globs
+  1>
+  spinlock_wait.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\base\Release\absl_spinlock_wait.lib
+  log_severity.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\base\Release\absl_log_severity.lib
+  exponential_biased.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\profiling\Release\absl_exponential_biased.lib
+  civil_time.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\time\Release\absl_civil_time.lib
+  utf8_for_code_point.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_utf8_for_code_point.lib
+  time_zone.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\time\Release\absl_time_zone.lib
+  flags_commandlineflag_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\flags\Release\absl_flags_commandlineflag_internal.lib
+  cpuinfo.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\pytorch_cpuinfo-build\Release\cpuinfo.lib
+  flatbuffers.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\flatbuffers-build\Release\flatbuffers.lib
+  raw_logging_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\base\Release\absl_raw_logging_internal.lib
+  leak_check.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_leak_check.lib
+  libprotobuf-lite.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\protobuf-build\Release\libprotobuf-lite.lib
+  debugging_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_debugging_internal.lib
+  throw_delegate.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\base\Release\absl_throw_delegate.lib
+  cordz_functions.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_cordz_functions.lib
+  log_internal_nullguard.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_nullguard.lib
+  strerror.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\base\Release\absl_strerror.lib
+  flatc.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\flatbuffers-build\Release\flatc.exe
+  Assembling D:\git\onnxruntime\onnxruntime\core\mlas\lib\amd64\ErfKernelFma3.asm...
+  libprotobuf.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\protobuf-build\Release\libprotobuf.lib
+  base.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\base\Release\absl_base.lib
+  onnxruntime_providers_shared.vcxproj -> D:\git\onnxruntime\build\cpu\Release\Release\onnxruntime_providers_shared.dll
+  crc_cpu_detect.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\crc\Release\absl_crc_cpu_detect.lib
+  malloc_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\base\Release\absl_malloc_internal.lib
+  strings_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_strings_internal.lib
+  log_internal_conditions.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_conditions.lib
+  crc_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\crc\Release\absl_crc_internal.lib
+  decode_rust_punycode.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_decode_rust_punycode.lib
+  int128.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\numeric\Release\absl_int128.lib
+  Assembling D:\git\onnxruntime\onnxruntime\core\mlas\lib\amd64\cvtfp16Avx.asm...
+  stacktrace.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_stacktrace.lib
+  city.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\hash\Release\absl_city.lib
+  demangle_rust.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_demangle_rust.lib
+  string_view.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_string_view.lib
+  graphcycles_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\synchronization\Release\absl_graphcycles_internal.lib
+  demangle_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_demangle_internal.lib
+  strings.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_strings.lib
+  str_format_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_str_format_internal.lib
+  log_internal_proto.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_proto.lib
+  log_internal_fnmatch.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_fnmatch.lib
+  onnxruntime_mlas.vcxproj -> D:\git\onnxruntime\build\cpu\Release\Release\onnxruntime_mlas.lib
+  crc32c.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\crc\Release\absl_crc32c.lib
+  tracing_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\base\Release\absl_tracing_internal.lib
+  low_level_hash.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\hash\Release\absl_low_level_hash.lib
+  crc_cord_state.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\crc\Release\absl_crc_cord_state.lib
+  cord_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_cord_internal.lib
+  libprotoc.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\protobuf-build\Release\libprotoc.lib
+  flags_commandlineflag.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\flags\Release\absl_flags_commandlineflag.lib
+  symbolize.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_symbolize.lib
+  log_internal_structured_proto.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_structured_proto.lib
+  flags_marshalling.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\flags\Release\absl_flags_marshalling.lib
+  hash.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\hash\Release\absl_hash.lib
+  flags_private_handle_accessor.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\flags\Release\absl_flags_private_handle_accessor.lib
+  protoc.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\protobuf-build\Release\protoc.exe
+  time.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\time\Release\absl_time.lib
+  examine_stack.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\debugging\Release\absl_examine_stack.lib
+  log_sink.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_sink.lib
+  onnx_proto.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\onnx-build\Release\onnx_proto.lib
+  kernel_timeout_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\synchronization\Release\absl_kernel_timeout_internal.lib
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  math_cpu.cc
+  log_internal_globals.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_globals.lib
+  bias_dropout_fusion.cc
+  attention_fusion.cc
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  onnx.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\onnx-build\Release\onnx.lib
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  collective_defs.cc
+  flatbuffers_utils.cc
+  bert_defs.cc
+  bias_softmax_fusion.cc
+  onnxruntime_flatbuffers.vcxproj -> D:\git\onnxruntime\build\cpu\Release\Release\onnxruntime_flatbuffers.lib
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  contrib_defs.cc
+  diffusion_defs.cc
+  attn_lstm_schema_defs.cc
+  adapter_format_utils.cc
+  nchwc_schema_defs.cc
+  bias_gelu_fusion.cc
+  onnxruntime_util.vcxproj -> D:\git\onnxruntime\build\cpu\Release\Release\onnxruntime_util.lib
+  log_internal_format.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_format.lib
+  allocator.cc
+  onnxruntime_lora.vcxproj -> D:\git\onnxruntime\build\cpu\Release\Release\onnxruntime_lora.lib
+  synchronization.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\synchronization\Release\absl_synchronization.lib
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  hashtablez_sampler.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\container\Release\absl_hashtablez_sampler.lib
+  flags_program_name.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\flags\Release\absl_flags_program_name.lib
+  cordz_handle.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_cordz_handle.lib
+  flags_config.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\flags\Release\absl_flags_config.lib
+  flags_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\flags\Release\absl_flags_internal.lib
+  cordz_info.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_cordz_info.lib
+  cord.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\strings\Release\absl_cord.lib
+  raw_hash_set.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\container\Release\absl_raw_hash_set.lib
+  flags_reflection.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\flags\Release\absl_flags_reflection.lib
+  vlog_config_internal.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_vlog_config_internal.lib
+  cmake_pch.cxx
+  log_globals.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_globals.lib
+  log_internal_log_sink_set.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_log_sink_set.lib
+  log_internal_message.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_message.lib
+  log_internal_check_op.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\abseil_cpp-build\absl\log\Release\absl_log_internal_check_op.lib
+  Building Custom Rule D:/git/onnxruntime/cmake/CMakeLists.txt
+  re2.vcxproj -> D:\git\onnxruntime\build\cpu\Release\_deps\re2-build\Release\re2.lib
+  Scanning sources for module dependencies...
+  IOBinding.cc
+  common_subexpression_elimination.cc
+  cast_chain_elimination.cc
+  bfc_arena.cc
+  onnx_deprecated_operators.cc
+  abi_session_options.cc
+  abi_ep_types.cc
+  allocator_adapters.cc
+  allocation_planner.cc
+  allocator_utils.cc
+  telemetry.cc
+  nhwc_schema_defs.cc
+  cast_elimination.cc
+  customregistry.cc
+  default_cpu_allocator_c_api.cc
+  partitioning_utils.cc
+  onnx_function_util.cc
+  quantization_defs.cc
+  concat_slice_elimination.cc
+  constant_folding.cc
+  environment.cc
+  shape_inference_functions.cc
+  conv_activation_fusion.cc
+  conv_add_act_fusion.cc
+  compile_api.cc
+  inference_session.cc
+  conv_add_fusion.cc
+  custom_ops.cc
+  inference_session_utils.cc
+  conv_mul_fusion.cc
+  data_transfer.cc
+  internal_nhwc_onnx_schemas.cc
+  data_transfer_manager.cc
+  model_editor_c_api.cc
+  copy.cc
+  data_types.cc
+  device_stream_collection.cc
+  add_op_data_propagation.cc
+  execution_frame.cc
+  onnxruntime_c_api.cc
+  ep_context_utils.cc
+  execution_provider.cc
+  div_op_data_propagation.cc
+  execution_steps.cc
+  range_schema_defs.cc
+  external_data_loader.cc
+  ort_env.cc
+  fallback_cpu_capability.cc
+  threadpool.cc
+  model_compilation_options.cc
+  Compiling...
+  threadpool.cc
+  constant_sharing.cc
+  feeds_fetches_manager.cc
+  func_kernel.cc
+  custom_data_propagation.cc
+  ep_api.cc
+  execution_provider_factory.cc
+  get_execution_providers.cc
+  double_qdq_pairs_remover.cc
+  size_op_data_propagation.cc
+  ep_factory_cpu.cc
+  gather_op_data_propagation.cc
+  squeeze_op_data_propagation.cc
+  dropout_elimination.cc
+  fuse_nodes_funcs.cc
+  conv_bn_fusion.cc
+  utils.cc
+  telemetry.cc
+  dynamic_quantize_matmul_fusion.cc
+  mul_op_data_propagation.cc
+  loop.cc
+  onnxruntime_common.vcxproj -> D:\git\onnxruntime\build\cpu\Release\Release\onnxruntime_common.lib
+  external_data_loader_manager.cc
+  expand_elimination.cc
+  ep_factory_internal_impl.cc
+  scan_8.cc
+  activations.cc
+  ep_factory_provider_bridge.cc
+  fast_gelu_fusion.cc
+  kernel_def_builder.cc
+  ep_kernel_registration.cc
+  lora_adapters.cc
+  unsqueeze_op_data_propagation.cc
+  scan_utils.cc
+  if.cc
+  ep_library_internal.cc
+  function.cc
+  ep_library_plugin.cc
+  ep_api_types.cc
+  embed_layer_norm_fusion.cc
+  sub_op_data_propagation.cc
+  ep_library_provider_bridge.cc
+  graph.cc
+  scan_9.cc
+  fuse_initializers_transformer.cc
+  cpu_execution_provider.cc
+  cpu_provider_factory.cc
+  graph_flatbuffers_utils.cc
+  provider_bridge_ort.cc
+  div_mul_fusion.cc
+  ep_factory_internal.cc
+  graph_utils.cc
+  kernel_registry.cc
+  utils.cc
+  gather_fusion.cc
+  cpu_provider_shared.cc
+  free_dim_override_transformer.cc
+  kernel_type_str_resolver.cc
+  fp16_pool.cc
+  gelu_fusion.cc
+  graph_partitioner.cc
+  ep_plugin_provider_interfaces.cc
+  random.cc
+  constant_of_shape.cc
+  provider_registration.cc
+  memcpy.cc
+  attention.cc
+  range.cc
+  utils.cc
+  standalone_op_invoker.cc
+  provider_policy_context.cc
+  gelu_approximation.cc
+  mldata_type_utils.cc
+  attention_helper.cc
+  onnxruntime_session.vcxproj -> D:\git\onnxruntime\build\cpu\Release\Release\onnxruntime_session.lib
+  gemm_activation_fusion.cc
+  fp16_conv.cc
+  gemm_transpose_fusion.cc
+  gemm_sum_fusion.cc
+  rotary_embedding.cc
+  model_metadef_id_generator.cc
+  det.cc
+  graph_optimizer_registry.cc
+  kernel_registry_manager.cc
+  cumsum.cc
+  graph_viewer.cc
+  graph_transformer_utils.cc
+  function_utils.cc
+  einsum_auxiliary_ops.cc
+  model.cc
+  node_index_info.cc
+  einsum_compute_preprocessor.cc
+  group_query_attention_fusion.cc
+  graph_transformer_mgr.cc
+  node_unit.cc
+  kernel_type_str_resolver_utils.cc
+  identical_children_consolidation.cc
+  einsum.cc
+  graph_proto_serializer.cc
+  onnxruntime_optional_type_info.cc
+  graph_transformer.cc
+  onnxruntime_sequence_type_info.cc
+  onnxruntime_map_type_info.cc
+  onnxruntime_typeinfo.cc
+  identity_elimination.cc
+  op.cc
+  insert_cast_transformer.cc
+  op_kernel_info.cc
+  op_identifier_utils.cc
+  element_wise_ops.cc
+  label_encoder_fusion.cc
+  ort_value_pattern_planner.cc
+  einsum_typed_compute_processor.cc
+  layer_norm_fusion.cc
+  ort_value_tensor_slicer.cc
+  schema_registry.cc
+  clip.cc
+  layout_transformation.cc
+  op_node_proto_helper.cc
+  initializer.cc
+  runtime_optimization_record_container.cc
+  matmul_activation_fusion.cc
+  isinf_reducesum_fusion.cc
+  op_kernel.cc
+  prepacked_weights.cc
+  gemm.cc
+  matmul_add_fusion.cc
+  prepacked_weights_container.cc
+  hardmax.cc
+  matmul_bn_fusion.cc
+  matmul_nbits_fusion.cc
+  matmul_integer_to_float.cc
+  sign.cc
+  matmul_scale_fusion.cc
+  matmul_transpose_fusion.cc
+  node_attr_utils.cc
+  sequential_executor.cc
+  plugin_data_transfer.cc
+  softmax.cc
+  onnxruntime_graph.vcxproj -> D:\git\onnxruntime\build\cpu\Release\Release\onnxruntime_graph.lib
+  round.cc
+  matmul.cc
+  softmax_shared.cc
+  session_options.cc
+  resource_accountant.cc
+  array_feature_extractor.cc
+  top_k.cc
+  binarizer.cc
+  session_state.cc
+  cast_map.cc
+  noop_elimination.cc
+  dictvectorizer.cc
+  simple_tensor_allocator.cc
+  category_mapper.cc
+  session_state_utils.cc
+  imputer.cc
+  not_where_fusion.cc
+  sparse_utils.cc
+  sparse_tensor.cc
+  stream_execution_context.cc
+  optimizer_execution_frame.cc
+  feature_vectorizer.cc
+  tensor.cc
+  tensor_external_data_info.cc
+  linearregressor.cc
+  pad_fusion.cc
+  tensor_allocator.cc
+  nchwc_transformer.cc
+  normalizer.cc
+  pre_shape_node_elimination.cc
+  tensorprotoutils.cc
+  tensor_type_and_shape.cc
+Namespace(build_dir='build\\cpu', config=['Release'], update=True, build=True, clean=False, parallel=4, targets=None, compile_no_warning_as_error=False, build_shared_lib=True, build_apple_framework=False, enable_lto=False, use_cache=False, use_binskim_compliant_compile_flags=True, cmake_extra_defines=['onnxruntime_BUILD_UNIT_TESTS=OFF', 'FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER'], cmake_path='cmake', cmake_generator='Visual Studio 17 2022', use_vcpkg=False, use_vcpkg_ms_internal_asset_cache=False, skip_submodule_sync=False, skip_pip_install=False, test=False, skip_tests=True, ctest_path='ctest', enable_onnx_tests=False, path_to_protoc_exe=None, cmake_deps_mirror_dir=None, fuzz_testing=False, enable_symbolic_shape_infer_tests=False, skip_onnx_tests=False, skip_winml_tests=False, skip_nodejs_tests=False, ctest_timeout='10800', enable_transformers_tool_test=False, build_micro_benchmarks=False, code_coverage=False, enable_training=False, enable_training_apis=False, enable_training_ops=False, enable_nccl=False, nccl_home=None, enable_memory_profile=False, enable_address_sanitizer=False, gen_doc=None, rv64=False, riscv_toolchain_root='', riscv_qemu_path='', android=False, android_abi='arm64-v8a', android_api=27, android_sdk_path='', android_ndk_path='', android_cpp_shared=False, android_run_emulator=False, build_wasm=False, build_wasm_static_lib=False, emsdk_version='4.0.21', enable_wasm_jspi=False, enable_wasm_simd=False, enable_wasm_relaxed_simd=False, enable_wasm_threads=False, disable_wasm_exception_catching=False, enable_wasm_api_exception_catching=False, enable_wasm_exception_throwing_override=True, wasm_run_tests_in_browser=False, enable_wasm_profiling=False, enable_wasm_debug_info=False, wasm_malloc=None, emscripten_settings=[], use_full_protobuf=False, use_mimalloc=False, external_graph_transformer_path=None, use_extensions=False, extensions_overridden_path=None, minimal_build=None, include_ops_by_config=None, enable_reduced_operator_type_support=False, disable_contrib_ops=False, disable_ml_ops=False, disable_rtti=False, disable_types=[], disable_exceptions=False, client_package_build=False, enable_pybind=False, build_wheel=True, wheel_name_suffix=None, skip_keras_test=False, build_csharp=False, build_nuget=False, msbuild_extra_options=[], build_java=False, build_nodejs=False, build_objc=False, use_cuda=False, cuda_version=None, cuda_home=None, cudnn_home=None, enable_cuda_line_info=False, enable_cuda_nhwc_ops=False, disable_cuda_nhwc_ops=False, enable_cuda_minimal_build=False, nvcc_threads=1, enable_nvtx_profile=False, enable_cuda_profiling=False, no_sve=False, enable_arm_neon_nchwc=False, use_dnnl=False, dnnl_gpu_runtime='', dnnl_opencl_root='', dnnl_aarch64_runtime='', dnnl_acl_root='', use_openvino=None, use_tensorrt=False, use_tensorrt_builtin_parser=True, use_tensorrt_oss_parser=False, tensorrt_home=None, tensorrt_rtx_home=None, use_nv_tensorrt_rtx=False, use_dml=False, dml_path='', dml_external_project=False, use_nnapi=False, nnapi_min_api=None, use_coreml=False, use_qnn=None, qnn_home=None, use_snpe=False, snpe_root=None, use_vitisai=False, use_armnn=False, armnn_relu=False, armnn_bn=False, armnn_home=None, armnn_libs=None, use_acl=False, acl_home=None, acl_libs=None, no_kleidiai=False, use_rknpu=False, use_cann=False, cann_home=None, use_migraphx=False, migraphx_home=None, use_webnn=False, use_jsep=False, use_webgpu=False, use_external_dawn=False, wgsl_template='static', use_xnnpack=False, use_vsinpu=False, use_azure=False, enable_lazy_tensor=False, ms_experimental=False, enable_msinternal=False, use_lock_free_queue=False, enable_generic_interface=False, msvc_toolset=None, windows_sdk_version=None, enable_msvc_static_runtime=False, use_telemetry=False, caller_framework=None, x86=False, arm=False, arm64=False, arm64ec=False, buildasx=False, disable_memleak_checker=False, enable_pix_capture=False, enable_wcos=False, use_gdk=False, gdk_edition='', gdk_platform='Scarlett', use_winml=False, winml_root_namespace_override=None)
+Terminate batch job (Y/N)? 

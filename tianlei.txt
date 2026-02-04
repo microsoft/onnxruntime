@@ -1,0 +1,992 @@
+commit 8fceca0d853090b0cde8ce939802a4f8d79f0800
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Nov 10 11:47:57 2025 -0800
+
+    [Build] update cuda 13 package: fatbin compress mode and cuda archs (#26516)
+    
+    ### Changes
+    
+    Update cuda 13 python packaging pipeline:
+    (1) Use fatbin compress mode = size to reduce package size. This could
+    significantly reduce package size.
+    (2) Update CMAKE_CUDA_ARCHITECTURES for cuda 13. Since we reduced
+    package size, we are able to add more architectures.
+    (3) Fix cuda 13 packaging pipeline:
+    - use correct (cuda13 instead of cuda12) manylinux docker. The new linxu
+    docker has cuda 13.0.2 and cuDNN 9.14.
+    - pass cuda version properly to run build_linux_python_package.sh in
+    docker. (CUDA_VERSION in docker was 12.8.1, and now we pass "12.8" from
+    yml to be consistent).
+    
+    Note that the compress mode and cuda archs settings are not changed for
+    CUDA 12.8, so cuda 12 wheel size is larger than cuda 13 wheel size. We
+    can update them in a separated PR if needed.
+    
+    The nuget pipeline for cuda 13 need extra code change, and this PR only
+    fixes python packaging pipeline.
+    
+    ### Python GPU Wheel Size (Cuda Architectures + PTX)
+    
+    CUDA | Windows  | Linux
+    ----|---|---
+    12.8 | 221 MB  (52;61;75;86;89+90) | 271 MB (60;70;75;80;86;90a+90)
+    13.0 | 186 MB (75;80;86;89;90a;100a;120a+120) | 191 MB
+    (75;80;86;89;90a;100a;120a+120)
+
+commit ea55c160a36d658eae61a4c7aeda6cb55dd54dec
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Nov 6 15:58:36 2025 -0800
+
+    [Build] Add python 3.14 package for QNN Arm64 (#26515)
+    
+    Missed it in https://github.com/microsoft/onnxruntime/pull/26397.
+    Add it to make the cpu python package complete.
+
+commit 680e7531ffd4e556542d76308df91f66dd87b0bf
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Nov 6 14:56:10 2025 -0800
+
+    [CPU] qMoE add optional inputs for zero points (#26495)
+    
+    Add zero points to support asymmetric-quantization.
+    
+    Related:
+    https://github.com/microsoft/onnxruntime/issues/26387
+
+commit 2214aabc04a7c80e7a514937aff98937741748eb
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Wed Nov 5 21:02:09 2025 -0800
+
+    [Build] skip python tests when python version is 3.14 (#26500)
+    
+    This is a follow up change for
+    https://github.com/microsoft/onnxruntime/pull/26397:
+    (1) Enable python 3.14 for webgpu package
+    (2) Skip python tests for python 3.14 just like in python cuda package
+    pipelines.
+    
+    onnx package does not support python 3.14 right now, so python tests
+    depending on onnx will fail. Example error in python package pipeline:
+    ```
+    Traceback (most recent call last):
+      File "E:\_work\1\s\build\Release\Release\onnx_backend_test_series.py", line 14, in <module>
+        import onnx
+    ModuleNotFoundError: No module named 'onnx'
+    ```
+    
+    This is a temporary walkaround to unblock python packaging pipeline for
+    python 3.14. We can re-enable the test after onnx next release (in a few
+    weeks?)
+
+commit c221fd98cc175544aea59b485b254864853f0458
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Wed Nov 5 10:27:48 2025 -0800
+
+    [Build] Fix Docker for Nuget_Test_Linux_GPU (#26492)
+    
+    (1) Not install cudnn9-cuda-12 since the base image has cudnn so no need
+    to install again.
+    (2) Upgrade ubuntu to 24.04
+    
+    This fixes the following error:
+    ```
+    #11 315.1  cudnn9-cuda-12 : Depends: cudnn9-cuda-12-9 (>= 9.10.2.21) but it is not going to be installed
+    #11 315.1 E: Unable to correct problems, you have held broken packages.
+    ```
+
+commit 75d35474d57ae8f0288ecb44f82ac16054ecc120
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Tue Nov 4 09:50:33 2025 -0800
+
+    [Build] Remove unused docker files (#26486)
+    
+    Some docker files are not used in CI pipelines. Remove them.
+
+commit 32fa4908dbd5dc9aa1a2c24e20b4da360ab4a000
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Tue Nov 4 09:50:16 2025 -0800
+
+    Nightly python packages for python 3.14 (#26397)
+    
+    Update python packaging pipeline to support python 3.14. This is to add
+    python 3.14 wheels to both CUDA 12 and CUDA 13 nightly packaging
+    pipelines. The CUDA 13 pipelines were added in
+    https://github.com/microsoft/onnxruntime/pull/26420.
+    
+    For linux, two wheels are added for python 3.14 and 3.14t.
+    For Windows, a wheel is added for pyhthon 3.14.
+    
+    Known issues:
+    1. onnx does not have prebuild package for python 3.14, which causes
+    some pipelines failed.
+    2.  onnxscript and onnx-ir depends on onnx.
+    3. The CI machine for Windows cuda python packaging has cuda driver
+    553.24, which does not support CUDA 13.0. TODO: Update cuda driver to
+    580 or later to test properly.
+    
+    Walkarounds for issues 1 and 2:
+    * For python 3.14, we skip onnx, onnxscript and onnx-ir in
+    requirements.txt.
+    * Disable related tests.
+    
+    When onnx package supports python 3.14 in the future, we can undo the
+    walkarounds and re-enable those tests.
+
+commit 16332991580377aa9ff3f29087fda0a75ed480f6
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Tue Oct 28 09:28:45 2025 -0700
+
+    [CUDA] Add nightly gpu package and publish pipelines for CUDA 13 (#26420)
+    
+    Add nightly gpu pipelines for CUDA 13.
+
+commit 1f4583857f7aa13482be51a7e525f50a6b990f96
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Fri Oct 24 13:51:13 2025 -0700
+
+    [MLAS] Fix rotary avx2 kernel invalid access (#26389)
+    
+    This fixes an issue that _mm256_maskload_ps intrinsic used in
+    remainder-handling logic introduced in
+    https://github.com/microsoft/onnxruntime/pull/23694.
+    
+    The core of the problem is that _mm256_maskload_ps (and its store
+    equivalent) can read beyond the masked elements.
+    Even if mask correctly specifies that you only want to load, for
+    example, 3 floats, the intrinsic may still read the full 32 bytes (8
+    floats) from the provided memory address.
+    
+    The invalid access occurs when one of buffers (input, sin_data, or
+    cos_data) ends near the boundary of a memory page, and the part of the
+    32-byte read that you don't care about (i.e., the masked-off part) falls
+    onto an unmapped page. This will cause a segmentation fault (invalid
+    access).
+    
+    The Solution: Use a Scalar Remainder Loop
+    
+    The simplest, safest, and most robust solution is to replace the masked
+    AVX remainder logic with a simple scalar loop. This is the exact
+    strategy already used by your RopeKernel_Avx2_fp16_Impl functions, which
+    are safe from this bug.
+    
+    The performance impact of this change will be negligible, as this loop
+    only processes the final 1-15 elements.
+    
+    ---------
+    
+    Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+
+commit b970c118f5d9d857f4c469ce99a42fbe0e77daf4
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Tue Oct 21 09:10:23 2025 -0700
+
+    [Build] New docker image with GCC 14 and CUDA 12.8/13.0 (#26349)
+    
+    ### Description
+    (1) Use new linux docker images: gcc upgraded from 12 to 14; add python
+    3.14.
+    (2) Use CUDA 12.8 to replace CUDA 12.2 in workflows.
+    (3) Replace CUDA 11.8 with 13.0 and latest TensorRT version in
+    alternative configuration (default is still CUDA 12.8).
+
+commit 036fde03d0fff715091a430d3fa44e4383defea3
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Wed Oct 15 14:40:48 2025 -0700
+
+    [Build] Lock torch, onnxscript and onnx-ir versions to latest (#26315)
+    
+    To fix build pipeline error `ModuleNotFoundError: No module named
+    'onnxscript._framework_apis.torch_2_9'` after recent torch 2.9 release.
+    
+    This locks torch version to 2.8, and also updates onnxscript and onnx-ir
+    to latest versions.
+    
+    I locked torchvision version since it is usually installed with torch
+    together. If torch and torchvision are not compatible, there might be
+    errors in transformers script.
+
+commit 311b4a647690ea4ee53dc6cb99cc9b9b1d1c6218
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Oct 13 14:16:31 2025 -0700
+
+    [CUDA] Upgrade build pipelines to use CUDA 12.8 + cuDNN 9.8 (#26267)
+    
+    This upgrades CUDA 12.2 + cuDNN 9.5 to CUDA 12.8 + cuDNN 9.8 in CI
+    pipelines, so that we can build 120-real to support Blackwell GPU.
+    
+    To speed up build, we also disable relocatable-device-code.
+    
+    MSVC is updated to latest for some windows build pipelines.
+    
+    #### Known issues
+    
+    Some onnx models (yolo v3, yolo v4, mobilenet v1) failed to run due to
+    cudnn frontend failed to find engine plan. We will try upgrade cudnn
+    frontend later. Related failed tests are disabled for now.
+    
+    ---------
+    
+    Co-authored-by: Changming Sun <chasun@microsoft.com>
+
+commit 826a1e624082afc79c39e9e64ffde9e5be4fb62b
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Oct 13 10:29:39 2025 -0700
+
+    Add windows server to supported OS (#26275)
+    
+    Add windows server to supported list to avoid confusing users:
+    
+    Marketing Name | Internal Version | platform.release().lower() | Release
+    Year | Based on
+    -- | -- | -- | -- | --
+    Windows Server 2025 | 10.0.26100+ | "2025server" | 2024–2025 | Windows
+    11 (24H2)
+    Windows Server 2022 | 10.0.20348 | "2022server" | 2021 | Windows 10
+    (21H2)
+    Windows Server 2019 | 10.0.17763 | "2019server" | 2018 | Windows 10
+    (1809)
+    Windows Server 2016 | 10.0.14393 | "2016server" | 2016 | Windows 10
+    (1607)
+
+commit 11b23ad2dfd6cadcf7827acf4ced66cbd5da2e9d
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Tue Oct 7 15:17:44 2025 -0700
+
+    [CUDA] replace 90a-virtual by 90-virtual for forward compatible (#26230)
+    
+    Users with RTX 5090 GPUs are experiencing runtime errors when using
+    onnxruntime-gpu:
+    ```
+    [ONNXRuntimeError] : 1 : FAIL : Non-zero status code returned while running Slice node.
+    Name:'Slice_34' Status Message: CUDA error cudaErrorNoKernelImageForDevice:
+    no kernel image is available for execution on the device
+    ```
+    This occurs because RTX 5090 uses CUDA compute architecture 12.0 (SM
+    12.0). The incompatibility of `onnxruntime-gpu` 1.23 was built with
+    `90a-virtual`. The `90a` architecture is a specialized,
+    non-forward-compatible version of the Hopper architecture, making it
+    incompatible with future GPU generations like Blackwell.
+    
+    This change will revert `90a-virtual` back to `90-virtual` as used in
+    1.22. This shall bring back the compatibility in Blackwell GPU.
+    
+    The FPA_INTB_GEMM is disabled by default. It need some extra work to
+    make it compatible with 90-virtual and no 90a-real use case.
+    
+    Related:
+    https://github.com/microsoft/onnxruntime/pull/26002
+    https://github.com/microsoft/onnxruntime/pull/26226
+    https://github.com/microsoft/onnxruntime/issues/26181
+
+commit 048aaee6bf50e484c5461b743cfffa60db6eaae9
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Sep 29 14:16:53 2025 -0700
+
+    [CUDA] cutlass upgrade to 4.2.1 (#26154)
+    
+    Prepare for blackwell feature work.
+
+commit 4de31529f8bdbe0b313dc97a0b0f3ef0610b4b1f
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Sep 25 15:51:12 2025 -0700
+
+    [CUDA] Fix cuda 13 build (#26153)
+    
+    Fix cuda 13 build errors and warnings.
+    
+    Related: https://github.com/microsoft/onnxruntime/issues/25936
+    
+    I've verified the build in Linux and Windows using the following test
+    settings:
+    
+    ### Build command line
+    
+    You may need change cuda_home and cudnn_home to your installation
+    directories, also update CMAKE_CUDA_ARCHITECTURES according to your GPU.
+    
+    #### Linux Build
+    ```
+    pip install cmake ninja packaging numpy
+    sh build.sh --config Release  --build_dir build/cuda13 --parallel  --use_cuda \
+                --cuda_version 12.8 --cuda_home  /nvida/cuda13.0/  \
+                --cudnn_home /nvida/cudnn9.12_cu13/ \
+                --build_wheel --skip_tests \
+                --cmake_generator Ninja \
+                --enable_cuda_nhwc_ops \
+                --use_binskim_compliant_compile_flags \
+                --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90-real;90-virtual \
+                --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON \
+                --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+    ```
+    
+    #### Windows Build
+    
+    ```
+    IF "%VCToolsVersion%"=="" call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+    
+    build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_dir build\cuda13 --build_wheel ^
+              --parallel 4 --nvcc_threads 1 --build_shared_lib ^
+              --use_cuda --cuda_version "13.0" --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0" ^
+              --cudnn_home "D:\cudnn\9.13.0.50_cuda13" ^
+              --skip_tests ^
+              --use_binskim_compliant_compile_flags ^
+              --enable_cuda_nhwc_ops ^
+              --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=native" ^
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON ^
+              --cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER
+    ```
+    
+    The onnxruntime_test_all.exe is passed for RTX 5060 Ti GPU, so the
+    binary can support blackwell GPU (CUDA_ARCHITECTURES=120) properly with
+    CUDA 13.0:
+    ```
+    [----------] Global test environment tear-down
+    [==========] 1242 tests from 111 test suites ran. (83468 ms total)
+    [  PASSED  ] 1242 tests.
+    ```
+
+commit ad32f424b5a30043a9b68783ede8d68a98ec42a6
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Wed Sep 24 10:04:38 2025 -0700
+
+    [CUDA] Fix cuda 12.8 build warnings (#26136)
+    
+    Fix build warnings using cuda 12.8 in Linux like the following:
+    ```
+    <command-line>: error: "_FORTIFY_SOURCE" redefined [-Werror]
+    
+    gather_block_quantized.cc:95:40: warning: comparison of integer expressions of different signedness: ‘int64_t’ {aka ‘long int’} and ‘long unsigned int’ [-Wsign-compare]
+       95 |   for (int64_t i = gather_axis_ + 1; i < data_rank; ++i) {
+    
+    attention_op_test.cc:304:85: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<float>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+      304 |     } else if (batch_size * q_num_heads * q_sequence_length * total_sequence_length == attn_mask.size()) {
+    
+      /cast_op_test.cc:1487:24: warning: comparison of integer expressions of different signedness: ‘size_t’ {aka ‘long unsigned int’} and ‘int’ [-Wsign-compare]
+     1487 |   for (size_t i = 0; i < num_pairs; ++i) {
+          |                      ~~^~~~~~~~~~~
+    ```
+    
+    ---------
+    
+    Co-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+
+commit d34633377209adcb18c545a09cf184e9151e5309
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Aug 21 12:50:13 2025 -0700
+
+    [CUDA] Add build flag onnxruntime_USE_FPA_INTB_GEMM (#25802)
+    
+    ### Description
+    
+    Add a build flag to enable/disable mixed gemm cutlass kernel.
+    
+    To disable the kernel, you can append the following at the end of build
+    command line:
+    `--cmake_extra_defines onnxruntime_USE_FPA_INTB_GEMM=OFF`
+    
+    ### Motivation and Context
+    
+    FpA IntB Gemm need a lot of time to compile. With such option, developer
+    can speed up the build especially on build machine with limited memory.
+
+commit 067b15445e88de2f4396f931cfd49c2b5c75e2fa
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Aug 7 18:48:43 2025 -0700
+
+    Skip node output dump for MemcpyToHost (#25651)
+    
+    Fix node output dump for MemcpyToHost. The statistics data is not
+    correct, since data might not be copied to CPU yet:
+    
+    ```
+    MemcpyToHost node: Memcpy_token_232
+    Input 0 Name: /model/layers.6/moe/router/Add/output_0_CUDAExecutionProvider
+     Shape: {1,1,32}
+    OrtMemoryInfo:[name:Cuda OrtMemType:0 OrtAllocatorType:1 Device:[DeviceType:1 MemoryType:0 VendorId:4318 DeviceId:0 Alignment:0]]
+    Min=-2.5136719,Max=1.6914062
+    -----------
+    Output 0 Name: /model/layers.6/moe/router/Add/output_0
+     Shape: {1,1,32}
+    Min=-4888,Max=6672,NaN=2
+    ```
+    
+    This fix will skip the output dump (or statistics) like
+    ```
+    -----------
+    Output 0 Name: /model/layers.6/moe/router/Add/output_0
+     Shape: {1,1,32}
+     is same as input
+    ```
+
+commit 59871e3bbbe23860b83eba55578a86fbbe50f416
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Aug 4 08:58:55 2025 -0700
+
+    Update qMoE spec to support block quantization (#25641)
+    
+    Update operator spec to support block quantization in qMoE.
+    Implementation will come later.
+
+commit 562760a567cdeb1acd05bac5ee370ce075c7a0bb
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Sat Aug 2 16:31:50 2025 -0700
+
+    Update MoE and qMoE spec (#25619)
+    
+    ### Weight Shape Update
+    Make sure the shape reflects actual memory layout. The weight is stored
+    in column major.
+    
+    ### Add support for SwiGLU activation attributes
+    Add spec for the new activation type SwiGLU (Swish-Gated Linear Unit) by
+    introducing a few new attributes. For reference, see the [Triton kernel
+    implementation](https://github.com/triton-lang/triton/blob/main/python/triton_kernels/triton_kernels/swiglu.py).
+    
+    
+    #### New Attributes for SwiGLU
+    
+    * **`swiglu_fusion`**:
+    
+      * `0`: Not fused — two separate GEMMs (FC1 and FC3).
+    * `1`: Fused GEMMs using **interleaved** format (g and l are interleaved
+    per row).
+      * `2`: Fused GEMMs using **non-interleaved** (concatenated) format.
+    
+    * **`swiglu_limit`**: Clamp threshold applied to `g` and `l`.
+    
+    * **`activation_alpha`**: Scalar multiplier applied to `g` before
+    sigmoid.
+    
+    * **`activation_beta`**: Added to `l` before the final output
+    computation.
+    
+    ---
+    
+    ### SwiGLU Activation Function
+    
+    The SwiGLU function is defined as:
+    
+    ```
+    g = xW + b
+    l = xV + c
+    G = min(g, limit)
+    L = max(min(l, limit), -limit)
+    swiglu = G * sigmoid(alpha * G) * (L + beta)
+    ```
+    
+    * `x`: Input
+    * `W`, `V`: Weight matrices
+    * `b`, `c`: Bias vectors
+    * `alpha`, `beta`, `limit`: Float constants
+    
+    ---
+    
+    ### Fusion Behavior
+    
+    * When `swiglu_fusion = 0`:
+    
+      * Two GEMMs are computed independently.
+      * FC1 → computes `g`, FC3 → computes `l`.
+    
+    * When `swiglu_fusion = 1`:
+    
+      * `g` and `l` are computed in a **single fused GEMM** (FC1).
+    * Output is **interleaved** per row as: `gate, linear, gate, linear,
+    ...`.
+    
+    * When `swiglu_fusion = 2`:
+    
+      * `g` and `l` are computed in a single GEMM (FC1).
+      * Output is **concatenated** per row: `[g | l]`.
+    
+    ### Implement swiglu_limit for CUDA
+    Update CUDA kernel to use default swiglu limit.
+    Update test_moe_cuda.py to have same logic in reference implementation.
+    
+    ### Remaining Works
+    The main purpose of this PR is to update spec instead of implementing
+    them.
+    Note that MoE/qMoE ops and tests still use hard-coded parameters and
+    will be changed later to read from those attributes.
+    
+    Column-wise symmetric quantization is used for qMoE. We will add more
+    quantization details when we add support of block-wise quantization
+    soon.
+
+commit 68b9d9bf0392f54ff39e6e2efbd3008f12a68bee
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Jul 31 11:29:40 2025 -0700
+
+    [CUDA] BF16 MoE and qMoE (#25572)
+    
+    Add support of bfloat16 in MoE and qMoE cuda ops.
+
+commit a2b4546c4449e153de236d8070984e4bbc526216
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Jul 28 15:27:57 2025 -0700
+
+    [CUDA] Support SwiGlu in MoE and qMoE (#25530)
+    
+    ### Description
+    
+    This implements the SwiGLU activation for MoE and qMoE. The activation
+    is corresponding to
+    https://github.com/triton-lang/triton/blob/main/python/triton_kernels/triton_kernels/swiglu.py.
+    
+    Also update test_parity_moe.py to enable test for qMoE in CI pipelines.
+    
+    ### Motivation and Context
+    
+    This is naive implementation of the activation. Since the activation
+    will reduce each row length to half, we cannot directly use epilogue.
+    Current implementations need an extra buffer to run SwiGLU kernel.
+    
+    In the future, we might take a look at other alternatives that does not
+    need extra buffer.
+
+commit e6c84b804c8cffdf54b34470a39a33836da86e2b
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Jul 17 15:52:21 2025 -0700
+
+    [CUDA] Support head_sink in flash attention for GQA (#25432)
+    
+    ### Description
+    
+    Update Flash Attention to support softmax sink in GQA.
+    
+    Changes:
+    - [x] Update flash attention to support head_sink
+    - [x] Add test_gqa.py to test cuda, and remove test_gqa_cuda.py.
+    
+    Note that the sink is treated as scaled, while the elements in QK GEMMs
+    is not scaled. The sink value does not need scaling or softcap, and it
+    joins softmax with those scaled or soft-capped values. There are two
+    ways to add sink to softmax:
+    * One way is to [patch
+    normalize_softmax_lse](https://github.com/microsoft/onnxruntime/blob/1cf1aa786f6e7f7e6abd6fba8b8aea2e7a43092c/onnxruntime/contrib_ops/cuda/bert/flash_attention/softmax.h#L143-L178)
+    to use sink to update max and sum. Pros is major change in one function;
+    Cons is the logic is a little complex since row_max is unscaled, while
+    row_sum is scaled.
+    * Another way is to change softmax_rescale_o to handle the sink directly
+    in the first block of online softmax by using an unscaled sink value. It
+    is a robust way to keep core algorithm consistent. Cons is need change
+    in multiple places, and it is little hard to work with softcap.
+    
+    This PR use the the first approach for easy integration.
+    
+    Note: Memory efficient attention change will be in separated PR.
+    
+    ### Motivation and Context
+    https://github.com/microsoft/onnxruntime/pull/25269
+
+commit 2d6a52536d96da57e119462e0e5b8096205f27c6
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Wed Jul 16 11:06:56 2025 -0700
+
+    Fix Build Error when tensor dumping is enabled (#25414)
+    
+    ### Description
+    
+    Fix cuda build error when DEBUG_GENERATION is defined.
+    
+    ### Motivation and Context
+    
+    In https://github.com/microsoft/onnxruntime/pull/24821, a dumping API
+    was removed:
+    `void Print(const char* name, int index, bool end_line)`
+    But related code is not updated.
+    
+    In MatMulNBits, there is a recent change to add bfloat16 support, but
+    the tensor dumper only support BFloat16 but not __nv_bfloat16. This PR
+    adds functions to support __nv_bfloat16 in cuda tensor dumper.
+
+commit cd5f91fe0624ad13047ea4dd46f08a35a020dc3a
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Wed Jul 9 14:19:28 2025 -0700
+
+    [CPU] GQA supports head_sink input for smooth softmax (#25269)
+    
+    ### Description
+    It is an extension of [Smooth
+    Softmax](https://github.com/microsoft/onnxruntime/pull/21867) feature.
+    The difference is that each head has a learnable smooth factor that
+    adding to the denominator of softmax. The smooth factor is like an extra
+    element that joins the softmax.
+    
+    The usage of the smooth factor in softmax is like the following:
+    ```math
+    softmax_{i} = \frac{exp(x_{i})}{exp(s)+ \sum_{j} exp(x_{j})}
+    ```
+    
+    The head_sink is a float tensor with length of number of attention
+    heads. For h-th head, `head_sink[h]` is used as smooth factor s. When
+    head_sink is not provided, constant 0 is used as smooth factor s.
+    
+    Changes:
+    - [x] Update operator spec to add an optional new input `head_sink`
+    - [x] Implement CPU (MLAS) kernel.
+    - [x] Update test_gqa_cpu.py to test it.
+    
+    CUDA kernel will be updated later in a separate PR.
+
+commit ce8796dd23ec53358f86b5d6b5c9ced6c82889a9
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Tue Jul 8 20:58:21 2025 -0700
+
+    GatherBlockQuantized supports zero points and 8 bits for uint8 dtype (#25214)
+    
+    Add support for unit8 GatherBlockQuantized for the following two areas:
+    * Allow zero points.
+    * Add bits attribute and support bits=8.
+    
+    Major change is to update shape inference; and update unit tests to
+    cover these.
+    
+    Note that only CPU implementation, and CUDA implementation will be added
+    later in another PR.
+    
+    ### Motivation and Context
+    
+    Previously, zero points are not supported when dtype is uint8. Only 4
+    bit quantization without zero points were supported.
+    This change is to share weights of lm_head with 8 bit quantization
+    between GatherBlockQuantized and MatMulNBits.
+    
+    For example, when K is multiple of `block_size`, typical input and
+    output shapes are like the following:
+     * data has shape (N, K) for 8 bits, or (N, K / 2) for 4 bits.
+     * scales has shape (N, k_blocks), where k_blocks = (K / block_size).
+    * zero_points has shape (N, k_blocks) for 8 bits, (N, (k_blocks + 1) /
+    2) for 4 bits.
+     * output will have shape (..., K), where ... is the shape of `indices`.
+
+commit 7c18d896b033dba80113efb720bd8842f8c23e33
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Jul 7 22:13:39 2025 -0700
+
+    Fix cuda 12.9 windows build (#25317)
+    
+    ### Description
+    
+    Fix Windows build with MSVC 17.14.7 and cuda 12.9.1.
+    
+    The build error was like:
+    `CUDACOMPILE : nvcc error : 'cudafe++' died with status 0xC0000005
+    (ACCESS_VIOLATION)`
+    
+    The cause is unknown (maybe cudafe bug). The code change resolved the
+    issue. I've verified it in two machines.
+
+commit af353406cf30464a43ed51e8155c7e35a454f116
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Jul 3 15:00:33 2025 -0700
+
+    Fix Windows build of cuda 12.8 (#25282)
+    
+    ### Description
+    
+    Fix Windows cuda build that using cuda 12.8, where nvcc raises error
+    that C:/DNDEBUG not found.
+    
+    The root cause is current build script directly pass flags starting with
+    /D to nvcc. It does not cause issue in CI build since it uses cuda 12.2,
+    and we have a flag to let nvcc pass unknown flags to host compiler. That
+    is not ideal since different version of nvcc may have different behavior
+    on this.
+    
+    Here we distinguish nvcc flags (starts with -) and MSVC flags (starts
+    with /), and pass MSVC flags to host compiler explicitly.
+
+commit f3c18ed1b0707638b23e8d43f88a8a847e5147b7
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Fri Jun 27 15:57:23 2025 -0700
+
+    [CUDA] Exclude lean attention from linux build (#25203)
+    
+    ### Description
+    
+    Exclude lean attention from linux build.
+    
+    ### Motivation and Context
+    
+    Previously, lean attention was built in Linux but not in Windows.
+    It is not used Gen AI so far, so we disable it in build to reduce binary
+    size and build time.
+
+commit 7a6cef6fe3672c5d59f1925e5f7c0a03dcfbc90e
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Jun 26 20:54:38 2025 -0700
+
+    Format *.cu and *.cuh with lintrunner (#25189)
+    
+    ### Description
+    
+    Use lintrunner to format *.cu and *.cuh files.
+    
+    ### Motivation and Context
+    
+    Some cuda code is not formatted. This will make the style consistent.
+
+commit 7fdd386319232aabf699542cdb3f8fbb9d13179a
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Jun 26 15:47:14 2025 -0700
+
+    [CUDA] bfloat16 MatMulNBits (#25161)
+    
+    ### Description
+    
+    Support bfloat16 for MatMulNBits in CUDA.
+    
+    
+    ### Motivation and Context
+    
+    For LLM model with bfloat16 data type.
+
+commit c98a0e014b641e289ed25f42b792bca1893ccb03
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Sat Jun 21 10:46:17 2025 -0700
+
+    update CMAKE_CUDA_ARCHITECTURES for packaging pipelines (#25126)
+    
+    * Change 90 to 90a. It is because FpA IntB Gemm uses accelerated
+    features (like WGMMA, TMA and setmaxnreg).
+    * Change 90 to `90a-real;90a-virtual`. It is because a recent change in
+    [cuda_configuration.cmake](https://github.com/microsoft/onnxruntime/blob/main/cmake/external/cuda_configuration.cmake)
+    will replace "90" to "90a-real", and we need explicitly add the virtual
+    one `90a-virtual` to the list.
+    
+    Note that our pipelines are still using CUDA 12.2, so it is not able to
+    add 100 and 120 to the list. We can add it when we upgrade to CUDA 13 in
+    the future.
+
+commit 7268117855a89b1ce18b1ec78078b159d3bd661c
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Fri Jun 20 13:45:00 2025 -0700
+
+    [CUDA] FpA IntB Gemm Kernel Test (#25109)
+    
+    Enhance MatMulNBits CUDA kernel testing:
+    (1) Add a kernel testing for different cuda kernels used in MatMulNBits.
+    (2) Refactoring the gemm profiler to use cuda allocator
+    (2) Add verbose logging macros.
+    (3) Adjustments to speed up compiling when sm90 is excluded from build.
+    
+    Example kernel test output:
+    
+    ![image](https://github.com/user-attachments/assets/c6d3f6fa-ef84-4bfb-b0b9-acd9b6717980)
+
+commit b3c316f9d2df0d505bbad1b3b91896c162a24816
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Sat Jun 14 11:44:01 2025 -0700
+
+    [CUDA] Fix clip operator (#25057)
+    
+    ### Description
+    
+    The result of Clip op is not expected when min > max for CUDA. This
+    fixes the implementation to align with operator spec:
+    https://onnx.ai/onnx/operators/onnx__Clip.html
+    
+    ### Motivation and Context
+    
+    ONNX backend test failure with onnx 1.18:
+    
+    python onnx_backend_test_series.py
+    ======================================================================
+    FAIL: test_clip_min_greater_than_max_cuda
+    (__main__.OnnxBackendNodeModelTest)
+    ----------------------------------------------------------------------
+    DESIRED: array([1., 1., 1.], dtype=float32)
+    ACTUAL: array([2., 2., 1.], dtype=float32)
+
+commit 0784e0a47ca70074c6d97764b0bd303678e4cb6d
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Fri Jun 13 13:39:47 2025 -0700
+
+    Revert "Improve Windows ETW callback registration and fix issues" (#25055)
+    
+    ### Description
+    
+    Revert [Improve Windows ETW callback registration and fix
+    issues](https://github.com/microsoft/onnxruntime/pull/24877) to unblock
+    python packaging pipeline.
+    
+    ### Motivation and Context
+    
+    Python packaging pipeline is failing due to the changes in the PR.
+    
+    ---------
+    
+    Co-authored-by: Dmitri Smirnov <dmitrism@microsoft.com>
+
+commit 70f14d76703c9a84031c72b4efefde9a6df1572e
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Thu Jun 12 00:17:36 2025 -0700
+
+    [CUDA] Suppress MSVC build warnings for sm=90 (#25020)
+    
+    ### Description
+    Suppress some build warnings in Windows for sm=90.
+    
+    ### Motivation and Context
+    I saw some build warnings during building Windows for sm=90 with cuda
+    12.8. Those are caused by cutlass. It is safe to suppress them.
+
+commit 89258aea07f1b7ff1041bc25ca65a0e4e4046d07
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Sun Jun 8 09:58:52 2025 -0700
+
+    [CUDA] upgrade cudnn front end to 1.12 (#24977)
+    
+    ### Description
+    
+    Upgrade cudnn front end to 1.12
+    
+    ### Motivation and Context
+    
+    https://github.com/NVIDIA/cudnn-frontend/releases/tag/v1.12.0
+    
+    This replaces previous attempt to upgrade cudnn front end to 1.11:
+    https://github.com/microsoft/onnxruntime/pull/24189
+
+commit ab5ff6a967170beaa58505906d071c0213fe8329
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Wed Jun 4 20:49:05 2025 -0700
+
+    [CUDA] fp16 intB gemm scale only kernel (#24955)
+    
+    ### Description
+    * Enable fp16 intB gemm kernels when zero points is not provided.
+    * Minor changes of `fpA_intB_gemv/dispatcher.h` to fix build error for
+    sm < 5.3.
+    * Minor changes of `fpA_intB_gemm_preprocessors_impl.h` to fix
+    unreachable code warnings in debug build.
+    
+    Note that we have existed test cases like
+    `MatMulNBits.Fp16_Int4_NoZeroPoint` could cover the unit test.
+    
+    ### Motivation and Context
+    The zero point input is optional for MatMulNBits. In
+    https://github.com/microsoft/onnxruntime/pull/24854, we only enable fp16
+    intB gemm when zero points is provided.
+
+commit f7ed05c1c571c1780e1fc14bc7cd918d2e0b83d0
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Wed Jun 4 09:07:07 2025 -0700
+
+    A temporary fix for layout opt level to unblock react native android CI (#24948)
+    
+    ### Description
+    
+    A temporary fix to unblock react native android CI.
+    
+    ### Motivation and Context
+    
+    After https://github.com/microsoft/onnxruntime/pull/24726 is merged to
+    main, react native android CI starts failing with error like
+    
+    ```
+    /mnt/vss/_work/1/s/js/react_native/e2e/node_modules/onnxruntime-react-native/android/src/main/java/ai/onnxruntime/reactnative/OnnxruntimeModule.java:329: error: cannot find symbol
+                  {"layout", SessionOptions.OptLevel.LAYOUT_OPT},
+                                                    ^
+      symbol:   variable LAYOUT_OPT
+      location: class OptLevel
+    ```
+    
+    The LAYOUT_OPT is defined in
+    https://github.com/microsoft/onnxruntime/blob/8b3326e53249edb610cfe1648aff5c88f28b65f4/java/src/main/java/ai/onnxruntime/OrtSession.java#L656.
+    
+    The root cause of the build error is unknown. Since the layout level is
+    just added, so it is not used by users. It is safe to comment the line
+    to unblock the pipeline.
+
+commit 53ee6c54055ffe36a6a60c138df40698e3b47418
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Jun 2 17:19:24 2025 -0700
+
+    [CUDA] FpA IntB Gemm Weight Conversion in GPU (#24914)
+    
+    ### Description
+    
+    Implement fpA intB gemm preprocess in cuda kernel to speed up weight
+    prepacking.
+    
+    ### Motivation and Context
+    
+    Original preprocess code (in
+    https://github.com/microsoft/onnxruntime/pull/24854) is for CPU, which
+    is slow and need extra memory copy between CPU and GPU.
+
+commit 22c25813f6603fc3e45ef5a7bffce9ade3e79e58
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Mon Jun 2 11:13:45 2025 -0700
+
+    [DNNL] update tests (#24921)
+    
+    ### Description
+    
+    Update unit tests for DNNL.
+    (1) Increase QAttentionTest threshold when DNNL is  used.
+    (2) Skip some failed tests when DNNL is used.
+    
+    ### Motivation and Context
+    
+    When I  build main branch for DNNL in Azure Linux VM, some tests failed:
+    ```
+    pip install --user -r tools/ci_build/github/linux/python/requirements.txt
+    
+    python3 tools/ci_build/build.py --build_dir build/Release --config Release --cmake_generator Ninja --skip_submodule_sync --build_shared_lib --parallel --use_vcpkg --use_binskim_compliant_compile_flags --build_wheel --build_nuget --use_dnnl
+    ```
+    
+    ```
+    [  FAILED  ] NhwcTransformerTests.ConvSplitQLinearConcat
+    [  FAILED  ] NhwcTransformerTests.Conv
+    [  FAILED  ] NhwcTransformerTests.ConvBlockBinary
+    [  FAILED  ] NhwcTransformerTests.ConvMaxPool
+    [  FAILED  ] NhwcTransformerTests.ConvAveragePool
+    [  FAILED  ] NhwcTransformerTests.ConvPad
+    [  FAILED  ] NhwcTransformerTests.ConvBlockActivation
+    [  FAILED  ] QDQTransformerTests.Conv_U8X8U8
+    [  FAILED  ] QDQTransformerTests.ConvMaxPoolReshape_UInt8
+    [  FAILED  ] QDQTransformerTests.ConvMaxPoolReshape_Int8
+    [  FAILED  ] QDQTransformerTests.ConvRelu
+    [  FAILED  ] QDQTransformerTests.ConvAveragePoolReshape_UInt8
+    [  FAILED  ] QDQTransformerTests.ConvAveragePoolReshape_Int8
+    [  FAILED  ] QDQTransformerTests.ConvTranspose_QBackward
+    [  FAILED  ] QDQTransformerTests.QBackward_MutilpleSteps
+    [  FAILED  ] QDQTransformerTests.ConvTranspose_DQForward
+    [  FAILED  ] QDQTransformerTests.DQForward_MutilpleSteps
+    [  FAILED  ] InferenceSessionTests.ModelMetadata
+    [  FAILED  ] ActivationOpTest.LeakyRelu_bfloat16
+    [  FAILED  ] QAttentionTest.QAttentionDNNLBatch1
+    [  FAILED  ] QAttentionTest.QAttentionDNNLBatch2
+    [  FAILED  ] QAttentionTest.QAttentionDNNLMaskPartialSequence
+    [  FAILED  ] QAttentionTest.QAttentionNoMaskIndex
+    [  FAILED  ] QAttentionTest.QAttentionPrunedModel
+    ```
+
+commit 9d6546e68a81c31bd19571b187d922317253f602
+Author: Tianlei Wu <tlwu@microsoft.com>
+Date:   Fri May 30 10:55:08 2025 -0700
+
+    [CUDA] fp16 intB gemm (#24854)
+    
+    ### Description
+    * Add fpA intB gemm kernel from WeightOnlyGroupwiseQuantGemmPlugin of
+    TensorRT-LLM.
+    * Add prepacking to convert weight/scales/zero_points to adapt
+    MatMulNBits to use the kernel.
+    
+    Limitations:
+    * Only enable fp16 kernel. BF16 support will be added later.
+    * Requires zero points. The support of scales only might be added later.
+    * Bias is not enabled since previous MatMulNBits kernel does not support
+    bias.
+    
+    ### Motivation and Context
+    
+    To improve performance of LLM.
+    
+    Initial result shows 2.2x throughput on prompt processing and 1.25X
+    throughput on token generation using onnxruntime-genai benchmark_e2e.py
+    on phi-4-mini-instruct on A100.
