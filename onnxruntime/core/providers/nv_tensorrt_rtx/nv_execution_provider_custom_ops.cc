@@ -158,7 +158,7 @@ void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain) {
   (void)domain;  // Suppress unused parameter warning
   // The custom ops (TensorRTCustomOp) and domain (OrtCustomOpDomain) are marked as static
   // with unique_ptr at the time of creation in CreateTensorRTCustomOpDomainList() function.
-  // Deleting them here can cause double-delete.
+  // Deleting them here can risk double-delete.
 }
 
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) {
