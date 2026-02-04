@@ -29,6 +29,8 @@
 
     // Tests that are failing temporarily and should be fixed
     "current_failing_tests": [
+        // TODO(titaiwang): onnx 1.21 should fix lpnorm zero norm issue
+        "^test_l2normalization*",  // LpNormalization(22) not implemented
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
@@ -39,7 +41,6 @@
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
-        "^test_l2normalization*",  // LpNormalization(22) not implemented
         // TODO: support the following tests in Attention-cuda
         "^test_attention_3d_gqa.*_cuda",  // GQA not supported in Attention-cuda
         "^test_attention_4d_gqa.*_cuda",  // GQA not supported in Attention-cuda
@@ -67,8 +68,6 @@
         "^test_attention_4d_attn_mask_4d_causal_cuda",
         "^test_attention_4d_causal_cuda",
         "^test_attention_4d_diff_heads_sizes_causal_cuda",
-        "^test_l1normalization*",  // LpNormalization(22) not implemented
-        "^test_lpnormalization*",  // LpNormalization(22) not implemented
         "^test_tensorscatter*",  // TensorScatter(24) not implemented
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes

@@ -94,6 +94,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
     const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
                                                                static_cast<uint64_t>(context_binary.length()),
+                                                               "",
                                                                main_context_node.Name(),
                                                                qnn_models,
                                                                max_spill_fill_size);
@@ -127,6 +128,18 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
   }
 
+  std::string context_binary_path_str = context_binary_path.string();
+#ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+  if (qnn_backend_manager->FileMappingIsEnabled()) {
+    return qnn_backend_manager->LoadCachedQnnContextFromBuffer(nullptr,
+                                                               0,
+                                                               context_binary_path_str,
+                                                               main_context_node.Name(),
+                                                               qnn_models,
+                                                               max_spill_fill_size);
+  }
+#endif
+
   size_t buffer_size{0};
   std::ifstream cache_file(context_binary_path.string().c_str(), std::ifstream::binary);
   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
@@ -144,6 +157,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   cache_file.close();
   return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
                                                              static_cast<uint64_t>(buffer_size),
+                                                             context_binary_path_str,
                                                              main_context_node.Name(),
                                                              qnn_models,
                                                              max_spill_fill_size);
