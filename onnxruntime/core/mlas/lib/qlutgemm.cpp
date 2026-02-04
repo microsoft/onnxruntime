@@ -22,20 +22,47 @@ Abstract:
 
 #include <cassert>
 #include <cstring>
+#include <functional>
 #include <memory>
-#include <string>
 #include <thread>
 #include <unordered_map>
 
+/** T-MAC GEMM kernel config key - struct-based for type safety and performance */
+struct TMACConfigKey {
+    size_t M;
+    size_t N;
+    size_t nbits;
+    size_t block_size;
+    bool has_zero_point;
+
+    bool operator==(const TMACConfigKey& other) const {
+        return M == other.M && N == other.N && nbits == other.nbits &&
+               block_size == other.block_size && has_zero_point == other.has_zero_point;
+    }
+};
+
+struct TMACConfigKeyHash {
+    size_t operator()(const TMACConfigKey& k) const {
+        // Combine hash values using a simple mixing function
+        size_t h = std::hash<size_t>{}(k.M);
+        h ^= std::hash<size_t>{}(k.N) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<size_t>{}(k.nbits) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<size_t>{}(k.block_size) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<bool>{}(k.has_zero_point) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
 /** T-MAC GEMM kernel Config */
-static std::unordered_map<std::string, struct MlasTMACKernelParams> tmac_kernel_configs;
+static std::unordered_map<TMACConfigKey, MlasTMACKernelParams, TMACConfigKeyHash> tmac_kernel_configs;
 
 const MlasTMACKernelParams&
 MlasGetLutGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
 {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
-    if (tmac_kernel_configs.count(key)) {
-        return tmac_kernel_configs[key];
+    TMACConfigKey key{M, N, nbits, block_size, has_zero_point};
+    auto it = tmac_kernel_configs.find(key);
+    if (it != tmac_kernel_configs.end()) {
+        return it->second;
     }
     MLAS_THROW_EX(std::runtime_error, "T-MAC kernel parameters not initialized");
 }
@@ -49,7 +76,7 @@ MlasClearLutGemmKernelConfig()
 void MLASCALL
 MlasInitLutGemmKernelConfig(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point)
 {
-    std::string key = std::to_string(M) + "_" + std::to_string(N) + "_" + std::to_string(nbits) + "_" + std::to_string(block_size) + "_" + (has_zero_point ? "1" : "0");
+    TMACConfigKey key{M, N, nbits, block_size, has_zero_point};
     if (tmac_kernel_configs.count(key)) {
         return;
     }
@@ -489,10 +516,8 @@ MlasLutGemm(
     size_t scales_size_per_tile = 0;
 
     if (scales_size_total % n_tiles_num != 0) {
-        // Sanity: scales should partition evenly across tiles. If they don't, choose floor division
-        // and document that callers must layout scales accordingly.
-        // Prefer to error loudly in debug builds.
-        fprintf(stderr, "Warning: scales_size_total=%zu is not divisible by n_tiles_num=%zu; using floor division.\n", scales_size_total, n_tiles_num);
+        // Scales must partition evenly across tiles. Callers must ensure proper layout.
+        MLAS_THROW_EX(std::runtime_error, "scales_size_total must be divisible by n_tiles_num");
     }
     scales_size_per_tile = scales_size_total / n_tiles_num;
 

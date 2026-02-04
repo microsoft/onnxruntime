@@ -122,6 +122,7 @@ struct SignedHalvingAdder<2> {
 
 template <int N>
 struct SignedWideningAdder {
+    static_assert(N > 0, "N parameter exists for API compatibility with SignedHalvingAdder");
     __m256i lhs_low = _mm256_setzero_si256();
     __m256i lhs_high = _mm256_setzero_si256();
 
@@ -494,13 +495,6 @@ tbl_g4_int8_float_update_impl(int32_t m, float* c, const int8_t* lut, const uint
     return 0;
 }
 
-int32_t
-tbl_int32_reset(int32_t m, int32_t* c)
-{
-    memset(c, 0, m * sizeof(int32_t));
-    return 0;
-}
-
 // based on qgemm_lut_int8_g4
 // Simplified version with hardcoded configuration for 2-bit quantization
 void
@@ -551,19 +545,14 @@ TMACComputeGemm_avx2(
     assert(K % (kfactor * g) == 0);
     assert(BlkLen % g == 0);
 
-    // Validate configuration
-    assert(bm % bits == 0);
-    assert(K % (kfactor * g) == 0);
-    assert(BlkLen % g == 0);
-
     // ==================== ALLOCATE BUFFERS ====================
-    // Use float for now (can be changed to _Float16 if needed)
+    // Use unique_ptr for exception safety (RAII ensures cleanup on all exit paths)
 
-    float* CBits = new float[bm];
-    float* C_global = new float[m];
+    std::unique_ptr<float[]> CBits(new float[bm]);
+    std::unique_ptr<float[]> C_global(new float[m]);
 
     // Reset accumulator buffer to zero
-    tbl_int32_reset(bm * sizeof(float) / sizeof(int32_t), reinterpret_cast<int32_t*>(CBits));
+    std::memset(CBits.get(), 0, bm * sizeof(float));
 
     // ==================== CALCULATE LOOP PARAMETERS ====================
     const int32_t k_outer_max = K / (kfactor * g);
@@ -608,43 +597,43 @@ TMACComputeGemm_avx2(
         // For standard 2-bit, kfactor=16, BlkLen=64: actk = 64/4 = 16
         if (has_scale && kfactor == 16 && bits == 2 && actk == 16 && has_zero_point && !one_scale) {
             tbl_g4_int8_float_update_impl<true, 16, 2, 16, false, true, false>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         } else if (has_scale && kfactor == 16 && bits == 2 && actk == 16 && !has_zero_point && !one_scale) {
             tbl_g4_int8_float_update_impl<true, 16, 2, 16, false, false, false>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         } else if (has_scale && kfactor == 16 && bits == 2 && actk == 16 && !has_zero_point && one_scale) {
             tbl_g4_int8_float_update_impl<true, 16, 2, 16, false, false, true>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         }
         // actk == 8 variants (for BlkLen=32)
         else if (has_scale && kfactor == 16 && bits == 2 && actk == 8 && has_zero_point && !one_scale) {
             tbl_g4_int8_float_update_impl<true, 16, 2, 8, false, true, false>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         } else if (has_scale && kfactor == 16 && bits == 2 && actk == 8 && !has_zero_point && !one_scale) {
             tbl_g4_int8_float_update_impl<true, 16, 2, 8, false, false, false>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         } else if (has_scale && kfactor == 16 && bits == 2 && actk == 8 && !has_zero_point && one_scale) {
             tbl_g4_int8_float_update_impl<true, 16, 2, 8, false, false, true>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         }
         // kfactor == 8 variants
         else if (has_scale && kfactor == 8 && bits == 2 && actk == 8 && has_zero_point && !one_scale) {
             tbl_g4_int8_float_update_impl<true, 8, 2, 8, false, true, false>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         } else if (has_scale && kfactor == 8 && bits == 2 && actk == 8 && !has_zero_point && !one_scale) {
             tbl_g4_int8_float_update_impl<true, 8, 2, 8, false, false, false>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         } else if (has_scale && kfactor == 8 && bits == 2 && actk == 8 && !has_zero_point && one_scale) {
             tbl_g4_int8_float_update_impl<true, 8, 2, 8, false, false, true>(
-                static_cast<int32_t>(bm), CBits, lut, a, scales, lut_scales, lut_biases
+                static_cast<int32_t>(bm), CBits.get(), lut, a, scales, lut_scales, lut_biases
             );
         } else {
             // No matching kernel template found
@@ -656,11 +645,9 @@ TMACComputeGemm_avx2(
     // Gather bit-plane results into final output
     // Only support 2-bit in this implementation
     // TODO(vraspar): extend to other bit-widths
-    tbl_g4_int8_float_gather_bit2_impl(m, C_global, CBits, C);
+    tbl_g4_int8_float_gather_bit2_impl(m, C_global.get(), CBits.get(), C);
 
-    // ==================== CLEANUP ====================
-    delete[] C_global;
-    delete[] CBits;
+    // unique_ptr automatically handles cleanup via RAII
 }
 
 //
@@ -794,6 +781,12 @@ PackQuantBData_avx2(
     // Phase 2: Parallelize over tiles of im values that share output bytes.
     // Consecutive im0 values (ngroups_per_elem of them) write to the same output bytes
     // with different shifts, so they must be processed by the same thread to avoid races.
+    //
+    // Thread-safety invariant: Each tile k maps exclusively to output indices where
+    // new_im1 = k. For tile k processing im ∈ [k*im_per_tile, (k+1)*im_per_tile),
+    // x = simd_n_out * (im0 * bits) + isno + ib * simd_n_out ranges over [32k, 32k+31],
+    // so new_im1 = x / mgroup = x / 32 = k (since mgroup = 32). Different tiles write
+    // to disjoint new_im1 values, ensuring no data races between parallel threads.
     const size_t im_per_tile = ngroups_per_elem * simd_n_out;
     const size_t num_tiles = (N + im_per_tile - 1) / im_per_tile;
     MlasTrySimpleParallel(
@@ -889,6 +882,11 @@ PackScalesAndZeroPoints_avx2_impl(
     MLAS_THREADPOOL* ThreadPool
 )
 {
+    // Validate that QuantBZeroPoint is provided when HasZeroPoint is true
+    if constexpr (HasZeroPoint) {
+        assert(QuantBZeroPoint != nullptr && "QuantBZeroPoint must not be null when HasZeroPoint is true");
+    }
+
     const size_t num_elem_per_byte = 8 / bits;  // 4 for 2-bit
     const size_t row_blks = K / BlkLen;         // number of blocks per column
     const size_t zp_bytes_per_col = (row_blks + num_elem_per_byte - 1) / num_elem_per_byte;
