@@ -7001,33 +7001,6 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(DeviceEpIncompatibilityDetails);
 
-  /** \brief Copy OrtValue instances containing Tensors between devices with offset and size control.
-   *
-   * Extended version of CopyTensors that supports copying with source/destination offsets and custom sizes.
-   * All offsets and sizes are in bytes.
-   *
-   * \param[in] env The OrtEnv instance to use.
-   * \param[in] src_tensors Array of OrtValue instances containing the source tensors to copy.
-   * \param[in] dst_tensors Array of OrtValue instances to copy the source tensors to.
-   * \param[in] source_offsets Optional array of source offsets in bytes. May be nullptr for all zeros.
-   * \param[in] destination_offsets Optional array of destination offsets in bytes. May be nullptr for all zeros.
-   * \param[in] sizes Optional array of sizes in bytes to copy. May be nullptr to copy entire tensors.
-   * \param[in] stream Optional OrtSyncStream that can be used to perform the copy asynchronously. May be nullptr.
-   * \param[in] num_tensors The number of tensors to copy.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.24
-   */
-  ORT_API2_STATUS(CopyTensorsEx, _In_ const OrtEnv* env,
-                  _In_reads_(num_tensors) const OrtValue* const* src_tensors,
-                  _In_reads_(num_tensors) OrtValue* const* dst_tensors,
-                  _In_reads_opt_(num_tensors) const size_t* source_offsets,
-                  _In_reads_opt_(num_tensors) const size_t* destination_offsets,
-                  _In_reads_opt_(num_tensors) const size_t* sizes,
-                  _In_opt_ OrtSyncStream* stream,
-                  _In_ size_t num_tensors);
-
   /// @}
 
   /// \name Model Compatibility APIs
@@ -7269,6 +7242,33 @@ struct OrtApi {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
+
+  /** \brief Copy OrtValue instances containing Tensors between devices with offset and size control.
+   *
+   * Extended version of CopyTensors that supports copying with source/destination offsets and custom sizes.
+   * All offsets and sizes are in bytes.
+   *
+   * \param[in] env The OrtEnv instance to use.
+   * \param[in] src_tensors Array of OrtValue instances containing the source tensors to copy.
+   * \param[in] dst_tensors Array of OrtValue instances to copy the source tensors to.
+   * \param[in] source_offsets Optional array of source offsets in bytes. May be nullptr for all zeros.
+   * \param[in] destination_offsets Optional array of destination offsets in bytes. May be nullptr for all zeros.
+   * \param[in] sizes Optional array of sizes in bytes to copy. May be nullptr to copy entire tensors.
+   * \param[in] stream Optional OrtSyncStream that can be used to perform the copy asynchronously. May be nullptr.
+   * \param[in] num_tensors The number of tensors to copy.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25
+   */
+  ORT_API2_STATUS(CopyTensorsEx, _In_ const OrtEnv* env,
+                  _In_reads_(num_tensors) const OrtValue* const* src_tensors,
+                  _In_reads_(num_tensors) OrtValue* const* dst_tensors,
+                  _In_reads_opt_(num_tensors) const size_t* source_offsets,
+                  _In_reads_opt_(num_tensors) const size_t* destination_offsets,
+                  _In_reads_opt_(num_tensors) const size_t* sizes,
+                  _In_opt_ OrtSyncStream* stream,
+                  _In_ size_t num_tensors);
 };
 
 /*
