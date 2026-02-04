@@ -75,6 +75,7 @@ extends:
         DoNugetPack: 'true'
         DoEsrp: ${{ parameters.DoEsrp }}
         NuPackScript: |
+          python -m pip install setuptools
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(BuildDate) /p:CurrentTime=$(BuildTime)
           copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
@@ -94,6 +95,7 @@ extends:
         DoEsrp: ${{ parameters.DoEsrp }}
         RunTests: 'false'
         NuPackScript: |
+          python -m pip install setuptools
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
           cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
           ren Microsoft.ML.OnnxRuntime.DirectML.*.nupkg win-dml-arm64.zip
