@@ -583,7 +583,8 @@ void UniDirectionalLstm<T>::GateComputations(
     for (int i = 0; i < hidden_size_; ++i) {
       pC_prev_clipped[i] = pC_cur[i];
     }
-    clip_with_bias_ptr_(clip_, nullptr, pC_prev_clipped, hidden_size_);
+    // Ct clipping should not add bias; always use clip_ignore_bias.
+    deepcpu::clip_ignore_bias(clip_, nullptr, pC_prev_clipped, hidden_size_);
 
     activation_h_.func(pC_prev_clipped, pC_prev_clipped, po, pH, hidden_size_, activation_h_.alpha, activation_h_.beta);
 
