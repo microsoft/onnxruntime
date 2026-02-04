@@ -158,7 +158,8 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
     params.ldc = gemm_shape.N;
   }
 
-  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool());
+  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(),
+                &mlas_backend_kernel_selector_config_);
 
   return Status::OK();
 }
@@ -297,18 +298,28 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     gemm_shape.K = static_cast<size_t>(helper.K());
 
     const size_t num_gemms = helper.OutputOffsets().size();
-    std::vector<MLAS_GEMM_DYN_QUANT_DATA_PARAMS> gemm_data_vec(num_gemms);
+    if (num_gemms == 1) {
+      MLAS_GEMM_DYN_QUANT_DATA_PARAMS gemm_data{};
+      gemm_data.A = a_data + helper.LeftOffsets()[0];
+      gemm_data.lda = gemm_shape.K;
+      gemm_data.PackedB = packed_b_.get();
+      gemm_data.C = y_data + helper.OutputOffsets()[0];
+      gemm_data.ldc = gemm_shape.N;
+      MlasDynamicQGemm(gemm_shape, &gemm_data, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
+    } else {
+      std::vector<MLAS_GEMM_DYN_QUANT_DATA_PARAMS> gemm_data_vec(num_gemms);
 
-    for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
-      auto& params = gemm_data_vec[gemm_idx];
-      params.A = a_data + helper.LeftOffsets()[gemm_idx];
-      params.lda = gemm_shape.K;
-      params.PackedB = packed_b_.get();
-      params.C = y_data + helper.OutputOffsets()[gemm_idx];
-      params.ldc = gemm_shape.N;
+      for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
+        auto& params = gemm_data_vec[gemm_idx];
+        params.A = a_data + helper.LeftOffsets()[gemm_idx];
+        params.lda = gemm_shape.K;
+        params.PackedB = packed_b_.get();
+        params.C = y_data + helper.OutputOffsets()[gemm_idx];
+        params.ldc = gemm_shape.N;
+      }
+
+      MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
     }
-
-    MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
     // This evaluates to true if bias data was not provided as constant data for prepacking stage
     if (!dynamic_quant_mlas_bias_data_was_packed_) {
       if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {

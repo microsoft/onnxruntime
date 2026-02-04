@@ -66,7 +66,7 @@ class MatMulIntegerBase : public OpKernel {
       // buffer memory and we don not want it uninitialized and generate different hashes
       // if and when we try to cache this pre-packed buffer for sharing between sessions.
       memset(packed_b_.get(), 0, packed_b_size);
-      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_.get());
+      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_.get(), &mlas_backend_kernel_selector_config_);
 
       bool share_prepacked_weights = (prepacked_weights != nullptr);
       if (share_prepacked_weights) {

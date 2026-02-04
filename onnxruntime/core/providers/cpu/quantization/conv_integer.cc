@@ -5,6 +5,7 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
@@ -15,11 +16,14 @@ using ConvPadVector = ConvAttributes::ConvPadVector;
 
 class ConvInteger : public OpKernel {
  public:
-  explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {}
+  explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+  }
 
   Status Compute(OpKernelContext* context) const override;
 
   ConvAttributes conv_attrs_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -120,7 +124,51 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       if (col_buffer_data != nullptr) {
-        if (kernel_rank == 2) {
+        if (kernel_rank == 1 && !X_is_signed) {
+          // Fast-path 1D im2col for unsigned input, NCHW layout, group=1.
+          // Falls back to the generic implementation for grouped convolutions.
+          if (conv_attrs_.group == 1) {
+            const int64_t C_per_group = C / conv_attrs_.group;
+            const int64_t in_w = input_shape[0];
+            const int64_t out_w = output_shape[0];
+            const int64_t k_w = static_cast<int64_t>(kernel_shape[0]);
+            const int64_t dilation_w = static_cast<int64_t>(dilations[0]);
+            const int64_t stride_w = static_cast<int64_t>(strides[0]);
+            const int64_t pad_left = static_cast<int64_t>(pads[0]);
+
+            uint8_t* col = col_buffer_data;
+
+            // For each channel and kernel position, write one row of length out_w.
+            // Row index: c*k_w + kw
+            for (int64_t c = 0; c < C_per_group; ++c) {
+              const uint8_t* x_c = Xdata + c * in_w;
+
+              for (int64_t kw = 0; kw < k_w; ++kw) {
+                const int64_t base_x = kw * dilation_w - pad_left;
+                uint8_t* dst_row = col + (c * k_w + kw) * out_w;
+
+                for (int64_t ow = 0; ow < out_w; ++ow) {
+                  const int64_t x = base_x + ow * stride_w;
+                  dst_row[ow] = (static_cast<uint64_t>(x) < static_cast<uint64_t>(in_w)) ? x_c[x] : input_offset;
+                }
+              }
+            }
+          } else {
+            math::Im2col<uint8_t, StorageOrder::NCHW>()(
+                Xdata,
+                input_shape.GetDims().data(),
+                output_shape.GetDims().data(),
+                kernel_dim,
+                kernel_shape.data(),
+                strides.data(),
+                dilations.data(),
+                pads.data(),
+                static_cast<int>(kernel_rank),
+                col_buffer_data,
+                false,
+                input_offset);
+          }
+        } else if (kernel_rank == 2) {
           if (X_is_signed) {
             math::Im2col<int8_t, StorageOrder::NCHW>()(
                 reinterpret_cast<const int8_t*>(Xdata),
@@ -208,7 +256,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       gemm_params.C = Ydata;
       gemm_params.ldc = static_cast<size_t>(output_image_size);
 
-      MlasGemm(gemm_shape, gemm_params, thread_pool);
+      MlasGemm(gemm_shape, gemm_params, thread_pool, &mlas_backend_kernel_selector_config_);
 
       Xdata += X_offset;
       Ydata += Y_offset;

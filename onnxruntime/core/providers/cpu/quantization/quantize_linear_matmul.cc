@@ -169,7 +169,8 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
     gemm_params[i].OutputProcessor = &(requant_procs[i]);
   }
 
-  MlasGemmBatch(gemm_shape, gemm_params.data(), num_gemms, ctx->GetOperatorThreadPool());
+  MlasGemmBatch(gemm_shape, gemm_params.data(), num_gemms, ctx->GetOperatorThreadPool(),
+                &mlas_backend_kernel_selector_config_);
 
   return Status::OK();
 }

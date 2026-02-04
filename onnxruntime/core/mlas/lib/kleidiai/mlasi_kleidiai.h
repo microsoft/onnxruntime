@@ -7,6 +7,7 @@
 #pragma once
 
 #include "../mlasi.h"
+#include "core/mlas/inc/mlas.h"
 #include <iostream>
 
 // Fix to ensure compatibility with MSVC build
@@ -103,6 +104,37 @@ MlasGemmBatch(
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+// QGEMM override
+bool
+MLASCALL
+MlasGemmBatch(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+size_t
+MLASCALL
+MlasQGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool AIsSigned,
+    bool BIsSigned
+    );
+
+bool
+MLASCALL
+MlasQGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    bool BIsSigned,
+    void* PackedB
     );
 
 #if defined(__aarch64__) && defined(__linux__)

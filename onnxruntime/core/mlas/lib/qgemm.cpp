@@ -15,6 +15,7 @@ Abstract:
 
 --*/
 #include <cassert>
+#include <vector>
 #include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
 
@@ -125,6 +126,33 @@ MlasQgemmGetKernelOutputCnt(
     return int32_t(dispatch->StrideM);
 }
 
+static size_t
+MlasGemmQuantPackBBaseSize(
+    size_t N,
+    size_t K,
+    bool AIsSigned,
+    bool BIsSigned
+    )
+{
+    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
+
+    const size_t PackedK = GemmQuantDispatch->PackedK;
+    const size_t PackedStrideK = GemmQuantDispatch->PackedStrideK;
+
+    if (PackedStrideK == 0) {
+        return 0;
+    }
+
+    const size_t AlignedN =
+        (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
+
+    const size_t BytesRequired =
+        (AlignedN * sizeof(int32_t)) + (AlignedN * AlignedK * sizeof(uint8_t));
+    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
+    return (BytesRequired + BufferAlignment - 1) & ~(BufferAlignment - 1);
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
@@ -137,8 +165,43 @@ MlasGemmBatch(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
-    MLAS_THREADPOOL* ThreadPool)
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
 {
+    bool has_packed_b = false;
+    for (size_t i = 0; i < BatchN; ++i) {
+        has_packed_b = has_packed_b || DataParams[i].BIsPacked;
+    }
+
+    // Override (for example, backend-specific packed-B appendix).
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasQGemmBatchOverride != nullptr) {
+        const MLAS_GEMM_QUANT_DATA_PARAMS* override_data = DataParams;
+        std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> adjusted_data;
+        bool can_try_override = true;
+        if (has_packed_b) {
+            const size_t packed_b_base_size =
+                MlasGemmQuantPackBBaseSize(Shape.N, Shape.K, Shape.AIsSigned, Shape.BIsSigned);
+            if (packed_b_base_size == 0) {
+                can_try_override = false;
+            } else {
+                adjusted_data.assign(DataParams, DataParams + BatchN);
+                for (size_t i = 0; i < BatchN; ++i) {
+                    if (adjusted_data[i].BIsPacked) {
+                        adjusted_data[i].B =
+                            static_cast<const uint8_t*>(adjusted_data[i].B) + packed_b_base_size;
+                    }
+                }
+                override_data = adjusted_data.data();
+            }
+        }
+
+        if (can_try_override &&
+            GetMlasPlatform().MlasQGemmBatchOverride(Shape, override_data, BatchN, ThreadPool)) {
+            return;
+        }
+    }
+
     const size_t M = Shape.M;
     const size_t N = Shape.N;
     const size_t K = Shape.K;
@@ -406,41 +469,20 @@ Return Value:
 
 --*/
 {
-    //
-    // Retrieve the packing parameters.
-    //
-
-    const auto* GemmQuantDispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
-
-    size_t PackedK = GemmQuantDispatch->PackedK;
-    size_t PackedStrideK = GemmQuantDispatch->PackedStrideK;
-
-    if (PackedStrideK == 0) {
+    size_t PackedBytesRequired = MlasGemmQuantPackBBaseSize(N, K, AIsSigned, BIsSigned);
+    if (PackedBytesRequired == 0) {
         return 0;
     }
 
-    //
-    // Compute the number of bytes required to hold the packed buffer.
-    //
-
-    const size_t AlignedN =
-        (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
-    const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
-
-    const size_t BytesRequired =
-        (AlignedN * sizeof(int32_t)) + (AlignedN * AlignedK * sizeof(uint8_t));
-    const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
-    const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
-        ~(BufferAlignment - 1);
-    // If this gemm B argument is used in a dynamically quantized gemm operation we can optimize for
-    // this use case. Concat both packed representations for later decision. This allows for cases later
-    // where we still have the prepack at the cost of some memory otherwise we can use the qgemm quantization
-    // for better performance
-    if (MlasIsDynamicQGemmAvailable(BackendKernelSelectorConfig)) {
-        return AlignedBytesRequired + MlasDynamicQgemmPackBSize(N, K, BackendKernelSelectorConfig);
-    } else {
-        return AlignedBytesRequired;
+#if defined(USE_KLEIDIAI)
+    if (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) {
+        PackedBytesRequired += ArmKleidiAI::MlasQGemmPackBSize(N, K, AIsSigned, BIsSigned);
     }
+#else
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+#endif
+
+    return PackedBytesRequired;
 }
 
 void
@@ -483,7 +525,8 @@ MlasGemmPackB(
     size_t ldb,
     bool AIsSigned,
     bool BIsSigned,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -513,6 +556,9 @@ Return Value:
 
 --*/
 {
+    void* PackedBBase = PackedB;
+    const uint8_t* BBase = B;
+    const size_t BasePackedBSize = MlasGemmQuantPackBBaseSize(N, K, AIsSigned, BIsSigned);
 
     //
     // Retrieve the packing parameters.
@@ -576,6 +622,18 @@ Return Value:
         PackedB = (uint8_t*)PackedB + AlignedN * AlignedK;
         B += ldb * CountK;
     }
+
+#if defined(USE_KLEIDIAI)
+    if (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) {
+        void* KleidiPackedB = static_cast<uint8_t*>(PackedBBase) + BasePackedBSize;
+        ArmKleidiAI::MlasQGemmPackB(N, K, BBase, ldb, AIsSigned, BIsSigned, KleidiPackedB);
+    }
+#else
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+    MLAS_UNREFERENCED_PARAMETER(PackedBBase);
+    MLAS_UNREFERENCED_PARAMETER(BBase);
+    MLAS_UNREFERENCED_PARAMETER(BasePackedBSize);
+#endif
 }
 
 #if defined(_MSC_VER) && !defined(__clang__)
