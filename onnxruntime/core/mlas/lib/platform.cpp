@@ -665,6 +665,9 @@ Return Value:
     this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 
+    // Enable LUT-based GEMM for 2-bit quantization on ARM64
+    this->LutGenKernel = &MlasLutGenKernelNeon;
+
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
     this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;

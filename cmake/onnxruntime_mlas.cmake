@@ -101,6 +101,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_neon.h
+        ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_neon.cpp
         ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
@@ -480,6 +482,8 @@ else()
           ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_neon.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_neon.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
           ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp

@@ -1265,6 +1265,10 @@ struct MLAS_QNBIT_LUT_GEMM_DISPATCH;
 
 extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2;
 
+#if defined(MLAS_TARGET_ARM64)
+extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelNeon;
+#endif
+
 //
 // Rotary embedding dispatch structure.
 //
