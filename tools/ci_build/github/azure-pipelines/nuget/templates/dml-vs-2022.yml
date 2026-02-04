@@ -49,8 +49,8 @@ stages:
         clean: true
         submodules: none
 
-      
-      - template: ../../templates/setup-build-tools.yml      
+
+      - template: ../../templates/setup-build-tools.yml
         parameters:
           host_cpu_arch: 'x64'
 
@@ -70,7 +70,7 @@ stages:
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         - powershell: |
-            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
 
       - ${{ else }}:
         - powershell: |
