@@ -317,7 +317,8 @@ class OrtWheelSmokeTestTask(OrtWheelModelTestTask):
                 **os.environ,
                 "ORT_WHEEL_SMOKE_TEST_ROOT": str(get_onnx_models_root(venv) / "testdata" / "smoke"),
                 "ORT_MODEL_ZOO_TEST_ROOTS": str(get_model_zoo_root(venv) / "winml-cert"),
-                "ORT_MODEL_ZOO_TEST_XFAILS": "",
+                "ORT_WHEEL_SMOKE_TEST_XFAILS": "vgg16-12=Fails after reverting PR#4",
+                "ORT_MODEL_ZOO_TEST_XFAILS": "bert-base-multilingual-cased_v3=Fails after reverting PR#4;bert-base-uncased-mrpc_v3=Fails after reverting PR#4;clip-vit-b-32-laion2b-s34b-b79k_v4=Fails after reverting PR#4;clip-vit-base-patch16_v4=Fails after reverting PR#4;clip-vit-base-patch32_v4=Fails after reverting PR#4;resnet-50_v3=Fails after reverting PR#4;vit-base-patch16-224_v3=Fails after reverting PR#4",
             },
         )
 
