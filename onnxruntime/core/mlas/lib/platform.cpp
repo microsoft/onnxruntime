@@ -571,15 +571,15 @@ Return Value:
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
-    // Prefer the hand written micro-kernel for the NCHW convolution path.  It
+    // Prefer the hand written micro-kernel for the NCHW convolution path. It
     // offers a tighter schedule and a specialised two-output inner loop that
-    // reduces pressure on the memory system compared
+    // reduces pressure on the memory system compared to the generic kernel.
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeonAsm;
     // Prefer the hand written AArch64 micro-kernel for pointwise convolution
     // as it computes multiple output positions at once and significantly
-    // reduces memory traffic. The AArch64 assembly kernel is picked up by
-    // heuristics in platform.cpp to avoid regressions on small convolutions.
-    // So here we set the default to the intrinsics version
+    // reduces memory traffic. The AArch64 assembly kernel is selected by
+    // heuristics in snchwc.cpp to avoid regressions on small convolutions, so
+    // we set the default to the intrinsics version here.
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;

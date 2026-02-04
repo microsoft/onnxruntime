@@ -926,9 +926,8 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             const float* filter = Filter;
             float* output = Output + BlockSize * ph * OutputWidth;
 
-            size_t InputChannelBatch;
-
-            for (size_t ic = 0; ic < InputChannels; ic += InputChannelBatch) {
+            size_t InputChannelBatch = 0;
+            for (size_t ic = 0; ic < InputChannels; ) {
 
                 constexpr size_t MaximumInputChannelBatch = 128;
 
@@ -959,8 +958,9 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     DoActivation(output, FilterCount, BlockSize * OutputThisIteration);
                 }
 
-                input += MaximumInputChannelBatch * InputSize;
-                filter += BlockSize * MaximumInputChannelBatch;
+                input += InputChannelBatch * InputSize;
+                filter += BlockSize * InputChannelBatch;
+                ic += InputChannelBatch;
             }
 
             //

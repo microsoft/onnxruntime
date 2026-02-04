@@ -42,12 +42,12 @@ Abstract:
 // Compute four outputs for a single input channel block.  The accumulators
 // for the four outputs are held in v16-v31.
         .macro  CPK4_FmlaStep
-        ldp     q0,q1,[x24],#32
-        ldp     q2,q3,[x24],#32
-        ld1r    {v4.4s},[x25],#4
-        ld1r    {v5.4s},[x26],#4
-        ld1r    {v6.4s},[x27],#4
-        ld1r    {v7.4s},[x28],#4
+        ldp     q0,q1,[x0],#32
+        ldp     q2,q3,[x0],#32
+        ld1r    {v4.4s},[x1],#4
+        ld1r    {v5.4s},[x2],#4
+        ld1r    {v6.4s},[x3],#4
+        ld1r    {v7.4s},[x4],#4
         fmla    v16.4s,v0.4s,v4.4s
         fmla    v17.4s,v1.4s,v4.4s
         fmla    v18.4s,v2.4s,v4.4s
@@ -70,8 +70,8 @@ Abstract:
 // output are loaded to v0-v3 and each lane is multiplied with a block of
 // filter coefficients.
         .macro  CPK1_FmlaWithLane lane, AReg
-        ldp     q4,q5,[x24],#32
-        ldp     q6,q7,[x24],#32
+        ldp     q4,q5,[x0],#32
+        ldp     q6,q7,[x0],#32
         fmla    v16.4s,v4.4s,\AReg\().s[\lane]
         fmla    v17.4s,v5.4s,\AReg\().s[\lane]
         fmla    v18.4s,v6.4s,\AReg\().s[\lane]
@@ -80,16 +80,16 @@ Abstract:
 
 // Compute a single output position.  Results are returned in v16-v19.
         .macro  CPK_ComputeOneOutput
-        mov     x22,#0
+        mov     x5,#0
         eor     v16.16b,v16.16b,v16.16b
         eor     v17.16b,v17.16b,v17.16b
         eor     v18.16b,v18.16b,v18.16b
         eor     v19.16b,v19.16b,v19.16b
 .Lpw_ic_loop1:
-        madd    x23,x22,x6,x15
-        ldp     q0,q1,[x23]
-        ldp     q2,q3,[x23,#32]
-        add     x24,x17,x22,lsl #10
+        madd    x1,x5,x7,x15
+        ldp     q0,q1,[x1]
+        ldp     q2,q3,[x1,#32]
+        add     x0,x17,x5,lsl #10
         CPK1_FmlaWithLane 0, v0
         CPK1_FmlaWithLane 1, v0
         CPK1_FmlaWithLane 2, v0
@@ -106,8 +106,8 @@ Abstract:
         CPK1_FmlaWithLane 1, v3
         CPK1_FmlaWithLane 2, v3
         CPK1_FmlaWithLane 3, v3
-        add     x22,x22,#1
-        cmp     x22,x4
+        add     x5,x5,#1
+        cmp     x5,x9
         blt     .Lpw_ic_loop1
         .endm
 
@@ -123,31 +123,40 @@ Abstract:
         ldr     x10,[sp,#.LPW_Bias]
         ldr     w11,[sp,#.LPW_Flags]
 
-        // Preserve callee saved registers that are used by this routine.
-        stp     x22,x23,[sp,#-16]!
-        stp     x24,x25,[sp,#-16]!
-        stp     x26,x27,[sp,#-16]!
-        stp     x28,x19,[sp,#-16]!
+        // Spill base arguments so caller-saved registers can be reused freely.
+        sub     sp,sp,#96
+        stp     x0,x1,[sp,#0]
+        stp     x2,x3,[sp,#16]
+        stp     x4,x5,[sp,#32]
+        stp     x6,x7,[sp,#48]
+        str     x10,[sp,#64]               // bias base
+        str     x9,[sp,#72]                // output count
 
-        mov     x14,#0                     // current filter set
+        mov     x12,#0                     // current filter set
         cbz     x5,.Lpw_exit               // nothing to do
 
 .Lpw_filter_loop:
         // Compute the base pointers for this filter block.
-        madd    x16,x14,x8,x2              // output pointer for this filter
-        madd    x17,x14,x7,x1              // filter pointer for this filter
-        add     x18,x10,x14,lsl #6         // bias pointer (if used)
-
-        mov     x15,x0                     // input base for this iteration
-        mov     x20,x16                    // running output pointer
-        mov     x12,x9                     // output count this iteration
-
-        lsr     x13,x12,#2                 // number of groups of four outputs
-        cbz     x13,.Lpw_process_remainder
+        ldr     x15,[sp,#0]                // input base
+        ldr     x16,[sp,#16]               // output base
+        madd    x16,x12,x8,x16             // output pointer for this filter
+        ldr     x17,[sp,#8]                // filter base
+        ldr     x0,[sp,#56]                // filter set stride
+        madd    x17,x12,x0,x17             // filter pointer for this filter
+        ldr     x10,[sp,#64]               // bias base
+        add     x10,x10,x12,lsl #6         // bias pointer (if used)
+        ldr     x6,[sp,#24]                // input row stride
+        ldr     x7,[sp,#48]                // input channel stride
+        ldr     x13,[sp,#72]               // output count
+        lsr     x14,x13,#2                 // number of groups of four outputs
+        and     x13,x13,#3                 // remaining outputs
+        ldr     x9,[sp,#32]                // input channel blocks
+        cbz     x14,.Lpw_process_remainder
 
 // ------------------------------------------------------------------
 //  Main loop processing 4 outputs at a time.
 // ------------------------------------------------------------------
+        .p2align 4
 .Lpw_groups:
         // Clear accumulators for 4 outputs (16 vectors total).
         eor     v16.16b,v16.16b,v16.16b
@@ -167,14 +176,13 @@ Abstract:
         eor     v30.16b,v30.16b,v30.16b
         eor     v31.16b,v31.16b,v31.16b
 
-        mov     x22,#0                     // current input channel block
+        mov     x5,#0                      // current input channel block
 .Lpw_ic_loop4:
-        madd    x23,x22,x6,x15             // input for this block
-        mov     x25,x23                    // four rows starting positions
-        add     x26,x23,x3
-        add     x27,x26,x3
-        add     x28,x27,x3
-        add     x24,x17,x22,lsl #10        // filter for this block
+        madd    x1,x5,x7,x15               // input for this block
+        add     x2,x1,x6                   // four rows starting positions
+        add     x3,x2,x6
+        add     x4,x3,x6
+        add     x0,x17,x5,lsl #10          // filter for this block
 
         // The block size is 16 so unroll 16 steps.
         CPK4_FmlaStep
@@ -194,8 +202,8 @@ Abstract:
         CPK4_FmlaStep
         CPK4_FmlaStep
 
-        add     x22,x22,#1
-        cmp     x22,x4
+        add     x5,x5,#1
+        cmp     x5,x9
         blt     .Lpw_ic_loop4
 
         // -----------------------------------------------------------------
@@ -209,12 +217,12 @@ Abstract:
         // Accumulation path.  Load bias once as it is re-used for all four
         // stores when present.
         tbz     w11,#1,1f
-        ldp     q4,q5,[x18]
-        ldp     q6,q7,[x18,#32]
+        ldp     q4,q5,[x10]
+        ldp     q6,q7,[x10,#32]
 1:
         // ---- output 0 ----
-        ldp     q0,q1,[x20]
-        ldp     q2,q3,[x20,#32]
+        ldp     q0,q1,[x16]
+        ldp     q2,q3,[x16,#32]
         tbz     w11,#1,2f
         fadd    v0.4s,v0.4s,v4.4s
         fadd    v1.4s,v1.4s,v5.4s
@@ -232,13 +240,13 @@ Abstract:
         fmax    v18.4s,v18.4s,v0.4s
         fmax    v19.4s,v19.4s,v0.4s
 3:
-        stp     q16,q17,[x20]
-        stp     q18,q19,[x20,#32]
+        stp     q16,q17,[x16]
+        stp     q18,q19,[x16,#32]
 
         // ---- output 1 ----
-        add     x22,x20,#.LPW_BlockBytes
-        ldp     q0,q1,[x22]
-        ldp     q2,q3,[x22,#32]
+        add     x0,x16,#.LPW_BlockBytes
+        ldp     q0,q1,[x0]
+        ldp     q2,q3,[x0,#32]
         tbz     w11,#1,4f
         fadd    v0.4s,v0.4s,v4.4s
         fadd    v1.4s,v1.4s,v5.4s
@@ -256,13 +264,13 @@ Abstract:
         fmax    v22.4s,v22.4s,v0.4s
         fmax    v23.4s,v23.4s,v0.4s
 5:
-        stp     q20,q21,[x22]
-        stp     q22,q23,[x22,#32]
+        stp     q20,q21,[x0]
+        stp     q22,q23,[x0,#32]
 
         // ---- output 2 ----
-        add     x22,x22,#.LPW_BlockBytes
-        ldp     q0,q1,[x22]
-        ldp     q2,q3,[x22,#32]
+        add     x0,x0,#.LPW_BlockBytes
+        ldp     q0,q1,[x0]
+        ldp     q2,q3,[x0,#32]
         tbz     w11,#1,6f
         fadd    v0.4s,v0.4s,v4.4s
         fadd    v1.4s,v1.4s,v5.4s
@@ -280,13 +288,13 @@ Abstract:
         fmax    v26.4s,v26.4s,v0.4s
         fmax    v27.4s,v27.4s,v0.4s
 7:
-        stp     q24,q25,[x22]
-        stp     q26,q27,[x22,#32]
+        stp     q24,q25,[x0]
+        stp     q26,q27,[x0,#32]
 
         // ---- output 3 ----
-        add     x22,x22,#.LPW_BlockBytes
-        ldp     q0,q1,[x22]
-        ldp     q2,q3,[x22,#32]
+        add     x0,x0,#.LPW_BlockBytes
+        ldp     q0,q1,[x0]
+        ldp     q2,q3,[x0,#32]
         tbz     w11,#1,8f
         fadd    v0.4s,v0.4s,v4.4s
         fadd    v1.4s,v1.4s,v5.4s
@@ -304,15 +312,15 @@ Abstract:
         fmax    v30.4s,v30.4s,v0.4s
         fmax    v31.4s,v31.4s,v0.4s
 9:
-        stp     q28,q29,[x22]
-        stp     q30,q31,[x22,#32]
+        stp     q28,q29,[x0]
+        stp     q30,q31,[x0,#32]
         b       .Lpw_advance_group
 
 // Non-accumulating path: add bias directly to the results if requested
 .Lpw_store_nacc:
         tbz     w11,#1,10f
-        ldp     q4,q5,[x18]
-        ldp     q6,q7,[x18,#32]
+        ldp     q4,q5,[x10]
+        ldp     q6,q7,[x10,#32]
         fadd    v16.4s,v16.4s,v4.4s
         fadd    v17.4s,v17.4s,v5.4s
         fadd    v18.4s,v18.4s,v6.4s
@@ -349,40 +357,39 @@ Abstract:
         fmax    v30.4s,v30.4s,v0.4s
         fmax    v31.4s,v31.4s,v0.4s
 11:
-        stp     q16,q17,[x20]
-        stp     q18,q19,[x20,#32]
-        add     x22,x20,#.LPW_BlockBytes
-        stp     q20,q21,[x22]
-        stp     q22,q23,[x22,#32]
-        add     x22,x22,#.LPW_BlockBytes
-        stp     q24,q25,[x22]
-        stp     q26,q27,[x22,#32]
-        add     x22,x22,#.LPW_BlockBytes
-        stp     q28,q29,[x22]
-        stp     q30,q31,[x22,#32]
+        stp     q16,q17,[x16]
+        stp     q18,q19,[x16,#32]
+        add     x0,x16,#.LPW_BlockBytes
+        stp     q20,q21,[x0]
+        stp     q22,q23,[x0,#32]
+        add     x0,x0,#.LPW_BlockBytes
+        stp     q24,q25,[x0]
+        stp     q26,q27,[x0,#32]
+        add     x0,x0,#.LPW_BlockBytes
+        stp     q28,q29,[x0]
+        stp     q30,q31,[x0,#32]
 
 .Lpw_advance_group:
-        add     x15,x15,x3,lsl #2
-        add     x20,x20,#(.LPW_BlockBytes*4)
-        subs    x13,x13,#1
+        add     x15,x15,x6,lsl #2
+        add     x16,x16,#(.LPW_BlockBytes*4)
+        subs    x14,x14,#1
         b.ne    .Lpw_groups
 
 // ------------------------------------------------------------------
 //  Handle the leftover (0..3) output positions.
 // ------------------------------------------------------------------
 .Lpw_process_remainder:
-        ands    x12,x12,#3
-        beq     .Lpw_after_filter
+        cbz     x13,.Lpw_after_filter
 .Lpw_left_loop:
         CPK_ComputeOneOutput
 
         // Accumulate?
         tbz     w11,#0,.Lpw_left_noacc
-        ldp     q0,q1,[x20]
-        ldp     q2,q3,[x20,#32]
+        ldp     q0,q1,[x16]
+        ldp     q2,q3,[x16,#32]
         tbz     w11,#1,12f
-        ldp     q4,q5,[x18]
-        ldp     q6,q7,[x18,#32]
+        ldp     q4,q5,[x10]
+        ldp     q6,q7,[x10,#32]
         fadd    v0.4s,v0.4s,v4.4s
         fadd    v1.4s,v1.4s,v5.4s
         fadd    v2.4s,v2.4s,v6.4s
@@ -399,14 +406,14 @@ Abstract:
         fmax    v18.4s,v18.4s,v0.4s
         fmax    v19.4s,v19.4s,v0.4s
 13:
-        stp     q16,q17,[x20]
-        stp     q18,q19,[x20,#32]
+        stp     q16,q17,[x16]
+        stp     q18,q19,[x16,#32]
         b       14f
 
 .Lpw_left_noacc:
         tbz     w11,#1,15f
-        ldp     q4,q5,[x18]
-        ldp     q6,q7,[x18,#32]
+        ldp     q4,q5,[x10]
+        ldp     q6,q7,[x10,#32]
         fadd    v16.4s,v16.4s,v4.4s
         fadd    v17.4s,v17.4s,v5.4s
         fadd    v18.4s,v18.4s,v6.4s
@@ -419,23 +426,21 @@ Abstract:
         fmax    v18.4s,v18.4s,v0.4s
         fmax    v19.4s,v19.4s,v0.4s
 16:
-        stp     q16,q17,[x20]
-        stp     q18,q19,[x20,#32]
+        stp     q16,q17,[x16]
+        stp     q18,q19,[x16,#32]
 14:
-        add     x15,x15,x3
-        add     x20,x20,#.LPW_BlockBytes
-        subs    x12,x12,#1
+        add     x15,x15,x6
+        add     x16,x16,#.LPW_BlockBytes
+        subs    x13,x13,#1
         b.ne    .Lpw_left_loop
 
 .Lpw_after_filter:
-        add     x14,x14,#1
-        cmp     x14,x5
+        add     x12,x12,#1
+        ldr     x0,[sp,#40]                // output channel blocks
+        cmp     x12,x0
         blt     .Lpw_filter_loop
 .Lpw_exit:
-        ldp     x28,x19,[sp],#16
-        ldp     x26,x27,[sp],#16
-        ldp     x24,x25,[sp],#16
-        ldp     x22,x23,[sp],#16
+        add     sp,sp,#96
         ret
 
         .end

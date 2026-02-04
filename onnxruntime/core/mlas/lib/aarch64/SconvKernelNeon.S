@@ -19,12 +19,20 @@ Abstract:
         // integer parameters follow the AArch64 calling convention and are in
         // x0-x7.  Remaining parameters are spilled by the C++ caller.
 
-        .equ    .LFrame_SavedRegs,         (5*16)
+        .equ    .LFrame_SavedRegs,         (5*16 + 4*32 + 16 + 32)
         .equ    .LFrame_x19_x20,           0
         .equ    .LFrame_x21_x22,           16
         .equ    .LFrame_x23_x24,           32
         .equ    .LFrame_x25_x26,           48
         .equ    .LFrame_x27_x28,           64
+        .equ    .LFrame_q8_q9,             80
+        .equ    .LFrame_q10_q11,           112
+        .equ    .LFrame_q12_q13,           144
+        .equ    .LFrame_q14_q15,           176
+        .equ    .LFrame_InputBaseSaved,    208
+        .equ    .LFrame_FilterBaseSaved,   216
+        .equ    .LFrame_OutputBaseSaved,   224
+        .equ    .LFrame_LrSaved,           232
 
         .equ    .KO_OutputStride,          (0 + .LFrame_SavedRegs)
         .equ    .KO_KernelHeight,          (8 + .LFrame_SavedRegs)
@@ -422,7 +430,6 @@ Abstract:
         str     q13,[x24,#16]
         str     q14,[x24,#32]
         str     q15,[x24,#48]
-        add     x27,x27,x8
         add     x27,x27,x8       // set2 base
         add     x24,x27,#64
         tbz     w6,#0,4f
@@ -488,10 +495,10 @@ Abstract:
         add     x19,x1,x7
 .endif
 .if \N >= 3
-        add     x20,x19,x7
+        add     x24,x19,x7
 .endif
 .if \N >= 4
-        add     x26,x20,x7
+        add     x26,x24,x7
 .endif
         mov     x21,x0
         ldr     x9,[sp,#.KO_KernelHeight]
@@ -525,7 +532,7 @@ Abstract:
         fmla    v7.4s,v29.4s,v24.4s
 .endif
 .if \N >= 3
-        ld1     {v26.4s,v27.4s,v28.4s,v29.4s},[x20],#64
+        ld1     {v26.4s,v27.4s,v28.4s,v29.4s},[x24],#64
         fmla    v8.4s,v26.4s,v24.4s
         fmla    v9.4s,v27.4s,v24.4s
         fmla    v10.4s,v28.4s,v24.4s
@@ -558,10 +565,10 @@ Abstract:
         add     x19,x1,x7
 .endif
 .if \N >= 3
-        add     x20,x19,x7
+        add     x24,x19,x7
 .endif
 .if \N >= 4
-        add     x26,x20,x7
+        add     x26,x24,x7
 .endif
         mov     x21,x0
         ldr     x9,[sp,#.KO_KernelHeight]
@@ -584,7 +591,7 @@ Abstract:
         fmla    v7.4s,v29.4s,v24.4s
 .endif
 .if \N >= 3
-        ld1     {v26.4s,v27.4s,v28.4s,v29.4s},[x20],#64
+        ld1     {v26.4s,v27.4s,v28.4s,v29.4s},[x24],#64
         fmla    v8.4s,v26.4s,v24.4s
         fmla    v9.4s,v27.4s,v24.4s
         fmla    v10.4s,v28.4s,v24.4s
@@ -617,10 +624,13 @@ Abstract:
         add     x19,x1,x7
 .endif
 .if \N >= 3
-        add     x20,x19,x7
+        add     x24,x19,x7
 .endif
         ldr     x11,[sp,#.KO_KernelWidth]
         ldr     x9,[sp,#.KO_KernelHeight]
+        ldr     x12,[sp,#.KO_DilatedInputWidth]
+        mul     x13,x11,x4          // kernel_width * dilation_width
+        sub     x12,x12,x13         // input stride between kernel rows
 1:      mov     x10,x11
 2:      prfm    pldl1keep,[x28,#192]
         ld1r    {v24.4s},[x25]
@@ -646,7 +656,7 @@ Abstract:
         fmla    v15.4s,v29.4s,v25.4s
 .endif
 .if \N >= 3
-        ld1     {v26.4s,v27.4s,v28.4s,v29.4s},[x20],#64
+        ld1     {v26.4s,v27.4s,v28.4s,v29.4s},[x24],#64
         fmla    v16.4s,v26.4s,v24.4s
         fmla    v17.4s,v27.4s,v24.4s
         fmla    v18.4s,v28.4s,v24.4s
@@ -660,7 +670,6 @@ Abstract:
         add     x26,x26,x4
         subs    x10,x10,#1
         b.ne    2b
-        ldr     x12,[sp,#.KO_DilatedInputWidth]
         add     x25,x25,x12
         add     x26,x26,x12
         subs    x9,x9,#1
@@ -680,13 +689,52 @@ Abstract:
         stp     x23,x24,[sp,#.LFrame_x23_x24]
         stp     x25,x26,[sp,#.LFrame_x25_x26]
         stp     x27,x28,[sp,#.LFrame_x27_x28]
+        stp     q8,q9,[sp,#.LFrame_q8_q9]
+        stp     q10,q11,[sp,#.LFrame_q10_q11]
+        stp     q12,q13,[sp,#.LFrame_q12_q13]
+        stp     q14,q15,[sp,#.LFrame_q14_q15]
+        str     x0,[sp,#.LFrame_InputBaseSaved]
+        str     x1,[sp,#.LFrame_FilterBaseSaved]
+        str     x2,[sp,#.LFrame_OutputBaseSaved]
+        str     x30,[sp,#.LFrame_LrSaved]
 
+        cmp     x5,#4
+        b.ne    .LRunKernelSingle
+
+        // Split the 4-filter case into two 2-filter passes to enable the
+        // two-output inner loop without inflating register pressure.
+        mov     x5,#2
+
+        ldr     x1,[sp,#.LFrame_FilterBaseSaved]
+        ldr     x2,[sp,#.LFrame_OutputBaseSaved]
+        ldr     x17,[sp,#.KO_Bias]
+        bl      .LKernelBody
+
+        ldr     x1,[sp,#.LFrame_FilterBaseSaved]
+        add     x1,x1,x7,lsl #1
+        ldr     x2,[sp,#.LFrame_OutputBaseSaved]
+        ldr     x8,[sp,#.KO_OutputStride]
+        add     x2,x2,x8,lsl #1
+        ldr     x17,[sp,#.KO_Bias]
+        cbz     x17,1f
+        add     x17,x17,#128
+1:
+        mov     x5,#2
+        bl      .LKernelBody
+
+        b       .LDoneEntry
+
+.LRunKernelSingle:
+        ldr     x17,[sp,#.KO_Bias]
+        bl      .LKernelBody
+        b       .LDoneEntry
+
+.LKernelBody:
         // frequently used parameters
         ldr     x8,[sp,#.KO_OutputStride]
         ldr     x14,[sp,#.KO_OutputCountLeftPad]
         ldr     x15,[sp,#.KO_OutputCount]
         ldr     x16,[sp,#.KO_OutputCountRightPad]
-        ldr     x17,[sp,#.KO_Bias]
         ldr     w6,[sp,#.KO_Flags]          // kernel flags
 
         eor     v31.16b,v31.16b,v31.16b
@@ -695,6 +743,7 @@ Abstract:
         cbz     x14,.LInterior
         mov     x20,#0
 .LLeftLoop:
+        ldr     x0,[sp,#.LFrame_InputBaseSaved]
         madd    x21,x20,x3,x0       // input pointer for this output
         lsl     x22,x20,#6          // (index*64)
         add     x27,x2,x22
@@ -725,6 +774,7 @@ Abstract:
 .LInterior:
         cbz     x15,.LRight
 
+        ldr     x0,[sp,#.LFrame_InputBaseSaved]
         mul     x24,x14,x3          // input byte offset after left pad
         add     x21,x0,x24          // base input for interior
         lsl     x23,x14,#6          // output offset (bytes)
@@ -795,9 +845,11 @@ Abstract:
 
         // right padded region -------------------------------------------------
 .LRight:
-        cbz     x16,.LDone
+        cbz     x16,.LKernelReturn
+        ldr     x0,[sp,#.LFrame_InputBaseSaved]
         mov     x20,#0
 .LRightLoop:
+        ldr     x0,[sp,#.LFrame_InputBaseSaved]
         add     x24,x20,x14
         add     x24,x24,x15
         madd    x21,x24,x3,x0
@@ -825,11 +877,19 @@ Abstract:
         cmp     x20,x16
         blo     .LRightLoop
 
-.LDone:
+.LKernelReturn:
+        ret
+
+.LDoneEntry:
+        ldp     q14,q15,[sp,#.LFrame_q14_q15]
+        ldp     q12,q13,[sp,#.LFrame_q12_q13]
+        ldp     q10,q11,[sp,#.LFrame_q10_q11]
+        ldp     q8,q9,[sp,#.LFrame_q8_q9]
         ldp     x27,x28,[sp,#.LFrame_x27_x28]
         ldp     x25,x26,[sp,#.LFrame_x25_x26]
         ldp     x23,x24,[sp,#.LFrame_x23_x24]
         ldp     x21,x22,[sp,#.LFrame_x21_x22]
+        ldr     x30,[sp,#.LFrame_LrSaved]
         ldp     x19,x20,[sp],#.LFrame_SavedRegs
         ret
 
