@@ -1314,6 +1314,27 @@ TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   std::filesystem::remove_all(dump_dir);
 }
 
+// Test extended UDMA mode on supported hardware (should run successfully)
+TEST_F(QnnHTPBackendTests, ExtendedUdmaModeTest) {
+  // Create provider options with extended UDMA mode enabled
+  ProviderOptions options;
+  options["backend_type"] = "htp";
+  options["offload_graph_io_quantization"] = "0";
+  options["htp_arch"] = "81";
+  options["extended_udma"] = "1";
+
+  // Define a simple model with Add operation
+  auto input_defs = {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f)};
+
+  // Run the test - this should succeed because v81 supports extended UDMA
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+}
+
 // Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
 TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
   // Returns a function that checks that the Q/DQ ops at the graph IO boundary are offloaded to CPU
