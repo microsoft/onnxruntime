@@ -29,9 +29,11 @@ Write-Host "Extracting $arm64ZipFile to $arm64ExtractPath..."
 
 # 2. Find the target NuGet package.
 # It finds all .nupkg files that do not contain "Managed" in their name.
-$nupkgFiles = Get-ChildItem -Path . -Recurse -Filter *.nupkg | Where-Object { ($_.Name -notlike "*Managed*") -and ($_.Name -notlike "*.symbols.nupkg") }
+$nupkgFiles = Get-ChildItem -Path . -Filter *.nupkg | Where-Object { ($_.Name -notlike "*Managed*") -and ($_.Name -notlike "*.symbols.nupkg") }
 
 # 3. Validate that exactly one package was found.
+Write-Host "Found $($nupkgFiles.Count) non-managed nupkg file(s):"
+$nupkgFiles | ForEach-Object { Write-Host "  - $($_.FullName)" }
 if ($nupkgFiles.Count -ne 1) {
     Write-Error "Error: Expected to find exactly one non-managed NuGet package, but found $($nupkgFiles.Count)."
     exit 1
