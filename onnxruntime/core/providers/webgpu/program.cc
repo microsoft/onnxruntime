@@ -49,17 +49,18 @@ ProgramUniformVariableValue::ProgramUniformVariableValue(ProgramUniformVariableD
   memcpy(data.data(), ptr, length * element_byte_size);
 }
 
-std::ostream& operator<<(std::ostream& os, ProgramUniformVariableDataType type) {
-  os << ProgramUniformVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+#define DEFINE_ENUM_STREAM_OP(StreamType, EnumType, EnumNameArray)         \
+  StreamType& operator<<(StreamType& os, EnumType type) {                  \
+    os << EnumNameArray[std::underlying_type<decltype(type)>::type(type)]; \
+    return os;                                                             \
+  }
 
-std::ostream& operator<<(std::ostream& os, ProgramConstantDataType type) {
-  os << ProgramConstantDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+DEFINE_ENUM_STREAM_OP(std::ostream, ProgramUniformVariableDataType, ProgramUniformVariableDataTypeName)
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramUniformVariableDataType, ProgramUniformVariableDataTypeName)
+DEFINE_ENUM_STREAM_OP(std::ostream, ProgramConstantDataType, ProgramConstantDataTypeName)
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramConstantDataType, ProgramConstantDataTypeName)
 
-std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency dep) {
+OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency dep) {
   bool first = true;
   if ((dep & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
     os << "Type";
@@ -109,10 +110,7 @@ constexpr std::string_view ProgramVariableDataTypeName[] = {
     "i4x8",    // Int4x8
 };
 
-std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
-  os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramVariableDataType, ProgramVariableDataTypeName)
 #endif
 
 int NumberOfComponents(ProgramVariableDataType type) {
