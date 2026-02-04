@@ -33,7 +33,8 @@ jobs:
     os: windows
     hostArchitecture: Arm64
     demands:
-      - Agent.Version -equals 4.264.2  templateContext:
+      - Agent.Version -equals 4.264.2
+  templateContext:
     sdl:
       codeSignValidation:
         enabled: true
