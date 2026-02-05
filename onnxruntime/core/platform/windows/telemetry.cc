@@ -56,16 +56,20 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
                              (0x3a26b1ff, 0x7484, 0x7484, 0x74, 0x84, 0x15, 0x26, 0x1f, 0x42, 0x61, 0x4d),
                              TraceLoggingOptionMicrosoftTelemetry());
 
-std::string WideToUtf8(const std::wstring& wide) {
+std::string ConvertWideStringToUtf8(const std::wstring& wide) {
   if (wide.empty())
     return {};
 
-  int utf8_length = ::WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+  const UINT code_page = CP_UTF8;
+  const DWORD flags = 0;
+  LPCWCH const src = wide.data();
+  const int src_len = static_cast<int>(wide.size());
+  int utf8_length = ::WideCharToMultiByte(code_page, flags, src, src_len, nullptr, 0, nullptr, nullptr);
   if (utf8_length == 0)
     return {};
 
   std::string utf8(utf8_length, '\0');
-  if (::WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()), utf8.data(), utf8_length, nullptr, nullptr) == 0)
+  if (::WideCharToMultiByte(code_page, flags, src, src_len, utf8.data(), utf8_length, nullptr, nullptr) == 0)
     return {};
 
   return utf8;
@@ -83,8 +87,9 @@ std::string GetServiceNamesForCurrentProcess() {
     DWORD bytes_needed = 0;
     DWORD services_returned = 0;
     DWORD resume_handle = 0;
-    if (!::EnumServicesStatusExW(service_manager, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_STATE_ALL, nullptr, 0, &bytes_needed,
-                                 &services_returned, &resume_handle, nullptr) && ::GetLastError() != ERROR_MORE_DATA) {
+    if (!::EnumServicesStatusExW(service_manager, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE, nullptr, 0, &bytes_needed,
+                                 &services_returned, &resume_handle, nullptr) &&
+        ::GetLastError() != ERROR_MORE_DATA) {
       ::CloseServiceHandle(service_manager);
       return;
     }
@@ -98,7 +103,7 @@ std::string GetServiceNamesForCurrentProcess() {
     auto* services = reinterpret_cast<ENUM_SERVICE_STATUS_PROCESSW*>(buffer.data());
     services_returned = 0;
     resume_handle = 0;
-    if (!::EnumServicesStatusExW(service_manager, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_STATE_ALL, reinterpret_cast<LPBYTE>(services),
+    if (!::EnumServicesStatusExW(service_manager, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE, reinterpret_cast<LPBYTE>(services),
                                  bytes_needed, &bytes_needed, &services_returned, &resume_handle, nullptr)) {
       ::CloseServiceHandle(service_manager);
       return;
@@ -119,7 +124,7 @@ std::string GetServiceNamesForCurrentProcess() {
 
     ::CloseServiceHandle(service_manager);
 
-    service_names = WideToUtf8(aggregated);
+    service_names = ConvertWideStringToUtf8(aggregated);
   });
 
   return service_names;
