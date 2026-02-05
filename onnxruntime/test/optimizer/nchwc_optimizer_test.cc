@@ -255,8 +255,8 @@ TEST(NchwcOptimizerTests, DisableNchwcLayoutTransformationSessionOption) {
   SessionOptions session_options;
   session_options.graph_optimization_level = TransformerLevel::Level3;
   session_options.session_logid = "NchwcOptimizerDisableTests";
-  //ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-  //    kOrtSessionOptionsDisableNchwcLayoutTransformation, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableNchwcLayoutTransformation, "1"));
 
   InferenceSessionWrapper session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
