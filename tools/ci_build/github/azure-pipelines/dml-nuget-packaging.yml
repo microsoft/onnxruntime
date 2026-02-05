@@ -77,8 +77,11 @@ extends:
         NuPackScript: |
           python -m pip install setuptools
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(BuildDate) /p:CurrentTime=$(BuildTime)
+          if errorlevel 1 exit /b 1
           copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+          if errorlevel 1 exit /b 1
+          powershell -Command "$$isRelease = [System.Convert]::ToBoolean('${{ parameters.IsReleaseBuild }}'); $$pkg = Get-ChildItem $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\Microsoft.ML.OnnxRuntime.DirectML.*.nupkg | Where-Object { $$_.Name -notlike '*symbols*' -and (($$isRelease -and $$_.Name -notlike '*-dev*') -or (-not $$isRelease -and $$_.Name -like '*-dev*')) } | Select-Object -First 1; if ($$pkg) { Copy-Item $$pkg.FullName $(Build.ArtifactStagingDirectory) } else { Write-Error 'No matching nupkg found'; exit 1 }"
+          if errorlevel 1 exit /b 1
           mkdir $(Build.ArtifactStagingDirectory)\testdata
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
@@ -97,9 +100,12 @@ extends:
         NuPackScript: |
           python -m pip install setuptools
           msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+          if errorlevel 1 exit /b 1
           cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-          powershell -Command \"Get-ChildItem Microsoft.ML.OnnxRuntime.DirectML.*.nupkg -ErrorAction Stop | Sort-Object {$_.Name.Length} | Select-Object -First 1 | Rename-Item -NewName win-dml-arm64.zip\"
+          powershell -Command "$$isRelease = [System.Convert]::ToBoolean('${{ parameters.IsReleaseBuild }}'); $$pkg = Get-ChildItem Microsoft.ML.OnnxRuntime.DirectML.*.nupkg | Where-Object { $$_.Name -notlike '*symbols*' -and (($$isRelease -and $$_.Name -notlike '*-dev*') -or (-not $$isRelease -and $$_.Name -like '*-dev*')) } | Select-Object -First 1; if ($$pkg) { Rename-Item -Path $$pkg.FullName -NewName win-dml-arm64.zip } else { Write-Error 'No matching nupkg found'; exit 1 }"
+          if errorlevel 1 exit /b 1
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
+          if errorlevel 1 exit /b 1
           mkdir $(Build.ArtifactStagingDirectory)\testdata
           copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
