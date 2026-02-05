@@ -60,8 +60,6 @@ stages:
                 "arch": arch,
               }
 
-              job_names.append(identifier)
-
           print(f"##vso[task.setvariable variable=BuildFrameworkMatrix;isOutput=true]{json.dumps(job_matrix)}")
 
   - job: BuildFramework
