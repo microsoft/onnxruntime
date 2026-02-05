@@ -307,11 +307,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status ReadContextBinIfValid(const std::string& context_bin_filepath,
                                std::vector<char>& buffer);
 
-  Status GetFileSizeIfValid(const std::string& filepath, size_t& file_size);
-
-  Status ReadContextBinIfValid(const std::string& context_bin_filepath,
-                               std::vector<char>& buffer);
-
   Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
                                                                         std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
