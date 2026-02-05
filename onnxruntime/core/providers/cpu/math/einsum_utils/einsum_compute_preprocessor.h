@@ -185,7 +185,7 @@ class EinsumComputePreprocessor final {
   // num_subscript_indices_ = 3 (i, j, k)
   // E.g. 2 : With equation -> '...ij', 'jk' -> '...ik'
   // num_subscript_indices_ = 3 (i, j, k) + number of dims specified by an ellipsis (across all inputs)
-  int64_t num_subscript_indices_ = 0;
+  size_t num_subscript_indices_ = 0;
 
   // Hold the count corresponding to the letter seen
   // `0` means the corresponding letter wasn't seen at all
