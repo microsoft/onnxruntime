@@ -14,34 +14,11 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
+from build_settings_utils import parse_build_settings_file, get_sysroot_arch_pairs, get_build_params
+
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
 REPO_DIR = SCRIPT_DIR.parents[3]
 BUILD_PY = REPO_DIR / "tools" / "ci_build" / "build.py"
-
-# We by default will build below 3 archs
-DEFAULT_BUILD_OSX_ARCHS = {
-    "iphoneos": ["arm64"],
-    "iphonesimulator": ["arm64", "x86_64"],
-}
-
-
-def _parse_build_settings(build_settings_file: pathlib.Path) -> dict:
-    with open(build_settings_file) as f:
-        build_settings_data = json.load(f)
-
-    build_settings = {}
-    build_settings["build_osx_archs"] = build_settings_data.get("build_osx_archs", DEFAULT_BUILD_OSX_ARCHS)
-    build_settings["build_params"] = build_settings_data.get("build_params", {})
-
-    return build_settings
-
-
-def _get_sysroot_arch_pairs_from_build_settings(build_settings) -> list[tuple[str, str]]:
-    pair_set: set[tuple[str, str]] = set()
-    for sysroot, archs in build_settings["build_osx_archs"].items():
-        for arch in archs:
-            pair_set.add((sysroot, arch))
-    return sorted(list(pair_set))
 
 
 def _filter_sysroot_arch_pairs(
@@ -55,7 +32,7 @@ def _filter_sysroot_arch_pairs(
         )
         if specified_sysroot_arch_pair not in all_sysroot_arch_pairs:
             raise ValueError(
-                f"Sysroot/arch pair is not present in build settings file. "
+                "Sysroot/arch pair is not present in build settings file. "
                 f"Specified: {specified_sysroot_arch_pair}, available: {all_sysroot_arch_pairs}"
             )
 
@@ -361,12 +338,12 @@ def main():
     args = parse_args()
 
     build_settings_file = args.build_settings_file.resolve()
-    build_settings = _parse_build_settings(build_settings_file)
+    build_settings = parse_build_settings_file(build_settings_file)
 
     build_dir = args.build_dir.resolve()
     build_config = args.config
 
-    all_sysroot_arch_pairs = _get_sysroot_arch_pairs_from_build_settings(build_settings)
+    all_sysroot_arch_pairs = get_sysroot_arch_pairs(build_settings)
 
     # default to building frameworks and assembling xcframework
     do_sysroot_arch_framework_build = do_xcframework_assembly = True
@@ -401,8 +378,8 @@ def main():
             infos_for_sysroot = sysroot_to_sysroot_arch_framework_infos.setdefault(sysroot, [])
             base_build_command = (
                 [sys.executable, BUILD_PY]
-                + build_settings["build_params"].get("base", [])
-                + build_settings["build_params"].get(sysroot, [])
+                + get_build_params("base")
+                + get_build_params(sysroot)
                 + build_command_trailing_args
             )
 
