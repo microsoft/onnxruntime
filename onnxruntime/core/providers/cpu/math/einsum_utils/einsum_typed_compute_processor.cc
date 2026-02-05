@@ -337,7 +337,7 @@ void EinsumTypedComputeProcessor<T>::SetDeviceHelpers(const EinsumOp::DeviceHelp
                                                       const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
                                                       const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
                                                       const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
-                                                      const EinsumOp::DeviceHelpers::Zeroing& device_zero_buffer_func) {
+                                                      const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func) {
   device_transpose_func_ = device_transpose_func;
   device_matmul_func_ = device_matmul_func;
   device_reduce_sum_func_ = device_reduce_sum_func;

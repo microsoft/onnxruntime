@@ -22,8 +22,8 @@ Status DataCopy(const Tensor& input, Tensor& output, void* /*einsum_cuda_assets*
   return Status::OK();
 }
 
-// CPU specific Zeroing helper
-Status Zeroing(Tensor& input, void* /*einsum_cuda_assets*/) {
+// CPU specific Zero buffer helper
+Status ZeroBuffer(Tensor& input, void* /*einsum_cuda_assets*/) {
   memset(input.MutableDataRaw(), 0, input.SizeInBytes());
   return Status::OK();
 }

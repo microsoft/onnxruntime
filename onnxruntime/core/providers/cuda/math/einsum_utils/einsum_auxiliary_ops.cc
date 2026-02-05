@@ -31,8 +31,8 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   return Status::OK();
 }
 
-// CUDA EP specific Zeroing helper
-Status Zeroing(Tensor& input, void* einsum_cuda_assets) {
+// CUDA EP specific Zero buffer helper
+Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(input.MutableDataRaw(), 0, input.SizeInBytes(),
                                        static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream()));
   return Status::OK();
