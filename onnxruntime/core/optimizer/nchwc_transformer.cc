@@ -341,11 +341,17 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   const int64_t kW = conv_W_tensor_proto->dims(3);
 
   // See https://github.com/microsoft/onnxruntime/issues/26992 for more details
+  // The value of 7 is chosen arbitrarily to catch large kernels.
+  // This may lead to false warnings to users who are able to run models with
+  // 7 x 7 or larger kernels efficiently with NCHWc layout.
+  // But this is better than not informing users at all.
+  // It may help users to make an informed decision to enable/disable NCHWc layout
+  // based on benchmarking on their target hardware.
   if (kH >= 7 || kW >= 7) {
     LOGS(logger_, WARNING) << "NCHWc Conv with large kernel (" << kH << "x" << kW
                            << ") detected in node '" << node.Name()
                            << "'. Please benchmark your target workload on the target hardware with "
-                           << "NCHWc layout optimizations enabled (default) and disabled (via session options)."
+                           << "NCHWc layout optimizations enabled (default) and disabled (via session options). "
                            << "On certain hardware, large kernel convolutions may perform worse with NCHWc layout.";
   }
 
