@@ -12,12 +12,8 @@ set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
 
 # Both abseil and xnnpack create a target called memory, which
 # results in a duplicate target if ABSL_ENABLE_INSTALL is on.
-if (onnxruntime_USE_XNNPACK)
-  set(ABSL_ENABLE_INSTALL OFF)
-else()
-  if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
     set(ABSL_ENABLE_INSTALL ON)
-  endif()
 endif()
 
 if(Patch_FOUND)

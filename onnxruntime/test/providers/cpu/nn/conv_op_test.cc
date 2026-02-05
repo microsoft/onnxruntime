@@ -536,6 +536,46 @@ TEST(ConvTest, Conv2D_AutoPad2) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvTest, Conv2D_AutoPad3) {
+  ConvOpAndTestAttributes attrs = {
+      "SAME_UPPER",           // auto_pad
+      vector<int64_t>{1, 1},  // dilations
+      1,                      // group
+      vector<int64_t>{3, 3},  // kernel_shape
+      {},                     // pads
+      vector<int64_t>{1, 1},  // strides
+      {}                      // excluded EPs
+  };
+
+  vector<float> X = vector<float>(25 * 4, 1.0f);
+  vector<int64_t> X_shape = {1, 4, 5, 5};
+  vector<float> W = {0.0f, 1.0f, 2.0f,
+                     3.0f, 4.0f, 5.0f,
+                     6.0f, 7.0f, 8.0f,
+                     0.0f, 1.0f, 2.0f,
+                     3.0f, 4.0f, 5.0f,
+                     6.0f, 7.0f, 8.0f,
+                     0.0f, 1.0f, 2.0f,
+                     3.0f, 4.0f, 5.0f,
+                     6.0f, 7.0f, 8.0f,
+                     0.0f, 1.0f, 2.0f,
+                     3.0f, 4.0f, 5.0f,
+                     6.0f, 7.0f, 8.0f};
+
+  vector<int64_t> W_shape = {1, 4, 3, 3};
+  vector<int64_t> Y_shape = {1, 1, 5, 5};
+  auto expected_vals = {24.0f * 4, 33.0f * 4, 33.0f * 4, 33.0f * 4, 20.0f * 4,
+                        27.0f * 4, 36.0f * 4, 36.0f * 4, 36.0f * 4, 21.0f * 4,
+                        27.0f * 4, 36.0f * 4, 36.0f * 4, 36.0f * 4, 21.0f * 4,
+                        27.0f * 4, 36.0f * 4, 36.0f * 4, 36.0f * 4, 21.0f * 4,
+                        12.0f * 4, 15.0f * 4, 15.0f * 4, 15.0f * 4, 8.0f * 4};
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+}
+
 TEST(ConvTest, Conv2D_MatMul_SplitK_No_Bias) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
