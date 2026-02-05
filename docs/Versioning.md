@@ -65,7 +65,7 @@ npm --version    # Should be v8.0 or newer
 
 5. **Commit and create PR**
 
-   Commit all changes and create a PR targeting the release branch.
+   Commit all changes and create a PR targeting `main` or a release branch as appropriate.
 
 ### Notes
 
