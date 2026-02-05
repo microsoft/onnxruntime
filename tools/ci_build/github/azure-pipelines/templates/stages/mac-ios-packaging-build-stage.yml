@@ -71,6 +71,12 @@ stages:
       maxParallel: 8
       matrix: $[ dependencies.SetUpBuildFrameworkMatrix.outputs['SetVariables.BuildFrameworkMatrix'] ]
 
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        path: $(Build.ArtifactStagingDirectory)
+        artifact: framework_$(sysroot)_$(arch)
+
     steps:
     # - template: ../setup-build-tools.yml
     #   parameters:
@@ -97,9 +103,6 @@ stages:
 
         echo "hello from build with sysroot $(sysroot) and arch $(arch)" > "${INTERMEDIATES_DIR}/out.txt"
       displayName: Generate output file
-
-    - publish: $(Build.ArtifactStagingDirectory)
-      artifact: framework_$(sysroot)_$(arch)
 
 - stage: AfterBuildFrameworks
   dependsOn: BuildFrameworks
