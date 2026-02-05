@@ -13,7 +13,7 @@ namespace onnxruntime {
 
 class NchwcTransformerImpl {
  public:
-  NchwcTransformerImpl(Graph& graph) noexcept : graph_(graph) {}
+  NchwcTransformerImpl(Graph& graph, const logging::Logger& logger) noexcept : graph_(graph), logger_(logger) {}
 
   void Transform(Node& node);
   void Finalize(bool& modified);
@@ -160,6 +160,8 @@ class NchwcTransformerImpl {
   // NHWC to NCHW format.
   Node* transpose_from_nhwc_node_{nullptr};
   NodeArg* transpose_from_nhwc_output_arg_{nullptr};
+
+  const logging::Logger& logger_;
 };
 
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
@@ -335,6 +337,16 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   const int64_t output_channels = conv_W_tensor_proto->dims(0);
   const int64_t input_channels = conv_W_tensor_proto->dims(1);
+  const int64_t kH = conv_W_tensor_proto->dims(2);
+  const int64_t kW = conv_W_tensor_proto->dims(3);
+
+  if (kH >= 7 || kW >= 7) {
+    LOGS(logger_, WARNING) << "NCHWc Conv with large kernel (" << kH << "x" << kW
+                            << ") detected in node '" << node.Name()
+                            << "'. Please benchmark your target workload on the target hardware with "
+                            << "NCHWc layout optimizations enabled (default) and disabled (via session options)."
+                            << "On certain hardware, large kernel convolutions may perform worse with NCHWc layout.";
+  }
 
   int64_t group_count;
   const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
@@ -1227,7 +1239,7 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
 }
 
 Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  NchwcTransformerImpl impl(graph);
+  NchwcTransformerImpl impl(graph, logger);
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {

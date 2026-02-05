@@ -412,8 +412,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
     case TransformerLevel::Level3: {
 #ifndef DISABLE_CONTRIB_OPS
-      // Register the NCHWc layout transformer if supported by the platform.
-      if (MlasNchwcGetBlockSize() > 1) {
+      // Register the NCHWc layout transformer if supported by the platform and if user didn't explicitly disable it.
+      const bool disable_nchwc = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableNchwcLayoutTransformation, "0") == "1";
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1" && MlasPlatformU8S8Overflow();
+
+      if (MlasNchwcGetBlockSize() > 1 && !disable_nchwc) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
 

@@ -264,6 +264,14 @@ static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "sess
 // The model will be saved to filename post_layout_transform_step_<step_number>.onnx.
 static const char* const kDebugLayoutTransformation = "session.debug_layout_transformation";
 
+// Disables NCHWc layout transformation throughout the graph
+// If contrib ops are disabled, NCHWc layout transformation is disabled by default
+//
+// Option values:
+// - "0": NCHWc layout transformation is not disabled. [DEFAULT]
+// - "1": NCHWc layout transformation is disabled.
+static const char* const kOrtSessionOptionsDisableNchwcLayoutTransformation = "session.disable_nchwc_layout_transformation";
+
 // Graph nodes that are not supported by the execution providers (EPs) explicitly added to the session are
 // assigned (i.e., "fallback") to the CPU EP by default.
 //
