@@ -1801,8 +1801,11 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   )
 endif()
 
-if(NOT onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_WEBGPU)
-  message(WARNING "CMake target files will not be generated for static onnxruntime builds with webgpu support")
+if (NOT onnxruntime_BUILD_SHARED_LIB AND
+    (onnxruntime_USE_WEBGPU OR (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_XNNPACK)))
+  message(WARNING
+    "CMake target files will not be generated for static onnxruntime builds "
+    "with WebGPU or Emscripten+XNNPACK support")
 else()
   # Install
   include(CMakePackageConfigHelpers)
