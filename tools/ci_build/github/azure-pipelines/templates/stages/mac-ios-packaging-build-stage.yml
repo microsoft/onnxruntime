@@ -6,23 +6,33 @@ parameters:
   - normal
   default: normal
 
+  # Note: Keep the Xcode version and iOS simulator version compatible.
+  # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
+  # https://developer.apple.com/support/xcode/
+
+- name: xcodeVersion
+  type: string
+  default: "16.2"
+
+- name: iosSimulatorRuntimeVersion
+  type: string
+  default: "18.2"
+
+- name: buildSettingsFile
+  type: string
+  default: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
+
+- name: podNamePrefix
+  type: string
+  default: "onnxruntime"
+
 stages:
-- stage: IosPackaging_Build
+- stage: BuildFrameworks
   dependsOn: []
 
-  variables:
-    # Note: Keep the Xcode version and iOS simulator version compatible.
-    # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
-    # https://developer.apple.com/support/xcode/
-    xcodeVersion: "16.2"
-    iosSimulatorRuntimeVersion: "18.2"
-    buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
-    cPodName: onnxruntime-c
-    objcPodName: onnxruntime-objc
-
   jobs:
-  - job: SetUpFrameworkBuildMatrix
-    displayName: "Detect sys/arch framework pairs and set up build matrix"
+  - job: SetUpBuildFrameworkMatrix
+    displayName: "Set up sysroot/arch framework build matrix"
 
     steps:
     - task: PythonScript@0
@@ -31,24 +41,19 @@ stages:
         scriptSource: "inline"
         script: |
           import json
+          import sys
 
-          build_settings_file_path = "${{ variables.buildSettingsFile }}"
+          utils_path = "$(Build.SourcesDirectory)/tools/ci_build/github/apple"
+          sys.path.insert(0, utils_path)
 
-          with open(build_settings_file_path, 'r') as build_settings_file:
-              build_settings = json.load(build_settings_file)
+          from build_settings_utils import parse_build_settings_file, get_sysroot_arch_pairs
 
-          pair_set = set()
-          for sysroot, archs in build_settings["build_osx_archs"].items():
-              for arch in archs:
-                  pair_set.add((sysroot, arch))
-
-          pairs = sorted(list(pair_set))
+          build_settings_file = "${{ parameters.buildSettingsFile }}"
+          build_settings = parse_build_settings_file(build_settings_file)
+          sysroot_arch_pairs = get_sysroot_arch_pairs(build_settings)
 
           job_matrix = {}
-
-          job_names = []
-
-          for sysroot, arch in pairs:
+          for sysroot, arch in sysroot_arch_pairs:
               identifier = f"{sysroot}_{arch}"
               job_matrix[identifier] = {
                 "sysroot": sysroot,
@@ -57,32 +62,71 @@ stages:
 
               job_names.append(identifier)
 
-          print(f"##vso[task.setvariable variable=FrameworkBuildMatrix;isOutput=true]{json.dumps(job_matrix)}")
-          print(f"##vso[task.setvariable variable=FrameworkBuildJobNames;isOutput=true]{json.dumps(job_names)}")
+          print(f"##vso[task.setvariable variable=BuildFrameworkMatrix;isOutput=true]{json.dumps(job_matrix)}")
 
-  - job: FrameworkBuild
-    dependsOn: SetUpFrameworkBuildMatrix
+  - job: BuildFramework
+    dependsOn: SetUpBuildFrameworkMatrix
 
     strategy:
-      maxParallel: 3
-      matrix: $[ dependencies.SetUpFrameworkBuildMatrix.outputs['SetVariables.FrameworkBuildMatrix'] ]
+      maxParallel: 8
+      matrix: $[ dependencies.SetUpBuildFrameworkMatrix.outputs['SetVariables.BuildFrameworkMatrix'] ]
 
     steps:
-    - checkout: none
+    # - template: ../setup-build-tools.yml
+    #   parameters:
+    #     host_cpu_arch: arm64
+
+    # - template: ../use-xcode-version.yml
+    #   parameters:
+    #     xcodeVersion: ${{ parameters.xcodeVersion }}
+
+    # - script: |
+    #     pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
+    #   displayName: "Install Python requirements"
+
+    # - script: |
+    #     python tools/ci_build/github/apple/build_apple_framework.py \
+    #       --build_dir "$(Build.BinariesDirectory)/apple_framework" \
+    #       --only_build_single_sysroot_arch_framework "$(sysroot)" "$(arch)" \
+    #       "${{ parameters.buildSettingsFile }}"
+    #   displayName: "Build framework for $(sysroot)/$(arch)"
+
     - script: |
-        echo "Hello! sysroot is $(sysroot) and arch is $(arch)"
-        echo "job name is $(System.JobName)"
+        INTERMEDIATES_DIR="$(Build.ArtifactStagingDirectory)/intermediates"
+        mkdir -p "${INTERMEDIATES_DIR}"
 
-  - job: AfterFrameworkBuilds
-    dependsOn: $[ dependencies.SetUpFrameworkBuildMatrix.outputs['SetVariables.FrameworkBuildJobNames'] ]
+        echo "hello from build with sysroot $(sysroot) and arch $(arch)" > "${INTERMEDIATES_DIR}/out.txt"
+      displayName: Generate output file
 
+    - publish: $(Build.ArtifactStagingDirectory)
+      artifact: framework_$(sysroot)_$(arch)
+
+- stage: AfterBuildFrameworks
+  dependsOn: BuildFrameworks
+
+  jobs:
+  - job: UseArtifacts
     steps:
     - checkout: none
+
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        itemPattern: framework_*/**
+        targetPath: $(Build.BinariesDirectory)
+
     - script: |
-        echo "Hello! this should be after all the framework build jobs have completed!"
+        find "$(Build.BinariesDirectory)"
+      displayName: Show downloaded artifacts
+
+# - stage: IosPackaging_Build
+#   dependsOn: []
 
   # - job:
   #   displayName: "Build iOS package"
+
+    # variables:
+    #   cPodName: ${{ parameters.podNamePrefix }}-c
+    #   objcPodName: ${{ parameters.podNamePrefix }}-objc
 
   #   timeoutInMinutes: 270
   #   templateContext:
@@ -143,7 +187,7 @@ stages:
 
   #   - template: ../use-xcode-version.yml
   #     parameters:
-  #       xcodeVersion: $(xcodeVersion)
+  #       xcodeVersion: ${{ parameters.xcodeVersion }}
 
   #   - script: |
   #       pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
@@ -156,10 +200,10 @@ stages:
   #         --staging-dir "$(Build.BinariesDirectory)/staging" \
   #         --pod-version "$(ortPodVersion)" \
   #         --test \
-  #         --build-settings-file "${{ variables.buildSettingsFile }}"
+  #         --build-settings-file "${{ parameters.buildSettingsFile }}"
   #     displayName: "Build macOS/iOS framework and assemble pod package files"
   #     env:
-  #       ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: $(iosSimulatorRuntimeVersion)
+  #       ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ parameters.iosSimulatorRuntimeVersion }}
 
   #   - script: |
   #       python tools/ci_build/github/apple/test_apple_packages.py \
