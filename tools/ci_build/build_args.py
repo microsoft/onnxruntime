@@ -602,6 +602,17 @@ def add_csharp_binding_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_packaging_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for packaging and distribution."""
+    parser.add_argument(
+        "--build_zip_asset", action="store_true", help="Build zip asset package containing QNN EP and dependencies."
+    )
+    parser.add_argument(
+        "--zip_asset_name_suffix",
+        help="Suffix for zip asset name (used for nightly builds).",
+    )
+
+
 def add_java_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Java bindings."""
     parser.add_argument("--build_java", action="store_true", help="Build Java bindings.")
@@ -906,6 +917,10 @@ def parse_arguments() -> argparse.Namespace:
     # Language Bindings
     add_python_binding_args(parser)
     add_csharp_binding_args(parser)
+
+    # Packaging and Distribution
+    add_packaging_args(parser)
+
     add_java_binding_args(parser)
     add_nodejs_binding_args(parser)
     add_objc_binding_args(parser)

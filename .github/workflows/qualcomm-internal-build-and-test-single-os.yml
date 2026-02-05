@@ -44,6 +44,9 @@ on:
       upload_nuget:
         default: false
         type: boolean
+      upload_zip:
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       target_os:
@@ -159,6 +162,14 @@ jobs:
           retention-days: 1
           path: |
             ${{ github.workspace }}/build/${{inputs.target_os}}-${{ inputs.target_arch }}/${{ env.BUILD_CONFIG_DIR }}/Qualcomm.ML.OnnxRuntime.QNN*.nupkg
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.upload_zip }}
+        with:
+          name: ORT ${{inputs.target_os}} ${{ inputs.target_arch }} Python ${{ inputs.target_py_vsn }} Zip Asset
+          retention-days: 1
+          path: |
+            ${{ github.workspace }}/build/${{inputs.target_os}}-${{ inputs.target_arch }}/${{ env.BUILD_CONFIG_DIR }}/dist/onnxruntime-qnn*.zip
 
   test:
     name: "test-${{inputs.target_os}}-${{inputs.target_arch}}-py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}}"

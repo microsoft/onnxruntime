@@ -33,6 +33,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
 from build_args import parse_arguments  # noqa: E402
+from pkg_assets import build_zip_asset  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
     generate_linux_triplets,
@@ -2635,6 +2636,15 @@ def main():
             # TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
             # Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the nuget package.
             rename_qnn_ep_library(build_dir, configs)
+
+        if args.build_zip_asset:
+            build_zip_asset(
+                source_dir,
+                build_dir,
+                configs,
+                args.zip_asset_name_suffix,
+                use_ninja=(args.cmake_generator == "Ninja"),
+            )
 
     if args.gen_doc:
         # special case CI where we create the build config separately to building
