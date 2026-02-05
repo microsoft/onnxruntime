@@ -57,17 +57,12 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
 
   bool has_bias = context.InputCount() > 2;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
+  
   // Validate bias shape if provided
-  if (has_bias) {
-    const auto& bias_shape = bias->Shape();
-    if (bias_shape.NumDimensions() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias: bias must be 1D tensor");
-    }
-    if (bias_shape[0] != num_output_channels) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias: bias size (", bias_shape[0],
-                             ") must be equal to output channels (", num_output_channels, ")");
-    }
+  if (has_bias && (bias->Shape().NumDimensions() != 1 || bias->Shape()[0] != num_output_channels)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias");
   }
+  
   if (input_shape.NumDimensions() == 3 && filter_shape.NumDimensions() == 3) {
     // ConvTranspose1D
     TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
