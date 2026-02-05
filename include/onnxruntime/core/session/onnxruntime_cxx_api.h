@@ -850,7 +850,7 @@ struct ThreadingOptions : detail::Base<OrtThreadingOptions> {
   ThreadingOptions& SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);
 
   /// \brief Wraps OrtApi::SetGlobalWorkCallbacks
-  /// Configures callbacks invoked around thread pool work execution for context preservation.
+  /// Configures callbacks invoked around thread pool work execution.
   /// \param on_enqueue Callback invoked when work is enqueued (on submitting thread). May be nullptr.
   /// \param on_start Callback invoked when work starts (on worker thread). May be nullptr.
   /// \param on_stop Callback invoked when work completes (on worker thread). May be nullptr.

@@ -7274,18 +7274,14 @@ struct OrtApi {
   /// \name OrtThreadingOptions
   /// @{
 
-  /** \brief Set global thread pool work callbacks for context preservation.
+  /** \brief Set global thread pool work callbacks.
    *
-   * Configures callbacks that are invoked around thread pool work execution, allowing callers to preserve
-   * context (such as thread priority or scheduling attributes) across thread boundaries.
+   * Configures callbacks that are invoked around thread pool work execution.
    *
    * The callbacks follow this pattern:
    *   1. on_enqueue: Called on the submitting thread when work is enqueued. Returns callback-specific data.
    *   2. on_start: Called on the worker thread before executing the work.
    *   3. on_stop: Called on the worker thread after executing the work (guaranteed even on exception).
-   *
-   * This is useful for implementing Work-on-Behalf patterns where the worker thread should inherit
-   * scheduling attributes from the submitting thread.
    *
    * \param[in] tp_options OrtThreadingOptions instance.
    * \param[in] on_enqueue Callback invoked when work is enqueued (on submitting thread). May be NULL.

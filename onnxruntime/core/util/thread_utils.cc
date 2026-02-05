@@ -13,7 +13,6 @@
 #include "core/session/ort_apis.h"
 #include "core/common/string_utils.h"
 #include "core/common/logging/logging.h"
-#include "core/platform/env.h"  // For ThreadPoolWorkCallbacks
 
 std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params) {
   os << "OrtThreadPoolParams {";

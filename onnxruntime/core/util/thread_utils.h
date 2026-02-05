@@ -53,7 +53,7 @@ struct OrtThreadPoolParams {
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
 
-  // Optional callbacks for thread pool work scheduling context preservation.
+  // Optional callbacks for thread pool work scheduling.
   // When set, these callbacks are invoked around work execution.
   OrtThreadPoolWorkEnqueueFn work_enqueue_fn = nullptr;
   OrtThreadPoolWorkStartFn work_start_fn = nullptr;

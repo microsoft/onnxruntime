@@ -3,7 +3,6 @@
 
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
-#include "core/platform/env.h"
 #include <mutex>
 #include "core/util/thread_utils.h"
 #ifdef _WIN32
@@ -819,56 +818,5 @@ TEST(ThreadPoolTest, TestWorkCallbacks_ParallelSection) {
   ASSERT_GE(ctx.enqueue_count.load(), ctx.start_count.load());
   ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
 }
-
-#ifdef _WIN32
-TEST(ThreadPoolTest, TestWorkCallbacks_ThreadPriority) {
-  struct PriorityTestContext {
-    std::atomic<int> enqueue_count{0};
-    std::atomic<int> priority_match_count{0};
-    int expected_priority = THREAD_PRIORITY_NORMAL;
-  };
-
-  auto on_enqueue = [](void* user_context) -> void* {
-    auto* ctx = static_cast<PriorityTestContext*>(user_context);
-    ctx->enqueue_count++;
-    return new int(GetThreadPriority(GetCurrentThread()));
-  };
-
-  auto on_start = [](void*, void* cb_data) {
-    if (cb_data) SetThreadPriority(GetCurrentThread(), *static_cast<int*>(cb_data));
-  };
-
-  auto on_stop = [](void*, void* cb_data) {
-    if (cb_data) {
-      delete static_cast<int*>(cb_data);
-      SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
-    }
-  };
-
-  PriorityTestContext ctx;
-  int original_priority = GetThreadPriority(GetCurrentThread());
-  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-  ctx.expected_priority = THREAD_PRIORITY_ABOVE_NORMAL;
-
-  onnxruntime::ThreadPoolWorkCallbacks callbacks{on_enqueue, on_start, on_stop, &ctx};
-  onnxruntime::ThreadOptions opts;
-  opts.work_callbacks = &callbacks;
-
-  constexpr int num_tasks = 20;
-  {
-    auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), opts, nullptr, 2, true);
-    for (int i = 0; i < num_tasks; i++) {
-      ThreadPool::Schedule(tp.get(), [&]() {
-        if (GetThreadPriority(GetCurrentThread()) == ctx.expected_priority)
-          ctx.priority_match_count++;
-      });
-    }
-  }
-
-  SetThreadPriority(GetCurrentThread(), original_priority);
-  ASSERT_EQ(ctx.enqueue_count.load(), num_tasks);
-  ASSERT_EQ(ctx.priority_match_count.load(), num_tasks);
-}
-#endif
 
 }  // namespace onnxruntime

@@ -772,11 +772,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
 
-  // WorkItem bundles a task with optional callback data. This avoids the overhead
-  // of creating wrapper lambdas when work callbacks are configured.
+  // WorkItem bundles a task with optional callback data.
   struct WorkItem {
     Task task;
-    void* cb_data = nullptr;  // Callback data from on_enqueue, or nullptr if no callbacks
+    void* cb_data = nullptr;
 
     WorkItem() = default;
     explicit WorkItem(Task t, void* data = nullptr) : task(std::move(t)), cb_data(data) {}
@@ -859,7 +858,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       td.EnsureAwake();
     } else {
       // Run the work directly if the queue rejected the work
-      // Note: cb_data handling for rejected work is done via InvokeWorkItem
       InvokeWorkItem(work_item);
     }
   }

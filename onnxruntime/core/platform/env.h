@@ -62,8 +62,6 @@ class EnvThread {
 using LogicalProcessors = std::vector<int>;
 
 /// Callbacks for thread pool work scheduling.
-/// These callbacks allow callers to preserve context (e.g., scheduling priority)
-/// across thread pool work execution boundaries.
 struct ThreadPoolWorkCallbacks {
   /// Called when work is about to be enqueued. Runs on the submitting thread.
   /// Returns callback-specific data that will be passed to OnStartWork/OnStopWork.
@@ -111,8 +109,6 @@ struct ThreadOptions {
   int dynamic_block_base_ = 0;
 
   // Optional callbacks for thread pool work scheduling.
-  // When set (non-null), these callbacks are invoked around work execution to allow
-  // preservation of context (e.g., scheduling priority) across thread boundaries.
   // The pointed-to struct must outlive the ThreadPool.
   const ThreadPoolWorkCallbacks* work_callbacks = nullptr;
 };
