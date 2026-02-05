@@ -367,7 +367,7 @@ Status EinsumTypedComputeProcessor<T>::Run() {
   std::unique_ptr<const Tensor> result;
 
   {
-    TensorShapeVector reduced_dims;                // All dims of the input that are reduced using the `ReduceSum` op
+    TensorShapeVector reduced_dims;              // All dims of the input that are reduced using the `ReduceSum` op
     reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving
 
     TensorShapeVector all_dims;              // All dimension indices from 0 to num_subscript_labels - 1
