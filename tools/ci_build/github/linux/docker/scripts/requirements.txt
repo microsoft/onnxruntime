@@ -4,7 +4,7 @@ numpy==2.3.2; python_version >= "3.14"
 mypy
 pytest
 setuptools==78.1.1
-wheel==0.45.1
+wheel==0.46.2
 argparse
 sympy==1.14
 flatbuffers
