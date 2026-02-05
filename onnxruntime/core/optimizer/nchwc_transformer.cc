@@ -343,10 +343,10 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   // See https://github.com/microsoft/onnxruntime/issues/26992 for more details
   if (kH >= 7 || kW >= 7) {
     LOGS(logger_, WARNING) << "NCHWc Conv with large kernel (" << kH << "x" << kW
-                            << ") detected in node '" << node.Name()
-                            << "'. Please benchmark your target workload on the target hardware with "
-                            << "NCHWc layout optimizations enabled (default) and disabled (via session options)."
-                            << "On certain hardware, large kernel convolutions may perform worse with NCHWc layout.";
+                           << ") detected in node '" << node.Name()
+                           << "'. Please benchmark your target workload on the target hardware with "
+                           << "NCHWc layout optimizations enabled (default) and disabled (via session options)."
+                           << "On certain hardware, large kernel convolutions may perform worse with NCHWc layout.";
   }
 
   int64_t group_count;
