@@ -63,8 +63,10 @@ stages:
       matrix: $[ dependencies.SetUpFrameworkBuildMatrix.outputs['SetVariables.FrameworkBuildMatrix'] ]
 
     steps:
+    - checkout: none
     - script: |
         echo "Hello! sysroot is $(sysroot) and arch is $(arch)"
+        echo "job name is $(System.JobName)"
 
 
   # - job:
