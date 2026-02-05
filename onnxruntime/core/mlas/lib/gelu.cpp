@@ -22,10 +22,10 @@ MlasComputeFP16Gelu(const MLAS_FP16* input,
                     int64_t count,
                     const std::string& algo)
 {
-#if defined(MLAS_USE_SVE) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-        MlasSveGeluF16Kernel(input, output, temp, count, algo);
-#elif defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-        MlasNeonGeluF16Kernel(input, output, temp, count, algo);
+#if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
+    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+        GetMlasPlatform().GeluF16KernelRoutine(input, output, temp, count, algo);
+    #endif
 #else 
     (void)temp; 
     for (int64_t i = 0; i < count; ++i) {
