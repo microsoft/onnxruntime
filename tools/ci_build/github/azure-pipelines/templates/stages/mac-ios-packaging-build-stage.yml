@@ -46,6 +46,8 @@ stages:
 
           job_matrix = {}
 
+          job_names = []
+
           for sysroot, arch in pairs:
               identifier = f"{sysroot}_{arch}"
               job_matrix[identifier] = {
@@ -53,7 +55,10 @@ stages:
                 "arch": arch,
               }
 
+              job_names.append(identifier)
+
           print(f"##vso[task.setvariable variable=FrameworkBuildMatrix;isOutput=true]{json.dumps(job_matrix)}")
+          print(f"##vso[task.setvariable variable=FrameworkBuildJobNames;isOutput=true]{json.dumps(job_names)}")
 
   - job: FrameworkBuild
     dependsOn: SetUpFrameworkBuildMatrix
@@ -68,6 +73,13 @@ stages:
         echo "Hello! sysroot is $(sysroot) and arch is $(arch)"
         echo "job name is $(System.JobName)"
 
+  - job: AfterFrameworkBuilds
+    dependsOn: $[ dependencies.SetUpFrameworkBuildMatrix.outputs['SetVariables.FrameworkBuildJobNames'] ]
+
+    steps:
+    - checkout: none
+    - script: |
+        echo "Hello! this should be after all the framework build jobs have completed!"
 
   # - job:
   #   displayName: "Build iOS package"
