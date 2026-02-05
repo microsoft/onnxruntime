@@ -71,6 +71,15 @@ New-Item -ItemType Directory -Path $tempDir | Out-Null
 Write-Host "Extracting $($nupkg.Name) to $tempDir..."
 & $sevenZipPath x $nupkg.FullName -o"$tempDir" -y
 
+# Debug: Print the .nuspec content
+$nuspecFile = Get-ChildItem -Path $tempDir -Filter *.nuspec | Select-Object -First 1
+if ($nuspecFile) {
+    Write-Host "Found manifest: $($nuspecFile.FullName)"
+    Write-Host "--- Manifest Content ---"
+    Get-Content $nuspecFile.FullName | ForEach-Object { Write-Host $_ }
+    Write-Host "------------------------"
+}
+
 # Debug: List contents of extracted target nupkg
 Write-Host "Contents of $tempDir (recursive):"
 Get-ChildItem -Path $tempDir -Recurse | ForEach-Object { Write-Host "  - $($_.FullName)" }
