@@ -154,6 +154,11 @@ Environment variables
         type=Path,
         help=f"Where to create a virtual environment for the build. Default: {DEFAULT_VENV_PATH}.",
     )
+    parser.add_argument(
+        "--build-nuget",
+        action="store_true",
+        help="Enable building NuGet packages for .NET bindings.",
+    )
 
     args = parser.parse_args()
     if args.target_py_version.lower() == "none":
@@ -175,6 +180,7 @@ class TaskLibrary:
         target_py_version: TargetPyVersionT | None,
         qairt_sdk_root: Path | None,
         docker_ccache_root: Path | None,
+        build_nuget: bool,
     ) -> None:
         self.__python_executable = python_executable
         self.__venv_path = venv_path
@@ -183,6 +189,7 @@ class TaskLibrary:
         self.__target_py_version: TargetPyVersionT | None = target_py_version
         self.__qairt_sdk_root = qairt_sdk_root
         self.__docker_ccache_root = docker_ccache_root
+        self.__build_nuget = build_nuget
 
     @staticmethod
     def to_dot(highlight: list[str] | None = None) -> str:
@@ -489,6 +496,8 @@ class TaskLibrary:
                     self.__target_py_version,
                     self.__qairt_sdk_root,
                     "build",
+                    False,
+                    self.__build_nuget,
                 )
             )
 
@@ -1031,13 +1040,20 @@ def plan_from_dependencies(
     target_py_version: TargetPyVersionT | None,
     qairt_sdk_root: Path | None,
     docker_ccache_root: Path | None,
+    build_nuget: bool,
 ) -> Plan:
     """
     Uses a work list algorithm to create a Plan to build the given tasks and their
     dependencies in a valid order. This is the default planner.
     """
     task_library = TaskLibrary(
-        python_executable, venv_path, config, target_py_version, qairt_sdk_root, docker_ccache_root
+        python_executable,
+        venv_path,
+        config,
+        target_py_version,
+        qairt_sdk_root,
+        docker_ccache_root,
+        build_nuget,
     )
     plan = Plan()
 
@@ -1088,13 +1104,20 @@ def plan_from_task_list(
     target_py_version: TargetPyVersionT | None,
     qairt_sdk_root: Path | None,
     docker_ccache_root: Path | None,
+    build_nuget: bool,
 ) -> Plan:
     """
     Planner that just instantiates the given tasks with no attempt made to satisfy dependencies.
     Used by --only.
     """
     task_library = TaskLibrary(
-        python_executable, venv_path, config, target_py_version, qairt_sdk_root, docker_ccache_root
+        python_executable,
+        venv_path,
+        config,
+        target_py_version,
+        qairt_sdk_root,
+        docker_ccache_root,
+        build_nuget,
     )
     plan = Plan()
     for task_name in tasks:
@@ -1128,6 +1151,7 @@ def build_and_test():
             args.target_py_version,
             qairt_sdk_root,
             docker_ccache_root,
+            args.build_nuget,
         )
 
     if args.skip is not None:

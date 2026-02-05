@@ -120,6 +120,10 @@ function Get-PythonBinDir() {
     }
 }
 
+function Get-NugetBinDir() {
+    Get-PackageBinDir nuget_windows_x86_64
+}
+
 function Get-QairtRoot() {
     Get-PackageContentDir qairt
 }

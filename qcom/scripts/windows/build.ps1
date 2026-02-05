@@ -12,6 +12,10 @@ param (
     [bool]$BuildAsX = $false,
 
     [Parameter(Mandatory = $false,
+               HelpMessage = "If true, build NuGet package.")]
+    [bool]$BuildNuget = $false,
+
+    [Parameter(Mandatory = $false,
                HelpMessage = "Path to QAIRT SDK.")]
     [string]$QairtSdkRoot,
 
@@ -162,6 +166,17 @@ if ($BuildAsX) {
 # even if ArmNN is not requested. Manually turn it off.
 $PlatformArgs = @("--no_kleidiai")
 
+if ($BuildNuget) {
+    $TargetNugetDir = (Get-NugetBinDir)
+    $env:Path = "$TargetNugetDir;" + $env:Path
+    $TargetNugetExe = (Join-Path $TargetNugetDir "nuget.exe")
+    Assert-Success -ErrorMessage "Failed to fetch the nuget.exe" {
+        Get-Command nuget.exe -ErrorAction SilentlyContinue
+    }
+    Write-Host "Building Nuget using $TargetNugetExe"
+    $CommonArgs += "--build_nuget"
+}
+
 if ($CMakeGenerator -eq "Ninja") {
     # The default somehow gives us paths that are too long in CI
     $PlatformArgs += "--cmake_extra_defines", "CMAKE_OBJECT_PATH_MAX=240"
@@ -267,6 +282,16 @@ else {
                                     --use_qnn `
                                     --qnn_version=$QairtSdkVersion `
                                     $PyNightlyArg
+                            }
+                        }
+                    }
+                }
+
+                if ($BuildNuget) {
+                    Use-PyVenv -PyVenv $BuildVEnv {
+                        Use-WorkingDir -Path $BuildOutputDir {
+                            Assert-Success -ErrorMessage "Failed to build nuget" {
+                                .\build.bat $ArchArgs $CommonArgs $QnnArgs $PlatformArgs
                             }
                         }
                     }

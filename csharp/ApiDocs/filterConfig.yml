@@ -1,5 +1,0 @@
-apiRules:
-- exclude:
-    uidRegex: ^Microsoft\.ML\.OnnxRuntime\.OrtApi
-- exclude:
-    uidRegex: ^Microsoft\.ML\.OnnxRuntime\.OrtTrainingApi

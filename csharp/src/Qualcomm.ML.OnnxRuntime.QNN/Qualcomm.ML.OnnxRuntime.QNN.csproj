@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>Qualcomm.ML.OnnxRuntime.QNN</PackageId>
+    <Description>Helper utilities for QNN Execution Provider - provides GetLibraryPath(), GetEpNames() and GetEpName() functions</Description>
+    <Authors>Qualcomm</Authors>
+    <Company>Qualcomm</Company>
+    <Copyright>Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. All rights reserved.</Copyright>
+    <PackageTags>onnxruntime;qnn;qualcomm;ai;ml;inference</PackageTags>
+  </PropertyGroup>
+
+  <!-- No package dependencies! -->
+</Project>

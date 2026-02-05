@@ -230,7 +230,14 @@ class PackageManager:
             return
         package_path = self.__fetch()
 
-        if package_path.suffix == ".exe":
+        if os.path.basename(package_path) == "nuget.exe":
+            # Once nuget.exe is downloaded from the internet, it can be used.
+            # So, there is no need to run installer.
+            nuget_tool_dir = self.get_root_dir()
+            nuget_tool_dir.mkdir(parents=True, exist_ok=True)
+            tools_path = nuget_tool_dir / package_path.name
+            shutil.copyfile(package_path, tools_path)
+        elif package_path.suffix == ".exe":
             self.__run_installer(package_path)
         else:
             # Similar to downloads, we extract to a temporary directory and rename on

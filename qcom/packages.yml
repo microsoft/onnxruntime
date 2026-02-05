@@ -114,6 +114,10 @@ ninja_windows_x86_64:
   version: 1.12.1
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-win.zip
   sha256: f550fec705b6d6ff58f2db3c374c2277a37691678d6aba463adcbb129108467a
+nuget_windows_x86_64:
+  version: 7.0.1
+  url: https://dist.nuget.org/win-x86-commandline/v{version}/nuget.exe
+  md5: c51179f8b404bbf7f7b8e457240cc09d
 onnx_models:
   version: 2025-10-02
   url: http://ort-ep-win-01.na.qualcomm.com:8000/onnx-models/onnx-models-{version}.tar.gz

@@ -1,1 +1,0 @@
-pytorch_mobilenet_v3.onnx

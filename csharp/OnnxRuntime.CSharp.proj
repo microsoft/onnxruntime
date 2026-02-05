@@ -105,7 +105,7 @@ CMake creates a target to this project
     </Exec>
 
     <!-- run `nuget pack` on Windows or `dotnet pack` on Linux to create the native nupkg -->
-    <Message Importance="High" Text="Bundling native shared library artifacts into Microsoft.ML.OnnxRuntime nuget package..." />
+    <Message Importance="High" Text="Bundling native shared library artifacts into *.ML.OnnxRuntime.* nuget package..." />
     <Exec Condition=" '$(IsWindowsBuild)' == 'true'"
           Command="$(NugetExe) pack $(NuSpecName)"
           WorkingDirectory="$(NativeBuildOutputDirAbs)"
@@ -136,49 +136,13 @@ CMake creates a target to this project
   </Target>
 
   <Target Name="CreatePackage">
-    <!-- Validate no missing UnmanagedFunctionPointer attributes on delegates. -->
-    <Exec Condition="'$(IsWindowsBuild)' == 'true' AND $(OrtPackageId) == 'Microsoft.ML.OnnxRuntime'"
-          Command="$(PythonExe) tools/ValidateNativeDelegateAttributes.py"
-          ContinueOnError="False">
-        <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
-    </Exec>
-
-    <!-- Create Microsoft.ML.OnnxRuntime.Managed with the C# bindings using the C# project -->
-    <Message Condition="'$(IsPlatformSpecificSubPackage)'!='True'" Importance="High" Text="Creating Microsoft.ML.OnnxRuntime.Managed nuget package..." />
-    <MSBuild Condition="'$(IsPlatformSpecificSubPackage)'!='True'" Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-             Targets="RenameFilesToPack;Pack"
-             Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);IncludeMobileTargets=$(IncludeMobileTargets)"/>
-
     <MSBuild Projects ="$(MSBuildProjectFullPath)"
              Targets ="CreateNativePackage" />
 
-  </Target>
-
-  <Target Name="CreateAllGpuPackages" AfterTargets="CreatePackage" Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu'">
-    <MSBuild Projects ="$(MSBuildProjectFullPath)"
-             Properties="NuSpecName=NativeGpuWinNuget.nuspec;OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu.Windows"
-             Targets ="CreateNativePackage" />
-    <MSBuild Projects ="$(MSBuildProjectFullPath)"
-             Properties="NuSpecName=NativeGpuLinuxNuget.nuspec;OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu.Linux"
-             Targets ="CreateNativePackage" />
   </Target>
 
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeSourceDirectory)\LICENSE"/>
   </ItemGroup>
-
-  <Target Name="CreateWindowsAIPackage">
-    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeSourceDirectory)\%(Filename).txt')"/>
-
-    <Message Importance="High" Text="Generating nuspec for the Microsoft.AI.MachineLearning Nuget package ..." />
-    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name Microsoft.AI.MachineLearning --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
-      <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
-    </Exec>
-
-    <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec -Symbols -SymbolPackageFormat snupkg" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
-      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
-    </Exec>
-  </Target>
 
 </Project>

@@ -109,6 +109,7 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         qairt_sdk_root: Path | None,
         mode: str,
         build_as_x: bool = False,
+        build_nuget: bool = False,
     ) -> None:
         cmd = [
             str(REPO_ROOT / "qcom" / "scripts" / "windows" / "build.ps1"),
@@ -130,6 +131,9 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
 
         if target_py_version is not None:
             cmd.extend(["-TargetPyVersion", str(target_py_version)])
+
+        if build_nuget:
+            cmd.extend(["-BuildNuget", "1"])
 
         super().__init__(group_name, [cmd], env=ort_build_env_vars())
 
