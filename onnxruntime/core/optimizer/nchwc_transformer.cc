@@ -340,6 +340,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   const int64_t kH = conv_W_tensor_proto->dims(2);
   const int64_t kW = conv_W_tensor_proto->dims(3);
 
+  // See https://github.com/microsoft/onnxruntime/issues/26992 for more details
   if (kH >= 7 || kW >= 7) {
     LOGS(logger_, WARNING) << "NCHWc Conv with large kernel (" << kH << "x" << kW
                             << ") detected in node '" << node.Name()
