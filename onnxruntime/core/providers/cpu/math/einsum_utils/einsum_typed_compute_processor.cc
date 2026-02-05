@@ -337,12 +337,12 @@ void EinsumTypedComputeProcessor<T>::SetDeviceHelpers(const EinsumOp::DeviceHelp
                                                       const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
                                                       const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
                                                       const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
-                                                      const EinsumOp::DeviceHelpers::Zeroing& zero_input_buffer_func) {
+                                                      const EinsumOp::DeviceHelpers::Zeroing& device_zero_buffer_func) {
   device_transpose_func_ = device_transpose_func;
   device_matmul_func_ = device_matmul_func;
   device_reduce_sum_func_ = device_reduce_sum_func;
   device_data_copy_func_ = device_data_copy_func;
-  zero_input_buffer_func_ = zero_input_buffer_func;
+  device_zero_buffer_func_ = device_zero_buffer_func;
 }
 
 template <typename T>
@@ -369,7 +369,7 @@ Status EinsumTypedComputeProcessor<T>::Run() {
       const auto output_dims = einsum_compute_preprocessor_.GetOutputDims();
       Tensor& output = *context_->Output(0, output_dims);
 
-      return zero_input_buffer_func_(output, einsum_ep_assets_);
+      return device_zero_buffer_func_(output, einsum_ep_assets_);
     }
   }
 
