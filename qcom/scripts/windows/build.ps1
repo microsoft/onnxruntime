@@ -279,7 +279,6 @@ else {
                                 python.exe (Join-Path $RepoRoot "setup.py") `
                                     bdist_wheel `
                                     --wheel_name_suffix=qcom_internal `
-                                    --use_qnn `
                                     --qnn_version=$QairtSdkVersion `
                                     $PyNightlyArg
                             }

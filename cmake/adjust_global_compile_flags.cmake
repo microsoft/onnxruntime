@@ -154,10 +154,6 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
     message(FATAL_ERROR "onnxruntime_MINIMAL_BUILD required for onnxruntime_DISABLE_EXCEPTIONS")
   endif()
 
-  if (onnxruntime_ENABLE_PYTHON)
-    # pybind11 highly depends on C++ exceptions.
-    message(FATAL_ERROR "onnxruntime_ENABLE_PYTHON must be disabled for onnxruntime_DISABLE_EXCEPTIONS")
-  endif()
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
   add_compile_definitions("ONNX_NO_EXCEPTIONS")

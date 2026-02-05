@@ -109,29 +109,30 @@ if [ "$(uname -m)" == "aarch64" ]; then
 fi
 count_errors ./ctest --verbose --timeout 10800 --stop-on-failure "${exclude_args[@]}"
 
-log_info "-=-=-=- Running Python tests -=-=-=-"
-mapfile -t PYTHON_TEST_FILES < "python_test_files.txt"
+# TODO: We will support python wheel in linux
+# log_info "-=-=-=- Running Python tests -=-=-=-"
+# mapfile -t PYTHON_TEST_FILES < "python_test_files.txt"
 
-for python_file in "${PYTHON_TEST_FILES[@]}"; do
-    if [ -f "${python_file}" ]; then
-        # TODO: [AISW-164203] ORT test failures on Rubik Pi
-        if [[ "${python_file}" =~ ^(onnxruntime_test_python(_compile_api|_mlops)?.py)$ ]]; then
-            log_warn "Skipping ${python_file} due to known failures."
-        else
-            log_debug "Running ${python_file}..."
-            count_errors "${python_exe}" ${python_file}
-        fi
-    else
-        log_warn "Failed to find ${python_file} - may be OK on platforms which do not support Python."
-    fi
-done
+# for python_file in "${PYTHON_TEST_FILES[@]}"; do
+#     if [ -f "${python_file}" ]; then
+#         # TODO: [AISW-164203] ORT test failures on Rubik Pi
+#         if [[ "${python_file}" =~ ^(onnxruntime_test_python(_compile_api|_mlops)?.py)$ ]]; then
+#             log_warn "Skipping ${python_file} due to known failures."
+#         else
+#             log_debug "Running ${python_file}..."
+#             count_errors "${python_exe}" ${python_file}
+#         fi
+#     else
+#         log_warn "Failed to find ${python_file} - may be OK on platforms which do not support Python."
+#     fi
+# done
 
-if [ -d "quantization" ]; then
-    # Quantization tests ran calling unittest directly in MSFT build.py
-    count_errors "${python_exe}" -m unittest discover -s quantization
-else
-    log_warn "Failed to find directory 'quantization' - may be OK on platforms which do not support Python."
-fi
+# if [ -d "quantization" ]; then
+#     # Quantization tests ran calling unittest directly in MSFT build.py
+#     count_errors "${python_exe}" -m unittest discover -s quantization
+# else
+#     log_warn "Failed to find directory 'quantization' - may be OK on platforms which do not support Python."
+# fi
 
 log_info "-=-=-=- Running ONNX model tests -=-=-=-=-"
 

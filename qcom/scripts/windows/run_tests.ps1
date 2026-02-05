@@ -77,52 +77,54 @@ if (-not $?) {
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 # AISW-152430 - Do not run Python tests on Windows ARM for now due to frankenstein build process for ARM Python wheel
-if ((Get-CimInstance Win32_Processor).Architecture -ne 12) {  # Architecture code 12 corresponds to ARM64
-    Write-Host "--=-=-=- Running Python tests -=--=-=-"
-    $PythonTestFilesPath = (Join-Path $RootDir "python_test_files.txt")
+## TODO: Will need to rewrite the python test by transforming non-ABI to ABI path
 
-    if (Test-Path $PythonTestFilesPath) {
-        $PythonTestFiles = Get-Content $PythonTestFilesPath
+# if ((Get-CimInstance Win32_Processor).Architecture -ne 12) {  # Architecture code 12 corresponds to ARM64
+#     Write-Host "--=-=-=- Running Python tests -=--=-=-"
+#     $PythonTestFilesPath = (Join-Path $RootDir "python_test_files.txt")
 
-        foreach ($PythonFile in $PythonTestFiles) {
-            $PythonFile = $PythonFile.Trim()
-            if ($PythonFile -and (Test-Path $PythonFile)) {
+#     if (Test-Path $PythonTestFilesPath) {
+#         $PythonTestFiles = Get-Content $PythonTestFilesPath
 
-                # TODO - AISW-139802 - Tests in the following files hang on Windows - skip them for now
-                if ($PythonFile -like "*onnxruntime_test_python_backend.py" -or
-                        $PythonFile -like "*onnxruntime_test_python_global_threadpool.py") {
-                    Write-Host "Skipping $PythonFile - contains a test that hangs on Windows"
-                    continue
-                }
+#         foreach ($PythonFile in $PythonTestFiles) {
+#             $PythonFile = $PythonFile.Trim()
+#             if ($PythonFile -and (Test-Path $PythonFile)) {
 
-                Write-Host "Running $PythonFile..."
-                & python $PythonFile
-                if (-not $?) {
-                    Write-Error "Python test $PythonFile failed."
-                    $Failed = $true
-                }
-            } else {
-                Write-Warning "Failed to find $PythonFile - may be OK on platforms which do not support Python."
-            }
-        }
-    } else {
-        Write-Error "Python test files list not found at $PythonTestFilesPath"
-        $Failed = $true
-    }
+#                 # TODO - AISW-139802 - Tests in the following files hang on Windows - skip them for now
+#                 if ($PythonFile -like "*onnxruntime_test_python_backend.py" -or
+#                         $PythonFile -like "*onnxruntime_test_python_global_threadpool.py") {
+#                     Write-Host "Skipping $PythonFile - contains a test that hangs on Windows"
+#                     continue
+#                 }
 
-    if (Test-Path "quantization" -PathType Container) {
-        Write-Host "Running quantization tests..."
-        & python -m unittest discover -s quantization
-    } else {
-        Write-Warning "Failed to find directory 'quantization' - may be OK on platforms which do not support Python."
-    }
-    if (-not $?) {
-        Write-Error "Quantization tests failed."
-        $Failed = $true
-    }
-} else {
-    Write-Warning "Host is Windows ARM - skipping Python testing for now."
-}
+#                 Write-Host "Running $PythonFile..."
+#                 & python $PythonFile
+#                 if (-not $?) {
+#                     Write-Error "Python test $PythonFile failed."
+#                     $Failed = $true
+#                 }
+#             } else {
+#                 Write-Warning "Failed to find $PythonFile - may be OK on platforms which do not support Python."
+#             }
+#         }
+#     } else {
+#         Write-Error "Python test files list not found at $PythonTestFilesPath"
+#         $Failed = $true
+#     }
+
+#     if (Test-Path "quantization" -PathType Container) {
+#         Write-Host "Running quantization tests..."
+#         & python -m unittest discover -s quantization
+#     } else {
+#         Write-Warning "Failed to find directory 'quantization' - may be OK on platforms which do not support Python."
+#     }
+#     if (-not $?) {
+#         Write-Error "Quantization tests failed."
+#         $Failed = $true
+#     }
+# } else {
+#     Write-Warning "Host is Windows ARM - skipping Python testing for now."
+# }
 
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 # Model tests

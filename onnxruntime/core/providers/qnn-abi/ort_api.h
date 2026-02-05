@@ -21,6 +21,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "core/session/onnxruntime_c_api.h"
+// This is a workaround since Microsoft has not yet release 1.24.0
+// TODO: Remove this once 1.24.0 is released.
+#undef ORT_API_VERSION
+#define ORT_API_VERSION 24
 
 #include "core/common/inlined_containers.h"
 #include "core/common/float16.h"

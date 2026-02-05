@@ -1937,28 +1937,10 @@ def build_python_wheel(
     source_dir,
     build_dir,
     configs,
-    use_cuda,
-    cuda_home,
-    cuda_version,
-    use_migraphx,
-    use_dnnl,
-    use_tensorrt,
-    use_openvino,
-    use_vitisai,
-    use_acl,
-    use_armnn,
-    use_dml,
-    use_webgpu,
-    use_cann,
-    use_azure,
-    use_qnn,
     qnn_home,
     wheel_name_suffix,
-    enable_training,
     nightly_build=False,
-    default_training_package_device=False,
     use_ninja=False,
-    enable_training_apis=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -1970,53 +1952,41 @@ def build_python_wheel(
         # Any combination of the following arguments can be applied
         if nightly_build:
             args.append("--nightly_build")
-        if default_training_package_device:
-            args.append("--default_training_package_device")
         if wheel_name_suffix:
             args.append(f"--wheel_name_suffix={wheel_name_suffix}")
-        if enable_training:
-            args.append("--enable_training")
-        if enable_training_apis:
-            args.append("--enable_training_apis")
 
-        # The following arguments are mutually exclusive
-        if use_cuda:
-            # The following line assumes no other EP is enabled
-            args.append("--wheel_name_suffix=gpu")
-            cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
-            if cuda_version:
-                args.append(f"--cuda_version={cuda_version}")
-        elif use_migraphx:
-            args.append("--use_migraphx")
-        elif use_openvino:
-            args.append("--use_openvino")
-        elif use_dnnl:
-            args.append("--use_dnnl")
-        elif use_vitisai:
-            args.append("--use_vitisai")
-        elif use_acl:
-            args.append("--use_acl")
-        elif use_armnn:
-            args.append("--use_armnn")
-        elif use_dml:
-            args.append("--wheel_name_suffix=directml")
-        elif use_webgpu:
-            args.append("--wheel_name_suffix=webgpu")
-        elif use_cann:
-            args.append("--use_cann")
-        elif use_qnn:
-            args.append("--use_qnn")
-            qnn_version = parse_qnn_version_from_sdk_yaml(qnn_home)
-            if qnn_version:
-                args.append(f"--qnn_version={qnn_version}")
-        elif use_azure:
-            args.append("--use_azure")
-        elif wheel_name_suffix == "trt-rtx":
-            cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
-            if cuda_version:
-                args.append(f"--cuda_version={cuda_version}")
+        qnn_version = parse_qnn_version_from_sdk_yaml(qnn_home)
+        if qnn_version:
+            args.append(f"--qnn_version={qnn_version}")
 
         run_subprocess(args, cwd=cwd)
+
+
+# TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
+# Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the wheel package.
+def rename_wheel_qnn_ep_library(build_dir, configs):
+    for config in configs:
+        artifact_folder = os.path.join(build_dir, config, config)
+        wheel_files = glob.glob(f"{artifact_folder}/dist/*.whl")
+        for wheel_path in wheel_files:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                # Extract wheel
+                with zipfile.ZipFile(wheel_path, "r") as zip_ref:
+                    zip_ref.extractall(tmp_dir)
+
+                # Remove the origin one
+                os.remove(wheel_path)
+
+                qnn_ep_libraries_need_updated = glob.glob(f"{tmp_dir}/*/onnxruntime_providers_qnn_abi.dll")
+                for qnn_ep_library in qnn_ep_libraries_need_updated:
+                    # Rename
+                    shutil.move(
+                        qnn_ep_library,
+                        qnn_ep_library.replace("onnxruntime_providers_qnn_abi.dll", "onnxruntime_providers_qnn.dll"),
+                    )
+
+                # Repack wheel
+                subprocess.run(f"wheel pack {tmp_dir} -d {artifact_folder}/dist", shell=True, check=True)
 
 
 def build_qnn_ep_helper_assembly(source_dir, config):
@@ -2628,34 +2598,18 @@ def main():
         #  the target OS is Windows
         if args.build_wheel:
             nightly_build = bool(os.getenv("NIGHTLY_BUILD") == "1")
-            default_training_package_device = bool(os.getenv("DEFAULT_TRAINING_PACKAGE_DEVICE") == "1")
             build_python_wheel(
                 source_dir,
                 build_dir,
                 configs,
-                args.use_cuda,
-                cuda_home,
-                args.cuda_version,
-                args.use_migraphx,
-                args.use_dnnl,
-                args.use_tensorrt,
-                args.use_openvino,
-                args.use_vitisai,
-                args.use_acl,
-                args.use_armnn,
-                args.use_dml,
-                args.use_webgpu,
-                args.use_cann,
-                args.use_azure,
-                args.use_qnn,
                 args.qnn_home,
                 args.wheel_name_suffix,
-                args.enable_training,
                 nightly_build=nightly_build,
-                default_training_package_device=default_training_package_device,
                 use_ninja=(args.cmake_generator == "Ninja"),
-                enable_training_apis=args.enable_training_apis,
             )
+            # TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
+            # Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the wheel package.
+            rename_wheel_qnn_ep_library(build_dir, configs)
 
         if args.build_nuget:
             platform_arch = platform.machine()

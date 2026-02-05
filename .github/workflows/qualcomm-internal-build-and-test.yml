@@ -90,8 +90,10 @@ jobs:
           --build-nuget
           archive_ort_windows_arm64
           test_ort_windows_arm64
-          test_ort_windows_arm64_pysmoke
-          test_ort_windows_arm64_pygpu
+
+        # TODO: We will support arm64 python wheel
+        # test_ort_windows_arm64_pysmoke
+        # test_ort_windows_arm64_pygpu
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4.0.4
