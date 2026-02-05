@@ -285,27 +285,9 @@ MlasComputeFP16Erf(
     )
 {
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-
-#if defined(MLAS_USE_SVE) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-        MlasSveErfF16Kernel(
-            reinterpret_cast<const _mlas_fp16_*>(Input),
-            reinterpret_cast<_mlas_fp16_*>(Output),
-            N
-        );
-        return;
-    }
-#endif
-
-#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-    MlasNeonErfF16Kernel(
-        reinterpret_cast<const _mlas_fp16_*>(Input),
-        reinterpret_cast<_mlas_fp16_*>(Output),
-        N
-    );
-    return;
-#endif
-
+    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+        GetMlasPlatform().ErfF16KernelRoutine(reinterpret_cast<const _mlas_fp16_*>(Input), reinterpret_cast<_mlas_fp16_*>(Output), N);
+    #endif
 #else
     std::vector<float> input_fp32(N);
     std::vector<float> output_fp32(N);

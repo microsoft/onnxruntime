@@ -19,6 +19,10 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#include "erf_neon_fp16.h"
+#include "gelu.h"
+#endif
 #if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
@@ -656,6 +660,17 @@ Return Value:
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
+
+    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            this->ErfF16KernelRoutine = MlasSveErfF16Kernel;
+            this->GeluF16KernelRoutine = MlasSveGeluF16Kernel;
+        }
+        else{
+            this->ErfF16KernelRoutine = MlasNeonErfF16Kernel;
+            this->GeluF16KernelRoutine = MlasNeonGeluF16Kernel; 
+        }
+    #endif
 #endif
 
     //
