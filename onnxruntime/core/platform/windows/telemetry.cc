@@ -204,7 +204,8 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingLevel(WINEVENT_LEVEL_INFO));
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogEvaluationStop(uint32_t session_id) const {
@@ -304,7 +305,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   } else {
     TraceLoggingWrite(telemetry_provider_handle,
                       "SessionCreation_CaptureState",
@@ -419,7 +421,8 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
-                    TraceLoggingInt32(line, "line"));
+                    TraceLoggingInt32(line, "line"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 #else
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeError",
@@ -435,7 +438,8 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
-                    TraceLoggingInt32(line, "line"));
+                    TraceLoggingInt32(line, "line"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 #endif
 }
 
@@ -465,7 +469,8 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(total_runs_since_last, "totalRuns"),
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"),
-                    TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"));
+                    TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
@@ -541,7 +546,8 @@ void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingString(selection_policy.c_str(), "selectionPolicy"),
                     TraceLoggingString(requested_execution_provider_string.c_str(), "requestedExecutionProviderIds"),
-                    TraceLoggingString(available_execution_provider_string.c_str(), "availableExecutionProviderIds"));
+                    TraceLoggingString(available_execution_provider_string.c_str(), "availableExecutionProviderIds"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
 void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const std::string& provider_options_string, bool captureState) const {
@@ -560,7 +566,8 @@ void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const 
                       // Telemetry info
                       TraceLoggingUInt8(0, "schemaVersion"),
                       TraceLoggingString(provider_id.c_str(), "providerId"),
-                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"));
+                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"),
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   } else {
     TraceLoggingWrite(telemetry_provider_handle,
                       "ProviderOptions_CaptureState",
