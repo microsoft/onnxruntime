@@ -368,12 +368,12 @@ Status EinsumTypedComputeProcessor<T>::Run() {
 
   {
     TensorShapeVector reduced_dims;                                           // All dims of the input that are reduced using the `ReduceSum` op
-    reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving
+    reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving
 
     TensorShapeVector all_dims;                                           // All dimension indices from 0 to num_subscript_labels - 1
-    all_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the number of elements
+    all_dims.reserve(num_subscript_labels);  // num_subscript_labels is the number of elements
 
-    for (size_t i = 0; i < onnxruntime::narrow<size_t>(num_subscript_labels); ++i) {
+    for (size_t i = 0; i < num_subscript_labels; ++i) {
       if (mapped_indices_to_last_input_index[i] == 0) {
         reduced_dims.push_back(i);
       }
@@ -411,9 +411,9 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     // Keep processing each input pair-wise
     for (int input = 1; input < num_inputs; ++input) {
       TensorShapeVector reduced_dims;
-      reduced_dims.reserve(onnxruntime::narrow<size_t>(num_subscript_labels));  // num_subscript_labels is the upper bound. No harm in over-reserving by a small margin.
-      for (int64_t dim = 0; dim < num_subscript_labels; ++dim) {
-        if (mapped_indices_to_last_input_index[onnxruntime::narrow<size_t>(dim)] == input) {
+      reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving by a small margin.
+      for (size_t dim = 0; dim < num_subscript_labels; ++dim) {
+        if (mapped_indices_to_last_input_index[dim] == input) {
           // This is the last input we are seeing this dimension (and it doesn't occur in the output), so reduce along the dimension
           reduced_dims.push_back(dim);
         }

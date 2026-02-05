@@ -140,7 +140,7 @@ class EinsumComputePreprocessor final {
   const std::vector<int64_t>& GetMappedSubscriptIndicesToOutputindices() const;
 
   // Get the number of subscript indices (subscript labels) in the einsum equation
-  int64_t GetNumSubscriptIndices() const;
+  size_t GetNumSubscriptIndices() const;
 
   // Pass-in device specific functions
   // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
