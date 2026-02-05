@@ -14,6 +14,8 @@ Abstract:
 
 #include "erf_neon_fp16.h"
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+
 // Helpers to safely convert between float and FP16-bit representation
 static float
 fp16_to_float(uint16_t h)
@@ -145,3 +147,4 @@ MlasNeonErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
         Output[i] = float_to_fp16(erf_approx);
     }
 }
+#endif

@@ -2054,7 +2054,7 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
         const int64_t count = std::min(length_per_task, elem_count - start);
         const MLFloat16* p_input = input_data + start;
         MLFloat16* p_output = output_data + start;
-        MlasComputeFP16Erf(p_input, p_output, count);
+        MlasComputeFP16Erf(p_input, p_output, static_cast<size_t>(count));
       },
       0);
 
