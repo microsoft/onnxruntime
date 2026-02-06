@@ -126,7 +126,7 @@ extends:
           buildArch: x64
           msbuildPlatform: arm64
           packageName: arm64
-          buildparameter: --arm64ec --buildasx --caller_framework WinAI
+          buildparameter: --arm64 --buildasx --caller_framework WinAI
           runTests: false
           buildJava: false
           buildNodejs: false
