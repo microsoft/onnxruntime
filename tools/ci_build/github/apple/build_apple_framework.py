@@ -378,8 +378,8 @@ def main():
             infos_for_sysroot = sysroot_to_sysroot_arch_framework_infos.setdefault(sysroot, [])
             base_build_command = (
                 [sys.executable, BUILD_PY]
-                + get_build_params("base")
-                + get_build_params(sysroot)
+                + get_build_params(build_settings, "base")
+                + get_build_params(build_settings, sysroot)
                 + build_command_trailing_args
             )
 
