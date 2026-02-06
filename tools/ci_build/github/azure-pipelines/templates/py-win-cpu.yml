@@ -13,17 +13,17 @@ parameters:
 
 jobs:
 - job: Windows_py_Wheels_${{parameters.ARCHITECTURE}}
-  # ${{ if eq(parameters.ARCHITECTURE, 'arm64') }}:
-  #   pool:
-  #     name: 'onnxruntime-qnn-windows-vs-2022-arm64'
-  #     os: windows
-  #     hostArchitecture: Arm64
-  #     demands:
-  #       - Agent.Version -equals 4.264.2
-  # ${{ else }}:
-  pool:
-    name: 'onnxruntime-Win-CPU-VS2022-Latest'
-    os: windows
+  ${{ if eq(parameters.ARCHITECTURE, 'arm64') }}:
+    pool:
+      name: 'onnxruntime-qnn-windows-vs-2022-arm64'
+      os: windows
+      hostArchitecture: Arm64
+      demands:
+        - Agent.Version -equals 4.264.2
+  ${{ else }}:
+    pool:
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      os: windows
   templateContext:
     sdl:
       codeSignValidation:
