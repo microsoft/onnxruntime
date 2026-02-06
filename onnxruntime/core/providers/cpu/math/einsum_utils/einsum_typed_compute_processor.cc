@@ -336,11 +336,13 @@ template <typename T>
 void EinsumTypedComputeProcessor<T>::SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
                                                       const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
                                                       const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
-                                                      const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func) {
+                                                      const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
+                                                      const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func) {
   device_transpose_func_ = device_transpose_func;
   device_matmul_func_ = device_matmul_func;
   device_reduce_sum_func_ = device_reduce_sum_func;
   device_data_copy_func_ = device_data_copy_func;
+  device_zero_buffer_func_ = device_zero_buffer_func;
 }
 
 template <typename T>
@@ -356,6 +358,20 @@ Status EinsumTypedComputeProcessor<T>::Run() {
   auto num_subscript_labels = einsum_compute_preprocessor_.GetNumSubscriptIndices();
 
   auto num_inputs = context_->InputCount();
+
+  {
+    bool has_empty_input = std::any_of(raw_inputs.begin(), raw_inputs.end(), [](const auto& input) {
+      return input->Shape().Size() == 0;
+    });
+
+    // Skip all the work, fill with zeros if needed
+    if (has_empty_input) {
+      const auto output_dims = einsum_compute_preprocessor_.GetOutputDims();
+      Tensor& output = *context_->Output(0, output_dims);
+
+      return device_zero_buffer_func_(output, einsum_ep_assets_);
+    }
+  }
 
   // Pre-process the first input so as to reduce any dims that only it has
   std::unique_ptr<const Tensor> result;
