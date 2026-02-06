@@ -8,7 +8,6 @@ import argparse
 import json
 import os
 import pathlib
-import re
 import shutil
 import subprocess
 import sys
@@ -37,27 +36,6 @@ def _filter_sysroot_arch_pairs(
             )
 
         return [specified_sysroot_arch_pair]
-
-    if args.only_build_sysroot_arch_framework_by_partition is not None:
-
-        def parse(partition_id: str) -> tuple[int, int]:
-            match = re.fullmatch(r"^(\d+)/(\d+)$", partition_id)
-            if not match:
-                raise ValueError(
-                    f"Invalid partition ID: {partition_id}. Expected format is <partition idx>/<num partitions>."
-                )
-            numerator, denominator = int(match.group(1)), int(match.group(2))
-            if numerator == 0 or numerator > denominator:
-                raise ValueError(
-                    f"Invalid partition ID: {partition_id}. "
-                    "Numerator must be non-zero and not greater than denominator."
-                )
-            return numerator, denominator
-
-        one_based_partition_idx, num_partitions = parse(args.only_build_sysroot_arch_framework_by_partition)
-        partition_idx = one_based_partition_idx - 1
-
-        return all_sysroot_arch_pairs[partition_idx::num_partitions]
 
     return all_sysroot_arch_pairs.copy()
 
@@ -305,14 +283,6 @@ def parse_args():
     )
 
     mode_group.add_argument(
-        "--only_build_sysroot_arch_framework_by_partition",
-        metavar="partition_id",
-        help="Only build part of all necessary sysroot/arch framework(s). "
-        "This can be used to split up the builds between different invocations of this script. "
-        "Specify the partition ID as: <1-based partition index>/<total number of partitions>, e.g., 1/3.",
-    )
-
-    mode_group.add_argument(
         "--only_assemble_xcframework",
         action="store_true",
         help="Only assemble the xcframework (and intermediate fat frameworks) from the sysroot/arch frameworks. "
@@ -349,10 +319,7 @@ def main():
     do_sysroot_arch_framework_build = do_xcframework_assembly = True
 
     # mode options may modify the default behavior
-    if (
-        args.only_build_single_sysroot_arch_framework is not None
-        or args.only_build_sysroot_arch_framework_by_partition is not None
-    ):
+    if args.only_build_single_sysroot_arch_framework is not None:
         do_xcframework_assembly = False
     if args.only_assemble_xcframework:
         do_sysroot_arch_framework_build = False
