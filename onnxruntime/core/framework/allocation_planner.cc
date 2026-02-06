@@ -923,9 +923,10 @@ class PlannerImpl {
           // However, we still ignore them.
           //
           // 2.
-          // MemcpyFromHost node provided by CPU EP requires special handling.
-          // As per MemcpyFromHost kernel registration uses default memory type for output,
-          // but it actually may produce output on the device specific to its consumer node's EP.
+          // MemcpyFromHost node provided by the CPU EP requires special handling.
+          // As per MemcpyFromHost kernel registration uses default memory type for output which means
+          // it uses CPU memory for output as it's run on CPU, but it actually may produce output on
+          // the device specific to its consumer node's EP.
           // So we need to check the consumer node's EP and set the output device accordingly.
 
           if (output_device.Type() == OrtDevice::CPU) {
@@ -937,6 +938,7 @@ class PlannerImpl {
 
                 if ((pnode->OpType() == "MemcpyFromHost") &&
                     pnode->GetExecutionProviderType() == kCpuExecutionProvider) {
+                  // Check the consumer node's EP and set the output device accordingly
                   output_device = execution_providers_.Get(ep_type)
                                       ->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
                   break;
