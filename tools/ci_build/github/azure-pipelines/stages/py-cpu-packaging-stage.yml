@@ -70,11 +70,13 @@ stages:
       parameters:
         ARCHITECTURE: 'x64'
         build_py_parameters: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: ../templates/py-win-cpu.yml
       parameters:
         ARCHITECTURE: 'arm64'
         build_py_parameters: ${{ parameters.build_py_parameters }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
 
 - ${{ if eq(parameters.enable_mac_cpu, true) }}:
   - stage: Python_Packaging_MacOS
