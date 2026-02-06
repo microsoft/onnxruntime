@@ -13,7 +13,7 @@ Abstract:
 --*/
 #include "gelu.h"
 #include <cmath>
-#if defined(__ARM_NEON) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 void
 MLASCALL

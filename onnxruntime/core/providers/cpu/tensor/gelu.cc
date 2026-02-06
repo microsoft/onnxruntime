@@ -77,9 +77,9 @@ Status Gelu<T>::Compute(OpKernelContext* context) const {
   T* output_data = output->MutableData<T>();
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  int64_t elem_count = input->Shape().Size();
-  constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
-  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+  size_t elem_count = input->Shape().Size();
+  constexpr size_t length_per_task = 4096;  // this number comes from FastGelu.
+  size_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
   if (approximation_algorithm_ == "tanh") {
     // FastGelu allows optional bias. Here we split input data into chunks. Each chunk
@@ -95,16 +95,16 @@ Status Gelu<T>::Compute(OpKernelContext* context) const {
           const auto start = task_idx * length_per_task;
           const T* p_input = input_data + start;
           T* p_output = output_data + start;
-          int64_t count = std::min(length_per_task, elem_count - start);
+          size_t count = std::min(length_per_task, elem_count - start);
 
-          for (int64_t i = 0; i < count; i++) {
+          for (size_t i = 0; i < count; i++) {
             T value = p_input[i];
             p_output[i] = value * (static_cast<T>(C) * value * value + static_cast<T>(B));
           }
 
           MlasComputeTanh(p_output, p_output, narrow<size_t>(count));
 
-          for (int64_t i = 0; i < count; i++) {
+          for (size_t i = 0; i < count; i++) {
             p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
           }
         },
@@ -117,16 +117,16 @@ Status Gelu<T>::Compute(OpKernelContext* context) const {
           const auto start = task_idx * length_per_task;
           const T* p_input = input_data + start;
           T* p_output = output_data + start;
-          int64_t count = std::min(length_per_task, elem_count - start);
+          size_t count = std::min(length_per_task, elem_count - start);
 
-          for (int64_t i = 0; i < count; i++) {
+          for (size_t i = 0; i < count; i++) {
             T value = p_input[i];
             p_output[i] = value * static_cast<T>(M_SQRT1_2);
           }
 
           MlasComputeErf(p_output, p_output, narrow<size_t>(count));
 
-          for (int64_t i = 0; i < count; i++) {
+          for (size_t i = 0; i < count; i++) {
             p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
           }
         },
@@ -143,9 +143,9 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input->Shape());
   MLFloat16* output_data = output->MutableData<MLFloat16>();
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  int64_t elem_count = input->Shape().Size();
-  constexpr int64_t length_per_task = 4096;
-  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+  size_t elem_count = input->Shape().Size();
+  constexpr size_t length_per_task = 4096;
+  size_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
   if (approximation_algorithm_ != "tanh" && approximation_algorithm_ != "none") {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported approximation_algorithm: ", approximation_algorithm_);
@@ -178,7 +178,7 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
         const auto start = task_idx * length_per_task;
         const MLFloat16* p_input = input_data + start;
         MLFloat16* p_output = output_data + start;
-        int64_t count = std::min(length_per_task, elem_count - start);
+        size_t count = std::min(length_per_task, elem_count - start);
         MLFloat16* p_temp = temp_fp16_aligned.get() + start;
         MlasComputeFP16Gelu(p_input, p_output, p_temp, count, approximation_algorithm_);
       },
