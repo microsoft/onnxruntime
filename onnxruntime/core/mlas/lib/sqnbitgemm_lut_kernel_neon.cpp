@@ -21,6 +21,8 @@ Abstract:
 
 --*/
 
+#include "mlas.h"
+
 #if defined(MLAS_TARGET_ARM64)
 
 #include <arm_neon.h>
@@ -177,30 +179,33 @@ get_bias_scale()
 }
 
 //
-// Partial max computation for LUT scale calculation
+// Partial max computation for LUT scale calculation - SCALAR VERSION
+// Computes: max(|b0| + |b1| + |b2| + |b3|) for 8 groups of 4 consecutive elements
+// This is a direct port of the AVX2 algorithm to scalar for correctness verification
 //
 static inline void
 partial_max_g4_int8_k8_neon(float* lut_scales, const float* b)
 {
-    // Process 8 groups of 4 floats each (strided by 4)
-    float32x4_t max_abs = vdupq_n_f32(0.0f);
-
-    for (int i = 0; i < 8; i++) {
-        // Load 4 consecutive floats from position i*4
-        float32x4_t vals = vld1q_f32(b + i * 4);
-        float32x4_t abs_vals = vabsq_f32(vals);
-        max_abs = vmaxq_f32(max_abs, abs_vals);
+    // 8 groups of 4 consecutive elements each
+    // Groups: {0-3}, {4-7}, {8-11}, {12-15}, {16-19}, {20-23}, {24-27}, {28-31}
+    float max_abssum = 0.0f;
+    
+    for (int group = 0; group < 8; ++group) {
+        float abssum = std::abs(b[group * 4 + 0]) +
+                       std::abs(b[group * 4 + 1]) +
+                       std::abs(b[group * 4 + 2]) +
+                       std::abs(b[group * 4 + 3]);
+        max_abssum = std::max(max_abssum, abssum);
     }
-
-    // Horizontal max across the vector
-    float max_val = vmaxvq_f32(max_abs);
-    float scales = max_val / 127.0f;
+    
+    float scales = max_abssum / 127.0f;
     *lut_scales = std::max(*lut_scales, scales);
 }
 
 //
-// LUT construction for int8 quantized activations
-// Builds 16-entry lookup tables for groups of 4 activation values
+// LUT construction - SCALAR VERSION 
+// This is a direct port of the AVX2 algorithm for correctness verification
+// Output layout matches AVX2: qlut[k * 128 + group * 16 + lut_entry]
 //
 static inline void
 lut_ctor_g4_int8_impl_neon(
@@ -211,93 +216,68 @@ lut_ctor_g4_int8_impl_neon(
     float* lut_biases
 )
 {
-    float32x4_t vec_lut[16];
     float biases = 0.0f;
     float scales = *lut_scales;
     float t_scales = scales ? 1.0f / scales : 0.0f;
 
     for (int k = 0; k < act_k / 32; ++k) {
-        // Load 4 groups of 8 floats (strided pattern)
-        // ORT uses contiguous float layout, so we load and rearrange
-        float32x4_t vec_b0, vec_b1, vec_b2, vec_b3;
-
-        // Load first 4 elements from each group of 4
-        // Pattern: b[k*32 + i*4 + j] where i=0..7, j=0..3
-        // We need vec_b0 = {b[0], b[4], b[8], b[12], b[16], b[20], b[24], b[28]} etc.
-        // For NEON with float32, we work with 4 elements at a time
-
-        // Simplified: process 4 lanes at a time
-        for (int lane = 0; lane < 2; lane++) {
-            const float* base = b + k * 32 + lane * 16;
-
-            // Load 4 values with stride 4
-            float b0_vals[4] = {base[0], base[4], base[8], base[12]};
-            float b1_vals[4] = {base[1], base[5], base[9], base[13]};
-            float b2_vals[4] = {base[2], base[6], base[10], base[14]};
-            float b3_vals[4] = {base[3], base[7], base[11], base[15]};
-
-            vec_b0 = vld1q_f32(b0_vals);
-            vec_b1 = vld1q_f32(b1_vals);
-            vec_b2 = vld1q_f32(b2_vals);
-            vec_b3 = vld1q_f32(b3_vals);
-
-            // Build 16-entry LUT: each entry is ±b0 ±b1 ±b2 ±b3
-            PRAGMA_UNROLL
+        // For each of 8 groups of 4 consecutive elements
+        // Group g contains elements: b[k*32 + g*4 + 0..3]
+        float lut[16][8];  // lut[lut_entry][group]
+        
+        for (int group = 0; group < 8; ++group) {
+            // Get the 4 elements in this group
+            float b0 = b[k * 32 + group * 4 + 0];
+            float b1 = b[k * 32 + group * 4 + 1];
+            float b2 = b[k * 32 + group * 4 + 2];
+            float b3 = b[k * 32 + group * 4 + 3];
+            
+            // Build 16-entry LUT using ±b0 ±b1 ±b2 ±b3
+            // Odd entries first (g = 1, 3, 5, ..., 15)
             for (int g = 1; g < 16; g += 2) {
-                vec_lut[g] = vec_b0;
+                float val = b0;
                 if (g & 0b0010) {
-                    vec_lut[g] = vaddq_f32(vec_lut[g], vec_b1);
+                    val += b1;
                 } else {
-                    vec_lut[g] = vsubq_f32(vec_lut[g], vec_b1);
+                    val -= b1;
                 }
                 if (g & 0b0100) {
-                    vec_lut[g] = vaddq_f32(vec_lut[g], vec_b2);
+                    val += b2;
                 } else {
-                    vec_lut[g] = vsubq_f32(vec_lut[g], vec_b2);
+                    val -= b2;
                 }
                 if (g & 0b1000) {
-                    vec_lut[g] = vaddq_f32(vec_lut[g], vec_b3);
+                    val += b3;
                 } else {
-                    vec_lut[g] = vsubq_f32(vec_lut[g], vec_b3);
+                    val -= b3;
                 }
+                lut[g][group] = val;
             }
-
-            // Symmetric: vec_lut[g] = -vec_lut[15 - g]
-            PRAGMA_UNROLL
+            
+            // Even entries: lut[g] = -lut[15 - g]
             for (int g = 0; g < 16; g += 2) {
-                vec_lut[g] = vnegq_f32(vec_lut[15 - g]);
+                lut[g][group] = -lut[15 - g][group];
             }
-
-            // Accumulate bias
-            biases += vaddvq_f32(vec_lut[0]);
-
-            // Scale and quantize
-            PRAGMA_UNROLL
+        }
+        
+        // Accumulate bias from lut[0] (sum across all 8 groups)
+        for (int group = 0; group < 8; ++group) {
+            biases += lut[0][group];
+        }
+        
+        // Scale and quantize, then store
+        // Output layout: qlut[k * 128 + group * 16 + lut_entry]
+        for (int group = 0; group < 8; ++group) {
             for (int g = 0; g < 16; ++g) {
-                vec_lut[g] = vmulq_n_f32(vec_lut[g], t_scales);
-            }
-
-            // Convert to int8 and store
-            int8_t* qlut_dst = qlut + k * 128 + lane * 64;  // 8 * 16 / 2 = 64
-
-            PRAGMA_UNROLL
-            for (int g = 0; g < 16; ++g) {
-                // Round and convert to int32
-                int32x4_t i32 = vcvtnq_s32_f32(vec_lut[g]);
-                // Narrow to int16
-                int16x4_t i16 = vqmovn_s32(i32);
-                // Narrow to int8
-                int8x8_t i8 = vqmovn_s16(vcombine_s16(i16, i16));
-
-                // Store individual lanes with proper layout
-                qlut_dst[g + 0 * 16] = vget_lane_s8(i8, 0);
-                qlut_dst[g + 1 * 16] = vget_lane_s8(i8, 1);
-                qlut_dst[g + 2 * 16] = vget_lane_s8(i8, 2);
-                qlut_dst[g + 3 * 16] = vget_lane_s8(i8, 3);
+                float scaled = lut[g][group] * t_scales;
+                // Round to nearest, clamp to int8 range
+                int32_t rounded = static_cast<int32_t>(std::round(scaled));
+                rounded = std::max(-128, std::min(127, rounded));
+                qlut[k * 128 + group * 16 + g] = static_cast<int8_t>(rounded);
             }
         }
     }
-
+    
     *lut_scales = scales;
     *lut_biases = biases;
 }
@@ -376,7 +356,8 @@ tbl_g4_int8_float_gather_bit2_impl_neon(int32_t m, float* C_global, float* CBits
 }
 
 //
-// Core GEMM compute kernel using table lookup
+// Core GEMM compute kernel using table lookup - NEON FP32 VERSION
+// Adapted from llama.cpp T-MAC FP16 NEON to use FP32
 //
 template <bool has_scale, int K, int Bits, int ActK, bool FastAggregation, bool ZeroPoint, bool OneScale>
 inline int32_t
@@ -393,23 +374,18 @@ tbl_g4_int8_float_update_impl_neon(
     const uint8x16_t vec_mask = vdupq_n_u8(0x0f);
     int8x16_t vec_lut[K];
 
-    // Load LUT tables
+    // Load LUT vectors
     PRAGMA_UNROLL
     for (int k = 0; k < K; k++) {
         vec_lut[k] = vld1q_s8(lut + k * 16);
     }
 
     SignedAdder<FastAggregation, ActK> adder_bot, adder_top;
-
+    
     for (int i = 0; i < m / 2; i += 16) {
-        float32x4_t vec_c0 = vdupq_n_f32(0.0f);
-        float32x4_t vec_c1 = vdupq_n_f32(0.0f);
-        float32x4_t vec_c2 = vdupq_n_f32(0.0f);
-        float32x4_t vec_c3 = vdupq_n_f32(0.0f);
-        float32x4_t vec_c4 = vdupq_n_f32(0.0f);
-        float32x4_t vec_c5 = vdupq_n_f32(0.0f);
-        float32x4_t vec_c6 = vdupq_n_f32(0.0f);
-        float32x4_t vec_c7 = vdupq_n_f32(0.0f);
+        // For FP32, we need 8 vectors of 4 floats each to cover 32 outputs
+        // (compared to FP16's 4 vectors of 8 floats)
+        float32x4_t vec_c0, vec_c1, vec_c2, vec_c3, vec_c4, vec_c5, vec_c6, vec_c7;
 
         float partial_sum = 0.0f;
 
@@ -417,36 +393,37 @@ tbl_g4_int8_float_update_impl_neon(
         for (int kk = 0; kk < K; kk += ActK) {
             PRAGMA_UNROLL
             for (int k = 0; k < ActK; k++) {
-                // Load packed 4-bit indices
+                // Load 16 packed bytes containing 32 4-bit indices
                 uint8x16_t vec_as = vld1q_u8(a + i * K + (kk + k) * 16);
+                uint8x16_t vec_a_top = vshrq_n_u8(vec_as, 4);
+                uint8x16_t vec_a_bot = vandq_u8(vec_as, vec_mask);
 
-                // Extract nibbles
-                uint8x16_t vec_a_bot = vandq_u8(vec_as, vec_mask);   // Lower 4 bits
-                uint8x16_t vec_a_top = vshrq_n_u8(vec_as, 4);        // Upper 4 bits
-
-                // TABLE LOOKUP - THE KEY OPERATION
-                int8x16_t vec_v_bot = vqtbl1q_s8(vec_lut[kk + k], vreinterpretq_u8_s8(vreinterpretq_s8_u8(vec_a_bot)));
-                int8x16_t vec_v_top = vqtbl1q_s8(vec_lut[kk + k], vreinterpretq_u8_s8(vreinterpretq_s8_u8(vec_a_top)));
-
-                adder_bot.push(vec_v_bot, k);
-                adder_top.push(vec_v_top, k);
+                // Table lookup - get int8 values from LUT
+                // Note: vqtbl1q_s8 takes uint8x16_t as index type
+                int8x16_t vec_v_bot_tmp = vqtbl1q_s8(vec_lut[kk + k], vec_a_bot);
+                int8x16_t vec_v_top_tmp = vqtbl1q_s8(vec_lut[kk + k], vec_a_top);
+                
+                // Accumulate using appropriate adder
+                adder_bot.push(vec_v_bot_tmp, k);
+                adder_top.push(vec_v_top_tmp, k);
             }
 
-            // Widen to int16
-            int16x8_t vec_v_bot_low = adder_bot.get_low();
-            int16x8_t vec_v_bot_high = adder_bot.get_high();
-            int16x8_t vec_v_top_low = adder_top.get_low();
-            int16x8_t vec_v_top_high = adder_top.get_high();
+            // Get accumulated int16 values
+            int16x8_t sum_bot_low = adder_bot.get_low();    // bot elements 0-7
+            int16x8_t sum_bot_high = adder_bot.get_high();  // bot elements 8-15
+            int16x8_t sum_top_low = adder_top.get_low();    // top elements 0-7
+            int16x8_t sum_top_high = adder_top.get_high();  // top elements 8-15
 
-            // Convert to float32 (need to widen int16 -> int32 -> float32)
-            float32x4_t vec_v_bot_low_low = vcvtq_f32_s32(vmovl_s16(vget_low_s16(vec_v_bot_low)));
-            float32x4_t vec_v_bot_low_high = vcvtq_f32_s32(vmovl_high_s16(vec_v_bot_low));
-            float32x4_t vec_v_bot_high_low = vcvtq_f32_s32(vmovl_s16(vget_low_s16(vec_v_bot_high)));
-            float32x4_t vec_v_bot_high_high = vcvtq_f32_s32(vmovl_high_s16(vec_v_bot_high));
-            float32x4_t vec_v_top_low_low = vcvtq_f32_s32(vmovl_s16(vget_low_s16(vec_v_top_low)));
-            float32x4_t vec_v_top_low_high = vcvtq_f32_s32(vmovl_high_s16(vec_v_top_low));
-            float32x4_t vec_v_top_high_low = vcvtq_f32_s32(vmovl_s16(vget_low_s16(vec_v_top_high)));
-            float32x4_t vec_v_top_high_high = vcvtq_f32_s32(vmovl_high_s16(vec_v_top_high));
+            // Convert to FP32 - each int16x8_t becomes two float32x4_t
+            // vec_v_*_lo = first 4 elements, vec_v_*_hi = last 4 elements
+            float32x4_t vec_v_bot_low_lo  = vcvtq_f32_s32(vmovl_s16(vget_low_s16(sum_bot_low)));
+            float32x4_t vec_v_bot_low_hi  = vcvtq_f32_s32(vmovl_high_s16(sum_bot_low));
+            float32x4_t vec_v_bot_high_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(sum_bot_high)));
+            float32x4_t vec_v_bot_high_hi = vcvtq_f32_s32(vmovl_high_s16(sum_bot_high));
+            float32x4_t vec_v_top_low_lo  = vcvtq_f32_s32(vmovl_s16(vget_low_s16(sum_top_low)));
+            float32x4_t vec_v_top_low_hi  = vcvtq_f32_s32(vmovl_high_s16(sum_top_low));
+            float32x4_t vec_v_top_high_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(sum_top_high)));
+            float32x4_t vec_v_top_high_hi = vcvtq_f32_s32(vmovl_high_s16(sum_top_high));
 
             float lut_s = lut_scales[kk / ActK];
             float lut_b = lut_biases[kk / ActK];
@@ -457,95 +434,188 @@ tbl_g4_int8_float_update_impl_neon(
 
             if (FastAggregation) {
                 lut_s = lut_s * ActK;
-                lut_b -= lut_s * (mylog2<ActK>::value / 4 * get_bias_scale<Bits>());
+                lut_b -= lut_s * (mylog2<ActK>::value / 4.0f * get_bias_scale<Bits>());
             }
 
-            // FMA operations with conditional bias
-#define lut_fma(vs, ib) \
-    (((ib) % Bits) ? vmulq_n_f32((vs), lut_s) : vmlaq_n_f32(vdupq_n_f32(lut_b), (vs), lut_s))
+            float32x4_t vec_lut_s = vdupq_n_f32(lut_s);
+            float32x4_t vec_lut_b = vdupq_n_f32(lut_b);
+
+            // lut_fma: ((ib % Bits) ? (v * lut_s) : (v * lut_s + lut_b))
+            // ib for each group:
+            // Group 0 (c0,c1): ib = i/4
+            // Group 1 (c2,c3): ib = i/4 + 1
+            // Group 2 (c4,c5): ib = i/4 + 2
+            // Group 3 (c6,c7): ib = i/4 + 3
+            
+            int ib0 = i / 4;
+            int ib1 = i / 4 + 1;
+            int ib2 = i / 4 + 2;
+            int ib3 = i / 4 + 3;
+
+#define LUT_FMA(vec_v, ib_val) \
+    (((ib_val) % Bits) ? vmulq_f32(vec_v, vec_lut_s) : vmlaq_f32(vec_lut_b, vec_v, vec_lut_s))
 
             if (kk == 0) {
-                vec_c0 = lut_fma(vec_v_bot_low_low, (i / 4));
-                vec_c1 = lut_fma(vec_v_bot_low_high, (i / 4 + 1));
-                vec_c2 = lut_fma(vec_v_bot_high_low, (i / 4 + 2));
-                vec_c3 = lut_fma(vec_v_bot_high_high, (i / 4 + 3));
-                vec_c4 = lut_fma(vec_v_top_low_low, (i / 4 + 4));
-                vec_c5 = lut_fma(vec_v_top_low_high, (i / 4 + 5));
-                vec_c6 = lut_fma(vec_v_top_high_low, (i / 4 + 6));
-                vec_c7 = lut_fma(vec_v_top_high_high, (i / 4 + 7));
+                vec_c0 = LUT_FMA(vec_v_bot_low_lo, ib0);
+                vec_c1 = LUT_FMA(vec_v_bot_low_hi, ib0);
+                vec_c2 = LUT_FMA(vec_v_bot_high_lo, ib1);
+                vec_c3 = LUT_FMA(vec_v_bot_high_hi, ib1);
+                vec_c4 = LUT_FMA(vec_v_top_low_lo, ib2);
+                vec_c5 = LUT_FMA(vec_v_top_low_hi, ib2);
+                vec_c6 = LUT_FMA(vec_v_top_high_lo, ib3);
+                vec_c7 = LUT_FMA(vec_v_top_high_hi, ib3);
             } else {
-                vec_c0 = vaddq_f32(vec_c0, lut_fma(vec_v_bot_low_low, (i / 4)));
-                vec_c1 = vaddq_f32(vec_c1, lut_fma(vec_v_bot_low_high, (i / 4 + 1)));
-                vec_c2 = vaddq_f32(vec_c2, lut_fma(vec_v_bot_high_low, (i / 4 + 2)));
-                vec_c3 = vaddq_f32(vec_c3, lut_fma(vec_v_bot_high_high, (i / 4 + 3)));
-                vec_c4 = vaddq_f32(vec_c4, lut_fma(vec_v_top_low_low, (i / 4 + 4)));
-                vec_c5 = vaddq_f32(vec_c5, lut_fma(vec_v_top_low_high, (i / 4 + 5)));
-                vec_c6 = vaddq_f32(vec_c6, lut_fma(vec_v_top_high_low, (i / 4 + 6)));
-                vec_c7 = vaddq_f32(vec_c7, lut_fma(vec_v_top_high_high, (i / 4 + 7)));
+                vec_c0 = vaddq_f32(vec_c0, LUT_FMA(vec_v_bot_low_lo, ib0));
+                vec_c1 = vaddq_f32(vec_c1, LUT_FMA(vec_v_bot_low_hi, ib0));
+                vec_c2 = vaddq_f32(vec_c2, LUT_FMA(vec_v_bot_high_lo, ib1));
+                vec_c3 = vaddq_f32(vec_c3, LUT_FMA(vec_v_bot_high_hi, ib1));
+                vec_c4 = vaddq_f32(vec_c4, LUT_FMA(vec_v_top_low_lo, ib2));
+                vec_c5 = vaddq_f32(vec_c5, LUT_FMA(vec_v_top_low_hi, ib2));
+                vec_c6 = vaddq_f32(vec_c6, LUT_FMA(vec_v_top_high_lo, ib3));
+                vec_c7 = vaddq_f32(vec_c7, LUT_FMA(vec_v_top_high_hi, ib3));
             }
-#undef lut_fma
+#undef LUT_FMA
         }
 
         // Apply weight scales and store
         if (ZeroPoint) {
-            float32x4_t vec_s0 = vld1q_f32(scales + ((i / 4) / Bits) * 16);
-            float32x4_t vec_s1 = vld1q_f32(scales + ((i / 4 + 1) / Bits) * 16);
-            float32x4_t vec_s2 = vld1q_f32(scales + ((i / 4 + 2) / Bits) * 16 + 4);
-            float32x4_t vec_s3 = vld1q_f32(scales + ((i / 4 + 3) / Bits) * 16 + 4);
-
-            vec_c0 = vfmaq_f32(vld1q_f32(c + i * 2), vec_c0, vec_s0);
-            vec_c1 = vfmaq_f32(vld1q_f32(c + i * 2 + 4), vec_c1, vec_s1);
-            vec_c2 = vfmaq_f32(vld1q_f32(c + i * 2 + 8), vec_c2, vec_s2);
-            vec_c3 = vfmaq_f32(vld1q_f32(c + i * 2 + 12), vec_c3, vec_s3);
-
-            float32x4_t vec_z0 = vld1q_f32(scales + ((i / 4) / Bits) * 16 + 8);
-            float32x4_t vec_z1 = vld1q_f32(scales + ((i / 4 + 1) / Bits) * 16 + 8);
-            float32x4_t vec_z2 = vld1q_f32(scales + ((i / 4 + 2) / Bits) * 16 + 12);
-            float32x4_t vec_z3 = vld1q_f32(scales + ((i / 4 + 3) / Bits) * 16 + 12);
-
             partial_sum *= 2;
+            float32x4_t vec_ps = vdupq_n_f32(partial_sum);
 
-#define add_zero(cs, zs, ib) \
-    (((ib) % Bits) ? (cs) : vfmaq_n_f32((cs), (zs), partial_sum))
+            // For ZeroPoint mode, scales are interleaved with zero points
+            // scales[base+0..7] = scales, scales[base+8..15] = zero_points
+            int base0 = ((i / 4) / Bits) * 16;
+            int base1 = ((i / 4 + 1) / Bits) * 16;
+            int base2 = ((i / 4 + 2) / Bits) * 16;
+            int base3 = ((i / 4 + 3) / Bits) * 16;
 
-            vst1q_f32(c + i * 2, add_zero(vec_c0, vec_z0, (i / 4)));
-            vst1q_f32(c + i * 2 + 4, add_zero(vec_c1, vec_z1, (i / 4 + 1)));
-            vst1q_f32(c + i * 2 + 8, add_zero(vec_c2, vec_z2, (i / 4 + 2)));
-            vst1q_f32(c + i * 2 + 12, add_zero(vec_c3, vec_z3, (i / 4 + 3)));
+            // Load scales (first 8 of each 16-element group)
+            float32x4_t s0_lo = vld1q_f32(scales + base0);
+            float32x4_t s0_hi = vld1q_f32(scales + base0 + 4);
+            float32x4_t s1_lo = vld1q_f32(scales + base1);
+            float32x4_t s1_hi = vld1q_f32(scales + base1 + 4);
+            float32x4_t s2_lo = vld1q_f32(scales + base2);
+            float32x4_t s2_hi = vld1q_f32(scales + base2 + 4);
+            float32x4_t s3_lo = vld1q_f32(scales + base3);
+            float32x4_t s3_hi = vld1q_f32(scales + base3 + 4);
+
+            // Load zero points (second 8 of each 16-element group)
+            float32x4_t z0_lo = vld1q_f32(scales + base0 + 8);
+            float32x4_t z0_hi = vld1q_f32(scales + base0 + 12);
+            float32x4_t z1_lo = vld1q_f32(scales + base1 + 8);
+            float32x4_t z1_hi = vld1q_f32(scales + base1 + 12);
+            float32x4_t z2_lo = vld1q_f32(scales + base2 + 8);
+            float32x4_t z2_hi = vld1q_f32(scales + base2 + 12);
+            float32x4_t z3_lo = vld1q_f32(scales + base3 + 8);
+            float32x4_t z3_hi = vld1q_f32(scales + base3 + 12);
+
+            // Load previous C values
+            float32x4_t prev0 = vld1q_f32(c + i * 2);
+            float32x4_t prev1 = vld1q_f32(c + i * 2 + 4);
+            float32x4_t prev2 = vld1q_f32(c + i * 2 + 8);
+            float32x4_t prev3 = vld1q_f32(c + i * 2 + 12);
+            float32x4_t prev4 = vld1q_f32(c + i * 2 + 16);
+            float32x4_t prev5 = vld1q_f32(c + i * 2 + 20);
+            float32x4_t prev6 = vld1q_f32(c + i * 2 + 24);
+            float32x4_t prev7 = vld1q_f32(c + i * 2 + 28);
+
+            // result = prev + acc * scale + (zero * partial_sum if ib % Bits == 0)
+            int ib0 = i / 4;
+            int ib1 = i / 4 + 1;
+            int ib2 = i / 4 + 2;
+            int ib3 = i / 4 + 3;
+
+            vec_c0 = vmlaq_f32(prev0, vec_c0, s0_lo);
+            vec_c1 = vmlaq_f32(prev1, vec_c1, s0_hi);
+            vec_c2 = vmlaq_f32(prev2, vec_c2, s1_lo);
+            vec_c3 = vmlaq_f32(prev3, vec_c3, s1_hi);
+            vec_c4 = vmlaq_f32(prev4, vec_c4, s2_lo);
+            vec_c5 = vmlaq_f32(prev5, vec_c5, s2_hi);
+            vec_c6 = vmlaq_f32(prev6, vec_c6, s3_lo);
+            vec_c7 = vmlaq_f32(prev7, vec_c7, s3_hi);
+
+            if ((ib0 % Bits) == 0) {
+                vec_c0 = vmlaq_f32(vec_c0, z0_lo, vec_ps);
+                vec_c1 = vmlaq_f32(vec_c1, z0_hi, vec_ps);
+            }
+            if ((ib1 % Bits) == 0) {
+                vec_c2 = vmlaq_f32(vec_c2, z1_lo, vec_ps);
+                vec_c3 = vmlaq_f32(vec_c3, z1_hi, vec_ps);
+            }
+            if ((ib2 % Bits) == 0) {
+                vec_c4 = vmlaq_f32(vec_c4, z2_lo, vec_ps);
+                vec_c5 = vmlaq_f32(vec_c5, z2_hi, vec_ps);
+            }
+            if ((ib3 % Bits) == 0) {
+                vec_c6 = vmlaq_f32(vec_c6, z3_lo, vec_ps);
+                vec_c7 = vmlaq_f32(vec_c7, z3_hi, vec_ps);
+            }
+
+            // Store results
+            vst1q_f32(c + i * 2, vec_c0);
+            vst1q_f32(c + i * 2 + 4, vec_c1);
+            vst1q_f32(c + i * 2 + 8, vec_c2);
+            vst1q_f32(c + i * 2 + 12, vec_c3);
             vst1q_f32(c + i * 2 + 16, vec_c4);
             vst1q_f32(c + i * 2 + 20, vec_c5);
             vst1q_f32(c + i * 2 + 24, vec_c6);
             vst1q_f32(c + i * 2 + 28, vec_c7);
-#undef add_zero
         } else if (OneScale) {
-            float single_scale = scales[0];
-            float32x4_t vec_s = vdupq_n_f32(single_scale);
+            float32x4_t vec_s = vdupq_n_f32(scales[0]);
 
-            vst1q_f32(c + i * 2, vfmaq_f32(vld1q_f32(c + i * 2), vec_c0, vec_s));
-            vst1q_f32(c + i * 2 + 4, vfmaq_f32(vld1q_f32(c + i * 2 + 4), vec_c1, vec_s));
-            vst1q_f32(c + i * 2 + 8, vfmaq_f32(vld1q_f32(c + i * 2 + 8), vec_c2, vec_s));
-            vst1q_f32(c + i * 2 + 12, vfmaq_f32(vld1q_f32(c + i * 2 + 12), vec_c3, vec_s));
-            vst1q_f32(c + i * 2 + 16, vfmaq_f32(vld1q_f32(c + i * 2 + 16), vec_c4, vec_s));
-            vst1q_f32(c + i * 2 + 20, vfmaq_f32(vld1q_f32(c + i * 2 + 20), vec_c5, vec_s));
-            vst1q_f32(c + i * 2 + 24, vfmaq_f32(vld1q_f32(c + i * 2 + 24), vec_c6, vec_s));
-            vst1q_f32(c + i * 2 + 28, vfmaq_f32(vld1q_f32(c + i * 2 + 28), vec_c7, vec_s));
+            vec_c0 = vaddq_f32(vld1q_f32(c + i * 2), vmulq_f32(vec_c0, vec_s));
+            vec_c1 = vaddq_f32(vld1q_f32(c + i * 2 + 4), vmulq_f32(vec_c1, vec_s));
+            vec_c2 = vaddq_f32(vld1q_f32(c + i * 2 + 8), vmulq_f32(vec_c2, vec_s));
+            vec_c3 = vaddq_f32(vld1q_f32(c + i * 2 + 12), vmulq_f32(vec_c3, vec_s));
+            vec_c4 = vaddq_f32(vld1q_f32(c + i * 2 + 16), vmulq_f32(vec_c4, vec_s));
+            vec_c5 = vaddq_f32(vld1q_f32(c + i * 2 + 20), vmulq_f32(vec_c5, vec_s));
+            vec_c6 = vaddq_f32(vld1q_f32(c + i * 2 + 24), vmulq_f32(vec_c6, vec_s));
+            vec_c7 = vaddq_f32(vld1q_f32(c + i * 2 + 28), vmulq_f32(vec_c7, vec_s));
+
+            vst1q_f32(c + i * 2, vec_c0);
+            vst1q_f32(c + i * 2 + 4, vec_c1);
+            vst1q_f32(c + i * 2 + 8, vec_c2);
+            vst1q_f32(c + i * 2 + 12, vec_c3);
+            vst1q_f32(c + i * 2 + 16, vec_c4);
+            vst1q_f32(c + i * 2 + 20, vec_c5);
+            vst1q_f32(c + i * 2 + 24, vec_c6);
+            vst1q_f32(c + i * 2 + 28, vec_c7);
         } else {
-            float32x4_t vec_s0 = vld1q_f32(scales + ((i / 4) / Bits) * 8);
-            float32x4_t vec_s1 = vld1q_f32(scales + ((i / 4 + 1) / Bits) * 8);
-            float32x4_t vec_s2 = vld1q_f32(scales + ((i / 4 + 2) / Bits) * 8 + 4);
-            float32x4_t vec_s3 = vld1q_f32(scales + ((i / 4 + 3) / Bits) * 8 + 4);
+            // Symmetric quantization without zero points
+            int base0 = ((i / 4) / Bits) * 8;
+            int base1 = ((i / 4 + 1) / Bits) * 8;
+            int base2 = ((i / 4 + 2) / Bits) * 8;
+            int base3 = ((i / 4 + 3) / Bits) * 8;
 
-            vst1q_f32(c + i * 2, vfmaq_f32(vld1q_f32(c + i * 2), vec_c0, vec_s0));
-            vst1q_f32(c + i * 2 + 4, vfmaq_f32(vld1q_f32(c + i * 2 + 4), vec_c1, vec_s1));
-            vst1q_f32(c + i * 2 + 8, vfmaq_f32(vld1q_f32(c + i * 2 + 8), vec_c2, vec_s2));
-            vst1q_f32(c + i * 2 + 12, vfmaq_f32(vld1q_f32(c + i * 2 + 12), vec_c3, vec_s3));
-            vst1q_f32(c + i * 2 + 16, vfmaq_f32(vld1q_f32(c + i * 2 + 16), vec_c4, vec_s0));
-            vst1q_f32(c + i * 2 + 20, vfmaq_f32(vld1q_f32(c + i * 2 + 20), vec_c5, vec_s1));
-            vst1q_f32(c + i * 2 + 24, vfmaq_f32(vld1q_f32(c + i * 2 + 24), vec_c6, vec_s2));
-            vst1q_f32(c + i * 2 + 28, vfmaq_f32(vld1q_f32(c + i * 2 + 28), vec_c7, vec_s3));
+            float32x4_t s0_lo = vld1q_f32(scales + base0);
+            float32x4_t s0_hi = vld1q_f32(scales + base0 + 4);
+            float32x4_t s1_lo = vld1q_f32(scales + base1);
+            float32x4_t s1_hi = vld1q_f32(scales + base1 + 4);
+            float32x4_t s2_lo = vld1q_f32(scales + base2);
+            float32x4_t s2_hi = vld1q_f32(scales + base2 + 4);
+            float32x4_t s3_lo = vld1q_f32(scales + base3);
+            float32x4_t s3_hi = vld1q_f32(scales + base3 + 4);
+
+            vec_c0 = vmlaq_f32(vld1q_f32(c + i * 2), vec_c0, s0_lo);
+            vec_c1 = vmlaq_f32(vld1q_f32(c + i * 2 + 4), vec_c1, s0_hi);
+            vec_c2 = vmlaq_f32(vld1q_f32(c + i * 2 + 8), vec_c2, s1_lo);
+            vec_c3 = vmlaq_f32(vld1q_f32(c + i * 2 + 12), vec_c3, s1_hi);
+            vec_c4 = vmlaq_f32(vld1q_f32(c + i * 2 + 16), vec_c4, s2_lo);
+            vec_c5 = vmlaq_f32(vld1q_f32(c + i * 2 + 20), vec_c5, s2_hi);
+            vec_c6 = vmlaq_f32(vld1q_f32(c + i * 2 + 24), vec_c6, s3_lo);
+            vec_c7 = vmlaq_f32(vld1q_f32(c + i * 2 + 28), vec_c7, s3_hi);
+
+            vst1q_f32(c + i * 2, vec_c0);
+            vst1q_f32(c + i * 2 + 4, vec_c1);
+            vst1q_f32(c + i * 2 + 8, vec_c2);
+            vst1q_f32(c + i * 2 + 12, vec_c3);
+            vst1q_f32(c + i * 2 + 16, vec_c4);
+            vst1q_f32(c + i * 2 + 20, vec_c5);
+            vst1q_f32(c + i * 2 + 24, vec_c6);
+            vst1q_f32(c + i * 2 + 28, vec_c7);
         }
     }
-
+    
     return 0;
 }
 
