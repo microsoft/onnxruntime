@@ -105,6 +105,19 @@ TEST_F(QnnABICPUBackendTests, MaxPool_Global) {
                 ExpectedEPNodeAssignment::All);
 }
 
+TEST_F(QnnABICPUBackendTests, MaxPool_Rank3) {
+  RunPoolOpTest("MaxPool",
+                TestInputDef<float>({1, 16, 120}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
+                {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
+                 utils::MakeAttribute("strides", std::vector<int64_t>{1}),
+                 utils::MakeAttribute("pads", std::vector<int64_t>{1, 1}),
+                 utils::MakeAttribute("dilations", std::vector<int64_t>{1}),
+                 utils::MakeAttribute("ceil_mode", static_cast<int64_t>(0)),
+                 utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+                 utils::MakeAttribute("auto_pad", "NOTSET")},
+                ExpectedEPNodeAssignment::All);
+}
+
 TEST_F(QnnABICPUBackendTests, MaxPool_Large_Input) {
   RunPoolOpTest("MaxPool",
                 TestInputDef<float>({1, 125, 8, 56}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
@@ -237,6 +250,23 @@ TEST_F(QnnABIHTPBackendTests, MaxPool1D_ReshapeNodesPresent) {
                      logging::Severity::kERROR,
                      true,
                      &check_num_nodes);
+}
+
+// 1-D MaxPool HTP test for rank-3 without ceil with padding 1
+TEST_F(QnnABIHTPBackendTests, MaxPool_Rank3_stride1_HTP_u8) {
+  RunQDQPoolOpTest<uint8_t>(
+      "MaxPool",
+      TestInputDef<float>({1, 3, 3}, false, -10.0f, 10.0f),
+      // A single 1-D kernel of length 3
+      {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
+       utils::MakeAttribute("strides", std::vector<int64_t>{1}),
+       // 1-D pad: only two values
+       utils::MakeAttribute("pads", std::vector<int64_t>{1, 1}),
+       utils::MakeAttribute("dilations", std::vector<int64_t>{1}),
+       utils::MakeAttribute("ceil_mode", static_cast<int64_t>(0)),
+       utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+       utils::MakeAttribute("auto_pad", "NOTSET")},
+      ExpectedEPNodeAssignment::All);
 }
 
 // 1-D MaxPool HTP test for rank-3 without ceil

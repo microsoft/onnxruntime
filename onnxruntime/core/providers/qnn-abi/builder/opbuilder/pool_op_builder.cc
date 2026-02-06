@@ -179,12 +179,11 @@ Ort::Status PoolOpBuilder::SetCommonPoolParams(const OrtNodeAttrHelper& node_hel
   }
 
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
+  if (output_shape.size() == 3) {
+    // Calculate rank-4 output shape for rank-3 input.
+    RETURN_IF_ERROR(AmendOutputShapeForRank3Pool(input_shape, filter_size, stride, pad_amount, output_shape));
+  }
   if (auto_pad.compare("NOTSET") != 0) {
-    if (output_shape.size() == 3) {
-      // Calculate rank-4 output shape for rank-3 input.
-      RETURN_IF_ERROR(AmendOutputShapeForRank3Pool(input_shape, filter_size, stride, pad_amount, output_shape));
-    }
-
     for (size_t axis = 0; axis < rank - 2; ++axis) {
       uint32_t total_pads = (output_shape[axis + 1] - 1) * stride[axis] +
                             (filter_size[axis] - 1) * dilations[axis] + 1 - input_shape[axis + 1];
@@ -197,7 +196,6 @@ Ort::Status PoolOpBuilder::SetCommonPoolParams(const OrtNodeAttrHelper& node_hel
       }
     }
   }
-  ReArrangePads(pad_amount);
 
   // Param: rounding_mode.
   rounding_mode = node_helper.Get("ceil_mode", rounding_mode);
@@ -381,10 +379,12 @@ Ort::Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
                              param_tensor_names,
                              qnn_model_wrapper),
                 "Failed to add param stride.");
+  std::vector<uint32_t> pad_amount_qnn = pad_amount;
+  ReArrangePads(pad_amount_qnn);
   RETURN_IF_NOT(SetPoolParam(node_unit,
                              param_pad_amount,
                              std::move(pad_amount_dim),
-                             std::move(pad_amount),
+                             std::move(pad_amount_qnn),  // QNN expects pads in [begin, end] order.
                              param_tensor_names,
                              qnn_model_wrapper),
                 "Failed to add param pad_amount.");
@@ -425,6 +425,7 @@ Ort::Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
                   "Failed to add param count_include_pad.");
   }
 
+  // exit for common rank-4 pool processing.
   if (!needs_reshape) {
     RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper,
                                    node_unit,
@@ -443,6 +444,7 @@ Ort::Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   if (onnx_in_shape.size() == 3) {
     onnx_in_shape = {onnx_in_shape[0], 1, onnx_in_shape[1], onnx_in_shape[2]};
   }
+
   std::vector<uint32_t> pooled_shape;
   RETURN_IF_ERROR(AmendOutputShapeForRank3Pool(onnx_in_shape, filter_size, stride, pad_amount, pooled_shape));
 
