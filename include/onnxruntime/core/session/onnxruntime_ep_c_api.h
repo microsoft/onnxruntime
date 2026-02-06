@@ -2115,8 +2115,8 @@ struct OrtEpFactory {
    * synchronization streams via CreateSyncStreamForDevice. This approach (suggested by
    * Scott McKay) is more graceful than passing the command queue directly during stream creation.
    *
-   * For CUDA-based EPs (like NvTensorRTRTX), this sets up CUDA Interop Graphics (CIG) context
-   * using cuCtxCreate_v4 or equivalent APIs.
+   * The implementation is EP-specific. EPs may create a specialized interop context using
+   * platform-specific APIs to enable GPU-GPU synchronization.
    *
    * Key design points:
    * - Single init function with all required params (avoids multiple init signatures)

@@ -7313,9 +7313,9 @@ struct OrtApi {
 
   /** \brief Initialize graphics interop for an execution provider device.
    *
-   * This function enables D3D12/Vulkan interoperability by creating a CIG (CUDA Interop Graphics) context
+   * This function enables D3D12/Vulkan interoperability by creating a graphics interop context
    * bound to the provided graphics command queue. Once initialized, any OrtSyncStream created for this
-   * ep_device via CreateSyncStreamForEpDevice will be created on the CIG context, enabling efficient
+   * ep_device via CreateSyncStreamForEpDevice will be created on the interop context, enabling efficient
    * GPU-side synchronization between ONNX Runtime inference and graphics workloads.
    *
    * This must be called BEFORE CreateSyncStreamForEpDevice for the same ep_device.
@@ -7332,7 +7332,7 @@ struct OrtApi {
 
   /** \brief Deinitialize graphics interop for an execution provider device.
    *
-   * This function cleans up the CIG context that was created by InitGraphicsInteropForEpDevice.
+   * This function cleans up the graphics interop context that was created by InitGraphicsInteropForEpDevice.
    * Should be called when graphics interop is no longer needed for the ep_device.
    *
    * \param[in] ep_device The OrtEpDevice to deinitialize graphics interop for.
