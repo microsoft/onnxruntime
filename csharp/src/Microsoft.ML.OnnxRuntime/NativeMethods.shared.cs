@@ -903,18 +903,14 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (libraryName == NativeLib.DllName)
             {
-                // Map to platform-specific library name
-                string mappedName = libraryName;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    mappedName = "libonnxruntime.so";
-                }
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                {
-                    mappedName = "libonnxruntime.dylib";
+                    return IntPtr.Zero;
                 }
 
-                if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
+                // On Linux/macOS, .NET's NativeLibrary.TryLoad works best with the simple library name
+                // to find assets in the runtimes folder of a NuGet package.
+                if (NativeLibrary.TryLoad("onnxruntime", assembly, searchPath, out IntPtr handle))
                 {
                     return handle;
                 }
