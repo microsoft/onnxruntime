@@ -19,6 +19,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_arm64_cpu
+  displayName: 'Whether Windows ARM64 CPU package is built.'
+  type: boolean
+  default: true
+
 - name: enable_windows_arm64_qnn
   displayName: 'Whether Windows ARM64 package with QNN EP is built.'
   type: boolean
@@ -103,6 +108,7 @@ extends:
         enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
         enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
         enable_linux_arm: ${{ parameters.enable_linux_arm }}
+        enable_windows_arm64_cpu: ${{ parameters.enable_windows_arm64_cpu }}
         enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
         enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
         enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
