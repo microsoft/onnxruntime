@@ -54,6 +54,12 @@ _mm256_addv_ps(const __m256 v)
 #define extract_low_epi16_epi32(v) _mm256_cvtepi16_epi32(_mm256_castsi256_si128(v))
 #define extract_high_epi16_epi32(v) _mm256_cvtepi16_epi32(_mm256_extracti128_si256(v, 1))
 
+namespace lutgemm_avx2
+{
+
+namespace
+{
+
 // Template classes for accumulation
 template <int N>
 struct SignedHalvingAdder {
@@ -354,9 +360,11 @@ lut_ctor_g4_int8_impl(
     *lut_biases = biases;
 }
 
-// based on lut_ctor_g4_int8_impl
+}  // namespace
+
+// LutGemmGenerateLUT_CompFp32 - Entry point for LUT generation
 void
-GenerateLUT_avx2(
+LutGemmGenerateLUT_CompFp32(
     const float* b,
     int8_t* qlut,
     float* lut_scales,
@@ -553,10 +561,9 @@ tbl_g4_int8_float_update_impl(int32_t m, float* c, const int8_t* lut, const uint
     return 0;
 }
 
-// based on qgemm_lut_int8_g4
-// Simplified version with hardcoded configuration for 2-bit quantization
+// LutGemmCompute_CompFp32 - Entry point for GEMM computation
 void
-TMACComputeGemm_avx2(
+LutGemmCompute_CompFp32(
     const uint8_t* A,         // Quantized packed weights
     const float* Scales,      // Weight scales (and optionally zero-points)
     const int8_t* LUT,        // Pre-computed quantized lookup table
@@ -717,11 +724,11 @@ TMACComputeGemm_avx2(
 }
 
 //
-// AVX2 optimized weight packing for T-MAC LUT GEMM
+// LutGemmPackQuantBData_CompFp32 - AVX2 optimized weight packing for T-MAC LUT GEMM
 // This performs the same transformation as the scalar version but uses SIMD operations
 //
 void
-PackQuantBData_avx2(
+LutGemmPackQuantBData_CompFp32(
     size_t N,
     size_t K,
     size_t bits,
@@ -930,12 +937,11 @@ PackQuantBData_avx2(
 }
 
 //
-// AVX2 optimized scales and zero points packing for T-MAC LUT GEMM
-// This performs the same transformation as the scalar version but uses SIMD operations
+// LutGemmPackScalesAndZeroPoints_CompFp32 - Scales and zero points packing
 //
 template <bool HasZeroPoint>
-static void
-PackScalesAndZeroPoints_avx2_impl(
+void
+LutGemmPackScalesAndZeroPoints_CompFp32_Impl(
     size_t N,
     size_t K,
     size_t bits,
@@ -1050,7 +1056,7 @@ PackScalesAndZeroPoints_avx2_impl(
 }
 
 void
-PackScalesAndZeroPoints_avx2(
+LutGemmPackScalesAndZeroPoints_CompFp32(
     size_t N,
     size_t K,
     size_t bits,
@@ -1068,25 +1074,27 @@ PackScalesAndZeroPoints_avx2(
     assert(bits == 2);
 
     if (HasZeroPoint) {
-        PackScalesAndZeroPoints_avx2_impl<true>(
+        LutGemmPackScalesAndZeroPoints_CompFp32_Impl<true>(
             N, K, bits, BlkLen, simd_n_out, bm,
             PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
         );
     } else {
-        PackScalesAndZeroPoints_avx2_impl<false>(
+        LutGemmPackScalesAndZeroPoints_CompFp32_Impl<false>(
             N, K, bits, BlkLen, simd_n_out, bm,
             PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
         );
     }
 }
 
+}  // namespace lutgemm_avx2
+
 // Kernel dispatch structure definition.
 
-const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2 = []() {
+const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGemmDispatchAvx2 = []() {
     MLAS_QNBIT_LUT_GEMM_DISPATCH d;
-    d.GenerateLUT = GenerateLUT_avx2;
-    d.ComputeGemm = TMACComputeGemm_avx2;
-    d.PackQuantBData = PackQuantBData_avx2;
-    d.PackScalesAndZeroPoints = PackScalesAndZeroPoints_avx2;
+    d.GenerateLUT = lutgemm_avx2::LutGemmGenerateLUT_CompFp32;
+    d.ComputeGemm = lutgemm_avx2::LutGemmCompute_CompFp32;
+    d.PackQuantBData = lutgemm_avx2::LutGemmPackQuantBData_CompFp32;
+    d.PackScalesAndZeroPoints = lutgemm_avx2::LutGemmPackScalesAndZeroPoints_CompFp32;
     return d;
 }();

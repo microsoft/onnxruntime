@@ -46,6 +46,12 @@ Abstract:
 #define PRAGMA_UNROLL
 #endif
 
+namespace lutgemm_neon
+{
+
+namespace
+{
+
 //
 // Template classes for accumulation - adapted from llama.cpp tbl.cpp
 //
@@ -282,11 +288,13 @@ lut_ctor_g4_int8_impl_neon(
     *lut_biases = biases;
 }
 
+}  // namespace
+
 //
-// GenerateLUT - Entry point for LUT generation
+// LutGemmGenerateLUT_CompFp32 - Entry point for LUT generation
 //
-static void
-GenerateLUT_neon(
+void
+LutGemmGenerateLUT_CompFp32(
     const float* b,
     int8_t* qlut,
     float* lut_scales,
@@ -620,10 +628,10 @@ tbl_g4_int8_float_update_impl_neon(
 }
 
 //
-// TMACComputeGemm - Entry point for GEMM computation
+// LutGemmCompute_CompFp32 - Entry point for GEMM computation
 //
-static void
-TMACComputeGemm_neon(
+void
+LutGemmCompute_CompFp32(
     const uint8_t* A,
     const float* Scales,
     const int8_t* LUT,
@@ -756,11 +764,11 @@ TMACComputeGemm_neon(
 }
 
 //
-// Weight packing for NEON (can use scalar or NEON implementation)
+// LutGemmPackQuantBData_CompFp32 - Weight packing for NEON
 // This is done during model load, so performance is less critical
 //
-static void
-PackQuantBData_neon(
+void
+LutGemmPackQuantBData_CompFp32(
     size_t N,
     size_t K,
     size_t bits,
@@ -917,11 +925,11 @@ PackQuantBData_neon(
 }
 
 //
-// Scales and zero points packing
+// LutGemmPackScalesAndZeroPoints_CompFp32 - Scales and zero points packing
 //
 template <bool HasZeroPoint>
-static void
-PackScalesAndZeroPoints_neon_impl(
+void
+LutGemmPackScalesAndZeroPoints_CompFp32_Impl(
     size_t N,
     size_t K,
     size_t bits,
@@ -991,8 +999,8 @@ PackScalesAndZeroPoints_neon_impl(
     );
 }
 
-static void
-PackScalesAndZeroPoints_neon(
+void
+LutGemmPackScalesAndZeroPoints_CompFp32(
     size_t N,
     size_t K,
     size_t bits,
@@ -1009,27 +1017,29 @@ PackScalesAndZeroPoints_neon(
     assert(bits == 2);
 
     if (HasZeroPoint) {
-        PackScalesAndZeroPoints_neon_impl<true>(
+        LutGemmPackScalesAndZeroPoints_CompFp32_Impl<true>(
             N, K, bits, BlkLen, simd_n_out, bm,
             PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
         );
     } else {
-        PackScalesAndZeroPoints_neon_impl<false>(
+        LutGemmPackScalesAndZeroPoints_CompFp32_Impl<false>(
             N, K, bits, BlkLen, simd_n_out, bm,
             PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
         );
     }
 }
 
+}  // namespace lutgemm_neon
+
 //
 // Kernel dispatch structure definition
 //
-const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelNeon = []() {
+const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGemmDispatchNeon = []() {
     MLAS_QNBIT_LUT_GEMM_DISPATCH d;
-    d.GenerateLUT = GenerateLUT_neon;
-    d.ComputeGemm = TMACComputeGemm_neon;
-    d.PackQuantBData = PackQuantBData_neon;
-    d.PackScalesAndZeroPoints = PackScalesAndZeroPoints_neon;
+    d.GenerateLUT = lutgemm_neon::LutGemmGenerateLUT_CompFp32;
+    d.ComputeGemm = lutgemm_neon::LutGemmCompute_CompFp32;
+    d.PackQuantBData = lutgemm_neon::LutGemmPackQuantBData_CompFp32;
+    d.PackScalesAndZeroPoints = lutgemm_neon::LutGemmPackScalesAndZeroPoints_CompFp32;
     return d;
 }();
 

@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    test_sqlutgemm.cpp
+    test_lutgemm.cpp
 
 Abstract:
 
-    Tests for MLAS LUT-based n-bit GEMM (TMAC/LUT path) for 2-bit..
+    Tests for MLAS LUT-based n-bit GEMM (TMAC/LUT path) for 2-bit.
 
 --*/
 
@@ -20,7 +20,7 @@ Abstract:
 
 // Generic template to future-proof for different bit widths; instantiate with 2 for now.
 template <size_t BlkBitWidth, size_t BlkLen>
-class MlasSQLutGemmTest : public MlasTestBase {
+class MlasLutGemmTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> BufferA;
   MatrixGuardBuffer<float> BufferB;
@@ -145,7 +145,7 @@ class MlasSQLutGemmTest : public MlasTestBase {
 
  public:
   static const char* GetTestSuiteName() {
-    static std::string suite_name = std::string("SQLutGemm") +
+    static std::string suite_name = std::string("LutGemm") +
                                     "BlkBitWidth" + std::to_string(BlkBitWidth) +
                                     "BlkLen" + std::to_string(BlkLen);
     return suite_name.c_str();
@@ -154,10 +154,10 @@ class MlasSQLutGemmTest : public MlasTestBase {
 
 // Fixture to register parameterized tests quickly
 template <size_t BlkBitWidth, size_t BlkLen>
-class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBitWidth, BlkLen>> {
+class LutGemmShortExecuteTest : public MlasTestFixture<MlasLutGemmTest<BlkBitWidth, BlkLen>> {
  public:
-  explicit SQLutGemmShortExecuteTest(size_t M, size_t N, size_t K,
-                                     bool WithThreadpool, bool Symmetric)
+  explicit LutGemmShortExecuteTest(size_t M, size_t N, size_t K,
+                                   bool WithThreadpool, bool Symmetric)
       : M_(M),
         N_(N),
         K_(K),
@@ -166,7 +166,7 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
   }
 
   void TestBody() override {
-    MlasTestFixture<MlasSQLutGemmTest<BlkBitWidth, BlkLen>>::mlas_tester->Test(
+    MlasTestFixture<MlasLutGemmTest<BlkBitWidth, BlkLen>>::mlas_tester->Test(
         M_, N_, K_, WithThreadpool_, Symmetric_);
   }
 
@@ -187,15 +187,15 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasSQLutGemmTest<BlkBitWidth, BlkLen>::GetTestSuiteName(),
+        MlasLutGemmTest<BlkBitWidth, BlkLen>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasSQLutGemmTest<BlkBitWidth, BlkLen>>* {
-          return new SQLutGemmShortExecuteTest<BlkBitWidth, BlkLen>(
+        [=]() -> MlasTestFixture<MlasLutGemmTest<BlkBitWidth, BlkLen>>* {
+          return new LutGemmShortExecuteTest<BlkBitWidth, BlkLen>(
               M, N, K, WithThreadpool, Symmetric);
         });
 
@@ -225,19 +225,19 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
   bool WithThreadpool_, Symmetric_;
 };
 
-static size_t SQLutGemmRegisterAllShortExecuteTests() {
+static size_t LutGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
-  count += SQLutGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
-  count += SQLutGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
-  count += SQLutGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
-  count += SQLutGemmShortExecuteTest<2, 256>::RegisterShortExecuteTests();
+  count += LutGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
+  count += LutGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
+  count += LutGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
+  count += LutGemmShortExecuteTest<2, 256>::RegisterShortExecuteTests();
   return count;
 }
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister(
     [](bool is_short_execute) -> size_t {
       if (is_short_execute) {
-        return SQLutGemmRegisterAllShortExecuteTests();
+        return LutGemmRegisterAllShortExecuteTests();
       }
       return 0;
     });

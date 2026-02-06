@@ -214,7 +214,7 @@ LutGemmPackQuantBData(
     const size_t kfactor = tmac_params.kfactor;
 
     // LUT GEMM requires a valid LUT dispatch implementation, so dispatch must be available
-    const auto* Dispatch = GetMlasPlatform().LutGenKernel;
+    const auto* Dispatch = GetMlasPlatform().LutGemmDispatch;
     if (Dispatch == nullptr || Dispatch->PackQuantBData == nullptr) {
         MLAS_THROW_EX(std::runtime_error, "PackQuantBData requires LUT GEMM dispatch support");
     }
@@ -263,9 +263,9 @@ LutPackScalesAndZeroPoints(
     const size_t bm = tmac_params.bm;
 
     // LUT GEMM is only available for AVX2, so dispatch must be available
-    const auto* Dispatch = GetMlasPlatform().LutGenKernel;
+    const auto* Dispatch = GetMlasPlatform().LutGemmDispatch;
     if (Dispatch == nullptr || Dispatch->PackScalesAndZeroPoints == nullptr) {
-        MLAS_THROW_EX(std::runtime_error, "PackScalesAndZeroPoints requires AVX2 dispatch");
+        MLAS_THROW_EX(std::runtime_error, "PackScalesAndZeroPoints requires LUT GEMM dispatch support");
     }
 
     Dispatch->PackScalesAndZeroPoints(
@@ -343,7 +343,7 @@ MlasIsLutGemmAvailable(
     size_t BlkLen
 )
 {
-    const auto* lut_kernel = GetMlasPlatform().LutGenKernel;
+    const auto* lut_kernel = GetMlasPlatform().LutGemmDispatch;
     if (lut_kernel == nullptr ||
         lut_kernel->GenerateLUT == nullptr ||
         lut_kernel->ComputeGemm == nullptr ||
@@ -414,7 +414,7 @@ MlasLutGemm(
 )
 {
     // adapted from ggml_backend_tmac_mul_mat
-    const auto* Dispatch = GetMlasPlatform().LutGenKernel;
+    const auto* Dispatch = GetMlasPlatform().LutGemmDispatch;
     // This should be ensured by calling MlasIsLutGemmAvailable() before MlasLutGemm()
     if (Dispatch == nullptr || Dispatch->GenerateLUT == nullptr || Dispatch->ComputeGemm == nullptr) {
         MLAS_THROW_EX(std::runtime_error, "TMAC not supported in this configuration");

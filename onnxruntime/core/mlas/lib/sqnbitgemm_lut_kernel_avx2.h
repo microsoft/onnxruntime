@@ -23,4 +23,4 @@ Abstract:
 // External dispatch table for AVX2 LUT GEMM kernels.
 // Kernel functions are internal to the .cpp file and accessed via this dispatch.
 //
-extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2;
+extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGemmDispatchAvx2;
