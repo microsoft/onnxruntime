@@ -815,4 +815,9 @@ ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtVal
                     _Out_ ONNXTensorElementDataType* elem_type,
                     _Outptr_result_maybenull_ const int64_t** shape_data,
                     _Out_ size_t* shape_data_count);
+
+// Graphics interop
+ORT_API_STATUS_IMPL(InitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_ const OrtGraphicsInteropConfig* config);
+ORT_API_STATUS_IMPL(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 }  // namespace OrtApis

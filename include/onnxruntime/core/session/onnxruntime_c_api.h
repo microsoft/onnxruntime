@@ -1020,6 +1020,74 @@ typedef struct OrtExternalSemaphoreDescriptor {
   void* native_handle;           /**< Platform-specific handle (e.g., Windows HANDLE) */
 } OrtExternalSemaphoreDescriptor;
 
+/** \brief Graphics API type for interop configuration.
+ *
+ * Specifies the graphics API used for GPU interop with the execution provider.
+ * This enables synchronization between graphics workloads (e.g., rendering, compute shaders)
+ * and ONNX Runtime inference.
+ *
+ * \since Version 1.25.
+ */
+typedef enum OrtGraphicsApi {
+  ORT_GRAPHICS_API_NONE = 0,   /**< No graphics interop (default) */
+  ORT_GRAPHICS_API_D3D12 = 1,  /**< Direct3D 12 interop */
+  ORT_GRAPHICS_API_VULKAN = 2, /**< Vulkan interop */
+} OrtGraphicsApi;
+
+/** \brief Configuration for initializing graphics interop on an EP factory.
+ *
+ * This structure contains all parameters needed to set up graphics interop between
+ * ONNX Runtime and an external graphics API (D3D12, Vulkan). The factory stores this
+ * configuration and uses it when creating synchronization streams.
+ *
+ * Design rationale (following Scott McKay's suggestions):
+ * - Single init function with all required params to avoid multiple init signatures
+ * - Factory stores the context and uses it in stream creation
+ * - Supports extensibility via additional_options for future requirements
+ *
+ * Example usage for D3D12:
+ * \code
+ *   OrtGraphicsInteropConfig config = {0};
+ *   config.version = ORT_API_VERSION;
+ *   config.graphics_api = ORT_GRAPHICS_API_D3D12;
+ *   config.command_queue = my_d3d12_command_queue;  // ID3D12CommandQueue*
+ *   config.device = my_d3d12_device;                // ID3D12Device* (optional)
+ *   status = ep_factory->InitGraphicsInterop(ep_factory, ep_device, &config);
+ * \endcode
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ *       This ensures forward compatibility as fields may be added in future versions.
+ *
+ * \since Version 1.25.
+ */
+typedef struct OrtGraphicsInteropConfig {
+  uint32_t version;          /**< Must be ORT_API_VERSION */
+  OrtGraphicsApi graphics_api; /**< The graphics API to use for interop */
+
+  /** \brief Command queue/submission queue for graphics workloads.
+   *
+   * For D3D12: ID3D12CommandQueue*
+   * For Vulkan: VkQueue (cast to void*)
+   *
+   * The factory stores this and uses it for synchronization with inference streams.
+   */
+  void* command_queue;
+
+  /** \brief Graphics device handle (optional, may be inferred from command_queue).
+   *
+   * For D3D12: ID3D12Device* (optional, can be obtained from command queue)
+   * For Vulkan: VkDevice (cast to void*)
+   */
+  void* device;
+
+  /** \brief Additional API-specific options (optional).
+   *
+   * Can be used for future extensibility without changing the struct layout.
+   * For example, Vulkan-specific queue family index, or D3D12 fence sharing flags.
+   */
+  const OrtKeyValuePairs* additional_options;
+} OrtGraphicsInteropConfig;
+
 /** \brief Descriptor for creating a tensor from imported external memory.
  *
  * \note The version field must be set to ORT_API_VERSION.
@@ -7242,6 +7310,38 @@ struct OrtApi {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
+
+  /** \brief Initialize graphics interop for an execution provider device.
+   *
+   * This function enables D3D12/Vulkan interoperability by creating a CIG (CUDA Interop Graphics) context
+   * bound to the provided graphics command queue. Once initialized, any OrtSyncStream created for this
+   * ep_device via CreateSyncStreamForEpDevice will be created on the CIG context, enabling efficient
+   * GPU-side synchronization between ONNX Runtime inference and graphics workloads.
+   *
+   * This must be called BEFORE CreateSyncStreamForEpDevice for the same ep_device.
+   *
+   * \param[in] ep_device The OrtEpDevice to initialize graphics interop for.
+   * \param[in] config Configuration specifying the graphics API (D3D12/Vulkan) and required handles.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(InitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device,
+                  _In_ const OrtGraphicsInteropConfig* config);
+
+  /** \brief Deinitialize graphics interop for an execution provider device.
+   *
+   * This function cleans up the CIG context that was created by InitGraphicsInteropForEpDevice.
+   * Should be called when graphics interop is no longer needed for the ep_device.
+   *
+   * \param[in] ep_device The OrtEpDevice to deinitialize graphics interop for.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 };
 
 /*

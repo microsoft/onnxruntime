@@ -3837,6 +3837,47 @@ ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* ort_str
   std::unique_ptr<plugin_ep::Stream> ep_stream(reinterpret_cast<plugin_ep::Stream*>(stream));
 }
 
+ORT_API_STATUS_IMPL(OrtApis::InitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_ const OrtGraphicsInteropConfig* config) {
+  API_IMPL_BEGIN
+  if (ep_device == nullptr || config == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and config must be provided.");
+  }
+
+  auto* factory = ep_device->ep_factory;
+  if (factory == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not have an associated factory.");
+  }
+
+  if (factory->InitGraphicsInterop == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support graphics interop.");
+  }
+
+  return factory->InitGraphicsInterop(ep_device->GetMutableFactory(), ep_device, config);
+
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device) {
+  API_IMPL_BEGIN
+  if (ep_device == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device must be provided.");
+  }
+
+  auto* factory = ep_device->ep_factory;
+  if (factory == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not have an associated factory.");
+  }
+
+  if (factory->DeinitGraphicsInterop == nullptr) {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support graphics interop.");
+  }
+
+  return factory->DeinitGraphicsInterop(ep_device->GetMutableFactory(), ep_device);
+
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
                     _In_reads_(num_tensors) const OrtValue* const* src_tensors,
                     _In_reads_(num_tensors) OrtValue* const* dst_tensors,
@@ -4135,6 +4176,19 @@ ORT_API(void*, OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* /*stream*/) {
 
 ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* /*ort_stream*/) {
   fprintf(stderr, "OrtSyncStream is not supported in a minimal build.\n");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::InitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* /*ep_device*/,
+                    _In_ const OrtGraphicsInteropConfig* /*config*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "InitGraphicsInteropForEpDevice is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* /*ep_device*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "DeinitGraphicsInteropForEpDevice is not supported in a minimal build.");
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
@@ -4807,6 +4861,8 @@ static constexpr OrtApi ort_api_1_to_25 = {
 
     &OrtApis::RunOptionsEnableProfiling,
     &OrtApis::RunOptionsDisableProfiling,
+    &OrtApis::InitGraphicsInteropForEpDevice,
+    &OrtApis::DeinitGraphicsInteropForEpDevice,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
