@@ -13,7 +13,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-from build_settings_utils import parse_build_settings_file, get_sysroot_arch_pairs, get_build_params
+from build_settings_utils import get_build_params, get_sysroot_arch_pairs, parse_build_settings_file
 
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
 REPO_DIR = SCRIPT_DIR.parents[3]
@@ -287,8 +287,17 @@ def parse_args():
         action="store_true",
         help="Only assemble the xcframework (and intermediate fat frameworks) from the sysroot/arch frameworks. "
         "This mode requires the necessary sysroot/arch frameworks to already be present in the build directory, "
-        "as if this script were previously invoked with one of `--only_build_single_sysroot_arch_framework` or "
-        "`--only_build_sysroot_arch_framework_by_partition` and the same `--build_dir` value.",
+        "as if this script were previously invoked with `--only_build_single_sysroot_arch_framework` and the same "
+        "`--build_dir` value.",
+    )
+
+    parser.add_argument(
+        "--record_sysroot_arch_framework_build_outputs_to_file",
+        type=pathlib.Path,
+        help="Write the sysroot/arch framework build outputs to the specified file. "
+        "This option is only valid when `--only_build_single_sysroot_arch_framework` is specified. "
+        "These output files are the files that should be preserved between split-build invocations with "
+        "`--only_build_single_sysroot_arch_framework` and `--only_assemble_xcframework`.",
     )
 
     args = parser.parse_args()
@@ -300,6 +309,15 @@ def parse_args():
         include_ops_by_config_file = args.include_ops_by_config.resolve()
         if not include_ops_by_config_file.is_file():
             raise FileNotFoundError(f"Include ops config file {include_ops_by_config_file} is not a file.")
+
+    if (
+        args.record_sysroot_arch_framework_build_outputs_to_file is not None
+        and args.only_build_single_sysroot_arch_framework is None
+    ):
+        raise ValueError(
+            "--record_sysroot_arch_framework_build_outputs_to_file is only valid if "
+            "--only_build_single_sysroot_arch_framework is specified"
+        )
 
     return args
 
@@ -341,21 +359,31 @@ def main():
         if args.path_to_protoc_exe is not None:
             build_command_trailing_args += [f"--path_to_protoc_exe={args.path_to_protoc_exe.resolve()}"]
 
+        built_sysroot_arch_framework_infos: list[SysrootArchFrameworkInfo] = []
+
         for sysroot, arch in sysroot_arch_pairs_to_build:
             infos_for_sysroot = sysroot_to_sysroot_arch_framework_infos.setdefault(sysroot, [])
-            base_build_command = (
-                [sys.executable, BUILD_PY]
-                + get_build_params(build_settings, "base")
-                + get_build_params(build_settings, sysroot)
-                + build_command_trailing_args
-            )
+            base_build_command = [
+                sys.executable,
+                BUILD_PY,
+                *get_build_params(build_settings, "base"),
+                *get_build_params(build_settings, sysroot),
+                *build_command_trailing_args,
+            ]
 
             info = _find_or_build_sysroot_arch_framework(
                 build_config, intermediates_dir, base_build_command, sysroot, arch, args.build_dynamic_framework
             )
             infos_for_sysroot.append(info)
+            built_sysroot_arch_framework_infos.append(info)
 
             print(f"Built sysroot/arch framework for {sysroot}/{arch}: {info.framework_dir}")
+
+        if args.record_sysroot_arch_framework_build_outputs_to_file is not None:
+            with open(args.record_sysroot_arch_framework_build_outputs_to_file, mode="w") as build_outputs_file:
+                for info in built_sysroot_arch_framework_infos:
+                    print(info.framework_dir, info.framework_info_file, info.info_plist_file,
+                          file=build_outputs_file, sep="\n")
 
     else:
         # do not build sysroot/arch frameworks, but look for existing ones
