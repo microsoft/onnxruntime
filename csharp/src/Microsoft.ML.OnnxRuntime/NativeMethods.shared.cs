@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using static Microsoft.ML.OnnxRuntime.NativeMethods;
 
@@ -474,6 +475,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         static NativeMethods()
         {
+#if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
+            // Register a custom DllImportResolver to handle platform-specific library names.
+            // On Linux, map onnxruntime.dll -> libonnxruntime.so
+            // On macOS, map onnxruntime.dll -> libonnxruntime.dylib
+            NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, DllImportResolver);
+#endif
+
 #if NETSTANDARD2_0
             IntPtr ortApiBasePtr = OrtGetApiBase();
             OrtApiBase ortApiBase = (OrtApiBase)Marshal.PtrToStructure(ortApiBasePtr, typeof(OrtApiBase));
@@ -847,7 +855,7 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.CreateSyncStreamForEpDevice,
                     typeof(DOrtCreateSyncStreamForEpDevice));
 
-            OrtSyncStream_GetHandle = 
+            OrtSyncStream_GetHandle =
                 (DOrtSyncStream_GetHandle)Marshal.GetDelegateForFunctionPointer(
                     api_.SyncStream_GetHandle,
                     typeof(DOrtSyncStream_GetHandle));
@@ -871,11 +879,51 @@ namespace Microsoft.ML.OnnxRuntime
 #elif __IOS__
             // Define the library name required for iOS
             internal const string DllName = "__Internal";
+#elif NETSTANDARD2_0
+            // For .NET Standard 2.0, use the library name without extension
+            // to allow .NET's automatic platform-specific resolution.
+            // Note: This may have issues on case-sensitive Windows filesystems
+            // where LoadLibrary appends ".DLL" (uppercase).
+            internal const string DllName = "onnxruntime";
 #else
-            // Note: the file name in ONNX Runtime nuget package must be onnxruntime.dll instead of onnxruntime.DLL(Windows filesystem can be case sensitive)
+            // For .NET Core 3.0+, we use explicit .dll extension for Windows case-sensitivity
+            // and register a DllImportResolver to handle Linux/macOS.
             internal const string DllName = "onnxruntime.dll";
 #endif
         }
+
+#if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
+        /// <summary>
+        /// Custom DllImportResolver to handle platform-specific library names.
+        /// On Windows, the library is named onnxruntime.dll.
+        /// On Linux, the library is named libonnxruntime.so.
+        /// On macOS, the library is named libonnxruntime.dylib.
+        /// </summary>
+        private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+        {
+            if (libraryName == NativeLib.DllName)
+            {
+                // Map to platform-specific library name
+                string mappedName = libraryName;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    mappedName = "libonnxruntime.so";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    mappedName = "libonnxruntime.dylib";
+                }
+
+                if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
+                {
+                    return handle;
+                }
+            }
+
+            // Fall back to default resolution
+            return IntPtr.Zero;
+        }
+#endif
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
 #if NETSTANDARD2_0
@@ -2644,7 +2692,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                  byte[] /* const char* */ value);
 
         /// <summary>
-        /// Get the value for the provided key. 
+        /// Get the value for the provided key.
         /// </summary>
         /// <returns>Value. Returns IntPtr.Zero if key was not found.</returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -2767,7 +2815,7 @@ namespace Microsoft.ML.OnnxRuntime
         // Auto Selection EP registration and selection customization
 
         /// <summary>
-        /// Register an execution provider library. 
+        /// Register an execution provider library.
         /// The library must implement CreateEpFactories and ReleaseEpFactory.
         /// </summary>
         /// <param name="env">Environment to add the EP library to.</param>
