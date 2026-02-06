@@ -130,7 +130,7 @@ class ShaderIndicesHelper {
  protected:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderIndicesHelper);
 
-  void Impl(std::ostream& ss) const;
+  void Impl(OStringStream& ss) const;
 
   std::string_view IndicesType() const;
 
@@ -197,7 +197,7 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderVariableHelper);
 
-  void Impl(std::ostream& ss) const;
+  void Impl(OStringStream& ss) const;
 
   std::string GetByOffsetImpl(std::string_view offset) const;
   std::string SetByOffsetImpl(std::string_view offset, std::string_view value) const;
