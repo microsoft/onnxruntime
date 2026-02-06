@@ -5,9 +5,9 @@ parameters:
   - release
   - normal
 
-  # Note: Keep the Xcode version and iOS simulator version compatible.
-  # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
-  # https://developer.apple.com/support/xcode/
+# Note: Keep the Xcode version and iOS simulator version compatible.
+# Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
+# https://developer.apple.com/support/xcode/
 
 - name: xcodeVersion
   type: string
@@ -24,100 +24,101 @@ parameters:
   default: "onnxruntime"
 
 stages:
-# TODO commented out for testing
-# - stage: BuildFrameworks
-#   dependsOn: []
+# This stage builds the individual sysroot/arch frameworks.
+# Since the number of framework build jobs is dynamic, these jobs are put into this stage to allow a later stage to
+# wait for all of them to complete.
+- stage: BuildFrameworks
+  dependsOn: []
 
-#   jobs:
-#   - job: SetUpBuildFrameworkJobMatrix
+  jobs:
+  - job: SetUpBuildFrameworkJobMatrix
 
-#     steps:
-#     - task: PythonScript@0
-#       name: SetVariables
-#       inputs:
-#         scriptSource: "inline"
-#         script: |
-#           import json
-#           import sys
+    steps:
+    - task: PythonScript@0
+      name: SetVariables
+      inputs:
+        scriptSource: "inline"
+        script: |
+          import json
+          import sys
 
-#           utils_path = "$(Build.SourcesDirectory)/tools/ci_build/github/apple"
-#           sys.path.insert(0, utils_path)
+          utils_path = "$(Build.SourcesDirectory)/tools/ci_build/github/apple"
+          sys.path.insert(0, utils_path)
 
-#           from build_settings_utils import parse_build_settings_file, get_sysroot_arch_pairs
+          from build_settings_utils import parse_build_settings_file, get_sysroot_arch_pairs
 
-#           build_settings_file = "${{ parameters.buildSettingsFile }}"
-#           build_settings = parse_build_settings_file(build_settings_file)
-#           sysroot_arch_pairs = get_sysroot_arch_pairs(build_settings)
+          build_settings_file = "${{ parameters.buildSettingsFile }}"
+          build_settings = parse_build_settings_file(build_settings_file)
+          sysroot_arch_pairs = get_sysroot_arch_pairs(build_settings)
 
-#           job_matrix = {}
-#           for sysroot, arch in sysroot_arch_pairs:
-#               identifier = f"{sysroot}_{arch}"
-#               job_matrix[identifier] = {
-#                 "sysroot": sysroot,
-#                 "arch": arch,
-#               }
+          job_matrix = {}
+          for sysroot, arch in sysroot_arch_pairs:
+              identifier = f"{sysroot}_{arch}"
+              job_matrix[identifier] = {
+                "sysroot": sysroot,
+                "arch": arch,
+              }
 
-#           job_matrix_json = json.dumps(job_matrix)
+          job_matrix_json = json.dumps(job_matrix)
 
-#           print(f"Build framework job matrix:\n{job_matrix_json}")
-#           print(f"##vso[task.setvariable variable=BuildFrameworkJobMatrix;isOutput=true]{job_matrix_json}")
-#       displayName: "Generate build framework job matrix"
+          print(f"Build framework job matrix:\n{job_matrix_json}")
+          print(f"##vso[task.setvariable variable=BuildFrameworkJobMatrix;isOutput=true]{job_matrix_json}")
+      displayName: "Generate build framework job matrix"
 
-#   - job: BuildFramework
-#     dependsOn: SetUpBuildFrameworkJobMatrix
+  - job: BuildFramework
+    dependsOn: SetUpBuildFrameworkJobMatrix
 
-#     strategy:
-#       maxParallel: 8
-#       matrix: $[ dependencies.SetUpBuildFrameworkJobMatrix.outputs['SetVariables.BuildFrameworkJobMatrix'] ]
+    strategy:
+      maxParallel: 8
+      matrix: $[ dependencies.SetUpBuildFrameworkJobMatrix.outputs['SetVariables.BuildFrameworkJobMatrix'] ]
 
-#     timeoutInMinutes: 120
+    timeoutInMinutes: 120
 
-#     steps:
-#     - template: ../setup-build-tools.yml
-#       parameters:
-#         host_cpu_arch: arm64
+    steps:
+    - template: ../setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
 
-#     - template: ../use-xcode-version.yml
-#       parameters:
-#         xcodeVersion: ${{ parameters.xcodeVersion }}
+    - template: ../use-xcode-version.yml
+      parameters:
+        xcodeVersion: ${{ parameters.xcodeVersion }}
 
-#     - script: |
-#         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
-#       displayName: "Install Python requirements"
+    - script: |
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
+      displayName: "Install Python requirements"
 
-#     - script: |
-#         python tools/ci_build/github/apple/build_apple_framework.py \
-#           --build_dir "$(Build.BinariesDirectory)/build" \
-#           --only_build_single_sysroot_arch_framework "$(sysroot)" "$(arch)" \
-#           --record_sysroot_arch_framework_build_outputs_to_file "$(Build.BinariesDirectory)/build_outputs.txt" \
-#           "${{ parameters.buildSettingsFile }}"
-#       displayName: "Build framework for $(sysroot)/$(arch)"
+    - script: |
+        python tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/build" \
+          --only_build_single_sysroot_arch_framework "$(sysroot)" "$(arch)" \
+          --record_sysroot_arch_framework_build_outputs_to_file "$(Build.BinariesDirectory)/build_outputs.txt" \
+          "${{ parameters.buildSettingsFile }}"
+      displayName: "Build framework for $(sysroot)/$(arch)"
 
-#     - script: |
-#         set -e
+    - script: |
+        set -e
 
-#         BUILD_OUTPUTS_FILE="$(Build.BinariesDirectory)/build_outputs.txt"
-#         BUILD_DIR="$(Build.BinariesDirectory)/build"
+        BUILD_OUTPUTS_FILE="$(Build.BinariesDirectory)/build_outputs.txt"
+        BUILD_DIR="$(Build.BinariesDirectory)/build"
 
-#         pushd "${BUILD_DIR}"
-#         zip \
-#           --recurse-paths \
-#           --symlinks \
-#           --names-stdin \
-#           "$(Build.ArtifactStagingDirectory)/build.zip" \
-#           < "${BUILD_OUTPUTS_FILE}"
-#         popd
-#       displayName: "Create framework build archive artifact"
+        cd "${BUILD_DIR}"
+        zip \
+          --recurse-paths \
+          --symlinks \
+          --names-stdin \
+          "$(Build.ArtifactStagingDirectory)/build.zip" \
+          < "${BUILD_OUTPUTS_FILE}"
+      displayName: "Create framework build archive artifact"
 
-#     - task: 1ES.PublishPipelineArtifact@1
-#       inputs:
-#         path: $(Build.ArtifactStagingDirectory)
-#         artifact: framework_$(sysroot)_$(arch)
-#       displayName: "Publish artifact - framework_$(sysroot)_$(arch)"
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        path: $(Build.ArtifactStagingDirectory)
+        artifact: framework_$(sysroot)_$(arch)
+      displayName: "Publish artifact - framework_$(sysroot)_$(arch)"
 
+# This stage assembles the frameworks built in the previous stage into a packaging artifacts and tests them.
 - stage: AssemblePackageAndTest
-  # TODO commented out for testing
-  # dependsOn: BuildFrameworks
+  dependsOn: BuildFrameworks
 
   variables:
     cPodName: ${{ parameters.podNamePrefix }}-c
@@ -127,27 +128,6 @@ stages:
   - job: AssemblePackageAndTest
 
     steps:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        itemPattern: framework_*/build.zip
-        targetPath: $(Build.BinariesDirectory)/artifacts
-        # TODO for testing
-        buildType: specific
-        project: Lotus
-        definition: "995"
-        runVersion: specific
-        pipelineId: "1078531"
-
-    - script: |
-        set -e
-
-        BUILD_DIR="$(Build.BinariesDirectory)/build"
-        mkdir -p "${BUILD_DIR}"
-        find "$(Build.BinariesDirectory)/artifacts" -name "build.zip" -exec unzip {} -d "${BUILD_DIR}" \;
-
-        find "${BUILD_DIR}"
-      displayName: Extract framework build archive artifacts to build directory
-
     - script: |
         set -e
 
@@ -168,7 +148,7 @@ stages:
         # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
         set +x
         echo "##vso[task.setvariable variable=ortPodVersion;]${VERSION}"
-        echo "ortPodVersion : ${ortPodVersion}, VERSION : ${VERSION}"
+        echo "ortPodVersion: ${VERSION}"
       displayName: "Set ortPodVersion variable"
 
     - task: InstallAppleCertificate@2
@@ -197,6 +177,19 @@ stages:
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        itemPattern: framework_*/build.zip
+        targetPath: $(Build.BinariesDirectory)/artifacts
+      displayName: "Download framework build archive artifacts"
+
+    - script: |
+        set -e
+        BUILD_DIR="$(Build.BinariesDirectory)/build"
+        mkdir -p "${BUILD_DIR}"
+        find "$(Build.BinariesDirectory)/artifacts" -name "build.zip" -exec unzip {} -d "${BUILD_DIR}" \;
+      displayName: "Extract framework build archive artifacts to build directory"
+
     # Assemble the xcframework and the pod packages.
     # The frameworks from the BuildFrameworks stage should already be in the build directory.
     - script: |
@@ -210,33 +203,6 @@ stages:
       displayName: "Assemble pod package files"
       env:
         ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ parameters.iosSimulatorRuntimeVersion }}
-
-    - script: |
-        set -e -x
-
-        mkdir -p "$(Build.ArtifactStagingDirectory)/package"
-
-        for POD_NAME in "${{ variables.cPodName}}" "${{ variables.objcPodName }}";
-        do
-          ./tools/ci_build/github/apple/assemble_apple_packaging_artifacts.sh \
-            "$(Build.BinariesDirectory)/staging" \
-            "$(Build.ArtifactStagingDirectory)/package" \
-            "${POD_NAME}" \
-            "$(ortPodVersion)"
-        done
-
-        # copy over helper script for use in release pipeline
-        cp tools/ci_build/github/apple/package_release_tasks.py "$(Build.ArtifactStagingDirectory)/package"
-      displayName: "Assemble packaging artifacts"
-
-    # Publish package artifact
-    - task: 1ES.PublishPipelineArtifact@1
-      inputs:
-        path: $(Build.ArtifactStagingDirectory)/package
-        artifact: ios_packaging_artifacts_full
-      displayName: "Publish artifact - ios_packaging_artifacts_full"
-
-    # Run more tests on the package
 
     - script: |
         python tools/ci_build/github/apple/test_apple_packages.py \
@@ -331,6 +297,31 @@ stages:
       env:
         BROWSERSTACK_ID: $(browserstack_username)
         BROWSERSTACK_TOKEN: $(browserstack_access_key)
+
+    - script: |
+        set -e -x
+
+        mkdir -p "$(Build.ArtifactStagingDirectory)/package"
+
+        for POD_NAME in "${{ variables.cPodName}}" "${{ variables.objcPodName }}";
+        do
+          ./tools/ci_build/github/apple/assemble_apple_packaging_artifacts.sh \
+            "$(Build.BinariesDirectory)/staging" \
+            "$(Build.ArtifactStagingDirectory)/package" \
+            "${POD_NAME}" \
+            "$(ortPodVersion)"
+        done
+
+        # copy over helper script for use in release pipeline
+        cp tools/ci_build/github/apple/package_release_tasks.py "$(Build.ArtifactStagingDirectory)/package"
+      displayName: "Assemble packaging artifacts"
+
+    # Publish packaging artifacts
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        path: $(Build.ArtifactStagingDirectory)/package
+        artifact: ios_packaging_artifacts_full
+      displayName: "Publish artifact - ios_packaging_artifacts_full"
 
     - script: |
         set -e -x
