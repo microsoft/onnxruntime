@@ -72,50 +72,59 @@ stages:
       maxParallel: 8
       matrix: $[ dependencies.SetUpBuildFrameworkJobMatrix.outputs['SetVariables.BuildFrameworkJobMatrix'] ]
 
-    templateContext:
-      outputs:
-      - output: pipelineArtifact
-        path: $(Build.ArtifactStagingDirectory)
-        artifact: framework_$(sysroot)_$(arch)
-
     steps:
-    # - template: ../setup-build-tools.yml
-    #   parameters:
-    #     host_cpu_arch: arm64
+    - template: ../setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
 
-    # - template: ../use-xcode-version.yml
-    #   parameters:
-    #     xcodeVersion: ${{ parameters.xcodeVersion }}
-
-    # - script: |
-    #     pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
-    #   displayName: "Install Python requirements"
-
-    # - script: |
-    #     python tools/ci_build/github/apple/build_apple_framework.py \
-    #       --build_dir "$(Build.BinariesDirectory)/apple_framework" \
-    #       --only_build_single_sysroot_arch_framework "$(sysroot)" "$(arch)" \
-    #       "${{ parameters.buildSettingsFile }}"
-    #   displayName: "Build framework for $(sysroot)/$(arch)"
+    - template: ../use-xcode-version.yml
+      parameters:
+        xcodeVersion: ${{ parameters.xcodeVersion }}
 
     - script: |
-        BUILD_DIR="$(Build.BinariesDirectory)/build"
-        INTERMEDIATES_DIR="${BUILD_DIR}/intermediates/$(sysroot)/$(arch)"
-        mkdir -p "${INTERMEDIATES_DIR}"
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
+      displayName: "Install Python requirements"
 
-        echo "hello from build with sysroot $(sysroot) and arch $(arch)" > "${INTERMEDIATES_DIR}/out.txt"
+    - script: |
+        python tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/build" \
+          --only_build_single_sysroot_arch_framework "$(sysroot)" "$(arch)" \
+          --record_sysroot_arch_framework_build_outputs_to_file "$(Build.BinariesDirectory)/build_outputs.txt" \
+          "${{ parameters.buildSettingsFile }}"
+      displayName: "Build framework for $(sysroot)/$(arch)"
+
+    - script: |
+        set -e
+
+        BUILD_OUTPUTS_FILE="$(Build.BinariesDirectory)/build_outputs.txt"
+        BUILD_DIR="$(Build.BinariesDirectory)/build"
 
         pushd "${BUILD_DIR}"
-        zip --recurse-paths --symlinks build.zip .
-        mv build.zip $(Build.ArtifactStagingDirectory)
+        zip \
+          --recurse-paths \
+          --symlinks \
+          --names-stdin \
+          "$(Build.ArtifactStagingDirectory)/build.zip" \
+          < "${BUILD_OUTPUTS_FILE}"
         popd
-      displayName: Generate output artifact
+      displayName: "Create framework build archive artifact"
 
-- stage: AfterBuildFrameworks
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        path: $(Build.ArtifactStagingDirectory)
+        artifact: framework_$(sysroot)_$(arch)
+      displayName: "Publish artifact - framework_$(sysroot)_$(arch)"
+
+- stage: AssemblePackageAndTest
   dependsOn: BuildFrameworks
 
+  variables:
+    cPodName: ${{ parameters.podNamePrefix }}-c
+    objcPodName: ${{ parameters.podNamePrefix }}-objc
+
   jobs:
-  - job: UseArtifacts
+  - job: AssemblePackageAndTest
+
     steps:
     - checkout: none
 
@@ -125,209 +134,200 @@ stages:
         targetPath: $(Build.BinariesDirectory)/artifacts
 
     - script: |
-        BUILD_DIR="$(Build.BinariesDirectory)/build"
+        set -e
 
+        BUILD_DIR="$(Build.BinariesDirectory)/build"
+        mkdir -p "${BUILD_DIR}"
         find "$(Build.BinariesDirectory)/artifacts" -name "build.zip" -exec unzip {} -d "${BUILD_DIR}" \;
 
         find "${BUILD_DIR}"
-      displayName: Unpack downloaded artifacts to build directory
+      displayName: Extract framework build archive artifacts to build directory
 
-# - stage: IosPackaging_Build
-#   dependsOn: []
+    - script: |
+        set -e
 
-  # - job:
-  #   displayName: "Build iOS package"
+        BUILD_TYPE="${{ parameters.buildType }}"
+        BASE_VERSION="$(cat ./VERSION_NUMBER)"
+        SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
+        DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber).${SHORT_COMMIT_HASH}"
 
-    # variables:
-    #   cPodName: ${{ parameters.podNamePrefix }}-c
-    #   objcPodName: ${{ parameters.podNamePrefix }}-objc
+        case "${BUILD_TYPE}" in
+          ("release")
+            VERSION="${BASE_VERSION}" ;;
+          ("normal")
+            VERSION="${DEV_VERSION}" ;;
+          (*)
+            echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
+        esac
 
-  #   timeoutInMinutes: 270
-  #   templateContext:
-  #     outputs:
-  #     - output: pipelineArtifact
-  #       targetPath: $(Build.ArtifactStagingDirectory)
-  #       artifactName: ios_packaging_artifacts_full
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
+        echo "##vso[task.setvariable variable=ortPodVersion;]${VERSION}"
+        echo "ortPodVersion : ${ortPodVersion}, VERSION : ${VERSION}"
+      displayName: "Set ortPodVersion variable"
 
-  #   steps:
-  #   - bash: |
-  #       set -e
+    - task: InstallAppleCertificate@2
+      inputs:
+        certSecureFile: '$(ios_signing_certificate_name)'
+        certPwd: '$(ios_signing_certificate_password)'
+        keychain: 'temp'
+        deleteCert: true
+      displayName: 'Install ORT Mobile Test Signing Certificate'
 
-  #       BUILD_TYPE="${{ parameters.buildType }}"
-  #       BASE_VERSION="$(cat ./VERSION_NUMBER)"
-  #       SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
-  #       DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber).${SHORT_COMMIT_HASH}"
+    - task: InstallAppleProvisioningProfile@1
+      inputs:
+        provProfileSecureFile: '$(ios_provision_profile_name)'
+        removeProfile: true
+      displayName: 'Install ORT Mobile Test Provisioning Profile'
 
-  #       case "${BUILD_TYPE}" in
-  #         ("release")
-  #           VERSION="${BASE_VERSION}" ;;
-  #         ("normal")
-  #           VERSION="${DEV_VERSION}" ;;
-  #         (*)
-  #           echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
-  #       esac
+    - template: ../setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
 
-  #       # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-  #       set +x
-  #       echo "##vso[task.setvariable variable=ortPodVersion;]${VERSION}"
-  #       echo "ortPodVersion : ${ortPodVersion}, VERSION : ${VERSION}"
-  #     displayName: "Set common variables"
-  #     name: SetCommonVariables
+    - template: ../use-xcode-version.yml
+      parameters:
+        xcodeVersion: ${{ parameters.xcodeVersion }}
 
-  #   - script: |
-  #       if [[ -z "$(ortPodVersion)" ]]; then
-  #         echo "ORT pod version is unspecified. Make sure that the IosPackaging_SetCommonVariables stage has run."
-  #         exit 1
-  #       fi
-  #     displayName: 'Ensure version is set'
+    - script: |
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
+      displayName: "Install Python requirements"
 
-  #   - task: InstallAppleCertificate@2
-  #     inputs:
-  #       certSecureFile: '$(ios_signing_certificate_name)'
-  #       certPwd: '$(ios_signing_certificate_password)'
-  #       keychain: 'temp'
-  #       deleteCert: true
-  #     displayName: 'Install ORT Mobile Test Signing Certificate'
+    # Assemble the xcframework and the pod packages.
+    # The frameworks from the BuildFrameworks stage should already be in the build directory.
+    - script: |
+        python tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+          --build-dir "$(Build.BinariesDirectory)/build" \
+          --staging-dir "$(Build.BinariesDirectory)/staging" \
+          --pod-version "$(ortPodVersion)" \
+          --test \
+          --build-apple-framework-arg=--only_assemble_xcframework \
+          --build-settings-file "${{ parameters.buildSettingsFile }}"
+      displayName: "Assemble pod package files"
+      env:
+        ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ parameters.iosSimulatorRuntimeVersion }}
 
-  #   - task: InstallAppleProvisioningProfile@1
-  #     inputs:
-  #       provProfileSecureFile: '$(ios_provision_profile_name)'
-  #       removeProfile: true
-  #     displayName: 'Install ORT Mobile Test Provisioning Profile'
+    - script: |
+        set -e -x
 
-  #   - template: ../setup-build-tools.yml
-  #     parameters:
-  #       host_cpu_arch: arm64
+        mkdir -p "$(Build.ArtifactStagingDirectory)/package"
 
-  #   - template: ../use-xcode-version.yml
-  #     parameters:
-  #       xcodeVersion: ${{ parameters.xcodeVersion }}
+        for POD_NAME in "${{ variables.cPodName}}" "${{ variables.objcPodName }}";
+        do
+          ./tools/ci_build/github/apple/assemble_apple_packaging_artifacts.sh \
+            "$(Build.BinariesDirectory)/staging" \
+            "$(Build.ArtifactStagingDirectory)/package" \
+            "${POD_NAME}" \
+            "$(ortPodVersion)"
+        done
 
-  #   - script: |
-  #       pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
-  #     displayName: "Install Python requirements"
+        # copy over helper script for use in release pipeline
+        cp tools/ci_build/github/apple/package_release_tasks.py "$(Build.ArtifactStagingDirectory)/package"
+      displayName: "Assemble packaging artifacts"
 
-  #   # create and test mobile pods
-  #   - script: |
-  #       python tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
-  #         --build-dir "$(Build.BinariesDirectory)/apple_framework" \
-  #         --staging-dir "$(Build.BinariesDirectory)/staging" \
-  #         --pod-version "$(ortPodVersion)" \
-  #         --test \
-  #         --build-settings-file "${{ parameters.buildSettingsFile }}"
-  #     displayName: "Build macOS/iOS framework and assemble pod package files"
-  #     env:
-  #       ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ parameters.iosSimulatorRuntimeVersion }}
+    # Publish package artifact
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        path: $(Build.ArtifactStagingDirectory)/package
+        artifact: ios_packaging_artifacts_full
+      displayName: "Publish artifact - ios_packaging_artifacts_full"
 
-  #   - script: |
-  #       python tools/ci_build/github/apple/test_apple_packages.py \
-  #         --fail_if_cocoapods_missing \
-  #         --framework_info_file "$(Build.BinariesDirectory)/apple_framework/xcframework_info.json" \
-  #         --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
-  #         --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test" \
-  #         --prepare_test_project_only
-  #     displayName: "Assemble test project for App Center"
+    # Run more tests on the package
 
-  #   # Xcode tasks require absolute paths because it searches for the paths and files relative to
-  #   # the root directory and not relative to the working directory
-  #   - task: Xcode@5
-  #     inputs:
-  #       actions: 'build-for-testing'
-  #       configuration: 'Debug'
-  #       xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
-  #       sdk: 'iphoneos'
-  #       scheme: 'ios_package_test'
-  #       signingOption: 'manual'
-  #       signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
-  #       provisioningProfileUuid: '$(APPLE_PROV_PROFILE_UUID)'
-  #       args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
-  #       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
-  #       useXcpretty: false  # xcpretty can hide useful error output so we will disable it
-  #     displayName: 'Build App Center iPhone arm64 tests'
+    - script: |
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --fail_if_cocoapods_missing \
+          --framework_info_file "$(Build.BinariesDirectory)/build/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/build/framework_out" \
+          --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test" \
+          --prepare_test_project_only
+      displayName: "Assemble test project for App Center"
 
-  #   - script: |
-  #       zip -r --symlinks $(Build.ArtifactStagingDirectory)/package_tests.zip ios_package_testUITests-Runner.app
-  #     workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos'
-  #     displayName: "Create .zip file of the tests"
+    # Xcode tasks require absolute paths because it searches for the paths and files relative to
+    # the root directory and not relative to the working directory
+    - task: Xcode@5
+      inputs:
+        actions: 'build-for-testing'
+        configuration: 'Debug'
+        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
+        sdk: 'iphoneos'
+        scheme: 'ios_package_test'
+        signingOption: 'manual'
+        signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
+        provisioningProfileUuid: '$(APPLE_PROV_PROFILE_UUID)'
+        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
+        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+        useXcpretty: false  # xcpretty can hide useful error output so we will disable it
+      displayName: 'Build App Center iPhone arm64 tests'
 
-  #   - script: |
-  #       python $(Build.SourcesDirectory)/onnxruntime/test/platform/apple/generate_ipa_export_options_plist.py \
-  #         --dest_file "exportOptions.plist" \
-  #         --apple_team_id $(APPLE_TEAM_ID) \
-  #         --provisioning_profile_uuid $(APPLE_PROV_PROFILE_UUID)
-  #     workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
-  #     displayName: "Generate .plist file for the .ipa file"
+    - script: |
+        set -e -x
+        mkdir -p $(Build.ArtifactStagingDirectory)/package_test
+        zip -r --symlinks $(Build.ArtifactStagingDirectory)/package_test/package_tests.zip ios_package_testUITests-Runner.app
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos'
+      displayName: "Create .zip file of the tests"
 
-  #   # Task only generates an .xcarchive file if the plist export options are included, but does
-  #   # not produce an IPA file.
-  #   # Source code: https://github.com/microsoft/azure-pipelines-tasks/blob/master/Tasks/XcodeV5/xcode.ts
-  #   - task: Xcode@5
-  #     inputs:
-  #       actions: 'archive'
-  #       xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
-  #       packageApp: true
-  #       archivePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
-  #       exportOptions: 'plist'
-  #       exportOptionsPlist: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/exportOptions.plist'
-  #       configuration: 'Debug'
-  #       sdk: 'iphoneos'
-  #       scheme: 'ios_package_test'
-  #       args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
-  #       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
-  #       useXcpretty: false
-  #     displayName: 'Create archive for the .ipa file'
+    - script: |
+        python $(Build.SourcesDirectory)/onnxruntime/test/platform/apple/generate_ipa_export_options_plist.py \
+          --dest_file "exportOptions.plist" \
+          --apple_team_id $(APPLE_TEAM_ID) \
+          --provisioning_profile_uuid $(APPLE_PROV_PROFILE_UUID)
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+      displayName: "Generate .plist file for the .ipa file"
 
-  #   # Use script step because exporting the .ipa file using the Xcode@5 task was too brittle (Xcode@5 is designed
-  #   # to handle both the .xcarchive step and the .ipa step in the same step -- ran into countless issues with signing
-  #   # and the .plist file)
-  #   - script: |
-  #       xcodebuild -exportArchive \
-  #         -archivePath ios_package_test.xcarchive \
-  #         -exportOptionsPlist exportOptions.plist \
-  #         -exportPath $(Build.ArtifactStagingDirectory)/test_ipa
-  #     workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
-  #     displayName: "Create .ipa file"
+    # Task only generates an .xcarchive file if the plist export options are included, but does
+    # not produce an IPA file.
+    # Source code: https://github.com/microsoft/azure-pipelines-tasks/blob/master/Tasks/XcodeV5/xcode.ts
+    - task: Xcode@5
+      inputs:
+        actions: 'archive'
+        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
+        packageApp: true
+        archivePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+        exportOptions: 'plist'
+        exportOptionsPlist: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/exportOptions.plist'
+        configuration: 'Debug'
+        sdk: 'iphoneos'
+        scheme: 'ios_package_test'
+        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
+        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+        useXcpretty: false
+      displayName: 'Create archive for the .ipa file'
 
-  #   # Publish the BrowserStack artifacts first so that if the next step fails, the artifacts will still be published
-  #   # so that users can attempt to locally debug
-  #   - task: 1ES.PublishPipelineArtifact@1
-  #     inputs:
-  #       path: $(Build.ArtifactStagingDirectory)
-  #       artifact: browserstack_test_artifacts_full
-  #     displayName: "Publish BrowserStack artifacts"
+    # Use script step because exporting the .ipa file using the Xcode@5 task was too brittle (Xcode@5 is designed
+    # to handle both the .xcarchive step and the .ipa step in the same step -- ran into countless issues with signing
+    # and the .plist file)
+    - script: |
+        xcodebuild -exportArchive \
+          -archivePath ios_package_test.xcarchive \
+          -exportOptionsPlist exportOptions.plist \
+          -exportPath $(Build.ArtifactStagingDirectory)/package_test/test_ipa
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+      displayName: "Create .ipa file"
 
-  #   - script: |
-  #       set -e -x
-  #       pip install requests
-  #       python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
-  #         --test_platform xcuitest \
-  #         --app_path "$(Build.ArtifactStagingDirectory)/test_ipa/ios_package_test.ipa" \
-  #         --test_path "$(Build.ArtifactStagingDirectory)/package_tests.zip" \
-  #         --devices "iPhone 15-17"
-  #     displayName: Run E2E tests using Browserstack
-  #     workingDirectory: $(Build.BinariesDirectory)/app_center_test/apple_package_test
-  #     timeoutInMinutes: 15
-  #     env:
-  #       BROWSERSTACK_ID: $(browserstack_username)
-  #       BROWSERSTACK_TOKEN: $(browserstack_access_key)
+    # Publish the BrowserStack artifacts first so that if the next step fails, the artifacts will still be published
+    # so that users can attempt to locally debug
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        path: $(Build.ArtifactStagingDirectory)/package_test
+        artifact: browserstack_test_artifacts_full
+      displayName: "Publish artifact - browserstack_test_artifacts_full"
 
-  #   - script: |
-  #       set -e -x
+    - script: |
+        set -e -x
+        pip install requests
+        python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
+          --test_platform xcuitest \
+          --app_path "$(Build.ArtifactStagingDirectory)/package_test/test_ipa/ios_package_test.ipa" \
+          --test_path "$(Build.ArtifactStagingDirectory)/package_test/package_tests.zip" \
+          --devices "iPhone 15-17"
+      displayName: Run E2E tests using Browserstack
+      workingDirectory: $(Build.BinariesDirectory)/app_center_test/apple_package_test
+      timeoutInMinutes: 15
+      env:
+        BROWSERSTACK_ID: $(browserstack_username)
+        BROWSERSTACK_TOKEN: $(browserstack_access_key)
 
-  #       for POD_NAME in "${{ variables.cPodName}}" "${{ variables.objcPodName }}";
-  #       do
-  #         ./tools/ci_build/github/apple/assemble_apple_packaging_artifacts.sh \
-  #           "$(Build.BinariesDirectory)/staging" \
-  #           "$(Build.ArtifactStagingDirectory)" \
-  #           "${POD_NAME}" \
-  #           "$(ortPodVersion)"
-  #       done
-
-  #       # copy over helper script for use in release pipeline
-  #       cp tools/ci_build/github/apple/package_release_tasks.py "$(Build.ArtifactStagingDirectory)"
-  #     displayName: "Assemble artifacts"
-
-  #   - script: |
-  #       set -e -x
-  #       ls -R "$(Build.ArtifactStagingDirectory)"
-  #     displayName: "List staged artifacts"
+    - script: |
+        set -e -x
+        ls -R "$(Build.ArtifactStagingDirectory)"
+      displayName: "List staged artifacts"
