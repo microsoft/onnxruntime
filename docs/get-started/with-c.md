@@ -15,13 +15,14 @@ nav_order: 3
 
 ## Builds
 
-| Artifact  | Description | Supported Platforms |
+| Artifact | Description | Supported Platforms |
 |-----------|-------------|---------------------|
-| [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) | CPU (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../reference/compatibility) |
-| [Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) | GPU - CUDA (Release) | Windows, Linux, Mac, X64...more details: [compatibility](../reference/compatibility) |
+| [Microsoft.ML.OnnxRuntime 1.24.1](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/1.24.1) | CPU (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../reference/compatibility.md) |
+| [Microsoft.ML.OnnxRuntime.Gpu 1.24.1 (CUDA 12.x)](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu/1.24.1) | GPU - CUDA 12.x (Release) | Windows, Linux, Mac, X64...more details: [compatibility](../reference/compatibility.md) |
+| [Microsoft.ML.OnnxRuntime.Gpu 1.24.1 (CUDA 13.x)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-13/NuGet/Microsoft.ML.OnnxRuntime.Gpu/overview/1.24.1) | GPU - CUDA 13.x (Release) | Windows, Linux, Mac, X64...more details: [compatibility](../reference/compatibility.md) |
 | [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.directml) | GPU - DirectML (Release) | Windows 10 1709+ |
-| [onnxruntime](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) | CPU, GPU (Dev), CPU (On-Device Training) | Same as Release versions |
-| [Microsoft.ML.OnnxRuntime.Training](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) | CPU On-Device Training (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../reference/compatibility) |
+| [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) | CPU, GPU (Dev), CPU (On-Device Training) | Same as Release versions |
+| [Microsoft.ML.OnnxRuntime.Training](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training) | On-Device Training (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../reference/compatibility.md) |
 
 
 .zip and .tgz files are also included as assets in each [Github release](https://github.com/microsoft/onnxruntime/releases).

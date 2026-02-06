@@ -48,7 +48,7 @@ The following table lists the supported versions of ONNX Runtime Node.js binding
 | CUDA     |  ❌  |  ❌  |  ✔️<sup>\[1]</sup>  | ❌ | ❌ |  ❌  |
 
 
-- \[1]: CUDA v11.8.
+- [1]: CUDA v12.x or v13.x.
 
 
 For platforms not on the list or want a custom build, you can [build Node.js binding from source](../../build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.

@@ -81,11 +81,11 @@ pip install onnxruntime-gpu
 
 For previous versions, you can download here: [1.18.1](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/1.18.1), [1.18.0](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-12/PyPI/onnxruntime-gpu/overview/1.18.0)
 
-#### Nightly for CUDA 13.x
+#### CUDA 13.x
 
 ```bash
-pip install coloredlogs flatbuffers numpy packaging protobuf sympy
-pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/ onnxruntime-gpu
+pip install flatbuffers numpy packaging protobuf sympy
+pip install --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/pypi/simple/ onnxruntime-gpu==1.24.1
 ```
 
 #### Nightly for CUDA 12.x
@@ -137,6 +137,29 @@ The default CUDA version for ORT is 12.x
 ```bash
 # GPU
 dotnet add package Microsoft.ML.OnnxRuntime.Gpu
+```
+
+#### Install ONNX Runtime GPU (CUDA 13.x)
+
+1. Project Setup
+
+Add a nuget.config file to your project in the same directory as your .csproj file.
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+    <packageSources>
+        <clear/>
+        <add key="onnxruntime-cuda-13"
+             value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/nuget/v3/index.json"/>
+    </packageSources>
+</configuration>
+```
+
+2. Restore packages
+
+```bash
+dotnet add package Microsoft.ML.OnnxRuntime.Gpu --version 1.24.1
 ```
 
 #### Install ONNX Runtime GPU (CUDA 11.8)
@@ -442,19 +465,21 @@ below:
 |              | Official build                                                                                                                                    | Nightly build                                                                                                                                 | Reqs                                                                                           |
 |--------------|---------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
 | Python       | If using pip, run `pip install --upgrade pip` prior to downloading.                                                                               |                                                                                                                                               |                                                                                                |
-|              | CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)                                                                                      | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime/overview)                    |                                                                                                |
-|              | GPU (CUDA/TensorRT) for CUDA 12.x: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu)                                                              | [onnxruntime-gpu (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
-|              | GPU (DirectML) **sustained engineering**: [**onnxruntime-directml**](https://pypi.org/project/onnxruntime-directml/)                                                        | [onnxruntime-directml (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-directml/overview/) | [View](../execution-providers/DirectML-ExecutionProvider.md#requirements)                      |
+|              | CPU: [**onnxruntime 1.24.1**](https://pypi.org/project/onnxruntime/1.24.1/)                                                                                      | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime/overview)                    |                                                                                                |
+|              | GPU (CUDA/TensorRT) for CUDA 12.x: [**onnxruntime-gpu 1.24.1**](https://pypi.org/project/onnxruntime-gpu/1.24.1/)                                                              | [onnxruntime-gpu (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-gpu/overview/)           | [View](../execution-providers/CUDA-ExecutionProvider.md#requirements)                          |
+|              | GPU (CUDA) for CUDA 13.x: [**onnxruntime-gpu 1.24.1**](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-13/PyPI/onnxruntime-gpu/overview/1.24.1) | | |
+|              | GPU (DirectML) **sustained engineering**: [**onnxruntime-directml 1.24.1**](https://pypi.org/project/onnxruntime-directml/1.24.1/)                                                        | [onnxruntime-directml (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/onnxruntime-directml/overview/) | [View](../execution-providers/DirectML-ExecutionProvider.md#requirements)                      |
 |              | OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*                                         |                                                                                                                                               | [View](../build/eps.md#openvino)                                                               |
 |              | TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*                                                |                                                                                                                                               |                                                                                                |
 |              | Azure (Cloud): [**onnxruntime-azure**](https://pypi.org/project/onnxruntime-azure/)                                                               |                                                                                                                                               |                                                                                                |
-| C#/C/C++     | CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)                                                      | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      |                                                                                                |
-|              | GPU (CUDA/TensorRT): [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)                              | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      | [View](../execution-providers/CUDA-ExecutionProvider)                                          |
+| C#/C/C++     | CPU: [**Microsoft.ML.OnnxRuntime 1.24.1**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/1.24.1)                                                      | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      |                                                                                                |
+|              | GPU (CUDA/TensorRT) for CUDA 12.x: [**Microsoft.ML.OnnxRuntime.Gpu 1.24.1**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/1.24.1)                              | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)                                      | [View](../execution-providers/CUDA-ExecutionProvider)                                          |
+|              | GPU (CUDA) for CUDA 13.x: [**Microsoft.ML.OnnxRuntime.Gpu 1.24.1**](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-13/NuGet/Microsoft.ML.OnnxRuntime.Gpu/overview/1.24.1) | | |
 |              | GPU (DirectML) **sustained engineering**: [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)                         | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview)           | [View](../execution-providers/DirectML-ExecutionProvider)                                      |
 | WinML **recommended for Windows**        | [**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)                                                   | [onnxruntime (nightly)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/NuGet/Microsoft.AI.MachineLearning/overview)  | [View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites) |
-| Java         | CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)                         |                                                                                                                                               | [View](../api/java)                                                                            |
-|              | GPU (CUDA/TensorRT): [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) |                                                                                                                                               | [View](../api/java)                                                                            |
-| Android      | [**com.microsoft.onnxruntime:onnxruntime-android**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-android)              |                                                                                                                                               | [View](../install/index.md#install-on-android)                                                 |
+| Java         | CPU: [**onnxruntime 1.24.1**](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime/1.24.1/)                         |                                                                                                                                               | [View](../api/java)                                                                            |
+|              | GPU (CUDA/TensorRT) for CUDA 12.x: [**onnxruntime_gpu 1.24.1**](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime_gpu/1.24.1/) |                                                                                                                                               | [View](../api/java)                                                                            |
+| Android      | [**onnxruntime-android 1.24.1**](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.24.1/)              |                                                                                                                                               | [View](../install/index.md#install-on-android)                                                 |
 | iOS (C/C++)  | CocoaPods: **onnxruntime-c**                                                                                                                      |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
 | Objective-C  | CocoaPods: **onnxruntime-objc**                                                                                                                   |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
 | React Native | [**onnxruntime-react-native** (latest)](https://www.npmjs.com/package/onnxruntime-react-native)                                                   | [onnxruntime-react-native (dev)](https://www.npmjs.com/package/onnxruntime-react-native?activeTab=versions)                                   | [View](../api/js)                                                                              |

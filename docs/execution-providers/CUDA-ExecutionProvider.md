@@ -38,7 +38,7 @@ ONNX Runtime built with cuDNN 8.x is not compatible with cuDNN 9.x, and vice ver
 Note: Starting with version 1.19, **CUDA 12.x** becomes the default version when distributing [ONNX Runtime GPU packages](https://pypi.org/project/onnxruntime-gpu/) in PyPI.
 
 To reduce the need for manual installations of CUDA and cuDNN, and ensure seamless integration between ONNX Runtime and PyTorch, the `onnxruntime-gpu` Python package offers API to load CUDA and cuDNN dynamic link libraries (DLLs) appropriately. For more details, refer to the [Compatibility with PyTorch](#compatibility-with-pytorch) and [Preload DLLs](#preload-dlls) sections.
-
+ 
 ### CUDA 12.x
 
 | ONNX Runtime  | CUDA   | cuDNN | Notes                                                                |

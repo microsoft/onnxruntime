@@ -39,7 +39,7 @@ import * as ort from 'onnxruntime-web';
 const ort = require('onnxruntime-web');
 ```
 
-If you want to use ONNX Runtime Web with WebGPU support (experimental feature), you need to import as below:
+If you want to use ONNX Runtime Web with WebGPU support, you need to import as below:
 
 ```js
 // use ES6 style import syntax (recommended)
@@ -50,7 +50,7 @@ import * as ort from 'onnxruntime-web/webgpu';
 const ort = require('onnxruntime-web/webgpu');
 ```
 
-If you want to use ONNX Runtime Web with WebNN support (experimental feature), you need to import as below:
+If you want to use ONNX Runtime Web with WebNN support, you need to import as below:
 
 ```js
 // use ES6 style import syntax (recommended)

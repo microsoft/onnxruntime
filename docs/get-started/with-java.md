@@ -26,8 +26,9 @@ Release artifacts are published to **Maven Central** for use as a dependency in 
 
 | Artifact  | Description | Supported Platforms |
 |-----------|-------------|---------------------|
-| [com.microsoft.onnxruntime:onnxruntime](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime) | CPU | Windows x64, Linux x64, macOS x64 |
-| [com.microsoft.onnxruntime:onnxruntime_gpu](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) | GPU (CUDA) | Windows x64, Linux x64 |
+| [com.microsoft.onnxruntime:onnxruntime 1.24.1](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime/1.24.1/) | CPU | Windows x64, Linux x64, macOS x64 |
+| [com.microsoft.onnxruntime:onnxruntime_gpu 1.24.1 (CUDA 12.x)](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime_gpu/1.24.1/) | GPU (CUDA 12.x) | Windows x64, Linux x64 |
+| [com.microsoft.onnxruntime:onnxruntime-android 1.24.1](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.24.1/) | Android | Android |
 
 For building locally, please see the [Java API development documentation](https://github.com/microsoft/onnxruntime/tree/main/java/README.md) for more details.
 

@@ -101,6 +101,8 @@ If the OS does not have the runtime you need you can switch to use the redist bi
 |ORT release 1.2| 3|
 |ORT release 1.3| 3|
 |ORT release 1.4| 3|
+|...| |
+|ORT release 1.24.1| 7|
 
 See [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/onnx-versions) for more about opsets and ONNX version details in Windows OS distributions.
 
