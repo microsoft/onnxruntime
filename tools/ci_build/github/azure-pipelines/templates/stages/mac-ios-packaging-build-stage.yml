@@ -99,11 +99,17 @@ stages:
     #   displayName: "Build framework for $(sysroot)/$(arch)"
 
     - script: |
-        INTERMEDIATES_DIR="$(Build.ArtifactStagingDirectory)/intermediates"
+        BUILD_DIR="$(Build.BinariesDirectory)/build"
+        INTERMEDIATES_DIR="${BUILD_DIR}/intermediates/$(sysroot)/$(arch)"
         mkdir -p "${INTERMEDIATES_DIR}"
 
         echo "hello from build with sysroot $(sysroot) and arch $(arch)" > "${INTERMEDIATES_DIR}/out.txt"
-      displayName: Generate output file
+
+        pushd "${BUILD_DIR}"
+        zip --recurse-paths --symlinks build.zip .
+        mv build.zip $(Build.ArtifactStagingDirectory)
+        popd
+      displayName: Generate output artifact
 
 - stage: AfterBuildFrameworks
   dependsOn: BuildFrameworks
@@ -115,12 +121,16 @@ stages:
 
     - task: DownloadPipelineArtifact@2
       inputs:
-        itemPattern: framework_*/**
-        targetPath: $(Build.BinariesDirectory)
+        itemPattern: framework_*/build.zip
+        targetPath: $(Build.BinariesDirectory)/artifacts
 
     - script: |
-        find "$(Build.BinariesDirectory)"
-      displayName: Show downloaded artifacts
+        BUILD_DIR="$(Build.BinariesDirectory)/build"
+
+        find "$(Build.BinariesDirectory)/artifacts" -name "build.zip" -exec unzip {} -d "${BUILD_DIR}" \;
+
+        find "${BUILD_DIR}"
+      displayName: Unpack downloaded artifacts to build directory
 
 # - stage: IosPackaging_Build
 #   dependsOn: []
