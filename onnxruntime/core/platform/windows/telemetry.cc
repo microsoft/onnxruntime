@@ -415,7 +415,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
-                      TraceLoggingString(service_names.c_str(), "serviceNames"));
+                      TraceLoggingString(service_names.c_str(), "serviceNames"),
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   }
 }
 
@@ -662,7 +663,8 @@ void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const 
                       // Telemetry info
                       TraceLoggingUInt8(0, "schemaVersion"),
                       TraceLoggingString(provider_id.c_str(), "providerId"),
-                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"));
+                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"),
+                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   }
 }
 
