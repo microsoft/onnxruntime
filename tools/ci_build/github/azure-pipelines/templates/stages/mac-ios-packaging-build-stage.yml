@@ -72,7 +72,7 @@ stages:
       maxParallel: 8
       matrix: $[ dependencies.SetUpBuildFrameworkJobMatrix.outputs['SetVariables.BuildFrameworkJobMatrix'] ]
 
-    timeoutInMinutes: 90
+    timeoutInMinutes: 120
 
     steps:
     - template: ../setup-build-tools.yml
