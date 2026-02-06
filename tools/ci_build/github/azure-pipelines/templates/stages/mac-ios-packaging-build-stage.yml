@@ -125,8 +125,6 @@ stages:
   - job: AssemblePackageAndTest
 
     steps:
-    - checkout: none
-
     - task: DownloadPipelineArtifact@2
       inputs:
         itemPattern: framework_*/build.zip
