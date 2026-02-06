@@ -31,8 +31,7 @@ stages:
   dependsOn: []
 
   jobs:
-  - job: SetUpBuildFrameworkMatrix
-    displayName: "Set up sysroot/arch framework build matrix"
+  - job: SetUpBuildFrameworkJobMatrix
 
     steps:
     - task: PythonScript@0
@@ -60,14 +59,18 @@ stages:
                 "arch": arch,
               }
 
-          print(f"##vso[task.setvariable variable=BuildFrameworkMatrix;isOutput=true]{json.dumps(job_matrix)}")
+          job_matrix_json = json.dumps(job_matrix)
+
+          print(f"Build framework job matrix:\n{job_matrix_json}")
+          print(f"##vso[task.setvariable variable=BuildFrameworkJobMatrix;isOutput=true]{job_matrix_json}")
+      displayName: "Generate build framework job matrix"
 
   - job: BuildFramework
-    dependsOn: SetUpBuildFrameworkMatrix
+    dependsOn: SetUpBuildFrameworkJobMatrix
 
     strategy:
       maxParallel: 8
-      matrix: $[ dependencies.SetUpBuildFrameworkMatrix.outputs['SetVariables.BuildFrameworkMatrix'] ]
+      matrix: $[ dependencies.SetUpBuildFrameworkJobMatrix.outputs['SetVariables.BuildFrameworkJobMatrix'] ]
 
     templateContext:
       outputs:
