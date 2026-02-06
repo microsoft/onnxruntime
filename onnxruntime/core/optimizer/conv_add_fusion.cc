@@ -107,7 +107,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 }
 
 bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11, 22}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }

@@ -9,9 +9,9 @@
 namespace onnxruntime {
 
 bool VerifyNotCastChild(const Node& child_node) {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Conv", {1, 11}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "AveragePool", {7, 10, 11, 19}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Conv", {1, 11, 22}) &&
+      !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "AveragePool", {7, 10, 11, 19, 22}) &&
+      !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12, 22})) {
     return false;
   }
 
