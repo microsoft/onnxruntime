@@ -11,6 +11,16 @@ parameters:
   type: string
   default: '--use_azure'
 
+- name: cmake_build_type
+  type: string
+  displayName: 'CMake build type for Windows. Only for Windows CPU packages.'
+  default: 'RelWithDebInfo'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
 jobs:
 - job: Windows_py_Wheels_${{parameters.ARCHITECTURE}}
   ${{ if eq(parameters.ARCHITECTURE, 'arm64') }}:
