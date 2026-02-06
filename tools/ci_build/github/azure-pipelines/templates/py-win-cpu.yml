@@ -71,12 +71,12 @@ jobs:
     clean: true
     submodules: recursive
 
-  - template: ../templates/setup-build-tools.yml
+  - template: setup-build-tools.yml
     parameters:
       host_cpu_arch: ${{parameters.ARCHITECTURE}}
       python_version: $(PythonVersion)
 
-  - template: ../templates/set-nightly-build-option-variable-step.yml
+  - template: set-nightly-build-option-variable-step.yml
 
   - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
     env:
@@ -111,7 +111,7 @@ jobs:
       createLogFile: true
 
   - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
-    - template: ../templates/publish-symbolrequestprod-api.yml
+    - template: publish-symbolrequestprod-api.yml
       parameters:
         ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
           symbolExpiryTime: 60
@@ -126,7 +126,7 @@ jobs:
           $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
 
   # Esrp signing
-  - template: ../templates/win-esrp-dll.yml
+  - template: win-esrp-dll.yml
     parameters:
       FolderPath: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
       DisplayName: 'ESRP - Sign Native dlls'
