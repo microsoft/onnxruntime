@@ -102,6 +102,22 @@ def _find_or_build_sysroot_arch_framework(
     )
 
 
+def _write_sysroot_arch_framework_build_outputs_to_file(
+    build_dir: pathlib.Path,
+    built_sysroot_arch_framework_infos: list[SysrootArchFrameworkInfo],
+    build_outputs_file_path: pathlib.Path,
+):
+    with open(build_outputs_file_path, mode="w") as build_outputs_file:
+
+        def write_path(p: pathlib.Path):
+            print(p.resolve().relative_to(build_dir), file=build_outputs_file)
+
+        for info in built_sysroot_arch_framework_infos:
+            write_path(info.framework_dir)
+            write_path(info.framework_info_file)
+            write_path(info.info_plist_file)
+
+
 # info related to a fat framework for a single sysroot (e.g., iphoneos)
 # a fat framework contains one or more frameworks for individual archs (e.g., arm64)
 @dataclass
@@ -294,9 +310,9 @@ def parse_args():
     parser.add_argument(
         "--record_sysroot_arch_framework_build_outputs_to_file",
         type=pathlib.Path,
-        help="Write the sysroot/arch framework build outputs to the specified file. "
-        "This option is only valid when `--only_build_single_sysroot_arch_framework` is specified. "
-        "These output files are the files that should be preserved between split-build invocations with "
+        help="If building sysroot/arch framework(s), write the build output file paths to the specified file. "
+        "The paths will be relative to the build directory specified by `--build_dir`. "
+        "These build output files are the files that should be preserved between split-build invocations with "
         "`--only_build_single_sysroot_arch_framework` and `--only_assemble_xcframework`.",
     )
 
@@ -309,15 +325,6 @@ def parse_args():
         include_ops_by_config_file = args.include_ops_by_config.resolve()
         if not include_ops_by_config_file.is_file():
             raise FileNotFoundError(f"Include ops config file {include_ops_by_config_file} is not a file.")
-
-    if (
-        args.record_sysroot_arch_framework_build_outputs_to_file is not None
-        and args.only_build_single_sysroot_arch_framework is None
-    ):
-        raise ValueError(
-            "--record_sysroot_arch_framework_build_outputs_to_file is only valid if "
-            "--only_build_single_sysroot_arch_framework is specified"
-        )
 
     return args
 
@@ -380,10 +387,9 @@ def main():
             print(f"Built sysroot/arch framework for {sysroot}/{arch}: {info.framework_dir}")
 
         if args.record_sysroot_arch_framework_build_outputs_to_file is not None:
-            with open(args.record_sysroot_arch_framework_build_outputs_to_file, mode="w") as build_outputs_file:
-                for info in built_sysroot_arch_framework_infos:
-                    print(info.framework_dir, info.framework_info_file, info.info_plist_file,
-                          file=build_outputs_file, sep="\n")
+            _write_sysroot_arch_framework_build_outputs_to_file(
+                build_dir, built_sysroot_arch_framework_infos, args.record_sysroot_arch_framework_build_outputs_to_file
+            )
 
     else:
         # do not build sysroot/arch frameworks, but look for existing ones
