@@ -130,7 +130,10 @@ CMake creates a target to this project
           SourceFiles="tools/linux_pack/bin/$(Configuration)/$(OrtPackageId).$(PackageVersion).nupkg"
           DestinationFolder="$(NativeBuildOutputDirAbs)" />
 
-    <Copy SourceFiles="$(NativeBuildOutputDirAbs)\$(OrtPackageId).$(PackageVersion).nupkg"
+    <ItemGroup>
+      <NupkgFiles Include="$(NativeBuildOutputDirAbs)\$(OrtPackageId).*.nupkg" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NupkgFiles)"
           DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-local-artifacts"
     />
   </Target>
@@ -180,5 +183,4 @@ CMake creates a target to this project
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
   </Target>
-
 </Project>
