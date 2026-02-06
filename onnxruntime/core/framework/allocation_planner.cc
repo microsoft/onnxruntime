@@ -2115,7 +2115,17 @@ class PlannerImpl {
                   OrtValueIndex output_arg_idx;
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
                   // there are two cases we need notification:
-                  // 1. the consumer is not in the same stream
+                  // 1. the consumer is not in the same stream.
+                  //    There are typically two types of wait functions defined in the Notification
+                  //    class for plugin EPs or other provider-bridge EPs (e.g., CUDA EP and TRT EP):
+                  //      (1) WaitNotificationOnDevice
+                  //      (2) WaitNotificationOnHost
+                  //
+                  //    Note: MemcpyToHost nodes provided by the CPU EP require special handling.
+                  //    If a MemcpyToHost node (running on the host) consumes a tensor produced by
+                  //    a device node, MemcpyToHost must use WaitNotificationOnHost, because the
+                  //    CPU device does not have a stream, which is required by WaitNotificationOnDevice.
+                  //
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumes a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
@@ -2126,9 +2136,10 @@ class PlannerImpl {
                                              const OrtDevice& dst_device) -> WaitNotificationFn {
                     if (node.OpType() == "MemcpyToHost" &&
                         node.GetExecutionProviderType() == kCpuExecutionProvider) {
-                      // The returned wait handle should be on host not on device, as on device
-                      // wait handle requires a stream, but MemcpyToHost node provided by the CPU EP
-                      // relies on data transfer that uses blocking copy without a stream.
+                      // The returned wait handle must be host-based rather than device-based,
+                      // because WaitNotificationOnDevice requires a stream. However,
+                      // the MemcpyToHost node provided by the CPU EP performs a blocking
+                      // data transfer and does not use a stream.
                       return stream_handle_registry.GetWaitHandle(src_device, OrtDevice());
                     }
 
