@@ -53,7 +53,7 @@ jobs:
     matrix:
       SHARED_LIB:
         QnnLibKind: 'shared_lib'
-        ExtraQnnBuildArgs: '--client_package_build'
+        ExtraQnnBuildArgs: '--client_package_build --enable_arm_neon_nchwc'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
         ExtraQnnBuildArgs: ''
