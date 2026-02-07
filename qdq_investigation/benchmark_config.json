@@ -1,0 +1,141 @@
+{
+    "experiment": {
+        "prompt_length": 128,
+        "generation_length": 256,
+        "max_length": 512,
+        "num_warmup": 3,
+        "num_iterations": 10,
+        "num_threads": 0,
+        "test_scenarios": ["native", "qdq_fused", "qdq_unfused"]
+    },
+    "models": {
+        "qwen_matmulnbits_4b_bs64_sym": {
+            "path": "C:/models/qdq_investigation/qwen2.5-1.5b/matmulnbits_4b_bs64_sym",
+            "format": "matmulnbits",
+            "bits": 4,
+            "block_size": 64,
+            "symmetric": true,
+            "base_model": "qwen2.5-1.5b"
+        },
+        "qwen_matmulnbits_4b_bs64_asym": {
+            "path": "C:/models/qdq_investigation/qwen2.5-1.5b/matmulnbits_4b_bs64_asym",
+            "format": "matmulnbits",
+            "bits": 4,
+            "block_size": 64,
+            "symmetric": false,
+            "base_model": "qwen2.5-1.5b"
+        },
+        "qwen_matmulnbits_4b_bs128_sym": {
+            "path": "C:/models/qdq_investigation/qwen2.5-1.5b/matmulnbits_4b_bs128_sym",
+            "format": "matmulnbits",
+            "bits": 4,
+            "block_size": 128,
+            "symmetric": true,
+            "base_model": "qwen2.5-1.5b"
+        },
+        "qwen_matmulnbits_4b_bs128_asym": {
+            "path": "C:/models/qdq_investigation/qwen2.5-1.5b/matmulnbits_4b_bs128_asym",
+            "format": "matmulnbits",
+            "bits": 4,
+            "block_size": 128,
+            "symmetric": false,
+            "base_model": "qwen2.5-1.5b"
+        },
+        "qwen_qdq_4b_bs64_sym": {
+            "path": "C:/models/qdq_investigation/qwen2.5-1.5b/qdq_4b_bs64_sym",
+            "format": "qdq",
+            "bits": 4,
+            "block_size": 64,
+            "symmetric": true,
+            "base_model": "qwen2.5-1.5b"
+        },
+        "qwen_qdq_4b_bs64_asym": {
+            "path": "C:/models/qdq_investigation/qwen2.5-1.5b/qdq_4b_bs64_asym",
+            "format": "qdq",
+            "bits": 4,
+            "block_size": 64,
+            "symmetric": false,
+            "base_model": "qwen2.5-1.5b"
+        },
+        "qwen_qdq_4b_bs128_sym": {
+            "path": "C:/models/qdq_investigation/qwen2.5-1.5b/qdq_4b_bs128_sym",
+            "format": "qdq",
+            "bits": 4,
+            "block_size": 128,
+            "symmetric": true,
+            "base_model": "qwen2.5-1.5b"
+        },
+        "qwen_qdq_4b_bs128_asym": {
+            "path": "C:/models/qdq_investigation/qwen2.5-1.5b/qdq_4b_bs128_asym",
+            "format": "qdq",
+            "bits": 4,
+            "block_size": 128,
+            "symmetric": false,
+            "base_model": "qwen2.5-1.5b"
+        },
+        "phi_matmulnbits_4b_bs64_sym": {
+            "path": "C:/models/qdq_investigation/phi-3.5-mini/matmulnbits_4b_bs64_sym",
+            "format": "matmulnbits",
+            "bits": 4,
+            "block_size": 64,
+            "symmetric": true,
+            "base_model": "phi-3.5-mini"
+        },
+        "phi_matmulnbits_4b_bs128_sym": {
+            "path": "C:/models/qdq_investigation/phi-3.5-mini/matmulnbits_4b_bs128_sym",
+            "format": "matmulnbits",
+            "bits": 4,
+            "block_size": 128,
+            "symmetric": true,
+            "base_model": "phi-3.5-mini"
+        },
+        "phi_qdq_4b_bs64_sym": {
+            "path": "C:/models/qdq_investigation/phi-3.5-mini/qdq_4b_bs64_sym",
+            "format": "qdq",
+            "bits": 4,
+            "block_size": 64,
+            "symmetric": true,
+            "base_model": "phi-3.5-mini"
+        },
+        "phi_qdq_4b_bs128_sym": {
+            "path": "C:/models/qdq_investigation/phi-3.5-mini/qdq_4b_bs128_sym",
+            "format": "qdq",
+            "bits": 4,
+            "block_size": 128,
+            "symmetric": true,
+            "base_model": "phi-3.5-mini"
+        },
+        "llama_matmulnbits_4b_bs64_sym": {
+            "path": "C:/models/qdq_investigation/llama-3.1-8b/matmulnbits_4b_bs64_sym",
+            "format": "matmulnbits",
+            "bits": 4,
+            "block_size": 64,
+            "symmetric": true,
+            "base_model": "llama-3.1-8b"
+        },
+        "llama_matmulnbits_4b_bs128_sym": {
+            "path": "C:/models/qdq_investigation/llama-3.1-8b/matmulnbits_4b_bs128_sym",
+            "format": "matmulnbits",
+            "bits": 4,
+            "block_size": 128,
+            "symmetric": true,
+            "base_model": "llama-3.1-8b"
+        },
+        "llama_qdq_4b_bs64_sym": {
+            "path": "C:/models/qdq_investigation/llama-3.1-8b/qdq_4b_bs64_sym",
+            "format": "qdq",
+            "bits": 4,
+            "block_size": 64,
+            "symmetric": true,
+            "base_model": "llama-3.1-8b"
+        },
+        "llama_qdq_4b_bs128_sym": {
+            "path": "C:/models/qdq_investigation/llama-3.1-8b/qdq_4b_bs128_sym",
+            "format": "qdq",
+            "bits": 4,
+            "block_size": 128,
+            "symmetric": true,
+            "base_model": "llama-3.1-8b"
+        }
+    }
+}
