@@ -10,6 +10,7 @@
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/shared_lib/utils.h"
@@ -427,6 +428,231 @@ TEST(OrtEpLibrary, PluginEp_VirtGpu_GenEpContextModel) {
     // Make sure the compiled model was generated.
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
+}
+
+// Test that compatibility info is written to compiled model metadata
+TEST(OrtEpLibrary, PluginEp_CompatibilityInfo_WrittenToMetadata) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_compat_test.onnx");
+  std::filesystem::remove(output_model_file);
+
+  // Compile the model
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(output_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  }
+
+  // Load the compiled model and check metadata for compatibility info
+  {
+    Ort::SessionOptions session_options;
+    // Need to add the EP to handle EPContext nodes
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, output_model_file, session_options);
+    Ort::AllocatorWithDefaultOptions allocator;
+
+    // Check that the model has EP compatibility metadata
+    Ort::ModelMetadata metadata = session.GetModelMetadata();
+    auto custom_metadata_keys = metadata.GetCustomMetadataMapKeysAllocated(allocator);
+
+    // Check for the exact metadata key for this EP: "ep_compatibility_info.example_ep"
+    const std::string expected_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + "example_ep";
+
+    bool found_compatibility_key = false;
+    for (const auto& key : custom_metadata_keys) {
+      std::string key_str(key.get());
+      if (key_str == expected_key) {
+        found_compatibility_key = true;
+        break;
+      }
+    }
+    ASSERT_TRUE(found_compatibility_key) << "Expected metadata key '" << expected_key << "' in compiled model";
+
+    // Verify the compatibility value contains expected EP information
+    auto value = metadata.LookupCustomMetadataMapAllocated(expected_key.c_str(), allocator);
+    ASSERT_NE(value.get(), nullptr);
+    std::string compatibility_value = value.get();
+    ASSERT_GT(compatibility_value.length(), 0) << "Compatibility info should not be empty";
+
+    // Validate the exact compatibility string format and values
+    // Format: "example_ep;version=0.1.0;ort_api_version=<ORT_API_VERSION>"
+    std::string expected_compatibility_info = "example_ep;version=0.1.0;ort_api_version=" +
+                                              std::to_string(ORT_API_VERSION);
+    EXPECT_EQ(compatibility_value, expected_compatibility_info);
+  }
+
+  std::filesystem::remove(output_model_file);
+}
+
+// Test loading a compiled model validates compatibility successfully
+TEST(OrtEpLibrary, PluginEp_CompatibilityInfo_ValidatedOnLoad) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_compat_validate.onnx");
+  std::filesystem::remove(compiled_model_file);
+
+  // Step 1: Compile the model
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+  }
+
+  // Step 2: Load the compiled model with the same EP - should succeed
+  // The EP should validate compatibility and return OPTIMAL status
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // This should not throw - EP should validate compatibility as OPTIMAL
+    ASSERT_NO_THROW(Ort::Session session(*ort_env, compiled_model_file, session_options));
+  }
+
+  std::filesystem::remove(compiled_model_file);
+}
+
+// Test that loading a compiled model with ep_context_enable=1 returns an error.
+// This is an invalid configuration: the user is asking to generate EP context from a model
+// that already contains EPContext nodes.
+TEST(OrtEpLibrary, PluginEp_Error_LoadCompiledModelWithEpContextEnabled) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_recompile_test.onnx");
+  std::filesystem::remove(compiled_model_file);
+
+  // Step 1: Compile the original model (CompileModel API implicitly generates EPContext nodes)
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+  }
+
+  // Step 2: Attempt to load the compiled model with ep.context_enable=1 - should fail
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");  // Request EP context generation
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    // Loading a compiled model with ep_context_enable=1 should fail
+    try {
+      Ort::Session session(*ort_env, compiled_model_file, session_options);
+      FAIL() << "Expected error when loading compiled model with ep_context_enable=1";
+    } catch (const Ort::Exception& e) {
+      std::string error_msg = e.what();
+      // Verify error message mentions the issue
+      EXPECT_TRUE(error_msg.find("EPContext") != std::string::npos ||
+                  error_msg.find("already") != std::string::npos ||
+                  error_msg.find("re-compile") != std::string::npos)
+          << "Error should mention EPContext or re-compilation: " << error_msg;
+    }
+  }
+
+  std::filesystem::remove(compiled_model_file);
+}
+
+// Test that EPContext inference returns expected "not implemented" error.
+// This documents that the example EP does not fully support EPContext execution.
+TEST(OrtEpLibrary, PluginEp_EpContextInference_NotImplemented) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_inference_test.onnx");
+  std::filesystem::remove(compiled_model_file);
+
+  // Step 1: Compile the model with EP context enabled
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+  }
+
+  // Step 2: Load compiled model and attempt inference - should fail with clear error
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, compiled_model_file, session_options);
+
+    // Prepare inputs - mul_1.onnx has input X of shape [3,2]
+    std::vector<float> input_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    std::vector<int64_t> input_shape = {3, 2};
+
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+    Ort::Value input_x_tensor = Ort::Value::CreateTensor<float>(
+        memory_info, input_x.data(), input_x.size(),
+        input_shape.data(), input_shape.size());
+
+    const char* input_names[] = {"X"};
+    const char* output_names[] = {"Y"};
+    std::vector<Ort::Value> input_tensors;
+    input_tensors.push_back(std::move(input_x_tensor));
+
+    // Inference should fail with NOT_IMPLEMENTED - verify exception content
+    try {
+      auto outputs = session.Run(Ort::RunOptions{nullptr},
+                                 input_names, input_tensors.data(), input_tensors.size(),
+                                 output_names, 1);
+      FAIL() << "Expected exception for EPContext inference, but Run() succeeded";
+    } catch (const Ort::Exception& e) {
+      std::string msg = e.what();
+      // Verify error mentions the limitation
+      EXPECT_TRUE(msg.find("not implemented") != std::string::npos ||
+                  msg.find("NOT_IMPLEMENTED") != std::string::npos ||
+                  msg.find("EPContext") != std::string::npos)
+          << "Expected NOT_IMPLEMENTED or EPContext in error, got: " << msg;
+    }
+  }
+
+  std::filesystem::remove(compiled_model_file);
 }
 
 // Uses the original compiling approach with session option configs (instead of explicit compile API).
