@@ -510,7 +510,7 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
   constexpr const char* limit_setting = "5000,tiny_gpt2_beamsearch_node_stats.txt";
 
-  // Large limit, all nodes are still assigned
+  // Limit is smaller, we expect some nodes to be offloaded to CPU.
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = false;
   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;

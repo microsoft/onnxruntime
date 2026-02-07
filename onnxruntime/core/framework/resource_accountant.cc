@@ -221,7 +221,7 @@ Status CreateAccountants(
       }
 
       std::optional<InlinedHashMap<std::string, NodeAllocationStats>> loaded_stats;
-      if (splits[1].empty()) {
+      if (!splits[1].empty()) {
         loaded_stats.emplace();
         ORT_RETURN_IF_ERROR(LoadNodeAllocationStats(model_path, splits[1], *loaded_stats));
       }
