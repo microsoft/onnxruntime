@@ -60,7 +60,8 @@ npm --version    # Should be v8.0 or newer
 4. **Update the C API header `ORT_API_VERSION` value (Manual Step)**
 
    The script does **not** update the value of `ORT_API_VERSION` in [include/onnxruntime/core/session/onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h).
-   That should be updated too if the API has changed.
+
+   The value should be set to the second component of the version string. E.g., `25` for version `1.25.0`.
 
 5. **Review all changes**
 
