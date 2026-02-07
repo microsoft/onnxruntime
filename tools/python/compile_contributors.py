@@ -80,6 +80,7 @@ def check_preflight():
 # Constants
 PR_CACHE = {}  # Cache for PR details to speed up multiple rounds referencing same PRs
 NAME_TO_LOGIN = {}  # Map full names to GitHub logins for consolidation
+VERIFIED_LOGINS = set()  # Track IDs known to be valid GitHub logins (vs free-form names)
 
 # Bots to exclude from contributor lists
 BOT_NAMES = {
@@ -160,6 +161,7 @@ def extract_authors_from_pr(details):
     if details.get("author"):
         pr_login = details["author"]["login"]
         authors.add(pr_login)
+        VERIFIED_LOGINS.add(pr_login.lower())
 
     # Add authors from all commits in the PR
     if "commits" in details:
@@ -169,6 +171,7 @@ def extract_authors_from_pr(details):
                 name = author_info.get("name")
                 if login:
                     authors.add(login)
+                    VERIFIED_LOGINS.add(login.lower())
                     if name:
                         NAME_TO_LOGIN[name] = login
                 elif name:
@@ -285,9 +288,7 @@ def get_prs_from_log(log_output, prs_base=None, log_file=None, scan_depth=100):
                 for op_num in set(all_extracted_nums):
                     if op_num == current_pr_int:
                         continue
-                    # Only accept reasonably recent PRs to avoid noise
-                    if abs(op_num - current_pr_int) < 5000:
-                        valid_pr_ints.append(op_num)
+                    valid_pr_ints.append(op_num)
 
                 # Sorting results numerically (100 > 99)
                 original_pr_ints = sorted(valid_pr_ints)
@@ -311,12 +312,22 @@ def get_prs_from_log(log_output, prs_base=None, log_file=None, scan_depth=100):
                                 "cherry_pick_pr": pr_num_str,
                             }
                         else:
-                            # If we can't resolve this number as a PR, do not fabricate an entry.
-                            # It may be an issue reference or an inaccessible/deleted PR.
+                            # If we can't resolve this number as a PR (e.g., issue reference or inaccessible/deleted PR),
+                            # do not invent new authors, but still attribute it to the known meta-PR to avoid losing credit.
                             log_event(
-                                f"    - Warning: Unable to resolve PR #{op_num_str} via GitHub CLI; skipping.",
+                                f"    - Warning: Unable to resolve PR #{op_num_str} via GitHub CLI; attributing via meta-PR #{pr_num_str}.",
                                 log_file,
                             )
+                            if op_num_str not in all_prs:
+                                fallback_title = (
+                                    f"Unresolved sub-PR #{op_num_str} (attributed via meta-PR #{pr_num_str})"
+                                )
+                                all_prs[op_num_str] = {
+                                    "title": fallback_title,
+                                    "authors": list(extract_authors_from_pr(details)),
+                                    "cherry_pick_commit": commit_id,
+                                    "cherry_pick_pr": pr_num_str,
+                                }
                 else:
                     log_event("  - No sub-PRs found, treating meta-PR as a normal PR.", log_file)
                     all_prs[pr_num_str] = {
@@ -359,7 +370,7 @@ def main():
     parser.add_argument("--base", default="origin/rel-1.23.2", help="Base branch/commit to compare from")
     parser.add_argument("--target", default="origin/rel-1.24.1", help="Target branch/commit to compare to")
     parser.add_argument("--dir", default="contributors", help="Output directory for reports and logs")
-    parser.add_argument("--scan-depth", type=int, default=100, help="Depth to scan base/meta-PRs for deduplication")
+    parser.add_argument("--scan-depth", type=int, default=200, help="Depth to scan base/meta-PRs for deduplication")
     args = parser.parse_args()
 
     # Early validation
@@ -449,15 +460,15 @@ def main():
                 if not is_bot(final_author) and not is_invalid(final_author):
                     consolidated_contributors[author_lower] = consolidated_contributors.get(author_lower, 0) + count
 
-        # Sort human contributors by count descending for summary
-        sorted_contributors = sorted(consolidated_contributors.items(), key=lambda x: x[1], reverse=True)
+        # Sort human contributors by count descending, then alphabetically by identity for determinism
+        sorted_contributors = sorted(consolidated_contributors.items(), key=lambda x: (-x[1], x[0]))
 
         log_event("\n--- Summary ---", log_file)
-        # Prefix only identified github logins (no spaces) and format as markdown links
+        # Prefix only identified github logins and format as markdown links
         output_users = []
         for login_lower, _login in sorted_contributors:
             u = display_names[login_lower]
-            if " " not in u:
+            if login_lower in VERIFIED_LOGINS:
                 output_users.append(f"[@{u}](https://github.com/{u})")
             else:
                 output_users.append(u)
