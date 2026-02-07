@@ -8,7 +8,7 @@ wheel==0.45.1
 argparse
 sympy==1.14
 flatbuffers
-protobuf==6.33.0
+protobuf==6.33.5
 packaging
 onnxscript==0.5.3; python_version < "3.14"
 onnx-ir==0.1.10; python_version < "3.14"
