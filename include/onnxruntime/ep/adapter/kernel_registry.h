@@ -60,11 +60,22 @@ struct KernelRegistry {
       return ToOrtStatus(status);
     }
     *out = nullptr;
+
+    // Try to create a control flow kernel implementation if applicable.
+    // For kernel based plugin EPs, the implementation should create the control flow kernel directly using one of the
+    // following APIs:
+    // - `OrtEpApi::CreateIfKernel`
+    // - `OrtEpApi::CreateLoopKernel`
+    // - `OrtEpApi::CreateScanKernel`
+    //
+    // If the kernel being created is one of the control flow kernels, `CreateControlFlowKernelImpl` should be overriden
+    // to write the value of `out` to the created `OrtKernelImpl`, and the returned status should be OK.
     status = kernel->CreateControlFlowKernelImpl(info, out);
     if (!status.IsOK()) {
       return ToOrtStatus(status);
     }
     if (*out == nullptr) {
+      // If the kernel is not a control flow kernel, create a regular kernel implementation.
       *out = new KernelImpl(std::move(kernel));
     }
     return nullptr;
