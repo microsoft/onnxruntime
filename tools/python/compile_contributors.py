@@ -381,6 +381,13 @@ def main():
         # 1. Fetch base branch PRs (scan depth controlled by scan_depth)
         log_event(f"Fetching base branch history for {branch_base} (last {scan_depth})...", log_file)
         log_base = run_command(["git", "log", branch_base, "-n", str(scan_depth), "--oneline"])
+        if log_base is None:
+            log_event(
+                f"Error: Could not fetch history for base ref '{branch_base}'. Please check if the ref exists.",
+                log_file,
+            )
+            return
+
         prs_base_dict = get_prs_from_log(log_base, prs_base=None, log_file=log_file, scan_depth=scan_depth)
         prs_base = set(prs_base_dict.keys())
 
@@ -388,6 +395,13 @@ def main():
         log_event(f"Fetching target branch history: {branch_base}..{branch_target}...", log_file)
         # Using A..B syntax for git log
         log_target = run_command(["git", "log", f"{branch_base}..{branch_target}", "--oneline"])
+        if log_target is None:
+            log_event(
+                f"Error: Could not fetch history for range '{branch_base}..{branch_target}'. Please check if the refs exist.",
+                log_file,
+            )
+            return
+
         prs_target = get_prs_from_log(log_target, prs_base=prs_base, log_file=log_file, scan_depth=scan_depth)
 
         # All PRs in target but not in base (deduplicated by key)
