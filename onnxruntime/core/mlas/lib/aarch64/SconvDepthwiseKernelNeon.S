@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 
 Module Name:
 
-    SconvDepthwiseFloatKernelNeon.S
+    SconvDepthwiseKernelNeon.S
 
 Abstract:
 
@@ -18,7 +18,6 @@ Abstract:
       * When an output position touches padding, only the affected 4-wide
         lanes are checked individually and loaded; others are zeroed.  This
         mirrors the behavior of the C++ helper LoadInputVectorWithBounds.
-        mirrors the behaviour of the C++ helper LoadInputVectorWithBounds.
       * Keep the multiply/accumulate operations tightly scheduled to hide the
         load latency.
 
