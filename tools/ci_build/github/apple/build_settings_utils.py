@@ -8,15 +8,16 @@ _DEFAULT_BUILD_SYSROOT_ARCHS = {
     "iphonesimulator": ["arm64", "x86_64"],
 }
 
+
 def parse_build_settings_file(build_settings_file: pathlib.Path) -> dict:
-    '''
+    """
     Parses the provided build settings file into a build settings dict.
 
     :param build_settings_file: The build settings file path.
     :type build_settings_file: pathlib.Path
     :return: The build settings dict.
     :rtype: dict[Any, Any]
-    '''
+    """
     with open(build_settings_file) as f:
         build_settings_data = json.load(f)
 
@@ -43,24 +44,24 @@ def parse_build_settings_file(build_settings_file: pathlib.Path) -> dict:
 
 
 def get_sysroot_arch_pairs(build_settings: dict) -> list[tuple[str, str]]:
-    '''
+    """
     Gets all specified sysroot/arch pairs.
 
     :param build_settings: The build settings dict.
     :type build_settings: dict
     :return: A list of (sysroot, arch) tuples.
     :rtype: list[tuple[str, str]]
-    '''
+    """
     pair_set: set[tuple[str, str]] = set()
     for sysroot, archs in build_settings["build_osx_archs"].items():
         for arch in archs:
             pair_set.add((sysroot, arch))
 
-    return sorted(list(pair_set))
+    return sorted(pair_set)
 
 
 def get_build_params(build_settings: dict, sysroot: str) -> list[str]:
-    '''
+    """
     Returns the build params associated with given `sysroot`.
     The special `sysroot` value "base" may be used to get the base build params.
 
@@ -70,5 +71,5 @@ def get_build_params(build_settings: dict, sysroot: str) -> list[str]:
     :type sysroot: str
     :return: The build params associated with `sysroot`, if any, or an empty list.
     :rtype: list[str]
-    '''
+    """
     return build_settings["build_params"].get(sysroot, [])
