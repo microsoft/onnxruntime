@@ -19,8 +19,8 @@ TEST(CApiTest, VersionConsistencyWithApiVersion) {
 
   auto to_uint32_t = [](const std::string& s) -> std::optional<uint32_t> {
     uint32_t result{};
-    if(std::from_chars(s.data(), s.data() + s.size(), result).ec == std::errc{}) {
-        return result;
+    if (std::from_chars(s.data(), s.data() + s.size(), result).ec == std::errc{}) {
+      return result;
     }
     return std::nullopt;
   };
