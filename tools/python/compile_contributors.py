@@ -20,6 +20,7 @@ Outputs:
     - logs.txt: Processing logs and summary (professional humans-only contributor list for release notes).
 
 Requirements:
+    - Python 3.7+
     - GitHub CLI (gh) logged in.
 """
 
@@ -41,8 +42,42 @@ def log_event(message, log_file=None):
         log_file.write(full_message + "\n")
 
 
+def run_command(command_list, cwd=".", silent=False):
+    """Run a command using a list of arguments for security (no shell=True)."""
+    result = subprocess.run(command_list, check=False, capture_output=True, text=True, cwd=cwd, encoding="utf-8")
+    if result.returncode != 0:
+        if not silent:
+            log_str = " ".join(command_list)
+            print(f"Error running command: {log_str}")
+            if result.stderr:
+                print(f"Stderr: {result.stderr.strip()}")
+        return None
+    return result.stdout
+
+
+def check_preflight():
+    """Verify gh CLI and git repository early."""
+    # Check git
+    git_check = run_command(["git", "rev-parse", "--is-inside-work-tree"], silent=True)
+    if not git_check:
+        print("Error: This script must be run inside a git repository.")
+        return False
+
+    # Check gh
+    gh_check = run_command(["gh", "--version"], silent=True)
+    if not gh_check:
+        print("Error: GitHub CLI (gh) not found or not in PATH.")
+        return False
+
+    gh_auth = run_command(["gh", "auth", "status"], silent=True)
+    if not gh_auth:
+        print("Error: GitHub CLI not authenticated. Please run 'gh auth login'.")
+        return False
+
+    return True
+
+
 # Constants
-MAX_CHERRY_PICK_SCAN = 50
 PR_CACHE = {}  # Cache for PR details to speed up multiple rounds referencing same PRs
 NAME_TO_LOGIN = {}  # Map full names to GitHub logins for consolidation
 
@@ -93,15 +128,6 @@ def is_invalid(name):
     return False
 
 
-def run_command(command, cwd=".", silent=False):
-    result = subprocess.run(command, check=False, shell=True, capture_output=True, text=True, cwd=cwd, encoding="utf-8")
-    if result.returncode != 0:
-        if not silent:
-            print(f"Error running command: {command}\n{result.stderr}")
-        return None
-    return result.stdout
-
-
 def get_pr_number(subject):
     match = re.search(r"\(#(\d+)\)$", subject.strip())
     if match:
@@ -114,7 +140,7 @@ def get_pr_details(pr_number):
         return PR_CACHE[pr_number]
 
     # Try as a PR first - fetch author and commits to get all contributors
-    output = run_command(f"gh pr view {pr_number} --json number,title,author,body,commits", silent=True)
+    output = run_command(["gh", "pr", "view", pr_number, "--json", "number,title,author,body,commits"], silent=True)
     if output:
         details = json.loads(output)
         PR_CACHE[pr_number] = details
@@ -161,7 +187,7 @@ def extract_authors_from_pr(details):
 def extract_authors_from_commit(commit_id):
     authors = set()
     # Format: AuthorName \n Body
-    info = run_command(f'git show -s --format="%an%n%B" {commit_id}', silent=True)
+    info = run_command(["git", "show", "-s", "--format=%an%n%B", commit_id], silent=True)
     if not info:
         return authors
 
@@ -203,7 +229,7 @@ def extract_pr_numbers(text, strict=False):
     return [int(x) for x in set(prs)]
 
 
-def get_prs_from_log(log_output, prs_base=None, log_file=None):
+def get_prs_from_log(log_output, prs_base=None, log_file=None, scan_depth=100):
     if not log_output:
         return {}
 
@@ -235,40 +261,42 @@ def get_prs_from_log(log_output, prs_base=None, log_file=None):
             details = get_pr_details(pr_num_str)
 
         if details:
-            # Check if it's a cherry-pick round PR - scan deep to identify meta-PRs
+            # Check if it's a cherry-pick round PR
             is_meta_pr = (
                 "cherry pick" in subject.lower() or "cherry-pick" in subject.lower() or "cherrypick" in subject.lower()
             )
 
-            if is_meta_pr and commit_count < MAX_CHERRY_PICK_SCAN:
+            if is_meta_pr and commit_count < scan_depth:
                 log_event(f"  - Meta-PR detected, expanding: {details['title']}", log_file)
                 # Collect Original PRs from Title, Body, and Commits
                 all_extracted_nums = []
-                all_extracted_nums.extend(extract_pr_numbers(details["title"]))
+                # Use strict extraction even for titles to avoid matching issues like #26985
+                all_extracted_nums.extend(extract_pr_numbers(details["title"], strict=True))
                 all_extracted_nums.extend(extract_pr_numbers(details["body"], strict=True))
 
-                commits_output = run_command(f"gh pr view {pr_num_str} --json commits", silent=True)
-                if commits_output:
-                    commits_data = json.loads(commits_output)
-                    for commit in commits_data.get("commits", []):
-                        all_extracted_nums.extend(extract_pr_numbers(commit.get("messageHeadline", ""), strict=True))
-                        all_extracted_nums.extend(extract_pr_numbers(commit.get("messageBody", ""), strict=True))
+                # Reuse commits already fetched in get_pr_details to avoid an extra gh CLI call
+                for commit in details.get("commits", []):
+                    all_extracted_nums.extend(extract_pr_numbers(commit.get("messageHeadline", ""), strict=True))
+                    all_extracted_nums.extend(extract_pr_numbers(commit.get("messageBody", ""), strict=True))
 
                 # Filter and Normalize
                 current_pr_int = int(pr_num_str)
-                valid_pr_nums = []
+                valid_pr_ints = []
                 for op_num in set(all_extracted_nums):
                     if op_num == current_pr_int:
                         continue
+                    # Only accept reasonably recent PRs to avoid noise
                     if abs(op_num - current_pr_int) < 5000:
-                        valid_pr_nums.append(str(op_num))
+                        valid_pr_ints.append(op_num)
 
-                original_pr_nums = sorted(valid_pr_nums)
-                log_event(f"  - Extracted sub-PR candidates: {original_pr_nums}", log_file)
+                # Sorting results numerically (100 > 99)
+                original_pr_ints = sorted(valid_pr_ints)
+                log_event(f"  - Extracted sub-PR candidates: {original_pr_ints}", log_file)
 
-                if original_pr_nums:
-                    log_event(f"  -> Found {len(original_pr_nums)} sub-PRs for expansion.", log_file)
-                    for op_num_str in original_pr_nums:
+                if original_pr_ints:
+                    log_event(f"  -> Found {len(original_pr_ints)} sub-PRs for expansion.", log_file)
+                    for op_num in original_pr_ints:
+                        op_num_str = str(op_num)
                         if prs_base and op_num_str in prs_base:
                             log_event(f"    - Sub-PR #{op_num_str} already in base branch, skipping.", log_file)
                             continue
@@ -283,18 +311,12 @@ def get_prs_from_log(log_output, prs_base=None, log_file=None):
                                 "cherry_pick_pr": pr_num_str,
                             }
                         else:
-                            # FALLBACK: Use Meta-PR authors if sub-PR fetch fails
+                            # If we can't resolve this number as a PR, do not fabricate an entry.
+                            # It may be an issue reference or an inaccessible/deleted PR.
                             log_event(
-                                f"    - Warning: Fetch failed for PR #{op_num_str}, using meta-PR authors fallback.",
+                                f"    - Warning: Unable to resolve PR #{op_num_str} via GitHub CLI; skipping.",
                                 log_file,
                             )
-                            meta_authors = extract_authors_from_pr(details)
-                            all_prs[op_num_str] = {
-                                "title": f"Original PR #{op_num_str} (details missing)",
-                                "authors": list(meta_authors),
-                                "cherry_pick_commit": commit_id,
-                                "cherry_pick_pr": pr_num_str,
-                            }
                 else:
                     log_event("  - No sub-PRs found, treating meta-PR as a normal PR.", log_file)
                     all_prs[pr_num_str] = {
@@ -337,11 +359,17 @@ def main():
     parser.add_argument("--base", default="origin/rel-1.23.2", help="Base branch/commit to compare from")
     parser.add_argument("--target", default="origin/rel-1.24.1", help="Target branch/commit to compare to")
     parser.add_argument("--dir", default="contributors", help="Output directory for reports and logs")
+    parser.add_argument("--scan-depth", type=int, default=100, help="Depth to scan base/meta-PRs for deduplication")
     args = parser.parse_args()
+
+    # Early validation
+    if not check_preflight():
+        return
 
     branch_base = args.base
     branch_target = args.target
     output_dir = args.dir
+    scan_depth = args.scan_depth
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -350,16 +378,17 @@ def main():
     with open(logs_path, "w", encoding="utf-8") as log_file:
         log_event(f"Starting comparison: {branch_base} -> {branch_target}", log_file)
 
-        # 1. Fetch base branch PRs (scan depth controlled by MAX_CHERRY_PICK_SCAN)
-        log_event(f"Fetching base branch history for {branch_base} (last {MAX_CHERRY_PICK_SCAN})...", log_file)
-        log_base = run_command(f"git log {branch_base} -n {MAX_CHERRY_PICK_SCAN} --oneline")
-        prs_base_dict = get_prs_from_log(log_base, prs_base=None, log_file=log_file)
+        # 1. Fetch base branch PRs (scan depth controlled by scan_depth)
+        log_event(f"Fetching base branch history for {branch_base} (last {scan_depth})...", log_file)
+        log_base = run_command(["git", "log", branch_base, "-n", str(scan_depth), "--oneline"])
+        prs_base_dict = get_prs_from_log(log_base, prs_base=None, log_file=log_file, scan_depth=scan_depth)
         prs_base = set(prs_base_dict.keys())
 
         # 2. Fetch target branch PRs (only those not in base)
         log_event(f"Fetching target branch history: {branch_base}..{branch_target}...", log_file)
-        log_target = run_command(f"git log {branch_base}..{branch_target} --oneline")
-        prs_target = get_prs_from_log(log_target, prs_base=prs_base, log_file=log_file)
+        # Using A..B syntax for git log
+        log_target = run_command(["git", "log", f"{branch_base}..{branch_target}", "--oneline"])
+        prs_target = get_prs_from_log(log_target, prs_base=prs_base, log_file=log_file, scan_depth=scan_depth)
 
         # All PRs in target but not in base (deduplicated by key)
         new_pr_keys = set(prs_target.keys())
@@ -367,6 +396,7 @@ def main():
         contributors = {}  # username -> count
         details = []
 
+        # Use str directly as key for sorting
         for key in sorted(new_pr_keys, key=str):
             info = prs_target[key]
             authors = info.get("authors", [])
