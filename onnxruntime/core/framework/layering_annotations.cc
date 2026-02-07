@@ -393,7 +393,7 @@ std::optional<std::string> EpLayeringMatcher::Match(const ExecutionProviders& pr
   return std::nullopt;
 }
 
-LayeringIndex LayeringIndex::Create(Graph& graph,
+LayeringIndex LayeringIndex::Create(const Graph& graph,
                                     EpNameToLayeringIndices ep_map,
                                     LayeringIndexToEpName rule_map,
                                     LayeringRules layering_rules) {
@@ -406,7 +406,7 @@ LayeringIndex LayeringIndex::Create(Graph& graph,
   return index;
 }
 
-Status LayeringIndex::Create(Graph& graph,
+Status LayeringIndex::Create(const Graph& graph,
                              const std::string& config_string,
                              gsl::span<const OrtEpDevice* const> ep_devices,
                              const ExecutionProviders& ep_providers,
@@ -467,7 +467,7 @@ Status LayeringIndex::Create(Graph& graph,
 }
 
 // Process top to bottom-up assign layering indices to nodes
-void LayeringIndex::ProcessGraph(Graph& graph, std::optional<size_t> parent_layer_id) {
+void LayeringIndex::ProcessGraph(const Graph& graph, std::optional<size_t> parent_layer_id) {
   // 3. Create entry for this graph instance
   bool was_updated = false;
   std::optional<GraphLayeringIndex> new_index;
@@ -489,8 +489,6 @@ void LayeringIndex::ProcessGraph(Graph& graph, std::optional<size_t> parent_laye
     if (!annotation.empty()) {
       // If it has an annotation try to match it
       matched_rule_idx = matcher_.Match(annotation);
-      // Save memory and clear the annotation since it's no longer needed
-      node.ClearLayeringAnnotation();
     }
 
     // 5. If node has no annotation, inherit from subgraph parent node
@@ -517,7 +515,7 @@ void LayeringIndex::ProcessGraph(Graph& graph, std::optional<size_t> parent_laye
     // Recurse for subgraphs
     if (node.ContainsSubgraph()) {
       const std::optional<size_t> subgraph_parent_assignment = matched_rule_idx;
-      for (auto& [attr_name, subgraph] : node.GetMutableMapOfAttributeNameToSubgraph()) {
+      for (auto& [attr_name, subgraph] : node.GetAttributeNameToSubgraphMap()) {
         ProcessGraph(*subgraph, subgraph_parent_assignment);
       }
     }
@@ -527,7 +525,7 @@ void LayeringIndex::ProcessGraph(Graph& graph, std::optional<size_t> parent_laye
   }
 }
 
-void LayeringIndex::Update(Graph& graph, gsl::span<const NodeIndex> nodes) {
+void LayeringIndex::Update(const Graph& graph, gsl::span<const NodeIndex> nodes) {
   // Ensure we have an entry for this graph (creating it if it doesn't exist, though typically it should)
   bool was_updated = false;
   std::optional<GraphLayeringIndex> new_index;
@@ -544,7 +542,7 @@ void LayeringIndex::Update(Graph& graph, gsl::span<const NodeIndex> nodes) {
 
   for (NodeIndex node_index : nodes) {
     // GetMutableNode because we want to ClearLayeringAnnotation if we use it
-    Node* node = graph.GetNode(node_index);
+    const Node* node = graph.GetNode(node_index);
     if (!node) {
       continue;
     }
@@ -552,8 +550,6 @@ void LayeringIndex::Update(Graph& graph, gsl::span<const NodeIndex> nodes) {
     const std::string& annotation = node->GetLayeringAnnotation();
     if (!annotation.empty()) {
       auto matched_rule_idx = matcher_.Match(annotation);
-      // Consume the annotation
-      node->ClearLayeringAnnotation();
 
       if (matched_rule_idx) {
         const size_t rule_idx = *matched_rule_idx;

@@ -1511,6 +1511,16 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                        session_options_.config_options, *session_logger_, layering_index,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (layering_index) {
+    // Layering annotations maybe present even if index is not built although unlikely.
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph.RemoveAllLayeringAnnotations());
+    // We are currently not using it beyond this point. Clear it to free up memory.
+    layering_index = nullptr;
+    layering_index_storage.reset();
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
   // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
   // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
   unsigned int graph_optimizations_loop_level = static_cast<unsigned int>(std::stoi(

@@ -136,7 +136,7 @@ class LayeringIndex {
   /// <param name="ep_map">Pre-populated mapping of EP names to their applicable rule indices.</param>
   /// <param name="rule_map">Pre-populated mapping of rule indices to EP names.</param>
   /// <param name="matcher">Matcher to resolve node annotations to rule indices.</param>
-  static LayeringIndex Create(Graph& graph,
+  static LayeringIndex Create(const Graph& graph,
                               EpNameToLayeringIndices ep_map,
                               LayeringIndexToEpName rule_map,
                               LayeringRules layering_rules);
@@ -153,7 +153,7 @@ class LayeringIndex {
   /// <param name="layering_index">Output parameter for the created LayeringIndex. Returns no index if
   ///              no valid layering rules discovered.</param>
   /// <returns>Status indicating success or failure.</returns>
-  static Status Create(Graph& graph,
+  static Status Create(const Graph& graph,
                        const std::string& config_string,
                        gsl::span<const OrtEpDevice* const> ep_devices,
                        const ExecutionProviders& ep_providers,
@@ -218,7 +218,7 @@ class LayeringIndex {
   /// </summary>
   /// <param name="graph">The graph containing the nodes.</param>
   /// <param name="nodes">Pixels of nodes to check and update.</param>
-  void Update(Graph& graph, gsl::span<const NodeIndex> nodes);
+  void Update(const Graph& graph, gsl::span<const NodeIndex> nodes);
 
  private:
   LayeringRules rules_;
@@ -257,7 +257,7 @@ class LayeringIndex {
   // Graph and sub-graphs mapping to their indices
   InlinedHashMap<const Graph*, GraphLayeringIndex> graph_index_;
 
-  void ProcessGraph(Graph& graph, std::optional<size_t> parent_layer_id);
+  void ProcessGraph(const Graph& graph, std::optional<size_t> parent_layer_id);
 };
 
 }  // namespace onnxruntime

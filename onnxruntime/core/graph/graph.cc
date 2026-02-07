@@ -3932,6 +3932,20 @@ Status Graph::RemovedUnusedInitializersOrtFormat() {
   auto result = ForThisAndAllSubgraphs(all_subgraphs, cleanup_func);
   return result;
 }
+
+Status Graph::RemoveAllLayeringAnnotations() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+  auto cleanup_func = [](Graph& graph) {
+    for (auto& node : graph.Nodes()) {
+      node.ClearLayeringAnnotation();
+    }
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, cleanup_func);
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 const std::string& Graph::Name() const noexcept {

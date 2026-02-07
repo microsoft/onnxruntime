@@ -1576,6 +1576,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // compiled model during partitioning, leaving them unused in the ORT Graph. To allow the memory to be freed
   // we need to manually run the cleanup that would usually happen as part of Graph::Resolve.
   Status RemovedUnusedInitializersOrtFormat();
+
+  // This examines all the nodes and removes any annotations that are only used for layering.
+  // This potentially saves memory.
+  Status RemoveAllLayeringAnnotations();
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
