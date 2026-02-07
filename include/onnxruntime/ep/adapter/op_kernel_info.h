@@ -33,7 +33,7 @@ struct OpKernelInfo {
   //
   // A helper struct to cache kernel info data
   //
-  // Because `KernelCreatePtrFn` is defined to use `const OrtKernelInfo&` as parameter type of the kernel creation function, `OpKernelInfo` has to be copyable.
+  // Because `KernelCreatePtrFn` is defined to use `const OpKernelInfo&` as parameter type of the kernel creation function, `OpKernelInfo` has to be copyable.
   // This means we cannot store cached data like `constant_input_tensors_` in `OpKernelInfo` directly to avoid ownership issues.
   //
   // As a workaround, we define this struct `KernelInfoCache` here to represent the cached data. We use a shared pointer to `KernelInfoCache` in `OpKernelInfo`
