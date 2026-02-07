@@ -24,37 +24,41 @@ namespace qnn {
 
 namespace {
 
-// Resolves the correct I/O order, preferring ONNX declaration order when available.
-// When names don't match directly (e.g., with offload_graph_io_quantization), uses
-// tensor_name_overrides_reversed to translate ONNX names to internal tensor names.
+// Resolves I/O tensor ordering for QNN subgraph.
+//
+// Tries to return tensor names in the original ONNX declaration order. When that's not possible
+// (e.g., onnx_names unavailable, fused node uses tokenized internal names, or partial graph
+// partitioning), falls back to the fused node's original ordering.
 std::vector<std::string> ResolveGraphInputOutputOrder(
     const std::vector<std::string>* onnx_names,
     const std::unordered_set<std::string>& fused_names,
     const std::vector<std::string>& fused_order,
     const std::unordered_map<std::string, std::string>& tensor_name_overrides_reversed) {
-  if (!onnx_names) {
-    return fused_order;
-  }
+  if (onnx_names) {
+    // ONNX names match fused names directly.
+    if (std::all_of(onnx_names->begin(), onnx_names->end(),
+                    [&](const std::string& n) { return fused_names.count(n) > 0; })) {
+      return *onnx_names;
+    }
 
-  bool names_match = std::all_of(onnx_names->begin(), onnx_names->end(),
-                                 [&](const std::string& n) { return fused_names.count(n) > 0; });
-  if (names_match) {
-    return *onnx_names;
-  }
-
-  if (!tensor_name_overrides_reversed.empty()) {
-    std::vector<std::string> mapped_order;
-    for (const auto& onnx_name : *onnx_names) {
-      auto it = tensor_name_overrides_reversed.find(onnx_name);
-      if (it != tensor_name_overrides_reversed.end() && fused_names.count(it->second)) {
-        mapped_order.push_back(it->second);
+    // Translate ONNX names through overrides (onnx_name -> internal_name).
+    if (!tensor_name_overrides_reversed.empty()) {
+      std::vector<std::string> mapped_order;
+      for (const auto& onnx_name : *onnx_names) {
+        auto it = tensor_name_overrides_reversed.find(onnx_name);
+        if (it != tensor_name_overrides_reversed.end() && fused_names.count(it->second)) {
+          mapped_order.push_back(it->second);
+        }
+      }
+      if (mapped_order.size() == onnx_names->size()) {
+        return mapped_order;
       }
     }
-    if (mapped_order.size() == onnx_names->size()) {
-      return mapped_order;
-    }
   }
 
+  // Fallback: use fused node's own ordering. Reached when onnx_names is null (context cache
+  // loading) or when names can't be resolved (fused node uses tokenized internal names that
+  // have no relationship to ONNX names).
   return fused_order;
 }
 
