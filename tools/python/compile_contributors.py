@@ -367,7 +367,7 @@ def main():
         contributors = {}  # username -> count
         details = []
 
-        for key in sorted(new_pr_keys, key=lambda x: str(x)):
+        for key in sorted(new_pr_keys, key=str):
             info = prs_target[key]
             authors = info.get("authors", [])
 
