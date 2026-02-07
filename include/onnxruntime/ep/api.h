@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <memory>
+#include <optional>
 
 #pragma push_macro("ORT_API_MANUAL_INIT")
 #define ORT_API_MANUAL_INIT
@@ -20,7 +20,7 @@ struct ApiPtrs {
 };
 
 namespace detail {
-inline std::unique_ptr<ApiPtrs> g_api_ptrs;
+inline std::optional<ApiPtrs> g_api_ptrs;
 }
 
 /// <summary>
@@ -42,8 +42,7 @@ inline void ApiInit(const OrtApiBase* ort_api_base) {
 
   // Initialize the global API instance
   if (!detail::g_api_ptrs) {
-    detail::g_api_ptrs = std::make_unique<ApiPtrs>(
-        ApiPtrs{*ort_api, *ep_api, *model_editor_api});
+    detail::g_api_ptrs.emplace(*ort_api, *ep_api, *model_editor_api);
   }
 }
 
