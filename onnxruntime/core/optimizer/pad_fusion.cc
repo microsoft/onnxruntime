@@ -90,7 +90,7 @@ void UpdatePaddingAttribute(Node& child_node, const std::vector<int64_t>& pads_v
  */
 bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   // if Pad has input axis, don't fuse it.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Pad", {1, 2, 11, 13, 18, 19}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Pad", {1, 2, 11, 13, 18, 19, 21, 23, 24, 25}) ||
       node.GetOutputEdgesCount() != 1 ||
       node.InputDefs().size() > 3) {
     return false;
@@ -130,7 +130,7 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
   }
 
   const Node& child_node = *node.OutputNodesBegin();
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Cast", {1, 6, 9, 13})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Cast", {1, 6, 9, 13, 19, 21, 23, 24, 25})) {
     if (child_node.GetOutputEdgesCount() != 1) {
       return false;
     }
