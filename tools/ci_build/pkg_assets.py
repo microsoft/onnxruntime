@@ -155,6 +155,7 @@ def build_zip_asset(
 
         # Get list of files to include
         asset_files = get_qnn_asset_file_list()
+        asset_files.extend(["LICENSE", "Qualcomm_LICENSE.pdf", "Privacy.md", "ThirdPartyNotices.txt"])
 
         # Collect and verify files exist
         missing_files = []

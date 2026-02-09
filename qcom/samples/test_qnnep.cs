@@ -10,11 +10,11 @@ namespace QnnEpNuGetTest
 {
     class Program
     {
-        private static string InputModelPath = "conv_autopad.onnx";
+        private static string InputModelPath = "cmake\\external\\onnx\\onnx\\backend\\test\\data\\node\\test_averagepool_2d_default\\model.onnx";
         private const int Batch = 1;
-        private const int Channel = 1;
-        private const int Height = 5;
-        private const int Width = 5;
+        private const int Channel = 3;
+        private const int Height = 32;
+        private const int Width = 32;
 
         static void Main(string[] args)
         {

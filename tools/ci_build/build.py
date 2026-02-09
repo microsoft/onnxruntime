@@ -1963,33 +1963,6 @@ def build_python_wheel(
         run_subprocess(args, cwd=cwd)
 
 
-# TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
-# Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the wheel package.
-def rename_wheel_qnn_ep_library(build_dir, configs):
-    for config in configs:
-        artifact_folder = os.path.join(build_dir, config, config)
-        wheel_files = glob.glob(f"{artifact_folder}/dist/*.whl")
-        for wheel_path in wheel_files:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                # Extract wheel
-                with zipfile.ZipFile(wheel_path, "r") as zip_ref:
-                    zip_ref.extractall(tmp_dir)
-
-                # Remove the origin one
-                os.remove(wheel_path)
-
-                qnn_ep_libraries_need_updated = glob.glob(f"{tmp_dir}/*/onnxruntime_providers_qnn_abi.dll")
-                for qnn_ep_library in qnn_ep_libraries_need_updated:
-                    # Rename
-                    shutil.move(
-                        qnn_ep_library,
-                        qnn_ep_library.replace("onnxruntime_providers_qnn_abi.dll", "onnxruntime_providers_qnn.dll"),
-                    )
-
-                # Repack wheel
-                subprocess.run(f"wheel pack {tmp_dir} -d {artifact_folder}/dist", shell=True, check=True)
-
-
 def build_qnn_ep_helper_assembly(source_dir, config):
     """Build the Qualcomm.ML.OnnxRuntime.QNN helper assembly"""
     helper_project_dir = os.path.join(source_dir, "csharp", "src", "Qualcomm.ML.OnnxRuntime.QNN")
@@ -2124,9 +2097,14 @@ def build_nuget_package(
 
 # TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
 # Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the nuget package.
-def rename_qnn_ep_library(build_dir, configs):
+def rename_nuget_qnn_ep_library(build_dir, configs, use_ninja=False):
     for config in configs:
-        artifact_folder = os.path.join(build_dir, config, config)
+        # Determine working directory
+        config_build_dir = get_config_build_dir(build_dir, config)
+        if is_windows() and not use_ninja:
+            artifact_folder = os.path.join(config_build_dir, config)
+        else:
+            artifact_folder = config_build_dir
         nuget_files = glob.glob(f"{artifact_folder}/*.nupkg")
         nuget_files.extend(glob.glob(f"{artifact_folder}/nuget-local-artifacts/*.nupkg"))
         for nuget_path in nuget_files:
@@ -2608,9 +2586,6 @@ def main():
                 nightly_build=nightly_build,
                 use_ninja=(args.cmake_generator == "Ninja"),
             )
-            # TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
-            # Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the wheel package.
-            rename_wheel_qnn_ep_library(build_dir, configs)
 
         if args.build_nuget:
             platform_arch = platform.machine()
@@ -2635,7 +2610,7 @@ def main():
             )
             # TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
             # Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the nuget package.
-            rename_qnn_ep_library(build_dir, configs)
+            rename_nuget_qnn_ep_library(build_dir, configs, use_ninja=(args.cmake_generator == "Ninja"))
 
         if args.build_zip_asset:
             build_zip_asset(

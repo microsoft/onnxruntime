@@ -124,6 +124,26 @@
       endforeach()
     endif()
   endif()
+
+  # Copy License to output directory
+  add_custom_command(
+    TARGET ${onnxruntime_providers_qnn_abi_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${REPO_ROOT}/ThirdPartyNotices.txt
+        $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_target}>/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${REPO_ROOT}/docs/Privacy.md
+        $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_target}>/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${REPO_ROOT}/LICENSE
+        $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_target}>/
+  )
+  if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
+    add_custom_command(
+      TARGET ${onnxruntime_providers_qnn_abi_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_abi_target}>/Qualcomm_LICENSE.pdf
+    )
+  endif()
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
     add_custom_command(
       TARGET ${onnxruntime_providers_qnn_abi_target} POST_BUILD

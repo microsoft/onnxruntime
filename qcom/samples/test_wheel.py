@@ -39,20 +39,17 @@ sess_options.add_provider_for_devices(selected_ep_devices, ep_options)
 assert sess_options.has_providers()
 
 # Create ORT session with the plugin EP
-model_path = "layout_transform_reshape.onnx"
+model_path = "cmake/external/onnx/onnx/backend/test/data/node/test_abs/model.onnx"
 sess = ort.InferenceSession(model_path, sess_options=sess_options)
 
 # Create input data for the model
-# Input "816" with shape [1, 512, 6] and dtype float32
-input_816 = np.random.randn(1, 512, 6).astype(np.float32)
-
-# Input "686" with shape [1, 4, 512] and dtype float32
-input_686 = np.random.randn(1, 4, 512).astype(np.float32)
+# Input "x" with shape [3, 4, 5] and dtype float32
+x = np.random.randn(3, 4, 5).astype(np.float32)
 
 # Run inference
 outputs = sess.run(
     None,  # Get all outputs
-    {"816": input_816, "686": input_686},
+    {"x": x},
 )
 
 print("\nInference completed successfully!")

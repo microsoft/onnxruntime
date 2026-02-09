@@ -87,7 +87,6 @@ jobs:
           python.exe
           qcom/build_and_test.py
           --target-py-version 3.12
-          --build-nuget
           archive_ort_windows_arm64
           test_ort_windows_arm64
 

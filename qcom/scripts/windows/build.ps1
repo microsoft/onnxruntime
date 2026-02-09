@@ -261,16 +261,16 @@ else {
             }
 
             if ($DoBuild) {
+                $BuildOutputDir = (Join-Path $BuildDir $Config)
                 Assert-Success -ErrorMessage "Failed to build" {
-                    & cmake --build (Join-Path $BuildDir $Config) --config $Config
+                    & cmake --build $BuildOutputDir --config $Config
+                }
+
+                if ($CMakeGenerator -eq "Visual Studio 17 2022") {
+                    $BuildOutputDir = (Join-Path $BuildOutputDir $Config)
                 }
 
                 if ($BuildWheel) {
-                    $BuildOutputDir = (Join-Path $BuildDir $Config)
-                    if ($CMakeGenerator -eq "Visual Studio 17 2022") {
-                        $BuildOutputDir = (Join-Path $BuildOutputDir $Config)
-                    }
-
                     if ($env:ORT_NIGHTLY_BUILD) {
                         $PyNightlyArg = "--nightly_build"
                     }
@@ -290,8 +290,9 @@ else {
                 if ($BuildNuget) {
                     Use-PyVenv -PyVenv $BuildVEnv {
                         Use-WorkingDir -Path $BuildOutputDir {
+                            $BuildBatPath = (Join-Path $RepoRoot "build.bat")
                             Assert-Success -ErrorMessage "Failed to build nuget" {
-                                .\build.bat $ArchArgs $CommonArgs $QnnArgs $PlatformArgs
+                                & $BuildBatPath --skip_tests $ArchArgs $CommonArgs $QnnArgs $PlatformArgs
                             }
                         }
                     }
