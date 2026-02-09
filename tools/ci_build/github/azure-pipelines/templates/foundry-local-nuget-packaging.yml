@@ -133,7 +133,7 @@ stages:
         packagesToPack: '$(Build.BinariesDirectory)/${{ parameters.PackageName }}.nuspec'
         packDestination: $(Build.ArtifactStagingDirectory)\
 
-    - template: templates/esrp_nuget.yml
+    - template: esrp_nuget.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)'
