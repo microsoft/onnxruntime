@@ -1,0 +1,23 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .offsetToIndices .setByIndices .getByOffset
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.input_size);
+  let packed_qkv_indices = packed_qkv.offsetToIndices(global_idx);
+  let batch = packed_qkv_indices[0];
+  let seq = packed_qkv_indices[1];
+  let d = packed_qkv_indices[2];
+  let input_data = packed_qkv.getByOffset(global_idx);
+  if (d < uniforms.hidden_size) {
+    query.setByIndices(vec3<u32>(batch, seq, d), input_data);
+  } else if (d < (uniforms.hidden_size + uniforms.kv_hidden_size)) {
+    let kd = d - uniforms.hidden_size;
+    key.setByIndices(vec3<u32>(batch, seq, kd), input_data);
+  } else {
+    let vd = d - uniforms.hidden_size - uniforms.kv_hidden_size;
+    val.setByIndices(vec3<u32>(batch, seq, vd), input_data);
+  }
+} // MAIN
