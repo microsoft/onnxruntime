@@ -140,7 +140,7 @@ class EinsumComputePreprocessor final {
   const std::vector<int64_t>& GetMappedSubscriptIndicesToOutputindices() const;
 
   // Get the number of subscript indices (subscript labels) in the einsum equation
-  int64_t GetNumSubscriptIndices() const;
+  size_t GetNumSubscriptIndices() const;
 
   // Pass-in device specific functions
   // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
@@ -185,7 +185,7 @@ class EinsumComputePreprocessor final {
   // num_subscript_indices_ = 3 (i, j, k)
   // E.g. 2 : With equation -> '...ij', 'jk' -> '...ik'
   // num_subscript_indices_ = 3 (i, j, k) + number of dims specified by an ellipsis (across all inputs)
-  int64_t num_subscript_indices_ = 0;
+  size_t num_subscript_indices_ = 0;
 
   // Hold the count corresponding to the letter seen
   // `0` means the corresponding letter wasn't seen at all

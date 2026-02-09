@@ -28,6 +28,16 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
     return arena_allocator_.get();
   }
 
+  // Get the EP version string.
+  const std::string& GetEpVersionString() const {
+    return ep_version_;
+  }
+
+  // Get the vendor ID.
+  uint32_t GetVendorIdValue() const {
+    return vendor_id_;
+  }
+
   const OrtLogger& default_logger_;  // default logger for the EP factory
 
  private:
@@ -88,6 +98,13 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   static OrtStatus* ORT_API_CALL GetCustomOpDomainsImpl(OrtEpFactory* this_ptr,
                                                         _Outptr_result_maybenull_ OrtCustomOpDomain** domains,
                                                         _Out_ size_t num_domains) noexcept;
+
+  static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfoImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* const* devices,
+      size_t num_devices,
+      const char* compatibility_info,
+      OrtCompiledModelCompatibility* model_compatibility) noexcept;
 
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
