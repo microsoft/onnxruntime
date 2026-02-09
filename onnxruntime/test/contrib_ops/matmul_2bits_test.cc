@@ -457,7 +457,7 @@ namespace {
 // expected output via matmul on CPU, then compares WebGPU output.
 template <typename T>
 void RunWebGpu2BitsTest(int64_t M, int64_t N, int64_t K, int64_t block_size,
-                       bool has_zero_point, float abs_error = 0.1f, float rel_error = 0.02f) {
+                        bool has_zero_point, float abs_error = 0.1f, float rel_error = 0.02f) {
   TestOptions2Bits opts{};
   opts.M = M;
   opts.N = N;
