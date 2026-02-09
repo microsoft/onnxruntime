@@ -26,18 +26,23 @@ common::Status IDataTransfer::CopyTensor(const Tensor& /*src*/, Tensor& /*dst*/,
 }
 
 common::Status IDataTransfer::CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const {
+  // All offset and size information is provided via SrcDstPair fields.
+  // This ensures CopyTensors is fully decoupled from any external offset/size arrays.
   for (const auto& pair : src_dst_pairs) {
-    // Use offset-aware methods when offsets or size are provided
     if (pair.source_offset != 0 || pair.destination_offset != 0 || pair.size != 0) {
-      if (pair.src_stream)
+      // Use offset-aware copy methods
+      if (pair.src_stream) {
         ORT_RETURN_IF_ERROR(CopyTensorAsync(pair.src, pair.dst, pair.source_offset, pair.destination_offset, pair.size, *pair.src_stream));
-      else
+      } else {
         ORT_RETURN_IF_ERROR(CopyTensor(pair.src, pair.dst, pair.source_offset, pair.destination_offset, pair.size));
+      }
     } else {
-      if (pair.src_stream)
+      // Use default copy methods (no offsets)
+      if (pair.src_stream) {
         ORT_RETURN_IF_ERROR(CopyTensorAsync(pair.src, pair.dst, *pair.src_stream));
-      else
+      } else {
         ORT_RETURN_IF_ERROR(CopyTensor(pair.src, pair.dst));
+      }
     }
   }
   return Status::OK();

@@ -18,35 +18,41 @@ Status DataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) c
   // Adding an OrtTensor to the API would also require adding getters for type/shape/data.
   // Those already exist for OrtValue so in order to minimize the API surface area we pay the price of a
   // const_cast to convert the `const Tensor*` src to an OrtValue.
-  std::vector<OrtValue> values;
-  values.resize(src_dst_pairs.size() * 2);
-
-  for (size_t i = 0; i < src_dst_pairs.size(); ++i) {
-    const auto& pair = src_dst_pairs[i];
-
-    // we need to remove the const from the src to wrap it in an OrtValue.
-    // it's passed to the impl as a const OrtValue, and the deleter is a no-op so this should be safe.
-    Tensor* src_tensor = const_cast<Tensor*>(&(pair.src.get()));
-    values[i * 2].Init(static_cast<void*>(src_tensor), ml_tensor_type, no_op_deleter);
-    values[i * 2 + 1].Init(static_cast<void*>(&pair.dst.get()), ml_tensor_type, no_op_deleter);
-  }
-
+  std::vector<OrtValue> values(src_dst_pairs.size() * 2);
   std::vector<const OrtValue*> src_values;
   std::vector<OrtValue*> dst_values;
   std::vector<OrtSyncStream*> streams;
+  std::vector<size_t> source_offsets;
+  std::vector<size_t> destination_offsets;
+  std::vector<size_t> sizes;
   src_values.reserve(src_dst_pairs.size());
   dst_values.reserve(src_dst_pairs.size());
   streams.reserve(src_dst_pairs.size());
+  source_offsets.reserve(src_dst_pairs.size());
+  destination_offsets.reserve(src_dst_pairs.size());
+  sizes.reserve(src_dst_pairs.size());
 
   for (size_t i = 0; i < src_dst_pairs.size(); ++i) {
+    const auto& pair = src_dst_pairs[i];
+    Tensor* src_tensor = const_cast<Tensor*>(&(pair.src.get()));
+    values[i * 2].Init(static_cast<void*>(src_tensor), ml_tensor_type, no_op_deleter);
+    values[i * 2 + 1].Init(static_cast<void*>(&pair.dst.get()), ml_tensor_type, no_op_deleter);
     src_values.push_back(&values[i * 2]);
     dst_values.push_back(&values[i * 2 + 1]);
-    streams.push_back(reinterpret_cast<OrtSyncStream*>(src_dst_pairs[i].src_stream));
+    streams.push_back(reinterpret_cast<OrtSyncStream*>(pair.src_stream));
+    source_offsets.push_back(pair.source_offset);
+    destination_offsets.push_back(pair.destination_offset);
+    sizes.push_back(pair.size);
   }
 
-  auto* status = impl_.CopyTensors(&impl_, src_values.data(), dst_values.data(), nullptr, nullptr, nullptr, streams.data(),
+  auto* status = impl_.CopyTensors(&impl_,
+                                   src_values.data(),
+                                   dst_values.data(),
+                                   source_offsets.data(),
+                                   destination_offsets.data(),
+                                   sizes.data(),
+                                   streams.data(),
                                    src_dst_pairs.size());
-
   return ToStatusAndRelease(status);
 }
 
