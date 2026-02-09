@@ -476,9 +476,8 @@ namespace Microsoft.ML.OnnxRuntime
         static NativeMethods()
         {
 #if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
-            // Register a custom DllImportResolver to handle platform-specific library names.
-            // On Linux, map onnxruntime.dll -> libonnxruntime.so
-            // On macOS, map onnxruntime.dll -> libonnxruntime.dylib
+            // Register a custom DllImportResolver to handle platform-specific library loading.
+            // Replaces default resolution specifically on Windows for case-sensitivity.
             NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, DllImportResolver);
 #endif
 
