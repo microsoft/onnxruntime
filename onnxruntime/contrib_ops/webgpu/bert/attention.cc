@@ -68,9 +68,9 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& val = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv.wgsl.template",
+                             WGSL_TEMPLATE_VARIABLE(key, key),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
                              WGSL_TEMPLATE_VARIABLE(query, query),
-                             WGSL_TEMPLATE_VARIABLE(key, key),
                              WGSL_TEMPLATE_VARIABLE(val, val));
 }
 
@@ -113,11 +113,11 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return WGSL_TEMPLATE_APPLY(shader, "bert/attention_probs.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(components, components_),
                              WGSL_TEMPLATE_PARAMETER(feed_past_key, feed_past_key_),
-                             WGSL_TEMPLATE_PARAMETER(has_present_key, has_present_key_),
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_present_key, has_present_key_),
                              WGSL_TEMPLATE_PARAMETER(has_seqlen_k, has_seqlen_k_),
-                             WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, past_present_share_buffer_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
+                             WGSL_TEMPLATE_PARAMETER(past_present_share_buffer, past_present_share_buffer_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_param, tile_size_));
 }
 
@@ -199,11 +199,11 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/inplace_softmax.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(components, components_),
-                             WGSL_TEMPLATE_PARAMETER(work_group_size, work_group_size_),
-                             WGSL_TEMPLATE_PARAMETER(use_smooth_softmax, use_smooth_softmax_),
-                             WGSL_TEMPLATE_PARAMETER(has_seqlen_k, has_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
-                             WGSL_TEMPLATE_PARAMETER(has_sliding_window, local_window_size_ != -1));
+                             WGSL_TEMPLATE_PARAMETER(has_seqlen_k, has_seqlen_k_),
+                             WGSL_TEMPLATE_PARAMETER(has_sliding_window, local_window_size_ != -1),
+                             WGSL_TEMPLATE_PARAMETER(use_smooth_softmax, use_smooth_softmax_),
+                             WGSL_TEMPLATE_PARAMETER(work_group_size, work_group_size_));
 }
 
 Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tensor* probs, int32_t batch_size, int32_t num_heads, int32_t past_sequence_length, int32_t sequence_length, int32_t total_sequence_length,
