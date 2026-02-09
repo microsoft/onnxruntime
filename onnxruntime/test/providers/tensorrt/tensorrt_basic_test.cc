@@ -1412,8 +1412,8 @@ TEST(TensorrtExecutionProviderTest, TestSessionOutputs) {
 TEST(TensorrtExecutionProviderTest, PartiallySupportedModel_MemcpyOpsOnCPU_Inference) {
   // The model has Add -> Mul -> Add.
   // TensorRT EP intentionally excludes the support for Mul so that the Mul node will be executed on CPU EP.
-  // Because that USE_CPU_MEMCPY_KERNELS_FOR_TENSORRT macro is defined, MemcpyToHost/MemcpyFromHost CPU implementations
-  // will be automaically inserted by ORT and assigned to CPU EP as well.
+  // Because that trt_use_cpu_ep_memcpy_kernels option is set, MemcpyToHost/MemcpyFromHost CPU implementations
+  // will be automaically inserted by ORT and assigned to CPU EP.
 
   // Use InferenceSession directly instead of Ort::Session to access the graph
   SessionOptions so;
