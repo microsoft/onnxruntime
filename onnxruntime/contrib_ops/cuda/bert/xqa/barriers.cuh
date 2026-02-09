@@ -356,9 +356,7 @@ class MBarrier  // rename this to MBarrier
     } else {
       float sleepDuration = 0.125F;
       while (!func()) {
-        // if (sleepDuration > 1) {
         __nanosleep(uint32_t(sleepDuration));
-        // }
         sleepDuration = sleepDuration * 1.25F + 0.F;
       }
     }

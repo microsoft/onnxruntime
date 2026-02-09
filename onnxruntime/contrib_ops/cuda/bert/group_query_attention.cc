@@ -26,7 +26,8 @@ namespace cuda {
 
 namespace {
 // Map string attribute to quantization type enum
-KVQuantizationType StringToKVQuantizationType(const std::string& s) {
+KVQuantizationType StringToKVQuantizationType(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::toupper(c); });
   if (s == "NONE") {
     return KVQuantizationType::NONE;
   }

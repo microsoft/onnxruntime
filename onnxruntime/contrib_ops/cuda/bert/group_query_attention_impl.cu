@@ -554,13 +554,13 @@ Status LaunchGetSequenceLengths(
 }
 
 // Trace function for debugging
-#define ORT_GQA_TRACE(func_name)                                                                                           \
-  DEBUG_PRINTF("[GQA %s] is_packed_qkv: %d, is_first_prompt: %d, is_subsequent_prompt: %d, past_present_share_buffer: %d", \
-               func_name,                                                                                                  \
-               static_cast<int>(parameters.is_packed_qkv),                                                                 \
-               static_cast<int>(parameters.is_first_prompt),                                                               \
-               static_cast<int>(parameters.is_subsequent_prompt),                                                          \
-               static_cast<int>(parameters.past_present_share_buffer));
+#define ORT_GQA_TRACE(func_name)                                                                                          \
+  DUMP_PRINTF("[GQA %s] is_packed_qkv: %d, is_first_prompt: %d, is_subsequent_prompt: %d, past_present_share_buffer: %d", \
+              func_name,                                                                                                  \
+              static_cast<int>(parameters.is_packed_qkv),                                                                 \
+              static_cast<int>(parameters.is_first_prompt),                                                               \
+              static_cast<int>(parameters.is_subsequent_prompt),                                                          \
+              static_cast<int>(parameters.past_present_share_buffer));
 
 ////////// Kernels (supports right padding but not left padding)
 // Use flash attention for all workloads (rotary, kv append, attention, etc.). No extra kernel is used in this path.
@@ -706,8 +706,8 @@ Status FlashDecoding(
 
   bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
 
-  DEBUG_PRINTF("[FlashDecoding] key=%p, value=%p, present_key=%p, present_value=%p, seqlens_k=%p, is_packed_qkv=%d",
-               key, value, present_key, present_value, seqlens_k, static_cast<int>(parameters.is_packed_qkv));
+  DUMP_PRINTF("[FlashDecoding] key=%p, value=%p, present_key=%p, present_value=%p, seqlens_k=%p, is_packed_qkv=%d",
+              key, value, present_key, present_value, seqlens_k, static_cast<int>(parameters.is_packed_qkv));
 
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
       device_prop, stream, query, present_key, present_value, key, value, data.output,
