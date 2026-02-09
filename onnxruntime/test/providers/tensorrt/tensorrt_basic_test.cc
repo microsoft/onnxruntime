@@ -1407,5 +1407,85 @@ TEST(TensorrtExecutionProviderTest, TestSessionOutputs) {
     ASSERT_TRUE(output_count == 1);
   }
 }
+
+// #ifdef USE_CPU_MEMCPY_KERNELS_FOR_TENSORRT
+TEST(TensorrtExecutionProviderTest, PartiallySupportedModel_MemcpyOpsOnCPU_Inference) {
+  // The model has Add -> Mul -> Add.
+  // TensorRT EP intentionally excludes the support for Mul so that the Mul node will be executed on CPU EP.
+  // Because that USE_CPU_MEMCPY_KERNELS_FOR_TENSORRT macro is defined, MemcpyToHost/MemcpyFromHost CPU implementations
+  // will be automaically inserted by ORT and assigned to CPU EP as well.
+
+  // Use InferenceSession directly instead of Ort::Session to access the graph
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderTest.PartiallySupportedModel_MemcpyOpsOnCPU_Inference";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+
+  OrtTensorRTProviderOptionsV2 params;
+  params.trt_use_cpu_ep_memcpy_kernels = true;
+  params.trt_op_types_to_exclude = "Mul";
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  auto status = session_object.Load(ORT_TSTR("testdata/add_mul_add.onnx"));
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  // Verify that MemcpyFromHost and MemcpyToHost nodes exist and are on CPU EP
+  const auto& graph_after_init = session_object.GetModel().MainGraph();
+  bool found_memcpy_from_host = false;
+  bool found_memcpy_to_host = false;
+
+  for (const auto& node : graph_after_init.Nodes()) {
+    if (node.OpType() == "MemcpyFromHost") {
+      found_memcpy_from_host = true;
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider)
+          << "MemcpyFromHost should be assigned to CPU EP";
+    }
+    if (node.OpType() == "MemcpyToHost") {
+      found_memcpy_to_host = true;
+      ASSERT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider)
+          << "MemcpyToHost should be assigned to CPU EP";
+    }
+  }
+
+  ASSERT_TRUE(found_memcpy_from_host) << "MemcpyFromHost node should be inserted";
+  ASSERT_TRUE(found_memcpy_to_host) << "MemcpyToHost node should be inserted";
+
+  // Create inputs
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> shape = {3, 2};
+
+  std::vector<float> a_data{1, 2, 3, 4, 5, 6};
+  std::vector<float> b_data{2, 3, 4, 5, 6, 7};
+
+  OrtValue ml_value_a;
+  CreateMLValue<float>(cpu_allocator, shape, a_data, &ml_value_a);
+  OrtValue ml_value_b;
+  CreateMLValue<float>(cpu_allocator, shape, b_data, &ml_value_b);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("A", ml_value_a));
+  feeds.insert(std::make_pair("B", ml_value_b));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("C");
+  std::vector<OrtValue> fetches;
+
+  // Run session and verify outputs
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+
+  // Check expected output values
+  std::vector<int64_t> expected_dims = {3, 2};
+  std::vector<float> expected_values = {7, 17, 31, 49, 71, 97};
+  VerifyOutputs(fetches, expected_dims, expected_values);
+}
+// #endif
+
 }  // namespace test
 }  // namespace onnxruntime
