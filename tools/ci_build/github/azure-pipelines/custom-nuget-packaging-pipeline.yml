@@ -121,7 +121,7 @@ extends:
           buildArch: x64
           msbuildPlatform: arm64
           packageName: arm64
-          buildparameter: --arm64ec --buildasx --caller_framework WinAI
+          buildparameter: --arm64 --buildasx --caller_framework WinAI
           runTests: false
           buildJava: false
           buildNodejs: false
@@ -269,6 +269,12 @@ extends:
               command: 'pack'
               packagesToPack: '$(Build.BinariesDirectory)/${{ parameters.PackageName }}.nuspec'
               packDestination: $(Build.ArtifactStagingDirectory)\
+
+          - template: templates/esrp_nuget.yml
+            parameters:
+              DisplayName: 'ESRP - sign NuGet package'
+              FolderPath: '$(Build.ArtifactStagingDirectory)'
+              DoEsrp: true
 
           - task: 1ES.PublishPipelineArtifact@1
             displayName: 'Publish Artifact: Nuget'
