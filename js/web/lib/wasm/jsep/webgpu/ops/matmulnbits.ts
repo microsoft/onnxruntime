@@ -146,8 +146,9 @@ export const createMatMulNBitsProgramInfo = (
         for (let c = 0; c < components * outputNumber; c++) {
           calcStr += `
             b_value = ${bComponents === 1 ? `b${c}_data` : `b${c}_data[i]`};
-            ${attributes.bits === 2
-              ? `{
+            ${
+              attributes.bits === 2
+                ? `{
               let half_word = b_value >> ${pass * 16}u;
               let byte_lo = half_word & 0xFFu;
               let byte_hi = (half_word >> 8u) & 0xFFu;
@@ -155,7 +156,7 @@ export const createMatMulNBitsProgramInfo = (
               b_value_lower = unpack4xU8(spread_word & b_mask);
               b_value_upper = unpack4xU8((spread_word >> 2u) & b_mask);
             }`
-              : `b_value_lower = unpack4xU8((b_value >> ${lowerShift}u) & b_mask);
+                : `b_value_lower = unpack4xU8((b_value >> ${lowerShift}u) & b_mask);
             b_value_upper = unpack4xU8((b_value >> ${upperShift}u) & b_mask);`
             }
             b_quantized_values = ${qDqDataType}(${Array.from(
@@ -425,18 +426,19 @@ export const createMatMulNBitsBlockSize32ProgramInfo = (
                   const upperShift = lowerShift + attributes.bits;
                   code += `
               ${readA()}
-              {${attributes.bits === 2
-                    ? `
+              {${
+                attributes.bits === 2
+                  ? `
                 let half_word = b_value >> ${pass * 16}u;
                 let byte_lo = half_word & 0xFFu;
                 let byte_hi = (half_word >> 8u) & 0xFFu;
                 let spread_word = (byte_lo & 0xFu) | ((byte_lo >> 4u) << 8u) | ((byte_hi & 0xFu) << 16u) | ((byte_hi >> 4u) << 24u);
                 let b_value_lower = unpack4xU8(spread_word & 0x03030303u);
                 let b_value_upper = unpack4xU8((spread_word >> 2u) & 0x03030303u);`
-                    : `
+                  : `
                 let b_value_lower = unpack4xU8((b_value >> ${lowerShift}u) & 0x0F0F0F0Fu);
                 let b_value_upper = unpack4xU8((b_value >> ${upperShift}u) & 0x0F0F0F0Fu);`
-                  }
+              }
                 let b_quantized_values = mat2x4<${dataType}>(${Array.from(
                   { length: 4 },
                   (_, i) => `${dataType}(b_value_lower[${i}]), ${dataType}(b_value_upper[${i}])`,
