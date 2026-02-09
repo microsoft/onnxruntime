@@ -165,7 +165,7 @@ def generate_id(line_list, package_name):
 
 
 def generate_version(line_list, package_version):
-    line_list.append("<version>" + package_version + "</version>")
+    line_list.append("<version>" + "1.24.1.1" + "</version>")
 
 
 def generate_authors(line_list, authors):
