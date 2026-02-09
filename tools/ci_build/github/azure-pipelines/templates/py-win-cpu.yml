@@ -100,22 +100,22 @@ jobs:
         --skip_submodule_sync
         --cmake_generator "Visual Studio 17 2022"
         --enable_pybind
-        --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+        --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
         ${{ parameters.build_py_parameters }}
         --parallel --use_binskim_compliant_compile_flags --update
         $(TelemetryOption)
 
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.SourcesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
-      platform: '${{parameters.ARCHITECTURE}}'
-      configuration: ${{ parameters.cmake_build_type }}
-      msbuildArchitecture: '${{parameters.ARCHITECTURE}}'
-      maximumCpuCount: true
-      logProjectEvents: true
-      workingFolder: '$(Build.SourcesDirectory)\${{ parameters.cmake_build_type }}'
-      createLogFile: true
+  # - task: VSBuild@1
+  #   displayName: 'Build'
+  #   inputs:
+  #     solution: '$(Build.SourcesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
+  #     platform: '${{parameters.ARCHITECTURE}}'
+  #     configuration: ${{ parameters.cmake_build_type }}
+  #     msbuildArchitecture: '${{parameters.ARCHITECTURE}}'
+  #     maximumCpuCount: true
+  #     logProjectEvents: true
+  #     workingFolder: '$(Build.SourcesDirectory)\${{ parameters.cmake_build_type }}'
+  #     createLogFile: true
 
   - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
     - template: publish-symbolrequestprod-api.yml
