@@ -532,6 +532,36 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
   });
 }
 
+TEST(SessionStateTest, TestLayeringPartitioning) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/layering/tiny_gpt2_beamsearch_layering.onnx");
+  constexpr const char* layering_setting =
+      "cpu(Embed,Decode);gpu(GptAttention0,GptAttention1,GptAttention2,GptAttention3,GptAttention4)";
+
+  // Set the session options for layering
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = false;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = false;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsLayerAssignmentSettings, layering_setting));
+
+  LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
+    const auto& graph_nodes = graph.Nodes();
+    for (const auto& node : graph_nodes) {
+      const std::string& name = node.Name();
+      const bool expected_on_cpu = (name.find("EmbedLayer") == 0) || (name == "LayerNorm_10") || (name == "MatMul_1165");
+
+      const std::string& ep = node.GetExecutionProviderType();
+      if (expected_on_cpu) {
+        EXPECT_EQ(ep, kCpuExecutionProvider) << "Node " << name << " expected on CPU but found on " << ep;
+      } else {
+        EXPECT_EQ(ep, kCudaExecutionProvider) << "Node " << name << " expected on CUDA but found on " << ep;
+      }
+    }
+  });
+}
+
 #endif  // USE_CUDA
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
@@ -912,9 +942,8 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
   std::vector<float> float_data(1, 1);
   auto value = std::make_unique<OrtValue>();
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
-                       TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()),
-                       mem_info, *value);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                       float_data.data(), mem_info, *value);
 
   ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
 
@@ -1382,6 +1411,5 @@ INSTANTIATE_TEST_SUITE_P(SessionStateTests,
                                          PrepackingTestParam{true, false},
                                          PrepackingTestParam{true, true}));
 #endif
-
 }  // namespace test
 }  // namespace onnxruntime
