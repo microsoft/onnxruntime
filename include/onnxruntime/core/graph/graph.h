@@ -780,7 +780,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif
 
   /** Gets the frequency count of weight data types in this graph. */
-  const int32_t* GetWeightDataTypeFrequency() const noexcept {
+  gsl::span<const int32_t> GetWeightDataTypeFrequency() const noexcept {
     return weight_data_type_freq_;
   }
 
