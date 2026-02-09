@@ -899,7 +899,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName))
             {
                 // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
-                string fileName = libraryName == NativeLib.DllName ? "onnxruntime.dll" : "ortextensions.dll";
+                string fileName = libraryName + ".dll";
                 if (NativeLibrary.TryLoad(fileName, assembly, searchPath, out IntPtr handle))
                 {
                     return handle;
@@ -2987,9 +2987,10 @@ namespace Microsoft.ML.OnnxRuntime
 #elif __IOS__
         internal const string ExtensionsDllName = "__Internal";
 #else
-        // For desktop platforms, explicitly specify the DLL name with extension to avoid
-        // issues on case-sensitive filesystems. See NativeLib.DllName for detailed explanation.
-        internal const string ExtensionsDllName = "ortextensions.dll";
+        // For desktop platforms, use the simple name to allow .NET's
+        // automatic platform-specific resolution (lib*.so, lib*.dylib, *.dll).
+        // Case-sensitivity on Windows is handled by DllImportResolver.
+        internal const string ExtensionsDllName = "ortextensions";
 #endif
 
         [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
