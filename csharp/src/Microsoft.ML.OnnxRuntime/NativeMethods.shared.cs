@@ -879,44 +879,35 @@ namespace Microsoft.ML.OnnxRuntime
 #elif __IOS__
             // Define the library name required for iOS
             internal const string DllName = "__Internal";
-#elif NETSTANDARD2_0
-            // For .NET Standard 2.0, use the library name without extension
-            // to allow .NET's automatic platform-specific resolution.
-            // Note: This may have issues on case-sensitive Windows filesystems
-            // where LoadLibrary appends ".DLL" (uppercase).
-            internal const string DllName = "onnxruntime";
 #else
-            // For .NET Core 3.0+, we use explicit .dll extension for Windows case-sensitivity
-            // and register a DllImportResolver to handle Linux/macOS.
-            internal const string DllName = "onnxruntime.dll";
+            // For desktop platforms (including .NET Standard 2.0), we use the simple name
+            // to allow .NET's automatic platform-specific resolution (lib*.so, lib*.dylib, *.dll).
+            // For .NET Core 3.0+, case-sensitivity on Windows is handled by DllImportResolver.
+            internal const string DllName = "onnxruntime";
 #endif
         }
 
 #if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
         /// <summary>
-        /// Custom DllImportResolver to handle platform-specific library names.
-        /// On Windows, the library is named onnxruntime.dll.
-        /// On Linux, the library is named libonnxruntime.so.
-        /// On macOS, the library is named libonnxruntime.dylib.
+        /// Custom DllImportResolver to handle platform-specific library loading.
+        /// On Windows, it explicitly loads the library with a lowercase .dll extension to handle
+        /// case-sensitive filesystems. On other platforms (Linux/macOS), it returns IntPtr.Zero
+        /// to allow .NET's default, NuGet-aware resolution logic to find the library.
         /// </summary>
         private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
-            if (libraryName == NativeLib.DllName)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName))
             {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    return IntPtr.Zero;
-                }
-
-                // On Linux/macOS, .NET's NativeLibrary.TryLoad works best with the simple library name
-                // to find assets in the runtimes folder of a NuGet package.
-                if (NativeLibrary.TryLoad("onnxruntime", assembly, searchPath, out IntPtr handle))
+                // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
+                string fileName = libraryName == NativeLib.DllName ? "onnxruntime.dll" : "ortextensions.dll";
+                if (NativeLibrary.TryLoad(fileName, assembly, searchPath, out IntPtr handle))
                 {
                     return handle;
                 }
             }
 
-            // Fall back to default resolution
+            // For Linux and macOS, returning IntPtr.Zero allows .NET to use its default
+            // resolution logic, which correctly finds libraries in the runtimes folder of NuGet.
             return IntPtr.Zero;
         }
 #endif
