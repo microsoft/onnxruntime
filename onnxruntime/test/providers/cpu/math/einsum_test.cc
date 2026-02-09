@@ -114,6 +114,14 @@ TEST(Einsum, ExplicitEinsumAsBatchedReduceOp_3D_input_1) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
+TEST(Einsum, ExplicitEinsumAsReduceWithTransposeOp_3D_input_0) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ijk->ki");
+  test.AddInput<float>("x", {2, 3, 4}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f});
+  test.AddOutput<float>("y", {4, 2}, {15.f, 15.f, 18.f, 18.f, 21.f, 21.f, 24.f, 24.f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+}
+
 // Implicit
 // Cannot do implicit reduction
 
