@@ -108,13 +108,13 @@ jobs:
   - task: VSBuild@1
     displayName: 'Build'
     inputs:
-      solution: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
+      solution: '$(Build.SourcesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
       platform: '${{parameters.ARCHITECTURE}}'
       configuration: ${{ parameters.cmake_build_type }}
       msbuildArchitecture: '${{parameters.ARCHITECTURE}}'
       maximumCpuCount: true
       logProjectEvents: true
-      workingFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}'
+      workingFolder: '$(Build.SourcesDirectory)\${{ parameters.cmake_build_type }}'
       createLogFile: true
 
   - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
