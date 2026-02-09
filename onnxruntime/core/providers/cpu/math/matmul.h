@@ -15,6 +15,8 @@ class MatMul final : public OpKernel {
   MatMul(const OpKernelInfo& info) : OpKernel(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    mlas_backend_kernel_selector_config_.use_kleidiai_sme =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiaiSME) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -43,6 +45,8 @@ class MatMul<float> final : public OpKernel {
 
     mlas_backend_kernel_selector_config_.use_kleidiai =
         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    mlas_backend_kernel_selector_config_.use_kleidiai_sme =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiaiSME) != "1";
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,

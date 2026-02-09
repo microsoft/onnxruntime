@@ -56,6 +56,8 @@ class LSTMBase {
 
     mlas_backend_kernel_selector_config_.use_kleidiai =
         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    mlas_backend_kernel_selector_config_.use_kleidiai_sme =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiaiSME) != "1";
   }
 
   ~LSTMBase() = default;

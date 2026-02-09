@@ -16,6 +16,8 @@ class LSTMGrad final : public OpKernel {
   LSTMGrad(const OpKernelInfo& info) : OpKernel(info), attributes_(info) {
     mlas_backend_kernel_selector_config_.use_kleidiai =
         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    mlas_backend_kernel_selector_config_.use_kleidiai_sme =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiaiSME) != "1";
   }
 
   Status Compute(OpKernelContext* context) const override;

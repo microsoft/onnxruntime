@@ -29,6 +29,8 @@ class SVMCommon {
 
     mlas_backend_kernel_selector_config_.use_kleidiai =
         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    mlas_backend_kernel_selector_config_.use_kleidiai_sme =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiaiSME) != "1";
   }
 
   void set_kernel_type(KERNEL new_kernel_type) { kernel_type_ = new_kernel_type; }

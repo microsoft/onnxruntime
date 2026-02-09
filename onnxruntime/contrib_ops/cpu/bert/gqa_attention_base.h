@@ -45,6 +45,8 @@ class GQAAttentionBase {
 
     mlas_backend_kernel_selector_config_.use_kleidiai =
         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    mlas_backend_kernel_selector_config_.use_kleidiai_sme =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiaiSME) != "1";
   }
 
   int num_heads_;     // number of attention heads of Q

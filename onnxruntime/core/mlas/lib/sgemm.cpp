@@ -17,6 +17,7 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <iostream>
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -1574,11 +1575,12 @@ MlasGemmBatch(
     )
 {
     // Override
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
-        GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
-        // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+    if ((!BackendKernelSelectorConfig || (BackendKernelSelectorConfig->use_kleidiai &&
+                                         BackendKernelSelectorConfig->use_kleidiai_sme)) &&
+          GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+          // TODO: Remove once KAI supports transposing for A
+          TransA != CBLAS_TRANSPOSE::CblasTrans &&
+          GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
         return;
     }
     //
@@ -1677,10 +1679,11 @@ Return Value:
     //
     // KleidiAI or other override
     #if defined(USE_KLEIDIAI)
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
-        GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
-        // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans) {
+    if ((!BackendKernelSelectorConfig || (BackendKernelSelectorConfig->use_kleidiai &&
+                                         BackendKernelSelectorConfig->use_kleidiai_sme)) &&
+          GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
+          // TODO: Remove once KAI supports transposing for A
+          TransA != CBLAS_TRANSPOSE::CblasTrans) {
         size_t bytes_required;
         //TODO pass status by reference to indicate success/fail
         bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
@@ -1748,12 +1751,13 @@ Return Value:
 --*/
 {
 #if defined(USE_KLEIDIAI)
-    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
-        GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
-        // TODO: Remove once KAI supports transposing for A
-        TransA != CBLAS_TRANSPOSE::CblasTrans    &&
-        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
-         return;
+    if ((!BackendKernelSelectorConfig || (BackendKernelSelectorConfig->use_kleidiai &&
+                                          BackendKernelSelectorConfig->use_kleidiai_sme)) &&
+          GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+          // TODO: Remove once KAI supports transposing for A
+          TransA != CBLAS_TRANSPOSE::CblasTrans    &&
+          GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+        return;
     }
 #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);

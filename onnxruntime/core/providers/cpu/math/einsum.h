@@ -23,6 +23,8 @@ class Einsum : public OpKernel {
     einsum_equation_preprocessor_ = std::make_unique<EinsumEquationPreprocessor>(equation_);
     mlas_backend_kernel_selector_config_.use_kleidiai =
         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    mlas_backend_kernel_selector_config_.use_kleidiai_sme =
+        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiaiSME) != "1";
   }
 
   virtual Status Compute(OpKernelContext* context) const override;

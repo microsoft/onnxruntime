@@ -386,6 +386,12 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiai = "mlas.disable_kleidiai";
 
+// Disable the use of SME CPU devices in KleidiAI if they are available.
+// Option values:
+// - "0": SME CPU devices will be used [DEFAULT]
+// - "1": SME CPU devices will not be used by KleidiAI.
+static const char* const kOrtSessionOptionsMlasDisableKleidiaiSME = "mlas.disable_kleidiai_sme";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
