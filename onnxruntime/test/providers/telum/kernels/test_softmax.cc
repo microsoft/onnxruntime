@@ -14,6 +14,22 @@ namespace telum {
 
 class TelumSoftmaxTest : public TelumTestBase {};
 
+TEST_F(TelumSoftmaxTest, Softmax2D_AxisNotLast_ExpectFailure) {
+  OpTester test("Softmax", 13);
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+
+  const std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      -1.0f, -2.0f, -3.0f, -4.0f,
+  };
+
+  // Output is unused for failure expectation, but must be present for model construction.
+  test.AddInput<float>("X", {2, 4}, X);
+  test.AddOutput<float>("Y", {2, 4}, X);
+
+  RunOnTelumExpectFailure(test);
+}
+
 TEST_F(TelumSoftmaxTest, Softmax2D_Float) {
   OpTester test("Softmax", 13);
 
@@ -95,4 +111,3 @@ TEST_F(TelumSoftmaxTest, Softmax2D_BFloat16) {
 }  // namespace telum
 }  // namespace test
 }  // namespace onnxruntime
-

@@ -367,6 +367,21 @@ class TelumTestBase : public ::testing::Test {
     test.ConfigEp(onnxruntime::test::DefaultTelumExecutionProvider());
     test.RunWithConfig();
   }
+
+  // Like RunOnTelum, but expects session initialization or Run to fail.
+  void RunOnTelumExpectFailure(OpTester& test,
+                               const std::string& expected_failure_substr = "",
+                               bool disable_cpu_ep_fallback = true) {
+    onnxruntime::SessionOptions so;
+    if (disable_cpu_ep_fallback) {
+      ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
+    }
+
+    test.Config(so);
+    test.Config(OpTester::ExpectResult::kExpectFailure, expected_failure_substr);
+    test.ConfigEp(onnxruntime::test::DefaultTelumExecutionProvider());
+    test.RunWithConfig();
+  }
 };
 
 }  // namespace telum

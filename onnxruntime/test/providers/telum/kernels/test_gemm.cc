@@ -36,6 +36,38 @@ TEST_F(TelumGemmTest, Gemm_Basic) {
   RunOnTelum(test);
 }
 
+TEST_F(TelumGemmTest, Gemm_PrePack_BAndBiasInitializers) {
+  OpTester test("Gemm", 13);
+
+  // A: [2,3], B: [3,4], C: [4] (bias vector)
+  const std::vector<float> A = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+  };
+  const std::vector<float> B = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+  };
+  const std::vector<float> C = {0.1f, -0.2f, 0.3f, 0.4f};
+
+  const auto expected = ComputeGemmReference(A, B, C, /*M=*/2, /*K=*/3, /*N=*/4, /*alpha=*/1.0f, /*beta=*/1.0f);
+
+  test.AddInput<float>("A", {2, 3}, A);
+  test.AddInput<float>("B", {3, 4}, B, /*is_initializer=*/true);
+  test.AddInput<float>("C", {4}, C, /*is_initializer=*/true);
+  test.AddOutput<float>("Y", {2, 4}, expected);
+
+  // Verify the Telum Gemm kernel prepacked the constant initializers.
+  size_t num_prepacked = 0;
+  onnxruntime::SessionOptions so;
+  ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
+  test.Config(so);
+  test.ConfigEp(onnxruntime::test::DefaultTelumExecutionProvider());
+  test.RunWithConfig(&num_prepacked, nullptr);
+  EXPECT_GE(num_prepacked, 2u);
+}
+
 TEST_F(TelumGemmTest, Gemm_NoBias) {
   OpTester test("Gemm", 13);
 

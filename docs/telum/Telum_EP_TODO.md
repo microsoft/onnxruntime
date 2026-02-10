@@ -20,27 +20,29 @@ Each phase has:
 
 ### Tasks
 
-- [ ] Update `onnxruntime/core/providers/telum/README.md`
-  - [ ] Use correct CMake flag: `-Donnxruntime_USE_TELUM=ON`
-  - [ ] Document required `ZDNN_ROOT`
-  - [ ] Document actual selection APIs:
+- [x] Fix zDNN ztensor descriptor lifetime
+  - [x] Heap-allocate `zdnn_tensor_desc` in `TensorConverter` (zDNN stores pointers in `zdnn_ztensor`)
+  - [x] Free descriptors in `TelumKernel::ZTensorGuard`
+
+- [x] Update `onnxruntime/core/providers/telum/README.md`
+  - [x] Use correct CMake flag: `-Donnxruntime_USE_TELUM=ON`
+  - [x] Document required `ZDNN_ROOT`
+  - [x] Document actual selection APIs:
     - Python provider list
     - C API `SessionOptionsAppendExecutionProvider("TelumExecutionProvider", ...)`
-  - [ ] Remove or gate claims for unimplemented ops (Softmax/LayerNormalization) until implemented
-  - [ ] Document "disable CPU EP fallback" as the way to prove you ran on Telum
+  - [x] Document "disable CPU EP fallback" as the way to prove you ran on Telum
 
-- [ ] Align declared support vs actual kernels
-  - [ ] In `onnxruntime/core/providers/telum/telum_execution_provider.cc`:
-    - [ ] Remove ops from `supported_ops_` that have no kernels OR implement those kernels in Phase 1.
-  - [ ] Ensure `GetCapability()` logs include a reason when a kernel is missing (optional but strongly preferred).
+- [x] Align declared support vs actual kernels
+  - [x] Keep `supported_ops_`, per-op gating, and kernel registry synchronized
+  - [x] Ensure `GetCapability()` logs when a matching kernel is missing
 
-- [ ] Resolve BFLOAT16 policy mismatch
-  - [ ] Either:
-    - [ ] Add `BFloat16` type constraints and implement required CPU post-processing paths
-    - [ ] Or reject BF16 in `ValidateDataTypes()` and document it
+- [x] Resolve BFLOAT16 policy mismatch
+  - [x] Add `BFloat16` type constraints across kernels
+  - [x] Implement required CPU post-processing paths (e.g., Gemm alpha/beta paths)
+  - [x] Add BF16 test coverage for Telum kernels
 
-- [ ] Git hygiene
-  - [ ] Add and commit new Telum files:
+- [x] Git hygiene
+  - [x] Ensure new Telum files are added and committed:
     - `onnxruntime/core/providers/telum/telum_kernel_registry.{h,cc}`
     - `onnxruntime/core/providers/telum/telum_provider_factory_creator.{h,cc}`
 
@@ -62,13 +64,13 @@ Each phase has:
 
 ### Tasks
 
-- [ ] Extend Softmax coverage
-  - [ ] Add negative tests that prove Telum rejects axis != last dim (with CPU fallback disabled)
-  - [ ] Validate behavior on real attention-like shapes (large dims, multiple batches)
+- [x] Extend Softmax coverage
+  - [x] Add negative tests that prove Telum rejects axis != last dim (with CPU fallback disabled)
+  - [x] Validate behavior on real attention-like shapes (large dims, multiple batches)
 
-- [ ] Extend LayerNormalization coverage
-  - [ ] Add more shape tests (rank 1, rank 4+ coercion)
-  - [ ] Add tests that omit mean and/or inv_std_dev outputs (optional outputs)
+- [x] Extend LayerNormalization coverage
+  - [x] Add more shape tests (rank 1, rank 4+ coercion)
+  - [x] Add tests that omit mean and/or inv_std_dev outputs (optional outputs)
 
 ### Acceptance
 
@@ -105,10 +107,13 @@ Each phase has:
 
 ### Tasks
 
-- [ ] Implement `PrePack(...)` for:
-  - [ ] `Gemm` weight matrix (and bias when fusable)
-  - [ ] `MatMul` constant operand (typically B)
-- [ ] Add kernel-side caching of transformed ztensors (with correct lifetime management)
+- [x] Implement `PrePack(...)` for:
+  - [x] `Gemm` weight matrix (input B)
+  - [x] `Gemm` bias vector (input C) for the fusable subset (alpha==beta==1, bias vector)
+  - [x] `MatMul` constant operand (typically B)
+- [ ] Add kernel-side caching of other repeatedly-created transformed tensors (optional)
+  - [ ] `MatMul`/`Gemm` zero-bias ztensors when no fused bias is present (avoid per-inference transform)
+  - [ ] Other op-specific scratch buffers if needed
 - [ ] Add targeted perf/regression tests or microbenchmarks (where possible)
 
 ### Acceptance

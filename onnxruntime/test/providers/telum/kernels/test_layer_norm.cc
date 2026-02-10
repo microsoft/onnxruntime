@@ -14,6 +14,30 @@ namespace telum {
 
 class TelumLayerNormTest : public TelumTestBase {};
 
+TEST_F(TelumLayerNormTest, LayerNorm_AxisNotLast_ExpectFailure) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("epsilon", 1e-5f);
+
+  const std::vector<float> X = {
+      1.0f, 2.0f, 3.0f,
+      -1.0f, 0.0f, 1.0f,
+  };
+  const std::vector<float> Scale = {1.0f, 1.0f, 1.0f};
+  const std::vector<float> Bias = {0.0f, 0.0f, 0.0f};
+
+  test.AddInput<float>("X", {2, 3}, X);
+  test.AddInput<float>("Scale", {3}, Scale);
+  test.AddInput<float>("Bias", {3}, Bias);
+
+  // Outputs are unused for failure expectation, but must be present for model construction.
+  test.AddOutput<float>("Y", {2, 3}, X);
+  test.AddOptionalOutputEdge<float>();  // Mean
+  test.AddOptionalOutputEdge<float>();  // InvStdDev
+
+  RunOnTelumExpectFailure(test);
+}
+
 TEST_F(TelumLayerNormTest, LayerNorm2D_Float_WithBias) {
   OpTester test("LayerNormalization", 17);
   test.AddAttribute("axis", static_cast<int64_t>(-1));
@@ -35,6 +59,59 @@ TEST_F(TelumLayerNormTest, LayerNorm2D_Float_WithBias) {
 
   test.AddOutput<float>("Y", {2, 3}, ref.Y);
   test.AddOutput<float>("Mean", {2, 1}, ref.Mean);
+  test.AddOutput<float>("InvStdDev", {2, 1}, ref.InvStd);
+  test.SetOutputTolerance(1e-5f);
+
+  RunOnTelum(test);
+}
+
+TEST_F(TelumLayerNormTest, LayerNorm2D_Float_OmitMeanInvStd) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute("axis", static_cast<int64_t>(-1));
+  test.AddAttribute("epsilon", 1e-5f);
+
+  // X shape [2, 3] => N=2, C=3
+  const std::vector<float> X = {
+      1.0f, 2.0f, 3.0f,
+      -1.0f, 0.0f, 1.0f,
+  };
+  const std::vector<float> Scale = {1.0f, 0.5f, 2.0f};
+  const std::vector<float> Bias = {0.1f, -0.2f, 0.3f};
+
+  const auto ref = ComputeLayerNormLastDimReference(X, Scale, Bias, /*N=*/2, /*C=*/3, /*epsilon=*/1e-5f);
+
+  test.AddInput<float>("X", {2, 3}, X);
+  test.AddInput<float>("Scale", {3}, Scale);
+  test.AddInput<float>("Bias", {3}, Bias);
+
+  test.AddOutput<float>("Y", {2, 3}, ref.Y);
+  test.AddOptionalOutputEdge<float>();  // Mean omitted
+  test.AddOptionalOutputEdge<float>();  // InvStdDev omitted
+  test.SetOutputTolerance(1e-5f);
+
+  RunOnTelum(test);
+}
+
+TEST_F(TelumLayerNormTest, LayerNorm2D_Float_OmitMean_KeepInvStd) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute("axis", static_cast<int64_t>(-1));
+  test.AddAttribute("epsilon", 1e-5f);
+
+  const std::vector<float> X = {
+      1.0f, 2.0f, 3.0f,
+      -1.0f, 0.0f, 1.0f,
+  };
+  const std::vector<float> Scale = {1.0f, 1.0f, 1.0f};
+  const std::vector<float> Bias;  // no bias
+
+  const auto ref = ComputeLayerNormLastDimReference(X, Scale, Bias, /*N=*/2, /*C=*/3, /*epsilon=*/1e-5f);
+
+  test.AddInput<float>("X", {2, 3}, X);
+  test.AddInput<float>("Scale", {3}, Scale);
+  test.AddOptionalInputEdge<float>();  // Bias omitted
+
+  test.AddOutput<float>("Y", {2, 3}, ref.Y);
+  test.AddOptionalOutputEdge<float>();  // Mean omitted
   test.AddOutput<float>("InvStdDev", {2, 1}, ref.InvStd);
   test.SetOutputTolerance(1e-5f);
 
@@ -115,4 +192,3 @@ TEST_F(TelumLayerNormTest, LayerNorm2D_BFloat16_WithBias) {
 }  // namespace telum
 }  // namespace test
 }  // namespace onnxruntime
-

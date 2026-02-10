@@ -4,6 +4,8 @@
 #include "../telum_kernel_common.h"
 #include "core/providers/common.h"
 
+#include <optional>
+
 namespace onnxruntime {
 namespace telum {
 
@@ -41,25 +43,81 @@ class Gemm final : public TelumKernel {
     (void)info.GetAttr<float>("beta", &beta_);
   }
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr /*alloc*/,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* /*prepacked_weights*/) override {
+    is_packed = false;
+
+    // Prepack weight matrix B (input index 1) when it is a constant initializer.
+    // This avoids repeated (expensive) zDNN transformations per inference.
+    if (input_idx == 1) {
+      // Reset any existing packed state first.
+      packed_b_guard_.reset();
+
+      packed_b_shape_ = tensor.Shape();
+
+      ORT_RETURN_IF_ERROR(ConvertToZTensor(tensor, packed_b_, ZDNN_2D));
+      packed_b_guard_.emplace(&packed_b_);
+
+      is_packed = true;
+      return Status::OK();
+    }
+
+    // Optionally prepack the bias vector C (input index 2) if it can be safely fused:
+    // alpha == 1, beta == 1, and C is a bias vector of length N.
+    if (input_idx == 2 && alpha_ == 1.0f && beta_ == 1.0f) {
+      const auto* node_b = Node().InputDefs().size() > 1 ? Node().InputDefs()[1] : nullptr;
+      if (node_b == nullptr || node_b->Shape() == nullptr) {
+        return Status::OK();
+      }
+
+      // Determine N from B's (static) shape and transB attribute.
+      std::vector<int64_t> b_dims;
+      for (const auto& dim : node_b->Shape()->dim()) {
+        if (!dim.has_dim_value()) return Status::OK();
+        b_dims.push_back(dim.dim_value());
+      }
+      if (b_dims.size() != 2) return Status::OK();
+
+      const int64_t N = trans_B_ ? b_dims[0] : b_dims[1];
+      if (!IsBiasVector(tensor, N)) {
+        return Status::OK();
+      }
+
+      packed_bias_guard_.reset();
+      ORT_RETURN_IF_ERROR(TensorConverter::ConvertToZTensorWithShape(tensor, TensorShape({N}), packed_bias_, ZDNN_1D));
+      packed_bias_guard_.emplace(&packed_bias_);
+
+      is_packed = true;
+      return Status::OK();
+    }
+
+    return Status::OK();
+  }
+
   Status Compute(OpKernelContext* context) const override {
     // Get input tensors
     const Tensor* A = context->Input<Tensor>(0);
-    const Tensor* B = context->Input<Tensor>(1);
+    const Tensor* B = packed_b_guard_.has_value() ? nullptr : context->Input<Tensor>(1);
     const Tensor* C = context->Input<Tensor>(2);  // Bias (optional)
 
     ORT_RETURN_IF_NOT(A != nullptr, "Input A is null");
-    ORT_RETURN_IF_NOT(B != nullptr, "Input B is null");
+    ORT_RETURN_IF_NOT(B != nullptr || packed_b_guard_.has_value(), "Input B is null");
 
     // Validate shapes are static
     ORT_RETURN_IF_ERROR(ValidateStaticShape(A->Shape()));
-    ORT_RETURN_IF_ERROR(ValidateStaticShape(B->Shape()));
+    if (B != nullptr) {
+      ORT_RETURN_IF_ERROR(ValidateStaticShape(B->Shape()));
+    } else {
+      ORT_RETURN_IF_ERROR(ValidateStaticShape(packed_b_shape_));
+    }
     if (C != nullptr) {
       ORT_RETURN_IF_ERROR(ValidateStaticShape(C->Shape()));
     }
 
     // Get shapes
     const auto& shape_A = A->Shape();
-    const auto& shape_B = B->Shape();
+    const auto& shape_B = (B != nullptr) ? B->Shape() : packed_b_shape_;
 
     int64_t M{}, K{}, N{};
     ORT_RETURN_IF_ERROR(ValidateAndGetDims(shape_A, shape_B, M, K, N));
@@ -76,7 +134,8 @@ class Gemm final : public TelumKernel {
     // - the actual bias vector (when we can fuse it safely), or
     // - a zero vector (and optionally apply beta*C on CPU post-processing).
     const bool can_fuse_bias =
-        (C != nullptr) && (alpha_ == 1.0f) && (beta_ == 1.0f) && IsBiasVector(*C, N);
+        packed_bias_guard_.has_value() ||
+        ((C != nullptr) && (alpha_ == 1.0f) && (beta_ == 1.0f) && IsBiasVector(*C, N));
 
     // zDNN matmul op shapes:
     //   input_a: ZDNN_2D (m, k)
@@ -91,16 +150,32 @@ class Gemm final : public TelumKernel {
     ORT_RETURN_IF_ERROR(ConvertToZTensor(*A, zdnn_a, kMatLayout));
     ZTensorGuard guard_a(&zdnn_a);
 
-    ORT_RETURN_IF_ERROR(ConvertToZTensor(*B, zdnn_b, kMatLayout));
-    ZTensorGuard guard_b(&zdnn_b);
+    const zdnn_ztensor* b_ztensor = nullptr;
+    std::optional<ZTensorGuard> guard_b;
+    if (packed_b_guard_.has_value()) {
+      b_ztensor = &packed_b_;
+    } else {
+      ORT_RETURN_IF_ERROR(ConvertToZTensor(*B, zdnn_b, kMatLayout));
+      guard_b.emplace(&zdnn_b);
+      b_ztensor = &zdnn_b;
+    }
 
+    const zdnn_ztensor* c_ztensor = nullptr;
+    std::optional<ZTensorGuard> guard_c;
     if (can_fuse_bias) {
-      // Treat [N] or [1,N] as a bias vector of length N.
-      ORT_RETURN_IF_ERROR(TensorConverter::ConvertToZTensorWithShape(*C, TensorShape({N}), zdnn_c, kBiasLayout));
+      if (packed_bias_guard_.has_value()) {
+        c_ztensor = &packed_bias_;
+      } else {
+        // Treat [N] or [1,N] as a bias vector of length N.
+        ORT_RETURN_IF_ERROR(TensorConverter::ConvertToZTensorWithShape(*C, TensorShape({N}), zdnn_c, kBiasLayout));
+        guard_c.emplace(&zdnn_c);
+        c_ztensor = &zdnn_c;
+      }
     } else {
       ORT_RETURN_IF_ERROR(CreateZeroBiasZTensor(A->GetElementType(), N, zdnn_c));
+      guard_c.emplace(&zdnn_c);
+      c_ztensor = &zdnn_c;
     }
-    ZTensorGuard guard_c(&zdnn_c);
 
     ORT_RETURN_IF_ERROR(InitZTensorForOutput(*Y, zdnn_y, kMatLayout));
     ZTensorGuard guard_y(&zdnn_y);
@@ -108,12 +183,12 @@ class Gemm final : public TelumKernel {
     // Execute zDNN GEMM (MatMul + bias vector addition).
     zdnn_status status{};
     if (trans_A_ || trans_B_) {
-      status = zdnn_matmul_transpose_op(&zdnn_a, &zdnn_b, &zdnn_c,
+      status = zdnn_matmul_transpose_op(&zdnn_a, b_ztensor, c_ztensor,
                                         trans_A_, trans_B_,
                                         MATMUL_OP_ADDITION, &zdnn_y);
       ORT_RETURN_IF_ERROR(CheckStatus(status, "zdnn_matmul_transpose_op (Gemm)"));
     } else {
-      status = zdnn_matmul_op(&zdnn_a, &zdnn_b, &zdnn_c,
+      status = zdnn_matmul_op(&zdnn_a, b_ztensor, c_ztensor,
                               MATMUL_OP_ADDITION, &zdnn_y);
       ORT_RETURN_IF_ERROR(CheckStatus(status, "zdnn_matmul_op (Gemm)"));
     }
@@ -139,6 +214,14 @@ class Gemm final : public TelumKernel {
   bool trans_B_;
   float alpha_;
   float beta_;
+
+  // Prepacked weights/bias (optional).
+  mutable std::optional<ZTensorGuard> packed_b_guard_;
+  mutable zdnn_ztensor packed_b_{};
+  mutable TensorShape packed_b_shape_;
+
+  mutable std::optional<ZTensorGuard> packed_bias_guard_;
+  mutable zdnn_ztensor packed_bias_{};
 
   /**
    * @brief Validate GEMM dimensions

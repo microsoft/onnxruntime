@@ -193,6 +193,35 @@ TEST_F(TelumMatMulTest, MixedSignValues) {
   RunOnTelum(test);
 }
 
+TEST_F(TelumMatMulTest, MatMul_PrePack_BInitializer) {
+  OpTester test("MatMul", 13);
+
+  // [2,3] x [3,4] = [2,4]
+  const std::vector<float> A = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+  };
+  const std::vector<float> B = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+  };
+  const auto expected = ComputeMatMulReference(A, B, /*M=*/2, /*K=*/3, /*N=*/4);
+
+  test.AddInput<float>("A", {2, 3}, A);
+  test.AddInput<float>("B", {3, 4}, B, /*is_initializer=*/true);
+  test.AddOutput<float>("Y", {2, 4}, expected);
+
+  // Verify the Telum MatMul kernel prepacked the initializer.
+  size_t num_prepacked = 0;
+  onnxruntime::SessionOptions so;
+  ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
+  test.Config(so);
+  test.ConfigEp(onnxruntime::test::DefaultTelumExecutionProvider());
+  test.RunWithConfig(&num_prepacked, nullptr);
+  EXPECT_GE(num_prepacked, 1u);
+}
+
 }  // namespace telum
 }  // namespace test
 }  // namespace onnxruntime

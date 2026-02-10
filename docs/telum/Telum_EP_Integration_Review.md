@@ -4,7 +4,7 @@ Date: 2026-02-10
 
 Repo: `onnxruntime/` (local workspace)
 
-Branch reviewed (local): `feature/telum-ep-e2e-integration` (dirty working tree at review time)
+Branch reviewed (local): `feature/telum-ep-integration-next` (working tree at review time)
 
 This document is intentionally verbose. If you want the actionable checklist, see `docs/telum/Telum_EP_TODO.md`.
 
@@ -65,6 +65,7 @@ The implementation already reflects a few important zDNN realities:
 - **Elementwise ops do not broadcast**: zDNN `zdnn_add/sub/mul/...` operate on same-shaped tensors. Any ONNX-style broadcasting must be handled by the caller (EP) via:
   - graph fusions (e.g., MatMul+Add -> Gemm) where possible, and/or
   - explicit broadcast expansion or CPU fallback inside the Telum kernel for limited patterns.
+- **ztensor descriptor lifetime**: `zdnn_init_ztensor` stores pointers to `zdnn_tensor_desc` structs; the descriptor storage must outlive the `zdnn_ztensor`. Telum EP must not use stack-allocated descriptors.
 
 ## What Exists In-Tree Today (Summary)
 
@@ -189,7 +190,10 @@ Relevant files:
   - Adds per-op gating:
     - `Gemm`: requires A/B 2D
     - `MatMul`: requires either fully-stacked or fully-unstacked broadcast patterns (rejects partial broadcast)
-    - Elementwise/activations: rank <= 4; elementwise requires identical shapes
+    - Elementwise: rank <= 4; ONNX/Numpy broadcasting supported in-kernel on CPU (zDNN path used when shapes match)
+    - Activations: rank <= 4
+    - `Softmax`: axis == last dim only
+    - `LayerNormalization`: axis == last dim only; scale/bias shape [C]
 - `onnxruntime/core/providers/telum/graph_transformers/telum_transformer_base.h`
   - Avoids null deref by skipping optional inputs.
 
@@ -315,7 +319,8 @@ Recommendation:
 
 Problem:
 
-- zDNN elementwise ops do not broadcast, and the current Telum elementwise kernels reject any broadcast case.
+- zDNN elementwise ops do not broadcast.
+- ONNX graphs frequently rely on broadcasting (bias vectors, scalars, etc.).
 
 Impact:
 
@@ -329,6 +334,11 @@ Recommendation:
   - scalar
   - optionally `[B,1,H]` and friends (depending on exported models)
 - Do the broadcast in-kernel (CPU) when needed, but still keep the node on Telum EP so partitioning stays stable.
+
+Current status:
+
+- Telum elementwise kernels now implement ONNX/Numpy broadcasting on a CPU path for rank <= 4 (and use zDNN when shapes match).
+- This is intentionally "correct first"; we can decide later whether to expand rank > 4 broadcast support.
 
 ### 5) Telum-specific graph transformer code is currently unused
 
@@ -359,6 +369,17 @@ Recommendation:
   - supported ops and constraints
   - how to run tests
   - how to validate you actually executed on Telum (disable CPU fallback)
+
+### 7) zDNN ztensor descriptor lifetime must be handled correctly (fixed)
+
+Problem:
+
+`zdnn_init_ztensor` stores pointers to `zdnn_tensor_desc` fields (it does not deep-copy the descriptors). If a Telum kernel initializes ztensors with stack-allocated descriptors, those pointers dangle after the function returns and zDNN calls can crash or corrupt memory.
+
+Current status:
+
+- Telum `TensorConverter` now heap-allocates the descriptors and transfers ownership to the ztensor.
+- `TelumKernel::ZTensorGuard` frees both the ztensor buffer and the heap-allocated descriptors.
 
 ## Risk Register (What Could Bite Us Later)
 
