@@ -117,10 +117,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
 
   const bool has_zero_points = zero_points != nullptr;
-  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
   if (has_zero_points) {
     ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
-    ORT_ENFORCE(nbits != 2, "Currently, zero points are not supported for Q2 quantization.");
   }
 
   MatMulComputeHelper helper;
@@ -205,9 +203,13 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
-  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
-  // For bits==4, this is counted by elements of uint4. Need add 1 if not divisible by 2.
-  uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
+  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)].
+  // The shader uses a flat linear index to address individual n-bit zero point values.
+  // Since each column's zero points are byte-aligned in the packed buffer, we must round
+  // n_blocks_per_col up to the next multiple of (8/nbits) — the number of zero point
+  // values per byte — so that the linear stride correctly skips byte-boundary padding.
+  const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
+  uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
 
 #if !defined(__wasm__)
   int32_t subgroup_matrix_config_index = -1;
@@ -219,7 +221,9 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 #endif
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
+  // DP4A Q2 path uses a hardcoded LUT with zero_point=2, so skip DP4A for Q2 with custom zero points.
   if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
+      !(has_zero_points && nbits == 2) &&
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index);
   }
