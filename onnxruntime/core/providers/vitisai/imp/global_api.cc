@@ -386,7 +386,6 @@ void deinitialize_vitisai_ep() {
   s_domains_vitisaiep.clear();
 
   s_library_vitisaiep.Clear();
-  s_kernel_registry_vitisaiep.reset();
 }
 
 static void set_version_info(vaip_core::OrtApiForVaip& api) {
