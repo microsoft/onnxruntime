@@ -92,8 +92,9 @@ extends:
 
     - template: templates/qnn-ep-win.yml
       parameters:
-        qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+        build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
         QnnSdk: ${{ parameters.QnnSdk }}
+        BuildQnn: true
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         DoEsrp: ${{ parameters.DoEsrp }}
         ArtifactName: 'drop-nuget-qnn-arm64x'
