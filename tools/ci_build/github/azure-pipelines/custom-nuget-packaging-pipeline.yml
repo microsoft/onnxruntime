@@ -134,7 +134,6 @@ extends:
 
       - template: templates/foundry-local-nuget-packaging.yml
         parameters:
-          IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-          DependsOn: [Windows_Packaging_CUDA, Windows_Packaging_CPU_arm64, ManagedNugetPackaging, MacOS_C_API_Package_Publish]
+          DependsOn: [Setup, Windows_Packaging_CUDA, Windows_Packaging_CPU_arm64, ManagedNugetPackaging, MacOS_C_API_Package_Publish]
           DoEsrp: true
           PackageName: 'Microsoft.ML.OnnxRuntime.Foundry'
