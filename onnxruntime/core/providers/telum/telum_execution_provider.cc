@@ -267,8 +267,15 @@ bool TelumExecutionProvider::IsNodeSupported(const Node& node) const {
     if (!get_shape(node.InputDefs()[0], a_shape) || !get_shape(node.InputDefs()[1], b_shape)) {
       return false;
     }
-    if (a_shape != b_shape) return false;              // no broadcast for now
-    if (a_shape.size() > 4) return false;              // TensorConverter only supports up to 4D
+    const size_t out_rank = std::max(a_shape.size(), b_shape.size());
+    if (out_rank > 4) return false;  // current Telum elementwise implementation supports up to rank 4
+
+    // Numpy/ONNX broadcast compatibility check.
+    for (size_t i = 0; i < out_rank; ++i) {
+      const int64_t da = (i < a_shape.size()) ? a_shape[a_shape.size() - 1 - i] : 1;
+      const int64_t db = (i < b_shape.size()) ? b_shape[b_shape.size() - 1 - i] : 1;
+      if (!(da == db || da == 1 || db == 1)) return false;
+    }
     return true;
   }
 

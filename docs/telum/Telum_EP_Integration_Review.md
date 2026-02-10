@@ -166,7 +166,8 @@ Relevant files:
     - Fuses bias only for the safe subset; otherwise uses zero bias and applies alpha/beta and broader C broadcasting on CPU post-processing.
 - Elementwise:
   - `onnxruntime/core/providers/telum/kernels/math/elementwise.cc`
-    - Enforces no broadcasting (shape equality) and rank <= 4.
+    - Uses zDNN for same-shape cases (rank <= 4).
+    - Implements ONNX-style broadcasting on CPU (rank <= 4) for correctness when zDNN cannot broadcast.
 - Activations:
   - `onnxruntime/core/providers/telum/kernels/activation/activation.cc`
     - Straightforward wrappers around zDNN unary ops.

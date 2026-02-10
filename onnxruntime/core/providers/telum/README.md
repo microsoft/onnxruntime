@@ -43,7 +43,7 @@ The Telum Execution Provider (EP) enables hardware acceleration of neural networ
 |-----------|----------|-------------|
 | MatMul | `zdnn_matmul_op` / `zdnn_matmul_bcast_op` | Static shapes; limited broadcast patterns; explicit zero-bias `input_c` |
 | Gemm | `zdnn_matmul_op` / `zdnn_matmul_transpose_op` | Static shapes; A/B must be 2D; bias fused only for a safe subset |
-| Add/Sub/Mul/Div/Min/Max | `zdnn_add/sub/mul/div/min/max` | No broadcasting (shapes must match); rank <= 4 |
+| Add/Sub/Mul/Div/Min/Max | `zdnn_add/sub/mul/div/min/max` | Broadcast supported in-kernel on CPU for correctness; zDNN path requires equal shapes; rank <= 4 |
 | Relu | `zdnn_relu` | Elementwise; rank <= 4 |
 | Softmax | `zdnn_softmax` | Static shapes; axis == last dim only (coerced to `ZDNN_3DS`) |
 | Gelu | `zdnn_gelu` | Elementwise; rank <= 4 |
@@ -147,7 +147,7 @@ outputs = session.run(None, inputs)
 
 ### Operation Constraints
 
-- **Limited Broadcasting**: zDNN elementwise ops do not broadcast. Telum currently requires equal shapes for elementwise ops.
+- **Limited Broadcasting**: zDNN elementwise ops do not broadcast. Telum implements limited broadcasting in-kernel on CPU for elementwise ops (rank <= 4).
 - **Transpose**: Gemm supports `transA/transB` attributes via zDNN transpose matmul. The standalone ONNX `Transpose` op is not currently offloaded.
 - **Fixed Layouts**: Some operations require specific data layouts
 

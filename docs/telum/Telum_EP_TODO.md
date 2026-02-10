@@ -86,15 +86,10 @@ Each phase has:
 
 ### Tasks
 
-- [ ] Implement limited broadcast support for elementwise ops
-  - [ ] Patterns to support (minimal set):
-    - [ ] scalar
-    - [ ] bias vector `[H]` and `[1,H]` across `[..., H]`
-  - [ ] Strategy:
-    - [ ] if shapes match: use zDNN elementwise
-    - [ ] else: do broadcast on CPU inside the Telum kernel
-  - [ ] Update `onnxruntime/core/providers/telum/telum_execution_provider.cc` gating accordingly
-  - [ ] Add tests for each broadcast pattern
+- [ ] Extend elementwise broadcast coverage (already supported for rank <= 4)
+  - [ ] Add tests for common transformer broadcast patterns (mask add, bias add, scalar ops)
+  - [ ] Decide whether to support rank > 4 broadcasting (CPU path) or explicitly reject
+  - [ ] Consider adding an option to log when a Telum elementwise op took the CPU-broadcast path (debug aid)
 
 ### Acceptance
 

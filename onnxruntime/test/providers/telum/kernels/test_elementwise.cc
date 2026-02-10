@@ -44,6 +44,47 @@ TEST_F(TelumElementwiseTest, Add_2D) {
   RunOnTelum(test);
 }
 
+TEST_F(TelumElementwiseTest, Add_Broadcast_Vector) {
+  OpTester test("Add", 13);
+
+  // A: [2, 4], B: [4] -> broadcast to [2, 4]
+  const std::vector<float> A = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      -1.0f, -2.0f, -3.0f, -4.0f,
+  };
+  const std::vector<float> B = {10.0f, 20.0f, 30.0f, 40.0f};
+
+  std::vector<float> expected(A.size());
+  for (size_t i = 0; i < 2; ++i) {
+    for (size_t j = 0; j < 4; ++j) {
+      expected[i * 4 + j] = A[i * 4 + j] + B[j];
+    }
+  }
+
+  test.AddInput<float>("A", {2, 4}, A);
+  test.AddInput<float>("B", {4}, B);
+  test.AddOutput<float>("C", {2, 4}, expected);
+  RunOnTelum(test);
+}
+
+TEST_F(TelumElementwiseTest, Add_Broadcast_Scalar) {
+  OpTester test("Add", 13);
+
+  // A: [2, 3, 4], B: [1] -> broadcast scalar
+  const std::vector<float> A = GenerateSequentialFloats(2 * 3 * 4, 1.0f, 1.0f);
+  const std::vector<float> B = {0.5f};
+
+  std::vector<float> expected(A.size());
+  for (size_t i = 0; i < A.size(); ++i) {
+    expected[i] = A[i] + B[0];
+  }
+
+  test.AddInput<float>("A", {2, 3, 4}, A);
+  test.AddInput<float>("B", {1}, B);
+  test.AddOutput<float>("C", {2, 3, 4}, expected);
+  RunOnTelum(test);
+}
+
 TEST_F(TelumElementwiseTest, Add_Negative) {
   OpTester test("Add", 13);
 
