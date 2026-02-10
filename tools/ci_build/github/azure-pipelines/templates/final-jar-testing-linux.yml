@@ -82,7 +82,13 @@ stages:
           cd tests
           jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
           rm -f $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-          ls $(Pipeline.Workspace)/build/tests
+
+          # Identify main jar (avoiding sources and javadoc jars)
+          MAIN_JAR=$(ls $(Pipeline.Workspace)/build/onnxruntime-java/onnxruntime-*.jar | grep -v 'sources' | grep -v 'javadoc' | head -n 1)
+          echo "Extracting native libs from $MAIN_JAR"
+          jar xf $MAIN_JAR ai/onnxruntime/native
+
+          ls -R $(Pipeline.Workspace)/build/tests/ai
           echo "Java Version"
           java -version
 
