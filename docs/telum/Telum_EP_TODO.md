@@ -32,6 +32,10 @@ Each phase has:
     - C API `SessionOptionsAppendExecutionProvider("TelumExecutionProvider", ...)`
   - [x] Document "disable CPU EP fallback" as the way to prove you ran on Telum
 
+- [x] Remove dead / misleading scaffolding
+  - [x] Remove Telum-specific graph transformer files that were not wired into the optimizer pipeline
+  - [x] Do not override `IExecutionProvider::Compile(...)` unless Telum actually compiles fused subgraphs
+
 - [x] Align declared support vs actual kernels
   - [x] Keep `supported_ops_`, per-op gating, and kernel registry synchronized
   - [x] Ensure `GetCapability()` logs when a matching kernel is missing
@@ -71,6 +75,13 @@ Each phase has:
 - [x] Extend LayerNormalization coverage
   - [x] Add more shape tests (rank 1, rank 4+ coercion)
   - [x] Add tests that omit mean and/or inv_std_dev outputs (optional outputs)
+  - [x] Add a test that relies on ONNX default `axis`/`epsilon` attributes (no explicit attrs)
+
+- [x] Add an end-to-end multi-op test (mini transformer block)
+  - [x] Build a small ONNX model: `Gemm -> Gelu(MS) -> Softmax -> LayerNormalization`
+  - [x] Assert **all nodes** are assigned to Telum (no CPU islands)
+  - [x] Compare outputs to CPU EP (tight tolerance)
+
 
 ### Acceptance
 
@@ -131,7 +142,7 @@ Each phase has:
 
 ### Tasks
 
-- [ ] Add s390x build-and-test CI job (GitHub Actions, internal CI, or documented external runner)
+- [x] Add s390x build-and-test CI job (GitHub Actions self-hosted runner)
 - [ ] Add docs page under `docs/execution_providers/` or similar pointing to Telum EP
 - [ ] Document a reproducible build environment (container or VM setup) for zDNN + ORT + tests
 

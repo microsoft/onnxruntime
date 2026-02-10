@@ -65,6 +65,33 @@ TEST_F(TelumLayerNormTest, LayerNorm2D_Float_WithBias) {
   RunOnTelum(test);
 }
 
+TEST_F(TelumLayerNormTest, LayerNorm2D_Float_DefaultAxisAndEpsilon) {
+  // Do not set attributes. ONNX LayerNormalization-17 defaults:
+  //   axis=-1, epsilon=1e-5
+  OpTester test("LayerNormalization", 17);
+
+  // X shape [2, 3] => N=2, C=3
+  const std::vector<float> X = {
+      1.0f, 2.0f, 3.0f,
+      -1.0f, 0.0f, 1.0f,
+  };
+  const std::vector<float> Scale = {1.0f, 0.5f, 2.0f};
+  const std::vector<float> Bias = {0.1f, -0.2f, 0.3f};
+
+  const auto ref = ComputeLayerNormLastDimReference(X, Scale, Bias, /*N=*/2, /*C=*/3, /*epsilon=*/1e-5f);
+
+  test.AddInput<float>("X", {2, 3}, X);
+  test.AddInput<float>("Scale", {3}, Scale);
+  test.AddInput<float>("Bias", {3}, Bias);
+
+  test.AddOutput<float>("Y", {2, 3}, ref.Y);
+  test.AddOutput<float>("Mean", {2, 1}, ref.Mean);
+  test.AddOutput<float>("InvStdDev", {2, 1}, ref.InvStd);
+  test.SetOutputTolerance(1e-5f);
+
+  RunOnTelum(test);
+}
+
 TEST_F(TelumLayerNormTest, LayerNorm2D_Float_OmitMeanInvStd) {
   OpTester test("LayerNormalization", 17);
   test.AddAttribute("axis", static_cast<int64_t>(-1));

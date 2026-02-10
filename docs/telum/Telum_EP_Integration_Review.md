@@ -194,13 +194,32 @@ Relevant files:
     - Activations: rank <= 4
     - `Softmax`: axis == last dim only
     - `LayerNormalization`: axis == last dim only; scale/bias shape [C]
-- `onnxruntime/core/providers/telum/graph_transformers/telum_transformer_base.h`
-  - Avoids null deref by skipping optional inputs.
 
 Assessment:
 
 - Capability gating is critical for correctness, especially when CPU fallback is disabled in tests.
-- Current gating still has a mismatch with actual kernel availability (see "Issues" section below).
+- Capability gating should continue to be kept in sync with the Telum kernel registry as operator coverage expands.
+
+### Strict Mode (Targeted "No Silent CPU" Guardrail)
+
+State: **Implemented**.
+
+Relevant files:
+
+- `onnxruntime/core/providers/telum/telum_execution_provider.cc`
+  - When `strict_mode=true`, Telum throws during `GetCapability()` if it encounters a node whose `OpType()` is in
+    Telum's `supported_ops_` list but cannot be supported due to:
+    - dynamic shapes
+    - unsupported input types
+    - unsupported per-op shape/broadcast/attribute constraints
+    - missing Telum kernel registration for the node's domain/version/types
+
+Assessment:
+
+- This is useful to catch "I thought I was running on Telum but I'm not" cases early at session init time.
+- This is complementary to `session.disable_cpu_ep_fallback=1`:
+  - `disable_cpu_ep_fallback` is a global "no CPU nodes" guardrail.
+  - `strict_mode` is a Telum-scoped guardrail for op types we intend to accelerate.
 
 ### Test integration (Telum-only test binary)
 
@@ -225,6 +244,10 @@ Relevant files:
 Assessment:
 
 - This is the right testing strategy: force Telum execution or fail, and skip when NNPA isn't present.
+- In addition to per-op `OpTester` coverage, there is an end-to-end multi-op graph test that verifies:
+  - Telum can take the entire graph (no CPU node assignment)
+  - Outputs match CPU EP within a tight tolerance
+  - file: `onnxruntime/test/providers/telum/test_end_to_end.cc`
 
 ### Build.py integration (CLI flags)
 
@@ -243,6 +266,20 @@ Assessment:
 
 - Correct direction.
 - Ensure docs refer to `onnxruntime_USE_TELUM` (lowercase prefix), not `ONNXRUNTIME_USE_TELUM`.
+
+### CI Coverage (s390x Self-Hosted)
+
+State: **Added** (requires a self-hosted GitHub Actions runner on `linux/s390x` with zDNN installed).
+
+Relevant files:
+
+- `.github/workflows/linux_s390x_telum_ci.yml`
+  - Builds ORT with `--use_telum` and `--telum_home="$ZDNN_ROOT"`.
+  - Runs `ctest -L telum -V`.
+
+Assessment:
+
+- This is the correct direction: Telum coverage needs real s390x hardware in CI to avoid regressions.
 
 ## Are We On The Right Track?
 
@@ -275,27 +312,25 @@ Recommendation:
 
 Keep `supported_ops_`, kernel registry, and per-op capability gating in sync at all times.
 
-### 2) Data type support is inconsistent (BFLOAT16)
+### 2) Data type support must remain consistent across gating, kernels, and tests (BFLOAT16)
 
 Problem:
 
-Historically, `ValidateDataTypes()` allowed BFLOAT16 while some kernels only registered `float` and `MLFloat16`.
+If Telum's `ValidateDataTypes()` accepts a type that no matching Telum kernel is registered for, Telum may skip nodes
+due to kernel lookup failures that are hard to diagnose.
 
-Impact:
+Current status:
 
-Partitioning can silently skip nodes due to kernel lookup failures that are hard to diagnose.
+- BFLOAT16 is wired end-to-end across Telum kernels (type constraints, CPU post-processing where needed) and tests.
 
 Recommendation:
 
-If Telum supports BF16, wire it end-to-end:
+Treat type support as an "all layers must agree" contract:
 
-- kernel type constraints
-- any CPU post-processing paths
-- tests that force Telum execution with BF16
-
-Transformer implication:
-
-- BF16 support is likely important on IBM Z.
+- capability gating (`ValidateDataTypes()` and per-op checks)
+- kernel registry type constraints
+- any CPU post-processing paths inside kernels
+- tests that force Telum execution for each supported type
 
 ### 3) "Correct-but-slow" transform-per-inference is OK for bring-up, but not for production
 
@@ -308,12 +343,17 @@ Impact:
 
 - Major performance loss, especially for transformer linear layers.
 
-Recommendation:
+Current status:
 
-- Implement `PrePack(...)` on MatMul/Gemm kernels to:
-  - detect constant/initializer weights and bias
-  - allocate and store transformed ztensors in kernel state
-  - reuse them on each invocation
+- `PrePack(...)` is implemented for:
+  - `MatMul` constant RHS (B) initializers
+  - `Gemm` constant weight matrix (B) initializers
+  - `Gemm` bias vector (C) initializers for the safe fused subset (`alpha==beta==1` and bias vector shape)
+
+Remaining (performance polish):
+
+- Consider caching/reusing the "zero bias" ztensors that are currently created per-inference when no bias is fused.
+  - This is a pure performance optimization; correctness is already covered by explicit zero bias creation.
 
 ### 4) Elementwise broadcasting is a known zDNN gap and must be addressed for full transformer coverage
 
@@ -340,37 +380,56 @@ Current status:
 - Telum elementwise kernels now implement ONNX/Numpy broadcasting on a CPU path for rank <= 4 (and use zDNN when shapes match).
 - This is intentionally "correct first"; we can decide later whether to expand rank > 4 broadcast support.
 
-### 5) Telum-specific graph transformer code is currently unused
+### 5) Telum-specific graph transformer code should not be carried unless it is wired (resolved)
 
 Problem:
 
-- `onnxruntime/core/providers/telum/graph_transformers/linear_fusion.cc` exists, but `RegisterGraphTransformers()` is currently a stub.
+- Telum-specific fusion scaffolding was added, but it was not actually wired into the ORT optimizer pipeline.
 - ORT core already has `MatMulAddFusion` (`onnxruntime/core/optimizer/matmul_add_fusion.cc`) that handles many MatMul+Add -> Gemm cases.
 
+Current status:
+
+- The Telum-specific graph transformer scaffolding was removed to avoid carrying dead code in-tree.
+- Telum relies on ORT core fusions (like `MatMulAddFusion`) to produce `Gemm` where applicable.
+
 Recommendation:
 
-- Either:
-  - delete the Telum-specific transformer and rely on core fusions, or
-  - wire it up only if it provides unique value not covered by ORT core fusions.
+- If Telum needs fusions beyond ORT core, integrate them via supported ORT hooks (graph optimizer registry and/or
+  compile-based fusion), not via unregistered transformer files.
 
-### 6) Documentation must be corrected to match the actual APIs and build knobs
+### 6) Documentation must match the actual knobs, APIs, and constraints (mostly resolved)
 
 Problem:
 
-- `onnxruntime/core/providers/telum/README.md` currently documents:
-  - wrong CMake flag name (`ONNXRUNTIME_USE_TELUM` vs `onnxruntime_USE_TELUM`)
-  - non-existent C++ wrapper APIs (`AppendExecutionProvider_Telum()`)
-  - ops that are not implemented (Softmax/LayerNormalization)
+Docs that claim support that doesn't exist or reference the wrong build flags lead to wasted time and incorrect usage.
 
-Recommendation:
+Current status:
 
-- Update Telum README to be accurate and avoid claiming support that doesn't exist.
-- Make the docs explicit about:
-  - supported ops and constraints
-  - how to run tests
-  - how to validate you actually executed on Telum (disable CPU fallback)
+- `onnxruntime/core/providers/telum/README.md` has been updated to reflect:
+  - the correct CMake flag (`onnxruntime_USE_TELUM`)
+  - the `ZDNN_ROOT` requirement
+  - the actual selection APIs (Python provider list and generic C/C++ append-by-name)
+  - the real supported op set and constraints
+  - how to run Telum tests and prove you executed Telum kernels (disable CPU fallback)
 
-### 7) zDNN ztensor descriptor lifetime must be handled correctly (fixed)
+Remaining:
+
+- Add a top-level execution provider doc entry (under the standard `docs/execution_providers/` tree) that links to the
+  Telum EP README and documents the build and runtime knobs at the same level as other EPs.
+
+### 7) Telum EP should not override `Compile()` unless it actually compiles fused subgraphs (fixed)
+
+Problem:
+
+Kernel-based EPs generally do not need to override `IExecutionProvider::Compile(...)`. A stub `Compile()` that returns
+success but does not generate correct compute functions is dangerous if it is ever invoked.
+
+Current status:
+
+- Telum no longer overrides `Compile()`. If ORT ever attempts to call `Compile()` for Telum, the base implementation
+  returns `NOT_IMPLEMENTED` instead of silently producing incorrect results.
+
+### 8) zDNN ztensor descriptor lifetime must be handled correctly (fixed)
 
 Problem:
 

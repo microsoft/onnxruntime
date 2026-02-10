@@ -10,6 +10,7 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT}/test/providers/telum)
 set(telum_test_src
   # Utility tests
   ${TEST_SRC_DIR}/utils/test_endian_utils.cc
+  ${TEST_SRC_DIR}/test_end_to_end.cc
 
   # Kernel tests
   ${TEST_SRC_DIR}/kernels/test_matmul.cc

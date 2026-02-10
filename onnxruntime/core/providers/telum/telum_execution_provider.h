@@ -49,16 +49,6 @@ class TelumExecutionProvider : public IExecutionProvider {
                 const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* resource_accountant = nullptr) const override;
 
-  /**
-   * @brief Compile fused nodes into executable compute functions
-   *
-   * @param fused_nodes Nodes that have been fused together
-   * @param node_compute_funcs Output vector of compute functions
-   * @return Status indicating success or failure
-   */
-  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
-                        std::vector<NodeComputeInfo>& node_compute_funcs) override;
-
  private:
   /**
    * @brief Check if a node is supported by Telum EP

@@ -31,8 +31,14 @@ namespace telum {
 class LayerNormalization final : public TelumKernel {
  public:
   explicit LayerNormalization(const OpKernelInfo& info) : TelumKernel(info) {
-    ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
-    ORT_ENFORCE(info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+    // ONNX LayerNormalization-17 attributes are optional and have defaults:
+    //   axis    = -1
+    //   epsilon = 1e-5
+    axis_ = -1;
+    (void)info.GetAttr<int64_t>("axis", &axis_);
+
+    epsilon_ = 1e-5f;
+    (void)info.GetAttr<float>("epsilon", &epsilon_);
   }
 
   Status Compute(OpKernelContext* context) const override {

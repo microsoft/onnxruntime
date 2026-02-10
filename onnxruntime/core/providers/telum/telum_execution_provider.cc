@@ -162,39 +162,6 @@ TelumExecutionProvider::GetCapability(const GraphViewer& graph,
   return capabilities;
 }
 
-common::Status TelumExecutionProvider::Compile(
-    const std::vector<FusedNodeAndGraph>& fused_nodes,
-    std::vector<NodeComputeInfo>& node_compute_funcs) {
-
-  for (const auto& fused_node_graph : fused_nodes) {
-    const Node& fused_node = fused_node_graph.fused_node;
-
-    // Create compute function for fused node
-    NodeComputeInfo compute_info;
-
-    // Set up function state creation
-    compute_info.create_state_func = [](ComputeContext* context, FunctionState* state) {
-      *state = nullptr;
-      return 0;
-    };
-
-    // Set up compute function
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      // This will be implemented by individual kernel implementations
-      return Status::OK();
-    };
-
-    // Set up state release function
-    compute_info.release_state_func = [](FunctionState state) {
-      // Cleanup if needed
-    };
-
-    node_compute_funcs.push_back(std::move(compute_info));
-  }
-
-  return Status::OK();
-}
-
 bool TelumExecutionProvider::IsNodeSupported(const Node& node) const {
   // Check if operator type is in supported list
   if (!IsOperatorSupported(node.OpType())) {
@@ -221,7 +188,37 @@ bool TelumExecutionProvider::IsNodeSupported(const Node& node) const {
       return false;
     }
     // Telum Gemm kernel requires A/B to be 2D. (C is optional and handled in-kernel.)
-    return a_shape.size() == 2 && b_shape.size() == 2;
+    if (!(a_shape.size() == 2 && b_shape.size() == 2)) {
+      return false;
+    }
+
+    // zDNN dimension limits: reject shapes we know zDNN cannot handle.
+    // Note: Telum Gemm supports transA/transB.
+    bool trans_a = false;
+    bool trans_b = false;
+    {
+      const auto& attrs = node.GetAttributes();
+      if (auto it = attrs.find("transA"); it != attrs.end() && it->second.has_i()) {
+        trans_a = (it->second.i() != 0);
+      }
+      if (auto it = attrs.find("transB"); it != attrs.end() && it->second.has_i()) {
+        trans_b = (it->second.i() != 0);
+      }
+    }
+
+    const int64_t M = trans_a ? a_shape[1] : a_shape[0];
+    const int64_t K_a = trans_a ? a_shape[0] : a_shape[1];
+    const int64_t K_b = trans_b ? b_shape[1] : b_shape[0];
+    const int64_t N = trans_b ? b_shape[0] : b_shape[1];
+    if (K_a != K_b) {
+      return false;
+    }
+
+    const uint32_t max_dim = zdnn_get_nnpa_max_dim_idx_size();
+    if (M > static_cast<int64_t>(max_dim)) return false;
+    if (K_a > static_cast<int64_t>(max_dim)) return false;
+    if (N > static_cast<int64_t>(max_dim)) return false;
+    return true;
   }
 
   if (op_type == "MatMul") {
@@ -257,6 +254,30 @@ bool TelumExecutionProvider::IsNodeSupported(const Node& node) const {
       } else {
         return false;
       }
+    }
+
+    // zDNN dimension limits: reject shapes we know zDNN cannot handle.
+    // MatMul maps ONNX batch dims into zDNN's "stack" dimension, so `stack` must be <= max_dim.
+    {
+      const int64_t M = a_shape[a_shape.size() - 2];
+      const int64_t K = a_shape[a_shape.size() - 1];
+      const int64_t N = b_shape[b_shape.size() - 1];
+
+      const uint32_t max_dim = zdnn_get_nnpa_max_dim_idx_size();
+      if (M > static_cast<int64_t>(max_dim)) return false;
+      if (K > static_cast<int64_t>(max_dim)) return false;
+      if (N > static_cast<int64_t>(max_dim)) return false;
+
+      int64_t stack = 1;
+      for (int64_t d : out_batch) {
+        if (d <= 0) return false;
+        if (stack > static_cast<int64_t>(max_dim) / d) {
+          stack = static_cast<int64_t>(max_dim) + 1;
+          break;
+        }
+        stack *= d;
+      }
+      if (stack > static_cast<int64_t>(max_dim)) return false;
     }
 
     auto align_batch = [](const std::vector<int64_t>& batch, size_t target_rank) -> std::vector<int64_t> {
@@ -344,10 +365,12 @@ bool TelumExecutionProvider::IsNodeSupported(const Node& node) const {
 
     const int64_t rank = static_cast<int64_t>(x_shape.size());
     const auto& attrs = node.GetAttributes();
-    auto it = attrs.find("axis");
-    if (it == attrs.end() || !it->second.has_i()) return false;
+    int64_t axis_attr = -1;  // default for ONNX LayerNormalization-17
+    if (auto it = attrs.find("axis"); it != attrs.end() && it->second.has_i()) {
+      axis_attr = it->second.i();
+    }
 
-    int64_t axis = it->second.i();
+    int64_t axis = axis_attr;
     if (axis < 0) axis += rank;
     if (axis != rank - 1) return false;  // initial Telum support: last-dim only
 
