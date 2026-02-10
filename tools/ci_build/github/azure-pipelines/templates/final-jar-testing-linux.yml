@@ -8,6 +8,10 @@ parameters:
 - name: PoolName
   type: string
 
+- name: PoolDemands
+  type: string
+  default: ''
+
 stages:
 - stage: Final_Jar_Testing_${{parameters.OS}}
   dependsOn: []
@@ -23,6 +27,8 @@ stages:
             vmImage: ${{ parameters.PoolName }}
           ${{ else }}:
             name: ${{ parameters.PoolName }}
+            ${{ if ne(parameters.PoolDemands, '') }}:
+              demands: ${{ parameters.PoolDemands }}
         ${{ else }}:
           vmImage: 'macOS-15'
     ${{ if eq(parameters.OS, 'Linux') }}:
