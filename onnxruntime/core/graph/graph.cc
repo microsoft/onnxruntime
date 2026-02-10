@@ -6483,7 +6483,9 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF(nullptr == fbs_value_info, "NodeArg is missing. Invalid ORT format model.");
       NodeArgInfo node_arg_info;
       ORT_RETURN_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
-      node_args_[fbs_value_info->name()->str()] = std::make_unique<NodeArg>(std::move(node_arg_info));
+      const auto* name = fbs_value_info->name();
+      ORT_RETURN_IF(name == nullptr, "NodeArg name is missing. Invalid ORT format model.");
+      node_args_[name->str()] = std::make_unique<NodeArg>(std::move(node_arg_info));
     }
   }
 
