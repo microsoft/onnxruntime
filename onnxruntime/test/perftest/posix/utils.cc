@@ -24,7 +24,7 @@ std::size_t GetPeakWorkingSetSize() {
   constexpr size_t kBytesPerMaxRssUnit = 1024;
 #endif
 
-  return static_cast<size_t>(rusage.ru_maxrss * kBytesPerMaxRssUnit);
+  return static_cast<size_t>(rusage.ru_maxrss) * kBytesPerMaxRssUnit;
 }
 
 class CPUUsage : public ICPUUsage {
