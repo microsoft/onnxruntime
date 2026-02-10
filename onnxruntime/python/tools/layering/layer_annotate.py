@@ -1,16 +1,19 @@
-import pathlib
-import onnx
-import logging
 import argparse
 import concurrent.futures
+import logging
 import os
+import pathlib
 import threading
+
+import onnx
+
 
 def get_logger(name, level=logging.DEBUG):
     logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s")
     logger = logging.getLogger(name)
     logger.setLevel(level)
     return logger
+
 
 def getargs():
     argparser = argparse.ArgumentParser(
@@ -38,6 +41,7 @@ def getargs():
 
     return argparser.parse_args()
 
+
 def read_annotation_config(config_file_path):
     """
     Reads a configuration file to map substrings to annotations.
@@ -55,7 +59,7 @@ def read_annotation_config(config_file_path):
         list: A list of tuples (substring, annotation_string).
     """
     substring_annotations = []
-    with open(config_file_path, "r") as f:
+    with open(config_file_path) as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -71,6 +75,7 @@ def read_annotation_config(config_file_path):
                     substring_annotations.append((substring, annotation))
     return substring_annotations
 
+
 def process_nodes(nodes, substring_annotations):
     """
     Helper function to process a list of nodes sequentially.
@@ -83,20 +88,20 @@ def process_nodes(nodes, substring_annotations):
         for substring, annotation in substring_annotations:
             if substring in node.name:
                 matched_annotation = annotation
-        
+
         if matched_annotation:
             # Check if annotation already exists
             entry = None
             for prop in node.metadata_props:
-                if prop.key == 'layer_ann':
+                if prop.key == "layer_ann":
                     entry = prop
                     break
-            
+
             if entry:
                 entry.value = matched_annotation
             else:
                 entry = node.metadata_props.add()
-                entry.key = 'layer_ann'
+                entry.key = "layer_ann"
                 entry.value = matched_annotation
 
         # Recurse into subgraphs for control flow nodes
@@ -107,17 +112,18 @@ def process_nodes(nodes, substring_annotations):
                 for sub_graph in attr.graphs:
                     annotate_graph(sub_graph, substring_annotations, parallel=False)
 
+
 def annotate_graph(graph, substring_annotations, parallel=False):
     """
     Recursively applies annotations to nodes where a configured substring appears in the node name.
 
     This function iterates over all nodes in the given graph. It checks if any
     substring from the configuration appears in the node's name. If matched,
-    it adds or updates a metadata property with key 'layer_ann' containing 
+    it adds or updates a metadata property with key 'layer_ann' containing
     the annotation string. If multiple substrings match, the last one defined
     in the configuration list applies.
-    
-    It also handles control flow nodes (like 'If' or 'Loop') by recursively 
+
+    It also handles control flow nodes (like 'If' or 'Loop') by recursively
     processing their subgraphs (attributes of type GRAPH or GRAPHS).
 
     Args:
@@ -137,8 +143,10 @@ def annotate_graph(graph, substring_annotations, parallel=False):
             max_workers = max(1, total_nodes // min_nodes_per_thread)
             num_workers = min(num_cores, max_workers)
 
-            logger.info(f"Parallel processing configuration: Total Nodes={total_nodes}, Cores={num_cores}. "
-                        f"Calculated Workers={num_workers} (Min nodes per thread={min_nodes_per_thread}).")
+            logger.info(
+                f"Parallel processing configuration: Total Nodes={total_nodes}, Cores={num_cores}. "
+                f"Calculated Workers={num_workers} (Min nodes per thread={min_nodes_per_thread})."
+            )
 
             chunks = []
             start_index = 0
@@ -152,22 +160,24 @@ def annotate_graph(graph, substring_annotations, parallel=False):
                 end_index = start_index + current_chunk_size
                 chunks.append(nodes[start_index:end_index])
                 start_index = end_index
-            
+
             # Use current thread for one of the chunks to avoid idle main thread
             if num_workers > 1:
                 # Execute num_workers - 1 chunks in background threads
                 # Execute the last chunk in the current (main) thread
                 background_chunks = chunks[:-1]
                 main_chunk = chunks[-1]
-                
+
                 logger.info(f"Dispatching {len(background_chunks)} chunks to thread pool and 1 chunk to main thread.")
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers - 1) as executor:
-                    futures = [executor.submit(process_nodes, chunk, substring_annotations) for chunk in background_chunks]
-                    
+                    futures = [
+                        executor.submit(process_nodes, chunk, substring_annotations) for chunk in background_chunks
+                    ]
+
                     # Run last chunk here
                     process_nodes(main_chunk, substring_annotations)
-                    
+
                     concurrent.futures.wait(futures)
             else:
                 # Only 1 worker needed, run in current thread
@@ -175,6 +185,7 @@ def annotate_graph(graph, substring_annotations, parallel=False):
                 process_nodes(chunks[0], substring_annotations)
     else:
         process_nodes(graph.node, substring_annotations)
+
 
 def annotate_model(model, substring_annotations):
     """
@@ -188,6 +199,7 @@ def annotate_model(model, substring_annotations):
         substring_annotations (list): A list of tuples (substring, annotation_string).
     """
     annotate_graph(model.graph, substring_annotations, parallel=True)
+
 
 if __name__ == "__main__":
     args = getargs()
