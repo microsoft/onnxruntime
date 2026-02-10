@@ -342,9 +342,8 @@ TEST(GatherNDOpTest, GatherND_batch_dims_mismatch_error) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "GatherND: indices batch size (2) is not divisible by input batch size (3)",
            std::unordered_set<std::string>({kCudaExecutionProvider, kDnnlExecutionProvider,
-                                             kOpenVINOExecutionProvider, kTensorrtExecutionProvider,
-                                             kQnnExecutionProvider, kDmlExecutionProvider
-                                             }));
+                                            kOpenVINOExecutionProvider, kTensorrtExecutionProvider,
+                                            kQnnExecutionProvider, kDmlExecutionProvider}));
 }
 
 // Test for issue #23828: GatherND should return error when input batch dimension is zero
@@ -359,9 +358,8 @@ TEST(GatherNDOpTest, GatherND_zero_batch_dims_error) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "GatherND: input tensor batch dimensions cannot be zero",
            std::unordered_set<std::string>({kCudaExecutionProvider, kDnnlExecutionProvider,
-                                             kOpenVINOExecutionProvider, kTensorrtExecutionProvider,
-                                             kQnnExecutionProvider, kDmlExecutionProvider
-                                             }));
+                                            kOpenVINOExecutionProvider, kTensorrtExecutionProvider,
+                                            kQnnExecutionProvider, kDmlExecutionProvider}));
 }
 
 }  // namespace test
