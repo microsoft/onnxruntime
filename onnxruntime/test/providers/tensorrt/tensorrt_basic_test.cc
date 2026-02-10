@@ -1425,7 +1425,11 @@ TEST(TensorrtExecutionProviderTest, PartiallySupportedModel_MemcpyOpsOnCPU_Infer
   OrtTensorRTProviderOptionsV2 params;
   params.trt_use_cpu_ep_memcpy_kernels = true;
   params.trt_op_types_to_exclude = "Mul";
-  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+
+  // Previous unit tests alread loaded TRT EP library that registered the Memcpy kernels to TRT EP, we need
+  // to reload the TRT EP library after setting the trt_use_cpu_ep_memcpy_kernels option to make sure the
+  // Memcpy kernels are registered to CPU EP instead of TRT EP.
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params, /*force_reload_library*/ true);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
   auto status = session_object.Load(ORT_TSTR("testdata/add_mul_add.onnx"));
