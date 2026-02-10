@@ -916,13 +916,50 @@ namespace Microsoft.ML.OnnxRuntime
 
                 if (mappedName != null)
                 {
-                    System.Console.WriteLine($"[DllImportResolver] libraryName: {libraryName}, mappedName: {mappedName}, searchPath: {searchPath}");
+                    // 1. Try default loading (name only)
                     if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
                     {
-                        System.Console.WriteLine($"[DllImportResolver] Success loading {mappedName}");
+                        System.Console.WriteLine($"[DllImportResolver] Success loading {mappedName} via default resolution");
                         return handle;
                     }
-                    System.Console.WriteLine($"[DllImportResolver] Failed loading {mappedName}");
+
+                    // 2. Try relative to assembly location (look into runtimes subfolders)
+                    string assemblyLocation = null;
+                    try { assemblyLocation = assembly.Location; } catch { }
+                    if (!string.IsNullOrEmpty(assemblyLocation))
+                    {
+                        string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
+                        string rid = RuntimeInformation.RuntimeIdentifier;
+
+                        string[] ridsToTry = { rid, "osx-arm64", "osx", "linux-x64", "linux-arm64", "linux" };
+                        foreach (var tryRid in ridsToTry)
+                        {
+                            string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
+                            if (System.IO.File.Exists(probePath))
+                            {
+                                System.Console.WriteLine($"[DllImportResolver] Found file at {probePath}, attempting to load...");
+                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    System.Console.WriteLine($"[DllImportResolver] Success loading from {probePath}");
+                                    return handle;
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Try AppContext.BaseDirectory as a fallback
+                    string baseDir = AppContext.BaseDirectory;
+                    if (!string.IsNullOrEmpty(baseDir))
+                    {
+                        string probePath = System.IO.Path.Combine(baseDir, mappedName);
+                        if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle)) return handle;
+
+                        string rid = RuntimeInformation.RuntimeIdentifier;
+                        probePath = System.IO.Path.Combine(baseDir, "runtimes", rid, "native", mappedName);
+                        if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle)) return handle;
+                    }
+
+                    System.Console.WriteLine($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
                 }
             }
 

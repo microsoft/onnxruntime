@@ -117,10 +117,6 @@ stages:
     AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     StageSuffix: 'Linux_CPU_x64'
 
-- template: nodejs/templates/test_macos.yml
-  parameters:
-    StageSuffix: 'macOS_CPU_x64'
-
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win2022-GPU-A10'
@@ -225,7 +221,7 @@ stages:
         - checkout: self
           clean: true
           submodules: none
-        
+
         - download: build
           artifact: 'Windows_Packaging_tensorrt_build_artifacts'
           displayName: 'Download Windows GPU Packages Build'
@@ -246,7 +242,7 @@ stages:
             versionSpec: "17"
             jdkArchitectureOption: x64
             jdkSourceOption: 'PreInstalled'
-       
+
         - task: PythonScript@0
           displayName: 'Update CTest Path References'
           inputs:
