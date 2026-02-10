@@ -28,11 +28,24 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose);
  * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
+  // Domain for TRT plugin custom ops (domain name: "trt.plugins"). Owns the OrtCustomOpDomain object.
+  // Raw pointers from .get() are handed out to callers via domain_list and may be held by InferenceSession.
   static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+
+  // Owns the TensorRTCustomOp objects for TRT plugins. Raw pointers are stored in custom_op_domain->custom_ops_.
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+
+  // Domain for native custom ops (domain name: "trt"). Owns the OrtCustomOpDomain object.
+  // Raw pointers from .get() are handed out to callers via domain_list and may be held by InferenceSession.
   static std::unique_ptr<OrtCustomOpDomain> native_custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+
+  // Owns the TensorRTCustomOp objects for native custom ops. Raw pointers are stored in native_custom_op_domain->custom_ops_.
   static std::vector<std::unique_ptr<TensorRTCustomOp>> native_custom_op_list;
+
+  // Tracks whether native custom ops have been registered to avoid re-registration on subsequent calls.
   static bool native_custom_ops_initialized = false;
+
+  // Protects concurrent access to all the above static members.
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
 
@@ -138,9 +151,9 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   // Register native custom ops (register these independent of TRT plugin library availability)
   if (!native_custom_ops_initialized) {
     const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
-    int num_native_custom_ops = std::size(native_custom_ops_names);
+    size_t num_native_custom_ops = std::size(native_custom_ops_names);
 
-    for (int i = 0; i < num_native_custom_ops; i++) {
+    for (size_t i = 0; i < num_native_custom_ops; i++) {
       native_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kNvTensorRTRTXExecutionProvider, nullptr));
       native_custom_op_list.back()->SetName(native_custom_ops_names[i]);
       native_custom_op_domain->custom_ops_.push_back(native_custom_op_list.back().get());
@@ -156,9 +169,12 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 
 void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain) {
   (void)domain;  // Suppress unused parameter warning
-  // The custom ops (TensorRTCustomOp) and domain (OrtCustomOpDomain) are marked as static
-  // with unique_ptr at the time of creation in CreateTensorRTCustomOpDomainList() function.
-  // Deleting them here can risk double-delete.
+  // The domain and its custom ops are owned by static unique_ptrs in CreateTensorRTCustomOpDomainList().
+  // Callers receive raw pointers via .get().
+  //  1. Manually deleting them would cause a double-free when the static unique_ptrs are destroyed at program exit.
+  //  2. Resetting the static unique_ptrs is also unsafe because other EP instances or InferenceSession objects
+  //     may still hold raw pointers to these same objects (handed out via domain_list).
+  // The static objects would be shared across EP instances and would persist for the program lifetime.
 }
 
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) {
