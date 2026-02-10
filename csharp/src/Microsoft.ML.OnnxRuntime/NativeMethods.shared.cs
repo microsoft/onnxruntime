@@ -897,7 +897,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
             {
-                System.Console.WriteLine($"[DllImportResolver] Invoked for {libraryName}. Process Arch: {RuntimeInformation.ProcessArchitecture}");
                 string mappedName = null;
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
@@ -920,7 +919,6 @@ namespace Microsoft.ML.OnnxRuntime
                     // 1. Try default loading (name only)
                     if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
                     {
-                        System.Console.WriteLine($"[DllImportResolver] Success loading {mappedName} via default resolution");
                         return handle;
                     }
 
@@ -932,16 +930,14 @@ namespace Microsoft.ML.OnnxRuntime
                         string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
                         string rid = RuntimeInformation.RuntimeIdentifier;
 
-                        string[] ridsToTry = { rid, "osx-arm64", "osx", "linux-x64", "linux-arm64", "linux" };
+                        string[] ridsToTry = { rid, "osx-arm64", "osx-aarch64", "osx", "linux-x64", "linux-arm64", "linux" };
                         foreach (var tryRid in ridsToTry)
                         {
                             string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
                             if (System.IO.File.Exists(probePath))
                             {
-                                System.Console.WriteLine($"[DllImportResolver] Found file at {probePath}, attempting to load...");
                                 if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
                                 {
-                                    System.Console.WriteLine($"[DllImportResolver] Success loading from {probePath}");
                                     return handle;
                                 }
                             }
