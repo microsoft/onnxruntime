@@ -87,8 +87,20 @@ TelumExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Iterate through all nodes in the graph
   for (const auto& node : graph.Nodes()) {
+    // Strict mode is intended to guarantee that any node we *claim to support by op type* does not
+    // silently fall back to CPU due to shape/type/pattern/kernel mismatches. It does not attempt to
+    // make Telum a "full graph" EP (models can still contain unsupported ops that stay on CPU).
+    const bool op_type_is_supported = IsOperatorSupported(node.OpType());
+    if (!op_type_is_supported) {
+      continue;
+    }
+
     // Validate static shapes
     if (!ValidateStaticShapes(node)) {
+      if (info_.strict_mode) {
+        ORT_THROW("Telum EP strict_mode: node '", node.Name(), "' (op: ", node.OpType(),
+                  ") has dynamic shapes.");
+      }
       if (info_.log_fallbacks) {
         LOGS_DEFAULT(WARNING) << "Telum EP: Node '" << node.Name()
                              << "' has dynamic shapes. Falling back to CPU.";
@@ -98,6 +110,10 @@ TelumExecutionProvider::GetCapability(const GraphViewer& graph,
 
     // Validate data types
     if (!ValidateDataTypes(node)) {
+      if (info_.strict_mode) {
+        ORT_THROW("Telum EP strict_mode: node '", node.Name(), "' (op: ", node.OpType(),
+                  ") has unsupported data types.");
+      }
       if (info_.log_fallbacks) {
         LOGS_DEFAULT(WARNING) << "Telum EP: Node '" << node.Name()
                              << "' has unsupported data types. Falling back to CPU.";
@@ -107,6 +123,10 @@ TelumExecutionProvider::GetCapability(const GraphViewer& graph,
 
     // Check if node is supported (op + shape/attribute constraints)
     if (!IsNodeSupported(node)) {
+      if (info_.strict_mode) {
+        ORT_THROW("Telum EP strict_mode: node '", node.Name(), "' (op: ", node.OpType(),
+                  ") is not supported. Reason: ", GetRejectionReason(node), ".");
+      }
       if (info_.log_fallbacks) {
         LOGS_DEFAULT(WARNING) << "Telum EP: Node '" << node.Name()
                              << "' (op: " << node.OpType() << ") not supported. "
@@ -119,6 +139,10 @@ TelumExecutionProvider::GetCapability(const GraphViewer& graph,
     // Try to find a matching kernel
     const KernelCreateInfo* kernel_info = kernel_lookup.LookUpKernel(node);
     if (kernel_info == nullptr) {
+      if (info_.strict_mode) {
+        ORT_THROW("Telum EP strict_mode: node '", node.Name(), "' (op: ", node.OpType(),
+                  ") has no registered Telum kernel for this build/type/versions.");
+      }
       if (info_.log_fallbacks) {
         LOGS_DEFAULT(WARNING) << "Telum EP: Node '" << node.Name()
                              << "' (op: " << node.OpType() << ") has no registered Telum kernel "
