@@ -19,17 +19,22 @@ def parse_build_settings_file(build_settings_file: pathlib.Path) -> dict[str, ty
     :return: The build settings dict.
     :rtype: dict[str, Any]
     """
-    with open(build_settings_file) as f:
-        build_settings_data = json.load(f)
+
+    def check(condition: bool, message: str):
+        if not condition:
+            raise ValueError(message)
 
     # validate that `input` is a dict[str, list[str]]
     def validate_str_to_str_list_dict(input: dict[str, list[str]]):
-        assert isinstance(input, dict), f"input is not a dict: {input}"
+        check(isinstance(input, dict), f"input is not a dict: {input}")
         for key, value in input.items():
-            assert isinstance(key, str), f"key is not a string: {key}"
-            assert isinstance(value, list), f"value is not a list: {value}"
+            check(isinstance(key, str), f"key is not a string: {key}")
+            check(isinstance(value, list), f"value is not a list: {value}")
             for value_element in value:
-                assert isinstance(value_element, str), f"list element is not a string: {value_element}"
+                check(isinstance(value_element, str), f"list element is not a string: {value_element}")
+
+    with open(build_settings_file) as f:
+        build_settings_data = json.load(f)
 
     build_settings = {}
 
