@@ -3031,7 +3031,6 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
                                  "src_graph is a ModelEditorGraph which doesn't support Graph_GetGraphView.");
   }
   const GraphViewer& graph_viewer = ep_graph->GetGraphViewer();
-  const Graph& graph = graph_viewer.GetGraph();
 
   // Create subgraph's node set and convert them to internal Node
   InlinedHashSet<NodeIndex> node_set;
@@ -3145,7 +3144,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
 
   // input order needs to be consistent with original graph's input order
   for (const auto& [node_arg, subgraph_input_order] : subgraph_inputs) {
-    const auto& original_input_it = original_inputs.find(node_arg);
+    const auto original_input_it = original_inputs.find(node_arg);
 
     if (original_input_it != original_inputs.end()) {
       inputs.emplace(
@@ -3185,7 +3184,8 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   }
 
   indexed_sub_graph->SetMetaDef(std::move(meta_def));
-  auto new_graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph.get());
+  const Graph& graph = graph_viewer.GetGraph();
+  auto new_graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph);
 
   std::unique_ptr<EpGraph> result;
   ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(indexed_sub_graph), result));

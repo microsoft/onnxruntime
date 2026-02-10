@@ -196,15 +196,23 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   auto& capabilities = params.capabilities.get();
   const auto& graph_optimizer_registry = params.graph_optimizer_registry.get();
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   InlinedVector<NodeIndex> assigned_filteredin_nodes;
+  InlinedVector<const Node*> filteredin_nodes;
+#endif
   // Helper to create a GraphViewer that filters nodes based on layering_index if present.
-  auto create_graph_viewer = [&](std::unique_ptr<IndexedSubGraph>& sub_graph_holder) -> std::unique_ptr<GraphViewer> {
+  auto create_graph_viewer = [&](std::unique_ptr<IndexedSubGraph>& sub_graph_holder,
+                                 std::unique_ptr<GraphViewer>& viewer) -> Status {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     if (params.layering_index) {
-      sub_graph_holder = std::make_unique<IndexedSubGraph>();
-      sub_graph_holder->nodes.reserve(graph.NumberOfNodes());
+      assigned_filteredin_nodes.clear();
+      filteredin_nodes.clear();
+      filteredin_nodes.reserve(graph.NumberOfNodes());
 
       auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
+      if (rules_opt) {
+        assigned_filteredin_nodes.reserve(rules_opt->get().size());
+      }
 
       for (auto& node : graph.Nodes()) {
         auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node.Index());
@@ -220,16 +228,19 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         // If node has no assignment, it is included (available to any EP)
 
         if (include) {
-          sub_graph_holder->nodes.push_back(node.Index());
+          filteredin_nodes.push_back(&node);
         }
       }
-      return std::make_unique<GraphViewer>(graph, *sub_graph_holder);
+      ORT_RETURN_IF_ERROR(graph_utils::CreateFilteredIndexedGraph(filteredin_nodes, graph, sub_graph_holder));
+      viewer = std::make_unique<GraphViewer>(graph, *sub_graph_holder);
+      return Status::OK();
     }
 #endif
-    return std::make_unique<GraphViewer>(graph);
+    viewer = std::make_unique<GraphViewer>(graph);
+    return Status::OK();
   };
 
-  // Helper to unassign nodes that were assigned to this EP but not claimed by updated capabilities.
+  // Helper to un-assign nodes that were assigned to this EP but not claimed by updated capabilities.
   auto reset_assignment_unclaimed_nodes = [&]() {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     if (params.layering_index) {
@@ -261,7 +272,8 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
   {
     std::unique_ptr<IndexedSubGraph> sub_graph_holder;
-    auto graph_viewer = create_graph_viewer(sub_graph_holder);
+    std::unique_ptr<GraphViewer> graph_viewer;
+    ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
@@ -312,6 +324,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     capabilities.clear();
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     if (params.layering_index && end_node > first_new_node) {
       // We need to update the LayeringIndex with newly created nodes
       // as the layout transformation may have created new nodes
@@ -322,9 +335,11 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       }
       params.layering_index->Update(graph, new_node_indices);
     }
+#endif
 
     std::unique_ptr<IndexedSubGraph> sub_graph_holder;
-    auto graph_viewer = create_graph_viewer(sub_graph_holder);
+    std::unique_ptr<GraphViewer> graph_viewer;
+    ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
     capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
