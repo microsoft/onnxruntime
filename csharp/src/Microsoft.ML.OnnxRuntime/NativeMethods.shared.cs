@@ -895,18 +895,78 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName))
+            if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
             {
-                // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
-                string fileName = libraryName + ".dll";
-                if (NativeLibrary.TryLoad(fileName, assembly, searchPath, out IntPtr handle))
+                string mappedName = null;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    return handle;
+                    // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
+                    mappedName = libraryName + ".dll";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    // Explicitly load with .so extension and lib prefix
+                    mappedName = "lib" + libraryName + ".so";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    // Explicitly load with .dylib extension and lib prefix
+                    mappedName = "lib" + libraryName + ".dylib";
+                }
+
+                if (mappedName != null)
+                {
+                    // 1. Try default loading (name only)
+                    if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
+                    {
+                        return handle;
+                    }
+
+                    // 2. Try relative to assembly location (look into runtimes subfolders)
+                    string assemblyLocation = null;
+                    try { assemblyLocation = assembly.Location; } catch { }
+                    if (!string.IsNullOrEmpty(assemblyLocation))
+                    {
+                        string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
+                        string rid = RuntimeInformation.RuntimeIdentifier;
+
+                        string[] ridsToTry = { rid, "osx-arm64", "osx", "linux-x64", "linux-arm64", "linux" };
+                        foreach (var tryRid in ridsToTry)
+                        {
+                            string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
+                            if (System.IO.File.Exists(probePath))
+                            {
+                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    return handle;
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Try AppContext.BaseDirectory as a fallback
+                    string baseDir = AppContext.BaseDirectory;
+                    if (!string.IsNullOrEmpty(baseDir))
+                    {
+                        string probePath = System.IO.Path.Combine(baseDir, mappedName);
+                        if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                        {
+                            return handle;
+                        }
+
+                        string rid = RuntimeInformation.RuntimeIdentifier;
+                        probePath = System.IO.Path.Combine(baseDir, "runtimes", rid, "native", mappedName);
+                        if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                        {
+                            return handle;
+                        }
+                    }
+
+                    System.Console.WriteLine($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
                 }
             }
 
-            // For Linux and macOS, returning IntPtr.Zero allows .NET to use its default
-            // resolution logic, which correctly finds libraries in the runtimes folder of NuGet.
+            // Fall back to default resolution
             return IntPtr.Zero;
         }
 #endif
