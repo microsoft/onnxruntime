@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import typing
 
 _DEFAULT_BUILD_SYSROOT_ARCHS = {
     "iphoneos": ["arm64"],
@@ -9,14 +10,14 @@ _DEFAULT_BUILD_SYSROOT_ARCHS = {
 }
 
 
-def parse_build_settings_file(build_settings_file: pathlib.Path) -> dict:
+def parse_build_settings_file(build_settings_file: pathlib.Path) -> dict[str, typing.Any]:
     """
     Parses the provided build settings file into a build settings dict.
 
     :param build_settings_file: The build settings file path.
     :type build_settings_file: pathlib.Path
     :return: The build settings dict.
-    :rtype: dict[Any, Any]
+    :rtype: dict[str, Any]
     """
     with open(build_settings_file) as f:
         build_settings_data = json.load(f)
