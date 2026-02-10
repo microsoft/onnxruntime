@@ -895,18 +895,38 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName))
+            if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
             {
-                // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
-                string fileName = libraryName + ".dll";
-                if (NativeLibrary.TryLoad(fileName, assembly, searchPath, out IntPtr handle))
+                string mappedName = null;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    return handle;
+                    // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
+                    mappedName = libraryName + ".dll";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    // Explicitly load with .so extension and lib prefix
+                    mappedName = "lib" + libraryName + ".so";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    // Explicitly load with .dylib extension and lib prefix
+                    mappedName = "lib" + libraryName + ".dylib";
+                }
+
+                if (mappedName != null)
+                {
+                    System.Console.WriteLine($"[DllImportResolver] libraryName: {libraryName}, mappedName: {mappedName}, searchPath: {searchPath}");
+                    if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
+                    {
+                        System.Console.WriteLine($"[DllImportResolver] Success loading {mappedName}");
+                        return handle;
+                    }
+                    System.Console.WriteLine($"[DllImportResolver] Failed loading {mappedName}");
                 }
             }
 
-            // For Linux and macOS, returning IntPtr.Zero allows .NET to use its default
-            // resolution logic, which correctly finds libraries in the runtimes folder of NuGet.
+            // Fall back to default resolution
             return IntPtr.Zero;
         }
 #endif
