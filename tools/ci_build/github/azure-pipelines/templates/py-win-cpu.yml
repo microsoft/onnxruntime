@@ -1,5 +1,5 @@
 parameters:
-- name: ARCHITECTURE
+- name: architecture
   type: string
   default: 'x64'
   values:
@@ -22,8 +22,8 @@ parameters:
    - MinSizeRel
 
 jobs:
-- job: Windows_py_Wheels_${{parameters.ARCHITECTURE}}
-  ${{ if eq(parameters.ARCHITECTURE, 'arm64') }}:
+- job: Windows_py_Wheels_${{parameters.architecture}}
+  ${{ if eq(parameters.architecture, 'arm64') }}:
     pool:
       name: 'onnxruntime-qnn-windows-vs-2022-arm64'
       os: windows
@@ -46,7 +46,7 @@ jobs:
       binskim:
         enabled: true
         scanOutputDirectoryOnly: true
-    ${{ if eq(parameters.ARCHITECTURE, 'arm64') }}:
+    ${{ if eq(parameters.architecture, 'arm64') }}:
       outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
@@ -58,13 +58,13 @@ jobs:
           artifactName: onnxruntime-win-$(PythonVersion)
   strategy:
     matrix:
-      Python311_${{parameters.ARCHITECTURE}}:
+      Python311_${{parameters.architecture}}:
         PythonVersion: '3.11'
-      Python312_${{parameters.ARCHITECTURE}}:
+      Python312_${{parameters.architecture}}:
         PythonVersion: '3.12'
-      Python313_${{parameters.ARCHITECTURE}}:
+      Python313_${{parameters.architecture}}:
         PythonVersion: '3.13'
-      Python314_${{parameters.ARCHITECTURE}}:
+      Python314_${{parameters.architecture}}:
         PythonVersion: '3.14'
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
@@ -80,7 +80,7 @@ jobs:
 
   - template: setup-build-tools.yml
     parameters:
-      host_cpu_arch: ${{parameters.ARCHITECTURE}}
+      host_cpu_arch: ${{parameters.architecture}}
       python_version: $(PythonVersion)
 
   - template: set-nightly-build-option-variable-step.yml
@@ -105,25 +105,13 @@ jobs:
         --parallel --use_binskim_compliant_compile_flags --update
         $(TelemetryOption)
 
-  # - task: VSBuild@1
-  #   displayName: 'Build'
-  #   inputs:
-  #     solution: '$(Build.SourcesDirectory)\${{ parameters.cmake_build_type }}\onnxruntime.sln'
-  #     platform: '${{parameters.ARCHITECTURE}}'
-  #     configuration: ${{ parameters.cmake_build_type }}
-  #     msbuildArchitecture: '${{parameters.ARCHITECTURE}}'
-  #     maximumCpuCount: true
-  #     logProjectEvents: true
-  #     workingFolder: '$(Build.SourcesDirectory)\${{ parameters.cmake_build_type }}'
-  #     createLogFile: true
-
   - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
     - template: publish-symbolrequestprod-api.yml
       parameters:
         ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
           symbolExpiryTime: 60
         includePublicSymbolServer: true
-        symbolsArtifactName: onnxruntime_cpu_win_${{ parameters.ARCHITECTURE }}_$(PythonVersion)
+        symbolsArtifactName: onnxruntime_cpu_win_${{ parameters.architecture }}_$(PythonVersion)
         symbolsVersion: $(Build.BuildId)
         symbolProject: 'ONNX Runtime'
         subscription: 'OnnxrunTimeCodeSign_20240611'
@@ -167,7 +155,7 @@ jobs:
         Remove-Item -Recurse -Force onnxruntime
         if ("$(ExtraParam)".Split() -contains "--use_azure") {
 
-          if( "${{parameters.ARCHITECTURE}}" -eq 'arm64') {
+          if( "${{parameters.architecture}}" -eq 'arm64') {
             $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\arm64-windows\bin;$env:path"
           }  else {
             $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"

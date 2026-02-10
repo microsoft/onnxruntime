@@ -68,13 +68,13 @@ stages:
     jobs:
     - template: ../templates/py-win-cpu.yml
       parameters:
-        ARCHITECTURE: 'x64'
+        architecture: 'x64'
         build_py_parameters: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: ../templates/py-win-cpu.yml
       parameters:
-        ARCHITECTURE: 'arm64'
+        architecture: 'arm64'
         build_py_parameters: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
