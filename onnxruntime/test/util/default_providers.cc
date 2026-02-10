@@ -80,6 +80,7 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
     return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
+  ORT_UNUSED_PARAMETER(force_reload_library);
 #endif
   return nullptr;
 }
