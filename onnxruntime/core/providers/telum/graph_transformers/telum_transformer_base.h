@@ -28,6 +28,9 @@ class TelumTransformerBase : public GraphTransformer {
    */
   bool HasStaticShapes(const Node& node) const {
     for (const auto* input_def : node.InputDefs()) {
+      if (input_def == nullptr) {
+        continue;  // optional input not provided
+      }
       if (input_def->Shape() == nullptr) {
         return false;
       }

@@ -28,9 +28,7 @@ TEST_F(TelumElementwiseTest, Add_Basic) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Add_2D) {
@@ -43,9 +41,7 @@ TEST_F(TelumElementwiseTest, Add_2D) {
   test.AddInput<float>("A", {3, 4}, A);
   test.AddInput<float>("B", {3, 4}, B);
   test.AddOutput<float>("C", {3, 4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Add_Negative) {
@@ -58,9 +54,7 @@ TEST_F(TelumElementwiseTest, Add_Negative) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Add_Large) {
@@ -73,9 +67,7 @@ TEST_F(TelumElementwiseTest, Add_Large) {
   test.AddInput<float>("A", {32, 32}, A);
   test.AddInput<float>("B", {32, 32}, B);
   test.AddOutput<float>("C", {32, 32}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -96,9 +88,7 @@ TEST_F(TelumElementwiseTest, Sub_Basic) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Sub_Negative) {
@@ -115,9 +105,7 @@ TEST_F(TelumElementwiseTest, Sub_Negative) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -138,9 +126,7 @@ TEST_F(TelumElementwiseTest, Mul_Basic) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Mul_Zero) {
@@ -153,9 +139,7 @@ TEST_F(TelumElementwiseTest, Mul_Zero) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Mul_Negative) {
@@ -172,9 +156,7 @@ TEST_F(TelumElementwiseTest, Mul_Negative) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -195,9 +177,7 @@ TEST_F(TelumElementwiseTest, Div_Basic) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Div_Fractional) {
@@ -214,9 +194,7 @@ TEST_F(TelumElementwiseTest, Div_Fractional) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -237,9 +215,7 @@ TEST_F(TelumElementwiseTest, Min_Basic) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Min_Negative) {
@@ -256,9 +232,7 @@ TEST_F(TelumElementwiseTest, Min_Negative) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -279,9 +253,7 @@ TEST_F(TelumElementwiseTest, Max_Basic) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumElementwiseTest, Max_Negative) {
@@ -298,9 +270,7 @@ TEST_F(TelumElementwiseTest, Max_Negative) {
   test.AddInput<float>("A", {4}, A);
   test.AddInput<float>("B", {4}, B);
   test.AddOutput<float>("C", {4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -319,8 +289,7 @@ TEST_F(TelumElementwiseTest, AllOps_2D) {
     test.AddInput<float>("A", {4, 5}, A);
     test.AddInput<float>("B", {4, 5}, B);
     test.AddOutput<float>("C", {4, 5}, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTelumExecutionProvider});
+  RunOnTelum(test);
   }
 
   // Sub
@@ -333,8 +302,7 @@ TEST_F(TelumElementwiseTest, AllOps_2D) {
     test.AddInput<float>("A", {4, 5}, A);
     test.AddInput<float>("B", {4, 5}, B);
     test.AddOutput<float>("C", {4, 5}, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTelumExecutionProvider});
+  RunOnTelum(test);
   }
 
   // Mul
@@ -347,8 +315,7 @@ TEST_F(TelumElementwiseTest, AllOps_2D) {
     test.AddInput<float>("A", {4, 5}, A);
     test.AddInput<float>("B", {4, 5}, B);
     test.AddOutput<float>("C", {4, 5}, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTelumExecutionProvider});
+  RunOnTelum(test);
   }
 
   // Div
@@ -361,8 +328,7 @@ TEST_F(TelumElementwiseTest, AllOps_2D) {
     test.AddInput<float>("A", {4, 5}, A);
     test.AddInput<float>("B", {4, 5}, B);
     test.AddOutput<float>("C", {4, 5}, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTelumExecutionProvider});
+  RunOnTelum(test);
   }
 
   // Min
@@ -375,8 +341,7 @@ TEST_F(TelumElementwiseTest, AllOps_2D) {
     test.AddInput<float>("A", {4, 5}, A);
     test.AddInput<float>("B", {4, 5}, B);
     test.AddOutput<float>("C", {4, 5}, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTelumExecutionProvider});
+  RunOnTelum(test);
   }
 
   // Max
@@ -389,8 +354,7 @@ TEST_F(TelumElementwiseTest, AllOps_2D) {
     test.AddInput<float>("A", {4, 5}, A);
     test.AddInput<float>("B", {4, 5}, B);
     test.AddOutput<float>("C", {4, 5}, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTelumExecutionProvider});
+  RunOnTelum(test);
   }
 }
 
@@ -410,8 +374,7 @@ TEST_F(TelumElementwiseTest, AllOps_Large) {
     test.AddInput<float>("A", {512, 768}, A);
     test.AddInput<float>("B", {512, 768}, B);
     test.AddOutput<float>("C", {512, 768}, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTelumExecutionProvider});
+  RunOnTelum(test);
   }
 
   // Mul (commonly used for attention masks)
@@ -424,8 +387,7 @@ TEST_F(TelumElementwiseTest, AllOps_Large) {
     test.AddInput<float>("A", {512, 768}, A);
     test.AddInput<float>("B", {512, 768}, B);
     test.AddOutput<float>("C", {512, 768}, expected);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTelumExecutionProvider});
+  RunOnTelum(test);
   }
 }
 

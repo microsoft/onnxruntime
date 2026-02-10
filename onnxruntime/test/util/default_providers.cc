@@ -25,6 +25,12 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
   return CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
 }
 
+#ifdef USE_TELUM
+std::unique_ptr<IExecutionProvider> DefaultTelumExecutionProvider() {
+  return TelumProviderFactoryCreator::Create(ProviderOptions{}, nullptr)->CreateProvider();
+}
+#endif
+
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
   OrtTensorRTProviderOptions params{

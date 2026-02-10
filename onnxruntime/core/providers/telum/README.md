@@ -37,32 +37,22 @@ The Telum Execution Provider (EP) enables hardware acceleration of neural networ
 
 ## Supported Operations
 
-### Priority 0 (Critical for Transformers)
+### Implemented (Today)
 
 | Operation | zDNN API | Constraints |
 |-----------|----------|-------------|
-| MatMul | `zdnn_matmul_op` | Static shapes, aligned dims |
-| Gemm | `zdnn_matmul_op` | Static shapes, optional bias |
-| Add | `zdnn_add` | Limited broadcast |
-| Relu | `zdnn_relu` | Elementwise |
-| Gelu | `zdnn_gelu` | Elementwise |
-| Softmax | `zdnn_softmax` | Last-dim only |
-| LayerNormalization | `zdnn_layernorm` | Fixed hidden size |
+| MatMul | `zdnn_matmul_op` / `zdnn_matmul_bcast_op` | Static shapes; limited broadcast patterns; explicit zero-bias `input_c` |
+| Gemm | `zdnn_matmul_op` / `zdnn_matmul_transpose_op` | Static shapes; A/B must be 2D; bias fused only for a safe subset |
+| Add/Sub/Mul/Div/Min/Max | `zdnn_add/sub/mul/div/min/max` | No broadcasting (shapes must match); rank <= 4 |
+| Relu | `zdnn_relu` | Elementwise; rank <= 4 |
+| Softmax | `zdnn_softmax` | Static shapes; axis == last dim only (coerced to `ZDNN_3DS`) |
+| Gelu | `zdnn_gelu` | Elementwise; rank <= 4 |
+| Tanh/Sigmoid/Exp/Log/Sqrt | `zdnn_tanh/sigmoid/exp/log/sqrt` | Elementwise; rank <= 4 |
+| LayerNormalization | `zdnn_moments` + `zdnn_layernorm` | Static shapes; axis == last dim only; scale/bias shape [C]; scale/bias applied on CPU |
 
-### Priority 1 (Important Operations)
+### Planned / In Progress
 
-| Operation | zDNN API | Constraints |
-|-----------|----------|-------------|
-| Sub | `zdnn_sub` | Same as Add |
-| Mul | `zdnn_mul` | Same-shape only |
-| Tanh | `zdnn_tanh` | Elementwise |
-| Sigmoid | `zdnn_sigmoid` | Elementwise |
-| Exp | `zdnn_exp` | Elementwise |
-| Log | `zdnn_log` | Elementwise |
-| Sqrt | `zdnn_sqrt` | Elementwise |
-| Min | `zdnn_min` | Elementwise |
-| Max | `zdnn_max` | Elementwise |
-| Div | `zdnn_div` | Elementwise |
+See `docs/telum/Telum_EP_TODO.md` for the full roadmap (broadcast patterns, prepacking/caching, and broader model coverage).
 
 ## Data Type Support
 
@@ -71,8 +61,6 @@ The Telum Execution Provider (EP) enables hardware acceleration of neural networ
 | FLOAT32 | FP32 | ✅ Supported |
 | FLOAT16 | FP16 | ✅ Supported |
 | BFLOAT16 | BFLOAT | ✅ Supported |
-| INT8 | INT8 | ⚠️ Quantized ops only |
-| INT32 | INT32 | ⚠️ Quantized ops only |
 
 ## Building
 
@@ -80,54 +68,42 @@ The Telum Execution Provider (EP) enables hardware acceleration of neural networ
 
 - IBM z16 or later processor
 - zDNN library installed
-- CMake 3.18 or later
+- CMake
 - C++17 compatible compiler
 
 ### Build Commands
 
 ```bash
-# Configure ONNX Runtime with Telum support
-cd onnxruntime
-./build.sh --config Release \
-           --use_telum \
-           --telum_home=/path/to/zdnn \
-           --parallel
+# Using build.sh/build.py (recommended)
+./build.sh --config Release --update --build --parallel \
+  --use_telum --telum_home=/path/to/zdnn
 
-# Or with CMake directly
-mkdir build && cd build
-cmake -DONNXRUNTIME_USE_TELUM=ON \
-      -DZDNN_ROOT=/path/to/zdnn \
-      -DCMAKE_BUILD_TYPE=Release \
-      ..
-make -j$(nproc)
+# Using CMake directly
+cmake -S cmake -B build \
+  -Donnxruntime_USE_TELUM=ON \
+  -DZDNN_ROOT=/path/to/zdnn \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
 ```
 
 ## Usage
 
-### C++ API
+### C API (Generic Provider Append)
 
-```cpp
-#include <onnxruntime_cxx_api.h>
+Telum is exposed via the generic string-based EP append API:
 
-// Create session options
-Ort::SessionOptions session_options;
-
-// Add Telum EP with default settings
-session_options.AppendExecutionProvider_Telum();
-
-// Or with custom settings
-TelumExecutionProviderInfo telum_info;
-telum_info.strict_mode = true;
-telum_info.enable_fusion = true;
-telum_info.max_batch_size = 32;
-session_options.AppendExecutionProvider("Telum", telum_info);
-
-// Create session
-Ort::Session session(env, "model.onnx", session_options);
-
-// Run inference as usual
-auto output = session.Run(...);
+```c
+// OrtApis::SessionOptionsAppendExecutionProvider(...)
+//
+// provider_name:
+//   - "TelumExecutionProvider" (canonical)
+//   - "Telum"                 (short name)
+//
+// provider_options:
+//   key/value string pairs, e.g. "log_fallbacks" -> "1"
 ```
+
+There is currently no `Ort::SessionOptions::AppendExecutionProvider_Telum()` convenience wrapper; use the generic append entry point (or the Python provider list).
 
 ### Python API
 
@@ -171,8 +147,8 @@ outputs = session.run(None, inputs)
 
 ### Operation Constraints
 
-- **Limited Broadcasting**: Only specific broadcast patterns are supported
-- **No Transpose**: Transpose operations must be fused or handled upstream
+- **Limited Broadcasting**: zDNN elementwise ops do not broadcast. Telum currently requires equal shapes for elementwise ops.
+- **Transpose**: Gemm supports `transA/transB` attributes via zDNN transpose matmul. The standalone ONNX `Transpose` op is not currently offloaded.
 - **Fixed Layouts**: Some operations require specific data layouts
 
 ### Performance Considerations
@@ -211,6 +187,14 @@ cat /proc/cpuinfo | grep nnpa
 - Check supported operations list above
 - Set `strict_mode=false` for CPU fallback
 - Consider model modifications
+
+## Tests
+
+When built with `onnxruntime_USE_TELUM=ON`, a dedicated test binary is built:
+
+- `onnxruntime_telum_test`
+
+The Telum tests intentionally disable CPU EP fallback by default to ensure they actually execute Telum kernels (and fail if partitioning fell back to CPU).
 
 ### Debug Logging
 

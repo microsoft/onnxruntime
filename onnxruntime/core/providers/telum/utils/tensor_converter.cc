@@ -10,15 +10,42 @@ namespace telum {
 Status TensorConverter::ConvertToZTensor(const Tensor& ort_tensor,
                                          zdnn_ztensor& ztensor,
                                          zdnn_data_layouts layout) {
+  return ConvertToZTensorWithShape(ort_tensor, ort_tensor.Shape(), ztensor, layout);
+}
+
+Status TensorConverter::ConvertToZTensorWithShape(const Tensor& ort_tensor,
+                                                  const TensorShape& logical_shape,
+                                                  zdnn_ztensor& ztensor,
+                                                  zdnn_data_layouts layout) {
+  if (ort_tensor.Shape().Size() != logical_shape.Size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Logical shape element count (", logical_shape.Size(),
+                           ") does not match ORT tensor element count (", ort_tensor.Shape().Size(), ")");
+  }
+
+  return ConvertRawToZTensor(ort_tensor.DataRaw(),
+                             ort_tensor.GetElementType(),
+                             logical_shape,
+                             ztensor,
+                             layout);
+}
+
+Status TensorConverter::ConvertRawToZTensor(const void* raw_data,
+                                            int32_t ort_type,
+                                            const TensorShape& logical_shape,
+                                            zdnn_ztensor& ztensor,
+                                            zdnn_data_layouts layout) {
+  ORT_RETURN_IF_NOT(raw_data != nullptr, "Raw data pointer is null");
+
   // Validate static shape
-  ORT_RETURN_IF_ERROR(ValidateStaticShape(ort_tensor.Shape()));
+  ORT_RETURN_IF_ERROR(ValidateStaticShape(logical_shape));
 
   // Validate shape is compatible with layout
-  ORT_RETURN_IF_ERROR(ValidateShapeForLayout(ort_tensor.Shape(), layout));
+  ORT_RETURN_IF_ERROR(ValidateShapeForLayout(logical_shape, layout));
 
   // Initialize descriptors
   zdnn_tensor_desc pre_desc, tfrmd_desc;
-  ORT_RETURN_IF_ERROR(InitializeDescriptors(ort_tensor, layout, pre_desc, tfrmd_desc));
+  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_type, layout, pre_desc, tfrmd_desc));
 
   // Initialize ztensor structure
   zdnn_init_ztensor(&pre_desc, &tfrmd_desc, &ztensor);
@@ -28,8 +55,8 @@ Status TensorConverter::ConvertToZTensor(const Tensor& ort_tensor,
   ORT_RETURN_IF_ERROR(CheckZDNNStatus(status, "zdnn_allochelper_ztensor"));
 
   // Transform data from ORT format to zDNN format
-  ORT_RETURN_IF_ERROR(TransformData(ort_tensor.DataRaw(),
-                                    ort_tensor.GetElementType(),
+  ORT_RETURN_IF_ERROR(TransformData(raw_data,
+                                    ort_type,
                                     ztensor));
 
   return Status::OK();
@@ -53,15 +80,52 @@ Status TensorConverter::ConvertFromZTensor(const zdnn_ztensor& ztensor,
 Status TensorConverter::InitZTensorForOutput(const Tensor& ort_tensor,
                                              zdnn_ztensor& ztensor,
                                              zdnn_data_layouts layout) {
+  return InitZTensorForOutputWithShape(ort_tensor, ort_tensor.Shape(), ztensor, layout);
+}
+
+Status TensorConverter::InitZTensorForOutputWithShape(const Tensor& ort_tensor,
+                                                      const TensorShape& logical_shape,
+                                                      zdnn_ztensor& ztensor,
+                                                      zdnn_data_layouts layout) {
+  if (ort_tensor.Shape().Size() != logical_shape.Size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Logical shape element count (", logical_shape.Size(),
+                           ") does not match ORT tensor element count (", ort_tensor.Shape().Size(), ")");
+  }
+
   // Validate static shape
-  ORT_RETURN_IF_ERROR(ValidateStaticShape(ort_tensor.Shape()));
+  ORT_RETURN_IF_ERROR(ValidateStaticShape(logical_shape));
 
   // Validate shape is compatible with layout
-  ORT_RETURN_IF_ERROR(ValidateShapeForLayout(ort_tensor.Shape(), layout));
+  ORT_RETURN_IF_ERROR(ValidateShapeForLayout(logical_shape, layout));
 
   // Initialize descriptors
   zdnn_tensor_desc pre_desc, tfrmd_desc;
-  ORT_RETURN_IF_ERROR(InitializeDescriptors(ort_tensor, layout, pre_desc, tfrmd_desc));
+  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_tensor.GetElementType(), layout, pre_desc, tfrmd_desc));
+
+  // Initialize ztensor structure
+  zdnn_init_ztensor(&pre_desc, &tfrmd_desc, &ztensor);
+
+  // Allocate buffer for ztensor
+  zdnn_status status = zdnn_allochelper_ztensor(&ztensor);
+  ORT_RETURN_IF_ERROR(CheckZDNNStatus(status, "zdnn_allochelper_ztensor"));
+
+  return Status::OK();
+}
+
+Status TensorConverter::InitZTensorForOutputWithShapeAndType(int32_t ort_type,
+                                                             const TensorShape& logical_shape,
+                                                             zdnn_ztensor& ztensor,
+                                                             zdnn_data_layouts layout) {
+  // Validate static shape
+  ORT_RETURN_IF_ERROR(ValidateStaticShape(logical_shape));
+
+  // Validate shape is compatible with layout
+  ORT_RETURN_IF_ERROR(ValidateShapeForLayout(logical_shape, layout));
+
+  // Initialize descriptors
+  zdnn_tensor_desc pre_desc, tfrmd_desc;
+  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_type, layout, pre_desc, tfrmd_desc));
 
   // Initialize ztensor structure
   zdnn_init_ztensor(&pre_desc, &tfrmd_desc, &ztensor);
@@ -145,37 +209,44 @@ Status TensorConverter::InitializeDescriptors(const Tensor& ort_tensor,
                                               zdnn_data_layouts layout,
                                               zdnn_tensor_desc& pre_desc,
                                               zdnn_tensor_desc& tfrmd_desc) {
-  const auto& shape = ort_tensor.Shape();
-  const auto& dims = shape.GetDims();
-  zdnn_data_types zdnn_type = MapONNXTypeToZDNN(ort_tensor.GetElementType());
+  return InitializeDescriptors(ort_tensor.Shape(), ort_tensor.GetElementType(), layout, pre_desc, tfrmd_desc);
+}
+
+Status TensorConverter::InitializeDescriptors(const TensorShape& logical_shape,
+                                              int32_t ort_type,
+                                              zdnn_data_layouts layout,
+                                              zdnn_tensor_desc& pre_desc,
+                                              zdnn_tensor_desc& tfrmd_desc) {
+  const auto& dims = logical_shape.GetDims();
+  zdnn_data_types zdnn_type = MapONNXTypeToZDNN(ort_type);
 
   // Initialize pre-transformed descriptor based on rank
   switch (dims.size()) {
     case 1:
       zdnn_init_pre_transformed_desc(layout, zdnn_type, &pre_desc,
-                                    static_cast<uint32_t>(dims[0]));
+                                     static_cast<uint32_t>(dims[0]));
       break;
     case 2:
       zdnn_init_pre_transformed_desc(layout, zdnn_type, &pre_desc,
-                                    static_cast<uint32_t>(dims[0]),
-                                    static_cast<uint32_t>(dims[1]));
+                                     static_cast<uint32_t>(dims[0]),
+                                     static_cast<uint32_t>(dims[1]));
       break;
     case 3:
       zdnn_init_pre_transformed_desc(layout, zdnn_type, &pre_desc,
-                                    static_cast<uint32_t>(dims[0]),
-                                    static_cast<uint32_t>(dims[1]),
-                                    static_cast<uint32_t>(dims[2]));
+                                     static_cast<uint32_t>(dims[0]),
+                                     static_cast<uint32_t>(dims[1]),
+                                     static_cast<uint32_t>(dims[2]));
       break;
     case 4:
       zdnn_init_pre_transformed_desc(layout, zdnn_type, &pre_desc,
-                                    static_cast<uint32_t>(dims[0]),
-                                    static_cast<uint32_t>(dims[1]),
-                                    static_cast<uint32_t>(dims[2]),
-                                    static_cast<uint32_t>(dims[3]));
+                                     static_cast<uint32_t>(dims[0]),
+                                     static_cast<uint32_t>(dims[1]),
+                                     static_cast<uint32_t>(dims[2]),
+                                     static_cast<uint32_t>(dims[3]));
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Unsupported tensor rank: ", dims.size());
+                             "Unsupported tensor rank: ", dims.size());
   }
 
   // Generate transformed descriptor

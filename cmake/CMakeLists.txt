@@ -86,6 +86,7 @@ option(onnxruntime_BUILD_QNN_EP_STATIC_LIB "Build with QNN EP as a static librar
 option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
+option(onnxruntime_USE_TELUM "Build with Telum (zDNN/NNPA) support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
 option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)

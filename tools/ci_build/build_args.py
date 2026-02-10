@@ -684,6 +684,14 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--dnnl_acl_root", action="store", default="", help="Path to Arm Compute Library (ACL) root."
     )
 
+    # --- Telum (IBM Z / zDNN / NNPA) ---
+    telum_group = parser.add_argument_group("Telum Execution Provider (IBM Z)")
+    telum_group.add_argument("--use_telum", action="store_true", help="Enable Telum EP (s390x/z16, zDNN/NNPA).")
+    telum_group.add_argument(
+        "--telum_home",
+        help="Path to zDNN installation directory. If omitted, uses ZDNN_ROOT env var. (Sets CMake ZDNN_ROOT.)",
+    )
+
     # --- OpenVINO ---
     openvino_group = parser.add_argument_group("OpenVINO Execution Provider")
     openvino_group.add_argument(

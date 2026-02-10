@@ -1072,6 +1072,11 @@ AddTest(
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
 
+# Telum EP unit tests (separate binary) are only meaningful when the Telum EP is enabled.
+if (onnxruntime_USE_TELUM AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  add_subdirectory(${TEST_SRC_DIR}/providers/telum)
+endif()
+
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
 if (MSVC)

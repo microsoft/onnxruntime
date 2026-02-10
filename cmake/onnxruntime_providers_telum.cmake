@@ -7,6 +7,12 @@ if(NOT onnxruntime_USE_TELUM)
   return()
 endif()
 
+# Telum EP is only meaningful on s390x (IBM Z). Fail fast so we don't accidentally
+# apply s390x-specific compiler flags on other architectures.
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
+  message(FATAL_ERROR "onnxruntime_USE_TELUM is only supported when targeting s390x. Current: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
 add_definitions(-DUSE_TELUM=1)
 
 # Find zDNN library
@@ -21,14 +27,14 @@ endif()
 # Find zDNN library and headers
 find_library(ZDNN_LIB
   NAMES zdnn libzdnn
-  PATHS ${ZDNN_ROOT}/lib ${ZDNN_ROOT}/zdnn
+  PATHS ${ZDNN_ROOT}/lib ${ZDNN_ROOT}/lib64 ${ZDNN_ROOT}/zdnn ${ZDNN_ROOT}
   NO_DEFAULT_PATH
   REQUIRED
 )
 
-find_path(ZDNN_INCLUDE
-  NAMES zdnn.h
-  PATHS ${ZDNN_ROOT}/include ${ZDNN_ROOT}/zdnn
+find_path(ZDNN_INCLUDE_DIR
+  NAMES zdnn/zdnn.h
+  PATHS ${ZDNN_ROOT} ${ZDNN_ROOT}/include
   NO_DEFAULT_PATH
   REQUIRED
 )
@@ -37,17 +43,12 @@ if(NOT ZDNN_LIB)
   message(FATAL_ERROR "zDNN library not found. Please check ZDNN_ROOT: ${ZDNN_ROOT}")
 endif()
 
-if(NOT ZDNN_INCLUDE)
+if(NOT ZDNN_INCLUDE_DIR)
   message(FATAL_ERROR "zDNN headers not found. Please check ZDNN_ROOT: ${ZDNN_ROOT}")
 endif()
 
 message(STATUS "Found zDNN library: ${ZDNN_LIB}")
-message(STATUS "Found zDNN headers: ${ZDNN_INCLUDE}")
-
-# Verify we're on s390x architecture
-if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "s390x")
-  message(WARNING "Telum EP is designed for s390x architecture. Current: ${CMAKE_SYSTEM_PROCESSOR}")
-endif()
+message(STATUS "Found zDNN headers: ${ZDNN_INCLUDE_DIR}")
 
 # Collect Telum EP source files
 file(GLOB_RECURSE onnxruntime_providers_telum_cc_srcs CONFIGURE_DEPENDS
@@ -63,7 +64,7 @@ onnxruntime_add_static_library(onnxruntime_providers_telum ${onnxruntime_provide
 # Set include directories
 target_include_directories(onnxruntime_providers_telum PRIVATE
   ${ONNXRUNTIME_ROOT}
-  ${ZDNN_INCLUDE}
+  ${ZDNN_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
 )
 

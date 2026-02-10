@@ -26,12 +26,25 @@ class BinaryElementwise : public TelumKernel {
     ORT_RETURN_IF_ERROR(ValidateStaticShape(A->Shape()));
     ORT_RETURN_IF_ERROR(ValidateStaticShape(B->Shape()));
 
-    // Compute output shape (with broadcasting)
-    TensorShape output_shape = ComputeBroadcastOutputShape(A->Shape(), B->Shape());
+    // zDNN elementwise ops do not do broadcasting. For now we only support identical shapes.
+    if (A->Shape() != B->Shape()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Telum EP: elementwise broadcasting is not implemented for ",
+                             OpFunc::Name(), ". Shapes: ", A->Shape().ToString(),
+                             " and ", B->Shape().ToString());
+    }
+
+    TensorShape output_shape = A->Shape();
 
     // Allocate output
     Tensor* Y = context->Output(0, output_shape);
     ORT_RETURN_IF_NOT(Y != nullptr, "Failed to allocate output tensor");
+
+    if (output_shape.NumDimensions() > 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Telum EP: elementwise ops only support rank <= 4, got rank ",
+                             output_shape.NumDimensions());
+    }
 
     // Determine layout
     zdnn_data_layouts layout = TensorConverter::GetLayoutForShape(output_shape);
@@ -58,34 +71,6 @@ class BinaryElementwise : public TelumKernel {
   }
 
  private:
-  TensorShape ComputeBroadcastOutputShape(const TensorShape& shape_a,
-                                          const TensorShape& shape_b) const {
-    const auto& dims_a = shape_a.GetDims();
-    const auto& dims_b = shape_b.GetDims();
-
-    size_t rank_a = dims_a.size();
-    size_t rank_b = dims_b.size();
-    size_t max_rank = std::max(rank_a, rank_b);
-
-    std::vector<int64_t> output_dims(max_rank);
-
-    for (size_t i = 0; i < max_rank; ++i) {
-      int64_t dim_a = (i < rank_a) ? dims_a[rank_a - 1 - i] : 1;
-      int64_t dim_b = (i < rank_b) ? dims_b[rank_b - 1 - i] : 1;
-
-      if (dim_a == dim_b) {
-        output_dims[max_rank - 1 - i] = dim_a;
-      } else if (dim_a == 1) {
-        output_dims[max_rank - 1 - i] = dim_b;
-      } else if (dim_b == 1) {
-        output_dims[max_rank - 1 - i] = dim_a;
-      } else {
-        ORT_THROW("Incompatible dimensions for broadcasting: ", dim_a, " and ", dim_b);
-      }
-    }
-
-    return TensorShape(output_dims);
-  }
 };
 
 // Operation functors
@@ -147,7 +132,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Add);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -157,7 +143,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Add);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -167,7 +154,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Add);
 
 // Register Sub kernel
@@ -178,7 +166,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Sub);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -188,7 +177,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Sub);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -198,7 +188,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Sub);
 
 // Register Mul kernel
@@ -209,7 +200,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Mul);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -219,7 +211,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Mul);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -229,7 +222,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Mul);
 
 // Register Div kernel
@@ -240,7 +234,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Div);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -250,7 +245,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Div);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -260,7 +256,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Div);
 
 // Register Min kernel
@@ -271,7 +268,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Min);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -281,7 +279,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Min);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -291,7 +290,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Min);
 
 // Register Max kernel
@@ -302,7 +302,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Max);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -312,7 +313,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Max);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -322,7 +324,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Max);
 
 }  // namespace telum

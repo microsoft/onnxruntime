@@ -115,7 +115,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Relu);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -125,7 +126,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Relu);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -135,7 +137,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Relu);
 
 // Register Gelu kernel (custom domain)
@@ -146,7 +149,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Gelu);
 
 // Register Tanh kernel
@@ -157,7 +161,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Tanh);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -167,7 +172,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Tanh);
 
 // Register Sigmoid kernel
@@ -178,7 +184,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Sigmoid);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -188,7 +195,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Sigmoid);
 
 // Register Exp kernel
@@ -199,7 +207,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Exp);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -209,7 +218,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Exp);
 
 // Register Log kernel
@@ -220,7 +230,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Log);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -230,7 +241,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Log);
 
 // Register Sqrt kernel
@@ -241,7 +253,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Sqrt);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -251,7 +264,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Sqrt);
 
 }  // namespace telum

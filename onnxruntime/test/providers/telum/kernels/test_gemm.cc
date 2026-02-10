@@ -33,9 +33,7 @@ TEST_F(TelumGemmTest, Gemm_Basic) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {2, 2}, C);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_NoBias) {
@@ -50,9 +48,7 @@ TEST_F(TelumGemmTest, Gemm_NoBias) {
   test.AddInput<float>("A", {2, 2}, A);
   test.AddInput<float>("B", {2, 2}, B);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_WithAlpha) {
@@ -70,9 +66,7 @@ TEST_F(TelumGemmTest, Gemm_WithAlpha) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {2, 2}, C);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_WithBeta) {
@@ -90,9 +84,7 @@ TEST_F(TelumGemmTest, Gemm_WithBeta) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {2, 2}, C);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_WithAlphaBeta) {
@@ -111,9 +103,7 @@ TEST_F(TelumGemmTest, Gemm_WithAlphaBeta) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {2, 2}, C);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -134,9 +124,7 @@ TEST_F(TelumGemmTest, Gemm_RectangularMatrices) {
   test.AddInput<float>("B", {2, 4}, B);
   test.AddInput<float>("C", {3, 4}, C);
   test.AddOutput<float>("Y", {3, 4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_VectorMatrix) {
@@ -153,9 +141,7 @@ TEST_F(TelumGemmTest, Gemm_VectorMatrix) {
   test.AddInput<float>("B", {4, 3}, B);
   test.AddInput<float>("C", {1, 3}, C);
   test.AddOutput<float>("Y", {1, 3}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_MatrixVector) {
@@ -172,9 +158,7 @@ TEST_F(TelumGemmTest, Gemm_MatrixVector) {
   test.AddInput<float>("B", {3, 1}, B);
   test.AddInput<float>("C", {4, 1}, C);
   test.AddOutput<float>("Y", {4, 1}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -200,9 +184,7 @@ TEST_F(TelumGemmTest, Gemm_BertHiddenProjection) {
   test.AddInput<float>("B", {K, N}, B);
   test.AddInput<float>("C", {M, N}, C);
   test.AddOutput<float>("Y", {M, N}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_BertFFNIntermediate) {
@@ -224,9 +206,7 @@ TEST_F(TelumGemmTest, Gemm_BertFFNIntermediate) {
   test.AddInput<float>("B", {K, N}, B);
   test.AddInput<float>("C", {M, N}, C);
   test.AddOutput<float>("Y", {M, N}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -248,9 +228,7 @@ TEST_F(TelumGemmTest, Gemm_ZeroAlpha) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {2, 2}, C);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_ZeroBeta) {
@@ -268,9 +246,7 @@ TEST_F(TelumGemmTest, Gemm_ZeroBeta) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {2, 2}, C);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_IdentityMatrix) {
@@ -287,9 +263,7 @@ TEST_F(TelumGemmTest, Gemm_IdentityMatrix) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {2, 2}, C);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_NegativeValues) {
@@ -305,9 +279,7 @@ TEST_F(TelumGemmTest, Gemm_NegativeValues) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {2, 2}, C);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumGemmTest, Gemm_BroadcastBias) {
@@ -324,9 +296,7 @@ TEST_F(TelumGemmTest, Gemm_BroadcastBias) {
   test.AddInput<float>("B", {2, 2}, B);
   test.AddInput<float>("C", {1, 2}, C);
   test.AddOutput<float>("Y", {3, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 }  // namespace telum

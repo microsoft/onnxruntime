@@ -37,9 +37,7 @@ TEST_F(TelumMatMulTest, BasicMatMul_2x3_3x4) {
   test.AddInput<float>("A", {2, 3}, A);
   test.AddInput<float>("B", {3, 4}, B);
   test.AddOutput<float>("Y", {2, 4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, SquareMatMul_4x4) {
@@ -53,9 +51,7 @@ TEST_F(TelumMatMulTest, SquareMatMul_4x4) {
   test.AddInput<float>("A", {4, 4}, A);
   test.AddInput<float>("B", {4, 4}, B);
   test.AddOutput<float>("Y", {4, 4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, VectorMatMul_1x10_10x1) {
@@ -69,9 +65,7 @@ TEST_F(TelumMatMulTest, VectorMatMul_1x10_10x1) {
   test.AddInput<float>("A", {1, 10}, A);
   test.AddInput<float>("B", {10, 1}, B);
   test.AddOutput<float>("Y", {1, 1}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, LargeMatMul_128x128) {
@@ -86,9 +80,7 @@ TEST_F(TelumMatMulTest, LargeMatMul_128x128) {
   test.AddInput<float>("A", {M, K}, A);
   test.AddInput<float>("B", {K, N}, B);
   test.AddOutput<float>("Y", {M, N}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, TransformerSizes_512x768) {
@@ -103,9 +95,7 @@ TEST_F(TelumMatMulTest, TransformerSizes_512x768) {
   test.AddInput<float>("A", {M, K}, A);
   test.AddInput<float>("B", {K, N}, B);
   test.AddOutput<float>("Y", {M, N}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, BatchedMatMul_2x3x4_2x4x5) {
@@ -128,9 +118,7 @@ TEST_F(TelumMatMulTest, BatchedMatMul_2x3x4_2x4x5) {
   test.AddInput<float>("A", {2, 3, 4}, A);
   test.AddInput<float>("B", {2, 4, 5}, B);
   test.AddOutput<float>("Y", {2, 3, 5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, ZeroMatrix) {
@@ -144,9 +132,7 @@ TEST_F(TelumMatMulTest, ZeroMatrix) {
   test.AddInput<float>("A", {3, 4}, A);
   test.AddInput<float>("B", {4, 5}, B);
   test.AddOutput<float>("Y", {3, 5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, IdentityMatrix) {
@@ -167,9 +153,7 @@ TEST_F(TelumMatMulTest, IdentityMatrix) {
   test.AddInput<float>("A", {4, 4}, A);
   test.AddInput<float>("B", {4, 4}, I);
   test.AddOutput<float>("Y", {4, 4}, A);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, NegativeValues) {
@@ -192,9 +176,7 @@ TEST_F(TelumMatMulTest, NegativeValues) {
   test.AddInput<float>("A", {2, 3}, A);
   test.AddInput<float>("B", {3, 2}, B);
   test.AddOutput<float>("Y", {2, 2}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumMatMulTest, MixedSignValues) {
@@ -208,9 +190,7 @@ TEST_F(TelumMatMulTest, MixedSignValues) {
   test.AddInput<float>("A", {4, 5}, A);
   test.AddInput<float>("B", {5, 6}, B);
   test.AddOutput<float>("Y", {4, 6}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 }  // namespace telum

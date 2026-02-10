@@ -66,6 +66,9 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc 
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options);
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
+#ifdef USE_TELUM
+std::unique_ptr<IExecutionProvider> DefaultTelumExecutionProvider();
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -356,6 +356,7 @@ def generate_build_tree(
     qnn_home,
     snpe_root,
     cann_home,
+    telum_home,
     path_to_protoc_exe,
     configs,
     cmake_extra_defines,
@@ -435,6 +436,7 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
+        "-Donnxruntime_USE_TELUM=" + ("ON" if args.use_telum else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_VSINPU=" + ("ON" if args.use_vsinpu else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
@@ -721,6 +723,9 @@ def generate_build_tree(
             cmake_args += ["-Donnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD=ON"]
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
+
+    if args.use_telum:
+        cmake_args.append("-DZDNN_ROOT=" + telum_home)
 
     if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
@@ -1425,6 +1430,19 @@ def setup_cann_vars(args):
             )
 
     return cann_home
+
+
+def setup_telum_vars(args):
+    zdnn_root = ""
+    if args.use_telum:
+        zdnn_root = args.telum_home if args.telum_home else os.getenv("ZDNN_ROOT")
+        zdnn_root_valid = zdnn_root is not None and os.path.exists(zdnn_root)
+        if not zdnn_root_valid:
+            raise BuildError(
+                "telum_home (zDNN root) must be specified and valid.",
+                f"ZDNN_ROOT='{zdnn_root}' valid={zdnn_root_valid}.",
+            )
+    return zdnn_root
 
 
 def setup_tensorrt_vars(args):
@@ -2430,6 +2448,9 @@ def main():
     # if using cann, setup cann paths
     cann_home = setup_cann_vars(args)
 
+    # if using telum, setup zDNN paths
+    telum_home = setup_telum_vars(args)
+
     if args.update or args.build:
         for config in configs:
             os.makedirs(get_config_build_dir(build_dir, config), exist_ok=True)
@@ -2566,6 +2587,7 @@ def main():
             qnn_home,
             snpe_root,
             cann_home,
+            telum_home,
             path_to_protoc_exe,
             configs,
             cmake_extra_defines,

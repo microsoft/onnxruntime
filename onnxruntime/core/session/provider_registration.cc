@@ -94,6 +94,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     OpenVINO,
     SNPE,  // TODO(adrianlizarraga): Remove SNPE entirely because it has been replaced by QNN EP.
     XNNPACK,
+    TELUM,
     WEBNN,
     WebGPU,
     AZURE,
@@ -110,12 +111,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 13> supported_eps = {
+  static std::array<EpToAppend, 14> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
       EpToAppend{EpID::SNPE, "SNPE", kSnpeExecutionProvider},
       EpToAppend{EpID::XNNPACK, "XNNPACK", kXnnpackExecutionProvider},
+      EpToAppend{EpID::TELUM, "Telum", kTelumExecutionProvider},
       EpToAppend{EpID::WEBNN, "WEBNN", kWebNNExecutionProvider},
       EpToAppend{EpID::WebGPU, "WebGPU", kWebGpuExecutionProvider},
       EpToAppend{EpID::AZURE, "AZURE", kAzureExecutionProvider},
@@ -241,6 +243,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     case EpID::XNNPACK: {
 #if defined(USE_XNNPACK)
       options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options, &(options->value)));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::TELUM: {
+#if defined(USE_TELUM)
+      options->provider_factories.push_back(TelumProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
       status = create_not_supported_status();
 #endif

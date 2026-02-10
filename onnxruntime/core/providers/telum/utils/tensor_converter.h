@@ -31,6 +31,39 @@ class TensorConverter {
                                  zdnn_data_layouts layout);
 
   /**
+   * @brief Convert ORT tensor to zDNN ztensor, using an alternate logical shape.
+   *
+   * This is useful when the ORT tensor shape can be safely re-interpreted as a different
+   * shape for a given zDNN op (e.g., collapsing multiple batch dims into one stack dim).
+   *
+   * @param ort_tensor Input ORT tensor
+   * @param logical_shape Shape to use for zDNN descriptors (must have same element count as ort_tensor)
+   * @param ztensor Output zDNN ztensor (must be pre-allocated)
+   * @param layout Desired zDNN data layout (must be compatible with logical_shape rank)
+   * @return Status indicating success or failure
+   */
+  static Status ConvertToZTensorWithShape(const Tensor& ort_tensor,
+                                         const TensorShape& logical_shape,
+                                         zdnn_ztensor& ztensor,
+                                         zdnn_data_layouts layout);
+
+  /**
+   * @brief Convert raw host data (in ORT/ONNX conventional layout) to a transformed zDNN ztensor.
+   *
+   * @param raw_data Pointer to raw input data
+   * @param ort_type ONNX TensorProto data type value (e.g., FLOAT, FLOAT16, BFLOAT16)
+   * @param logical_shape Shape to use for zDNN descriptors
+   * @param ztensor Output zDNN ztensor (must be pre-allocated)
+   * @param layout Desired zDNN data layout
+   * @return Status indicating success or failure
+   */
+  static Status ConvertRawToZTensor(const void* raw_data,
+                                   int32_t ort_type,
+                                   const TensorShape& logical_shape,
+                                   zdnn_ztensor& ztensor,
+                                   zdnn_data_layouts layout);
+
+  /**
    * @brief Convert zDNN ztensor back to ORT tensor
    *
    * @param ztensor Input zDNN ztensor
@@ -51,6 +84,37 @@ class TensorConverter {
   static Status InitZTensorForOutput(const Tensor& ort_tensor,
                                      zdnn_ztensor& ztensor,
                                      zdnn_data_layouts layout);
+
+  /**
+   * @brief Initialize zDNN ztensor for an ORT output tensor, using an alternate logical shape.
+   *
+   * @param ort_tensor ORT output tensor (used for element type only)
+   * @param logical_shape Shape to use for zDNN descriptors (must have same element count as ort_tensor)
+   * @param ztensor Output zDNN ztensor to initialize
+   * @param layout Desired zDNN data layout
+   * @return Status indicating success or failure
+   */
+  static Status InitZTensorForOutputWithShape(const Tensor& ort_tensor,
+                                             const TensorShape& logical_shape,
+                                             zdnn_ztensor& ztensor,
+                                             zdnn_data_layouts layout);
+
+  /**
+   * @brief Initialize a zDNN ztensor for an intermediate/output tensor given an ONNX element type.
+   *
+   * This is useful for zDNN ops that produce intermediate outputs that are not directly backed by an ORT Tensor
+   * (e.g., mean/variance outputs for normalization).
+   *
+   * @param ort_type ONNX TensorProto data type value (e.g., FLOAT, FLOAT16, BFLOAT16)
+   * @param logical_shape Shape to use for zDNN descriptors
+   * @param ztensor Output zDNN ztensor to initialize
+   * @param layout Desired zDNN data layout
+   * @return Status indicating success or failure
+   */
+  static Status InitZTensorForOutputWithShapeAndType(int32_t ort_type,
+                                                    const TensorShape& logical_shape,
+                                                    zdnn_ztensor& ztensor,
+                                                    zdnn_data_layouts layout);
 
   /**
    * @brief Get zDNN layout for given tensor shape
@@ -81,6 +145,12 @@ class TensorConverter {
    * @return Status indicating success or failure
    */
   static Status InitializeDescriptors(const Tensor& ort_tensor,
+                                      zdnn_data_layouts layout,
+                                      zdnn_tensor_desc& pre_desc,
+                                      zdnn_tensor_desc& tfrmd_desc);
+
+  static Status InitializeDescriptors(const TensorShape& logical_shape,
+                                      int32_t ort_type,
                                       zdnn_data_layouts layout,
                                       zdnn_tensor_desc& pre_desc,
                                       zdnn_tensor_desc& tfrmd_desc);

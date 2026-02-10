@@ -1175,6 +1175,12 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     return onnxruntime::XnnpackProviderFactoryCreator::Create(
         cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
 #endif
+  } else if (type == kTelumExecutionProvider) {
+#if defined(USE_TELUM)
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::TelumProviderFactoryCreator::Create(
+        cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
+#endif
   } else if (type == kWebGpuExecutionProvider) {
 #if defined(USE_WEBGPU)
     return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);

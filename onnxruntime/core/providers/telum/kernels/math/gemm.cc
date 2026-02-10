@@ -19,16 +19,26 @@ namespace telum {
 class Gemm final : public TelumKernel {
  public:
   explicit Gemm(const OpKernelInfo& info) : TelumKernel(info) {
-    // Get attributes
-    int64_t temp;
-    ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
-    trans_A_ = (temp != 0);
+    // Attributes are optional in ONNX and have defaults.
+    int64_t temp = 0;
+    if (info.GetAttr<int64_t>("transA", &temp).IsOK()) {
+      trans_A_ = (temp != 0);
+    } else {
+      trans_A_ = false;
+    }
 
-    ORT_ENFORCE(info.GetAttr<int64_t>("transB", &temp).IsOK());
-    trans_B_ = (temp != 0);
+    temp = 0;
+    if (info.GetAttr<int64_t>("transB", &temp).IsOK()) {
+      trans_B_ = (temp != 0);
+    } else {
+      trans_B_ = false;
+    }
 
-    ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
+    alpha_ = 1.0f;
+    (void)info.GetAttr<float>("alpha", &alpha_);
+
+    beta_ = 1.0f;
+    (void)info.GetAttr<float>("beta", &beta_);
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -51,56 +61,75 @@ class Gemm final : public TelumKernel {
     const auto& shape_A = A->Shape();
     const auto& shape_B = B->Shape();
 
-    // Validate GEMM dimensions
-    ORT_RETURN_IF_ERROR(ValidateGemmShapes(shape_A, shape_B, C));
+    int64_t M{}, K{}, N{};
+    ORT_RETURN_IF_ERROR(ValidateAndGetDims(shape_A, shape_B, M, K, N));
 
-    // Compute output shape
-    TensorShape output_shape = ComputeOutputShape(shape_A, shape_B);
+    // Output is always [M, N]
+    TensorShape output_shape({M, N});
 
     // Allocate output tensor
     Tensor* Y = context->Output(0, output_shape);
     ORT_RETURN_IF_NOT(Y != nullptr, "Failed to allocate output tensor");
 
-    // Handle transpose and scaling
-    if (trans_A_ || trans_B_ || alpha_ != 1.0f || beta_ != 1.0f) {
-      // For now, fall back to CPU for non-standard cases
-      // TODO: Implement transpose support using zdnn_matmul_transpose_op
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                            "Telum EP: Gemm with transpose or scaling not yet implemented. "
-                            "transA=", trans_A_, ", transB=", trans_B_,
-                            ", alpha=", alpha_, ", beta=", beta_);
-    }
+    // zDNN expects a bias vector (input_c) even when we want "no bias".
+    // We'll pass either:
+    // - the actual bias vector (when we can fuse it safely), or
+    // - a zero vector (and optionally apply beta*C on CPU post-processing).
+    const bool can_fuse_bias =
+        (C != nullptr) && (alpha_ == 1.0f) && (beta_ == 1.0f) && IsBiasVector(*C, N);
 
-    // Standard case: Y = A * B + C (no transpose, alpha=1, beta=1)
-    zdnn_data_layouts layout = TensorConverter::GetLayoutForShape(shape_A);
+    // zDNN matmul op shapes:
+    //   input_a: ZDNN_2D (m, k)
+    //   input_b: ZDNN_2D (k, n)
+    //   input_c: ZDNN_1D (n)
+    //   output : ZDNN_2D (m, n)
+    constexpr zdnn_data_layouts kMatLayout = ZDNN_2D;
+    constexpr zdnn_data_layouts kBiasLayout = ZDNN_1D;
 
     // Convert input tensors to zDNN format
     zdnn_ztensor zdnn_a, zdnn_b, zdnn_c, zdnn_y;
-    ORT_RETURN_IF_ERROR(ConvertToZTensor(*A, zdnn_a, layout));
+    ORT_RETURN_IF_ERROR(ConvertToZTensor(*A, zdnn_a, kMatLayout));
     ZTensorGuard guard_a(&zdnn_a);
 
-    ORT_RETURN_IF_ERROR(ConvertToZTensor(*B, zdnn_b, layout));
+    ORT_RETURN_IF_ERROR(ConvertToZTensor(*B, zdnn_b, kMatLayout));
     ZTensorGuard guard_b(&zdnn_b);
 
-    // Convert bias if present
-    zdnn_ztensor* bias_ptr = nullptr;
-    ZTensorGuard guard_c(nullptr);
-    if (C != nullptr) {
-      ORT_RETURN_IF_ERROR(ConvertToZTensor(*C, zdnn_c, layout));
-      guard_c = ZTensorGuard(&zdnn_c);
-      bias_ptr = &zdnn_c;
+    if (can_fuse_bias) {
+      // Treat [N] or [1,N] as a bias vector of length N.
+      ORT_RETURN_IF_ERROR(TensorConverter::ConvertToZTensorWithShape(*C, TensorShape({N}), zdnn_c, kBiasLayout));
+    } else {
+      ORT_RETURN_IF_ERROR(CreateZeroBiasZTensor(A->GetElementType(), N, zdnn_c));
     }
+    ZTensorGuard guard_c(&zdnn_c);
 
-    ORT_RETURN_IF_ERROR(InitZTensorForOutput(*Y, zdnn_y, layout));
+    ORT_RETURN_IF_ERROR(InitZTensorForOutput(*Y, zdnn_y, kMatLayout));
     ZTensorGuard guard_y(&zdnn_y);
 
-    // Execute zDNN GEMM (MatMul with bias addition)
-    zdnn_status status = zdnn_matmul_op(&zdnn_a, &zdnn_b, bias_ptr,
+    // Execute zDNN GEMM (MatMul + bias vector addition).
+    zdnn_status status{};
+    if (trans_A_ || trans_B_) {
+      status = zdnn_matmul_transpose_op(&zdnn_a, &zdnn_b, &zdnn_c,
+                                        trans_A_, trans_B_,
                                         MATMUL_OP_ADDITION, &zdnn_y);
-    ORT_RETURN_IF_ERROR(CheckStatus(status, "zdnn_matmul_op (Gemm)"));
+      ORT_RETURN_IF_ERROR(CheckStatus(status, "zdnn_matmul_transpose_op (Gemm)"));
+    } else {
+      status = zdnn_matmul_op(&zdnn_a, &zdnn_b, &zdnn_c,
+                              MATMUL_OP_ADDITION, &zdnn_y);
+      ORT_RETURN_IF_ERROR(CheckStatus(status, "zdnn_matmul_op (Gemm)"));
+    }
 
     // Convert result back to ORT tensor
     ORT_RETURN_IF_ERROR(ConvertFromZTensor(zdnn_y, *Y));
+
+    // Apply alpha scaling and beta*C (broadcast) post-processing on CPU when needed.
+    // Note: If we fused the bias into zDNN, alpha==beta==1, so we can skip.
+    if (alpha_ != 1.0f) {
+      ORT_RETURN_IF_ERROR(ScaleInPlace(*Y, alpha_));
+    }
+
+    if (!can_fuse_bias && C != nullptr && beta_ != 0.0f) {
+      ORT_RETURN_IF_ERROR(AddBroadcastedBiasInPlace(*Y, *C, beta_, M, N));
+    }
 
     return Status::OK();
   }
@@ -114,9 +143,11 @@ class Gemm final : public TelumKernel {
   /**
    * @brief Validate GEMM dimensions
    */
-  Status ValidateGemmShapes(const TensorShape& shape_A,
+  Status ValidateAndGetDims(const TensorShape& shape_A,
                             const TensorShape& shape_B,
-                            const Tensor* C) const {
+                            int64_t& M,
+                            int64_t& K,
+                            int64_t& N) const {
     const auto& dims_A = shape_A.GetDims();
     const auto& dims_B = shape_B.GetDims();
 
@@ -128,56 +159,182 @@ class Gemm final : public TelumKernel {
     }
 
     // Check dimension compatibility
-    int64_t M = trans_A_ ? dims_A[1] : dims_A[0];
-    int64_t K_A = trans_A_ ? dims_A[0] : dims_A[1];
-    int64_t K_B = trans_B_ ? dims_B[1] : dims_B[0];
-    int64_t N = trans_B_ ? dims_B[0] : dims_B[1];
+    M = trans_A_ ? dims_A[1] : dims_A[0];
+    const int64_t K_A = trans_A_ ? dims_A[0] : dims_A[1];
+    const int64_t K_B = trans_B_ ? dims_B[1] : dims_B[0];
+    N = trans_B_ ? dims_B[0] : dims_B[1];
 
     if (K_A != K_B) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                             "Gemm inner dimensions must match. Got K_A=", K_A,
                             " and K_B=", K_B);
     }
-
-    // Validate bias shape if present
-    if (C != nullptr) {
-      const auto& dims_C = C->Shape().GetDims();
-
-      // Bias must be broadcastable to output shape [M, N]
-      if (dims_C.size() == 1) {
-        if (dims_C[0] != N && dims_C[0] != 1) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                "Gemm bias dimension mismatch. Expected ", N,
-                                " or 1, got ", dims_C[0]);
-        }
-      } else if (dims_C.size() == 2) {
-        if ((dims_C[0] != M && dims_C[0] != 1) ||
-            (dims_C[1] != N && dims_C[1] != 1)) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                "Gemm bias shape mismatch. Expected [", M, ",", N,
-                                "] or broadcastable, got ", C->Shape().ToString());
-        }
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                              "Gemm bias must be 1D or 2D, got rank ", dims_C.size());
-      }
-    }
-
+    K = K_A;
     return Status::OK();
   }
 
-  /**
-   * @brief Compute output shape for GEMM
-   */
-  TensorShape ComputeOutputShape(const TensorShape& shape_A,
-                                 const TensorShape& shape_B) const {
-    const auto& dims_A = shape_A.GetDims();
-    const auto& dims_B = shape_B.GetDims();
+  static bool IsBiasVector(const Tensor& bias, int64_t N) {
+    const auto& dims = bias.Shape().GetDims();
+    if (dims.empty()) {
+      return false;
+    }
+    if (dims.size() == 1) {
+      return dims[0] == N;
+    }
+    if (dims.size() == 2) {
+      return dims[0] == 1 && dims[1] == N;
+    }
+    return false;
+  }
 
-    int64_t M = trans_A_ ? dims_A[1] : dims_A[0];
-    int64_t N = trans_B_ ? dims_B[0] : dims_B[1];
+  Status CreateZeroBiasZTensor(int32_t ort_type, int64_t N, zdnn_ztensor& bias_ztensor) const {
+    const auto zdnn_type = MapONNXTypeToZDNN(ort_type);
+    const size_t elem_size = GetZDNNTypeSize(zdnn_type);
+    const size_t bytes = static_cast<size_t>(N) * elem_size;
+    std::vector<uint8_t> zeros(bytes, 0);
+    return TensorConverter::ConvertRawToZTensor(zeros.data(), ort_type, TensorShape({N}), bias_ztensor, ZDNN_1D);
+  }
 
-    return TensorShape({M, N});
+  static Status ScaleInPlace(Tensor& y, float alpha) {
+    if (alpha == 1.0f) return Status::OK();
+
+    const size_t n = static_cast<size_t>(y.Shape().Size());
+    if (y.IsDataType<float>()) {
+      float* data = y.MutableData<float>();
+      for (size_t i = 0; i < n; ++i) {
+        data[i] *= alpha;
+      }
+      return Status::OK();
+    }
+
+    if (y.IsDataType<MLFloat16>()) {
+      MLFloat16* data = y.MutableData<MLFloat16>();
+      for (size_t i = 0; i < n; ++i) {
+        data[i] = MLFloat16(static_cast<float>(data[i]) * alpha);
+      }
+      return Status::OK();
+    }
+
+    if (y.IsDataType<BFloat16>()) {
+      BFloat16* data = y.MutableData<BFloat16>();
+      for (size_t i = 0; i < n; ++i) {
+        data[i] = BFloat16(static_cast<float>(data[i]) * alpha);
+      }
+      return Status::OK();
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported Gemm output type for Telum EP");
+  }
+
+  static Status AddBroadcastedBiasInPlace(Tensor& y,
+                                         const Tensor& c,
+                                         float beta,
+                                         int64_t M,
+                                         int64_t N) {
+    const auto& cdims = c.Shape().GetDims();
+
+    // Gemm supports C broadcastable to [M, N].
+    if (cdims.size() > 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Gemm bias must be 0D/1D/2D, got rank ", cdims.size());
+    }
+
+    auto get_c_index = [&](int64_t i, int64_t j) -> int64_t {
+      if (cdims.empty()) {
+        return 0;  // scalar
+      }
+      if (cdims.size() == 1) {
+        const int64_t cN = cdims[0];
+        if (cN == 1) return 0;  // scalar
+        if (cN == N) return j;
+        // allow [M] only when N == 1 (column bias)
+        if (cN == M && N == 1) return i;
+        return -1;
+      }
+
+      // 2D
+      const int64_t cM = cdims[0];
+      const int64_t cN = cdims[1];
+
+      const int64_t ii = (cM == 1) ? 0 : i;
+      const int64_t jj = (cN == 1) ? 0 : j;
+
+      if (!((cM == 1 || cM == M) && (cN == 1 || cN == N))) {
+        return -1;
+      }
+
+      return ii * cN + jj;
+    };
+
+    const size_t y_size = static_cast<size_t>(y.Shape().Size());
+
+    if (y.IsDataType<float>()) {
+      float* y_data = y.MutableData<float>();
+      const float* c_data = c.Data<float>();
+
+      for (int64_t i = 0; i < M; ++i) {
+        for (int64_t j = 0; j < N; ++j) {
+          const int64_t c_idx = get_c_index(i, j);
+          if (c_idx < 0) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "Gemm bias shape ", c.Shape().ToString(),
+                                   " is not broadcastable to [", M, ",", N, "]");
+          }
+          const size_t y_idx = static_cast<size_t>(i * N + j);
+          ORT_RETURN_IF_NOT(y_idx < y_size, "Output index out of bounds");
+          y_data[y_idx] += beta * c_data[c_idx];
+        }
+      }
+      return Status::OK();
+    }
+
+    if (y.IsDataType<MLFloat16>()) {
+      MLFloat16* y_data = y.MutableData<MLFloat16>();
+      const MLFloat16* c_data = c.Data<MLFloat16>();
+
+      for (int64_t i = 0; i < M; ++i) {
+        for (int64_t j = 0; j < N; ++j) {
+          const int64_t c_idx = get_c_index(i, j);
+          if (c_idx < 0) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "Gemm bias shape ", c.Shape().ToString(),
+                                   " is not broadcastable to [", M, ",", N, "]");
+          }
+          const size_t y_idx = static_cast<size_t>(i * N + j);
+          ORT_RETURN_IF_NOT(y_idx < y_size, "Output index out of bounds");
+
+          const float yv = static_cast<float>(y_data[y_idx]);
+          const float cv = static_cast<float>(c_data[c_idx]);
+          y_data[y_idx] = MLFloat16(yv + beta * cv);
+        }
+      }
+      return Status::OK();
+    }
+
+    if (y.IsDataType<BFloat16>()) {
+      BFloat16* y_data = y.MutableData<BFloat16>();
+      const BFloat16* c_data = c.Data<BFloat16>();
+
+      for (int64_t i = 0; i < M; ++i) {
+        for (int64_t j = 0; j < N; ++j) {
+          const int64_t c_idx = get_c_index(i, j);
+          if (c_idx < 0) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "Gemm bias shape ", c.Shape().ToString(),
+                                   " is not broadcastable to [", M, ",", N, "]");
+          }
+          const size_t y_idx = static_cast<size_t>(i * N + j);
+          ORT_RETURN_IF_NOT(y_idx < y_size, "Output index out of bounds");
+
+          const float yv = static_cast<float>(y_data[y_idx]);
+          const float cv = static_cast<float>(c_data[c_idx]);
+          y_data[y_idx] = BFloat16(yv + beta * cv);
+        }
+      }
+      return Status::OK();
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported Gemm output type for Telum EP");
   }
 };
 
@@ -189,7 +346,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Gemm);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -199,7 +357,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Gemm);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -209,7 +368,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Gemm);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -219,7 +379,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     Gemm);
 
 }  // namespace telum

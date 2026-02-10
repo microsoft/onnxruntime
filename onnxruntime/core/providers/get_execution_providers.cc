@@ -61,6 +61,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kTelumExecutionProvider,
+#ifdef USE_TELUM
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kDnnlExecutionProvider,
 #ifdef USE_DNNL
             true,

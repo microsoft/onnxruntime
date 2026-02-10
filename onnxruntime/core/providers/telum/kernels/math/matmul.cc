@@ -30,39 +30,44 @@ class MatMul final : public TelumKernel {
     ORT_RETURN_IF_ERROR(ValidateStaticShape(A->Shape()));
     ORT_RETURN_IF_ERROR(ValidateStaticShape(B->Shape()));
 
-    // Get shapes
     const auto& shape_A = A->Shape();
     const auto& shape_B = B->Shape();
 
-    // Validate matrix multiplication dimensions
-    ORT_RETURN_IF_ERROR(ValidateMatMulShapes(shape_A, shape_B));
-
-    // Compute output shape
-    TensorShape output_shape = ComputeOutputShape(shape_A, shape_B);
+    // Validate matrix multiplication dimensions and compute output shape.
+    TensorShape output_shape;
+    MatMulPlan plan;
+    ORT_RETURN_IF_ERROR(CreatePlan(shape_A, shape_B, plan, output_shape));
 
     // Allocate output tensor
     Tensor* Y = context->Output(0, output_shape);
     ORT_RETURN_IF_NOT(Y != nullptr, "Failed to allocate output tensor");
 
-    // Determine appropriate layout based on tensor rank
-    zdnn_data_layouts layout = TensorConverter::GetLayoutForShape(shape_A);
-
-    // Convert input tensors to zDNN format
-    zdnn_ztensor zdnn_a, zdnn_b, zdnn_y;
-    ORT_RETURN_IF_ERROR(ConvertToZTensor(*A, zdnn_a, layout));
+    // Convert input tensors to zDNN format (with optional logical shape).
+    zdnn_ztensor zdnn_a, zdnn_b, zdnn_c, zdnn_y;
+    ORT_RETURN_IF_ERROR(TensorConverter::ConvertToZTensorWithShape(*A, plan.logical_shape_a, zdnn_a, plan.layout_a));
     ZTensorGuard guard_a(&zdnn_a);
 
-    ORT_RETURN_IF_ERROR(ConvertToZTensor(*B, zdnn_b, layout));
+    ORT_RETURN_IF_ERROR(TensorConverter::ConvertToZTensorWithShape(*B, plan.logical_shape_b, zdnn_b, plan.layout_b));
     ZTensorGuard guard_b(&zdnn_b);
 
-    ORT_RETURN_IF_ERROR(InitZTensorForOutput(*Y, zdnn_y, layout));
+    ORT_RETURN_IF_ERROR(CreateZeroBiasZTensor(A->GetElementType(),
+                                              plan.logical_shape_c,
+                                              plan.layout_c,
+                                              zdnn_c));
+    ZTensorGuard guard_c(&zdnn_c);
+
+    ORT_RETURN_IF_ERROR(TensorConverter::InitZTensorForOutputWithShape(*Y, plan.logical_shape_y, zdnn_y, plan.layout_y));
     ZTensorGuard guard_y(&zdnn_y);
 
-    // Execute zDNN matrix multiplication
-    // Using MATMUL_OP_ADDITION with nullptr for bias (no bias addition)
-    zdnn_status status = zdnn_matmul_op(&zdnn_a, &zdnn_b, nullptr,
-                                        MATMUL_OP_ADDITION, &zdnn_y);
-    ORT_RETURN_IF_ERROR(CheckStatus(status, "zdnn_matmul_op"));
+    // Execute zDNN matrix multiplication (zDNN always expects an "input_c" bias vector/matrix).
+    zdnn_status status{};
+    if (plan.kind == MatMulPlan::Kind::kUnstacked || plan.kind == MatMulPlan::Kind::kStacked) {
+      status = zdnn_matmul_op(&zdnn_a, &zdnn_b, &zdnn_c, MATMUL_OP_ADDITION, &zdnn_y);
+      ORT_RETURN_IF_ERROR(CheckStatus(status, "zdnn_matmul_op"));
+    } else {
+      status = zdnn_matmul_bcast_op(&zdnn_a, &zdnn_b, &zdnn_c, MATMUL_BCAST_OP_ADDITION, &zdnn_y);
+      ORT_RETURN_IF_ERROR(CheckStatus(status, "zdnn_matmul_bcast_op"));
+    }
 
     // Convert result back to ORT tensor
     ORT_RETURN_IF_ERROR(ConvertFromZTensor(zdnn_y, *Y));
@@ -71,88 +76,190 @@ class MatMul final : public TelumKernel {
   }
 
  private:
-  /**
-   * @brief Validate that matrix multiplication dimensions are compatible
-   *
-   * @param shape_A Shape of first input
-   * @param shape_B Shape of second input
-   * @return Status indicating if shapes are valid
-   */
-  Status ValidateMatMulShapes(const TensorShape& shape_A,
-                              const TensorShape& shape_B) const {
-    const auto& dims_A = shape_A.GetDims();
-    const auto& dims_B = shape_B.GetDims();
+  struct MatMulPlan {
+    enum class Kind { kUnstacked, kStacked, kBcast1, kBcast23 };
 
-    // Both tensors must be at least 2D
-    if (dims_A.size() < 2 || dims_B.size() < 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "MatMul requires at least 2D tensors. Got shapes: ",
-                            shape_A.ToString(), " and ", shape_B.ToString());
+    Kind kind{};
+    zdnn_data_layouts layout_a{};
+    zdnn_data_layouts layout_b{};
+    zdnn_data_layouts layout_c{};
+    zdnn_data_layouts layout_y{};
+    TensorShape logical_shape_a;
+    TensorShape logical_shape_b;
+    TensorShape logical_shape_c;
+    TensorShape logical_shape_y;
+  };
+
+  static bool AllOnes(const std::vector<int64_t>& dims) {
+    for (int64_t d : dims) {
+      if (d != 1) return false;
     }
+    return true;
+  }
 
-    // Inner dimensions must match: A[..., M, K] × B[..., K, N]
-    int64_t K_A = dims_A[dims_A.size() - 1];
-    int64_t K_B = dims_B[dims_B.size() - 2];
+  static std::vector<int64_t> AlignBatchDims(const std::vector<int64_t>& batch_dims, size_t out_rank) {
+    if (batch_dims.size() >= out_rank) return batch_dims;
+    std::vector<int64_t> aligned(out_rank - batch_dims.size(), 1);
+    aligned.insert(aligned.end(), batch_dims.begin(), batch_dims.end());
+    return aligned;
+  }
 
-    if (K_A != K_B) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "MatMul inner dimensions must match. Got K_A=", K_A,
-                            " and K_B=", K_B);
+  static int64_t Product(const std::vector<int64_t>& dims) {
+    int64_t p = 1;
+    for (int64_t d : dims) {
+      p *= d;
     }
+    return p;
+  }
 
-    // For higher-dimensional tensors, batch dimensions must be compatible
-    if (dims_A.size() > 2 || dims_B.size() > 2) {
-      size_t batch_dims_A = dims_A.size() - 2;
-      size_t batch_dims_B = dims_B.size() - 2;
+  static Status BroadcastBatchDims(const std::vector<int64_t>& a_batch,
+                                   const std::vector<int64_t>& b_batch,
+                                   std::vector<int64_t>& out_batch) {
+    const size_t rank_a = a_batch.size();
+    const size_t rank_b = b_batch.size();
+    const size_t out_rank = std::max(rank_a, rank_b);
+    out_batch.assign(out_rank, 1);
 
-      // Check batch dimension compatibility (broadcasting rules)
-      size_t max_batch_dims = std::max(batch_dims_A, batch_dims_B);
-      for (size_t i = 0; i < max_batch_dims; ++i) {
-        int64_t dim_A = (i < batch_dims_A) ? dims_A[i] : 1;
-        int64_t dim_B = (i < batch_dims_B) ? dims_B[i] : 1;
+    for (size_t i = 0; i < out_rank; ++i) {
+      const int64_t dim_a = (i < rank_a) ? a_batch[rank_a - 1 - i] : 1;
+      const int64_t dim_b = (i < rank_b) ? b_batch[rank_b - 1 - i] : 1;
 
-        if (dim_A != dim_B && dim_A != 1 && dim_B != 1) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                "MatMul batch dimensions are not compatible");
-        }
+      if (dim_a == dim_b) {
+        out_batch[out_rank - 1 - i] = dim_a;
+      } else if (dim_a == 1) {
+        out_batch[out_rank - 1 - i] = dim_b;
+      } else if (dim_b == 1) {
+        out_batch[out_rank - 1 - i] = dim_a;
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "MatMul batch dimensions are not compatible: dim_a=",
+                               dim_a, " dim_b=", dim_b);
       }
     }
-
     return Status::OK();
   }
 
-  /**
-   * @brief Compute output shape for matrix multiplication
-   *
-   * @param shape_A Shape of first input
-   * @param shape_B Shape of second input
-   * @return Output tensor shape
-   */
-  TensorShape ComputeOutputShape(const TensorShape& shape_A,
-                                 const TensorShape& shape_B) const {
-    const auto& dims_A = shape_A.GetDims();
-    const auto& dims_B = shape_B.GetDims();
+  static Status CreatePlan(const TensorShape& shape_a,
+                           const TensorShape& shape_b,
+                           MatMulPlan& plan,
+                           TensorShape& output_shape) {
+    const auto& dims_a = shape_a.GetDims();
+    const auto& dims_b = shape_b.GetDims();
 
-    std::vector<int64_t> output_dims;
-
-    // Handle batch dimensions
-    size_t batch_dims_A = dims_A.size() - 2;
-    size_t batch_dims_B = dims_B.size() - 2;
-    size_t max_batch_dims = std::max(batch_dims_A, batch_dims_B);
-
-    for (size_t i = 0; i < max_batch_dims; ++i) {
-      int64_t dim_A = (i < batch_dims_A) ? dims_A[i] : 1;
-      int64_t dim_B = (i < batch_dims_B) ? dims_B[i] : 1;
-      output_dims.push_back(std::max(dim_A, dim_B));
+    if (dims_a.size() < 2 || dims_b.size() < 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "MatMul requires at least 2D tensors. Got shapes: ",
+                             shape_a.ToString(), " and ", shape_b.ToString());
     }
 
-    // Add matrix dimensions: M × N
-    int64_t M = dims_A[dims_A.size() - 2];
-    int64_t N = dims_B[dims_B.size() - 1];
-    output_dims.push_back(M);
-    output_dims.push_back(N);
+    const int64_t M = dims_a[dims_a.size() - 2];
+    const int64_t K_a = dims_a[dims_a.size() - 1];
+    const int64_t K_b = dims_b[dims_b.size() - 2];
+    const int64_t N = dims_b[dims_b.size() - 1];
 
-    return TensorShape(output_dims);
+    if (K_a != K_b) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "MatMul inner dimensions must match. Got K_A=", K_a,
+                             " and K_B=", K_b);
+    }
+
+    const std::vector<int64_t> a_batch(dims_a.begin(), dims_a.end() - 2);
+    const std::vector<int64_t> b_batch(dims_b.begin(), dims_b.end() - 2);
+
+    std::vector<int64_t> out_batch;
+    ORT_RETURN_IF_ERROR(BroadcastBatchDims(a_batch, b_batch, out_batch));
+
+    std::vector<int64_t> out_dims = out_batch;
+    out_dims.push_back(M);
+    out_dims.push_back(N);
+    output_shape = TensorShape(out_dims);
+
+    const int64_t stack = Product(out_batch);
+
+    const auto a_batch_aligned = AlignBatchDims(a_batch, out_batch.size());
+    const auto b_batch_aligned = AlignBatchDims(b_batch, out_batch.size());
+
+    const bool a_matches_output = (a_batch_aligned == out_batch);
+    const bool b_matches_output = (b_batch_aligned == out_batch);
+    const bool a_all_ones = AllOnes(a_batch_aligned);
+    const bool b_all_ones = AllOnes(b_batch_aligned);
+
+    // We treat "stack==1" as unstacked for zDNN (even if ONNX output has leading 1 dims).
+    if (stack == 1) {
+      if (!a_matches_output || !b_matches_output) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "MatMul batch dimensions are not compatible after broadcast");
+      }
+
+      plan.kind = MatMulPlan::Kind::kUnstacked;
+      plan.layout_a = ZDNN_2D;
+      plan.layout_b = ZDNN_2D;
+      plan.layout_c = ZDNN_1D;
+      plan.layout_y = ZDNN_2D;
+      plan.logical_shape_a = TensorShape({M, K_a});
+      plan.logical_shape_b = TensorShape({K_a, N});
+      plan.logical_shape_c = TensorShape({N});
+      plan.logical_shape_y = TensorShape({M, N});
+      return Status::OK();
+    }
+
+    // stack > 1: must map to either stacked matmul_op, or bcast1/bcast23.
+    if (a_matches_output && b_matches_output) {
+      plan.kind = MatMulPlan::Kind::kStacked;
+      plan.layout_a = ZDNN_3DS;
+      plan.layout_b = ZDNN_3DS;
+      plan.layout_c = ZDNN_2DS;
+      plan.layout_y = ZDNN_3DS;
+      plan.logical_shape_a = TensorShape({stack, M, K_a});
+      plan.logical_shape_b = TensorShape({stack, K_a, N});
+      plan.logical_shape_c = TensorShape({stack, N});
+      plan.logical_shape_y = TensorShape({stack, M, N});
+      return Status::OK();
+    }
+
+    if (a_matches_output && b_all_ones) {
+      plan.kind = MatMulPlan::Kind::kBcast23;
+      plan.layout_a = ZDNN_3DS;
+      plan.layout_b = ZDNN_2D;
+      plan.layout_c = ZDNN_1D;
+      plan.layout_y = ZDNN_3DS;
+      plan.logical_shape_a = TensorShape({stack, M, K_a});
+      plan.logical_shape_b = TensorShape({K_a, N});
+      plan.logical_shape_c = TensorShape({N});
+      plan.logical_shape_y = TensorShape({stack, M, N});
+      return Status::OK();
+    }
+
+    if (a_all_ones && b_matches_output) {
+      plan.kind = MatMulPlan::Kind::kBcast1;
+      plan.layout_a = ZDNN_2D;
+      plan.layout_b = ZDNN_3DS;
+      plan.layout_c = ZDNN_2DS;
+      plan.layout_y = ZDNN_3DS;
+      plan.logical_shape_a = TensorShape({M, K_a});
+      plan.logical_shape_b = TensorShape({stack, K_a, N});
+      plan.logical_shape_c = TensorShape({stack, N});
+      plan.logical_shape_y = TensorShape({stack, M, N});
+      return Status::OK();
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Telum EP: MatMul supports only: "
+                           "(1) unstacked 2D, "
+                           "(2) stacked with identical batch dims, "
+                           "(3) broadcast of a fully-unstacked operand across all batch dims.");
+  }
+
+  Status CreateZeroBiasZTensor(int32_t ort_type,
+                               const TensorShape& bias_shape,
+                               zdnn_data_layouts bias_layout,
+                               zdnn_ztensor& bias_ztensor) const {
+    const auto zdnn_type = MapONNXTypeToZDNN(ort_type);
+    const size_t elem_size = GetZDNNTypeSize(zdnn_type);
+    const size_t bytes = static_cast<size_t>(bias_shape.Size()) * elem_size;
+    std::vector<uint8_t> zeros(bytes, 0);
+
+    return TensorConverter::ConvertRawToZTensor(zeros.data(), ort_type, bias_shape, bias_ztensor, bias_layout);
   }
 };
 
@@ -164,7 +271,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     MatMul);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -174,7 +282,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kTelumExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                             DataTypeImpl::GetTensorType<MLFloat16>()}),
+                             DataTypeImpl::GetTensorType<MLFloat16>(),
+                             DataTypeImpl::GetTensorType<BFloat16>()}),
     MatMul);
 
 }  // namespace telum

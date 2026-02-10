@@ -86,6 +86,10 @@
 #include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
 #endif
 
+#if defined(USE_TELUM)
+#include "core/providers/telum/telum_provider_factory_creator.h"
+#endif
+
 #if defined(USE_WEBNN)
 #include "core/providers/webnn/webnn_provider_factory_creator.h"
 #endif

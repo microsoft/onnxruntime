@@ -16,6 +16,8 @@ set(telum_test_src
   ${TEST_SRC_DIR}/kernels/test_gemm.cc
   ${TEST_SRC_DIR}/kernels/test_elementwise.cc
   ${TEST_SRC_DIR}/kernels/test_activations.cc
+  ${TEST_SRC_DIR}/kernels/test_softmax.cc
+  ${TEST_SRC_DIR}/kernels/test_layer_norm.cc
 )
 
 # Test headers
@@ -32,6 +34,7 @@ add_executable(onnxruntime_telum_test
 # Include directories
 target_include_directories(onnxruntime_telum_test PRIVATE
   ${ONNXRUNTIME_ROOT}
+  ${ONNXRUNTIME_ROOT}/../include/onnxruntime
   ${ONNXRUNTIME_ROOT}/core/providers/telum
   ${TEST_INC_DIR}
   ${ZDNN_INCLUDE_DIR}
@@ -119,6 +122,16 @@ add_test(
   COMMAND onnxruntime_telum_test --gtest_filter="TelumActivationTest.*"
 )
 
+add_test(
+  NAME onnxruntime_telum_test_softmax
+  COMMAND onnxruntime_telum_test --gtest_filter="TelumSoftmaxTest.*"
+)
+
+add_test(
+  NAME onnxruntime_telum_test_layernorm
+  COMMAND onnxruntime_telum_test --gtest_filter="TelumLayerNormTest.*"
+)
+
 # Set labels for test groups
 set_tests_properties(
   onnxruntime_telum_test_utils
@@ -126,6 +139,8 @@ set_tests_properties(
   onnxruntime_telum_test_gemm
   onnxruntime_telum_test_elementwise
   onnxruntime_telum_test_activations
+  onnxruntime_telum_test_softmax
+  onnxruntime_telum_test_layernorm
   PROPERTIES LABELS "telum;provider"
 )
 

@@ -26,9 +26,7 @@ TEST_F(TelumActivationTest, Relu_Basic) {
 
   test.AddInput<float>("X", {5}, input);
   test.AddOutput<float>("Y", {5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Relu_AllNegative) {
@@ -39,9 +37,7 @@ TEST_F(TelumActivationTest, Relu_AllNegative) {
 
   test.AddInput<float>("X", {5}, input);
   test.AddOutput<float>("Y", {5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Relu_AllPositive) {
@@ -52,9 +48,7 @@ TEST_F(TelumActivationTest, Relu_AllPositive) {
 
   test.AddInput<float>("X", {5}, input);
   test.AddOutput<float>("Y", {5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Relu_2D) {
@@ -68,9 +62,7 @@ TEST_F(TelumActivationTest, Relu_2D) {
 
   test.AddInput<float>("X", {2, 4}, input);
   test.AddOutput<float>("Y", {2, 4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Relu_Large) {
@@ -81,9 +73,7 @@ TEST_F(TelumActivationTest, Relu_Large) {
 
   test.AddInput<float>("X", {32, 32}, input);
   test.AddOutput<float>("Y", {32, 32}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -98,9 +88,7 @@ TEST_F(TelumActivationTest, Gelu_Basic) {
 
   test.AddInput<float>("X", {5}, input);
   test.AddOutput<float>("Y", {5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Gelu_ZeroInput) {
@@ -111,9 +99,7 @@ TEST_F(TelumActivationTest, Gelu_ZeroInput) {
 
   test.AddInput<float>("X", {10}, input);
   test.AddOutput<float>("Y", {10}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Gelu_2D) {
@@ -124,9 +110,7 @@ TEST_F(TelumActivationTest, Gelu_2D) {
 
   test.AddInput<float>("X", {4, 6}, input);
   test.AddOutput<float>("Y", {4, 6}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Gelu_TransformerSize) {
@@ -138,9 +122,7 @@ TEST_F(TelumActivationTest, Gelu_TransformerSize) {
 
   test.AddInput<float>("X", {512, 3072}, input);
   test.AddOutput<float>("Y", {512, 3072}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -155,9 +137,7 @@ TEST_F(TelumActivationTest, Tanh_Basic) {
 
   test.AddInput<float>("X", {5}, input);
   test.AddOutput<float>("Y", {5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Tanh_LargeValues) {
@@ -169,9 +149,7 @@ TEST_F(TelumActivationTest, Tanh_LargeValues) {
   // Tanh saturates at ±1 for large values
   test.AddInput<float>("X", {5}, input);
   test.AddOutput<float>("Y", {5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Tanh_2D) {
@@ -182,9 +160,7 @@ TEST_F(TelumActivationTest, Tanh_2D) {
 
   test.AddInput<float>("X", {10, 10}, input);
   test.AddOutput<float>("Y", {10, 10}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -203,9 +179,7 @@ TEST_F(TelumActivationTest, Sigmoid_Basic) {
 
   test.AddInput<float>("X", {5}, input);
   test.AddOutput<float>("Y", {5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Sigmoid_Zero) {
@@ -216,9 +190,7 @@ TEST_F(TelumActivationTest, Sigmoid_Zero) {
 
   test.AddInput<float>("X", {10}, input);
   test.AddOutput<float>("Y", {10}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -233,9 +205,7 @@ TEST_F(TelumActivationTest, Exp_Basic) {
 
   test.AddInput<float>("X", {3}, input);
   test.AddOutput<float>("Y", {3}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Exp_Negative) {
@@ -250,9 +220,7 @@ TEST_F(TelumActivationTest, Exp_Negative) {
 
   test.AddInput<float>("X", {3}, input);
   test.AddOutput<float>("Y", {3}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -267,9 +235,7 @@ TEST_F(TelumActivationTest, Log_Basic) {
 
   test.AddInput<float>("X", {3}, input);
   test.AddOutput<float>("Y", {3}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 // ============================================================================
@@ -284,9 +250,7 @@ TEST_F(TelumActivationTest, Sqrt_Basic) {
 
   test.AddInput<float>("X", {5}, input);
   test.AddOutput<float>("Y", {5}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 TEST_F(TelumActivationTest, Sqrt_2D) {
@@ -304,9 +268,7 @@ TEST_F(TelumActivationTest, Sqrt_2D) {
 
   test.AddInput<float>("X", {2, 4}, input);
   test.AddOutput<float>("Y", {2, 4}, expected);
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTelumExecutionProvider});
+  RunOnTelum(test);
 }
 
 }  // namespace telum

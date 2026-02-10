@@ -40,11 +40,14 @@ class TelumExecutionProvider : public IExecutionProvider {
    *
    * @param graph The graph to analyze
    * @param kernel_lookup Interface for kernel lookup
+   * @param graph_optimizer_registry Registry of graph optimizers (optional; unused for now)
    * @return Vector of compute capabilities (subgraphs this EP can handle)
    */
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph,
-                const IKernelLookup& kernel_lookup) const override;
+                const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                IResourceAccountant* resource_accountant = nullptr) const override;
 
   /**
    * @brief Compile fused nodes into executable compute functions
@@ -55,12 +58,6 @@ class TelumExecutionProvider : public IExecutionProvider {
    */
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
-
-  /**
-   * @brief Get the type identifier for this execution provider
-   * @return "TelumExecutionProvider"
-   */
-  const std::string& Type() const override { return type_; }
 
  private:
   /**
@@ -110,12 +107,6 @@ class TelumExecutionProvider : public IExecutionProvider {
 
   // Configuration
   TelumExecutionProviderInfo info_;
-
-  // Kernel registry for this EP
-  std::shared_ptr<KernelRegistry> kernel_registry_;
-
-  // Provider type string
-  std::string type_;
 
   // Supported operator types
   std::unordered_set<std::string> supported_ops_;

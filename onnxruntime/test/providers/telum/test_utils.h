@@ -6,10 +6,15 @@
 #include <vector>
 #include <cmath>
 #include <random>
+#include <stdexcept>
+#include <algorithm>
 #include "gtest/gtest.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/session_options.h"
 #include "core/providers/telum/telum_common.h"
 #include "core/providers/telum/utils/endian_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -148,10 +153,29 @@ inline std::vector<float> ComputeGemmReference(
   // First compute A × B
   auto AB = ComputeMatMulReference(A, B, M, K, N);
 
-  // Then apply alpha*AB + beta*C
+  // Then apply alpha*AB + beta*C, with basic broadcasting support for C.
+  // The tests in this folder use a subset of ONNX Gemm broadcast patterns:
+  // - C empty: treat as 0
+  // - C size 1: scalar
+  // - C size N: bias vector (broadcast across rows)
+  // - C size M*N: full bias matrix
+  // - C size M with N==1: column bias
+  auto get_c = [&](int64_t i, int64_t j) -> float {
+    if (C.empty() || beta == 0.0f) return 0.0f;
+    if (C.size() == 1) return C[0];
+    if (C.size() == static_cast<size_t>(N)) return C[static_cast<size_t>(j)];
+    if (N == 1 && C.size() == static_cast<size_t>(M)) return C[static_cast<size_t>(i)];
+    if (C.size() == static_cast<size_t>(M * N)) return C[static_cast<size_t>(i * N + j)];
+
+    throw std::runtime_error("ComputeGemmReference: unsupported C broadcast pattern");
+  };
+
   std::vector<float> Y(M * N);
-  for (size_t i = 0; i < Y.size(); ++i) {
-    Y[i] = alpha * AB[i] + beta * C[i];
+  for (int64_t i = 0; i < M; ++i) {
+    for (int64_t j = 0; j < N; ++j) {
+      const size_t idx = static_cast<size_t>(i * N + j);
+      Y[idx] = alpha * AB[idx] + beta * get_c(i, j);
+    }
   }
 
   return Y;
@@ -211,6 +235,110 @@ inline std::vector<float> ComputeTanhReference(const std::vector<float>& X) {
 }
 
 /**
+ * @brief Compute expected output for Softmax over the last dimension.
+ *
+ * Interprets X as a 2D matrix with shape [outer, inner] in row-major order and applies softmax per row.
+ */
+inline std::vector<float> ComputeSoftmaxLastDimReference(
+    const std::vector<float>& X, int64_t outer, int64_t inner) {
+  if (outer < 0 || inner < 0) {
+    throw std::runtime_error("ComputeSoftmaxLastDimReference: negative shape");
+  }
+  const size_t expected_size = static_cast<size_t>(outer) * static_cast<size_t>(inner);
+  if (X.size() != expected_size) {
+    throw std::runtime_error("ComputeSoftmaxLastDimReference: size mismatch");
+  }
+
+  std::vector<float> Y(X.size());
+  for (int64_t i = 0; i < outer; ++i) {
+    const size_t row = static_cast<size_t>(i) * static_cast<size_t>(inner);
+    float maxv = X[row];
+    for (int64_t j = 1; j < inner; ++j) {
+      maxv = std::max(maxv, X[row + static_cast<size_t>(j)]);
+    }
+    float sum = 0.0f;
+    for (int64_t j = 0; j < inner; ++j) {
+      const float e = std::exp(X[row + static_cast<size_t>(j)] - maxv);
+      Y[row + static_cast<size_t>(j)] = e;
+      sum += e;
+    }
+    for (int64_t j = 0; j < inner; ++j) {
+      Y[row + static_cast<size_t>(j)] /= sum;
+    }
+  }
+  return Y;
+}
+
+struct LayerNormReferenceResult {
+  std::vector<float> Y;       // size N*C
+  std::vector<float> Mean;    // size N
+  std::vector<float> InvStd;  // size N
+};
+
+/**
+ * @brief Compute expected output for LayerNormalization over the last dimension.
+ *
+ * Interprets X as [N, C] (row-major), Scale as [C], Bias as either empty (no bias) or [C].
+ */
+inline LayerNormReferenceResult ComputeLayerNormLastDimReference(
+    const std::vector<float>& X,
+    const std::vector<float>& Scale,
+    const std::vector<float>& Bias,
+    int64_t N, int64_t C,
+    float epsilon) {
+  if (N < 0 || C < 0) {
+    throw std::runtime_error("ComputeLayerNormLastDimReference: negative shape");
+  }
+  if (Scale.size() != static_cast<size_t>(C)) {
+    throw std::runtime_error("ComputeLayerNormLastDimReference: scale size mismatch");
+  }
+  if (!Bias.empty() && Bias.size() != static_cast<size_t>(C)) {
+    throw std::runtime_error("ComputeLayerNormLastDimReference: bias size mismatch");
+  }
+  const size_t expected_size = static_cast<size_t>(N) * static_cast<size_t>(C);
+  if (X.size() != expected_size) {
+    throw std::runtime_error("ComputeLayerNormLastDimReference: X size mismatch");
+  }
+
+  LayerNormReferenceResult r;
+  r.Y.resize(expected_size);
+  r.Mean.resize(static_cast<size_t>(N));
+  r.InvStd.resize(static_cast<size_t>(N));
+
+  for (int64_t i = 0; i < N; ++i) {
+    const size_t base = static_cast<size_t>(i) * static_cast<size_t>(C);
+
+    float mean = 0.0f;
+    for (int64_t j = 0; j < C; ++j) {
+      mean += X[base + static_cast<size_t>(j)];
+    }
+    mean /= static_cast<float>(C);
+
+    float var = 0.0f;
+    for (int64_t j = 0; j < C; ++j) {
+      const float d = X[base + static_cast<size_t>(j)] - mean;
+      var += d * d;
+    }
+    var /= static_cast<float>(C);
+
+    const float inv_std = 1.0f / std::sqrt(var + epsilon);
+
+    r.Mean[static_cast<size_t>(i)] = mean;
+    r.InvStd[static_cast<size_t>(i)] = inv_std;
+
+    for (int64_t j = 0; j < C; ++j) {
+      const float x = X[base + static_cast<size_t>(j)];
+      float y = (x - mean) * inv_std;
+      y *= Scale[static_cast<size_t>(j)];
+      if (!Bias.empty()) y += Bias[static_cast<size_t>(j)];
+      r.Y[base + static_cast<size_t>(j)] = y;
+    }
+  }
+
+  return r;
+}
+
+/**
  * @brief Test fixture for Telum EP tests
  */
 class TelumTestBase : public ::testing::Test {
@@ -225,6 +353,19 @@ class TelumTestBase : public ::testing::Test {
 
   void TearDown() override {
     // Cleanup if needed
+  }
+
+  // Helper to run an OpTester on Telum EP. By default, disables fallback to CPU EP so we actually
+  // execute the Telum kernels (and fail if partitioning didn't assign nodes to Telum).
+  void RunOnTelum(OpTester& test, bool disable_cpu_ep_fallback = true) {
+    onnxruntime::SessionOptions so;
+    if (disable_cpu_ep_fallback) {
+      ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
+    }
+
+    test.Config(so);
+    test.ConfigEp(onnxruntime::test::DefaultTelumExecutionProvider());
+    test.RunWithConfig();
   }
 };
 
