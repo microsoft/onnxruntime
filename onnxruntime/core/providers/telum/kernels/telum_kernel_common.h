@@ -82,8 +82,17 @@ class TelumKernel : public OpKernel {
     explicit ZTensorGuard(zdnn_ztensor* ztensor) : ztensor_(ztensor) {}
 
     ~ZTensorGuard() {
-      if (ztensor_ != nullptr && ztensor_->buffer != nullptr) {
-        zdnn_free_ztensor_buffer(ztensor_);
+      if (ztensor_ != nullptr) {
+        if (ztensor_->buffer != nullptr) {
+          zdnn_free_ztensor_buffer(ztensor_);
+          ztensor_->buffer = nullptr;
+        }
+        // TensorConverter allocates the descriptors on the heap. Clean them up here so callers
+        // can treat a zdnn_ztensor as an RAII-managed object via this guard.
+        delete ztensor_->pre_transformed_desc;
+        delete ztensor_->transformed_desc;
+        ztensor_->pre_transformed_desc = nullptr;
+        ztensor_->transformed_desc = nullptr;
       }
     }
 
@@ -98,8 +107,15 @@ class TelumKernel : public OpKernel {
 
     ZTensorGuard& operator=(ZTensorGuard&& other) noexcept {
       if (this != &other) {
-        if (ztensor_ != nullptr && ztensor_->buffer != nullptr) {
-          zdnn_free_ztensor_buffer(ztensor_);
+        if (ztensor_ != nullptr) {
+          if (ztensor_->buffer != nullptr) {
+            zdnn_free_ztensor_buffer(ztensor_);
+            ztensor_->buffer = nullptr;
+          }
+          delete ztensor_->pre_transformed_desc;
+          delete ztensor_->transformed_desc;
+          ztensor_->pre_transformed_desc = nullptr;
+          ztensor_->transformed_desc = nullptr;
         }
         ztensor_ = other.ztensor_;
         other.ztensor_ = nullptr;

@@ -3,6 +3,7 @@
 
 #include "tensor_converter.h"
 #include <cstring>
+#include <memory>
 
 namespace onnxruntime {
 namespace telum {
@@ -43,21 +44,45 @@ Status TensorConverter::ConvertRawToZTensor(const void* raw_data,
   // Validate shape is compatible with layout
   ORT_RETURN_IF_ERROR(ValidateShapeForLayout(logical_shape, layout));
 
-  // Initialize descriptors
-  zdnn_tensor_desc pre_desc, tfrmd_desc;
-  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_type, layout, pre_desc, tfrmd_desc));
+  // Allocate descriptors on the heap so they outlive this function. zDNN stores pointers to them in the ztensor.
+  auto pre_desc = std::make_unique<zdnn_tensor_desc>();
+  auto tfrmd_desc = std::make_unique<zdnn_tensor_desc>();
+
+  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_type, layout, *pre_desc, *tfrmd_desc));
 
   // Initialize ztensor structure
-  zdnn_init_ztensor(&pre_desc, &tfrmd_desc, &ztensor);
+  zdnn_init_ztensor(pre_desc.get(), tfrmd_desc.get(), &ztensor);
 
   // Allocate buffer for ztensor
   zdnn_status status = zdnn_allochelper_ztensor(&ztensor);
-  ORT_RETURN_IF_ERROR(CheckZDNNStatus(status, "zdnn_allochelper_ztensor"));
+  if (status != ZDNN_OK) {
+    // Ensure we don't return a ztensor with dangling descriptor pointers (owned by the local unique_ptrs).
+    if (ztensor.buffer != nullptr) {
+      zdnn_free_ztensor_buffer(&ztensor);
+      ztensor.buffer = nullptr;
+    }
+    ztensor.pre_transformed_desc = nullptr;
+    ztensor.transformed_desc = nullptr;
+    return CheckZDNNStatus(status, "zdnn_allochelper_ztensor");
+  }
 
   // Transform data from ORT format to zDNN format
-  ORT_RETURN_IF_ERROR(TransformData(raw_data,
-                                    ort_type,
-                                    ztensor));
+  Status st = TransformData(raw_data, ort_type, ztensor);
+  if (!st.IsOK()) {
+    // If transform fails, free buffer before returning.
+    if (ztensor.buffer != nullptr) {
+      zdnn_free_ztensor_buffer(&ztensor);
+      ztensor.buffer = nullptr;
+    }
+    // As above, avoid leaving dangling pointers in ztensor.
+    ztensor.pre_transformed_desc = nullptr;
+    ztensor.transformed_desc = nullptr;
+    return st;
+  }
+
+  // Success: transfer descriptor ownership to the ztensor.
+  (void)pre_desc.release();
+  (void)tfrmd_desc.release();
 
   return Status::OK();
 }
@@ -99,16 +124,30 @@ Status TensorConverter::InitZTensorForOutputWithShape(const Tensor& ort_tensor,
   // Validate shape is compatible with layout
   ORT_RETURN_IF_ERROR(ValidateShapeForLayout(logical_shape, layout));
 
-  // Initialize descriptors
-  zdnn_tensor_desc pre_desc, tfrmd_desc;
-  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_tensor.GetElementType(), layout, pre_desc, tfrmd_desc));
+  // Allocate descriptors on the heap so they outlive this function. zDNN stores pointers to them in the ztensor.
+  auto pre_desc = std::make_unique<zdnn_tensor_desc>();
+  auto tfrmd_desc = std::make_unique<zdnn_tensor_desc>();
+
+  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_tensor.GetElementType(), layout, *pre_desc, *tfrmd_desc));
 
   // Initialize ztensor structure
-  zdnn_init_ztensor(&pre_desc, &tfrmd_desc, &ztensor);
+  zdnn_init_ztensor(pre_desc.get(), tfrmd_desc.get(), &ztensor);
 
   // Allocate buffer for ztensor
   zdnn_status status = zdnn_allochelper_ztensor(&ztensor);
-  ORT_RETURN_IF_ERROR(CheckZDNNStatus(status, "zdnn_allochelper_ztensor"));
+  if (status != ZDNN_OK) {
+    if (ztensor.buffer != nullptr) {
+      zdnn_free_ztensor_buffer(&ztensor);
+      ztensor.buffer = nullptr;
+    }
+    ztensor.pre_transformed_desc = nullptr;
+    ztensor.transformed_desc = nullptr;
+    return CheckZDNNStatus(status, "zdnn_allochelper_ztensor");
+  }
+
+  // Success: transfer descriptor ownership to the ztensor.
+  (void)pre_desc.release();
+  (void)tfrmd_desc.release();
 
   return Status::OK();
 }
@@ -123,16 +162,30 @@ Status TensorConverter::InitZTensorForOutputWithShapeAndType(int32_t ort_type,
   // Validate shape is compatible with layout
   ORT_RETURN_IF_ERROR(ValidateShapeForLayout(logical_shape, layout));
 
-  // Initialize descriptors
-  zdnn_tensor_desc pre_desc, tfrmd_desc;
-  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_type, layout, pre_desc, tfrmd_desc));
+  // Allocate descriptors on the heap so they outlive this function. zDNN stores pointers to them in the ztensor.
+  auto pre_desc = std::make_unique<zdnn_tensor_desc>();
+  auto tfrmd_desc = std::make_unique<zdnn_tensor_desc>();
+
+  ORT_RETURN_IF_ERROR(InitializeDescriptors(logical_shape, ort_type, layout, *pre_desc, *tfrmd_desc));
 
   // Initialize ztensor structure
-  zdnn_init_ztensor(&pre_desc, &tfrmd_desc, &ztensor);
+  zdnn_init_ztensor(pre_desc.get(), tfrmd_desc.get(), &ztensor);
 
   // Allocate buffer for ztensor
   zdnn_status status = zdnn_allochelper_ztensor(&ztensor);
-  ORT_RETURN_IF_ERROR(CheckZDNNStatus(status, "zdnn_allochelper_ztensor"));
+  if (status != ZDNN_OK) {
+    if (ztensor.buffer != nullptr) {
+      zdnn_free_ztensor_buffer(&ztensor);
+      ztensor.buffer = nullptr;
+    }
+    ztensor.pre_transformed_desc = nullptr;
+    ztensor.transformed_desc = nullptr;
+    return CheckZDNNStatus(status, "zdnn_allochelper_ztensor");
+  }
+
+  // Success: transfer descriptor ownership to the ztensor.
+  (void)pre_desc.release();
+  (void)tfrmd_desc.release();
 
   return Status::OK();
 }
