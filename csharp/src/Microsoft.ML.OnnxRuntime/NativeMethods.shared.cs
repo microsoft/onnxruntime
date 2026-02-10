@@ -897,6 +897,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
             {
+                System.Console.WriteLine($"[DllImportResolver] Invoked for {libraryName}. Process Arch: {RuntimeInformation.ProcessArchitecture}");
                 string mappedName = null;
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
