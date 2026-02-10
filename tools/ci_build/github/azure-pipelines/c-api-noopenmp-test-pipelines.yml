@@ -104,7 +104,8 @@ stages:
 
 - template: nuget/templates/test_macos.yml
   parameters:
-    AgentPool: macOS-14
+    AgentPool: 'AcesShared'
+    PoolDemands: 'ImageOverride -equals ACES_VM_SharedPool_Sequoia'
     ArtifactSuffix: 'CPU'
 
 - template: nodejs/templates/test_win.yml

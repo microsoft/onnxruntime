@@ -1,6 +1,9 @@
 parameters:
+  AgentPool : 'macOS-15'
   IsMacOS : 'true'
   ArtifactSuffix: ''
+  PoolDemands: ''
+
 stages:
 - stage: NuGet_Test_MacOS
   dependsOn:
@@ -11,7 +14,12 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-15'
+      ${{ if contains(parameters.AgentPool, '-') }}:
+        vmImage: ${{ parameters.AgentPool }}
+      ${{ else }}:
+        name: ${{ parameters.AgentPool }}
+        ${{ if ne(parameters.PoolDemands, '') }}:
+          demands: ${{ parameters.PoolDemands }}
 
     variables:
     - name: OnnxRuntimeBuildDirectory
@@ -38,7 +46,7 @@ stages:
                  $(Build.BinariesDirectory)/nuget-artifact \
                  $(NuGetPackageVersionNumber) \
                  true
-  
+
        if [ $? -ne 0 ]; then
            echo "Failed to run test"
            exit 1
