@@ -17,7 +17,14 @@ stages:
       clean: all
     ${{ if eq(parameters.OS, 'MacOS') }}:
       pool:
-        vmImage: 'macOS-15'
+        # Use PoolName if provided, otherwise fallback to macOS-15
+        ${{ if ne(parameters.PoolName, '') }}:
+          ${{ if contains(parameters.PoolName, '-') }}:
+            vmImage: ${{ parameters.PoolName }}
+          ${{ else }}:
+            name: ${{ parameters.PoolName }}
+        ${{ else }}:
+          vmImage: 'macOS-15'
     ${{ if eq(parameters.OS, 'Linux') }}:
       pool:
         name: ${{ parameters.PoolName }}
@@ -80,6 +87,14 @@ stages:
           cd ..
           mkdir tests
           cd tests
+          # 1. Diagnostics
+          echo "System Info:"
+          uname -a
+          if [[ "$(uname)" == "Darwin" ]]; then arch; fi
+          echo "Java Version"
+          java -version
+
+          # 2. Extract
           jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
           rm -f $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
 
@@ -93,29 +108,33 @@ stages:
           java -version
 
 
-          # Set the correct library path based on the OS
+          # 3. Find with robustness
           os_name=$(uname)
+          if [[ "$os_name" == "Linux" ]]; then S_FILE="libonnxruntime.so"; else S_FILE="libonnxruntime.dylib"; fi
 
-          # Find the directory containing the native library (libonnxruntime.so or libonnxruntime.dylib)
-          # The jar extraction puts them in ai/onnxruntime/native/...
-          if [[ "$os_name" == "Linux" ]]; then
-            # Find the directory containing the native library (libonnxruntime.so)
-            NATIVE_LIB_DIR=$(find $(pwd) -name "libonnxruntime.so" | head -n 1 | xargs dirname)
-            echo "Found Linux native lib dir: $NATIVE_LIB_DIR"
+          echo "Searching for $S_FILE in $(pwd)..."
+          # Exclude .dSYM paths and find actual file
+          NATIVE_LIB_PATH=$(find $(pwd) -name "$S_FILE" -not -path "*.dSYM*" -type f | head -n 1)
 
-            echo "Platform: Linux. Setting LD_LIBRARY_PATH."
-            export LD_LIBRARY_PATH="$NATIVE_LIB_DIR:$(pwd):$LD_LIBRARY_PATH"
-            java -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
-            --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
-          elif [[ "$os_name" == "Darwin" ]]; then
-            # Find the directory containing the native library (libonnxruntime.dylib)
-            NATIVE_LIB_DIR=$(find $(pwd) -name "libonnxruntime.dylib" | head -n 1 | xargs dirname)
-            echo "Found macOS native lib dir: $NATIVE_LIB_DIR"
+          if [[ -n "$NATIVE_LIB_PATH" ]]; then
+            NATIVE_LIB_DIR=$(dirname "$NATIVE_LIB_PATH")
+            echo "Found native lib dir: $NATIVE_LIB_DIR"
 
-            echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
-            export DYLD_LIBRARY_PATH="$NATIVE_LIB_DIR:$(pwd):$DYLD_LIBRARY_PATH"
-            java -DUSE_WEBGPU=1 -DUSE_COREML=1 -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
-            --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+            if [[ "$os_name" == "Linux" ]]; then
+              echo "Platform: Linux. Setting LD_LIBRARY_PATH."
+              export LD_LIBRARY_PATH="$NATIVE_LIB_DIR:$(pwd):$LD_LIBRARY_PATH"
+              java -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+              --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+            elif [[ "$os_name" == "Darwin" ]]; then
+              echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
+              export DYLD_LIBRARY_PATH="$NATIVE_LIB_DIR:$(pwd):$DYLD_LIBRARY_PATH"
+              java -DUSE_WEBGPU=1 -DUSE_COREML=1 -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+              --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+            fi
+          else
+            echo "Error: $S_FILE not found!"
+            ls -R ai
+            exit 1
           fi
 
 

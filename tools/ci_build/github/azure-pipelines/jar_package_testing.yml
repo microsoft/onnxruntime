@@ -21,7 +21,7 @@ stages:
 - template: templates/final-jar-testing-linux.yml
   parameters:
     OS: MacOS
-    PoolName: 'macOS-14'
+    PoolName: 'macOS-15'
 
 - stage: GPU_JAR_Testing
   dependsOn: []
