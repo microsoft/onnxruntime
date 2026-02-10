@@ -580,11 +580,6 @@ Return Value:
 #else
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
 #endif
-    // Prefer the hand written AArch64 micro-kernel for pointwise convolution
-    // as it computes multiple output positions at once and significantly
-    // reduces memory traffic. The AArch64 assembly kernel is selected by
-    // heuristics in snchwc.cpp to avoid regressions on small convolutions, so
-    // we set the default to the intrinsics version here.
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
