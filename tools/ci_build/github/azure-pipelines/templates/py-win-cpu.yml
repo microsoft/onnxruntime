@@ -94,7 +94,7 @@ jobs:
     - template: build-win-arm64x-steps.yml
       parameters:
         BuildDirectory: $(Build.SourcesDirectory)\build
-        AdditionalBuildPyArgs: >
+        AdditionalBuildPyArgs: >-
           --config ${{ parameters.cmake_build_type }}
           --enable_lto
           --skip_submodule_sync
@@ -110,7 +110,7 @@ jobs:
       displayName: 'Build'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: >
+        arguments: >-
           --config ${{ parameters.cmake_build_type }}
           --enable_lto
           --build_dir $(Build.SourcesDirectory)\build

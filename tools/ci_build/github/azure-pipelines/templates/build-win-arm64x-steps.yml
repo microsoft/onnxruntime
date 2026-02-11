@@ -9,7 +9,7 @@ steps:
   displayName: 'Build arm64 project for arm64x - generate the def & lib file for next build'
   inputs:
     scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-    arguments: >
+    arguments: >-
       ${{ parameters.AdditionalBuildPyArgs }}
       --build_shared_lib
       --arm64
@@ -20,7 +20,7 @@ steps:
   displayName: 'Build arm64ec project for arm64x - the real arm64x'
   inputs:
     scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-    arguments: >
+    arguments: >-
       ${{ parameters.AdditionalBuildPyArgs }}
       --build_shared_lib
       --arm64ec
