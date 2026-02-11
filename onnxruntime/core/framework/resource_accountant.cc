@@ -54,8 +54,8 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
   }
 
   ResourceCount ComputeResourceCount(const Node& node) override {
-    const auto node_name = MakeUniqueNodeName(node);
     if (node_stats_) {
+      const auto node_name = MakeUniqueNodeName(node);
       auto hit = node_stats_->find(node_name);
       if (hit != node_stats_->end()) {
         const auto& stats = hit->second;
@@ -67,7 +67,9 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
       const auto* graph = node.GetContainingGraph();
       if (!graph) return static_cast<size_t>(0);
 
-      size_t total_size = 0;
+      /// XXX: Consider accounting for intermediate tensors as well
+      /// if they have shape.
+      SafeInt<size_t> total_size = 0;
       for (const auto* input_def : node.InputDefs()) {
         if (!input_def->Exists()) continue;
 
@@ -90,7 +92,7 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
           }
         }
       }
-      return total_size;
+      return static_cast<size_t>(total_size);
     }
   }
 
@@ -205,12 +207,6 @@ Status CreateAccountants(
   if (!resource_partitioning_settings.empty()) {
     auto splits = utils::SplitString(resource_partitioning_settings, ",", true);
     if (splits.size() == 2) {
-      if (splits[0].empty() && splits[1].empty()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value for: ",
-                               kOrtSessionOptionsResourceCudaPartitioningSettings,
-                               " : at least one of the fields should be provided");
-      }
-
       auto& map = result.emplace();
 
       std::optional<size_t> cuda_memory_limit;
@@ -237,8 +233,7 @@ Status CreateAccountants(
         map.insert_or_assign(kCudaExecutionProvider,
                              std::make_unique<SizeBasedStatsAccountant>(std::move(*loaded_stats)));
       } else {
-        ORT_THROW("Invalid value for: ", kOrtSessionOptionsResourceCudaPartitioningSettings,
-                  " : at least one of the fields should be provided");
+        map.insert_or_assign(kCudaExecutionProvider, std::make_unique<SizeBasedStatsAccountant>());
       }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid format for: ",

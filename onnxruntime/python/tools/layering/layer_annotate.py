@@ -60,8 +60,8 @@ def read_annotation_config(config_file_path):
     """
     substring_annotations = []
     with open(config_file_path) as f:
-        for line in f:
-            line = line.strip()
+        for unstripped_line in f:
+            line = unstripped_line.strip()
             if not line:
                 continue
             parts = line.split(":", 1)
@@ -69,8 +69,8 @@ def read_annotation_config(config_file_path):
                 continue
             annotation = parts[0].strip()
             substrings = parts[1].split(",")
-            for substring in substrings:
-                substring = substring.strip()
+            for substr in substrings:
+                substring = substr.strip()
                 if substring:
                     substring_annotations.append((substring, annotation))
     return substring_annotations
