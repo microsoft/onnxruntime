@@ -42,6 +42,10 @@ stages:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - script: |
+        git submodule update --init cmake/external/onnx
+      displayName: 'Initialize ONNX submodule for test data'
+
+    - script: |
        $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                  $(Build.BinariesDirectory)/nuget-artifact \
                  $(NuGetPackageVersionNumber) \
