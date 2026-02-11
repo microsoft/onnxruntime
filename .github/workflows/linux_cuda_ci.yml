@@ -29,7 +29,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
       docker_image_repo: onnxruntimecuda12manylinuxbuild
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --parallel --nvcc_threads 1 --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
       run_tests: false            # <<< Do not run tests in this job
       upload_build_output: true   # <<< Upload the build/Release directory

@@ -7,7 +7,6 @@
 Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of Compute Capability 7.5 or above.
 """
 
-import math
 import os
 import unittest
 
@@ -20,203 +19,26 @@ from torch import Tensor
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
 from onnxruntime.transformers.io_binding_helper import CudaSession
 
+try:
+    from gqa_test_helper import (
+        AttentionConfig,
+        GroupQueryAttentionConfig,
+        OrtGroupQueryAttention,
+    )
+except ImportError:
+    import sys
+
+    sys.path.insert(0, os.path.dirname(__file__))
+    from gqa_test_helper import (
+        AttentionConfig,
+        GroupQueryAttentionConfig,
+        OrtGroupQueryAttention,
+    )
+
 ENABLE_DEBUG = False
 
 
-class AttentionConfig:
-    def __init__(
-        self,
-        operator: str,
-        batch_size: int,
-        sequence_length: int,
-        max_sequence_length: int,
-        past_sequence_length: int,
-        num_heads: int,
-        kv_num_heads: int,
-        head_size: int,
-        softmax_scale: float | None,
-        do_rotary: bool,
-        rotary_interleaved: bool,
-        provider: str = "CUDAExecutionProvider",
-        device="cuda",
-        dtype=torch.float16,
-        share_buffer: bool = True,
-        is_packed_qkv: bool = False,
-        max_cache_sequence_length=None,
-        max_rotary_sequence_length=None,
-        use_smooth_softmax: bool = False,
-    ):
-        self.operator = operator
-        self.batch_size = batch_size
-        self.sequence_length = sequence_length
-        self.max_sequence_length = max_sequence_length
-        self.max_cache_sequence_length = max_cache_sequence_length or max_sequence_length
-        self.max_rotary_sequence_length = max_rotary_sequence_length or max_sequence_length
-        self.past_sequence_length = past_sequence_length
-        self.num_heads = num_heads
-        self.kv_num_heads = kv_num_heads
-        self.head_size = head_size
-        self.softmax_scale = softmax_scale or (1.0 / (head_size**0.5))
-
-        # Derived values
-        self.total_sequence_length = sequence_length + past_sequence_length
-        self.past_buffer_length = self.max_cache_sequence_length if share_buffer else past_sequence_length
-        self.present_buffer_length = (
-            self.max_cache_sequence_length if share_buffer else (past_sequence_length + sequence_length)
-        )
-
-        self.do_rotary = do_rotary
-        self.rotary_interleaved = rotary_interleaved
-
-        self.provider = provider
-        self.device = device
-        self.dtype = dtype
-
-        self.share_buffer = share_buffer
-        self.is_packed_qkv = is_packed_qkv
-
-        self.use_smooth_softmax = use_smooth_softmax
-
-    def shape_dict(self):
-        shapes = {
-            "query": (
-                self.batch_size,
-                self.sequence_length,
-                (self.num_heads + 2 * self.kv_num_heads) * self.head_size,
-            ),
-            "past_key": (self.batch_size, self.kv_num_heads, self.past_buffer_length, self.head_size),
-            "past_value": (self.batch_size, self.kv_num_heads, self.past_buffer_length, self.head_size),
-            "total_sequence_length": (1,),
-            "output": (self.batch_size, self.sequence_length, self.num_heads * self.head_size),
-            "present_key": (self.batch_size, self.kv_num_heads, self.present_buffer_length, self.head_size),
-            "present_value": (self.batch_size, self.kv_num_heads, self.present_buffer_length, self.head_size),
-            "cos_cache": (self.max_rotary_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
-            "sin_cache": (self.max_rotary_sequence_length, (math.floor(self.head_size / 16) * 16) // 2),
-        }
-
-        if not self.is_packed_qkv:
-            shapes.update(
-                {
-                    "query": (self.batch_size, self.sequence_length, self.num_heads * self.head_size),
-                    "key": (self.batch_size, self.sequence_length, self.kv_num_heads * self.head_size),
-                    "value": (self.batch_size, self.sequence_length, self.kv_num_heads * self.head_size),
-                }
-            )
-        return shapes
-
-    def get_cos_sin_cache(self, dtype):
-        rotary_fraction = 1.0
-        rotary_dim = math.floor(int(rotary_fraction * self.head_size) / 16) * 16
-        angle = torch.rand(self.max_rotary_sequence_length, rotary_dim // 2, device="cpu") * 2 * math.pi
-        cos = torch.cos(angle).to(dtype=dtype)
-        sin = torch.sin(angle).to(dtype=dtype)
-        return cos.to(device=self.device), sin.to(device=self.device)
-
-    def random_inputs(self):
-        device = self.device
-        # ORT python I/O binding API supports bf16 via torch tensor.
-        dtype = self.dtype
-
-        # Always use non-packed qkv to generate same inputs for Torch and ORT.
-        packed = self.is_packed_qkv  # Save the original value.
-        self.is_packed_qkv = False
-        shape_dict = self.shape_dict()
-        self.is_packed_qkv = packed  # Restore the original value.
-        torch.manual_seed(123)
-
-        feeds = {
-            "query": torch.empty(shape_dict["query"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-            "key": torch.empty(shape_dict["key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-            "value": torch.empty(shape_dict["value"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-            "past_key": torch.empty(shape_dict["past_key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-            "past_value": torch.empty(shape_dict["past_value"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
-            "total_sequence_length": torch.tensor([self.total_sequence_length], dtype=torch.int32),
-        }
-
-        if packed:
-            query = feeds["query"].view(self.batch_size, self.sequence_length, self.num_heads, self.head_size)
-            key = feeds["key"].view(self.batch_size, self.sequence_length, self.kv_num_heads, self.head_size)
-            value = feeds["value"].view(self.batch_size, self.sequence_length, self.kv_num_heads, self.head_size)
-            feeds["query"] = torch.dstack((query, key, value)).reshape(self.batch_size, self.sequence_length, -1)
-            del feeds["key"]
-            del feeds["value"]
-
-        if self.do_rotary:
-            cos_cache, sin_cache = self.get_cos_sin_cache(dtype)
-            feeds["cos_cache"] = cos_cache
-            feeds["sin_cache"] = sin_cache
-
-        return feeds
-
-
-class GroupQueryAttentionConfig(AttentionConfig):
-    def __init__(
-        self,
-        batch_size: int,
-        sequence_length: int,
-        max_sequence_length: int,
-        past_sequence_length: int,
-        num_heads: int,
-        kv_num_heads: int,
-        head_size: int,
-        softmax_scale=None,
-        do_rotary: bool = False,
-        rotary_interleaved: bool = False,
-        provider: str = "CUDAExecutionProvider",
-        device="cuda",
-        dtype=torch.float16,
-        local_window_size: int = -1,
-        attention_mask=None,
-        is_packed_qkv=False,
-        max_cache_sequence_length=None,
-        max_rotary_sequence_length=None,
-        use_smooth_softmax: bool = False,
-    ):
-        super().__init__(
-            "GroupQueryAttention",
-            batch_size=batch_size,
-            sequence_length=sequence_length,
-            max_sequence_length=max_sequence_length,
-            past_sequence_length=past_sequence_length,
-            num_heads=num_heads,
-            kv_num_heads=kv_num_heads,
-            head_size=head_size,
-            softmax_scale=softmax_scale,
-            do_rotary=do_rotary,
-            rotary_interleaved=rotary_interleaved,
-            provider=provider,
-            device=device,
-            dtype=dtype,
-            is_packed_qkv=is_packed_qkv,
-            max_cache_sequence_length=max_cache_sequence_length,
-            max_rotary_sequence_length=max_rotary_sequence_length,
-            use_smooth_softmax=use_smooth_softmax,
-        )
-        # local_window_size is for ORT only, not for Torch implementation.
-        self.local_window_size = local_window_size
-
-        # attention mask is for Torch implementation only, not for ORT.
-        self.attention_mask = attention_mask
-
-    def shape_dict(self):
-        shapes = super().shape_dict()
-        shapes.update(
-            {
-                "seqlens_k": (self.batch_size,),
-            }
-        )
-        return shapes
-
-    def random_inputs(self):
-        feeds = super().random_inputs()
-        k_seqlens = torch.ones((self.batch_size,), device=self.device, dtype=torch.int32) * self.total_sequence_length
-        feeds.update(
-            {
-                "seqlens_k": k_seqlens - 1,
-            }
-        )
-
-        return feeds
+# AttentionConfig and GroupQueryAttentionConfig moved to gqa_test_helper
 
 
 class SparseAttentionConfig(AttentionConfig):
@@ -510,108 +332,7 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
     return model.SerializeToString()
 
 
-def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
-    assert config.dtype in [torch.float16, torch.float32, torch.bfloat16]
-
-    if config.dtype == torch.float16:
-        float_type = TensorProto.FLOAT16
-    elif config.dtype == torch.bfloat16:
-        float_type = TensorProto.BFLOAT16
-    else:
-        float_type = TensorProto.FLOAT
-
-    # Build input list for the GQA node
-    node_inputs = [
-        "query",
-        "key" if not config.is_packed_qkv else "",
-        "value" if not config.is_packed_qkv else "",
-        "past_key",
-        "past_value",
-        "seqlens_k",
-        "total_sequence_length" if config.share_buffer else "",
-        "cos_cache" if config.do_rotary else "",
-        "sin_cache" if config.do_rotary else "",
-        "",  # position_ids (optional, not used in benchmark)
-        "",  # attention_bias (optional, not used in benchmark)
-        "",  # head_sink (optional, not used in benchmark)
-    ]
-    # Remove trailing empty strings
-    while node_inputs and node_inputs[-1] == "":
-        node_inputs.pop()
-
-    # Build attributes dictionary
-    node_attrs = {
-        "num_heads": config.num_heads,
-        "kv_num_heads": config.kv_num_heads,
-        "scale": config.softmax_scale,
-        "local_window_size": config.local_window_size,
-        "do_rotary": 1 if config.do_rotary else 0,
-        "rotary_interleaved": config.rotary_interleaved,
-        "smooth_softmax": 1 if config.use_smooth_softmax else 0,
-        "domain": "com.microsoft",
-    }
-
-    nodes = [
-        helper.make_node(
-            "GroupQueryAttention",
-            node_inputs,
-            ["output", "present_key", "present_value"],
-            "GroupQueryAttention_0",
-            **node_attrs,
-        ),
-    ]
-
-    shape_dict = config.shape_dict()
-    graph_input = [
-        helper.make_tensor_value_info("query", float_type, list(shape_dict["query"])),
-    ]
-
-    if not config.is_packed_qkv:
-        graph_input.extend(
-            [
-                helper.make_tensor_value_info("key", float_type, list(shape_dict["key"])),
-                helper.make_tensor_value_info("value", float_type, list(shape_dict["value"])),
-            ]
-        )
-
-    cache_type = float_type
-    past_key_shape = list(shape_dict["past_key"])
-    past_value_shape = list(shape_dict["past_value"])
-    present_key_shape = list(shape_dict["present_key"])
-    present_value_shape = list(shape_dict["present_value"])
-
-    graph_input.extend(
-        [
-            helper.make_tensor_value_info("past_key", cache_type, past_key_shape),
-            helper.make_tensor_value_info("past_value", cache_type, past_value_shape),
-            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, list(shape_dict["seqlens_k"])),
-            helper.make_tensor_value_info(
-                "total_sequence_length", TensorProto.INT32, list(shape_dict["total_sequence_length"])
-            ),
-        ]
-    )
-
-    if config.do_rotary:
-        graph_input += [
-            helper.make_tensor_value_info("cos_cache", float_type, list(shape_dict["cos_cache"])),
-            helper.make_tensor_value_info("sin_cache", float_type, list(shape_dict["sin_cache"])),
-        ]
-
-    graph_output = [
-        helper.make_tensor_value_info("output", float_type, list(shape_dict["output"])),
-        helper.make_tensor_value_info("present_key", cache_type, present_key_shape),
-        helper.make_tensor_value_info("present_value", cache_type, present_value_shape),
-    ]
-
-    graph = helper.make_graph(
-        nodes,
-        "GroupQueryAttention_Graph",
-        graph_input,
-        graph_output,
-    )
-
-    model = helper.make_model(graph)
-    return model.SerializeToString()
+# create_group_query_attention_onnx_model moved to gqa_test_helper
 
 
 def create_session(onnx_model_str, cuda_provider_options=None) -> InferenceSession:
@@ -648,8 +369,7 @@ def group_query_attention_reference(
         attn = attn.masked_fill((1 - mask).bool(), float("-inf"))
 
     if config.use_smooth_softmax:
-        head_sink = None
-        attn = smooth_softmax_ref(attn, head_sink)
+        attn = smooth_softmax_ref(attn, head_sink=None)
     else:
         attn = attn.softmax(-1)
 
@@ -731,13 +451,11 @@ class TorchGroupQueryAttention:
         )
 
 
-def create_ort_session(
-    config: SparseAttentionConfig | GroupQueryAttentionConfig, session_options=None, enable_cuda_graph=False
-) -> CudaSession:
+def create_ort_session(config: SparseAttentionConfig, session_options=None, enable_cuda_graph=False) -> CudaSession:
     if isinstance(config, SparseAttentionConfig):
         onnx_model_str = create_sparse_attention_onnx_model(config)
     else:
-        onnx_model_str = create_group_query_attention_onnx_model(config)
+        raise ValueError("Only SparseAttentionConfig is supported directly here.")
 
     if config.provider == "CUDAExecutionProvider":
         device_id = torch.cuda.current_device() if isinstance(config.device, str) else config.device.index
@@ -761,32 +479,7 @@ def create_ort_session(
     return cuda_session
 
 
-class OrtGroupQueryAttention:
-    """A wrapper of ORT GroupQueryAttention to test relevance and performance."""
-
-    def __init__(self, config: GroupQueryAttentionConfig):
-        self.session = create_ort_session(config)
-
-        self.feed_dict = config.random_inputs()
-
-        if ENABLE_DEBUG and not config.is_packed_qkv:
-            query = self.feed_dict["query"].view(
-                config.batch_size, config.sequence_length, config.num_heads, config.head_size
-            )
-            key = self.feed_dict["key"].view(
-                config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size
-            )
-            value = self.feed_dict["value"].view(
-                config.batch_size, config.sequence_length, config.kv_num_heads, config.head_size
-            )
-            print(vars(config))
-            print("query(BSNH, GQA)", query)
-            print("key(BSNH, GQA)", key)
-            print("value(BSNH, GQA)", value)
-            print("seqlens_k (BSNH, GQA)", self.feed_dict["seqlens_k"])
-
-    def infer(self):
-        return self.session.infer(self.feed_dict)
+# OrtGroupQueryAttention moved to gqa_test_helper
 
 
 class OrtSparseAttention:

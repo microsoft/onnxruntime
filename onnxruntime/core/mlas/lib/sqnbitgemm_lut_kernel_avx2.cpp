@@ -361,7 +361,8 @@ GenerateLUT_avx2(
     size_t M,
     size_t K,
     size_t N,
-    size_t act_group_size
+    size_t act_group_size,
+    size_t lut_stride
 )
 {
     (void)M;  // silence unused parameter warning
@@ -379,7 +380,9 @@ GenerateLUT_avx2(
     }
 
     for (int32_t k_outer_1 = 0; k_outer_1 < kk_outer_max; ++k_outer_1) {
-        lut_ctor_g4_int8_impl(static_cast<int32_t>(act_group_size), (&(qlut[(k_outer_1 * act_group_size * 4)])), (&(b[(k_outer_1 * act_group_size)])), (&(lut_scales[k_outer_1])), (&(lut_biases[k_outer_1])));
+        // Use the explicit lut_stride provided by the dispatch/caller to ensure
+        // consistent memory layout between construction and compute paths.
+        lut_ctor_g4_int8_impl(static_cast<int32_t>(act_group_size), (&(qlut[(k_outer_1 * lut_stride)])), (&(b[(k_outer_1 * act_group_size)])), (&(lut_scales[k_outer_1])), (&(lut_biases[k_outer_1])));
     }
 }
 
@@ -400,10 +403,35 @@ tbl_g4_int8_float_gather_bit2_impl(int32_t m, float* C_global, float* CBits, flo
         }
     }
 
+    // Handle tail cases where m is not a multiple of 32.
+    // This ensures C_global is fully initialized for all m elements.
+    int32_t m_tail = m % 32;
+    if (m_tail > 0) {
+        int32_t m_c_outer = m_c_outer_max;
+        int32_t cse_var_2 = (m_c_outer * 32 * bits);
+        int32_t cse_var_1 = (m_c_outer * 32);
+        for (int32_t m_c_inner = 0; m_c_inner < m_tail; ++m_c_inner) {
+            int32_t bit_offset_0 = (m_c_inner / 8) * 8 * bits + (m_c_inner % 8);
+            int32_t bit_offset_1 = (m_c_inner / 8) * 8 * bits + (m_c_inner % 8) + 8;
+            C_global[cse_var_1 + m_c_inner] = (CBits[cse_var_2 + bit_offset_0] * (float)5.000000e-01f) + (CBits[cse_var_2 + bit_offset_1]);
+        }
+    }
+
     for (int32_t m_inner_outer = 0; m_inner_outer < m_c_outer_max; ++m_inner_outer) {
         PRAGMA_UNROLL
         for (int32_t m_inner = 0; m_inner < 32; ++m_inner) {
             int offset = m_inner_outer * 32 + m_inner;
+            C[offset] = C_global[offset];
+        }
+    }
+
+    // Transfer the remaining tail results from C_global to the final output matrix C.
+    // This is necessary when m is not a multiple of 32, ensuring all output features
+    // are correctly written to the destination buffer.
+    if (m_tail > 0) {
+        int offset_base = m_c_outer_max * 32;
+        for (int32_t m_inner = 0; m_inner < m_tail; ++m_inner) {
+            int offset = offset_base + m_inner;
             C[offset] = C_global[offset];
         }
     }
@@ -451,8 +479,8 @@ tbl_g4_int8_float_update_impl(int32_t m, float* c, const int8_t* lut, const uint
             __m256 vec_v_high_low = _mm256_cvtepi32_ps(extract_low_epi16_epi32(adder.get_high()));
             __m256 vec_v_high_high = _mm256_cvtepi32_ps(extract_high_epi16_epi32(adder.get_high()));
 
-            float lut_s = lut_scales[kk / ActK];
-            float lut_b = lut_biases[kk / ActK];
+            float lut_s = lut_scales[kk / (ActK * 4)];
+            float lut_b = lut_biases[kk / (ActK * 4)];
 
             partial_sum += lut_b;
 
@@ -542,17 +570,20 @@ TMACComputeGemm_avx2(
     int K,
     int M,
     int N,
+    int TotalN,
     size_t BlkLen,  // Weight quantization group size (q_group_size)
     bool HasZeroPoint
 )
 {
-    // Validate batch size
-    if (N != 1) {
-        MLAS_THROW_EX(std::runtime_error, "N > 1 is not supported yet");
+    // Validate batch size (M)
+    // For now, TMAC AVX2 kernel processes one batch row at a time.
+    if (M != 1) {
+        MLAS_THROW_EX(std::runtime_error, "M > 1 is not supported yet in TMAC AVX2 kernel");
     }
 
-    // get kernel config
-    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(M, K, 2, BlkLen, HasZeroPoint);
+    // get kernel config using the total output features (TotalN)
+    // This matches the parameters used during weight packing.
+    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(TotalN, K, 2, BlkLen, HasZeroPoint);
 
     // ==================== CONFIGURATION ====================
     // Fixed parameters for this kernel implementation
@@ -572,7 +603,11 @@ TMACComputeGemm_avx2(
     const int32_t actk = static_cast<int32_t>(tmac_params.actk);                      // CRITICAL: = 16 for BlkLen=64, NOT BlkLen!
 
     const int32_t bm = static_cast<int32_t>(tmac_params.bm);
-    int32_t m = bm / bits;
+    // m is the number of output features this kernel tile produces.
+    // We clamp m by N (the number of features in the current chunk) to ensure
+    // we don't read or write past the tile boundary during the gather phase.
+    int32_t m_full = bm / bits;
+    int32_t m = std::min(m_full, N);
 
     // Validate configuration
     assert(bm % bits == 0);
@@ -590,8 +625,9 @@ TMACComputeGemm_avx2(
     float* CBits = new float[bm];
     float* C_global = new float[m];
 
-    // Reset accumulator buffer to zero
-    tbl_int32_reset(bm * sizeof(float) / sizeof(int32_t), reinterpret_cast<int32_t*>(CBits));
+    // Explicitly zero-initialize accumulation buffers to ensure determinism.
+    memset(CBits, 0, bm * sizeof(float));
+    memset(C_global, 0, m * sizeof(float));
 
     // ==================== CALCULATE LOOP PARAMETERS ====================
     const int32_t k_outer_max = K / (kfactor * g);
