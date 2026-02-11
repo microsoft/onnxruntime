@@ -89,14 +89,12 @@ jobs:
     env:
       TMPDIR: "$(Agent.TempDirectory)"
 
-  - task: PythonScript@0
-    displayName: 'Build'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: >
+  - template: set-variable.yml
+    parameters:
+      name: commonBuildPyArgs
+      value: >-
         --config ${{ parameters.cmake_build_type }}
         --enable_lto
-        --build_dir $(Build.SourcesDirectory)\build
         --skip_submodule_sync
         --cmake_generator "Visual Studio 17 2022"
         --enable_pybind
@@ -104,6 +102,20 @@ jobs:
         ${{ parameters.build_py_parameters }}
         --parallel --use_binskim_compliant_compile_flags --update
         $(TelemetryOption)
+
+  - ${{ if eq(parameters.architecture, 'arm64') }}:
+    # arm64x build
+    - template: build-win-arm64x-steps.yml
+      parameters:
+        BuildDirectory: $(Build.SourcesDirectory)\build
+        AdditionalBuildPyArgs: $(commonBuildPyArgs)
+
+  - ${{ else }}:
+    - task: PythonScript@0
+      displayName: 'Build'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '$(commonBuildPyArgs) --build_dir $(Build.SourcesDirectory)\build'
 
   - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
     - template: publish-symbolrequestprod-api.yml
