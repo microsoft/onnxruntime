@@ -196,7 +196,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_parameters.num_splits = 1;
 
     // Construct GroupQueryAttentionData
-    onnxruntime::contrib::cuda::GroupQueryAttentionData<CudaT> gqa_data;
+    onnxruntime::contrib::cuda::GroupQueryAttentionData<CudaT, CudaT> gqa_data;
 
     // Scratch buffers for flash/memory efficient attention
     IAllocatorUniquePtr<void> k_buffer;
@@ -355,6 +355,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // Centralized scratch buffer allocation using GQABufferRequirements
     auto buffer_req = onnxruntime::contrib::cuda::GQABufferRequirements::Compute<T>(
         gqa_parameters,
+        false,  // use_xqa
         gqa_data.use_flash_attention,
         gqa_data.use_flash_attention_fast_decode,
         gqa_data.use_memory_efficient_attention);
@@ -478,7 +479,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // Call GQA kernel (with flash or memory efficient attention)
     cublasHandle_t cublas = GetCublasHandle(context);
 
-    return onnxruntime::contrib::cuda::QkvToContext<CudaT>(
+    return onnxruntime::contrib::cuda::QkvToContext<CudaT, CudaT>(
         device_prop, cublas, context->GetComputeStream(), gqa_parameters, gqa_data);
   }
 
