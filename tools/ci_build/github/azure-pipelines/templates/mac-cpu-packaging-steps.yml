@@ -40,6 +40,14 @@ steps:
     targetPath: '$(Build.ArtifactStagingDirectory)'
     artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
+- template: java-api-artifacts-package-and-publish-steps-posix.yml
+  parameters:
+    arch: 'osx-${{ parameters.MacosArch }}'
+    buildConfig: 'Release'
+    artifactName: 'onnxruntime-java-osx-${{ parameters.MacosArch }}'
+    libraryName: 'libonnxruntime.dylib'
+    nativeLibraryName: 'libonnxruntime4j_jni.dylib'
+
 - template: nodejs-artifacts-package-and-publish-steps-posix.yml
   parameters:
       arch: arm64
