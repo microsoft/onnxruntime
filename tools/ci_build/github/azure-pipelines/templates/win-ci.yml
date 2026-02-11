@@ -177,7 +177,7 @@ stages:
 
       - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 
-      - ${{ if eq(parameters.msbuildPlatform, "arm64x") }}:
+      - ${{ if eq(parameters.msbuildPlatform, 'arm64x') }}:
         - template: build-win-arm64x-steps.yml
           parameters:
             BuildDirectory: $(Build.BinariesDirectory)
