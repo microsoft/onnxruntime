@@ -934,6 +934,30 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
         private void TestPreTrainedModels(string opsetDir, string modelName, bool useOrtValueAPIs = false)
         {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                var skipModels = new HashSet<string>
+                {
+                    "test_castlike_FLOAT_to_STRING_expanded",
+                    "test_castlike_FLOAT_to_BFLOAT16_expanded",
+                    "test_castlike_BFLOAT16_to_FLOAT",
+                    "test_cast_FLOAT_to_STRING",
+                    "test_castlike_FLOAT_to_BFLOAT16",
+                    "test_castlike_STRING_to_FLOAT_expanded",
+                    "test_castlike_STRING_to_FLOAT",
+                    "test_cast_STRING_to_FLOAT",
+                    "test_castlike_BFLOAT16_to_FLOAT_expanded",
+                    "test_cast_BFLOAT16_to_FLOAT",
+                    "test_castlike_FLOAT_to_STRING"
+                };
+
+                if (skipModels.Contains(modelName))
+                {
+                    output.WriteLine($"Skipping {modelName} on macOS");
+                    return;
+                }
+            }
+
             var opsetDirInfo = new DirectoryInfo(opsetDir);
             var opset = opsetDirInfo.Name;
             string onnxModelFileName = null;

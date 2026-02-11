@@ -35,11 +35,26 @@ stages:
 
     - script: |
         mv $(Pipeline.Workspace)/build/drop-signed-nuget-${{ parameters.ArtifactSuffix }} $(Build.BinariesDirectory)/nuget-artifact
-        mv $(Pipeline.Workspace)/build/onnxruntime-osx $(Build.BinariesDirectory)/testdata
+
+        # Artifact is a folder containing tgz. Extract it to testdata.
+        mkdir -p $(Build.BinariesDirectory)/testdata
+        tar -xzf $(Pipeline.Workspace)/build/onnxruntime-osx/*.tgz -C $(Build.BinariesDirectory)/testdata
+
+        # Ensure libcustom_op_library.dylib is where EndToEndTests expects it (testdata/testdata)
+        mkdir -p $(Build.BinariesDirectory)/testdata/testdata
+        find $(Build.BinariesDirectory)/testdata -name "libcustom_op_library.dylib" -exec cp {} $(Build.BinariesDirectory)/testdata/testdata/ \;
+
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
+
+    - script: |
+        git submodule update --init cmake/external/onnx
+        cd cmake/external/onnx
+        git checkout v1.13.1
+        cd ../../..
+      displayName: 'Initialize ONNX submodule for test data (pinned to v1.13.1 since new data types like float8 is not supported in nuget)'
 
     - script: |
        $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
