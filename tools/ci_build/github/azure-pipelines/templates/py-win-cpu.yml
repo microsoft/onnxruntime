@@ -89,21 +89,38 @@ jobs:
     env:
       TMPDIR: "$(Agent.TempDirectory)"
 
-  - task: PythonScript@0
-    displayName: 'Build'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: >
-        --config ${{ parameters.cmake_build_type }}
-        --enable_lto
-        --build_dir $(Build.SourcesDirectory)\build
-        --skip_submodule_sync
-        --cmake_generator "Visual Studio 17 2022"
-        --enable_pybind
-        --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
-        ${{ parameters.build_py_parameters }}
-        --parallel --use_binskim_compliant_compile_flags --update
-        $(TelemetryOption)
+  - ${{ if eq(parameters.architecture, 'arm64') }}:
+    # arm64x
+    - template: build-win-arm64x-steps.yml
+      parameters:
+        BuildDirectory: $(Build.SourcesDirectory)\build
+        AdditionalBuildPyArgs: >
+          --config ${{ parameters.cmake_build_type }}
+          --enable_lto
+          --skip_submodule_sync
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_pybind
+          --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
+          ${{ parameters.build_py_parameters }}
+          --parallel --use_binskim_compliant_compile_flags --update
+          $(TelemetryOption)
+
+  - ${{ else }}:
+    - task: PythonScript@0
+      displayName: 'Build'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: >
+          --config ${{ parameters.cmake_build_type }}
+          --enable_lto
+          --build_dir $(Build.SourcesDirectory)\build
+          --skip_submodule_sync
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_pybind
+          --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
+          ${{ parameters.build_py_parameters }}
+          --parallel --use_binskim_compliant_compile_flags --update
+          $(TelemetryOption)
 
   - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
     - template: publish-symbolrequestprod-api.yml
