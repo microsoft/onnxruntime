@@ -929,17 +929,25 @@ namespace Microsoft.ML.OnnxRuntime
                         string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
                         string rid = RuntimeInformation.RuntimeIdentifier;
 
-                        // We no longer support osx-x64 after 1.24
-                        string[] ridsToTry = { rid, "win-x64", "win-arm64", "linux-x64", "linux-arm64", "osx-arm64"};
+                        // Probe the specific RID first, then common fallbacks for the current OS
+                        string[] ridsToTry;
+                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                            ridsToTry = new[] { rid, "win-x64", "win-arm64" };
+                        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                            ridsToTry = new[] { rid, "linux-x64", "linux-arm64" };
+                        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                            // We no longer provide osx-x64 in official package since 1.24.
+                            // However, we keep it in the list for build-from-source users.
+                            ridsToTry = new[] { rid, "osx-arm64", "osx-x64" };
+                        else
+                            ridsToTry = new[] { rid };
+
                         foreach (var tryRid in ridsToTry)
                         {
                             string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
-                            if (System.IO.File.Exists(probePath))
+                            if (System.IO.File.Exists(probePath) && NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
                             {
-                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
-                                {
-                                    return handle;
-                                }
+                                return handle;
                             }
                         }
                     }
@@ -962,7 +970,9 @@ namespace Microsoft.ML.OnnxRuntime
                         }
                     }
 
+#if DEBUG
                     System.Console.WriteLine($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
+#endif
                 }
             }
 

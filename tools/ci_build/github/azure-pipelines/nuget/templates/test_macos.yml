@@ -1,5 +1,6 @@
 parameters:
   AgentPool : 'macOS-15'
+  UseHostedVmImage: 'true'
   IsMacOS : 'true'
   ArtifactSuffix: ''
   PoolDemands: ''
@@ -14,7 +15,7 @@ stages:
     workspace:
       clean: all
     pool:
-      ${{ if contains(parameters.AgentPool, '-') }}:
+      ${{ if eq(parameters.UseHostedVmImage, 'true') }}:
         vmImage: ${{ parameters.AgentPool }}
       ${{ else }}:
         name: ${{ parameters.AgentPool }}
@@ -38,7 +39,9 @@ stages:
 
         # Artifact is a folder containing tgz. Extract it to testdata.
         mkdir -p $(Build.BinariesDirectory)/testdata
-        tar -xzf $(Pipeline.Workspace)/build/onnxruntime-osx/*.tgz -C $(Build.BinariesDirectory)/testdata
+        for archive in $(Pipeline.Workspace)/build/onnxruntime-osx/*.tgz; do
+          tar -xzf "$archive" -C $(Build.BinariesDirectory)/testdata
+        done
 
         # Ensure libcustom_op_library.dylib is where EndToEndTests expects it (testdata/testdata)
         mkdir -p $(Build.BinariesDirectory)/testdata/testdata
@@ -52,6 +55,7 @@ stages:
     - script: |
         git submodule update --init cmake/external/onnx
         cd cmake/external/onnx
+        git fetch origin v1.13.1 --depth=1
         git checkout v1.13.1
         cd ../../..
       displayName: 'Initialize ONNX submodule for test data (pinned to v1.13.1 since new data types like float8 is not supported in nuget)'
