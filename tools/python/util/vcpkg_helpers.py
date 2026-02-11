@@ -576,7 +576,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
                 # Wasm Exception Catching Runtime (-s flag, apply to Base and Linker flags)
                 exception_catching_flag = ""
                 if enable_wasm_eh:
-                    exception_catching_flag = "-fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0"
+                    exception_catching_flag = "-fwasm-exceptions"
                 elif enable_wasm_exception_catching:
                     exception_catching_flag = "-sDISABLE_EXCEPTION_CATCHING=0"
                 else:
