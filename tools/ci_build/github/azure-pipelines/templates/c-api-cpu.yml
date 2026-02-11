@@ -177,6 +177,16 @@ stages:
     PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
+- template: win-arm64x.yml
+  parameters:
+    build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+    BuildQnn: false
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    DoEsrp: true
+    ArtifactName: 'drop-nuget-arm64x'
+    StageName: 'Windows_Packaging_CPU_arm64x_${{ parameters.BuildVariant }}'
+    build_config: RelWithDebInfo
+
 - stage: Jar_Packaging
   dependsOn:
   - Linux_C_API_Packaging_CPU

@@ -90,7 +90,7 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-    - template: templates/qnn-ep-win.yml
+    - template: templates/win-arm64x.yml
       parameters:
         build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
         QnnSdk: ${{ parameters.QnnSdk }}
