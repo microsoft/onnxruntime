@@ -177,18 +177,39 @@ stages:
 
       - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 
+      - template: set-variable.yml
+        parameters:
+          name: commonBuildPyArgs
+          value: >-
+            --config RelWithDebInfo
+            --parallel 16
+            --use_vcpkg
+            --use_vcpkg_ms_internal_asset_cache
+            --use_binskim_compliant_compile_flags
+            --enable_lto
+            --disable_rtti
+            --skip_submodule_sync
+            --build_shared_lib
+            --update --build
+            --cmake_generator "$(VSGenerator)"
+            --enable_onnx_tests
+            $(TelemetryOption)
+            ${{ parameters.buildparameter }}
+            $(timeoutParameter)
+            $(buildJavaParameter)
+
       - ${{ if eq(parameters.msbuildPlatform, 'arm64x') }}:
         - template: build-win-arm64x-steps.yml
           parameters:
             BuildDirectory: $(Build.BinariesDirectory)
-            AdditionalBuildPyArgs: '--parallel 16 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --skip_submodule_sync --build_shared_lib --update --build --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter) --config RelWithDebInfo'
+            AdditionalBuildPyArgs: $(commonBuildPyArgs)
 
       - ${{ else }}:
         - task: PythonScript@0
           displayName: 'Generate build system and build'
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--parallel 16 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --skip_submodule_sync --build_shared_lib --update --build --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter) --config RelWithDebInfo --build_dir $(Build.BinariesDirectory)'
+            arguments: '$(commonBuildPyArgs) --build_dir $(Build.BinariesDirectory)'
             workingDirectory: '$(Build.BinariesDirectory)'
 
       # For CPU job, tests are run in the same machine as building
