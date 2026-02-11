@@ -40,17 +40,15 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   static std::unique_ptr<OrtCustomOpDomain> native_custom_op_domain = std::make_unique<OrtCustomOpDomain>();
 
   // Owns the TensorRTCustomOp objects for native custom ops. Raw pointers are stored in native_custom_op_domain->custom_ops_.
+  // Non-empty list indicates native custom ops have been registered (used to avoid re-registration on subsequent calls).
   static std::vector<std::unique_ptr<TensorRTCustomOp>> native_custom_op_list;
-
-  // Tracks whether native custom ops have been registered to avoid re-registration on subsequent calls.
-  static bool native_custom_ops_initialized = false;
 
   // Protects concurrent access to all the above static members.
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
 
   // Add already-initialized native ops to domain list
-  if (native_custom_ops_initialized) {
+  if (!native_custom_op_list.empty()) {
     domain_list.push_back(native_custom_op_domain.get());
   }
 
@@ -149,7 +147,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   }
 
   // Register native custom ops (register these independent of TRT plugin library availability)
-  if (!native_custom_ops_initialized) {
+  if (native_custom_op_list.empty()) {
     const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
     size_t num_native_custom_ops = std::size(native_custom_ops_names);
 
@@ -161,7 +159,6 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 
     native_custom_op_domain->domain_ = "trt";
     domain_list.push_back(native_custom_op_domain.get());
-    native_custom_ops_initialized = true;
   }
 
   return Status::OK();
