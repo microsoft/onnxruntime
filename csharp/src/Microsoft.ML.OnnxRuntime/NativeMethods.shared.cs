@@ -890,8 +890,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Custom DllImportResolver to handle platform-specific library loading.
         /// On Windows, it explicitly loads the library with a lowercase .dll extension to handle
-        /// case-sensitive filesystems. On other platforms (Linux/macOS), it returns IntPtr.Zero
-        /// to allow .NET's default, NuGet-aware resolution logic to find the library.
+        /// case-sensitive filesystems.
         /// </summary>
         private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
@@ -930,7 +929,8 @@ namespace Microsoft.ML.OnnxRuntime
                         string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
                         string rid = RuntimeInformation.RuntimeIdentifier;
 
-                        string[] ridsToTry = { rid, "osx-arm64", "osx-aarch64", "osx", "linux-x64", "linux-arm64", "linux" };
+                        // We no longer support osx-x64 after 1.24
+                        string[] ridsToTry = { rid, "win-x64", "win-arm64", "linux-x64", "linux-arm64", "osx-arm64"};
                         foreach (var tryRid in ridsToTry)
                         {
                             string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
