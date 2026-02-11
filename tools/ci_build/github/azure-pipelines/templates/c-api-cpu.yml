@@ -166,6 +166,20 @@ stages:
 - template: win-ci.yml
   parameters:
     DoEsrp: true
+    stage_name_suffix: CPU_arm64x_${{ parameters.BuildVariant }}
+    buildArch: x64
+    msbuildPlatform: arm64x
+    packageName: arm64x
+    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
+- template: win-ci.yml
+  parameters:
+    DoEsrp: true
     stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     buildArch: x64
     msbuildPlatform: x64
@@ -176,16 +190,6 @@ stages:
     buildNodejs: false
     PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
-
-- template: win-arm64x.yml
-  parameters:
-    build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-    BuildQnn: false
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    DoEsrp: true
-    ArtifactName: 'drop-nuget-arm64x'
-    StageName: 'Windows_Packaging_CPU_arm64x_${{ parameters.BuildVariant }}'
-    build_config: RelWithDebInfo
 
 - stage: Jar_Packaging
   dependsOn:
