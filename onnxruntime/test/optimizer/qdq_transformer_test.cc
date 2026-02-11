@@ -3734,7 +3734,6 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                       TransformerLevel::Level1,
                       21, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
                       {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
-    // TODO: fix opset 19
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, false /*use_contrib_qdq*/);
