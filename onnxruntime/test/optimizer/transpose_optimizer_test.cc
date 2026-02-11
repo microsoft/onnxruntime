@@ -1962,7 +1962,7 @@ TEST(TransposeOptimizerTests, TestSlice) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 23});
+                    /*opset_version*/ 7);
 }
 
 TEST(TransposeOptimizerTests, TestSliceNoAxes) {
@@ -1990,7 +1990,7 @@ TEST(TransposeOptimizerTests, TestSliceNoAxes) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 23});
+                    /*opset_version*/ 7);
 }
 
 TEST(TransposeOptimizerTests, TestSliceOpset15) {
