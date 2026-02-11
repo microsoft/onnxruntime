@@ -32,6 +32,7 @@ function save_qairt_sdk_path() {
 
 config="Release"
 qairt_sdk_root=
+ort_prebuilt_root=
 qnn_arch_abi=
 target_py_version=
 use_cache=1
@@ -52,6 +53,10 @@ for i in "$@"; do
       ;;
     --no-warnings-as-errors)
       warnings_as_errors=
+      shift
+      ;;
+    --ort-home=*)
+      ort_prebuilt_root="${i#*=}"
       shift
       ;;
     --qairt-sdk-root=*)
@@ -89,6 +94,14 @@ qairt_sdk_file_path="${build_dir}/qairt-sdk-path-${config}.txt"
 
 if [ -z "${qairt_sdk_root}" ]; then
     qairt_sdk_root="$(get_qairt_contentdir)"
+fi
+
+if [ -z "${ort_prebuilt_root}" ]; then
+    if [ "${target_arch}" == "aarch64_oe_gcc11_2" ]; then
+        ort_prebuilt_root="$(get_ort_aarch64_prebuilt_root)"
+    else
+        ort_prebuilt_root="$(get_ort_x64_prebuilt_root)"
+    fi
 fi
 
 cmake_bindir="$(get_cmake_bindir)"
@@ -152,7 +165,7 @@ test_runner=
 
 case "${target_platform}" in
   linux)
-    qnn_args=(--use_qnn --qnn_home "${qairt_sdk_root}")
+    qnn_args=(--use_qnn --qnn_home "${qairt_sdk_root}" --ort_home "${ort_prebuilt_root}")
     platform_args=(--build_shared_lib)
 
     test_runner="${REPO_ROOT}/qcom/scripts/linux/run_tests.sh"
@@ -208,6 +221,7 @@ case "${target_platform}" in
       android_ndk_path="$(get_android_ndk_root)"
     fi
 
+    # TODO: Add --ort_home "${ort_prebuilt_root}" once MS release ORT prebuilt for Android
     qnn_args=(--use_qnn static_lib --qnn_home "${qairt_sdk_root}")
     platform_args=(--build_shared_lib \
                    --android_sdk_path "${android_sdk_path}" \

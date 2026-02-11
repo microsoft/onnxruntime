@@ -99,6 +99,20 @@ function get_package_contentdir() {
 }
 
 #
+# Get the root of the managed ORT x64 prebuilt installation.
+#
+function get_ort_x64_prebuilt_root() {
+    get_package_contentdir ort_prebuilt_linux_x64
+}
+
+#
+# Get the root of the managed ORT aarch64 prebuilt installation.
+#
+function get_ort_aarch64_prebuilt_root() {
+    get_package_contentdir ort_prebuilt_linux_aarch64
+}
+
+#
 # Get the root of the managed QAIRT installation.
 #
 function get_qairt_contentdir() {

@@ -124,6 +124,14 @@ function Get-NugetBinDir() {
     Get-PackageBinDir nuget_windows_x86_64
 }
 
+function Get-OrtX64PrebuiltRoot() {
+    Get-PackageContentDir ort_prebuilt_windows_x64
+}
+
+function Get-OrtARM64PrebuiltRoot() {
+    Get-PackageContentDir ort_prebuilt_windows_arm64
+}
+
 function Get-QairtRoot() {
     Get-PackageContentDir qairt
 }

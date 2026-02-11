@@ -354,6 +354,7 @@ def generate_build_tree(
     acl_libs,
     armnn_home,
     armnn_libs,
+    ort_home,
     qnn_home,
     snpe_root,
     cann_home,
@@ -799,6 +800,9 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_MULTI=" + ("ON" if args.use_openvino.startswith("MULTI") else "OFF"),
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
+
+    if ort_home and os.path.exists(ort_home):
+        cmake_args += ["-Donnxruntime_ORT_HOME=" + ort_home]
 
     # VitisAI and OpenVINO providers currently only support full_protobuf option.
     if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc or args.enable_generic_interface:
@@ -2334,6 +2338,7 @@ def main():
     qnn_home = ""
     if args.use_qnn:
         qnn_home = args.qnn_home
+    ort_home = args.ort_home
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = ""
@@ -2482,6 +2487,7 @@ def main():
             acl_libs,
             armnn_home,
             armnn_libs,
+            ort_home,
             qnn_home,
             snpe_root,
             cann_home,
