@@ -41,9 +41,7 @@
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
-        // TODO: support the following tests in Attention-cuda
-        "^test_attention_3d_gqa.*_cuda",  // GQA not supported in Attention-cuda
-        "^test_attention_4d_gqa.*_cuda",  // GQA not supported in Attention-cuda
+        // TODO: support the following tests in Attention-cuda (softcap, softmax precision and qk_matmul_mode)
         "^test_attention_3d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
         "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
         "^test_attention_3d_softcap_cuda",  // softcap not supported in Attention-cuda
@@ -68,6 +66,20 @@
         "^test_attention_4d_attn_mask_4d_causal_cuda",
         "^test_attention_4d_causal_cuda",
         "^test_attention_4d_diff_heads_sizes_causal_cuda",
+        // GQA Attention-cuda does not support fp16 and 4d QKV
+        "^test_attention_4d_gqa_with_past_and_present_fp16_cuda",  // 4d QKV
+        "^test_attention_4d_gqa_with_past_and_present_cuda",  // fp32
+        "^test_attention_4d_gqa_softcap_cuda",  // fp32
+        "^test_attention_4d_gqa_scaled_cuda",  // fp32
+        "^test_attention_4d_gqa_cuda",  // fp32
+        "^test_attention_3d_gqa_attn_mask_cuda",  // fp32
+        "^test_attention_3d_gqa_causal_cuda",  // fp32
+        "^test_attention_3d_gqa_cuda", // fp32
+        "^test_attention_3d_gqa_scaled_cuda", // fp32
+        "^test_attention_3d_gqa_softcap_cuda",  // fp32
+        "^test_attention_3d_gqa_with_past_and_present_cuda",  // fp32
+        "^test_attention_4d_gqa_attn_mask_cuda",  // fp32
+        "^test_attention_4d_gqa_causal_cuda",  // fp32
         "^test_tensorscatter*",  // TensorScatter(24) not implemented
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
