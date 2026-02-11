@@ -25,8 +25,8 @@ steps:
       if "\n" in variable_value:
           raise ValueError(f"Variable value should not contain any newlines: '{variable_value}'")
 
+      print(f"Setting variable: {variable_name} = '{variable_value}'")
       print(f"##vso[task.setvariable variable={variable_name}]{variable_value}")
-      print(f"Set variable: {variable_name} = {variable_value}")
   env:
     VARIABLE_NAME: ${{ parameters.name }}
     VARIABLE_VALUE: ${{ parameters.value }}
