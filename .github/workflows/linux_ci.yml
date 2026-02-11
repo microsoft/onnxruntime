@@ -94,7 +94,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
       docker_image_repo: onnxruntimecpubuildciaarch64
       # ASan disabled due to excessive runtime (>4hr). Includes wheel build for basic checks.
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_shared_lib'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_shared_lib --enable_arm_neon_nchwc'
       job_identifier: build-linux-arm64-debug
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

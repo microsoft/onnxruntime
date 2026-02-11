@@ -1441,7 +1441,7 @@ get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_
 if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_STANDARD 17)
   if(onnxruntime_CUDA_HOME)
-    file(TO_CMAKE_PATH CUDAToolkit_ROOT ${onnxruntime_CUDA_HOME})
+    file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDAToolkit_ROOT)
   endif()
   find_package(CUDAToolkit REQUIRED)
 

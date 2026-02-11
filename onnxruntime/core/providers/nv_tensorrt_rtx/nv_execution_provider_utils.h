@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include <fstream>
 #include <unordered_map>
 #include <string>
@@ -10,10 +12,11 @@
 #include <iostream>
 #include <filesystem>
 #include "flatbuffers/idl.h"
-#include <NvInferVersion.h>
+#include "nv_includes.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/common/path_string.h"
 #include "core/framework/murmurhash3.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace fs = std::filesystem;
 
@@ -31,7 +34,7 @@ namespace onnxruntime {
  * }
  *
  */
-int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
+static int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
   int num_profile = 0;
   for (auto it = profile_shapes.begin(); it != profile_shapes.end(); it++) {
     num_profile = static_cast<int>(it->second.size());
@@ -52,7 +55,7 @@ int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64
  *
  * [Deprecated] Use SerializeProfileV2
  */
-void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges) {
+static void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges) {
   // Serialize profile
   flexbuffers::Builder builder;
   auto profile_start = builder.StartMap();
@@ -78,7 +81,7 @@ void SerializeProfile(const std::string& file_name, std::unordered_map<std::stri
 
 // Deserialize engine profile
 // [Deprecated] Use DeserializeProfileV2
-std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
+static std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
   size_t length = infile.tellg();
@@ -153,7 +156,7 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
  * }
  *
  */
-void SerializeProfileV2(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges) {
+static void SerializeProfileV2(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges) {
   LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] In SerializeProfileV2()";
   // Serialize profile
   flexbuffers::Builder builder;
@@ -233,7 +236,7 @@ void SerializeProfileV2(const std::string& file_name, std::unordered_map<std::st
  *   }
  * }
  */
-std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> DeserializeProfileV2(std::ifstream& infile) {
+static std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> DeserializeProfileV2(std::ifstream& infile) {
   LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] In DeserializeProfileV2()";
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
@@ -278,10 +281,10 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
  * Return false meaning no need to rebuild engine if everything is same.
  * Otherwise return true and engine needs to be rebuilt.
  */
-bool CompareProfiles(const std::string& file_name,
-                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
-                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
-                     std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
+static bool CompareProfiles(const std::string& file_name,
+                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
+                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
+                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
   std::ifstream profile_file(file_name, std::ios::binary | std::ios::in);
   if (!profile_file) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << file_name << " doesn't exist.";
@@ -372,7 +375,7 @@ bool CompareProfiles(const std::string& file_name,
  * Get cache by name
  *
  */
-std::string GetCachePath(const std::string& root, const std::string& name) {
+static std::string GetCachePath(const std::string& root, const std::string& name) {
   if (root.empty()) {
     return name;
   } else {
@@ -386,7 +389,7 @@ std::string GetCachePath(const std::string& root, const std::string& name) {
  * Get compute capability
  *
  */
-std::string GetComputeCapability(const cudaDeviceProp& prop) {
+static std::string GetComputeCapability(const cudaDeviceProp& prop) {
   const std::string compute_capability = std::to_string(prop.major * 10 + prop.minor);
   return compute_capability;
 }
@@ -397,7 +400,7 @@ std::string GetComputeCapability(const cudaDeviceProp& prop) {
  * \param root root path of the cache
  * \param file_extension It could be ".engine", ".profile" or ".timing"
  */
-std::vector<fs::path> GetCachesByType(const std::string& root, std::string file_extension) {
+static std::vector<fs::path> GetCachesByType(const std::string& root, std::string file_extension) {
   std::vector<fs::path> cache_files;
   for (const auto& entry : fs::directory_iterator(root)) {
     if (fs::path(file_extension) == fs::path(entry).extension()) {
@@ -407,7 +410,7 @@ std::vector<fs::path> GetCachesByType(const std::string& root, std::string file_
   return cache_files;
 }
 
-bool IsCacheExistedByType(const std::string& root, std::string file_extension) {
+static bool IsCacheExistedByType(const std::string& root, std::string file_extension) {
   auto cache_files = GetCachesByType(root, file_extension);
   if (cache_files.size() == 0) {
     return false;
@@ -415,7 +418,7 @@ bool IsCacheExistedByType(const std::string& root, std::string file_extension) {
   return true;
 }
 
-void RemoveCachesByType(const std::string& root, std::string file_extension) {
+static void RemoveCachesByType(const std::string& root, std::string file_extension) {
   auto cache_files = GetCachesByType(root, file_extension);
   for (const auto& entry : cache_files) {
     fs::remove(entry);
@@ -431,7 +434,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
  * compiled kernels, so the name must be unique and deterministic across models and sessions.
  * </remarks>
  */
-HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_version, std::string cuda_version) {
+static HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_version, std::string cuda_version) {
   HashValue model_hash = 0;
 
   // find the top level graph
@@ -507,9 +510,9 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_version
   return model_hash;
 }
 
-bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
-                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
-                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
+static bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
+                                  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
+                                  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
   if (profile_min_shapes.empty() && profile_max_shapes.empty() && profile_opt_shapes.empty()) {
     return true;
   }
@@ -552,7 +555,7 @@ bool ValidateProfileShapes(std::unordered_map<std::string, std::vector<std::vect
  *
  * Return true if string can be successfully parsed or false if string has wrong format.
  */
-bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std::vector<int64_t>>& pair) {
+static bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std::vector<int64_t>>& pair) {
   if (pair_string.empty()) {
     return true;
   }
@@ -595,7 +598,7 @@ bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std:
  *
  * Return true if string can be successfully parsed or false if string has wrong format.
  */
-bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
+static bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
   if (profile_shapes_string.empty()) {
     return true;
   }
@@ -628,7 +631,7 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
   return true;
 }
 
-std::vector<std::string> split(const std::string& str, char delimiter) {
+static std::vector<std::string> split(const std::string& str, char delimiter) {
   std::vector<std::string> tokens;
   std::string token;
   std::istringstream tokenStream(str);
@@ -638,7 +641,7 @@ std::vector<std::string> split(const std::string& str, char delimiter) {
   return tokens;
 }
 
-std::string join(const std::vector<std::string>& vec, const std::string& delimiter) {
+static std::string join(const std::vector<std::string>& vec, const std::string& delimiter) {
   std::string result;
   for (size_t i = 0; i < vec.size(); ++i) {
     result += vec[i];
@@ -657,7 +660,7 @@ std::string join(const std::vector<std::string>& vec, const std::string& delimit
  * This func will generate the suffix "2068723788287043730_189_fp16"
  *
  */
-std::string GetCacheSuffix(const std::string& fused_node_name, const std::string& trt_node_name_with_precision) {
+static std::string GetCacheSuffix(const std::string& fused_node_name, const std::string& trt_node_name_with_precision) {
   std::vector<std::string> split_fused_node_name = split(fused_node_name, '_');
   if (split_fused_node_name.size() >= 3) {
     // Get index of model hash from fused_node_name
@@ -697,4 +700,26 @@ static bool checkTrtTensorIsDynamic(nvinfer1::ITensor* tensor) {
     return checkTrtDimIsDynamic(tensor->getDimensions());
   }
 }
+
+struct ScopedContext {
+  explicit ScopedContext(int device_id) {
+    CUcontext cu_context = 0;
+    CU_CALL_THROW(cuCtxGetCurrent(&cu_context));
+    if (!cu_context) {
+      // cuCtxGetCurrent succeeded but returned nullptr, which indicates that no CUDA context
+      // is currently set for this thread. This implicates that there is not user created context.
+      // We use runtime API to initialize a context for the specified device.
+      CUDA_CALL_THROW(cudaSetDevice(device_id));
+      CU_CALL_THROW(cuCtxGetCurrent(&cu_context));
+    }
+    CU_CALL_THROW(cuCtxPushCurrent(cu_context));
+  }
+
+  ScopedContext(const ScopedContext&) = delete;
+
+  ~ScopedContext() {
+    // Destructor must not throw. Perform a best-effort pop of the current context.
+    cuCtxPopCurrent(nullptr);
+  }
+};
 }  // namespace onnxruntime
