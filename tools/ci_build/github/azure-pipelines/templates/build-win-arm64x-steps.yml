@@ -1,18 +1,11 @@
 # Builds a Windows ARM64X binary in `BuildDirectory`
 
 parameters:
-  BuildDirectory: $(Build.BinariesDirectory)
+  BuildDirectory: '$(Build.BinariesDirectory)'
   BuildConfig: 'RelWithDebInfo'
   AdditionalBuildPyArgs: ''
 
 steps:
-- powershell:
-    $common_args = '--skip_submodule_sync --build_shared_lib --client_package_build --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags ${{ parameters.AdditionalBuildPyArgs }}'
-
-    echo "##vso[task.setvariable variable=commonBuildArgs]${common_args}"
-    echo "commonBuildArgs = ${common_args}"
-  displayName: Set commonBuildArgs
-
 - task: PythonScript@0
   displayName: 'Build arm64x project - generate the def & lib file for next build'
   inputs:
@@ -21,7 +14,8 @@ steps:
       --arm64
       --buildasx
       --build_dir="${{ parameters.BuildDirectory }}/arm64"
-      $(commonBuildArgs)
+      --config="${{ parameters.BuildConfig }}"
+      ${{ parameters.AdditionalBuildPyArgs }}
 
 - task: PythonScript@0
   displayName: 'Build arm64ecx project - the real arm64x'
@@ -31,4 +25,5 @@ steps:
       --arm64ec
       --buildasx
       --build_dir="${{ parameters.BuildDirectory }}"
-      $(commonBuildArgs)
+      --config="${{ parameters.BuildConfig }}"
+      ${{ parameters.AdditionalBuildPyArgs }}
