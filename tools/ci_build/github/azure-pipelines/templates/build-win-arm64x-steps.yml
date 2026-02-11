@@ -11,19 +11,21 @@ steps:
   inputs:
     scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
     arguments: >
+      ${{ parameters.AdditionalBuildPyArgs }}
+      --build_shared_lib
       --arm64
       --buildasx
       --build_dir="${{ parameters.BuildDirectory }}/arm64"
       --config="${{ parameters.BuildConfig }}"
-      ${{ parameters.AdditionalBuildPyArgs }}
 
 - task: PythonScript@0
   displayName: 'Build arm64ecx project - the real arm64x'
   inputs:
     scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
     arguments: >
+      ${{ parameters.AdditionalBuildPyArgs }}
+      --build_shared_lib
       --arm64ec
       --buildasx
       --build_dir="${{ parameters.BuildDirectory }}"
       --config="${{ parameters.BuildConfig }}"
-      ${{ parameters.AdditionalBuildPyArgs }}
