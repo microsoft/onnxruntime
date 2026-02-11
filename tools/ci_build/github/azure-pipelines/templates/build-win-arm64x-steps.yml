@@ -2,7 +2,6 @@
 
 parameters:
   BuildDirectory: '$(Build.BinariesDirectory)'
-  BuildConfig: 'RelWithDebInfo'
   AdditionalBuildPyArgs: ''
 
 steps:
@@ -16,7 +15,6 @@ steps:
       --arm64
       --buildasx
       --build_dir="${{ parameters.BuildDirectory }}/arm64"
-      --config="${{ parameters.BuildConfig }}"
 
 - task: PythonScript@0
   displayName: 'Build arm64ecx project - the real arm64x'
@@ -28,4 +26,3 @@ steps:
       --arm64ec
       --buildasx
       --build_dir="${{ parameters.BuildDirectory }}"
-      --config="${{ parameters.BuildConfig }}"
