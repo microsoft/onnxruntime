@@ -107,8 +107,8 @@ jobs:
     # arm64x build
     - template: build-win-arm64x-steps.yml
       parameters:
-        BuildDirectory: $(Build.SourcesDirectory)\build
-        AdditionalBuildPyArgs: $(commonBuildPyArgs)
+        buildDirectory: '$(Build.SourcesDirectory)\build'
+        additionalBuildPyArgs: '$(commonBuildPyArgs)'
 
   - ${{ else }}:
     - task: PythonScript@0

@@ -201,8 +201,8 @@ stages:
       - ${{ if eq(parameters.msbuildPlatform, 'arm64x') }}:
         - template: build-win-arm64x-steps.yml
           parameters:
-            BuildDirectory: $(Build.BinariesDirectory)
-            AdditionalBuildPyArgs: $(commonBuildPyArgs)
+            buildDirectory: '$(Build.BinariesDirectory)'
+            additionalBuildPyArgs: '$(commonBuildPyArgs)'
 
       - ${{ else }}:
         - task: PythonScript@0

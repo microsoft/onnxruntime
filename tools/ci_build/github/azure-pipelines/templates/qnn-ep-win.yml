@@ -63,8 +63,8 @@ stages:
 
     - template: build-win-arm64x-steps.yml
       parameters:
-        BuildDirectory: $(Build.BinariesDirectory)
-        AdditionalBuildPyArgs: $(commonBuildArgs) --use_qnn --qnn_home $(QnnSDKRootDir)
+        buildDirectory: '$(Build.BinariesDirectory)'
+        additionalBuildPyArgs: '$(commonBuildArgs) --use_qnn --qnn_home $(QnnSDKRootDir)'
 
     - task: CmdLine@2
       displayName: 'Print contents of binaries directory'
