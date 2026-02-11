@@ -501,6 +501,7 @@ def generate_build_tree(
         + ("ON" if args.enable_wasm_api_exception_catching else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_NATIVE_EH=" + ("ON" if args.enable_wasm_eh else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_JSPI=" + ("ON" if args.enable_wasm_jspi else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
@@ -619,7 +620,7 @@ def generate_build_tree(
                 build_dir,
                 configs,
                 emscripten_root_path,
-                args.enable_wasm_jspi,
+                args.enable_wasm_eh,
                 not args.disable_rtti,
                 not args.disable_wasm_exception_catching,
                 args.minimal_build is not None,

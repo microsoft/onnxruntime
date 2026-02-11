@@ -46,7 +46,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 
   # Enable WebAssembly exception catching.
-  if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_NATIVE_EH)
     string(APPEND CMAKE_C_FLAGS " -fwasm-exceptions -s WASM_LEGACY_EXCEPTIONS=0")
     string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions -s WASM_LEGACY_EXCEPTIONS=0")
   elseif (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)

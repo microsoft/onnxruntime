@@ -329,7 +329,7 @@ else()
     endif()
   endif()
 
-  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_NATIVE_EH)
     # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s DISABLE_EXCEPTION_THROWING=0"

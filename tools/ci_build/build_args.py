@@ -390,6 +390,11 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Override default behavior to allow throwing exceptions even when catching is generally disabled.",
     )
+    parser.add_argument(
+        "--enable_wasm_eh",
+        action="store_true",
+        help="Use native WebAssembly exception handling (-fwasm-exceptions) instead of legacy JavaScript-based exception support.",
+    )
     parser.add_argument("--wasm_run_tests_in_browser", action="store_true", help="Run WASM tests in a browser.")
     parser.add_argument(
         "--enable_wasm_profiling", action="store_true", help="Enable WASM profiling and preserve function names."
@@ -935,7 +940,30 @@ def parse_arguments() -> argparse.Namespace:
     if args.android_ndk_path:
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
 
+    if args.enable_wasm_jspi and not args.enable_wasm_eh:
+        raise Exception(
+            "'--enable_wasm_jspi' requires '--enable_wasm_eh' to be specified. "
+            "Currently we only support JSPI builds with native exception handling enabled."
+        )
+
     # Handle WASM exception logic
+    if args.enable_wasm_eh:
+        # Native Wasm EH is incompatible with legacy exception flags
+        if args.disable_wasm_exception_catching:
+            raise Exception(
+                "'--enable_wasm_eh' cannot be used with '--disable_wasm_exception_catching'. "
+                "Native Wasm EH replaces the legacy exception catching mechanism."
+            )
+        if args.enable_wasm_api_exception_catching:
+            raise Exception(
+                "'--enable_wasm_eh' cannot be used with '--enable_wasm_api_exception_catching'. "
+                "Native Wasm EH replaces the legacy API-level exception catching."
+            )
+        if args.enable_wasm_exception_throwing_override:
+            raise Exception(
+                "'--enable_wasm_eh' cannot be used with '--enable_wasm_exception_throwing_override'. "
+                "Native Wasm EH handles exception throwing natively."
+            )
     if args.enable_wasm_api_exception_catching:
         args.disable_wasm_exception_catching = True  # Catching at API level implies disabling broader catching
     if not args.disable_wasm_exception_catching or args.enable_wasm_api_exception_catching:

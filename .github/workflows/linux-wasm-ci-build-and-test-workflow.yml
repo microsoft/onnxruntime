@@ -95,7 +95,7 @@ jobs:
             --use_jsep \
             --use_webnn \
             --target onnxruntime_webassembly \
-            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
+            --enable_wasm_eh \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
@@ -108,7 +108,7 @@ jobs:
             --use_webgpu \
             --use_webnn \
             --target onnxruntime_webassembly \
-            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
+            --enable_wasm_eh \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
@@ -121,6 +121,7 @@ jobs:
             --use_webgpu \
             --use_webnn \
             --enable_wasm_jspi \
+            --enable_wasm_eh \
             --target onnxruntime_webassembly \
             --skip_tests
         working-directory: ${{ github.workspace }}

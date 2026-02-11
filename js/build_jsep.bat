@@ -22,7 +22,7 @@ if ["%~1"]==["d"] (
 )
 if ["%~1"]==["r"] (
     set CONFIG=Release
-    set CONFIG_EXTRA_FLAG=--enable_wasm_api_exception_catching --disable_rtti --enable_wasm_profiling
+    set CONFIG_EXTRA_FLAG=--disable_rtti --enable_wasm_profiling
     goto :arg2
 )
 echo Invalid configuration "%~1", must be "d"(Debug) or "r"(Release)
@@ -64,7 +64,7 @@ popd
 
 set PATH=C:\Program Files\Git\usr\bin;%PATH%
 
-call %ROOT%build.bat --config %CONFIG% %CONFIG_EXTRA_FLAG% --skip_submodule_sync --build_wasm --skip_tests^
+call %ROOT%build.bat --config %CONFIG% %CONFIG_EXTRA_FLAG% --skip_submodule_sync --build_wasm --skip_tests --enable_wasm_eh^
  --enable_wasm_simd --enable_wasm_threads --use_jsep --use_webnn --target onnxruntime_webassembly --build_dir %BUILD_DIR%
 
 IF NOT "%ERRORLEVEL%" == "0" (
