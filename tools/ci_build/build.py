@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import contextlib
-import glob
 import json
 import os
 import platform
@@ -14,8 +13,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
-import zipfile
 from pathlib import Path
 
 
@@ -2095,54 +2092,6 @@ def build_nuget_package(
         log.info(f"nuget package was created in the {config} build output directory.")
 
 
-# TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
-# Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the nuget package.
-def rename_nuget_qnn_ep_library(build_dir, configs, use_ninja=False):
-    for config in configs:
-        # Determine working directory
-        config_build_dir = get_config_build_dir(build_dir, config)
-        if is_windows() and not use_ninja:
-            artifact_folder = os.path.join(config_build_dir, config)
-        else:
-            artifact_folder = config_build_dir
-        nuget_files = glob.glob(f"{artifact_folder}/*.nupkg")
-        nuget_files.extend(glob.glob(f"{artifact_folder}/nuget-local-artifacts/*.nupkg"))
-        for nuget_path in nuget_files:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                # Create a zip file of the nuget package (NuGet packages are just zip files)
-                nuget_zip_path = nuget_path.replace(".nupkg", ".zip")
-                shutil.copy(nuget_path, nuget_zip_path)
-
-                # Extract NuGet package
-                with zipfile.ZipFile(nuget_zip_path, "r") as zip_ref:
-                    zip_ref.extractall(tmp_dir)
-
-                # Remove the origin one
-                os.remove(nuget_path)
-                os.remove(nuget_zip_path)
-
-                qnn_ep_libraries_need_updated = glob.glob(f"{tmp_dir}/runtimes/*/*/onnxruntime_providers_qnn_abi.dll")
-                for qnn_ep_library in qnn_ep_libraries_need_updated:
-                    # Rename
-                    shutil.move(
-                        qnn_ep_library,
-                        qnn_ep_library.replace("onnxruntime_providers_qnn_abi.dll", "onnxruntime_providers_qnn.dll"),
-                    )
-
-                # Repack NuGet package
-                with zipfile.ZipFile(nuget_zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-                    tmp_path = Path(tmp_dir)
-                    for file_path in tmp_path.rglob("*"):
-                        if file_path.is_file():
-                            arcname = file_path.relative_to(tmp_path)
-                            zipf.write(file_path, arcname)
-
-                # Create a nupkg file
-                shutil.copy(nuget_zip_path, nuget_path)
-                # Clean up the zip file
-                os.remove(nuget_zip_path)
-
-
 def run_csharp_tests(
     source_dir,
     build_dir,
@@ -2608,9 +2557,6 @@ def main():
                 args.msbuild_extra_options,
                 target_arch_name,
             )
-            # TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
-            # Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the nuget package.
-            rename_nuget_qnn_ep_library(build_dir, configs, use_ninja=(args.cmake_generator == "Ninja"))
 
         if args.build_zip_asset:
             build_zip_asset(

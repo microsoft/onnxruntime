@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -9,8 +10,8 @@
 
 #include <System/QnnSystemInterface.h>
 
-#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/ort_api.h"
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
 
@@ -23,7 +24,6 @@
 #endif
 
 namespace onnxruntime {
-
 namespace qnn {
 namespace profile {
 
@@ -50,15 +50,15 @@ class Serializer {
   //  1. Writes/appends data to a csv file defined in profiling_info_
   //  2. If QNN System Profile API is enabled, converts the data
   //     into a QNN System Profile Event and stores the new obj locally
-  Status ProcessEvent(const QnnProfile_EventId_t event_Id, const std::string& event_level,
-                      const QnnProfile_EventData_t& event_data);
+  Ort::Status ProcessEvent(const QnnProfile_EventId_t event_Id, const std::string& event_level,
+                           const QnnProfile_EventData_t& event_data);
 
   // Extracts all event/subevent data then:
   //  1. Writes/appends data to a csv file defined in profiling_info_
   //  2. If QNN System Profile API is enabled, converts the data
   //     into a QNN System Profile Event and stores the new obj locally
-  Status ProcessExtendedEvent(const QnnProfile_EventId_t event_id, const std::string& event_level,
-                              const QnnProfile_ExtendedEventData_t& event_data);
+  Ort::Status ProcessExtendedEvent(const QnnProfile_EventId_t event_id, const std::string& event_level,
+                                   const QnnProfile_ExtendedEventData_t& event_data);
 
   // If QNN API is too old, turn Serializer into an ofstream wrapper class
   // Keeps code clean, any performance impacts can be ignored when profiling is enabled
@@ -74,14 +74,14 @@ class Serializer {
   // Initializes outfile_ to output to a defined .csv file
   // or appends to the defined .csv file if it already exists
   // This is in its own function & not ctor for error checking/handling
-  Status InitCsvFile();
+  Ort::Status InitCsvFile();
 
 #ifdef QNN_SYSTEM_PROFILE_API_ENABLED
   // Serializes all locally stored QNN System Profile Event data into a
   // qnn profiling .log file in the same directory as the .csv file defined
   // in profilng_info_. The output file name will have the same name
   // as the .csv file (sans extension) with _qnn.log appended to the end.
-  Status SerializeEventsToQnnLog();
+  Ort::Status SerializeEventsToQnnLog();
 
   QnnSystemProfile_ProfileEventV1_t* GetParentSystemEvent(const QnnProfile_EventId_t event_id);
 
@@ -89,8 +89,8 @@ class Serializer {
 
   void AddSubEventList(const uint32_t num_sub_events, QnnSystemProfile_ProfileEventV1_t* event_ptr);
 
-  Status SetParentSystemEvent(const QnnProfile_EventId_t event_id,
-                              QnnSystemProfile_ProfileEventV1_t* const system_parent_event);
+  Ort::Status SetParentSystemEvent(const QnnProfile_EventId_t event_id,
+                                   QnnSystemProfile_ProfileEventV1_t* const system_parent_event);
 #endif
 
  private:

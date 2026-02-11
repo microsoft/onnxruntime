@@ -6,9 +6,10 @@
 #include <string>
 #include <unordered_map>
 
-#include "test/providers/qnn/qnn_test_utils.h"
-#include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
+
+#include "core/graph/onnx_protobuf.h"
+#include "test/providers/qnn/qnn_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -57,7 +58,7 @@ namespace test {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["htp_bf16_enable"] = "1";  // Enable BF16 mode
-  provider_options["soc_id"] = "88";          // Target SOC ID for BF16 support
+  provider_options["soc_model"] = "88";       // Target SOC ID for BF16 support
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(build_test_case, provider_options, opset, expected_ep_assignment, fp32_abs_err);

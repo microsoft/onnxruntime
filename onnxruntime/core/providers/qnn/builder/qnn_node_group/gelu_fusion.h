@@ -38,13 +38,13 @@ class QnnModelWrapper;
 /// </summary>
 class GeluFusion : public IQnnNodeGroup {
  public:
-  GeluFusion(std::vector<const NodeUnit*>&& node_units, const NodeUnit* target_node_unit);
+  GeluFusion(std::vector<const OrtNodeUnit*>&& node_units, const OrtNodeUnit* target_node_unit);
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(GeluFusion);
 
-  Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
-  Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
-  gsl::span<const NodeUnit* const> GetNodeUnits() const override;
-  const NodeUnit* GetTargetNodeUnit() const override;
+  Ort::Status IsSupported(QnnModelWrapper& qmw, const Ort::Logger& logger) const override;
+  Ort::Status AddToModelBuilder(QnnModelWrapper& qmw, const Ort::Logger& logger) const override;
+  gsl::span<const OrtNodeUnit* const> GetNodeUnits() const override;
+  const OrtNodeUnit* GetTargetNodeUnit() const override;
   std::string_view Type() const override { return "GeluFusion"; }
 
   /// <summary>
@@ -59,14 +59,14 @@ class GeluFusion : public IQnnNodeGroup {
   /// <returns>A valid IQnnNodeGroup on success or an empty std::unique_ptr otherwise</returns>
   static std::unique_ptr<IQnnNodeGroup> TryFusion(
       QnnModelWrapper& qnn_model_wrapper,
-      const NodeUnit& erf_node_unit,
-      const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-      const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-      const logging::Logger& logger);
+      const OrtNodeUnit& erf_node_unit,
+      const std::unordered_map<const OrtNode*, const OrtNodeUnit*>& node_to_node_unit,
+      const std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+      const Ort::Logger& logger);
 
  private:
-  std::vector<const NodeUnit*> node_units_;
-  const NodeUnit* target_node_unit_;
+  std::vector<const OrtNodeUnit*> node_units_;
+  const OrtNodeUnit* target_node_unit_;
 };
 
 }  // namespace qnn

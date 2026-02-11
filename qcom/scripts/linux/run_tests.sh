@@ -40,7 +40,7 @@ function run_model_test() {
     "${build_dir}/onnxruntime_plugin_ep_onnx_test" \
         -j 1 \
         -e qnn \
-        --plugin_ep_libs "qnn|libonnxruntime_providers_qnn_abi.so" \
+        --plugin_ep_libs "qnn|libonnxruntime_providers_qnn.so" \
         --plugin_eps qnn \
         -i "backend_type|${backend}" \
         "${test_path}" 2>&1 | tee "${build_dir}/${suite}_model_tests.log"
@@ -138,7 +138,7 @@ log_info "-=-=-=- Running ONNX model tests -=-=-=-=-"
 
 cd "${onnx_models_root}"
 
-declare -a model_test_runners=("run_legacy_model_test" "run_model_test")
+declare -a model_test_runners=("run_model_test")
 for runner in "${model_test_runners[@]}"; do
     "${runner}" cpu node "${REPO_ROOT}/cmake/external/onnx/onnx/backend/test/data/node"
 

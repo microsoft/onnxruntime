@@ -4,9 +4,9 @@
 #include <cassert>
 #include <limits>
 
+#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
@@ -17,35 +17,34 @@ class ClipOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ClipOpBuilder);
 
  protected:
-  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                       const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       std::vector<std::string>& input_names,
-                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                            const OrtNodeUnit& node_unit,
+                            const Ort::Logger& logger,
+                            std::vector<std::string>& input_names,
+                            bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                     const NodeUnit& node_unit,
-                                     std::vector<std::string>&& input_names,
-                                     const logging::Logger& logger,
-                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                          const OrtNodeUnit& node_unit,
+                                          std::vector<std::string>&& input_names,
+                                          const Ort::Logger& logger,
+                                          bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Ort::Status ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnit& node_unit) const;
 };
 
-static Status ProcessClipMinMax(QnnModelWrapper& qnn_model_wrapper,
-                                const NodeUnitIODef& input,
-                                float& float_value) {
+static Ort::Status ProcessClipMinMax(QnnModelWrapper& qnn_model_wrapper,
+                                     const OrtNodeUnitIODef& input,
+                                     float& float_value) {
   TensorInfo input_info = {};
   std::vector<uint8_t> val_bytes;
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
   assert(input_info.is_initializer);  // Checked by ExplicitOpCheck().
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, val_bytes));
+  RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(input_info.initializer_tensor, val_bytes));
 
   // If the input is quantized, we need to dequantize it
   if (input.quant_param.has_value()) {
-    ORT_RETURN_IF_NOT(input_info.quant_param.IsPerTensor(),
-                      "Clip's min/max must use per-tensor quantization");
+    RETURN_IF_NOT(input_info.quant_param.IsPerTensor(), "Clip's min/max must use per-tensor quantization");
     const Qnn_QuantizeParams_t& quant_param = input_info.quant_param.Get();
 
     switch (input_info.qnn_data_type) {
@@ -92,7 +91,7 @@ static Status ProcessClipMinMax(QnnModelWrapper& qnn_model_wrapper,
         break;
       }
       default:
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Quantized min/max input data type not supported.");
+        return MAKE_EP_FAIL("Quantized min/max input data type not supported.");
     }
   } else {
     // Non-quantized input, just cast to float
@@ -139,46 +138,44 @@ static Status ProcessClipMinMax(QnnModelWrapper& qnn_model_wrapper,
         break;
       }
       default:
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Non-quantized min/max input data type not supported.");
+        return MAKE_EP_FAIL("Non-quantized min/max input data type not supported.");
     }
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status ClipOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
+Ort::Status ClipOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnit& node_unit) const {
   if (node_unit.Inputs().size() > 1) {
-    const auto& min_input_name = node_unit.Inputs()[1].node_arg.Name();
-    if (!min_input_name.empty() && !qnn_model_wrapper.IsConstantInput(min_input_name)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic min/max.");
-    }
+    const auto& min_input_name = node_unit.Inputs()[1].name;
+    RETURN_IF(!min_input_name.empty() && !qnn_model_wrapper.IsConstantInput(min_input_name),
+              "QNN doesn't support dynamic min/max.");
   }
   if (node_unit.Inputs().size() > 2) {
-    const auto& max_input_name = node_unit.Inputs()[2].node_arg.Name();
-    if (!max_input_name.empty() && !qnn_model_wrapper.IsConstantInput(max_input_name)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic min/max.");
-    }
+    const auto& max_input_name = node_unit.Inputs()[2].name;
+    RETURN_IF(!max_input_name.empty() && !qnn_model_wrapper.IsConstantInput(max_input_name),
+              "QNN doesn't support dynamic min/max.");
   }
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                    const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    std::vector<std::string>& input_names,
-                                    bool do_op_validation) const {
+Ort::Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                         const OrtNodeUnit& node_unit,
+                                         const Ort::Logger& logger,
+                                         std::vector<std::string>& input_names,
+                                         bool do_op_validation) const {
   if (do_op_validation) {
-    ORT_RETURN_IF_ERROR(ExplicitOpCheck(qnn_model_wrapper, node_unit));
+    RETURN_IF_ERROR(ExplicitOpCheck(qnn_model_wrapper, node_unit));
   }
 
   return ProcessInput(qnn_model_wrapper, node_unit.Inputs()[0], logger, input_names);
 }
 
-Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  std::vector<std::string>&& input_names,
-                                                  const logging::Logger& logger,
-                                                  bool do_op_validation) const {
+Ort::Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                       const OrtNodeUnit& node_unit,
+                                                       std::vector<std::string>&& input_names,
+                                                       const Ort::Logger& logger,
+                                                       bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   const size_t num_inputs = inputs.size();
 
@@ -189,8 +186,8 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   Qnn_Scalar_t min_qnn_scalar = QNN_SCALAR_INIT;
   min_qnn_scalar.dataType = qnn_data_type;
 
-  if (num_inputs > 1 && !inputs[1].node_arg.Name().empty()) {
-    ORT_RETURN_IF_ERROR(ProcessClipMinMax(qnn_model_wrapper, inputs[1], min_qnn_scalar.floatValue));
+  if (num_inputs > 1 && !inputs[1].name.empty()) {
+    RETURN_IF_ERROR(ProcessClipMinMax(qnn_model_wrapper, inputs[1], min_qnn_scalar.floatValue));
   } else {
     min_qnn_scalar.floatValue = std::numeric_limits<float>::lowest();
   }
@@ -204,8 +201,8 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   Qnn_Scalar_t max_qnn_scalar = QNN_SCALAR_INIT;
   max_qnn_scalar.dataType = qnn_data_type;
 
-  if (num_inputs > 2 && !inputs[2].node_arg.Name().empty()) {
-    ORT_RETURN_IF_ERROR(ProcessClipMinMax(qnn_model_wrapper, inputs[2], max_qnn_scalar.floatValue));
+  if (num_inputs > 2 && !inputs[2].name.empty()) {
+    RETURN_IF_ERROR(ProcessClipMinMax(qnn_model_wrapper, inputs[2], max_qnn_scalar.floatValue));
   } else {
     max_qnn_scalar.floatValue = std::numeric_limits<float>::max();
   }
@@ -215,12 +212,12 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   param_tensor_names.push_back(max_value_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(max_value_param));
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
+  RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+                                 std::move(input_names),
+                                 std::move(param_tensor_names),
+                                 logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -103,7 +103,6 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory_creator.h"
 #include "core/providers/vitisai/vitisai_provider_factory_creator.h"
-#include "core/providers/qnn/qnn_provider_factory_creator.h"
 
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cann/cann_provider_factory.h"
@@ -2284,24 +2283,6 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   ov_options_converted_map["enable_causallm"] = "false";
   return ov_options_converted_map;
 }
-
-#if !BUILD_QNN_EP_STATIC_LIB
-std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options_map, const SessionOptions* session_options) try {
-  const ConfigOptions* config_options = nullptr;
-  if (session_options != nullptr) {
-    config_options = &session_options->config_options;
-  }
-
-  std::array<const void*, 2> configs_array = {&provider_options_map, config_options};
-  const void* arg = reinterpret_cast<const void*>(&configs_array);
-  return s_library_qnn.Get().CreateExecutionProviderFactory(arg);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
-}
-#endif  // !BUILD_QNN_EP_STATIC_LIB
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) try {

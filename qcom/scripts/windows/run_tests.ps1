@@ -140,11 +140,11 @@ $TestModelsViaEpPlugin = {
         [string]$TestPath = "testdata/$Suite"
     )
 
-    Write-Host "--=-=-=- Running ONNX model $Suite tests with the legacy ProviderBridge EP -=--=-=-"
+    Write-Host "--=-=-=- Running ONNX model $Suite tests with the ABI-stable EP plugin -=--=-=-"
     & $OnnxEpTestRunnerExe `
         -j 1 `
         -e qnn `
-        --plugin_ep_libs "qnn|onnxruntime_providers_qnn_abi.dll" `
+        --plugin_ep_libs "qnn|onnxruntime_providers_qnn.dll" `
         --plugin_eps qnn `
         -i "backend_type|$Backend" `
         $TestPath | Write-Host
@@ -184,7 +184,7 @@ if (-not $?) {
     throw "Could not cd to $OnnxModelsRoot"
 }
 
-foreach ($RunModelTests in ($TestModelsViaLegacy, $TestModelsViaEpPlugin)) {
+foreach ($RunModelTests in ($TestModelsViaEpPlugin)) {
     $Failed = $Failed -or (& $RunModelTests -Backend cpu -Suite node -TestPath "$RepoRoot\cmake\external\onnx\onnx\backend\test\data\node")
     $Failed = $Failed -or (& $RunModelTests -Backend cpu -Suite float32)
     $Failed = $Failed -or (& $RunModelTests -Backend $QdqBackend -Suite qdq)

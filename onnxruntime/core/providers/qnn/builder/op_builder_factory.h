@@ -5,8 +5,13 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
-#include "op_builder.h"
+#include <vector>
+
+#include "core/providers/qnn/builder/op_builder.h"
+#include "core/providers/qnn/ort_api.h"
+
 namespace onnxruntime {
 namespace qnn {
 
@@ -14,6 +19,7 @@ class OpBuilderRegistrations {
  public:
   OpBuilderRegistrations();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpBuilderRegistrations);
+
   const IOpBuilder* GetOpBuilderByOnnxOpType(const std::string& onnx_op_type) const {
     auto pos = op_builder_map_.find(onnx_op_type);
     if (pos != op_builder_map_.end()) {
@@ -126,10 +132,7 @@ void CreateThresholdedReluOpBuilder(const std::string& op_type, OpBuilderRegistr
 void CreateSTFTOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateInverseOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-void CreateFusedMatMulOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-void CreateQuickGeluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
-void CreateMatMulNBitsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace qnn

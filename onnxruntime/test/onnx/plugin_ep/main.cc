@@ -291,7 +291,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (test_config.enable_qnn) {
+    if (test_config.enable_qnn && test_config.plugin_ep_names_and_libs.empty()) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
       std::string option_string = ToUTF8String(test_config.ep_runtime_config_string);

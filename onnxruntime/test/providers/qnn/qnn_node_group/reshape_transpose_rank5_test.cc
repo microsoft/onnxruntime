@@ -58,11 +58,12 @@ ProviderOptions GetProviderOptions() {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 TEST_F(QnnHTPBackendTests, Rank6ToRank5Fusion_Float) {
+  ProviderOptions provider_options = GetProviderOptions();
   RunQnnModelTest(BuildRank6ToRank5FloatTestCase(),
-                  GetProviderOptions(),
-                  13,
-                  ExpectedEPNodeAssignment::All,
-                  1e-2f);
+                  provider_options,
+                  /*opset_version=*/13,
+                  /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
+                  /*fp32_abs_err=*/1e-2f);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

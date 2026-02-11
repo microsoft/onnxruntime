@@ -128,7 +128,7 @@ static void RunRMSNormQDQTest(const TestInputDef<float>& input_def,
     qdq_model_fn(builder, output_qparams_vec);
   };
 
-  RunQnnModelTestHTPNoVerify(model_fn, provider_options, 23, expected_ep_assignment);
+  RunQnnModelTest(model_fn, provider_options, 23, expected_ep_assignment, 1e-5, logging::Severity::kERROR, false);
 }
 
 TEST_F(QnnHTPBackendTests, RMSNorm1D_LastAxis) {

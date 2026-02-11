@@ -253,8 +253,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider ||
-             (!ep_set.empty() && (ep_set.find(std::string(kQnnABIExecutionProvider)) != ep_set.end() ||
-                                  ep_set.find(std::string(kQnnExecutionProvider)) != ep_set.end()))) {
+             (!ep_set.empty() && (ep_set.find(std::string(kQnnExecutionProvider)) != ep_set.end()))) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);

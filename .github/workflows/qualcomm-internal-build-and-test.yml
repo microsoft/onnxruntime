@@ -75,6 +75,8 @@ jobs:
   #     test_runner_arch: arm64
 
   # TODO: Workaround for [AISW-166864] WoS runner cannot download artifacts
+  # TODO: Re-enable test_ort_windows_arm64_pysmoke and test_ort_windows_arm64_pygpu
+  #       once Python Wheel for Plugin EP library is completed
   build-and-test-windows-arm64:
     if: ${{ inputs.do_all || inputs.do_windows_arm64 }}
     runs-on: ["self-hosted", "ARM64", "Windows", "Build"]

@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qnn_profile_serializer.h"
+#include "core/providers/qnn/builder/qnn_profile_serializer.h"
+
 #include "core/providers/qnn/qnn_telemetry.h"
 
 namespace onnxruntime {
@@ -113,8 +114,8 @@ void Serializer::LogQnnProfileEventAsTraceLogging(
 }
 #endif
 
-Status Serializer::ProcessEvent(const QnnProfile_EventId_t event_id, const std::string& event_level,
-                                const QnnProfile_EventData_t& event_data) {
+Ort::Status Serializer::ProcessEvent(const QnnProfile_EventId_t event_id, const std::string& event_level,
+                                     const QnnProfile_EventData_t& event_data) {
   const std::string& message = GetEventTypeString(event_data.type);
   const std::string& unit = GetUnitString(event_data.unit);
 
@@ -135,13 +136,13 @@ Status Serializer::ProcessEvent(const QnnProfile_EventId_t event_id, const std::
   QnnSystemProfile_ProfileEventV1_t* created_event = nullptr;
   if (event_level == "SUB-EVENT") {
     auto parent_system_event = GetParentSystemEvent(event_id);
-    ORT_RETURN_IF(parent_system_event == nullptr, "Serialization of subevent failed: parent event pointer is null");
+    RETURN_IF(parent_system_event == nullptr, "Serialization of subevent failed: parent event pointer is null");
     created_event = AddSubEvent(event_id, event_data, parent_system_event);
   } else {
     created_event = AddEvent(event_id, event_data);
   }
 
-  ORT_RETURN_IF(created_event == nullptr, "Serialization of event failed: Unable to create system profile event");
+  RETURN_IF(created_event == nullptr, "Serialization of event failed: Unable to create system profile event");
 #endif
 
   if (tracelogging_provider_ep_enabled_) {
@@ -157,11 +158,11 @@ Status Serializer::ProcessEvent(const QnnProfile_EventId_t event_id, const std::
 #endif
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status Serializer::ProcessExtendedEvent(const QnnProfile_EventId_t event_id, const std::string& event_level,
-                                        const QnnProfile_ExtendedEventData_t& event_data) {
+Ort::Status Serializer::ProcessExtendedEvent(const QnnProfile_EventId_t event_id, const std::string& event_level,
+                                             const QnnProfile_ExtendedEventData_t& event_data) {
   // need to check the version first
   const std::string& message = GetEventTypeString(event_data.v1.type);
   const std::string& unit = GetUnitString(event_data.v1.unit);
@@ -185,13 +186,13 @@ Status Serializer::ProcessExtendedEvent(const QnnProfile_EventId_t event_id, con
   QnnSystemProfile_ProfileEventV1_t* created_event = nullptr;
   if (event_level == "SUB-EVENT") {
     auto parent_system_event = GetParentSystemEvent(event_id);
-    ORT_RETURN_IF(parent_system_event == nullptr, "Serialization of subevent failed: parent event pointer is null");
+    RETURN_IF(parent_system_event == nullptr, "Serialization of subevent failed: parent event pointer is null");
     created_event = AddExtendedSubEvent(event_id, event_data, parent_system_event);
   } else {
     created_event = AddExtendedEvent(event_id, event_data);
   }
 
-  ORT_RETURN_IF(created_event == nullptr, "Serialization of event failed: Unable to create system profile event");
+  RETURN_IF(created_event == nullptr, "Serialization of event failed: Unable to create system profile event");
 #endif
 
   if (tracelogging_provider_ep_enabled_) {
@@ -207,10 +208,10 @@ Status Serializer::ProcessExtendedEvent(const QnnProfile_EventId_t event_id, con
 #endif
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status Serializer::InitCsvFile() {
+Ort::Status Serializer::InitCsvFile() {
   auto output_filepath = profiling_info_.csv_output_filepath;
   // Write to CSV in append mode
   std::ifstream infile(output_filepath.c_str());
@@ -220,13 +221,13 @@ Status Serializer::InitCsvFile() {
   }
 
   outfile_.open(output_filepath.c_str(), std::ios_base::app);
-  ORT_RETURN_IF(!outfile_.is_open(), "Failed to open profiling file: ", output_filepath);
+  RETURN_IF(!outfile_.is_open(), ("Failed to open profiling file: " + output_filepath).c_str());
   // If file didn't exist before, write the header
   if (!exists) {
     outfile_ << "Msg Timestamp,Message,Time,Unit of Measurement,Timing Source,Event Level,Event Identifier\n";
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 Serializer::Serializer(const ProfilingInfo& profiling_info,
@@ -332,14 +333,14 @@ QnnSystemProfile_ProfileEventV1_t* Serializer::AddExtendedSubEvent(const QnnProf
   return CreateSystemExtendedEvent(sub_event_list, event_id, sub_event);
 }
 
-Status Serializer::SerializeEventsToQnnLog() {
+Ort::Status Serializer::SerializeEventsToQnnLog() {
   bool result = nullptr == qnn_system_interface_.systemProfileCreateSerializationTarget ||
                 nullptr == qnn_system_interface_.systemProfileSerializeEventData ||
                 nullptr == qnn_system_interface_.systemProfileFreeSerializationTarget;
-  ORT_RETURN_IF(result, "Failed to get system profile API pointers.");
+  RETURN_IF(result, "Failed to get system profile API pointers.");
 
   auto method_type = profiling_info_.method_type;
-  ORT_RETURN_IF(method_type == ProfilingMethodType::UNKNOWN, "Invalid serialization method type");
+  RETURN_IF(method_type == ProfilingMethodType::UNKNOWN, "Invalid serialization method type");
 
   QnnSystemProfile_SerializationTargetConfig_t config;
   config.type = QNN_SYSTEM_PROFILE_SERIALIZATION_TARGET_CONFIG_SERIALIZATION_HEADER;
@@ -360,8 +361,8 @@ Status Serializer::SerializeEventsToQnnLog() {
 
   auto status = qnn_system_interface_.systemProfileCreateSerializationTarget(serialization_target, &config, 1,
                                                                              &serialization_target_handle);
-  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to create serialization target handle: ",
-                GetSystemProfileErrorString(status));
+  RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status,
+            ("Failed to create serialization target handle: " + GetSystemProfileErrorString(status)).c_str());
 
   ManagedSerializationTargetHandle managed_target_handle(serialization_target_handle, qnn_system_interface_);
 
@@ -387,14 +388,14 @@ Status Serializer::SerializeEventsToQnnLog() {
                                                                  system_profile_data_list.data(),
                                                                  1);
 
-  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to serialize QNN profiling data: ",
-                GetSystemProfileErrorString(status));
+  RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status,
+            ("Failed to serialize QNN profiling data: " + GetSystemProfileErrorString(status)).c_str());
 
   status = managed_target_handle.FreeHandle();
-  ORT_RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status, "Failed to free serialization target: ",
-                GetSystemProfileErrorString(status));
+  RETURN_IF(QNN_SYSTEM_PROFILE_NO_ERROR != status,
+            ("Failed to free serialization target: " + GetSystemProfileErrorString(status)).c_str());
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 void Serializer::AddSubEventList(const uint32_t num_sub_events, QnnSystemProfile_ProfileEventV1_t* event_ptr) {
@@ -413,12 +414,12 @@ QnnSystemProfile_ProfileEventV1_t* Serializer::GetSystemEventPointer(QnnProfile_
   return it->second;
 }
 
-Status Serializer::SetParentSystemEvent(
+Ort::Status Serializer::SetParentSystemEvent(
     const QnnProfile_EventId_t event_id,
     QnnSystemProfile_ProfileEventV1_t* const system_parent_event) {
-  ORT_RETURN_IF(!(system_parent_event_lookup_map_.emplace(event_id, system_parent_event).second),
-                "Failed to add subevent-parent event mapping");
-  return Status::OK();
+  RETURN_IF(!(system_parent_event_lookup_map_.emplace(event_id, system_parent_event).second),
+            "Failed to add subevent-parent event mapping");
+  return Ort::Status();
 }
 QnnSystemProfile_ProfileEventV1_t* Serializer::GetParentSystemEvent(const QnnProfile_EventId_t event_id) {
   if (system_parent_event_lookup_map_.find(event_id) == system_parent_event_lookup_map_.end()) {

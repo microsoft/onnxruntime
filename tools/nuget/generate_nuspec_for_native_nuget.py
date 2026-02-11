@@ -340,7 +340,7 @@ def generate_files(line_list, args):
 
     if is_windows_build:
         nuget_dependencies = {
-            "qnn_ep_shared_lib": "onnxruntime_providers_qnn_abi.dll",
+            "qnn_ep_shared_lib": "onnxruntime_providers_qnn.dll",
         }
 
         runtimes_target = '" target="runtimes\\win-'

@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.28)
 # Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
 cmake_policy(SET CMP0104 OLD)
 # Project
-project(onnxruntime C CXX ASM)
+project(onnxruntime_qnn C CXX ASM)
 
 # Disable fast-math for Intel oneAPI compiler
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
@@ -1709,8 +1709,7 @@ if (onnxruntime_BUILD_NODEJS)
 endif()
 
 if (onnxruntime_ENABLE_PYTHON)
-  message(STATUS "Python Build is enabled")
-  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_python)
+  message(STATUS "Temporarily skip Python Build for QNN ABI Implementation")
 endif()
 
 if (onnxruntime_BUILD_OBJC)
@@ -1872,7 +1871,6 @@ else()
     if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
       list(APPEND ARM64X_TARGETS onnxruntime_providers_shared)
       list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn)
-      list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn_abi)
     endif()
 
     include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")

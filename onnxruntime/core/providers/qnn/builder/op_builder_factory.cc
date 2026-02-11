@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <vector>
-#include <unordered_map>
-#include <string>
+#include "core/providers/qnn/builder/op_builder_factory.h"
 
-#include "op_builder_factory.h"
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace onnxruntime {
 namespace qnn {
@@ -213,10 +213,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
-    CreateQuickGeluOpBuilder("QuickGelu", *this);
-  }
-
-  {
     CreateModOpBuilder("Mod", *this);
   }
 
@@ -230,11 +226,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateInverseOpBuilder("Inverse", *this);
-  }
-
-  {
-    CreateFusedMatMulOpBuilder("FusedMatMul", *this);
-    CreateMatMulNBitsOpBuilder("MatMulNBits", *this);
   }
 }
 

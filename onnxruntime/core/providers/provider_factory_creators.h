@@ -62,10 +62,6 @@
 #include "core/providers/rknpu/rknpu_provider_factory_creator.h"
 #endif
 
-#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
-#include "core/providers/qnn/qnn_provider_factory_creator.h"
-#endif
-
 #if defined(USE_SNPE)
 #include "core/providers/snpe/snpe_provider_factory_creator.h"
 #endif

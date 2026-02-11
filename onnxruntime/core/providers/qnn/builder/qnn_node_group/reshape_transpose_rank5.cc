@@ -14,12 +14,12 @@
 #include <sstream>
 
 #include "core/common/inlined_containers.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -31,35 +31,53 @@ constexpr const char* kOpTypeReshape = "Reshape";
 constexpr const char* kOpTypeTranspose = "Transpose";
 constexpr const char* kAttrTransposePerm = "perm";
 
-using MapNodeToNodeUnit = std::unordered_map<const Node*, const NodeUnit*>;
-using MapNodeUnitToGroup = std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>;
+using MapNodeToNodeUnit = std::unordered_map<const OrtNode*, const OrtNodeUnit*>;
+using MapNodeUnitToGroup = std::unordered_map<const OrtNodeUnit*, const IQnnNodeGroup*>;
 
-/// @brief Get the shape of a tensor from its NodeArg
-std::optional<TensorShape> GetTensorShape(const NodeArg* node_arg) {
-  if (node_arg == nullptr) {
+/// @brief Get the shape of a tensor from its OrtValueInfo
+std::optional<std::vector<int64_t>> GetTensorShape(const OrtApi& ort_api, const OrtValueInfo* value_info) {
+  if (value_info == nullptr) {
     return std::nullopt;
   }
-  auto shape_proto = node_arg->Shape();
-  if (shape_proto == nullptr) {
+
+  const OrtTypeInfo* type_info = nullptr;
+  if (ort_api.GetValueInfoTypeInfo(value_info, &type_info) != nullptr) {
     return std::nullopt;
   }
-  return utils::GetTensorProtoShape(*shape_proto);
+
+  const OrtTensorTypeAndShapeInfo* tensor_info = nullptr;
+  if (ort_api.CastTypeInfoToTensorInfo(type_info, &tensor_info) != nullptr) {
+    return std::nullopt;
+  }
+
+  size_t dims_count = 0;
+  if (ort_api.GetDimensionsCount(tensor_info, &dims_count) != nullptr) {
+    return std::nullopt;
+  }
+
+  std::vector<int64_t> dims(dims_count);
+  if (ort_api.GetDimensions(tensor_info, dims.data(), dims_count) != nullptr) {
+    return std::nullopt;
+  }
+
+  return dims;
 }
 
 /// @brief Get child NodeUnit of specified type, allowing QDQ-wrapped nodes
-const NodeUnit* GetChildNodeUnit(
-    const GraphViewer& graph_viewer,
-    const NodeUnit& parent_node_unit,
+const OrtNodeUnit* GetChildNodeUnit(
+    const QnnModelWrapper& qnn_model_wrapper,
+    const OrtNodeUnit& parent_node_unit,
     const std::string& child_op_type,
     const MapNodeToNodeUnit& node_to_node_unit,
     const MapNodeUnitToGroup& node_unit_to_qnn_node_group,
-    const logging::Logger& logger) {
-  const Node& parent_node = parent_node_unit.GetNode();
+    const Ort::Logger& logger) {
+  const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
+  const OrtNode& parent_node = parent_node_unit.GetNode();
 
   ORT_UNUSED_PARAMETER(logger);
   // For QDQ NodeUnits, we need to look at the Q node's output, not the target node's output
-  const Node* search_node = &parent_node;
-  if (parent_node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
+  const OrtNode* search_node = &parent_node;
+  if (parent_node_unit.UnitType() == OrtNodeUnit::Type::QDQGroup) {
     const auto& q_nodes = parent_node_unit.GetQNodes();
     if (!q_nodes.empty()) {
       search_node = q_nodes[0];  // Use first Q node
@@ -67,29 +85,73 @@ const NodeUnit* GetChildNodeUnit(
   }
 
   // Search node must have a single child (1 output edge) and must not produce a graph output
-  if (search_node->GetOutputEdgesCount() != 1 || graph_viewer.NodeProducesGraphOutput(*search_node)) {
+  size_t num_outputs = 0;
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetNumOutputs(search_node, &num_outputs), ort_api, nullptr);
+  if (num_outputs != 1) {
     return nullptr;
   }
 
-  // Get the child node from the search node's output edge
-  const Node* potential_child = &search_node->OutputEdgesBegin()->GetNode();
-  if (graph_viewer.GetNode(potential_child->Index()) == nullptr) {
+  std::vector<const OrtValueInfo*> outputs(num_outputs);
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetOutputs(search_node, outputs.data(), outputs.size()), ort_api, nullptr);
+
+  const OrtValueInfo* output_info = outputs[0];
+  bool is_graph_output = false;
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.ValueInfo_IsGraphOutput(output_info, &is_graph_output), ort_api, nullptr);
+  if (is_graph_output) {
+    return nullptr;
+  }
+
+  // We should have exactly one consumer
+  size_t num_consumers = 0;
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.ValueInfo_GetValueNumConsumers(output_info, &num_consumers), ort_api, nullptr);
+  if (num_consumers != 1) {
+    return nullptr;
+  }
+
+  // Get the consumers of this output
+  std::vector<const OrtNode*> consumers(num_consumers);
+  std::vector<int64_t> input_indices(num_consumers);
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.ValueInfo_GetValueConsumers(output_info, consumers.data(), input_indices.data(), num_consumers), ort_api, nullptr);
+
+  // Get the child node
+  const OrtNode* potential_child = consumers[0];
+  if (potential_child == nullptr) {
     return nullptr;
   }
 
   // If the child is a DequantizeLinear, skip it and look at its child (the target op of the next QDQ group)
-  if (potential_child->OpType() == "DequantizeLinear") {
-    if (potential_child->GetOutputEdgesCount() != 1) {
+  if (Ort::ConstNode(potential_child).GetOperatorType() == "DequantizeLinear") {
+    // Get DQ node's output
+    size_t dq_num_outputs = 0;
+    RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetNumOutputs(potential_child, &dq_num_outputs), ort_api, nullptr);
+    if (dq_num_outputs != 1) {
       return nullptr;
     }
-    potential_child = &potential_child->OutputEdgesBegin()->GetNode();
-    if (graph_viewer.GetNode(potential_child->Index()) == nullptr) {
+
+    std::vector<const OrtValueInfo*> dq_outputs(dq_num_outputs);
+    RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetOutputs(potential_child, dq_outputs.data(), dq_outputs.size()), ort_api, nullptr);
+
+    const OrtValueInfo* dq_output_info = dq_outputs[0];
+
+    // Get consumers of DQ output
+    size_t dq_num_consumers = 0;
+    RETURN_DEFAULT_IF_API_FAIL(ort_api.ValueInfo_GetValueNumConsumers(dq_output_info, &dq_num_consumers), ort_api, nullptr);
+    if (dq_num_consumers != 1) {
+      return nullptr;
+    }
+
+    std::vector<const OrtNode*> dq_consumers(dq_num_consumers);
+    std::vector<int64_t> dq_input_indices(dq_num_consumers);
+    RETURN_DEFAULT_IF_API_FAIL(ort_api.ValueInfo_GetValueConsumers(dq_output_info, dq_consumers.data(), dq_input_indices.data(), dq_num_consumers), ort_api, nullptr);
+
+    potential_child = dq_consumers[0];
+    if (potential_child == nullptr) {
       return nullptr;
     }
   }
 
   // Check if this node matches the target type
-  if (potential_child->OpType() != child_op_type) {
+  if (Ort::ConstNode(potential_child).GetOperatorType() != child_op_type) {
     return nullptr;
   }
 
@@ -99,7 +161,7 @@ const NodeUnit* GetChildNodeUnit(
     return nullptr;
   }
 
-  const NodeUnit* child_node_unit = child_node_unit_it->second;
+  const OrtNodeUnit* child_node_unit = child_node_unit_it->second;
 
   // Check if child node has already been handled
   if (node_unit_to_qnn_node_group.count(child_node_unit) != 0) {
@@ -110,91 +172,95 @@ const NodeUnit* GetChildNodeUnit(
 }
 
 /// @brief Match the pattern: Reshape -> Transpose -> Reshape with rank-6 intermediate tensors
-std::optional<std::array<const NodeUnit*, 3>> MatchRank6ToRank5Pattern(
-    const GraphViewer& graph_viewer,
-    const NodeUnit* reshape1,
+std::optional<std::array<const OrtNodeUnit*, 3>> MatchRank6ToRank5Pattern(
+    const QnnModelWrapper& qnn_model_wrapper,
+    const OrtNodeUnit* reshape1,
     const MapNodeToNodeUnit& node_to_node_unit,
     const MapNodeUnitToGroup& node_unit_to_qnn_node_group,
-    const logging::Logger& logger) {
-  LOGS(logger, VERBOSE) << "[Rank6ToRank5] MatchPattern: Checking node " << reshape1->Name()
-                        << " OpType=" << reshape1->OpType()
-                        << " UnitType=" << static_cast<int>(reshape1->UnitType());
-
+    [[maybe_unused]] const Ort::Logger& logger) {
   // Validate first Reshape in pattern - allow both SingleNode and QDQGroup
   if (reshape1->OpType() != kOpTypeReshape) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] First node in pattern is not a Reshape op";
     return std::nullopt;
   }
 
   // Get Transpose child (middle node in pattern) - allow both SingleNode and QDQGroup
-  const NodeUnit* transpose = GetChildNodeUnit(
-      graph_viewer, *reshape1, kOpTypeTranspose, node_to_node_unit, node_unit_to_qnn_node_group, logger);
+  const OrtNodeUnit* transpose = GetChildNodeUnit(
+      qnn_model_wrapper, *reshape1, kOpTypeTranspose, node_to_node_unit, node_unit_to_qnn_node_group, logger);
   if (transpose == nullptr) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] Transpose (middle node in pattern) not found after first Reshape";
     return std::nullopt;
   }
-
-  LOGS(logger, VERBOSE) << "[Rank6ToRank5] Found Transpose (middle node): " << transpose->Name();
 
   // Get second Reshape child (last node in pattern) - allow both SingleNode and QDQGroup
-  const NodeUnit* reshape2 = GetChildNodeUnit(
-      graph_viewer, *transpose, kOpTypeReshape, node_to_node_unit, node_unit_to_qnn_node_group, logger);
+  const OrtNodeUnit* reshape2 = GetChildNodeUnit(
+      qnn_model_wrapper, *transpose, kOpTypeReshape, node_to_node_unit, node_unit_to_qnn_node_group, logger);
   if (reshape2 == nullptr) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] Second Reshape (last node in pattern) not found after Transpose";
     return std::nullopt;
   }
 
-  LOGS(logger, VERBOSE) << "[Rank6ToRank5] Found second Reshape (last node): " << reshape2->Name();
-  LOGS(logger, INFO) << "[Rank6ToRank5] Pattern matched: Reshape -> Transpose -> Reshape";
-
-  return std::array<const NodeUnit*, 3>{reshape1, transpose, reshape2};
+  return std::array<const OrtNodeUnit*, 3>{reshape1, transpose, reshape2};
 }
 
 /// @brief Validate the pattern conditions and find the unit dimension index
 std::optional<size_t> ValidatePatternConditions(
-    const NodeUnit* reshape1,
-    const NodeUnit* transpose,
-    const NodeUnit* reshape2,
+    const OrtNodeUnit* reshape1,
+    const OrtNodeUnit* transpose,
+    const OrtNodeUnit* reshape2,
     const QnnModelWrapper& qnn_model_wrapper,
-    const logging::Logger& logger) {
-  // Check if reshape shape inputs are constants
-  const NodeArg* reshape1_shape_input = reshape1->GetNode().InputDefs()[1];
-  const NodeArg* reshape2_shape_input = reshape2->GetNode().InputDefs()[1];
+    [[maybe_unused]] const Ort::Logger& logger) {
+  const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
 
-  if (!qnn_model_wrapper.IsConstantInput(reshape1_shape_input->Name())) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Reshape1 shape input is not constant";
+  // Check if reshape shape inputs are constants
+  const OrtNodeUnitIODef& reshape1_input_1 = reshape1->Inputs()[1];
+  const OrtNodeUnitIODef& reshape2_input_1 = reshape2->Inputs()[1];
+
+  if (!qnn_model_wrapper.IsConstantInput(reshape1_input_1.name)) {
     return std::nullopt;
   }
 
-  if (!qnn_model_wrapper.IsConstantInput(reshape2_shape_input->Name())) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Reshape2 shape input is not constant";
+  if (!qnn_model_wrapper.IsConstantInput(reshape2_input_1.name)) {
     return std::nullopt;
   }
 
   // Get tensor shapes
-  auto t0_shape = GetTensorShape(reshape1->GetNode().InputDefs()[0]);
-  auto t1_shape = GetTensorShape(reshape1->GetNode().OutputDefs()[0]);
-  auto t2_shape = GetTensorShape(transpose->GetNode().OutputDefs()[0]);
-  auto t3_shape = GetTensorShape(reshape2->GetNode().OutputDefs()[0]);
+  size_t num_reshape1_inputs = 0;
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetNumInputs(&reshape1->GetNode(), &num_reshape1_inputs), ort_api, std::nullopt);
+  std::vector<const OrtValueInfo*> reshape1_inputs(num_reshape1_inputs);
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetInputs(&reshape1->GetNode(), reshape1_inputs.data(), reshape1_inputs.size()), ort_api, std::nullopt);
+
+  size_t num_reshape1_outputs = 0;
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetNumOutputs(&reshape1->GetNode(), &num_reshape1_outputs), ort_api, std::nullopt);
+  std::vector<const OrtValueInfo*> reshape1_outputs(num_reshape1_outputs);
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetOutputs(&reshape1->GetNode(), reshape1_outputs.data(), reshape1_outputs.size()), ort_api, std::nullopt);
+
+  size_t num_transpose_outputs = 0;
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetNumOutputs(&transpose->GetNode(), &num_transpose_outputs), ort_api, std::nullopt);
+  std::vector<const OrtValueInfo*> transpose_outputs(num_transpose_outputs);
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetOutputs(&transpose->GetNode(), transpose_outputs.data(), transpose_outputs.size()), ort_api, std::nullopt);
+
+  size_t num_reshape2_outputs = 0;
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetNumOutputs(&reshape2->GetNode(), &num_reshape2_outputs), ort_api, std::nullopt);
+  std::vector<const OrtValueInfo*> reshape2_outputs(num_reshape2_outputs);
+  RETURN_DEFAULT_IF_API_FAIL(ort_api.Node_GetOutputs(&reshape2->GetNode(), reshape2_outputs.data(), reshape2_outputs.size()), ort_api, std::nullopt);
+
+  auto t0_shape = GetTensorShape(ort_api, reshape1_inputs[0]);
+  auto t1_shape = GetTensorShape(ort_api, reshape1_outputs[0]);
+  auto t2_shape = GetTensorShape(ort_api, transpose_outputs[0]);
+  auto t3_shape = GetTensorShape(ort_api, reshape2_outputs[0]);
 
   if (!t0_shape.has_value() || !t1_shape.has_value() ||
       !t2_shape.has_value() || !t3_shape.has_value()) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Failed to get tensor shapes";
     return std::nullopt;
   }
-
-  auto t1_dims = t1_shape->GetDims();
-  auto t2_dims = t2_shape->GetDims();
 
   // Condition 1: Rank(t1) == Rank(t2) == 6
-  if (t1_shape->NumDimensions() != kRank6 || t2_shape->NumDimensions() != kRank6) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Condition 1 failed - not rank-6: t1_rank="
-                          << t1_shape->NumDimensions() << " t2_rank=" << t2_shape->NumDimensions();
+  if (t1_shape->size() != kRank6 || t2_shape->size() != kRank6) {
     return std::nullopt;
   }
 
+  const auto& t1_dims = *t1_shape;
+  const auto& t2_dims = *t2_shape;
+
   if (t1_dims.empty() || t2_dims.empty()) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Empty dims";
     return std::nullopt;
   }
 
@@ -208,57 +274,59 @@ std::optional<size_t> ValidatePatternConditions(
   }
 
   if (!unit_dim_index.has_value()) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: No common unit dimension found in t1 and t2";
     return std::nullopt;
   }
 
   // Condition 3: Transpose must leave the unit dimension in place
-  NodeAttrHelper transpose_helper(transpose->GetNode());
+  OrtNodeAttrHelper transpose_helper(*transpose);
   std::vector<int64_t> perm = transpose_helper.Get(kAttrTransposePerm, std::vector<int64_t>{});
   if (perm.size() != kRank6) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Invalid permutation size: " << perm.size();
     return std::nullopt;
   }
 
   if (perm[unit_dim_index.value()] != static_cast<int64_t>(unit_dim_index.value())) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] ValidateConditions: Transpose moves unit dimension from index "
-                          << unit_dim_index.value() << " to " << perm[unit_dim_index.value()];
     return std::nullopt;
   }
 
-  LOGS(logger, INFO) << "[Rank6ToRank5] ValidateConditions: All conditions passed! Unit dimension at index "
-                     << unit_dim_index.value();
   return unit_dim_index;
 }
 
 /// @brief Create or validate the QNN nodes with rank-5 tensors
-Status CreateOrValidateOnQnn(
-    QnnModelWrapper* qnn_model_wrapper,
-    gsl::span<const NodeUnit* const> node_units,
+Ort::Status CreateOrValidateOnQnn(
+    QnnModelWrapper& qnn_model_wrapper,
+    gsl::span<const OrtNodeUnit* const> node_units,
     size_t unit_dim_index,
     bool validate,
-    const logging::Logger& logger) {
-  LOGS(logger, VERBOSE) << "[Rank6ToRank5] CreateOrValidateOnQnn: validate=" << validate
-                        << " unit_dim_index=" << unit_dim_index;
-
-  const NodeUnit* reshape1 = node_units[0];
-  const NodeUnit* transpose = node_units[1];
-  const NodeUnit* reshape2 = node_units[2];
+    [[maybe_unused]] const Ort::Logger& logger) {
+  const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
+  const OrtNodeUnit* reshape1 = node_units[0];
+  const OrtNodeUnit* transpose = node_units[1];
+  const OrtNodeUnit* reshape2 = node_units[2];
 
   // Get input and output definitions
-  const NodeUnitIODef& reshape1_input = reshape1->Inputs()[0];
-  const NodeUnitIODef& reshape2_output = reshape2->Outputs()[0];
+  const OrtNodeUnitIODef& reshape1_input = reshape1->Inputs()[0];
+  const OrtNodeUnitIODef& reshape2_output = reshape2->Outputs()[0];
 
   // Get original shapes
-  auto t1_shape = GetTensorShape(reshape1->GetNode().OutputDefs()[0]);
-  auto t2_shape = GetTensorShape(transpose->GetNode().OutputDefs()[0]);
+  size_t num_reshape1_outputs = 0;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.Node_GetNumOutputs(&reshape1->GetNode(), &num_reshape1_outputs));
+  std::vector<const OrtValueInfo*> reshape1_outputs(num_reshape1_outputs);
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.Node_GetOutputs(&reshape1->GetNode(), reshape1_outputs.data(), reshape1_outputs.size()));
+
+  size_t num_transpose_outputs = 0;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.Node_GetNumOutputs(&transpose->GetNode(), &num_transpose_outputs));
+  std::vector<const OrtValueInfo*> transpose_outputs(num_transpose_outputs);
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.Node_GetOutputs(&transpose->GetNode(), transpose_outputs.data(), transpose_outputs.size()));
+
+  auto t1_shape = GetTensorShape(ort_api, reshape1_outputs[0]);
+  auto t2_shape = GetTensorShape(ort_api, transpose_outputs[0]);
 
   if (!t1_shape.has_value() || !t2_shape.has_value()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get intermediate tensor shapes");
+    return Ort::Status("Failed to get intermediate tensor shapes", OrtErrorCode::ORT_FAIL);
   }
 
-  auto t1_dims = t1_shape->GetDims();
-  auto t2_dims = t2_shape->GetDims();
+  const auto& t1_dims = *t1_shape;
+  const auto& t2_dims = *t2_shape;
 
   // Create rank-5 shape for t1 (remove unit dimension at unit_dim_index)
   std::vector<uint32_t> t1_rank5_dims;
@@ -279,10 +347,10 @@ Status CreateOrValidateOnQnn(
   }
 
   // Get transpose permutation and adjust for rank-5
-  NodeAttrHelper transpose_helper(transpose->GetNode());
+  OrtNodeAttrHelper transpose_helper(*transpose);
   std::vector<int64_t> perm = transpose_helper.Get(kAttrTransposePerm, std::vector<int64_t>{});
   if (perm.size() != kRank6) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Expected rank-6 permutation, got rank-", perm.size());
+    return Ort::Status("Expected rank-6 permutation", OrtErrorCode::ORT_FAIL);
   }
 
   // Remove unit dimension and adjust indices
@@ -300,33 +368,37 @@ Status CreateOrValidateOnQnn(
   }
 
   // Use original tensor names from ONNX
-  const std::string& t1_name = reshape1->GetNode().OutputDefs()[0]->Name();
-  const std::string& t2_name = transpose->GetNode().OutputDefs()[0]->Name();
+  const char* t1_name_cstr = nullptr;
+  const char* t2_name_cstr = nullptr;
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetValueInfoName(reshape1_outputs[0], &t1_name_cstr));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api.GetValueInfoName(transpose_outputs[0], &t2_name_cstr));
+  std::string t1_name(t1_name_cstr);
+  std::string t2_name(t2_name_cstr);
 
   // Get data type from the NodeUnit's output (handles both quantized and float types)
-  const NodeUnitIODef& reshape1_output = reshape1->Outputs()[0];
+  const OrtNodeUnitIODef& reshape1_output = reshape1->Outputs()[0];
   Qnn_DataType_t data_type;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(reshape1_output.quant_param.has_value(),
-                                            reshape1_output.node_arg.TypeAsProto(),
-                                            data_type));
+  RETURN_IF_ERROR(utils::GetQnnDataType(reshape1_output.quant_param.has_value(),
+                                        reshape1_output.type,
+                                        data_type));
 
   // Get input shape for first Reshape
   std::vector<uint32_t> reshape1_input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(reshape1_input.node_arg, reshape1_input_shape),
-                    "Failed to get first Reshape input shape");
+  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(reshape1_input.shape, reshape1_input_shape),
+                "Failed to get first Reshape input shape");
 
-  // Get quantization params for first Reshape input
-  QnnQuantParamsWrapper quant_param;
-  ORT_RETURN_IF_ERROR(quant_param.Init(*qnn_model_wrapper, reshape1_input));
+  // Create input tensor wrapper for Reshape1
+  QnnTensorWrapper reshape1_input_tensor;
+  RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(reshape1_input, reshape1_input_tensor));
 
   // Create Reshape1 with rank-5 output using AddReshapeNode
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper->AddReshapeNode(
-      reshape1_input.node_arg.Name(),
+  RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(
+      reshape1_input.name,
       t1_name,
       reshape1_input_shape,
       t1_rank5_dims,
       data_type,
-      quant_param,
+      reshape1_input_tensor.GetQnnQuantParams(),
       validate,
       false,  // is_for_input
       false   // is_for_output
@@ -335,16 +407,17 @@ Status CreateOrValidateOnQnn(
   // Create Transpose with rank-5 input/output
   {
     // Get quantization params for transpose output
-    const NodeUnitIODef& transpose_output = transpose->Outputs()[0];
-    QnnQuantParamsWrapper transpose_quant_param;
-    ORT_RETURN_IF_ERROR(transpose_quant_param.Init(*qnn_model_wrapper, transpose_output));
+    const OrtNodeUnitIODef& transpose_output = transpose->Outputs()[0];
+    QnnTensorWrapper transpose_output_tensor;
+    RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(transpose_output, transpose_output_tensor));
 
     // Check if output tensor already exists
-    if (!qnn_model_wrapper->IsQnnTensorWrapperExist(t2_name)) {
+    if (!qnn_model_wrapper.IsQnnTensorWrapperExist(t2_name)) {
       // Create rank-5 output tensor for transpose with proper quantization params
-      QnnTensorWrapper t2_tensor(t2_name, QNN_TENSOR_TYPE_NATIVE, data_type, std::move(transpose_quant_param),
+      QnnQuantParamsWrapper quant_params_copy = transpose_output_tensor.GetQnnQuantParams();
+      QnnTensorWrapper t2_tensor(t2_name, QNN_TENSOR_TYPE_NATIVE, data_type, std::move(quant_params_copy),
                                  std::vector<uint32_t>(t2_rank5_dims));
-      ORT_RETURN_IF_NOT(qnn_model_wrapper->AddTensorWrapper(std::move(t2_tensor)), "Failed to add transpose output");
+      RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(t2_tensor)), "Failed to add transpose output");
     }
 
     // Create perm parameter
@@ -352,107 +425,98 @@ Status CreateOrValidateOnQnn(
     QnnParamWrapper perm_param(transpose->Index(), transpose->Name(), QNN_OP_TRANSPOSE_PARAM_PERM,
                                std::move(perm_shape), std::move(perm_rank5));
     std::vector<std::string> param_tensor_names = {perm_param.GetParamTensorName()};
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->AddParamWrapper(std::move(perm_param)), "Failed to add perm param");
+    RETURN_IF_NOT(qnn_model_wrapper.AddParamWrapper(std::move(perm_param)), "Failed to add perm param");
 
     std::vector<std::string> transpose_input_names = {t1_name};
     std::vector<std::string> transpose_output_names = {t2_name};
 
-    ORT_RETURN_IF_NOT(qnn_model_wrapper->CreateQnnNode(
-                          utils::GetUniqueName(*transpose),
-                          QNN_OP_PACKAGE_NAME_QTI_AISW,
-                          QNN_OP_TRANSPOSE,
-                          std::move(transpose_input_names),
-                          std::move(transpose_output_names),
-                          std::move(param_tensor_names),
-                          validate),
-                      "Failed to create rank-5 Transpose node");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
+                      utils::GetUniqueName(*transpose),
+                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                      QNN_OP_TRANSPOSE,
+                      std::move(transpose_input_names),
+                      std::move(transpose_output_names),
+                      std::move(param_tensor_names),
+                      validate),
+                  "Failed to create rank-5 Transpose node");
   }
 
   // Get output shape for reshape2
   std::vector<uint32_t> reshape2_output_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(reshape2_output.node_arg, reshape2_output_shape),
-                    "Failed to get reshape2 output shape");
+  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(reshape2_output.shape, reshape2_output_shape),
+                "Failed to get reshape2 output shape");
 
-  // Get quantization params for reshape2
-  QnnQuantParamsWrapper quant_param2;
-  ORT_RETURN_IF_ERROR(quant_param2.Init(*qnn_model_wrapper, reshape2_output));
+  // Create output tensor wrapper for Reshape2
+  QnnTensorWrapper reshape2_output_tensor;
+  RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(reshape2_output, reshape2_output_tensor));
 
   // Get data type from the NodeUnit's output (handles both quantized and float types)
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(reshape2_output.quant_param.has_value(),
-                                            reshape2_output.node_arg.TypeAsProto(),
-                                            data_type));
+  RETURN_IF_ERROR(utils::GetQnnDataType(reshape2_output.quant_param.has_value(),
+                                        reshape2_output.type,
+                                        data_type));
 
   // Create Reshape2 with rank-5 input using AddReshapeNode
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper->AddReshapeNode(
+  RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(
       t2_name,
-      reshape2_output.node_arg.Name(),
+      reshape2_output.name,
       t2_rank5_dims,
       reshape2_output_shape,
       data_type,
-      quant_param2,
+      reshape2_output_tensor.GetQnnQuantParams(),
       validate,
       false,  // is_for_input
       false   // is_for_output
       ));
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 }  // namespace
 
 std::unique_ptr<IQnnNodeGroup> Rank6ToRank5Fusion::TryFusion(
     QnnModelWrapper& qnn_model_wrapper,
-    const NodeUnit& reshape1_node_unit,
+    const OrtNodeUnit& reshape1_node_unit,
     const MapNodeToNodeUnit& node_to_node_unit,
     const MapNodeUnitToGroup& node_unit_to_qnn_node_group,
-    const logging::Logger& logger) {
-  LOGS(logger, VERBOSE) << "[Rank6ToRank5] TryFusion called for node: " << reshape1_node_unit.Name()
-                        << " OpType: " << reshape1_node_unit.OpType();
-
-  const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
-
+    const Ort::Logger& logger) {
   // Match the pattern
-  std::optional<std::array<const NodeUnit*, 3>> pattern = MatchRank6ToRank5Pattern(
-      graph_viewer, &reshape1_node_unit, node_to_node_unit, node_unit_to_qnn_node_group, logger);
+  std::optional<std::array<const OrtNodeUnit*, 3>> pattern = MatchRank6ToRank5Pattern(
+      qnn_model_wrapper, &reshape1_node_unit, node_to_node_unit, node_unit_to_qnn_node_group, logger);
 
   if (!pattern.has_value()) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] Pattern match failed for node: " << reshape1_node_unit.Name();
     return nullptr;
   }
 
-  const NodeUnit* reshape1 = pattern->at(0);
-  const NodeUnit* transpose = pattern->at(1);
-  const NodeUnit* reshape2 = pattern->at(2);
+  const OrtNodeUnit* reshape1 = pattern->at(0);
+  const OrtNodeUnit* transpose = pattern->at(1);
+  const OrtNodeUnit* reshape2 = pattern->at(2);
 
   // Validate pattern conditions and get unit dimension index
   auto unit_dim_index = ValidatePatternConditions(reshape1, transpose, reshape2, qnn_model_wrapper, logger);
   if (!unit_dim_index.has_value()) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] Pattern condition validation failed";
     return nullptr;
   }
 
   // Validate on QNN
-  if (CreateOrValidateOnQnn(&qnn_model_wrapper, pattern.value(), unit_dim_index.value(), /*validate=*/true, logger) != Status::OK()) {
-    LOGS(logger, VERBOSE) << "[Rank6ToRank5] QNN validation failed";
+  if (!CreateOrValidateOnQnn(qnn_model_wrapper, pattern.value(), unit_dim_index.value(), /*validate=*/true, logger).IsOK()) {
     return nullptr;
   }
 
-  LOGS(logger, INFO) << "[Rank6ToRank5] Fusion successful! Creating Rank6ToRank5Fusion node group";
   return std::make_unique<Rank6ToRank5Fusion>(pattern.value(), unit_dim_index.value());
 }
 
-gsl::span<const NodeUnit* const> Rank6ToRank5Fusion::GetNodeUnits() const {
-  return gsl::span<const NodeUnit* const>{node_units_.data(), node_units_.size()};
+gsl::span<const OrtNodeUnit* const> Rank6ToRank5Fusion::GetNodeUnits() const {
+  return gsl::span<const OrtNodeUnit* const>{node_units_.data(), node_units_.size()};
 }
 
-Status Rank6ToRank5Fusion::IsSupported(
-    QnnModelWrapper& qnn_model_wrapper, const logging::Logger& logger) const {
-  return CreateOrValidateOnQnn(&qnn_model_wrapper, GetNodeUnits(), unit_dim_index_, /*validate=*/true, logger);
+Ort::Status Rank6ToRank5Fusion::IsSupported(
+    QnnModelWrapper& qnn_model_wrapper, [[maybe_unused]] const Ort::Logger& logger) const {
+  return CreateOrValidateOnQnn(qnn_model_wrapper, GetNodeUnits(), unit_dim_index_, /*validate=*/true, logger);
 }
 
-Status Rank6ToRank5Fusion::AddToModelBuilder(
-    QnnModelWrapper& qnn_model_wrapper, const logging::Logger& logger) const {
-  return CreateOrValidateOnQnn(&qnn_model_wrapper, GetNodeUnits(), unit_dim_index_, /*validate=*/false, logger);
+Ort::Status Rank6ToRank5Fusion::AddToModelBuilder(
+    QnnModelWrapper& qnn_model_wrapper, [[maybe_unused]] const Ort::Logger& logger) const {
+  return CreateOrValidateOnQnn(qnn_model_wrapper, GetNodeUnits(), unit_dim_index_, /*validate=*/false, logger);
 }
 
 }  // namespace qnn

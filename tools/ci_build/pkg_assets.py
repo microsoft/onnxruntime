@@ -55,7 +55,7 @@ def get_qnn_asset_file_list():
     """
     qnn_assets = {
         "windows": [
-            "onnxruntime_providers_qnn_abi.dll",
+            "onnxruntime_providers_qnn.dll",
             "Genie.dll",
             "QnnCpu.dll",
             "QnnGpu.dll",
@@ -74,7 +74,7 @@ def get_qnn_asset_file_list():
             "libQnnHtpV68Skel.so",
         ],
         "others": [
-            "libonnxruntime_providers_qnn_abi.so",
+            "libonnxruntime_providers_qnn.so",
             "libGenie.so",
             "libQnnCpu.so",
             "libQnnGpu.so",
@@ -182,13 +182,8 @@ def build_zip_asset(
         log.info(f"Creating zip: {zip_path}")
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             for filename, file_path in found_files:
-                # TODO: we will remove this once the rename completed.
-                zip_filename = filename
-                if "onnxruntime_providers_qnn_abi" in filename:
-                    zip_filename = filename.replace("_abi", "")
-
-                zipf.write(file_path, zip_filename)
-                log.debug(f"Added to zip: {zip_filename}")
+                zipf.write(file_path, filename)
+                log.debug(f"Added to zip: {filename}")
 
         log.info(f"Created zip asset: {zip_path} ({len(found_files)} files)")
         created_zips.append(zip_path)

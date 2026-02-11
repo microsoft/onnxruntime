@@ -204,10 +204,10 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
   }
 }
 
-void RunWithEPABI(OrtSessionWrapper* ort_session,
-                  const Ort::RunOptions& ort_ro,
-                  const NameMLValMap& feeds,
-                  std::vector<OrtValue>& output_vals) {
+void RunWithEP(OrtSessionWrapper* ort_session,
+               const Ort::RunOptions& ort_ro,
+               const NameMLValMap& feeds,
+               std::vector<OrtValue>& output_vals) {
   const auto& graph = ort_session->GetGraph();
 
   // Fetch all inputs.
@@ -241,13 +241,13 @@ void RunWithEPABI(OrtSessionWrapper* ort_session,
   }
 }
 
-void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
-                                  Ort::SessionOptions& ort_so,
-                                  const std::string& provider_type,
-                                  std::string_view log_id,
-                                  const NameMLValMap& feeds,
-                                  const EPVerificationParams& params,
-                                  bool verify_outputs) {
+void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes,
+                               Ort::SessionOptions& ort_so,
+                               const std::string& provider_type,
+                               std::string_view log_id,
+                               const NameMLValMap& feeds,
+                               const EPVerificationParams& params,
+                               bool verify_outputs) {
   std::vector<std::byte> model_data_buffer{};
   const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
 
@@ -291,7 +291,7 @@ void RunAndVerifyOutputsWithEPABI(ModelPathOrBytes model_path_or_bytes,
   ort_run_options.SetRunTag(log_id.data());
 
   std::vector<OrtValue> fetches;
-  RunWithEPABI(&ort_session, ort_run_options, feeds, fetches);
+  RunWithEP(&ort_session, ort_run_options, feeds, fetches);
 
   if (verify_outputs) {
     VerifyOutputs(output_names, expected_fetches, fetches, params);

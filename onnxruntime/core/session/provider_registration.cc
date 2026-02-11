@@ -206,18 +206,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
       break;
     }
-    case EpID::QNN: {
-#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
-      if (auto ep_factory = QNNProviderFactoryCreator::Create(provider_options, &(options->value)); ep_factory) {
-        options->provider_factories.push_back(std::move(ep_factory));
-      } else {
-        status = create_failed_to_load_provider_status();
-      }
-#else
-      status = create_not_supported_status();
-#endif
-      break;
-    }
     case EpID::OpenVINO: {
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
       if (auto ep_factory = OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value)); ep_factory) {

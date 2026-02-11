@@ -8,11 +8,8 @@ import datetime
 import logging
 import platform
 import shlex
-import shutil
 import subprocess
 import sys
-import tempfile
-import zipfile
 from glob import glob
 from os import environ, getcwd, path, remove
 from shutil import copyfile
@@ -143,7 +140,7 @@ class InstallCommand(InstallCommandBase):
         return ret
 
 
-providers_qnn = "onnxruntime_providers_qnn_abi"
+providers_qnn = "onnxruntime_providers_qnn"
 if platform.system() == "Linux":
     providers_qnn = "lib" + providers_qnn + ".so"
 elif platform.system() == "Windows":
@@ -359,32 +356,3 @@ setup(
     },
     classifiers=classifiers,
 )
-
-
-# TODO: Remove the workaround once we remove the QNN EP non-ABI build and remove the "_abi" suffix.
-# Workaround to rename the onnxruntime_providers_qnn_abi.dll to onnxruntime_providers_qnn.dll in the wheel package.
-def rename_wheel_qnn_ep_library():
-    artifact_folder = getcwd()
-    wheel_files = glob(f"{artifact_folder}/dist/*.whl")
-    for wheel_path in wheel_files:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Extract wheel
-            with zipfile.ZipFile(wheel_path, "r") as zip_ref:
-                zip_ref.extractall(tmp_dir)
-
-            # Remove the origin one
-            remove(wheel_path)
-
-            qnn_ep_libraries_need_updated = glob(f"{tmp_dir}/*/onnxruntime_providers_qnn_abi.dll")
-            for qnn_ep_library in qnn_ep_libraries_need_updated:
-                # Rename
-                shutil.move(
-                    qnn_ep_library,
-                    qnn_ep_library.replace("onnxruntime_providers_qnn_abi.dll", "onnxruntime_providers_qnn.dll"),
-                )
-
-            # Repack wheel
-            subprocess.run(f"wheel pack {tmp_dir} -d {artifact_folder}/dist", shell=True, check=True)
-
-
-rename_wheel_qnn_ep_library()

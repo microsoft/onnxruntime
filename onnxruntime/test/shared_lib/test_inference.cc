@@ -2092,7 +2092,8 @@ TEST(CApiTest, get_allocator_cuda) {
 
 #if defined(USE_QNN)
 
-TEST(CApiTest, get_allocator_qnn_htp_shared) {
+// TODO: Modify the testcases with plugin EP library
+TEST(CApiTest, DISABLED_get_allocator_qnn_htp_shared) {
   Ort::Session session{nullptr};
 
   if (!CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(NAMED_AND_ANON_DIM_PARAM_URI, session)) {
@@ -2294,7 +2295,8 @@ TEST(CApiTest, io_binding_cuda) {
 
 #if defined(USE_QNN)
 
-TEST(CApiTest, io_binding_qnn_htp_shared) {
+// TODO: Modify the testcases with plugin EP library
+TEST(CApiTest, DISABLED_io_binding_qnn_htp_shared) {
   Ort::Session session{nullptr};
   if (!CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(MODEL_URI, session)) {
     GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
