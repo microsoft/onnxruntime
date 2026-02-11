@@ -930,7 +930,7 @@ namespace Microsoft.ML.OnnxRuntime
                         string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
                         string rid = RuntimeInformation.RuntimeIdentifier;
 
-                        string[] ridsToTry = { rid, "osx-arm64", "osx", "linux-x64", "linux-arm64", "linux" };
+                        string[] ridsToTry = { rid, "osx-arm64", "osx-aarch64", "osx", "linux-x64", "linux-arm64", "linux" };
                         foreach (var tryRid in ridsToTry)
                         {
                             string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
