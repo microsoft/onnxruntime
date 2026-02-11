@@ -3827,17 +3827,19 @@ TEST(TransposeOptimizerTests, TestQLinearSoftmax) {
     EXPECT_EQ(transpose_cost, 0);
   };
 
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
-                    TransformerLevel::Level2,
-                    TransformerLevel::Level3,
-                    /*opset_version*/ {13, 23},
-                    /*per_sample_tolerance*/ 0.0,
-                    /*relative_per_sample_tolerance*/ 0.0,
-                    /*transformer*/ nullptr,
-                    /*add_session_options*/ {},
-                    /*disabled_optimizers*/ {},
-                    /*ep*/ DefaultCpuExecutionProvider());
+  for (int opset_version : {13, 23}) {
+    TransformerTester(build_test_case_1,
+                      check_optimized_graph_1,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3,
+                      /*opset_version*/ opset_version,
+                      /*per_sample_tolerance*/ 0.0,
+                      /*relative_per_sample_tolerance*/ 0.0,
+                      /*transformer*/ nullptr,
+                      /*add_session_options*/ {},
+                      /*disabled_optimizers*/ {},
+                      /*ep*/ DefaultCpuExecutionProvider());
+  }
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
