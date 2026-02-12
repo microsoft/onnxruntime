@@ -10,8 +10,8 @@ namespace onnxruntime {
 
 namespace {
 const std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> ignorable_nodes{
-    {"Reshape", {1, 5, 13, 14, 19}},
-    {"Transpose", {1, 13}}};
+    {"Reshape", {1, 5, 13, 14, 19, 21, 23, 24, 25}},
+    {"Transpose", {1, 13, 21, 23, 24, 25}}};
 const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> dest = {"BatchNormalization", {1, 6, 7, 9, 14, 15}};
 }  // namespace
 

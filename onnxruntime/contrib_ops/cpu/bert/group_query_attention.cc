@@ -70,7 +70,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 seqlens_k,
                                                                 total_seqlen_tensor,
                                                                 scale_,
-                                                                softcap_));
+                                                                softcap_,
+                                                                0));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
