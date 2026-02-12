@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-// Enable quantized KV cache support for INT8/INT4
+// Enable quantized KV cache support for INT8/INT4/FP8
 #define KV_QUANT_SUPPORTED 1
 
 #include <cuda_fp16.h>
@@ -49,7 +49,7 @@ struct TypeConverter<__nv_bfloat16> {
 // ============================================================================
 //
 // This file implements symmetric quantization for KV cache in GroupQueryAttention.
-// Supports INT4 and INT8 with PER_TENSOR and PER_CHANNEL quantization modes.
+// Supports INT4, INT8, and FP8 (E4M3) with PER_TENSOR and PER_CHANNEL quantization modes.
 //
 // QUANTIZATION SCHEME:
 // -------------------
@@ -96,7 +96,7 @@ struct TypeConverter<__nv_bfloat16> {
 //   - Conversion: Native CUDA cast via __nv_cvt_float_to_fp8/fp8_to_float
 // ============================================================================
 
-// Dequantization Kernel: Converts Quantized (Int8/Int4) KV cache back to Floating Point (T).
+// Dequantization Kernel: Converts Quantized (Int8/Int4/FP8) KV cache back to Floating Point (T).
 // Iterates over every individual element with one thread per element.
 template <typename T, typename T_QUANT, typename T_SCALE>
 __global__ void DequantizeKernel(T* dequantized_data,
@@ -195,7 +195,7 @@ Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Quantization Kernel: Converts Floating Point (T) cache to Quantized (Int8/Int4) values.
+// Quantization Kernel: Converts Floating Point (T) cache to Quantized (Int8/Int4/FP8) values.
 // Note: This kernel is used to quantize a full input tensor, e.g. during graph initialization
 // or fallback paths. The main prompt path uses the fused UnpackRoPEAppend kernel.
 template <typename T, typename T_QUANT, typename T_SCALE>

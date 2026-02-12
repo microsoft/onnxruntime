@@ -858,7 +858,7 @@ Status DequantizeFlashAttentionFallback(
   return Status::OK();
 }
 
-// Use Flash Attention for float key and value, then quantize key/value to int8 to save to k/v cache.
+// Use Flash Attention for float key and value, then quantize key/value (int8/fp8/int4) to save to k/v cache.
 template <typename T, typename U>
 Status FlashAttentionAndQuantizeKV(
     const cudaDeviceProp& device_prop,
