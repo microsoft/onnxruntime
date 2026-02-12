@@ -1763,7 +1763,7 @@ static Status CopySparseData(size_t n_sparse_elements,
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         indices_data = ReinterpretAsSpan<const int64_t>(gsl::make_span(unpack_buffer));
       } else {
-        ORT_RETURN_IF_NOT(indices.int64_data_size() == static_cast<int64_t>(nnz_elements),
+        ORT_RETURN_IF_NOT(indices.int64_data_size() == nnz_elements,
                           "Sparse indices int64 data size does not match expected");
         indices_data = gsl::make_span(indices.int64_data().data(), nnz_elements);
       }
@@ -1778,7 +1778,7 @@ static Status CopySparseData(size_t n_sparse_elements,
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
-        ORT_RETURN_IF_NOT(indices.int32_data_size() == static_cast<int64_t>(nnz_elements),
+        ORT_RETURN_IF_NOT(indices.int32_data_size() == nnz_elements,
                           "Sparse indices int32 data size does not match expected");
         indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
       }
@@ -1792,13 +1792,14 @@ static Status CopySparseData(size_t n_sparse_elements,
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
         indices_values.insert(indices_values.cend(), int16_span.begin(), int16_span.end());
-        indices_data = gsl::make_span(indices_values);
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
-                               "Invalid SparseTensor indices. INT16 indices must be in the raw data of indices tensor");
+        ORT_RETURN_IF_NOT(indices.int32_data_size() == nnz_elements,
+                          "Sparse indices int16 data size does not match expected");
+        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
       }
+      indices_data = gsl::make_span(indices_values);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
@@ -1808,13 +1809,14 @@ static Status CopySparseData(size_t n_sparse_elements,
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
         indices_values.insert(indices_values.cend(), int8_span.begin(), int8_span.end());
-        indices_data = gsl::make_span(indices_values);
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
-                               "Invalid SparseTensor indices. INT8 indices must be in the raw data of indices tensor");
+        ORT_RETURN_IF_NOT(indices.int32_data_size() == nnz_elements,
+                          "Sparse indices int8 data size does not match expected");
+        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
       }
+      indices_data = gsl::make_span(indices_values);
       break;
     }
     default:
