@@ -19,28 +19,38 @@
 # by the cherry-picked commits have any other modifications in the target branch history
 # that are not included in the cherry-pick list.
 import argparse
-import subprocess
 import json
+import subprocess
 import sys
 from collections import defaultdict
+
 
 def main():
     parser = argparse.ArgumentParser(description="Generate cherry-pick script from PRs with a specific label.")
     parser.add_argument("--label", required=True, help="Label to filter PRs")
     parser.add_argument("--output", required=True, help="Output cmd file path")
     parser.add_argument("--repo", default="microsoft/onnxruntime", help="Repository (default: microsoft/onnxruntime)")
-    parser.add_argument("--branch", default="HEAD", help="Target branch to compare against for dependency checks (default: HEAD)")
+    parser.add_argument(
+        "--branch", default="HEAD", help="Target branch to compare against for dependency checks (default: HEAD)"
+    )
     args = parser.parse_args()
 
     # Fetch merged PRs with the specified label using gh CLI
     print(f"Fetching merged PRs with label '{args.label}' from {args.repo}...")
     cmd = [
-        "gh", "pr", "list",
-        "--repo", args.repo,
-        "--label", args.label,
-        "--state", "merged",
-        "--json", "number,title,mergeCommit,mergedAt",
-        "-L", "200"
+        "gh",
+        "pr",
+        "list",
+        "--repo",
+        args.repo,
+        "--label",
+        args.label,
+        "--state",
+        "merged",
+        "--json",
+        "number,title,mergeCommit,mergedAt",
+        "-L",
+        "200",
     ]
 
     try:
@@ -60,7 +70,7 @@ def main():
         return
 
     # Sort by mergedAt (ISO 8601 strings sort correctly in chronological order)
-    prs.sort(key=lambda x: x['mergedAt'])
+    prs.sort(key=lambda x: x["mergedAt"])
 
     # Write to output cmd file
     commit_count = 0
@@ -70,15 +80,15 @@ def main():
         f.write("rem Sorted by merge time (oldest first)\n\n")
 
         for pr in prs:
-            number = pr['number']
-            title = pr['title']
-            safe_title = title.replace('\n', ' ')
+            number = pr["number"]
+            title = pr["title"]
+            safe_title = title.replace("\n", " ")
 
-            if not pr.get('mergeCommit'):
+            if not pr.get("mergeCommit"):
                 print(f"Warning: PR #{number} has no merge commit OID. Skipping.", file=sys.stderr)
                 continue
 
-            oid = pr['mergeCommit']['oid']
+            oid = pr["mergeCommit"]["oid"]
             f.write(f"rem PR {number}: {safe_title}\n")
             f.write(f"git cherry-pick {oid}\n\n")
             commit_count += 1
@@ -88,11 +98,11 @@ def main():
     # Write to markdown file. You can use it as the pull request description.
     md_output = "cherry_pick_pr_description.md"
     with open(md_output, "w", encoding="utf-8") as f:
-        f.write(f"This cherry-picks the following commits for the release:\n")
+        f.write("This cherry-picks the following commits for the release:\n")
         for pr in prs:
-            if not pr.get('mergeCommit'):
+            if not pr.get("mergeCommit"):
                 continue
-            number = pr['number']
+            number = pr["number"]
             f.write(f"- #{number}\n")
 
     print(f"Generated {md_output} with {commit_count} commits.")
@@ -103,21 +113,23 @@ def main():
     # Collect OIDs being cherry-picked
     cherry_pick_oids = set()
     for pr in prs:
-        if pr.get('mergeCommit'):
-            cherry_pick_oids.add(pr['mergeCommit']['oid'])
+        if pr.get("mergeCommit"):
+            cherry_pick_oids.add(pr["mergeCommit"]["oid"])
 
     for pr in prs:
-        if not pr.get('mergeCommit'):
+        if not pr.get("mergeCommit"):
             continue
 
-        oid = pr['mergeCommit']['oid']
-        number = pr['number']
+        oid = pr["mergeCommit"]["oid"]
+        number = pr["number"]
 
         # Get files changed by this commit
         try:
             res = subprocess.run(
                 ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", oid],
-                capture_output=True, text=True, check=True
+                capture_output=True,
+                text=True,
+                check=True,
             )
             files = res.stdout.strip().splitlines()
         except subprocess.CalledProcessError as e:
@@ -132,10 +144,12 @@ def main():
             try:
                 res = subprocess.run(
                     ["git", "log", oid, "--not", args.branch, "--format=%H %s", "--", filepath],
-                    capture_output=True, text=True, check=True
+                    capture_output=True,
+                    text=True,
+                    check=True,
                 )
                 for line in res.stdout.strip().splitlines():
-                    parts = line.split(' ', 1)
+                    parts = line.split(" ", 1)
                     c = parts[0]
                     title = parts[1] if len(parts) > 1 else ""
 
@@ -155,8 +169,11 @@ def main():
         # Print deduplicated warnings
         for missing_oid, (title, affected_files) in missing_commits.items():
             files_str = ", ".join(affected_files)
-            print(f"WARNING: PR #{number} ({oid}) depends on commit {missing_oid} ({title}) "
-                  f"which is not in the cherry-pick list. Affected files: {files_str}")
+            print(
+                f"WARNING: PR #{number} ({oid}) depends on commit {missing_oid} ({title}) "
+                f"which is not in the cherry-pick list. Affected files: {files_str}"
+            )
+
 
 if __name__ == "__main__":
     main()
