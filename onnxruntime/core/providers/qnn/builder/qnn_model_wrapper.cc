@@ -915,7 +915,8 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
 }
 
 Ort::Status QnnModelWrapper::UnpackInitializerData(const OrtValueInfo* initializer,
-                                                   std::vector<uint8_t>& unpacked_tensor) const {
+                                                   std::vector<uint8_t>& unpacked_tensor,
+                                                   const bool unpack_4_bit_to_8_bit) const {
   const ORTCHAR_T* model_path = nullptr;
   ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.Graph_GetModelPath(&ort_graph_, &model_path));
   RETURN_IF_ERROR(utils::UnpackInitializerData(api_ptrs_.ort_api,
@@ -930,12 +931,13 @@ Ort::Status QnnModelWrapper::UnpackInitializerData(const OrtValueInfo* initializ
   ONNXTensorElementDataType onnx_data_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   ORT_CXX_RETURN_ON_API_FAIL(api_ptrs_.ort_api.GetTensorElementType(tensor_type_and_shape_info, &onnx_data_type));
 
-  // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
-  if (onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) {
+  // If this is an int4,
+  // If unpack_4_bit_to_8_bit is true, we need to unpack it because QNN HTP treats int4 as a full int8.
+  if (unpack_4_bit_to_8_bit && onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4) {
     std::vector<int64_t> shape = utils::GetInitializerShape(initializer, api_ptrs_.ort_api);
     const size_t num_int4_elems = std::accumulate(shape.begin(), shape.end(), static_cast<size_t>(1), std::multiplies<size_t>());
     RETURN_IF_ERROR(utils::UnpackInt4ToInt8<true>(num_int4_elems, unpacked_tensor));
-  } else if (onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4) {
+  } else if (unpack_4_bit_to_8_bit && onnx_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4) {
     std::vector<int64_t> shape = utils::GetInitializerShape(initializer, api_ptrs_.ort_api);
     const size_t num_uint4_elems = std::accumulate(shape.begin(), shape.end(), static_cast<size_t>(1), std::multiplies<size_t>());
     RETURN_IF_ERROR(utils::UnpackInt4ToInt8<false>(num_uint4_elems, unpacked_tensor));

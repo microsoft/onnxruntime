@@ -227,6 +227,18 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateInverseOpBuilder("Inverse", *this);
   }
+
+  {
+    CreateMatMulNBitsOpBuilder("MatMulNBits", *this);
+  }
+
+  {
+    CreateQuickGeluOpBuilder("QuickGelu", *this);
+  }
+
+  {
+    CreateFusedMatMulOpBuilder("FusedMatMul", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {

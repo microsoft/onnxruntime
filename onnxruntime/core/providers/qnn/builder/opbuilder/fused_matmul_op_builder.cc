@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -17,49 +17,56 @@ class FusedMatMulOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(FusedMatMulOpBuilder);
 
  protected:
-  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit, const logging::Logger& logger,
-                       std::vector<std::string>& input_names, bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                            const OrtNodeUnit& node_unit,
+                            const Ort::Logger& logger,
+                            std::vector<std::string>& input_names,
+                            bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                     std::vector<std::string>&& input_names, const logging::Logger& logger,
-                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Ort::Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                          const OrtNodeUnit& node_unit,
+                                          std::vector<std::string>&& input_names,
+                                          const Ort::Logger& logger,
+                                          bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ProcessMatMulInputs(QnnModelWrapper& qnn_model_wrapper,
-                             const NodeUnit& node_unit,
-                             const logging::Logger& logger,
-                             std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+  Ort::Status ProcessMatMulInputs(QnnModelWrapper& qnn_model_wrapper,
+                                  const OrtNodeUnit& node_unit,
+                                  const Ort::Logger& logger,
+                                  std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  Status GetFusedMatMulAttributes(const NodeUnit& node_unit,
-                                  bool& transA,
-                                  bool& transB,
-                                  bool& transBatchA,
-                                  bool& transBatchB,
-                                  float& alpha) const ORT_MUST_USE_RESULT;
+  Ort::Status GetFusedMatMulAttributes(const OrtNodeUnit& node_unit,
+                                       bool& transA,
+                                       bool& transB,
+                                       bool& transBatchA,
+                                       bool& transBatchB,
+                                       float& alpha) const ORT_MUST_USE_RESULT;
 
-  Status ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
-                              const NodeUnit& node_unit,
-                              const std::vector<uint32_t>& perm,
-                              std::vector<std::string>& param_tensor_names) const;
+  Ort::Status ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
+                                   const OrtNodeUnit& node_unit,
+                                   const std::vector<uint32_t>& perm,
+                                   std::vector<std::string>& param_tensor_names) const;
 
-  void CreateBatchTransposePermVector(const std::vector<uint32_t>& input_shape, std::vector<uint32_t>& perm, bool trans_mat = false) const;
+  void CreateBatchTransposePermVector(const std::vector<uint32_t>& input_shape,
+                                      std::vector<uint32_t>& perm,
+                                      bool trans_mat = false) const;
 
-  Status HandleBatchTranspose(QnnModelWrapper& qnn_model_wrapper,
-                              const NodeUnit& node_unit,
-                              const TensorInfo& input_info,
-                              const std::string& input_name,
-                              std::string& transposed_name,
-                              bool trans_mat,
-                              bool do_op_validation) const;
+  Ort::Status HandleBatchTranspose(QnnModelWrapper& qnn_model_wrapper,
+                                   const OrtNodeUnit& node_unit,
+                                   const TensorInfo& input_info,
+                                   const std::string& input_name,
+                                   std::string& transposed_name,
+                                   bool trans_mat,
+                                   bool do_op_validation) const;
 };
 
-Status FusedMatMulOpBuilder::GetFusedMatMulAttributes(const NodeUnit& node_unit,
-                                                      bool& transA,
-                                                      bool& transB,
-                                                      bool& transBatchA,
-                                                      bool& transBatchB,
-                                                      float& alpha) const {
-  NodeAttrHelper node_helper(node_unit);
+Ort::Status FusedMatMulOpBuilder::GetFusedMatMulAttributes(const OrtNodeUnit& node_unit,
+                                                           bool& transA,
+                                                           bool& transB,
+                                                           bool& transBatchA,
+                                                           bool& transBatchB,
+                                                           float& alpha) const {
+  OrtNodeAttrHelper node_helper(node_unit);
 
   transA = node_helper.Get("transA", static_cast<int64_t>(0)) != 0;
   transB = node_helper.Get("transB", static_cast<int64_t>(0)) != 0;
@@ -69,76 +76,73 @@ Status FusedMatMulOpBuilder::GetFusedMatMulAttributes(const NodeUnit& node_unit,
 
   alpha = node_helper.Get("alpha", 1.0f);
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status FusedMatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                           const logging::Logger& logger, std::vector<std::string>& input_names,
-                                           bool /*do_op_validation*/) const {
+Ort::Status FusedMatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnit& node_unit,
+                                                const Ort::Logger& logger, std::vector<std::string>& input_names,
+                                                bool /*do_op_validation*/) const {
   const auto& inputs = node_unit.Inputs();
-
-  if (inputs.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "FusedMatMul requires exactly 2 inputs, got ", inputs.size());
-  }
+  RETURN_IF(inputs.size() != 2,
+            ("FusedMatMul requires exactly 2 inputs, got " + std::to_string(inputs.size())).c_str());
 
   TensorInfo input_info_0{};
   TensorInfo input_info_1{};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input_info_0));
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input_info_1));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input_info_0));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input_info_1));
 
-  ORT_RETURN_IF_ERROR(ProcessMatMulInputs(qnn_model_wrapper, node_unit, logger, input_names));
+  RETURN_IF_ERROR(ProcessMatMulInputs(qnn_model_wrapper, node_unit, logger, input_names));
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status FusedMatMulOpBuilder::ProcessMatMulInputs(QnnModelWrapper& qnn_model_wrapper,
-                                                 const NodeUnit& node_unit,
-                                                 const logging::Logger& logger,
-                                                 std::vector<std::string>& input_names) const {
+Ort::Status FusedMatMulOpBuilder::ProcessMatMulInputs(QnnModelWrapper& qnn_model_wrapper,
+                                                      const OrtNodeUnit& node_unit,
+                                                      const Ort::Logger& logger,
+                                                      std::vector<std::string>& input_names) const {
   const auto& inputs = node_unit.Inputs();
 
   // Process input A
-  const std::string& input_a_name = inputs[0].node_arg.Name();
+  const std::string& input_a_name = inputs[0].name;
   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_a_name)) {
-    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_a_name;
+    ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_VERBOSE, ("Tensor already added, skip it: " + input_a_name).c_str());
   } else {
     QnnTensorWrapper input_a_tensor;
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[0], input_a_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_a_tensor)), "Failed to add input A tensor.");
+    RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[0], input_a_tensor));
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_a_tensor)), "Failed to add input A tensor.");
   }
   input_names.emplace_back(input_a_name);
 
   // Process input B
-  const std::string& input_b_name = inputs[1].node_arg.Name();
+  const std::string& input_b_name = inputs[1].name;
   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_b_name)) {
-    LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_b_name;
+    ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_VERBOSE, ("Tensor already added, skip it: " + input_b_name).c_str());
   } else {
     QnnTensorWrapper input_b_tensor;
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], input_b_tensor));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_b_tensor)), "Failed to add input B tensor.");
+    RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(inputs[1], input_b_tensor));
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_b_tensor)), "Failed to add input B tensor.");
   }
   input_names.emplace_back(input_b_name);
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status FusedMatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                         const NodeUnit& node_unit,
-                                                         std::vector<std::string>&& input_names,
-                                                         const logging::Logger& /*logger*/,
-                                                         bool do_op_validation) const {
+Ort::Status FusedMatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                              const OrtNodeUnit& node_unit,
+                                                              std::vector<std::string>&& input_names,
+                                                              const Ort::Logger& /*logger*/,
+                                                              bool do_op_validation) const {
   bool transA = false;
   bool transB = false;
   bool transBatchA = false;
   bool transBatchB = false;
   float alpha = 1.0f;
-  ORT_RETURN_IF_ERROR(GetFusedMatMulAttributes(node_unit, transA, transB, transBatchA, transBatchB, alpha));
+  RETURN_IF_ERROR(GetFusedMatMulAttributes(node_unit, transA, transB, transBatchA, transBatchB, alpha));
 
   TensorInfo input_a_info{};
   TensorInfo input_b_info{};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_a_info));
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[1], input_b_info));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_a_info));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[1], input_b_info));
 
   std::vector<std::string> matmul_param_tensor_names;
 
@@ -174,21 +178,21 @@ Status FusedMatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
 
   if (transBatchA && input_a_info.shape.size() > 2) {
     std::string transposed_a_name;
-    ORT_RETURN_IF_ERROR(HandleBatchTranspose(qnn_model_wrapper, node_unit, input_a_info,
-                                             input_a_for_matmul, transposed_a_name, transA, do_op_validation));
+    RETURN_IF_ERROR(HandleBatchTranspose(qnn_model_wrapper, node_unit, input_a_info,
+                                         input_a_for_matmul, transposed_a_name, transA, do_op_validation));
     input_a_for_matmul = transposed_a_name;
   }
 
   if (transBatchB && input_b_info.shape.size() > 2) {
     std::string transposed_b_name;
-    ORT_RETURN_IF_ERROR(HandleBatchTranspose(qnn_model_wrapper, node_unit, input_b_info,
-                                             input_b_for_matmul, transposed_b_name, transB, do_op_validation));
+    RETURN_IF_ERROR(HandleBatchTranspose(qnn_model_wrapper, node_unit, input_b_info,
+                                         input_b_for_matmul, transposed_b_name, transB, do_op_validation));
     input_b_for_matmul = transposed_b_name;
   }
 
-  const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
+  const std::string& output_name = node_unit.Outputs()[0].name;
   TensorInfo output_info{};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
+  RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
 
   if (alpha == 1.0f) {
     // When alpha is 1.0f, MatMul output is the final output
@@ -199,18 +203,16 @@ Status FusedMatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                                    output_info.qnn_data_type,
                                    output_info.quant_param.Copy(),
                                    std::vector<uint32_t>(output_info.shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)),
-                      "Failed to add final output tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add final output tensor.");
 
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-                          utils::GetUniqueName(node_unit.Name() + "_matmul"),
-                          QNN_OP_PACKAGE_NAME_QTI_AISW,
-                          QNN_OP_MAT_MUL,
-                          {input_a_for_matmul, input_b_for_matmul},
-                          {output_name},
-                          std::move(matmul_param_tensor_names),
-                          do_op_validation),
-                      "Failed to create MatMul node for FusedMatMul.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit.Name() + "_matmul"),
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_MAT_MUL,
+                                                  {input_a_for_matmul, input_b_for_matmul},
+                                                  {output_name},
+                                                  std::move(matmul_param_tensor_names),
+                                                  do_op_validation),
+                  "Failed to create MatMul node for FusedMatMul.");
   } else {
     // When alpha is not 1.0f, we need an intermediate tensor for MatMul output
     // and then apply alpha scaling
@@ -221,8 +223,8 @@ Status FusedMatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                                           output_info.qnn_data_type,
                                           QnnQuantParamsWrapper(),
                                           std::vector<uint32_t>(output_info.shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(matmul_output_tensor)),
-                      "Failed to add MatMul output tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(matmul_output_tensor)),
+                  "Failed to add MatMul output tensor.");
 
     Qnn_TensorType_t tensor_type = qnn_model_wrapper.IsGraphOutput(output_name) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
 
@@ -231,18 +233,16 @@ Status FusedMatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                                    output_info.qnn_data_type,
                                    output_info.quant_param.Copy(),
                                    std::vector<uint32_t>(output_info.shape));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)),
-                      "Failed to add output tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output tensor.");
 
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-                          utils::GetUniqueName(node_unit.Name() + "_matmul"),
-                          QNN_OP_PACKAGE_NAME_QTI_AISW,
-                          QNN_OP_MAT_MUL,
-                          {input_a_for_matmul, input_b_for_matmul},
-                          {matmul_output_name},
-                          std::move(matmul_param_tensor_names),
-                          do_op_validation),
-                      "Failed to create MatMul node for FusedMatMul.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit.Name() + "_matmul"),
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_MAT_MUL,
+                                                  {input_a_for_matmul, input_b_for_matmul},
+                                                  {matmul_output_name},
+                                                  std::move(matmul_param_tensor_names),
+                                                  do_op_validation),
+                  "Failed to create MatMul node for FusedMatMul.");
 
     std::string alpha_tensor_name = utils::GetUniqueName(node_unit.Name() + "_alpha");
     std::vector<uint32_t> alpha_shape{1};
@@ -265,33 +265,31 @@ Status FusedMatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                                           QnnQuantParamsWrapper(),
                                           std::move(alpha_shape),
                                           std::move(alpha_data));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(alpha_tensor_wrapper)),
-                      "Failed to add alpha tensor.");
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(alpha_tensor_wrapper)), "Failed to add alpha tensor.");
 
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-                          utils::GetUniqueName(node_unit.Name() + "_alpha_scale"),
-                          QNN_OP_PACKAGE_NAME_QTI_AISW,
-                          QNN_OP_ELEMENT_WISE_MULTIPLY,
-                          {matmul_output_name, alpha_tensor_name},
-                          {output_name},
-                          {},
-                          do_op_validation),
-                      "Failed to create alpha scaling node for FusedMatMul.");
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit.Name() + "_alpha_scale"),
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  QNN_OP_ELEMENT_WISE_MULTIPLY,
+                                                  {matmul_output_name, alpha_tensor_name},
+                                                  {output_name},
+                                                  {},
+                                                  do_op_validation),
+                  "Failed to create alpha scaling node for FusedMatMul.");
   }
 
-  return Status::OK();
+  return Ort::Status();
 }
 
-Status FusedMatMulOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  const std::vector<uint32_t>& perm,
-                                                  std::vector<std::string>& param_tensor_names) const {
+Ort::Status FusedMatMulOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
+                                                       const OrtNodeUnit& node_unit,
+                                                       const std::vector<uint32_t>& perm,
+                                                       std::vector<std::string>& param_tensor_names) const {
   QnnParamWrapper transpose_param(node_unit.Index(), node_unit.Name(), QNN_OP_TRANSPOSE_PARAM_PERM,
                                   {static_cast<uint32_t>(perm.size())}, std::vector<uint32_t>(perm));
   param_tensor_names.push_back(transpose_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(transpose_param));
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 void FusedMatMulOpBuilder::CreateBatchTransposePermVector(const std::vector<uint32_t>& input_shape,
@@ -314,13 +312,13 @@ void FusedMatMulOpBuilder::CreateBatchTransposePermVector(const std::vector<uint
   perm.push_back(trans_mat ? 0 : static_cast<uint32_t>(shape_size - 1));
 }
 
-Status FusedMatMulOpBuilder::HandleBatchTranspose(QnnModelWrapper& qnn_model_wrapper,
-                                                  const NodeUnit& node_unit,
-                                                  const TensorInfo& input_info,
-                                                  const std::string& input_name,
-                                                  std::string& transposed_name,
-                                                  bool trans_mat,
-                                                  bool do_op_validation) const {
+Ort::Status FusedMatMulOpBuilder::HandleBatchTranspose(QnnModelWrapper& qnn_model_wrapper,
+                                                       const OrtNodeUnit& node_unit,
+                                                       const TensorInfo& input_info,
+                                                       const std::string& input_name,
+                                                       std::string& transposed_name,
+                                                       bool trans_mat,
+                                                       bool do_op_validation) const {
   transposed_name = utils::GetUniqueName(node_unit.Name() + "_transposed_" + input_name.substr(input_name.find_last_of('/') + 1));
 
   // Create perm vector for batch transpose
@@ -328,7 +326,7 @@ Status FusedMatMulOpBuilder::HandleBatchTranspose(QnnModelWrapper& qnn_model_wra
   CreateBatchTransposePermVector(input_info.shape, perm, trans_mat);
 
   std::vector<std::string> transpose_params;
-  ORT_RETURN_IF_ERROR(ProcessPermAttribute(qnn_model_wrapper, node_unit, perm, transpose_params));
+  RETURN_IF_ERROR(ProcessPermAttribute(qnn_model_wrapper, node_unit, perm, transpose_params));
 
   // Calculate transposed shape directly using the permutation
   std::vector<uint32_t> transposed_shape(input_info.shape.size());
@@ -341,20 +339,19 @@ Status FusedMatMulOpBuilder::HandleBatchTranspose(QnnModelWrapper& qnn_model_wra
                                      input_info.qnn_data_type,
                                      input_info.quant_param.Copy(),
                                      std::move(transposed_shape));
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(transposed_tensor)),
-                    "Failed to add transposed tensor.");
+  RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(transposed_tensor)), "Failed to add transposed tensor.");
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
-                        utils::GetUniqueName(node_unit.Name() + "_transpose_" + input_name.substr(input_name.find_last_of('/') + 1)),
-                        QNN_OP_PACKAGE_NAME_QTI_AISW,
-                        QNN_OP_TRANSPOSE,
-                        {input_name},
-                        {transposed_name},
-                        std::move(transpose_params),
-                        do_op_validation),
-                    "Failed to create transpose node.");
+  RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
+                    utils::GetUniqueName(node_unit.Name() + "_transpose_" + input_name.substr(input_name.find_last_of('/') + 1)),
+                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                    QNN_OP_TRANSPOSE,
+                    {input_name},
+                    {transposed_name},
+                    std::move(transpose_params),
+                    do_op_validation),
+                "Failed to create transpose node.");
 
-  return Status::OK();
+  return Ort::Status();
 }
 
 void CreateFusedMatMulOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
