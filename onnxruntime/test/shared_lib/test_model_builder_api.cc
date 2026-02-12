@@ -725,3 +725,292 @@ TEST(ModelEditorAPITest, CreateTypeInfo) {
 
   api.ReleaseTypeInfo(base_tensor_type_info);
 }
+
+//
+// Tests for Model Editor API + Compile API integration
+//
+
+namespace {
+// Helper to create a simple model for testing with Model Editor API
+// Creates a model with a Gemm operation: Z = X * Y where X is input and Y is initializer
+Ort::Model CreateSimpleGemmModel(std::vector<std::unique_ptr<std::vector<float>>>& weights) {
+  Ort::Graph graph;
+
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
+
+  // Input: X is 3x4
+  std::vector<int64_t> input_dims({3, 4});
+  TensorTypeAndShapeInfo input_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                           input_dims);
+  auto input_type_info = TypeInfo::CreateTensorInfo(input_tensor_info.GetConst());
+  graph_inputs.emplace_back("X", input_type_info.GetConst());
+
+  // Output: Z is 3x8
+  std::vector<int64_t> output_dims = {3, 8};
+  TensorTypeAndShapeInfo output_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                            output_dims);
+  auto output_type_info = TypeInfo::CreateTensorInfo(output_tensor_info.GetConst());
+  graph_outputs.emplace_back("Z", output_type_info.GetConst());
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  // Gemm node with alpha=2.0
+  std::vector<OpAttr> attributes;
+  float alpha_value = 2.0;
+  attributes.push_back(OpAttr("alpha", &alpha_value, 1, OrtOpAttrType::ORT_OP_ATTR_FLOAT));
+
+  Node node("Gemm", onnxruntime::kOnnxDomain, "Gemm1", {"X", "Y"}, {"Z"}, attributes);
+  graph.AddNode(node);
+
+  // Y initializer: 4x8
+  std::vector<int64_t> y_dims = {4, 8};
+  weights.emplace_back(std::make_unique<std::vector<float>>(32));
+  auto& y_values = *weights.back();
+  std::iota(y_values.begin(), y_values.end(), 1.0f);
+
+  auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  auto y_tensor = Value::CreateTensor(info, y_values.data(), y_values.size(), y_dims.data(), y_dims.size());
+  graph.AddInitializer("Y", y_tensor, /*data is external*/ true);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  return model;
+}
+}  // namespace
+
+// Test basic compilation from OrtModel
+TEST(ModelEditorCompileAPITest, BasicCompileFromOrtModel) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  // Set the OrtModel as input
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+
+  // Set output to buffer - use embed mode for simplicity
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Compile should succeed (note: may not produce EPContext nodes without specific EP, but validation passes)
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+
+  // Verify output was produced
+  EXPECT_NE(output_buffer, nullptr);
+  EXPECT_GT(output_size, 0u);
+
+  // Cleanup
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
+}
+
+// Test validation: null model pointer
+TEST(ModelEditorCompileAPITest, CompileFromNullModel_Fails) {
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  try {
+    compile_options.SetInputModel(nullptr);
+    FAIL() << "Expected exception for null model pointer";
+  } catch (const Ort::Exception& e) {
+    EXPECT_THAT(e.what(), ::testing::HasSubstr("null"));
+  }
+}
+
+// Test validation: model with no graph
+TEST(ModelEditorCompileAPITest, CompileFromModelWithNoGraph_Fails) {
+  // Create a model but don't add a graph
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(status.IsOK()) << "Expected CompileModel to fail for model with no graph";
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("graph"));
+}
+
+// Test validation: model with empty inputs/outputs
+TEST(ModelEditorCompileAPITest, CompileFromModelWithEmptyInputsOutputs_Fails) {
+  // Create a model with a graph that has no inputs or outputs
+  Ort::Graph graph;
+  // Don't set inputs or outputs
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(status.IsOK()) << "Expected CompileModel to fail for model with empty inputs/outputs";
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("input"));
+}
+
+// Test: model can be reused after compilation
+TEST(ModelEditorCompileAPITest, ModelCanBeReusedAfterCompilation) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  // First compilation
+  {
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+    compile_options.SetEpContextEmbedMode(true);
+
+    std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+    void* output_buffer = nullptr;
+    size_t output_size = 0;
+    compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    EXPECT_TRUE(status.IsOK()) << "First CompileModel failed: " << status.GetErrorMessage();
+
+    if (output_buffer != nullptr) {
+      allocator->Free(output_buffer);
+    }
+  }
+
+  // Second compilation with same model
+  {
+    Ort::SessionOptions session_options;
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+    compile_options.SetEpContextEmbedMode(true);
+
+    std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+    void* output_buffer = nullptr;
+    size_t output_size = 0;
+    compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    EXPECT_TRUE(status.IsOK()) << "Second CompileModel failed: " << status.GetErrorMessage();
+
+    if (output_buffer != nullptr) {
+      allocator->Free(output_buffer);
+    }
+  }
+
+  // Model should still be usable for creating a session
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, model, session_options);
+  EXPECT_EQ(session.GetInputCount(), 1u);
+  EXPECT_EQ(session.GetOutputCount(), 1u);
+}
+
+// Test: SetInputModel overrides previous input source (file path)
+TEST(ModelEditorCompileAPITest, SetInputModelOverridesPreviousInputPath) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  // First set a file path (doesn't need to exist since we'll override it)
+  compile_options.SetInputModelPath(ORT_TSTR("nonexistent_file.onnx"));
+
+  // Then override with OrtModel
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Should use the OrtModel, not the nonexistent file
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
+}
+
+// Test: SetInputModelPath overrides previous OrtModel setting
+TEST(ModelEditorCompileAPITest, SetInputModelPathOverridesPreviousModel) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  // First set an OrtModel
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+
+  // Then override with a real file path
+  compile_options.SetInputModelPath(ORT_TSTR("testdata/matmul_1.onnx"));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Should use the file path, not the OrtModel
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
+}
+
+// Test: Compile with output to file
+TEST(ModelEditorCompileAPITest, CompileFromOrtModelToFile) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  auto output_path = ORT_TSTR("test_compile_from_ortmodel_output.onnx");
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetOutputModelPath(output_path);
+  compile_options.SetEpContextEmbedMode(true);
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+
+  // Verify output file exists
+  EXPECT_TRUE(std::filesystem::exists(output_path));
+
+  // Verify the output model can be loaded
+  Ort::Session session(*ort_env, output_path, Ort::SessionOptions());
+  EXPECT_GE(session.GetInputCount(), 1u);
+  EXPECT_GE(session.GetOutputCount(), 1u);
+
+  // Cleanup
+  std::filesystem::remove(output_path);
+}

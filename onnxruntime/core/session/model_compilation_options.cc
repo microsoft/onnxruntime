@@ -45,6 +45,11 @@ void ModelCompilationOptions::SetInputModelFromBuffer(const void* input_model_da
   input_model_data_size_ = input_model_data_size;
 }
 
+void ModelCompilationOptions::SetInputModel(const OrtModel* model) {
+  ResetInputModelSettings();
+  input_model_ = model;
+}
+
 Status ModelCompilationOptions::SetOutputModelPath(const std::filesystem::path& output_model_path) {
   ConfigOptions& config_options = session_options_.value.config_options;
   epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
@@ -186,10 +191,19 @@ size_t ModelCompilationOptions::GetInputModelDataSize() const {
   return input_model_data_size_;
 }
 
+bool ModelCompilationOptions::InputModelComesFromOrtModel() const {
+  return input_model_ != nullptr;
+}
+
+const OrtModel* ModelCompilationOptions::GetInputModel() const {
+  return input_model_;
+}
+
 void ModelCompilationOptions::ResetInputModelSettings() {
   input_model_path_.clear();
   input_model_data_ = nullptr;
   input_model_data_size_ = 0;
+  input_model_ = nullptr;
 }
 
 Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
@@ -229,16 +243,21 @@ Status ModelCompilationOptions::Check() const {
   // Check input model settings.
   const bool input_from_file = !input_model_path_.empty();
   const bool input_from_memory = input_model_data_ != nullptr;
+  const bool input_from_model = input_model_ != nullptr;
 
-  if (!input_from_file && !input_from_memory) {
+  int input_source_count = (input_from_file ? 1 : 0) +
+                           (input_from_memory ? 1 : 0) +
+                           (input_from_model ? 1 : 0);
+
+  if (input_source_count == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input model to compile must be loaded from either a file or a memory buffer");
+                           "Input model to compile must be specified via file path, memory buffer, or OrtModel");
   }
 
-  if (input_from_file && input_from_memory) {
+  if (input_source_count > 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input model to compile must be loaded from either a file or a memory buffer, ",
-                           "but not both.");
+                           "Input model to compile must be specified via exactly one of: ",
+                           "file path, memory buffer, or OrtModel");
   }
 
   if (input_from_file && !std::filesystem::exists(input_model_path_)) {
@@ -249,12 +268,59 @@ Status ModelCompilationOptions::Check() const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer for input model data has size 0");
   }
 
+  // Validate OrtModel input
+  if (input_from_model) {
+    if (input_model_->graph == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel has no graph. Call AddGraphToModel before compilation.");
+    }
+
+    if (input_model_->graph->GetNumInputs() == 0 || input_model_->graph->GetNumOutputs() == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel graph must have at least one input and one output defined.");
+    }
+
+    if (input_model_->domain_to_version.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel must specify at least one opset domain/version.");
+    }
+
+    // Note: Additional validation (node connections, schema) happens during
+    // Model::LoadFromModelEditorApiModel -> Graph::Resolve()
+  }
+
   // Check output model settings.
   const epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
   bool has_no_output_model_location = std::holds_alternative<std::monostate>(
       ep_context_gen_options.output_model_location);
 
-  if (has_no_output_model_location && input_from_file) {
+  // Determine if we can derive an output path from the input
+  bool can_derive_output_path = input_from_file;
+  bool model_has_path = false;
+
+  // For OrtModel input, check if model_path is set in the graph using the virtual GetModelPath() method
+  // (avoids dynamic_cast which requires RTTI)
+  if (input_from_model && input_model_->graph) {
+    const ORTCHAR_T* model_path_cstr = input_model_->graph->GetModelPath();
+    if (model_path_cstr && model_path_cstr[0] != ORT_TSTR('\0')) {
+      can_derive_output_path = true;
+      model_has_path = true;
+    }
+  }
+
+  // Fast-fail: If OrtModel has no model_path and user hasn't specified output location or embed mode,
+  // EPs that need to write context binaries will fail later. Fail early with a clear error.
+  if (input_from_model && !model_has_path && has_no_output_model_location &&
+      !ep_context_gen_options.embed_ep_context_in_model) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "OrtModel has no model_path set and no output location was specified. "
+                           "Please either: (1) set the model_path on the OrtGraph before adding to OrtModel, "
+                           "(2) call SetOutputModelPath/SetOutputModelBuffer to specify an output location, "
+                           "(3) call SetEpContextEmbedMode(true) to embed EP context in the model, or "
+                           "(4) call SetEpContextBinaryInformation to specify the binary output directory.");
+  }
+
+  if (has_no_output_model_location && can_derive_output_path) {
     // User did not specify an output file, an output buffer, or an output write function. We default to generating an
     // output file with a name based on the input file name, so do not return an error.
     return Status::OK();

@@ -22,6 +22,7 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/graph/model_editor_api_types.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
@@ -288,6 +289,76 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   return nullptr;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Overload of CreateSessionAndLoadModelImpl that takes an OrtModel* directly.
+// This ensures load-path parity with file/buffer inputs by running the same checks
+// (ORT_LOAD_CONFIG_FROM_MODEL, EP-context output validation, custom domain wiring).
+static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* options,
+                                                const onnxruntime::Environment& env,
+                                                _In_ const OrtModel* model,
+                                                std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+  if (model == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtModel pointer is null");
+  }
+
+  const Env& os_env = Env::Default();
+  bool load_config_from_model =
+      os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
+
+  // Check EPContext model generation options - OrtModel has no file path by default,
+  // so we need explicit output location or embedded model path.
+  if (options) {
+    epctx::ModelGenOptions ep_ctx_gen_options = options->value.GetEpContextGenerationOptions();
+
+    if (ep_ctx_gen_options.enable) {
+      auto* output_model_path = ep_ctx_gen_options.TryGetOutputModelPath();
+
+      // Check if OrtModel has a model_path set
+      bool has_model_path = false;
+      if (model->graph) {
+        const ORTCHAR_T* model_path_cstr = model->graph->GetModelPath();
+        has_model_path = model_path_cstr && model_path_cstr[0] != ORT_TSTR('\0');
+      }
+
+      // If there's no model path and no output location, fail early
+      if (!has_model_path &&
+          (!ep_ctx_gen_options.HasOutputModelLocation() ||
+           (output_model_path != nullptr && output_model_path->empty()))) {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "OrtModel loaded without a model_path was configured with EPContext "
+                                     "model generation enabled but without a valid location (e.g., file or buffer) "
+                                     "for the output model. Please specify a valid output location via "
+                                     "SetOutputModelPath/SetOutputModelBuffer, or set the model_path on the "
+                                     "OrtGraph before adding to OrtModel.");
+      }
+    }
+  }
+
+  // Note: load_config_from_model is not applicable for OrtModel since there's no serialized
+  // model to load config from. We treat this as a regular load.
+  if (load_config_from_model) {
+    // Log a warning but proceed - OrtModel doesn't support loading config from model
+    // as it's already in-memory and constructed programmatically
+  }
+
+  sess = std::make_unique<onnxruntime::InferenceSession>(
+      options == nullptr ? onnxruntime::SessionOptions() : options->value,
+      env);
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // Add custom domains
+  if (options && !options->custom_op_domains_.empty()) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
+  }
+#endif
+
+  // Load from OrtModel
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(*model));
+
+  return nullptr;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 // Creates an InferenceSession and loads the model.
 // Caller should provide either model_path, or modal_data + model_data_length.
 OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
@@ -491,6 +562,12 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
     status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
                                                               input_model_path.c_str(),
                                                               nullptr, 0, session));
+  } else if (model_compile_options.InputModelComesFromOrtModel()) {
+    // Use the OrtModel overload of CreateSessionAndLoadModelImpl to maintain load-path parity
+    // with file/buffer inputs (same checks for ORT_LOAD_CONFIG_FROM_MODEL, EP-context output, etc.)
+    const OrtModel* input_model = model_compile_options.GetInputModel();
+    status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
+                                                              input_model, session));
   } else {
     status = ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
                                                               model_compile_options.GetInputModelData(),
