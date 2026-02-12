@@ -18,8 +18,6 @@ target 'OnnxruntimeModuleExample' do
 
   use_react_native!(
     :path => config[:reactNativePath],
-
-#     :flipper_configuration => FlipperConfiguration.enabled,
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 

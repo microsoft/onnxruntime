@@ -136,8 +136,6 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:3.5.0"
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test:rules:1.5.0"
-
-    implementation (project(':onnxruntime-react-native'))
 }
 
 // Run this once to be able to run the application with BUCK

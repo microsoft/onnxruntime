@@ -19,6 +19,9 @@
     "@babel/core": "^7.25.2",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
+    "@react-native-community/cli": "15.1.1",
+    "@react-native-community/cli-platform-android": "15.1.1",
+    "@react-native-community/cli-platform-ios": "15.1.1",
     "@react-native/babel-preset": "0.76.9",
     "@react-native/eslint-config": "0.76.9",
     "@react-native/metro-config": "0.76.9",
@@ -33,6 +36,9 @@
     "prettier": "^2.8.8",
     "react-test-renderer": "18.3.1",
     "typescript": "5.0.4"
+  },
+  "overrides": {
+    "fast-xml-parser": "^5.3.4"
   },
   "engines": {
     "node": ">=18"
