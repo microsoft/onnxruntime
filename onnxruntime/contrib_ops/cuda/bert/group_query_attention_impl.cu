@@ -98,10 +98,9 @@ Status PrepareQKV(
     q_out = nullptr;
   }
 
-  CudaT* k = reinterpret_cast<CudaT*>(data.present_key);
-  CudaT* v = reinterpret_cast<CudaT*>(data.present_value);
+  CudaU* k = reinterpret_cast<CudaU*>(data.present_key);
+  CudaU* v = reinterpret_cast<CudaU*>(data.present_value);
   int max_cache_length = parameters.seqlen_present_kv_cache;
-  bool is_cache_bnsh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
 
   if (!parameters.past_present_share_buffer) {
     size_t kv_buffer_size = (size_t)batch_size * kv_num_heads * max_cache_length * head_size * sizeof(CudaU);
@@ -109,32 +108,22 @@ Status PrepareQKV(
     CUDA_CALL_THROW(cudaMemsetAsync(data.present_value, 0, kv_buffer_size, stream));
   }
 
+  bool is_cache_bnsh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
+  assert(is_cache_bnsh);  // Only support BNSH format for now
+
   // Copy past KV to present KV if needed
   if (!parameters.past_present_share_buffer && data.past_key != nullptr && parameters.seqlen_past_kv_cache > 0) {
-    if (is_cache_bnsh) {
-      size_t src_pitch = (size_t)parameters.seqlen_past_kv_cache * head_size * sizeof(CudaU);
-      size_t dst_pitch = (size_t)parameters.seqlen_present_kv_cache * head_size * sizeof(CudaU);
-      size_t width = src_pitch;
-      size_t height = (size_t)batch_size * kv_num_heads;
-
-      CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_key, dst_pitch, data.past_key, src_pitch, width, height,
-                                        cudaMemcpyDeviceToDevice, stream));
-      CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_value, dst_pitch, data.past_value, src_pitch, width, height,
-                                        cudaMemcpyDeviceToDevice, stream));
-    } else {
-      size_t src_pitch = (size_t)parameters.seqlen_past_kv_cache * kv_num_heads * head_size * sizeof(CudaU);
-      size_t dst_pitch = (size_t)parameters.seqlen_present_kv_cache * kv_num_heads * head_size * sizeof(CudaU);
-      size_t width = src_pitch;
-      size_t height = (size_t)batch_size;
-
-      CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_key, dst_pitch, data.past_key, src_pitch, width, height,
-                                        cudaMemcpyDeviceToDevice, stream));
-      CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_value, dst_pitch, data.past_value, src_pitch, width, height,
-                                        cudaMemcpyDeviceToDevice, stream));
-    }
+    size_t src_pitch = (size_t)parameters.seqlen_past_kv_cache * head_size * sizeof(CudaU);
+    size_t dst_pitch = (size_t)max_cache_length * head_size * sizeof(CudaU);
+    size_t width = src_pitch;
+    size_t height = (size_t)batch_size * kv_num_heads;
+    CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_key, dst_pitch, data.past_key, src_pitch, width, height,
+                                      cudaMemcpyDeviceToDevice, stream));
+    CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_value, dst_pitch, data.past_value, src_pitch, width, height,
+                                      cudaMemcpyDeviceToDevice, stream));
   }
 
-  ORT_RETURN_IF_ERROR(LaunchUnpackRoPEAppend<CudaT>(
+  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<CudaT, CudaU>(
       parameters.is_packed_qkv ? reinterpret_cast<const CudaT*>(data.query) : nullptr,
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.query),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.key),
@@ -144,8 +133,8 @@ Status PrepareQKV(
       max_cache_length, data.past_seq_lens,
       reinterpret_cast<const CudaT*>(data.cos_cache), reinterpret_cast<const CudaT*>(data.sin_cache),
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
-      is_cache_bnsh, parameters.k_quant_type, parameters.kv_cache_bit_width,
-      stream, max_threads_per_block));
+      is_cache_bnsh, parameters.k_quant_type,
+      stream, max_threads_per_block)));
 
   if (q_out != nullptr) {
     q = reinterpret_cast<const T*>(q_out);
@@ -585,6 +574,7 @@ Status ExtremeDecoding(
   // bool is_bf16 = std::is_same<T, BFloat16>::value;
 
   typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
+  typedef typename onnxruntime::cuda::OrtToCudaType<U>::type CudaU;
   bool past_bsnh = (past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
   // Ultimate Fused Preprocessing: Unpack, RoPE Q, RoPE K, Quantize K/V, Append K/V
@@ -595,14 +585,14 @@ Status ExtremeDecoding(
     q_input_for_xqa = reinterpret_cast<const CudaT*>(data.query);
   }
 
-  ORT_RETURN_IF_ERROR(LaunchUnpackRoPEAppend<CudaT>(
+  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<CudaT, CudaU>(
       parameters.is_packed_qkv ? reinterpret_cast<const CudaT*>(data.query) : nullptr,
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.query),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.key),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.value),
       q_rot_ptr,  // unpacked_q (can be null if !do_rotary)
-      data.present_key,
-      data.present_value,
+      reinterpret_cast<CudaU*>(data.present_key),
+      reinterpret_cast<CudaU*>(data.present_value),
       data.k_scale,
       data.v_scale,
       num_heads,
@@ -619,14 +609,15 @@ Status ExtremeDecoding(
       parameters.rotary_interleaved,
       !past_bsnh,  // is_cache_bnsh
       parameters.k_quant_type,
-      parameters.kv_cache_bit_width,
       stream,
-      device_prop.maxThreadsPerBlock));
+      device_prop.maxThreadsPerBlock)));
 
   // Determine workspace size for XQA
   void* xqa_workspace = data.xqa_buffer;
   size_t xqa_workspace_size = data.xqa_buffer_bytes;
 
+  constexpr bool is_fp8 = std::is_same<CudaU, __nv_fp8_e4m3>::value;
+  using onnxruntime::contrib::cuda::XqaQuantType;
   // 5. Launch XQA
   Status status = onnxruntime::contrib::cuda::LaunchXQAKernel<CudaT>(
       device_prop,
@@ -644,8 +635,8 @@ Status ExtremeDecoding(
       past_bsnh,
       data.past_seq_lens,
       data.k_scale,  // kv_cache_scale
-      // Map KVQuantizationType (0=NONE, 1=TENSOR, 2=CHANNEL) to XqaQuantType (0=FP16/BF16, 1=INT8, 2=FP8)
-      (parameters.k_quant_type == KVQuantizationType::NONE) ? onnxruntime::contrib::cuda::XqaQuantType::kNone : onnxruntime::contrib::cuda::XqaQuantType::kInt8,
+      // Map cache type to XqaQuantType: NONE->kNone, Float8E4M3FN->kFp8, int8->kInt8
+      (parameters.k_quant_type == KVQuantizationType::NONE) ? XqaQuantType::kNone : (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8),
       xqa_workspace,
       xqa_workspace_size);
 
@@ -806,6 +797,7 @@ Status DequantizeFlashAttentionFallback(
   // We need to dequantize the entire KV cache (present_key/value) into a float/half buffer (data.qkv_buffer).
   // Layout in qkv_buffer: [Q (rotated)] [K_dequantized] [V_dequantized]
   typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
+  typedef typename onnxruntime::cuda::OrtToCudaType<U>::type CudaU;
   CudaT* q_rot = reinterpret_cast<CudaT*>(data.qkv_buffer);
   size_t q_elements = static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads * parameters.head_size;
   size_t k_elements = static_cast<size_t>(parameters.batch_size) * parameters.seqlen_present_kv_cache * parameters.kv_num_heads * parameters.head_size;
@@ -815,48 +807,34 @@ Status DequantizeFlashAttentionFallback(
   // Step 1: Update Quantized Cache
   // We can use LaunchUnpackRoPEQuantizeAppend to unpack new QKV, apply RoPE, and append to quantized cache.
   // This will also put rotated Q into q_rot.
-  ORT_RETURN_IF_ERROR(LaunchUnpackRoPEAppend<CudaT>(
+  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<CudaT, CudaU>(
       parameters.is_packed_qkv ? reinterpret_cast<const CudaT*>(data.query) : nullptr,
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.query),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.key),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.value),
-      q_rot, data.present_key, data.present_value, data.k_scale, data.v_scale,
+      q_rot, reinterpret_cast<CudaU*>(data.present_key), reinterpret_cast<CudaU*>(data.present_value),
+      data.k_scale, data.v_scale,
       parameters.num_heads, parameters.kv_num_heads, parameters.head_size, parameters.sequence_length, parameters.batch_size,
       parameters.seqlen_present_kv_cache, data.past_seq_lens,
       reinterpret_cast<const CudaT*>(data.cos_cache), reinterpret_cast<const CudaT*>(data.sin_cache),
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
-      parameters.k_quant_type, parameters.kv_cache_bit_width,
-      stream, device_prop.maxThreadsPerBlock));
+      parameters.k_quant_type,
+      stream, device_prop.maxThreadsPerBlock)));
 
   // Step 2: Dequantize Entire Cache
   // We now have the updated quantized cache in data.present_key/value. We need to dequantize it to k_dequant/v_dequant.
   bool is_bsnh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-  if (parameters.kv_cache_bit_width == 8) {
-    ORT_RETURN_IF_ERROR((LaunchDequantizeKV<CudaT, int8_t, float>(
-        stream, k_dequant, reinterpret_cast<const int8_t*>(data.present_key), data.k_scale,
-        nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-        parameters.head_size, 8, parameters.k_quant_type, is_bsnh)));
+  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<CudaT, CudaU, float>(
+      stream, k_dequant, reinterpret_cast<const CudaU*>(data.present_key), data.k_scale,
+      nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
+      parameters.head_size, parameters.kv_cache_bit_width, parameters.k_quant_type, is_bsnh)));
 
-    ORT_RETURN_IF_ERROR((LaunchDequantizeKV<CudaT, int8_t, float>(
-        stream, v_dequant, reinterpret_cast<const int8_t*>(data.present_value), data.v_scale,
-        nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-        parameters.head_size, 8, parameters.v_quant_type, is_bsnh)));
-#ifdef USE_INT4_KV_CACHE
-  } else if (parameters.kv_cache_bit_width == 4) {
-    // Int4 support if needed
-    ORT_RETURN_IF_ERROR((LaunchDequantizeKV<CudaT, uint8_t, float>(
-        stream, k_dequant, reinterpret_cast<const uint8_t*>(data.present_key), data.k_scale,
-        nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-        parameters.head_size, 4, parameters.k_quant_type, is_bsnh)));
-
-    ORT_RETURN_IF_ERROR((LaunchDequantizeKV<CudaT, uint8_t, float>(
-        stream, v_dequant, reinterpret_cast<const uint8_t*>(data.present_value), data.v_scale,
-        nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-        parameters.head_size, 4, parameters.v_quant_type, is_bsnh)));
-#endif
-  }
+  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<CudaT, CudaU, float>(
+      stream, v_dequant, reinterpret_cast<const CudaU*>(data.present_value), data.v_scale,
+      nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
+      parameters.head_size, parameters.kv_cache_bit_width, parameters.v_quant_type, is_bsnh)));
 
   // Step 3: Run Flash Attention on dequantized k/v
   bool is_causal = parameters.is_unidirectional;
@@ -913,7 +891,7 @@ Status FlashAttentionAndQuantizeKV(
   CudaT* k_final = q_final + q_elements;
   CudaT* v_final = k_final + k_elements;
 
-  ORT_RETURN_IF_ERROR(LaunchUnpackRoPEAppend<CudaT>(
+  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<CudaT, CudaT>(
       parameters.is_packed_qkv ? reinterpret_cast<const CudaT*>(data.query) : nullptr,
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.query),
       parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.key),
@@ -925,8 +903,7 @@ Status FlashAttentionAndQuantizeKV(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
-      0,  // bit_width is 0 since we are not quantizing here.
-      stream, max_threads_per_block));
+      stream, max_threads_per_block)));
 
   // 2. Run Float Flash Attention
   bool is_causal = parameters.is_unidirectional;
@@ -945,13 +922,23 @@ Status FlashAttentionAndQuantizeKV(
       true,  // kv_bsnh = true (BSNH)
       local_window_size));
 
-  // 3. Quantize K and V to present cache
   if (parameters.k_quant_type != KVQuantizationType::NONE) {
     if (parameters.kv_cache_bit_width == 8) {
-      ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, int8_t, float>(
-          stream, reinterpret_cast<int8_t*>(data.present_key), reinterpret_cast<const CudaT*>(k_final), data.k_scale,
-          nullptr, data.total_seq_lens, batch_size, kv_num_heads, sequence_length, parameters.seqlen_present_kv_cache,
-          head_size, 8, parameters.k_quant_type, true, past_bsnh)));
+#ifdef USE_FP8_KV_CACHE
+      if constexpr (std::is_same<U, __nv_fp8_e4m3>::value) {
+        ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, __nv_fp8_e4m3, float>(
+            stream, reinterpret_cast<__nv_fp8_e4m3*>(data.present_key), reinterpret_cast<const CudaT*>(k_final), data.k_scale,
+            nullptr, data.total_seq_lens, batch_size, kv_num_heads, sequence_length, parameters.seqlen_present_kv_cache,
+            head_size, 8, parameters.k_quant_type, true, past_bsnh)));
+      } else {
+#endif
+        ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, int8_t, float>(
+            stream, reinterpret_cast<int8_t*>(data.present_key), reinterpret_cast<const CudaT*>(k_final), data.k_scale,
+            nullptr, data.total_seq_lens, batch_size, kv_num_heads, sequence_length, parameters.seqlen_present_kv_cache,
+            head_size, 8, parameters.k_quant_type, true, past_bsnh)));
+#ifdef USE_FP8_KV_CACHE
+      }
+#endif
 #ifdef USE_INT4_KV_CACHE
     } else if (parameters.kv_cache_bit_width == 4) {
       ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, uint8_t, float>(
@@ -964,10 +951,21 @@ Status FlashAttentionAndQuantizeKV(
 
   if (parameters.v_quant_type != KVQuantizationType::NONE) {
     if (parameters.kv_cache_bit_width == 8) {
-      ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, int8_t, float>(
-          stream, reinterpret_cast<int8_t*>(data.present_value), reinterpret_cast<const CudaT*>(v_final), data.v_scale,
-          nullptr, data.total_seq_lens, batch_size, kv_num_heads, sequence_length, parameters.seqlen_present_kv_cache,
-          head_size, 8, parameters.v_quant_type, true, past_bsnh)));
+#ifdef USE_FP8_KV_CACHE
+      if constexpr (std::is_same<U, __nv_fp8_e4m3>::value) {
+        ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, __nv_fp8_e4m3, float>(
+            stream, reinterpret_cast<__nv_fp8_e4m3*>(data.present_value), reinterpret_cast<const CudaT*>(v_final), data.v_scale,
+            nullptr, data.total_seq_lens, batch_size, kv_num_heads, sequence_length, parameters.seqlen_present_kv_cache,
+            head_size, 8, parameters.v_quant_type, true, past_bsnh)));
+      } else {
+#endif
+        ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, int8_t, float>(
+            stream, reinterpret_cast<int8_t*>(data.present_value), reinterpret_cast<const CudaT*>(v_final), data.v_scale,
+            nullptr, data.total_seq_lens, batch_size, kv_num_heads, sequence_length, parameters.seqlen_present_kv_cache,
+            head_size, 8, parameters.v_quant_type, true, past_bsnh)));
+#ifdef USE_FP8_KV_CACHE
+      }
+#endif
 #ifdef USE_INT4_KV_CACHE
     } else if (parameters.kv_cache_bit_width == 4) {
       ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, uint8_t, float>(
@@ -1145,6 +1143,7 @@ template Status QkvToContext<__nv_bfloat16, int8_t>(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<__nv_bfloat16, int8_t>& data);
 
+#ifdef USE_INT4_KV_CACHE
 template struct GroupQueryAttentionData<half, uint8_t>;
 
 template Status QkvToContext<half, uint8_t>(
@@ -1162,6 +1161,27 @@ template Status QkvToContext<__nv_bfloat16, uint8_t>(
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<__nv_bfloat16, uint8_t>& data);
+#endif
+
+#ifdef USE_FP8_KV_CACHE
+template struct GroupQueryAttentionData<half, __nv_fp8_e4m3>;
+
+template Status QkvToContext<half, __nv_fp8_e4m3>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    Stream* ort_stream,
+    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<half, __nv_fp8_e4m3>& data);
+
+template struct GroupQueryAttentionData<__nv_bfloat16, __nv_fp8_e4m3>;
+
+template Status QkvToContext<__nv_bfloat16, __nv_fp8_e4m3>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    Stream* ort_stream,
+    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<__nv_bfloat16, __nv_fp8_e4m3>& data);
+#endif
 
 template Status LaunchUnpackQKV<half, LAYOUT_BNSH>(const half* packed_qkv, half* unpacked_q, half* unpacked_k, half* unpacked_v, const int num_heads, const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size, cudaStream_t stream, const int max_threads_per_block);
 template Status LaunchUnpackQKV<__nv_bfloat16, LAYOUT_BNSH>(const __nv_bfloat16* packed_qkv, __nv_bfloat16* unpacked_q, __nv_bfloat16* unpacked_k, __nv_bfloat16* unpacked_v, const int num_heads, const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size, cudaStream_t stream, const int max_threads_per_block);

@@ -6,6 +6,7 @@
 #define KV_QUANT_SUPPORTED 1
 
 #include <cuda_fp16.h>
+#include <cuda_fp8.h>
 
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -25,6 +26,7 @@ constexpr int kInt4Max = 7;
 constexpr int kInt8Min = -128;
 constexpr int kInt8Max = 127;
 constexpr int kInt4ZeroPacked = 0x88;  // (0 + 8) | ((0 + 8) << 4) for INT4 zero padding
+constexpr float kFp8E4M3Max = 448.0f;  // Max value for E4M3 format
 constexpr int kThreadsPerBlock = 256;
 
 template <typename T>
@@ -86,7 +88,12 @@ struct TypeConverter<__nv_bfloat16> {
 // -------------
 // Cache: BNSH (batch, num_heads, sequence_length, head_size)
 // INT4: (head_size + 1) / 2 bytes per head
-// INT8: head_size bytes per head
+// INT8/FP8: head_size bytes per head
+//
+// FP8 E4M3: Native CUDA FP8 format
+//   - Range: [-448, 448]
+//   - Storage: __nv_fp8_e4m3 (1 byte)
+//   - Conversion: Native CUDA cast via __nv_cvt_float_to_fp8/fp8_to_float
 // ============================================================================
 
 // Dequantization Kernel: Converts Quantized (Int8/Int4) KV cache back to Floating Point (T).
@@ -143,7 +150,14 @@ __global__ void DequantizeKernel(T* dequantized_data,
                   (bit_width == 4 ? h / 2 : h);
     }
 
-    if (bit_width == 8) {
+    // FP8 check must come first since it also has bit_width=8
+#ifdef USE_FP8_KV_CACHE
+    if constexpr (std::is_same<T_QUANT, __nv_fp8_e4m3>::value) {
+      __nv_fp8_e4m3 fp8_val = reinterpret_cast<const __nv_fp8_e4m3*>(quantized_data)[input_idx];
+      quantized_float = static_cast<float>(fp8_val);
+    } else
+#endif
+        if (bit_width == 8) {
       quantized_float = static_cast<float>(
           reinterpret_cast<const int8_t*>(quantized_data)[input_idx]);
 #ifdef USE_INT4_KV_CACHE
@@ -231,6 +245,21 @@ __global__ void QuantizeKernel(T_QUANT* quantized_data,
                     h_idx;
         }
         reinterpret_cast<int8_t*>(quantized_data)[out_idx] = 0;
+#ifdef USE_FP8_KV_CACHE
+      } else if constexpr (std::is_same<T_QUANT, __nv_fp8_e4m3>::value) {  // FP8
+        int64_t out_idx = i;
+        if (is_output_bsnh) {
+          int64_t b_idx = b;
+          int64_t n_idx = n;
+          int64_t s_idx = s;
+          int64_t h_idx = i % elements_per_head_packed;
+          out_idx = b_idx * cache_sequence_length * num_heads * elements_per_head_packed +
+                    s_idx * num_heads * elements_per_head_packed +
+                    n_idx * elements_per_head_packed +
+                    h_idx;
+        }
+        reinterpret_cast<__nv_fp8_e4m3*>(quantized_data)[out_idx] = __nv_fp8_e4m3(0.0f);
+#endif
 #ifdef USE_INT4_KV_CACHE
       } else if (bit_width == 4) {  // INT4
         // With packed iteration, each thread handles one byte (2 values).
@@ -271,7 +300,34 @@ __global__ void QuantizeKernel(T_QUANT* quantized_data,
                    h_idx;
     }
 
-    if (bit_width == 8) {
+#ifdef USE_FP8_KV_CACHE
+    if constexpr (std::is_same<T_QUANT, __nv_fp8_e4m3>::value) {
+      int h = h_packed;
+      float scale_val = 1.0f;
+      if (quant_type == KVQuantizationType::PER_TENSOR) {
+        scale_val = static_cast<float>(scale[0]);
+      } else {  // PER_CHANNEL
+        int scale_idx = n * head_size + h;
+        scale_val = static_cast<float>(scale[scale_idx]);
+      }
+
+      float inv_scale = (scale_val == 0.0f) ? 0.0f : 1.0f / scale_val;
+      int64_t flattened_input_idx = is_input_bsnh ? ((int64_t)b * input_sequence_length * num_heads * head_size +
+                                                     (int64_t)s * num_heads * head_size +
+                                                     (int64_t)n * head_size +
+                                                     h)
+                                                  : ((int64_t)b * num_heads * input_sequence_length * head_size +
+                                                     (int64_t)n * input_sequence_length * head_size +
+                                                     (int64_t)s * head_size +
+                                                     h);
+      float val_float = static_cast<float>(dequantized_data[flattened_input_idx]) * inv_scale;
+
+      // Clamp to FP8 E4M3 range and convert
+      val_float = fmaxf(-kFp8E4M3Max, fminf(kFp8E4M3Max, val_float));
+      reinterpret_cast<__nv_fp8_e4m3*>(quantized_data)[output_idx] = __nv_fp8_e4m3(val_float);
+    } else
+#endif
+        if (bit_width == 8) {
       int h = h_packed;
       float scale_val = 1.0f;
       if (quant_type == KVQuantizationType::PER_TENSOR) {
