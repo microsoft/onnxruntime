@@ -104,8 +104,17 @@ stages:
 
 - template: nuget/templates/test_macos.yml
   parameters:
-    AgentPool: macOS-14
+    AgentPool: 'AcesShared'
+    UseHostedVmImage: 'false'
+    PoolDemands: 'ImageOverride -equals ACES_VM_SharedPool_Sequoia'
     ArtifactSuffix: 'CPU'
+
+- template: nodejs/templates/test_macos.yml
+  parameters:
+    AgentPool: 'AcesShared'
+    UseHostedVmImage: 'false'
+    PoolDemands: 'ImageOverride -equals ACES_VM_SharedPool_Sequoia'
+    StageSuffix: 'MacOS_ARM64'
 
 - template: nodejs/templates/test_win.yml
   parameters:
@@ -116,10 +125,6 @@ stages:
   parameters:
     AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     StageSuffix: 'Linux_CPU_x64'
-
-- template: nodejs/templates/test_macos.yml
-  parameters:
-    StageSuffix: 'macOS_CPU_x64'
 
 - template: nuget/templates/test_win.yml
   parameters:
@@ -225,7 +230,7 @@ stages:
         - checkout: self
           clean: true
           submodules: none
-        
+
         - download: build
           artifact: 'Windows_Packaging_tensorrt_build_artifacts'
           displayName: 'Download Windows GPU Packages Build'
@@ -246,7 +251,7 @@ stages:
             versionSpec: "17"
             jdkArchitectureOption: x64
             jdkSourceOption: 'PreInstalled'
-       
+
         - task: PythonScript@0
           displayName: 'Update CTest Path References'
           inputs:
