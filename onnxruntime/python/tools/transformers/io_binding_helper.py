@@ -35,8 +35,8 @@ class TypeHelper:
     @staticmethod
     def ort_type_to_numpy_type(ort_type: str):
         ort_type_to_numpy_type_map = {
-            "tensor(int64)": numpy.longlong,
-            "tensor(int32)": numpy.intc,
+            "tensor(int64)": numpy.int64,
+            "tensor(int32)": numpy.int32,
             "tensor(float)": numpy.float32,
             "tensor(float16)": numpy.float16,
             "tensor(bool)": bool,
@@ -131,8 +131,7 @@ class TypeHelper:
     @staticmethod
     def numpy_type_to_torch_type(numpy_type: numpy.dtype):
         numpy_type_to_torch_type_map = {
-            numpy.longlong: torch.int64,
-            numpy.intc: torch.int32,
+            numpy.int64: torch.int64,
             numpy.int32: torch.int32,
             numpy.float32: torch.float32,
             numpy.float16: torch.float16,
@@ -141,9 +140,9 @@ class TypeHelper:
             numpy.int8: torch.int8,
             numpy.float64: torch.float64,
             numpy.int16: torch.int16,
-            numpy.uint16: torch.int32,
-            numpy.uint32: torch.int64,
-            numpy.uint64: torch.int64,
+            numpy.uint16: torch.uint16,
+            numpy.uint32: torch.uint32,
+            numpy.uint64: torch.uint64,
             numpy.complex64: torch.complex64,
             numpy.complex128: torch.complex128,
         }
@@ -156,8 +155,8 @@ class TypeHelper:
     @staticmethod
     def torch_type_to_numpy_type(torch_type: torch.dtype):
         torch_type_to_numpy_type_map = {
-            torch.int64: numpy.longlong,
-            torch.int32: numpy.intc,
+            torch.int64: numpy.int64,
+            torch.int32: numpy.int32,
             torch.float32: numpy.float32,
             torch.float16: numpy.float16,
             torch.bool: bool,
