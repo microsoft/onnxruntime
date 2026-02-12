@@ -1,28 +1,179 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#
-# Usage:
-# python create_cherry_pick.py --label "release:1.24.2" --output cherry_pick.cmd --branch "origin/rel-1.24.2"
-#
-# Arguments:
-#   --label: Label to filter PRs (required)
-#   --output: Output cmd file path (required)
-#   --repo: Repository (default: microsoft/onnxruntime)
-#   --branch: Target branch to compare against for dependency checks (default: HEAD)
-#
-# This script fetches merged PRs with the specified label from the onnxruntime repository,
-# sorts them by merge date, and generates:
-# 1. A batch file (specified by --output) containing git cherry-pick commands.
-# 2. A markdown file (cherry_pick_pr_description.md) summarizing the cherry-picked PRs for pull request description.
-#
-# It also checks for potential missing dependencies (conflicts) by verifying if files modified
-# by the cherry-picked commits have any other modifications in the target branch history
-# that are not included in the cherry-pick list.
+
+"""
+Cherry-Pick Helper Script
+-------------------------
+Description:
+    This script automates the process of cherry-picking commits for a release branch.
+    It fetches merged PRs with a specific label, sorts them by merge date, and generates:
+    1. A batch file (.cmd) with git cherry-pick commands.
+    2. A markdown file (.md) for the PR description.
+    It also checks for potential missing dependencies (conflicts) by verifying if files modified
+    by the cherry-picked commits have any other modifications in commits that are not in the
+    specified target branch and are not included in the cherry-pick list.
+
+Usage:
+    python cherry_pick.py --label "release:1.24.2" --output cherry_pick.cmd --branch "origin/rel-1.24.2"
+
+Requirements:
+    - Python 3.7+
+    - GitHub CLI (gh) logged in.
+    - Git available in PATH.
+"""
+
 import argparse
 import json
 import subprocess
 import sys
 from collections import defaultdict
+
+
+def run_command(command_list, cwd=None, silent=False):
+    """Run a command using a list of arguments for security (no shell=True)."""
+    try:
+        result = subprocess.run(command_list, check=False, capture_output=True, text=True, cwd=cwd, encoding="utf-8")
+        if result.returncode != 0:
+            if not silent:
+                log_str = " ".join(command_list)
+                print(f"Error running command: {log_str}", file=sys.stderr)
+                if result.stderr:
+                    print(f"Stderr: {result.stderr.strip()}", file=sys.stderr)
+            return None
+        return result.stdout
+    except FileNotFoundError:
+        if not silent:
+            cmd = command_list[0]
+            print(f"Error: '{cmd}' command not found.", file=sys.stderr)
+            if cmd == "gh":
+                print(
+                    "Please install GitHub CLI (https://cli.github.com/) and ensure 'gh' is available on your PATH.",
+                    file=sys.stderr,
+                )
+        return None
+    except Exception as e:
+        if not silent:
+            print(f"Exception running command {' '.join(command_list)}: {e}", file=sys.stderr)
+        return None
+
+
+def check_preflight():
+    """Verify gh CLI and git repository early."""
+    # Check git
+    git_check = run_command(["git", "rev-parse", "--is-inside-work-tree"], silent=True)
+    if not git_check:
+        print("Error: This script must be run inside a git repository.", file=sys.stderr)
+        return False
+
+    # Check gh
+    gh_check = run_command(["gh", "--version"], silent=True)
+    if not gh_check:
+        print("Error: GitHub CLI (gh) not found or not in PATH.", file=sys.stderr)
+        print(
+            "Please install GitHub CLI (https://cli.github.com/) and ensure 'gh' is available on your PATH.",
+            file=sys.stderr,
+        )
+        return False
+
+    gh_auth = run_command(["gh", "auth", "status"], silent=True)
+    if not gh_auth:
+        print("Error: GitHub CLI not authenticated. Please run 'gh auth login'.", file=sys.stderr)
+        return False
+
+    return True
+
+
+def get_merged_prs(repo, label, limit=200):
+    """Fetch merged PRs with the specific label."""
+    print(f"Fetching merged PRs with label '{label}' from {repo}...")
+    cmd = [
+        "gh",
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--label",
+        label,
+        "--state",
+        "merged",
+        "--json",
+        "number,title,mergeCommit,mergedAt",
+        "-L",
+        str(limit),
+    ]
+    output = run_command(cmd)
+    if not output:
+        return []
+
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError as e:
+        print(f"Error parsing gh output: {e}", file=sys.stderr)
+        return []
+
+
+def get_changed_files(oid):
+    """Get list of files changed in a commit."""
+    output = run_command(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", oid], silent=True)
+    if output:
+        return output.strip().splitlines()
+    return []
+
+
+def check_missing_dependencies(prs, branch):
+    """Check for potential missing dependencies (conflicts)."""
+    print("\nChecking for potential missing dependencies (conflicts)...")
+
+    # Collect OIDs being cherry-picked
+    cherry_pick_oids = set()
+    for pr in prs:
+        if pr.get("mergeCommit"):
+            cherry_pick_oids.add(pr["mergeCommit"]["oid"])
+
+    for pr in prs:
+        if not pr.get("mergeCommit"):
+            continue
+
+        oid = pr["mergeCommit"]["oid"]
+        number = pr["number"]
+
+        files = get_changed_files(oid)
+        if not files:
+            continue
+
+        # For each file, find commits that modified it between the target branch and the cherry-picked commit.
+        # Deduplicate warnings: group affected files by missing commit.
+        # missing_commits maps: missing_commit_oid -> (title, [list of affected files])
+        missing_commits = defaultdict(lambda: ("", []))
+
+        for filepath in files:
+            # git log <cherry-pick-commit> --not <target-branch> -- <file>
+            output = run_command(["git", "log", oid, "--not", branch, "--format=%H %s", "--", filepath], silent=True)
+
+            if not output:
+                continue
+
+            for line in output.strip().splitlines():
+                parts = line.split(" ", 1)
+                c = parts[0]
+                title = parts[1] if len(parts) > 1 else ""
+
+                if c == oid:
+                    continue
+                if c not in cherry_pick_oids:
+                    existing_title, existing_files = missing_commits[c]
+                    if not existing_title:
+                        existing_title = title
+                    existing_files.append(filepath)
+                    missing_commits[c] = (existing_title, existing_files)
+
+        # Print deduplicated warnings
+        for missing_oid, (title, affected_files) in missing_commits.items():
+            files_str = ", ".join(affected_files)
+            print(
+                f"WARNING: PR #{number} ({oid}) modifies files that were also changed by commit {missing_oid} ({title}), "
+                f"which is not in the cherry-pick list. This may indicate missing related changes. Affected files: {files_str}"
+            )
 
 
 def main():
@@ -33,37 +184,15 @@ def main():
     parser.add_argument(
         "--branch", default="HEAD", help="Target branch to compare against for dependency checks (default: HEAD)"
     )
+    parser.add_argument("--limit", type=int, default=200, help="Wait limitation for PR fetching (default: 200)")
     args = parser.parse_args()
 
-    # Fetch merged PRs with the specified label using gh CLI
-    print(f"Fetching merged PRs with label '{args.label}' from {args.repo}...")
-    cmd = [
-        "gh",
-        "pr",
-        "list",
-        "--repo",
-        args.repo,
-        "--label",
-        args.label,
-        "--state",
-        "merged",
-        "--json",
-        "number,title,mergeCommit,mergedAt",
-        "-L",
-        "200",
-    ]
+    # Preflight Check
+    if not check_preflight():
+        return
 
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        prs = json.loads(result.stdout)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running gh command: {e}", file=sys.stderr)
-        print(e.stderr, file=sys.stderr)
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"Error parsing gh output: {e}", file=sys.stderr)
-        print(f"Output was: {result.stdout}", file=sys.stderr)
-        sys.exit(1)
+    # 1. Fetch Merged PRs
+    prs = get_merged_prs(args.repo, args.label, args.limit)
 
     if not prs:
         print(f"No PRs found with label '{args.label}'.")
@@ -72,7 +201,7 @@ def main():
     # Sort by mergedAt (ISO 8601 strings sort correctly in chronological order)
     prs.sort(key=lambda x: x["mergedAt"])
 
-    # Write to output cmd file
+    # 2. Write Output Script
     commit_count = 0
     with open(args.output, "w", encoding="utf-8") as f:
         f.write("@echo off\n")
@@ -95,7 +224,7 @@ def main():
 
     print(f"Generated {args.output} with {commit_count} commits.")
 
-    # Write to markdown file. You can use it as the pull request description.
+    # 3. Write PR Description Markdown
     md_output = "cherry_pick_pr_description.md"
     with open(md_output, "w", encoding="utf-8") as f:
         f.write("This cherry-picks the following commits for the release:\n")
@@ -103,76 +232,14 @@ def main():
             if not pr.get("mergeCommit"):
                 continue
             number = pr["number"]
-            f.write(f"- #{number}\n")
+            title = pr["title"]
+            # Markdown link format: - #123 Title
+            f.write(f"- #{number} {title}\n")
 
     print(f"Generated {md_output} with {commit_count} commits.")
 
-    # Check for potential missing dependencies
-    print("\nChecking for potential missing dependencies (conflicts)...")
-
-    # Collect OIDs being cherry-picked
-    cherry_pick_oids = set()
-    for pr in prs:
-        if pr.get("mergeCommit"):
-            cherry_pick_oids.add(pr["mergeCommit"]["oid"])
-
-    for pr in prs:
-        if not pr.get("mergeCommit"):
-            continue
-
-        oid = pr["mergeCommit"]["oid"]
-        number = pr["number"]
-
-        # Get files changed by this commit
-        try:
-            res = subprocess.run(
-                ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", oid],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            files = res.stdout.strip().splitlines()
-        except subprocess.CalledProcessError as e:
-            print(f"Error getting changed files for {oid}: {e}", file=sys.stderr)
-            continue
-
-        # For each file, find commits that modified it between the target branch and the cherry-picked commit.
-        # Deduplicate warnings: group affected files by missing commit.
-        # missing_commits maps: missing_commit_oid -> (title, [list of affected files])
-        missing_commits = defaultdict(lambda: ("", []))
-        for filepath in files:
-            try:
-                res = subprocess.run(
-                    ["git", "log", oid, "--not", args.branch, "--format=%H %s", "--", filepath],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                for line in res.stdout.strip().splitlines():
-                    parts = line.split(" ", 1)
-                    c = parts[0]
-                    title = parts[1] if len(parts) > 1 else ""
-
-                    if c == oid:
-                        continue
-                    if c not in cherry_pick_oids:
-                        existing_title, existing_files = missing_commits[c]
-                        if not existing_title:
-                            existing_title = title
-                        existing_files.append(filepath)
-                        missing_commits[c] = (existing_title, existing_files)
-
-            except subprocess.CalledProcessError as e:
-                print(f"Error checking history for {filepath}: {e}", file=sys.stderr)
-                continue
-
-        # Print deduplicated warnings
-        for missing_oid, (title, affected_files) in missing_commits.items():
-            files_str = ", ".join(affected_files)
-            print(
-                f"WARNING: PR #{number} ({oid}) depends on commit {missing_oid} ({title}) "
-                f"which is not in the cherry-pick list. Affected files: {files_str}"
-            )
+    # 4. Dependency Check
+    check_missing_dependencies(prs, args.branch)
 
 
 if __name__ == "__main__":
