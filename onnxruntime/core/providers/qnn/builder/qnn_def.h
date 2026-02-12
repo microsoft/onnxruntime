@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include "QnnInterface.h"
@@ -136,6 +137,19 @@ struct OnnxTensorInfo {
   size_t index_;
   const int32_t data_type_;  // Uses TensorProto::DataType
   const std::vector<int64_t> shape_;
+};
+
+// Book-keeping for graph input or output tensors.
+struct GraphInputOutputInfo {
+  std::vector<std::string> names;
+  std::unordered_map<std::string, size_t> indices;
+  std::unordered_map<std::string, OnnxTensorInfo> tensors;
+
+  void Clear() {
+    names.clear();
+    indices.clear();
+    tensors.clear();
+  }
 };
 
 size_t memscpy(void* dst, size_t dst_size, const void* src, size_t copy_size);

@@ -27,6 +27,7 @@ static void RunCumSumOpTest(const std::string& op_type,
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["soc_model"] = "87";
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
   RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_def_2}, attrs),
@@ -37,9 +38,8 @@ static void RunCumSumOpTest(const std::string& op_type,
 }
 
 // Non-QDQ model, CumSum with float input and axis input as initializer with axis 0
-// Fails with QNN SDK 2.35.0:
-// Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_0) {
+// Passed with provider_options["soc_model"] = "87". Failed with default soc_model: 35
+TEST_F(QnnHTPBackendTests, CumSum_float_int32_e0_r0_axis_0) {
   RunCumSumOpTest<float, int32_t>("CumSum",
                                   TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
                                   TestInputDef<int32_t>({}, true, {0}),
@@ -50,12 +50,23 @@ TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_0) {
 }
 
 // Non-QDQ model, CumSum with float input and axis input as initializer with axis -1
-// Fails with QNN SDK 2.35.0:
-// Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_neg1) {
+// Passed with provider_options["soc_model"] = "87". Failed with default soc_model: 35
+TEST_F(QnnHTPBackendTests, CumSum_float_int32_e0_r0_axis_neg1) {
   RunCumSumOpTest<float, int32_t>("CumSum",
                                   TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
                                   TestInputDef<int32_t>({}, true, {-1}),
+                                  {utils::MakeAttribute("exclusive", static_cast<int64_t>(0)),
+                                   utils::MakeAttribute("reverse", static_cast<int64_t>(0))},
+                                  17,
+                                  ExpectedEPNodeAssignment::All);
+}
+
+// Test int64 axis
+// Passed with provider_options["soc_model"] = "87". Failed with default soc_model: 35
+TEST_F(QnnHTPBackendTests, CumSum_float_int64_e0_r0_axis_1) {
+  RunCumSumOpTest<float, int64_t>("CumSum",
+                                  TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
+                                  TestInputDef<int64_t>({}, true, {1}),
                                   {utils::MakeAttribute("exclusive", static_cast<int64_t>(0)),
                                    utils::MakeAttribute("reverse", static_cast<int64_t>(0))},
                                   17,

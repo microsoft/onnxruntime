@@ -17,7 +17,7 @@ Ort::Status GetOnnxAxis(QnnModelWrapper& qnn_model_wrapper, const OrtNodeUnit& n
   RETURN_IF_NOT(axis_input_info.is_initializer, "axis must be initializers");
   std::vector<uint8_t> axis_unpacked_tensor;
   RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(axis_input_info.initializer_tensor, axis_unpacked_tensor));
-  RETURN_IF_NOT(1 == static_cast<uint32_t>(axis_unpacked_tensor.size() / sizeof(axis_input_info.qnn_data_type)),
+  RETURN_IF_NOT((axis_input_info.qnn_data_type == QNN_DATATYPE_INT_64 ? 2u : 1u) == static_cast<uint32_t>(axis_unpacked_tensor.size() / sizeof(axis_input_info.qnn_data_type)),
                 "axis should be a single element");
 
   int32_t axis = 0;

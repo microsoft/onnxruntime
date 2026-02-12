@@ -21,6 +21,24 @@ struct QnnTensorInfo {
   size_t ort_index = 0;
 };
 
+// Configuration for QnnModel::ComposeGraph and QnnModel::SetGraphInputOutputInfo.
+struct QnnModelContext {
+  const OrtGraph& ort_graph;
+  const OrtNode& fused_node;
+  const Ort::Logger& logger;
+
+  // Names in ONNX declaration order, absent when loading from cached context.
+  const std::vector<std::string>* onnx_input_names = nullptr;
+  const std::vector<std::string>* onnx_output_names = nullptr;
+
+  const ModelSettings* model_settings = nullptr;
+  const QnnGraph_Config_t** graph_configs = nullptr;
+
+  // Used by offload_graph_io_quantization to map internal QNN names to ONNX names.
+  std::unordered_map<std::string, std::string>* tensor_name_overrides = nullptr;
+  std::string json_qnn_graph_path;
+};
+
 class QnnModel {
  public:
   QnnModel(QnnBackendManager* qnn_backend_manager,
@@ -33,13 +51,7 @@ class QnnModel {
   ~QnnModel() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModel);
 
-  Ort::Status ComposeGraph(const OrtGraph& ort_graph,
-                           const OrtNode& fused_node,
-                           const qnn::ModelSettings& model_settings,
-                           const Ort::Logger& logger,
-                           std::unordered_map<std::string, std::string>* tensor_name_overrides = nullptr,
-                           const QnnGraph_Config_t** graph_configs = nullptr,
-                           const std::string& json_qnn_graph_path = "");
+  Ort::Status ComposeGraph(const QnnModelContext& context);
 
   Ort::Status FinalizeGraphs(const Ort::Logger& logger);
 
@@ -48,45 +60,31 @@ class QnnModel {
   Ort::Status ExecuteGraph(OrtKernelContext* context, const Ort::Logger& logger);
 
   const OnnxTensorInfo* GetOutputInfo(const std::string& name) const {
-    auto it = outputs_info_.find(name);
-    if (it == outputs_info_.end()) {
+    auto it = graph_outputs_.tensors.find(name);
+    if (it == graph_outputs_.tensors.end()) {
       return nullptr;
     }
     return &(it->second);
   }
 
-  Ort::Status SetGraphInputOutputInfo(const OrtGraph& ort_graph,
-                                      const OrtNode& fused_node,
-                                      const Ort::Logger& logger);
-  Ort::Status ParseGraphInputOrOutput(const OrtGraph& ort_graph,
-                                      std::vector<const OrtValueInfo*> input_output_defs,
-                                      std::vector<std::string>& input_output_names,
-                                      std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
-                                      std::unordered_map<std::string, size_t>& input_output_index,
-                                      const Ort::Logger& logger,
-                                      bool is_input = false);
+  Ort::Status SetGraphInputOutputInfo(const QnnModelContext& context);
 
-  // Return the input index within Ort graph which has initializers included
+  // Input index within ORT graph (includes initializers in count)
   size_t GetOrtInputIndex(const std::string& name) const {
-    return GetInputOutputIndex(name, inputs_info_);
+    return GetInputOutputIndex(name, graph_inputs_.tensors);
   }
 
-  // Return the pure input index which doesn't cover initializers
+  // Input index excluding initializers
   size_t GetGraphInputIndex(const std::string& name) const {
-    auto it = model_input_index_map_.find(name);
-    if (it == model_input_index_map_.end()) {
+    auto it = graph_inputs_.indices.find(name);
+    if (it == graph_inputs_.indices.end()) {
       ORT_CXX_API_THROW("Input name not found.", ORT_EP_FAIL);
     }
     return it->second;
   }
 
-  // Return the number of graph inputs
-  size_t GetGraphInputCount() const {
-    return model_input_index_map_.size();
-  }
-
   size_t GetOutputIndex(const std::string& name) const {
-    return GetInputOutputIndex(name, outputs_info_);
+    return GetInputOutputIndex(name, graph_outputs_.tensors);
   }
 
   Ort::Status DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info,
@@ -126,19 +124,19 @@ class QnnModel {
   }
 
   const std::vector<std::string>& GetInputNames() const {
-    return input_names_;
+    return graph_inputs_.names;
   }
 
   const std::vector<std::string>& GetOutputNames() const {
-    return output_names_;
+    return graph_outputs_.names;
   }
 
   const std::unordered_map<std::string, OnnxTensorInfo>& GetInputsInfo() const {
-    return inputs_info_;
+    return graph_inputs_.tensors;
   }
 
   const std::unordered_map<std::string, OnnxTensorInfo>& GetOutputsInfo() const {
-    return outputs_info_;
+    return graph_outputs_.tensors;
   }
 
   const std::string& Name() const { return graph_info_->Name(); }
@@ -161,7 +159,7 @@ class QnnModel {
   size_t GetInputOutputIndex(const std::string& name, const std::unordered_map<std::string, OnnxTensorInfo>& io_info) const {
     auto it = io_info.find(name);
     if (it == io_info.end()) {
-      ORT_CXX_API_THROW("Input/Output name not found.", ORT_EP_FAIL);
+      ORT_CXX_API_THROW("Tensor name not found.", ORT_EP_FAIL);
     }
     return it->second.index_;
   }
@@ -169,13 +167,8 @@ class QnnModel {
  private:
   std::unique_ptr<GraphInfo> graph_info_;
   QnnBackendManager* qnn_backend_manager_ = nullptr;
-  // <input_name, input_index>, initializer inputs are excluded, keep the input index here
-  std::unordered_map<std::string, size_t> model_input_index_map_;
-  std::unordered_map<std::string, size_t> model_output_index_map_;
-  std::vector<std::string> input_names_;
-  std::vector<std::string> output_names_;
-  std::unordered_map<std::string, OnnxTensorInfo> inputs_info_;
-  std::unordered_map<std::string, OnnxTensorInfo> outputs_info_;
+  GraphInputOutputInfo graph_inputs_;
+  GraphInputOutputInfo graph_outputs_;
   std::vector<QnnTensorInfo> qnn_input_infos_;
   std::vector<QnnTensorInfo> qnn_output_infos_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;

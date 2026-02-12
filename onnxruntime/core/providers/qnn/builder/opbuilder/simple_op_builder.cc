@@ -385,7 +385,7 @@ Ort::Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
   }
 
   if (op_type == "LeakyRelu") {
-    std::string input_name = "alpha";
+    std::string input_name = utils::GetUniqueName(node_unit.Name(), "_alpha");
     RETURN_IF_ERROR(ProcessAlphaAttributeAsInput(qnn_model_wrapper, node_unit, input_name));
     input_names.push_back(input_name);
   }
