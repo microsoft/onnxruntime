@@ -183,9 +183,9 @@ class ModelCompilationOptions {
   // Telemetry helper methods
 
   /// <summary>
-  /// Returns a string describing the input source type: "file" or "buffer".
+  /// Returns a string describing the input source type: "file", "buffer", or "ort_model".
   /// </summary>
-  /// <returns>"file" or "buffer"</returns>
+  /// <returns>"file", "buffer", or "ort_model"</returns>
   std::string GetInputSourceForTelemetry() const;
 
   /// <summary>

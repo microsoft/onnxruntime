@@ -18,6 +18,7 @@
 
 #include "test/shared_lib/test_fixture.h"
 #include "test/shared_lib/utils.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/test_allocator.h"
 
 #include "onnxruntime_config.h"  // generated file in build output dir
@@ -1013,4 +1014,80 @@ TEST(ModelEditorCompileAPITest, CompileFromOrtModelToFile) {
 
   // Cleanup
   std::filesystem::remove(output_path);
+}
+
+// Test: ORT_LOAD_CONFIG_FROM_MODEL=1 with OrtModel input fails fast with a clear,
+// actionable error message.
+TEST(ModelEditorCompileAPITest, LoadConfigFromModelEnvVarFailsForOrtModel) {
+  // RAII helper saves the current env var value and restores it when the scope exits.
+  onnxruntime::test::ScopedEnvironmentVariables scoped_env(
+      {{"ORT_LOAD_CONFIG_FROM_MODEL", "1"}});
+
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Should fail with a clear error about the unsupported env-var/input combination.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("ORT_LOAD_CONFIG_FROM_MODEL=1"));
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("in-memory OrtModel input"));
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Unset ORT_LOAD_CONFIG_FROM_MODEL"));
+
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
+}
+
+// Test: Validation error for OrtModel with no model_path, no output location, and no embed mode.
+// Verifies the error message contains the expected remediation guidance.
+TEST(ModelEditorCompileAPITest, NoOutputLocationNoModelPathFails) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  // Intentionally do NOT call SetEpContextEmbedMode, SetOutputModelPath, or SetOutputModelBuffer
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_FALSE(status.IsOK());
+  // Should suggest setting output location or model_path, including embed mode as an option
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("SetOutputModelPath"));
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("SetEpContextEmbedMode(true)"));
+  // Should NOT suggest SetEpContextBinaryInformation (that alone is not sufficient)
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::Not(::testing::HasSubstr("SetEpContextBinaryInformation")));
+}
+
+// Test: Setting embed mode with buffer output satisfies the output location requirement
+// for OrtModel with no model_path.
+TEST(ModelEditorCompileAPITest, EmbedModeWithBufferOutputSatisfiesValidation) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;
+  auto model = CreateSimpleGemmModel(weights);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+
+  if (output_buffer != nullptr) {
+    allocator->Free(output_buffer);
+  }
 }

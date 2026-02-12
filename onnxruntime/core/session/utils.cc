@@ -301,10 +301,6 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtModel pointer is null");
   }
 
-  const Env& os_env = Env::Default();
-  bool load_config_from_model =
-      os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
-
   // Check EPContext model generation options - OrtModel has no file path by default,
   // so we need explicit output location or embedded model path.
   if (options) {
@@ -325,20 +321,12 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
           (!ep_ctx_gen_options.HasOutputModelLocation() ||
            (output_model_path != nullptr && output_model_path->empty()))) {
         return OrtApis::CreateStatus(ORT_FAIL,
-                                     "OrtModel loaded without a model_path was configured with EPContext "
-                                     "model generation enabled but without a valid location (e.g., file or buffer) "
-                                     "for the output model. Please specify a valid output location via "
+                                     "OrtModel has no model_path set and no valid output location was specified "
+                                     "for EPContext model generation. "
                                      "SetOutputModelPath/SetOutputModelBuffer, or set the model_path on the "
-                                     "OrtGraph before adding to OrtModel.");
+                                     "OrtGraph before adding it to OrtModel.");
       }
     }
-  }
-
-  // Note: load_config_from_model is not applicable for OrtModel since there's no serialized
-  // model to load config from. We treat this as a regular load.
-  if (load_config_from_model) {
-    // Log a warning but proceed - OrtModel doesn't support loading config from model
-    // as it's already in-memory and constructed programmatically
   }
 
   sess = std::make_unique<onnxruntime::InferenceSession>(
@@ -351,6 +339,30 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
   }
 #endif
+
+  // Add custom domains for all OrtEpDevice instances to inference session.
+  // The custom domains should be registered before model load for ORT to validate the custom ops.
+  // This mirrors the same block in the file/buffer overload to maintain load-path parity.
+  if (options != nullptr &&
+      options->provider_factories.empty() &&
+      options->value.ep_selection_policy.enable) {
+    InlinedVector<OrtCustomOpDomain*> all_ep_custom_op_domains;
+
+    for (const OrtEpDevice* ep_device : env.GetOrtEpDevices()) {
+      InlinedVector<OrtCustomOpDomain*> domains;
+      ORT_API_RETURN_IF_STATUS_NOT_OK(GetCustomOpDomainsFromEpDevice(*ep_device, domains));
+
+      for (auto domain : domains) {
+        if (ShouldAddDomain(domain, options->custom_op_domains_)) {
+          all_ep_custom_op_domains.push_back(domain);
+        }
+      }
+    }
+
+    if (!all_ep_custom_op_domains.empty()) {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(all_ep_custom_op_domains));
+    }
+  }
 
   // Load from OrtModel
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(*model));
