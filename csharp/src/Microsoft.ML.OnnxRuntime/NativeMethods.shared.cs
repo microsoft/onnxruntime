@@ -889,8 +889,8 @@ namespace Microsoft.ML.OnnxRuntime
 #if !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__
         /// <summary>
         /// Custom DllImportResolver to handle platform-specific library loading.
-        /// On Windows, it explicitly loads the library with a lowercase .dll extension to handle
-        /// case-sensitive filesystems.
+        /// It handles the addition of "lib" prefix and file extensions (.so/.dylib) for Linux/macOS,
+        /// and .dll extension for Windows (handling case-sensitivity).
         /// </summary>
         private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
@@ -915,74 +915,10 @@ namespace Microsoft.ML.OnnxRuntime
 
                 if (mappedName != null)
                 {
-                    // 1. Try default loading (name only)
                     if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
                     {
                         return handle;
                     }
-
-                    // 2. Try relative to assembly location (look into runtimes subfolders)
-                    string assemblyLocation = null;
-                    try { assemblyLocation = assembly.Location; } catch { }
-                    if (!string.IsNullOrEmpty(assemblyLocation))
-                    {
-                        string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
-                        string rid = RuntimeInformation.RuntimeIdentifier;
-
-                        // Probe the specific RID first, then common fallbacks for the current OS
-                        string[] ridsToTry;
-                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                        {
-                            ridsToTry = new[] { rid, "win-x64", "win-arm64" };
-                        }
-                        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                        {
-                            ridsToTry = new[] { rid, "linux-x64", "linux-arm64" };
-                        }
-                        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                        {
-                            // We no longer provide osx-x64 in official package since 1.24.
-                            // However, we keep it in the list for build-from-source users.
-                            ridsToTry = new[] { rid, "osx-arm64", "osx-x64" };
-                        }
-                        else
-                        {
-                            ridsToTry = new[] { rid };
-                        }
-
-                        foreach (var tryRid in ridsToTry)
-                        {
-                            string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
-                            if (System.IO.File.Exists(probePath) && NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
-                            {
-                                LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
-                                return handle;
-                            }
-                        }
-                    }
-
-                    // 3. Try AppContext.BaseDirectory as a fallback
-                    string baseDir = AppContext.BaseDirectory;
-                    if (!string.IsNullOrEmpty(baseDir))
-                    {
-                        string probePath = System.IO.Path.Combine(baseDir, mappedName);
-                        if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
-                        {
-                            LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
-                            return handle;
-                        }
-
-                        string rid = RuntimeInformation.RuntimeIdentifier;
-                        probePath = System.IO.Path.Combine(baseDir, "runtimes", rid, "native", mappedName);
-                        if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
-                        {
-                            LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
-                            return handle;
-                        }
-                    }
-
-                    LogLibLoad($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
-
                 }
             }
 
@@ -990,14 +926,7 @@ namespace Microsoft.ML.OnnxRuntime
             return IntPtr.Zero;
         }
 
-        private static void LogLibLoad(string message)
-        {
-            System.Diagnostics.Trace.WriteLine(message);
-            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ORT_LOADER_VERBOSITY")))
-            {
-                Console.WriteLine(message);
-            }
-        }
+
 #endif
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]

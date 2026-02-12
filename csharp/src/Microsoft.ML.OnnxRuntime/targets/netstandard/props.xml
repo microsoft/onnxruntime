@@ -142,5 +142,125 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
+
+    <!-- linux-x64 -->
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime.so"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime.so')">
+      <Link>libonnxruntime.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_shared.so"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_shared.so')">
+      <Link>libonnxruntime_providers_shared.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so')">
+      <Link>libonnxruntime_providers_cuda.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_dnnl.so"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_dnnl.so')">
+      <Link>libonnxruntime_providers_dnnl.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_tensorrt.so"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_tensorrt.so')">
+      <Link>libonnxruntime_providers_tensorrt.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_openvino.so"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libonnxruntime_providers_openvino.so')">
+      <Link>libonnxruntime_providers_openvino.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+    <!-- linux-arm64 -->
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime.so"
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime.so')">
+      <Link>libonnxruntime.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_shared.so"
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_shared.so')">
+      <Link>libonnxruntime_providers_shared.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_cuda.so"
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_cuda.so')">
+      <Link>libonnxruntime_providers_cuda.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_dnnl.so"
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_dnnl.so')">
+      <Link>libonnxruntime_providers_dnnl.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_tensorrt.so"
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_tensorrt.so')">
+      <Link>libonnxruntime_providers_tensorrt.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_openvino.so"
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\linux-arm64\native\libonnxruntime_providers_openvino.so')">
+      <Link>libonnxruntime_providers_openvino.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+    <!-- osx-x64 -->
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\osx-x64\native\libonnxruntime.dylib"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\osx-x64\native\libonnxruntime.dylib')">
+      <Link>libonnxruntime.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\osx-x64\native\libonnxruntime_providers_shared.dylib"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\osx-x64\native\libonnxruntime_providers_shared.dylib')">
+      <Link>libonnxruntime_providers_shared.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+
+    <!-- osx-arm64 -->
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\osx-arm64\native\libonnxruntime.dylib"
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\osx-arm64\native\libonnxruntime.dylib')">
+      <Link>libonnxruntime.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\osx-arm64\native\libonnxruntime_providers_shared.dylib"
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\osx-arm64\native\libonnxruntime_providers_shared.dylib')">
+      <Link>libonnxruntime_providers_shared.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
   </ItemGroup>
 </Project>
