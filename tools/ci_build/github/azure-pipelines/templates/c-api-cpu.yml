@@ -237,7 +237,7 @@ stages:
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64x_${{ parameters.BuildVariant }}
   - Android_Java_API_AAR_Packaging_Full
   - iOS_Full_xcframework
   condition: succeeded()
@@ -261,7 +261,7 @@ stages:
           artifactName: onnxruntime-win-x64
           targetPath: $(Build.BinariesDirectory)/nuget-artifact
         - input: pipelineArtifact
-          artifactName: onnxruntime-win-arm64
+          artifactName: onnxruntime-win-arm64x
           targetPath: $(Build.BinariesDirectory)/nuget-artifact
         - input: pipelineArtifact
           artifactName: onnxruntime-osx
