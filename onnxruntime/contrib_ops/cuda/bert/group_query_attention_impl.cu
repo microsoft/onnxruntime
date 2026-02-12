@@ -612,8 +612,8 @@ Status ExtremeDecoding(
       batch_size,
       parameters.seqlen_present_kv_cache,  // max_seqlen (capacity)
       data.past_seq_lens,
-      data.cos_cache,
-      data.sin_cache,
+      reinterpret_cast<const CudaT*>(data.cos_cache),
+      reinterpret_cast<const CudaT*>(data.sin_cache),
       parameters.do_rotary ? parameters.rotary_dim : 0,
       data.position_ids,
       parameters.rotary_interleaved,
@@ -1105,6 +1105,7 @@ Status QkvToContext(
 
 template struct GroupQueryAttentionData<half, half>;
 template struct GroupQueryAttentionData<__nv_bfloat16, __nv_bfloat16>;
+template struct GroupQueryAttentionData<BFloat16, BFloat16>;
 template struct GroupQueryAttentionData<half, int8_t>;
 
 template Status QkvToContext<half, half>(
@@ -1120,6 +1121,13 @@ template Status QkvToContext<__nv_bfloat16, __nv_bfloat16>(
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<__nv_bfloat16, __nv_bfloat16>& data);
+
+template Status QkvToContext<BFloat16, BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    Stream* ort_stream,
+    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<BFloat16, BFloat16>& data);
 
 template Status QkvToContext<half, int8_t>(
     const cudaDeviceProp& device_prop,
