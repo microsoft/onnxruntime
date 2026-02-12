@@ -212,7 +212,7 @@ __global__ void UnpackRoPEAppend(
             if constexpr (std::is_same<U, __nv_fp8_e4m3>::value) {
               // FP8 E4M3 Quantization: scale and convert to FP8 format
               constexpr float kFp8E4M3Max = 448.0f;
-              for (int i = 0; i < 8; ++i) {
+              for (int i = 0; i < elements_per_thread; ++i) {
                 float sc = per_channel ? scale_buffer[n * head_size + h + i] : scale_buffer[0];
                 float scaled_val = min(kFp8E4M3Max, max(-kFp8E4M3Max, static_cast<float>(vals[i]) * (sc == 0.0f ? 0.0f : 1.0f / sc)));
                 __nv_fp8_e4m3 fp8_val = __nv_fp8_e4m3(scaled_val);
@@ -222,7 +222,7 @@ __global__ void UnpackRoPEAppend(
 #endif
             {
               // INT8 Quantization: round and clamp to [-128, 127]
-              for (int i = 0; i < 8; ++i) {
+              for (int i = 0; i < elements_per_thread; ++i) {
                 float sc = per_channel ? scale_buffer[n * head_size + h + i] : scale_buffer[0];
                 int8_t q = static_cast<int8_t>(max(-128.0f, min(127.0f, rintf(static_cast<float>(vals[i]) * (sc == 0.0f ? 0.0f : 1.0f / sc)))));
                 packed |= (static_cast<uint64_t>(static_cast<uint8_t>(q)) << (i * 8));
