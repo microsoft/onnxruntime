@@ -37,7 +37,10 @@ parameters:
 
 jobs:
 - job: 'BUILD_QNN_EP'
-  pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
+  pool:
+    name: 'onnxruntime-qnn-windows-vs-2022-arm64'
+    demands:
+      - Agent.Version -equals 4.264.2
   variables:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     buildArch: arm64
@@ -50,7 +53,11 @@ jobs:
     matrix:
       SHARED_LIB:
         QnnLibKind: 'shared_lib'
-        ExtraQnnBuildArgs: '--client_package_build'
+        # We currently do not have a standalone Windows ARM64 CI pipeline for the CPU EP,
+        # so we enable --enable_arm_neon_nchwc for additional coverage of the NCHWc code paths in the CPU EP.
+        # Once we have a standalone Windows ARM64 CI pipeline for the CPU EP, we can consider adding --enable_arm_neon_nchwc
+        # to that pipeline and removing it from this pipeline since this pipeline is primarily for testing the QNN EP.
+        ExtraQnnBuildArgs: '--client_package_build --enable_arm_neon_nchwc'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
         ExtraQnnBuildArgs: ''
@@ -83,7 +90,7 @@ jobs:
         --config $(BuildConfig)
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
-        --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
+        --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
         --update --build --parallel $(ExtraQnnBuildArgs)

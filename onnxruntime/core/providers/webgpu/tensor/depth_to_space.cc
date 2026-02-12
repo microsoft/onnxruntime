@@ -36,7 +36,7 @@ WEBGPU_DEPTH_TO_SPACE_KERNEL(13, kOnnxDomain, false)
 WEBGPU_DEPTH_TO_SPACE_VERSIONED_KERNEL(11, 12, kMSInternalNHWCDomain, true)
 WEBGPU_DEPTH_TO_SPACE_KERNEL(13, kMSInternalNHWCDomain, true)
 
-void AppendPermFunction(std::ostream& os, const ShaderVariableHelper& input, const int64_t* perm) {
+void AppendPermFunction(OStringStream& os, const ShaderVariableHelper& input, const int64_t* perm) {
   os << "fn perm(i: input_indices_t) -> input_indices_t {\n"
      << "  var a: input_indices_t;\n";
   for (int idx = 0; idx < input.Rank(); ++idx) {

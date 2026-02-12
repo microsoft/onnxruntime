@@ -9,25 +9,33 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 # -------------------------------------------------------------------------
+import gc
 import math
 import os
 import platform
 import random
 import unittest
+from copy import deepcopy
 from dataclasses import dataclass
 
 import numpy
 import torch
 from einops import rearrange, repeat
+
+# --- ONNX and Torch/Numpy Dtype Mappings ---
+from gqa_test_helper import (
+    ONNX_TENSOR_TYPE_MAP,
+    TORCH_DTYPE_MAP,
+    compute_scale,
+    dequantize_tensor,
+    quantize_tensor_with_scale,
+)
 from onnx import TensorProto, helper
+from packaging import version
 from parameterized import parameterized
 
-from onnxruntime import (
-    InferenceSession,
-    SessionOptions,
-    get_available_providers,
-    get_build_info,
-)
+from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_build_info
+from onnxruntime import __version__ as ort_version
 
 # Set seed for reproducibility
 torch.manual_seed(0)
@@ -47,49 +55,14 @@ param_count = int(os.getenv("PARAM_COUNT", "3")) if not pipeline_mode else 2
 # When quick build is used, flash attention only supports head_size=128
 quick_build = ", quick-build=" in get_build_info()
 
-enable_debug_print = quick_build
+has_int4_kv_cache = ", int4-kv-cache=" in get_build_info()
+
+enable_debug_print = False
 
 enable_deterministic_check = True
-
-enable_quantized_kv_tests = True
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
-
-
-# --- ONNX and Torch/Numpy Dtype Mappings ---
-ONNX_TENSOR_TYPE_MAP = {
-    "float32": TensorProto.FLOAT,
-    "float16": TensorProto.FLOAT16,
-    "bfloat16": TensorProto.BFLOAT16,
-    "int32": TensorProto.INT32,
-    "int8": TensorProto.INT8,
-    "int4": TensorProto.UINT8,
-}
-
-TORCH_DTYPE_TO_ONNX_MAP = {
-    torch.float32: TensorProto.FLOAT,
-    torch.float16: TensorProto.FLOAT16,
-    torch.bfloat16: TensorProto.BFLOAT16,
-    torch.int32: TensorProto.INT32,
-    torch.int8: TensorProto.INT8,
-}
-
-TORCH_DTYPE_MAP = {
-    "float32": torch.float32,
-    "float16": torch.float16,
-    "bfloat16": torch.bfloat16,
-    "int8": torch.int8,
-    "int4": torch.uint8,
-}
-
-NUMPY_DTYPE_MAP = {
-    "float32": numpy.float32,
-    "float16": numpy.float16,
-    "bfloat16": numpy.uint16,
-    "int8": numpy.int8,
-    "int4": numpy.uint8,
-}
 
 
 @dataclass
@@ -112,9 +85,15 @@ class GQAConfig:
     has_head_sink: bool = False
     kv_cache_type: str = ""
     share_buffer: bool = True
+    share_kv_scale: bool = False
 
     has_position_ids: bool = False
     has_attention_bias: bool = False
+
+    # Quantization parameters
+    k_quant_type: str = "NONE"
+    v_quant_type: str = "NONE"
+    kv_cache_bit_width: int = 0
 
 
 # #################################################################################################
@@ -238,12 +217,20 @@ def create_gqa_node_and_io(
     if output_qk > 0:
         outputs.append("output_qk")
 
+    # Ensure kv_cache_bit_width is set correctly based on cache type if not provided
+    bit_width = config.kv_cache_bit_width
+    if bit_width == 0:
+        if config.kv_cache_type == "int4":
+            bit_width = 4
+        elif config.kv_cache_type == "int8":
+            bit_width = 8
+
     inputs = [
         "query",
         "key" if not config.packed else "",
         "value" if not config.packed else "",
-        "past_key" if is_past or share_buffer else "",
-        "past_value" if is_past or share_buffer else "",
+        "past_key" if is_past or share_buffer or config.k_quant_type != "NONE" else "",
+        "past_value" if is_past or share_buffer or config.k_quant_type != "NONE" else "",
         "seqlens_k",
         "total_sequence_length",
         "cos_cache" if config.rotary else "",
@@ -251,11 +238,25 @@ def create_gqa_node_and_io(
         "position_ids" if config.has_position_ids else "",
         "attention_bias" if config.has_attention_bias else "",
         "head_sink" if config.has_head_sink else "",
+        "k_scale" if config.k_quant_type != "NONE" else "",
+        "k_scale"
+        if config.share_kv_scale and config.k_quant_type != "NONE"
+        else ("v_scale" if config.v_quant_type != "NONE" else ""),
     ]
 
     # Remove trailing empty strings
     while inputs and inputs[-1] == "":
         inputs.pop()
+
+    quantization_attributes = (
+        {
+            "k_quant_type": config.k_quant_type,
+            "v_quant_type": config.v_quant_type,
+            "kv_cache_bit_width": bit_width,
+        }
+        if config.k_quant_type != "NONE"
+        else {}
+    )
 
     node = helper.make_node(
         op_type="GroupQueryAttention",
@@ -270,6 +271,7 @@ def create_gqa_node_and_io(
         softcap=config.softcap,
         smooth_softmax=1 if config.use_smooth_softmax else 0,
         qk_output=output_qk,
+        **quantization_attributes,
         domain="com.microsoft",
     )
 
@@ -284,11 +286,7 @@ def create_gqa_node_and_io(
         helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [config.batch_size]),
         helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
     ]
-
-    if isinstance(config.kv_cache_type, torch.dtype):
-        cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
-    else:
-        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+    cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
     if not config.packed:
         graph_input.extend(
@@ -306,14 +304,22 @@ def create_gqa_node_and_io(
             ]
         )
 
-    if is_past or share_buffer:
+    if is_past or share_buffer or config.k_quant_type != "NONE":
         k_shape = [config.batch_size, config.kv_num_heads, past_kv_seqlen, config.head_size]
+        if config.kv_cache_type == "int4":
+            k_shape[-1] //= 2
         graph_input.extend(
             [
                 helper.make_tensor_value_info("past_key", cache_ort_type, k_shape),
                 helper.make_tensor_value_info("past_value", cache_ort_type, k_shape),
             ]
         )
+        if config.k_quant_type != "NONE":
+            # Scales are always float32
+            graph_input.append(helper.make_tensor_value_info("k_scale", TensorProto.FLOAT, None))
+        if config.v_quant_type != "NONE" and not config.share_kv_scale:
+            graph_input.append(helper.make_tensor_value_info("v_scale", TensorProto.FLOAT, None))
+
     if config.rotary:
         rotary_dim = (math.floor(config.head_size / 16) * 16) // 2
         cache_seq_len = config.buffer_sequence_length
@@ -342,6 +348,8 @@ def create_gqa_node_and_io(
 
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
+    if config.kv_cache_type == "int4":
+        output_k_shape[-1] //= 2
 
     graph_output = [
         helper.make_tensor_value_info(
@@ -423,6 +431,8 @@ def gqa_prompt_func(
     position_ids,
     attention_bias,
     head_sink,
+    k_scale,
+    v_scale,
     ep,
     device,
     share_buffer=True,
@@ -457,15 +467,17 @@ def gqa_prompt_func(
         bind_tensor(io_binding, "key", new_k, device, ort_type)
         bind_tensor(io_binding, "value", new_v, device, ort_type)
 
-    # 3. Bind 'past_key', 'past_value'
-    if share_buffer:
+    # 3. Bind 'past_key', 'past_value' (if share_buffer or quantized)
+    if share_buffer or config.k_quant_type != "NONE":
         # cache_ort_type corresponds to config.kv_cache_type
-        if isinstance(config.kv_cache_type, torch.dtype):
-            cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
-        else:
+        cache_ort_type = ort_type
+        if config.kv_cache_type:
             cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
-        k_to_bind = k if share_buffer else k[:, :, :0, :]
-        v_to_bind = v if share_buffer else v[:, :, :0, :]
+
+        # Use full buffer if sharing, otherwise empty tensor for prompt phase
+        k_to_bind = k if share_buffer else k[:, :, :0, :].contiguous()
+        v_to_bind = v if share_buffer else v[:, :, :0, :].contiguous()
+
         bind_tensor(io_binding, "past_key", k_to_bind, device, cache_ort_type)
         bind_tensor(io_binding, "past_value", v_to_bind, device, cache_ort_type)
 
@@ -494,7 +506,22 @@ def gqa_prompt_func(
     if config.has_head_sink and head_sink is not None:
         bind_tensor(io_binding, "head_sink", head_sink, device, ort_type)
 
-    # Bind Outputs
+    # 6. Quantization scales
+    if k_scale is not None:
+        k_scale_ort_type = TensorProto.FLOAT
+        if k_scale.dtype != torch.float32:
+            k_scale = k_scale.to(torch.float32)
+        k_scale = k_scale.contiguous()
+        bind_tensor(io_binding, "k_scale", k_scale, device, k_scale_ort_type)
+    if v_scale is not None:
+        v_scale_ort_type = TensorProto.FLOAT
+        if v_scale.dtype != torch.float32:
+            v_scale = v_scale.to(torch.float32)
+        v_scale = v_scale.contiguous()
+        if not config.share_kv_scale:
+            bind_tensor(io_binding, "v_scale", v_scale, device, v_scale_ort_type)
+
+    # 7. Bind Outputs
     # output shape calculation
     hidden_size = config.num_heads * config.head_size
 
@@ -517,19 +544,18 @@ def gqa_prompt_func(
 
     present_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
 
+    # Update present shape when kv cache has quantization (int4 packs 2 values)
+    if config.kv_cache_bit_width == 4:
+        present_dims[-1] //= 2
+
     # Determine dtype for cache tensors
     cache_dtype = out_dtype
     cache_ort_type = ort_type
-    if isinstance(config.kv_cache_type, torch.dtype):
-        is_valid_type = config.kv_cache_type in TORCH_DTYPE_TO_ONNX_MAP
-    else:
-        is_valid_type = config.kv_cache_type in ONNX_TENSOR_TYPE_MAP
+    if config.kv_cache_type in ONNX_TENSOR_TYPE_MAP:
+        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
-    if is_valid_type:
-        if isinstance(config.kv_cache_type, torch.dtype):
-            cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
-        else:
-            cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+    if config.kv_cache_type in TORCH_DTYPE_MAP:
+        cache_dtype = TORCH_DTYPE_MAP[config.kv_cache_type]
 
     if share_buffer:
         # We bind output to the input buffer 'k' / 'v' (in-place update)
@@ -544,7 +570,9 @@ def gqa_prompt_func(
         bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
         bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
+    io_binding.synchronize_inputs()
     ort_session.run_with_iobinding(io_binding)
+    io_binding.synchronize_outputs()
 
     return out_torch, present_k, present_v
 
@@ -562,6 +590,8 @@ def gqa_past_func(
     position_ids,
     attention_bias,
     head_sink,
+    k_scale,
+    v_scale,
     ep,
     device,
     share_buffer=True,
@@ -582,6 +612,7 @@ def gqa_past_func(
         new_v = torch.reshape(new_v, (config.batch_size, config.q_sequence_length, -1))
 
     sess_options = SessionOptions()
+    # sess_options.log_severity_level = 0
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
     io_binding = ort_session.io_binding()
 
@@ -600,10 +631,7 @@ def gqa_past_func(
     # 3. Bind 'past_key', 'past_value'
     # These are required inputs for past_func
     # cache_ort_type corresponds to config.kv_cache_type
-    if isinstance(config.kv_cache_type, torch.dtype):
-        cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
-    else:
-        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+    cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
     if share_buffer:
         # If sharing buffer, we bind 'past_key' to the large buffer 'k'
@@ -639,6 +667,25 @@ def gqa_past_func(
     if config.has_head_sink and head_sink is not None:
         bind_tensor(io_binding, "head_sink", head_sink, device, ort_type)
 
+    # 6. Quantization
+    if k_scale is not None:
+        k_scale_ort_type = TensorProto.FLOAT
+        if k_scale.dtype != torch.float32:
+            k_scale = k_scale.to(torch.float32)
+        k_scale = k_scale.contiguous()
+        bind_tensor(io_binding, "k_scale", k_scale, device, k_scale_ort_type)
+    if v_scale is not None:
+        v_scale_ort_type = TensorProto.FLOAT
+        if v_scale.dtype != torch.float32:
+            v_scale = v_scale.to(torch.float32)
+        v_scale = v_scale.contiguous()
+        # Even if share_kv_scale is True, the node might have two scale inputs named "k_scale" and "v_scale"
+        # depending on the graph creation logic. We should bind "v_scale" if it's expected by the graph.
+        # In create_gqa_node_and_io, if share_kv_scale is True, Input 13 is named "k_scale".
+        # But if it's False, it's named "v_scale".
+        if not config.share_kv_scale:
+            bind_tensor(io_binding, "v_scale", v_scale, device, v_scale_ort_type)
+
     # 7. Outputs
     # output shape calculation
     hidden_size = config.num_heads * config.head_size
@@ -662,19 +709,15 @@ def gqa_past_func(
         present_seqlen = total_seq_len  # For past_func, total seq len is accumulated
 
     present_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    if config.kv_cache_bit_width == 4:
+        present_dims[-1] //= 2
 
     cache_dtype = out_dtype
     cache_ort_type = ort_type
-    if isinstance(config.kv_cache_type, torch.dtype):
-        is_valid_type = config.kv_cache_type in TORCH_DTYPE_TO_ONNX_MAP
-    else:
-        is_valid_type = config.kv_cache_type in ONNX_TENSOR_TYPE_MAP
-
-    if is_valid_type:
-        if isinstance(config.kv_cache_type, torch.dtype):
-            cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
-        else:
-            cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+    if config.kv_cache_type in ONNX_TENSOR_TYPE_MAP:
+        cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
+        if config.kv_cache_type in TORCH_DTYPE_MAP:
+            cache_dtype = TORCH_DTYPE_MAP[config.kv_cache_type]
 
     if share_buffer:
         # In-place update to k/v buffers
@@ -688,7 +731,9 @@ def gqa_past_func(
         bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
         bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
+    io_binding.synchronize_inputs()
     ort_session.run_with_iobinding(io_binding)
+    io_binding.synchronize_outputs()
 
     return out_torch, present_k, present_v
 
@@ -795,6 +840,30 @@ def attention_ref(
 # #################################################################################################
 # Parity Check (Core Test Logic)
 # #################################################################################################
+def get_static_scale(config: GQAConfig, device, torch_type, std):
+    """Generates calibration data and computes the static quantization scale."""
+    calibration_batch_size = 1
+    calibration_sequence_length = 1024
+    calibration_data_k = (
+        torch.randn(
+            calibration_batch_size,
+            config.kv_num_heads,
+            calibration_sequence_length,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    calibration_data_v = torch.randn_like(calibration_data_k) * std
+
+    # TODO: handle config.share_kv_scale here.
+    k_scale = compute_scale(calibration_data_k, config.k_quant_type, config.kv_cache_type)
+    if config.share_kv_scale:
+        v_scale = k_scale
+    else:
+        v_scale = compute_scale(calibration_data_v, config.v_quant_type, config.kv_cache_type)
+    return k_scale, v_scale
 
 
 def parity_check_gqa_prompt(
@@ -822,16 +891,17 @@ def parity_check_gqa_prompt(
     )
 
     # Initialize the KV cache to zeros since no past context in prompt testing.
-    k = (
-        torch.zeros(
-            config.batch_size,
-            config.kv_num_heads,
-            config.buffer_sequence_length,
-            config.head_size,
-            device=device,
-            dtype=torch_type,
-        )
-        * std
+    cache_dtype = torch_type
+    if config.kv_cache_type:
+        cache_dtype = TORCH_DTYPE_MAP[config.kv_cache_type]
+
+    k = torch.zeros(
+        config.batch_size,
+        config.kv_num_heads,
+        config.buffer_sequence_length,
+        config.head_size if config.kv_cache_bit_width != 4 else config.head_size // 2,
+        device=device,
+        dtype=cache_dtype,
     )
     v = torch.zeros_like(k)
 
@@ -848,6 +918,12 @@ def parity_check_gqa_prompt(
     )
     new_v = torch.randn_like(new_k) * std
 
+    k_scale, v_scale = get_static_scale(config, device, torch_type, std)
+    if k_scale is not None:
+        k_scale = k_scale.to(torch_type)
+    if v_scale is not None:
+        v_scale = v_scale.to(torch_type)
+
     head_sink = torch.rand(config.num_heads, dtype=torch_type, device=device) if config.has_head_sink else None
     window_size = (-1, -1)
     if config.local_window_size > 0:
@@ -856,10 +932,24 @@ def parity_check_gqa_prompt(
         window_size = (-1, 0)
 
     # --- PyTorch Reference Path ---
-    # Transpose BNSH cache to BSNH format for reference implementation
-    k_cache_ref = k.clone().transpose(1, 2)
-    v_cache_ref = v.clone().transpose(1, 2)
-
+    if config.kv_cache_bit_width == 4 or config.kv_cache_type == "int8":
+        k_ref_dequant = dequantize_tensor(k, k_scale, config.k_quant_type, config.kv_cache_type)
+        v_ref_dequant = dequantize_tensor(v, v_scale, config.v_quant_type, config.kv_cache_type)
+    else:
+        k_ref_dequant = dequantize_tensor(
+            quantize_tensor_with_scale(k, k_scale, config.k_quant_type, config.kv_cache_type),
+            k_scale,
+            config.k_quant_type,
+            config.kv_cache_type,
+        )
+        v_ref_dequant = dequantize_tensor(
+            quantize_tensor_with_scale(v, v_scale, config.v_quant_type, config.kv_cache_type),
+            v_scale,
+            config.v_quant_type,
+            config.kv_cache_type,
+        )
+    k_cache_ref = k_ref_dequant.clone().transpose(1, 2)
+    v_cache_ref = v_ref_dequant.clone().transpose(1, 2)
     cache_seqlens = torch.full((config.batch_size,), config.kv_sequence_length, device=device, dtype=torch.int32)
     rotary_seqlens = torch.zeros(config.batch_size, device=device, dtype=torch.long)
 
@@ -894,20 +984,37 @@ def parity_check_gqa_prompt(
     kv_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
     update_mask = arange < kv_seqlens_expanded
 
-    # Explicitly cast the source tensor to the destination's dtype before assignment.
-    source_k = rearrange(k_ro, "b s ... -> (b s) ...")
-    k_cache_ref[update_mask] = source_k.to(k_cache_ref.dtype)
+    k_to_cache = k_ro
+    v_to_cache = new_v
+    if config.kv_cache_type != "none":
+        k_scale_bsnh = k_scale
+        v_scale_bsnh = v_scale
+        if config.k_quant_type == "PER_CHANNEL" and k_scale is not None:
+            k_scale_bsnh = k_scale.transpose(1, 2)  # (1, H, 1, D) -> (1, 1, H, D)
+        if config.v_quant_type == "PER_CHANNEL" and v_scale is not None:
+            v_scale_bsnh = v_scale.transpose(1, 2)  # (1, H, 1, D) -> (1, 1, H, D)
 
-    source_v = rearrange(new_v, "b s ... -> (b s) ...")
-    v_cache_ref[update_mask] = source_v.to(v_cache_ref.dtype)
+        k_to_cache = dequantize_tensor(
+            quantize_tensor_with_scale(k_ro, k_scale_bsnh, config.k_quant_type, config.kv_cache_type),
+            k_scale_bsnh,
+            config.k_quant_type,
+            config.kv_cache_type,
+        ).to(torch_type)
+        v_to_cache = dequantize_tensor(
+            quantize_tensor_with_scale(new_v, v_scale_bsnh, config.v_quant_type, config.kv_cache_type),
+            v_scale_bsnh,
+            config.v_quant_type,
+            config.kv_cache_type,
+        ).to(torch_type)
 
-    key_padding_mask = arange < kv_seqlens_expanded
+    k_cache_ref[update_mask] = rearrange(k_to_cache, "b s ... -> (b s) ...").to(k_cache_ref.dtype)
+    v_cache_ref[update_mask] = rearrange(v_to_cache, "b s ... -> (b s) ...").to(v_cache_ref.dtype)
 
     out_ref, _ = attention_ref(
         q=q_ro,
-        k=k_cache_ref,
-        v=v_cache_ref,
-        key_padding_mask=key_padding_mask,
+        k=k_ro,
+        v=new_v,
+        key_padding_mask=None,
         attention_bias=attention_bias,
         causal=True,
         window_size=window_size,
@@ -918,63 +1025,32 @@ def parity_check_gqa_prompt(
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
 
     # --- ONNX Runtime Path ---
-    q_ort, k_ort, v_ort, new_k_ort, new_v_ort = q, k, v, new_k, new_v
+    q_ort, new_k_ort, new_v_ort = q, new_k, new_v
     if config.packed:
         q_ort = torch.cat([q, new_k, new_v], dim=2)
         new_k_ort, new_v_ort = None, None
 
-    # seqlens_k for GQA op is past_seq_len + seq_len - 1
     ort_seqlens = cache_seqlens - 1
-    num_runs = 2 if enable_deterministic_check else 1
-    for i in range(num_runs):
-        out, present_k, present_v = gqa_prompt_func(
-            q=q_ort,
-            k=k_ort,
-            v=v_ort,
-            config=config,
-            new_k=new_k_ort,
-            new_v=new_v_ort,
-            cos=cos,
-            sin=sin,
-            seqlens_k=ort_seqlens,
-            position_ids=position_ids,
-            attention_bias=attention_bias,
-            head_sink=head_sink,
-            ep=ep,
-            device=device,
-            share_buffer=config.share_buffer,
-            ort_type=ort_type,
-        )
-        if i == 0:
-            first_out = out.clone()
-            first_present_k = present_k.clone() if present_k is not None else None
-            first_present_v = present_v.clone() if present_v is not None else None
-        else:
-            if present_k is not None:
-                try:
-                    torch.testing.assert_close(
-                        present_k, first_present_k, rtol=0, atol=0, msg="present_k mismatch between two runs"
-                    )
-                except AssertionError as e:
-                    print(e)
-                    raise e
-            if present_v is not None:
-                try:
-                    torch.testing.assert_close(
-                        present_v, first_present_v, rtol=0, atol=0, msg="present_v mismatch between two runs"
-                    )
-                except AssertionError as e:
-                    print(e)
-                    raise e
-            try:
-                torch.testing.assert_close(out, first_out, rtol=0, atol=0, msg="Output mismatch between two runs")
-            except AssertionError as e:
-                max_diff = (out - first_out).abs().max().item()
-                print(f"Output mismatch max diff: {max_diff}")
-                with open("/tmp/gqa_diff_info.txt", "w") as f:
-                    f.write(f"Max Diff: {max_diff}\n")
-                print(e)
-                raise e
+    out, present_k, present_v = gqa_prompt_func(
+        q=q_ort,
+        k=k,
+        v=v,
+        config=config,
+        new_k=new_k_ort,
+        new_v=new_v_ort,
+        cos=cos,
+        sin=sin,
+        seqlens_k=ort_seqlens,
+        position_ids=position_ids,
+        attention_bias=attention_bias,
+        head_sink=head_sink,
+        k_scale=k_scale,
+        v_scale=v_scale,
+        ep=ep,
+        device=device,
+        share_buffer=config.share_buffer,
+        ort_type=ort_type,
+    )
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out_np = out.to(torch.float32).detach().cpu().numpy()
 
@@ -1001,13 +1077,90 @@ def parity_check_gqa_prompt(
         k_cache_ref_np = k_cache_ref_np[:, :, : config.kv_sequence_length, :]
         v_cache_ref_np = v_cache_ref_np[:, :, : config.kv_sequence_length, :]
 
-    print_diff_statistics(torch.tensor(present_k_np - k_cache_ref_np), "present_k")
-    numpy.testing.assert_allclose(present_k_np, k_cache_ref_np, rtol=rtol, atol=atol)
-    print_diff_statistics(torch.tensor(present_v_np - v_cache_ref_np), "present_v")
-    numpy.testing.assert_allclose(present_v_np, v_cache_ref_np, rtol=rtol, atol=atol)
+    if config.k_quant_type == "NONE":
+        numpy.testing.assert_allclose(present_k_np, k_cache_ref_np, rtol=rtol, atol=atol)
+        numpy.testing.assert_allclose(present_v_np, v_cache_ref_np, rtol=rtol, atol=atol)
 
     print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
     numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
+    # Compare quantized cache with proper masking per batch
+    if config.k_quant_type != "NONE":
+        # Convert numpy array to torch tensor with correct dtype
+        if isinstance(present_k, torch.Tensor):
+            present_k_torch = present_k.to(device)
+            # If tensor is int8/uint8, it should be preserved.
+        else:
+            if config.kv_cache_type == "int4":
+                # For int4, present_k is uint8 packed data
+                present_k_torch = torch.from_numpy(present_k).to(device)
+            elif config.kv_cache_type == "int8":
+                # For int8, present_k is int8 data
+                present_k_torch = torch.from_numpy(present_k.astype(numpy.int8)).to(device)
+            else:
+                present_k_torch = torch.from_numpy(present_k).to(device)
+
+        present_k_dequant = (
+            dequantize_tensor(present_k_torch, k_scale, config.k_quant_type, config.kv_cache_type)
+            .detach()
+            .cpu()
+            .numpy()
+        )
+
+        # Mask the reference cache to only valid regions
+        k_cache_ref_masked = k_cache_ref.transpose(1, 2).clone()
+        arange = torch.arange(config.buffer_sequence_length, device=device).unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+        cache_seqlens_expanded = cache_seqlens.unsqueeze(1).unsqueeze(1).unsqueeze(-1)
+        mask = arange >= cache_seqlens_expanded
+        k_cache_ref_masked[mask.expand_as(k_cache_ref_masked)] = 0
+        k_cache_ref_dequant = k_cache_ref_masked.cpu().numpy()
+
+        for b in range(config.batch_size):
+            valid_len = cache_seqlens[b].item()
+            print_diff_statistics(
+                torch.tensor(present_k_dequant[b, :, :valid_len, :] - k_cache_ref_dequant[b, :, :valid_len, :]),
+                f"present_k[{b}]",
+            )
+            numpy.testing.assert_allclose(
+                present_k_dequant[b, :, :valid_len, :], k_cache_ref_dequant[b, :, :valid_len, :], rtol=rtol, atol=atol
+            )
+
+    if config.v_quant_type != "NONE":
+        # Convert numpy array to torch tensor with correct dtype
+        if isinstance(present_v, torch.Tensor):
+            present_v_torch = present_v.to(device)
+        else:
+            if config.kv_cache_type == "int4":
+                present_v_torch = torch.from_numpy(present_v).to(device)
+            elif config.kv_cache_type == "int8":
+                present_v_torch = torch.from_numpy(present_v.astype(numpy.int8)).to(device)
+            else:
+                present_v_torch = torch.from_numpy(present_v).to(device)
+
+        present_v_dequant = (
+            dequantize_tensor(present_v_torch, v_scale, config.v_quant_type, config.kv_cache_type)
+            .detach()
+            .cpu()
+            .numpy()
+        )
+
+        # Mask the reference cache to only valid regions
+        v_cache_ref_masked = v_cache_ref.transpose(1, 2).clone()
+        arange = torch.arange(config.buffer_sequence_length, device=device).unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+        cache_seqlens_expanded = cache_seqlens.unsqueeze(1).unsqueeze(1).unsqueeze(-1)
+        mask = arange >= cache_seqlens_expanded
+        v_cache_ref_masked[mask.expand_as(v_cache_ref_masked)] = 0
+        v_cache_ref_dequant = v_cache_ref_masked.cpu().numpy()
+
+        for b in range(config.batch_size):
+            valid_len = cache_seqlens[b].item()
+            print_diff_statistics(
+                torch.tensor(present_v_dequant[b, :, :valid_len, :] - v_cache_ref_dequant[b, :, :valid_len, :]),
+                f"present_v[{b}]",
+            )
+            numpy.testing.assert_allclose(
+                present_v_dequant[b, :, :valid_len, :], v_cache_ref_dequant[b, :, :valid_len, :], rtol=rtol, atol=atol
+            )
 
 
 def parity_check_gqa_past(
@@ -1053,13 +1206,16 @@ def parity_check_gqa_past(
     )
     v = torch.randn_like(k) * std
 
-    # past cache sequence length is in [1, past_kv_sequence_length]
+    # Random past sequence lengths. This tests paddings in decoding.
+    # Use a separate generator to ensure deterministic behavior independent of prior RNG state.
+    cache_seqlens_gen = torch.Generator(device=device).manual_seed(42)
     cache_seqlens = torch.randint(
         1,
         config.past_kv_sequence_length + 1,
         (config.batch_size,),
         device=device,
         dtype=torch.long,
+        generator=cache_seqlens_gen,
     )
 
     for i in range(config.batch_size):
@@ -1086,10 +1242,29 @@ def parity_check_gqa_past(
     elif causal:
         window_size = (-1, 0)
 
+    k_scale, v_scale = get_static_scale(config, device, torch_type, std)
+    if k_scale is not None:
+        k_scale = k_scale.to(torch_type)
+    if v_scale is not None:
+        v_scale = v_scale.to(torch_type)
+
     # --- PyTorch Reference Path ---
     # Transpose BNSH cache to BSNH format for reference implementation
-    k_cache_ref = k.clone().transpose(1, 2)
-    v_cache_ref = v.clone().transpose(1, 2)
+
+    k_ref_dequant = dequantize_tensor(
+        quantize_tensor_with_scale(k, k_scale, config.k_quant_type, config.kv_cache_type),
+        k_scale,
+        config.k_quant_type,
+        config.kv_cache_type,
+    )
+    v_ref_dequant = dequantize_tensor(
+        quantize_tensor_with_scale(v, v_scale, config.v_quant_type, config.kv_cache_type),
+        v_scale,
+        config.v_quant_type,
+        config.kv_cache_type,
+    )
+    k_cache_ref = k_ref_dequant.clone().transpose(1, 2)
+    v_cache_ref = v_ref_dequant.clone().transpose(1, 2)
 
     cos, sin, q_ro, k_ro = None, None, q, new_k
     if config.rotary:
@@ -1117,8 +1292,32 @@ def parity_check_gqa_past(
     update_mask = torch.logical_and(
         cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.q_sequence_length
     )
-    k_cache_ref[update_mask] = rearrange(k_ro, "b s ... -> (b s) ...").to(k_cache_ref.dtype)
-    v_cache_ref[update_mask] = rearrange(new_v, "b s ... -> (b s) ...").to(v_cache_ref.dtype)
+
+    k_to_cache = k_ro
+    v_to_cache = new_v
+    if config.kv_cache_type != "none":
+        k_scale_bsnh = k_scale
+        v_scale_bsnh = v_scale
+        if config.k_quant_type == "PER_CHANNEL" and k_scale is not None:
+            k_scale_bsnh = k_scale.transpose(1, 2)  # (1, H, 1, D) -> (1, 1, H, D)
+        if config.v_quant_type == "PER_CHANNEL" and v_scale is not None:
+            v_scale_bsnh = v_scale.transpose(1, 2)  # (1, H, 1, D) -> (1, 1, H, D)
+
+        k_to_cache = dequantize_tensor(
+            quantize_tensor_with_scale(k_ro, k_scale_bsnh, config.k_quant_type, config.kv_cache_type),
+            k_scale_bsnh,
+            config.k_quant_type,
+            config.kv_cache_type,
+        ).to(torch_type)
+        v_to_cache = dequantize_tensor(
+            quantize_tensor_with_scale(new_v, v_scale_bsnh, config.v_quant_type, config.kv_cache_type),
+            v_scale_bsnh,
+            config.v_quant_type,
+            config.kv_cache_type,
+        ).to(torch_type)
+
+    k_cache_ref[update_mask] = rearrange(k_to_cache, "b s ... -> (b s) ...").to(k_cache_ref.dtype)
+    v_cache_ref[update_mask] = rearrange(v_to_cache, "b s ... -> (b s) ...").to(v_cache_ref.dtype)
     key_padding_mask = arange < cache_seqlens_expanded + config.q_sequence_length
 
     out_ref, _ = attention_ref(
@@ -1142,41 +1341,41 @@ def parity_check_gqa_past(
         q_ort = torch.cat([q, new_k, new_v], dim=2)
         new_k_ort, new_v_ort = None, None
 
+    # Quantize k and v for ORT when using quantized KV cache
+    # Quantize k and v for ORT when using quantized KV cache
+    k_ort = k
+    v_ort = v
+    if config.kv_cache_type in ["int8", "int4"]:
+        # NOTE: Quantize returns tensor with kv_cache_type (int8)
+        k_ort = quantize_tensor_with_scale(k, k_scale, config.k_quant_type, config.kv_cache_type)
+        v_ort = quantize_tensor_with_scale(v, v_scale, config.v_quant_type, config.kv_cache_type)
+
+        # Ensure they are contiguous for binding
+        k_ort = k_ort.contiguous()
+        v_ort = v_ort.contiguous()
+
     ort_seqlens = cache_seqlens + config.q_sequence_length - 1
-    num_runs = 2 if enable_deterministic_check else 1
-    for i in range(num_runs):
-        out, present_k, present_v = gqa_past_func(
-            q=q_ort,
-            k=k,
-            v=v,
-            config=config,
-            new_k=new_k_ort,
-            new_v=new_v_ort,
-            cos=cos,
-            sin=sin,
-            seqlens_k=ort_seqlens.int(),
-            position_ids=position_ids,
-            attention_bias=attention_bias,
-            head_sink=head_sink,
-            ep=ep,
-            device=device,
-            share_buffer=config.share_buffer,
-            ort_type=ort_type,
-        )
-        if i == 0:
-            first_out = out.clone()
-            first_present_k = present_k.clone() if present_k is not None else None
-            first_present_v = present_v.clone() if present_v is not None else None
-        else:
-            torch.testing.assert_close(out, first_out, rtol=0, atol=0, msg="Output mismatch between two runs")
-            if present_k is not None:
-                torch.testing.assert_close(
-                    present_k, first_present_k, rtol=0, atol=0, msg="present_k mismatch between two runs"
-                )
-            if present_v is not None:
-                torch.testing.assert_close(
-                    present_v, first_present_v, rtol=0, atol=0, msg="present_v mismatch between two runs"
-                )
+
+    out, present_k, present_v = gqa_past_func(
+        q=q_ort,
+        k=k_ort,
+        v=v_ort,
+        config=config,
+        new_k=new_k_ort,
+        new_v=new_v_ort,
+        cos=cos,
+        sin=sin,
+        seqlens_k=ort_seqlens.int(),
+        position_ids=position_ids,
+        attention_bias=attention_bias,
+        head_sink=head_sink,
+        k_scale=k_scale,
+        v_scale=v_scale,
+        ep=ep,
+        device=device,
+        share_buffer=config.share_buffer,
+        ort_type=ort_type,
+    )
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out_np = out.to(torch.float32).detach().cpu().numpy()
 
@@ -1188,25 +1387,105 @@ def parity_check_gqa_past(
         raise RuntimeError("Output is all zeros")
 
     # --- Comparison ---
-    # Compare KV cache
-    # Transpose reference back to BNSH to match ORT output
-    k_cache_ref_np = k_cache_ref.transpose(1, 2).to(torch.float32).detach().cpu().numpy()
-    v_cache_ref_np = v_cache_ref.transpose(1, 2).to(torch.float32).detach().cpu().numpy()
-    present_k_np = present_k.to(torch.float32).detach().cpu().numpy()
-    present_v_np = present_v.to(torch.float32).detach().cpu().numpy()
+    if config.k_quant_type == "NONE" and config.v_quant_type == "NONE":
+        # Compare KV cache
+        # Transpose reference back to BNSH to match ORT output
+        k_cache_ref_np = k_cache_ref.transpose(1, 2).to(torch.float32).detach().cpu().numpy()
+        v_cache_ref_np = v_cache_ref.transpose(1, 2).to(torch.float32).detach().cpu().numpy()
+        present_k_np = present_k.to(torch.float32).detach().cpu().numpy()
+        present_v_np = present_v.to(torch.float32).detach().cpu().numpy()
 
-    if not config.share_buffer:
-        total_len = config.past_kv_sequence_length + config.q_sequence_length
-        k_cache_ref_np = k_cache_ref_np[:, :, :total_len, :]
-        v_cache_ref_np = v_cache_ref_np[:, :, :total_len, :]
+        if not config.share_buffer:
+            total_len = config.past_kv_sequence_length + config.q_sequence_length
+            k_cache_ref_np = k_cache_ref_np[:, :, :total_len, :]
+            v_cache_ref_np = v_cache_ref_np[:, :, :total_len, :]
 
-    print_diff_statistics(torch.tensor(present_k_np - k_cache_ref_np), "present_k")
-    numpy.testing.assert_allclose(present_k_np, k_cache_ref_np, rtol=rtol, atol=atol)
-    print_diff_statistics(torch.tensor(present_v_np - v_cache_ref_np), "present_v")
-    numpy.testing.assert_allclose(present_v_np, v_cache_ref_np, rtol=rtol, atol=atol)
+        numpy.testing.assert_allclose(present_k_np, k_cache_ref_np, rtol=rtol, atol=atol)
+        numpy.testing.assert_allclose(present_v_np, v_cache_ref_np, rtol=rtol, atol=atol)
 
     print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
     numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
+    # Compare quantized cache with proper masking per batch
+    if config.k_quant_type != "NONE":
+        if isinstance(present_k, torch.Tensor):
+            present_k_torch = present_k.to(device)
+        else:
+            if config.kv_cache_type == "int4":
+                present_k_torch = torch.from_numpy(present_k).to(device)
+            elif config.kv_cache_type == "int8":
+                present_k_torch = torch.from_numpy(present_k.astype(numpy.int8)).to(device)
+            else:
+                present_k_torch = torch.from_numpy(present_k).to(device)
+
+        present_k_dequant = (
+            dequantize_tensor(present_k_torch, k_scale, config.k_quant_type, config.kv_cache_type)
+            .detach()
+            .cpu()
+            .numpy()
+        )
+
+        # Mask the reference cache to only valid regions
+        k_cache_ref_masked = k_cache_ref.transpose(1, 2).clone()
+        total_seqlens = cache_seqlens + config.q_sequence_length
+        arange = torch.arange(config.buffer_sequence_length, device=device).unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+        total_seqlens_expanded = total_seqlens.unsqueeze(1).unsqueeze(1).unsqueeze(-1)
+        mask = arange >= total_seqlens_expanded
+        k_cache_ref_masked[mask.expand_as(k_cache_ref_masked)] = 0
+        k_cache_ref_dequant = k_cache_ref_masked.cpu().numpy()
+
+        for b in range(config.batch_size):
+            valid_len = (cache_seqlens[b] + config.q_sequence_length).item()
+            print_diff_statistics(
+                torch.tensor(present_k_dequant[b, :, :valid_len, :] - k_cache_ref_dequant[b, :, :valid_len, :]),
+                f"present_k[{b}]",
+            )
+            numpy.testing.assert_allclose(
+                present_k_dequant[b, :, :valid_len, :],
+                k_cache_ref_dequant[b, :, :valid_len, :],
+                rtol=rtol,
+                atol=atol,
+            )
+
+    if config.v_quant_type != "NONE":
+        if isinstance(present_v, torch.Tensor):
+            present_v_torch = present_v.to(device)
+        else:
+            if config.kv_cache_type == "int4":
+                present_v_torch = torch.from_numpy(present_v).to(device)
+            elif config.kv_cache_type == "int8":
+                present_v_torch = torch.from_numpy(present_v.astype(numpy.int8)).to(device)
+            else:
+                present_v_torch = torch.from_numpy(present_v).to(device)
+
+        present_v_dequant = (
+            dequantize_tensor(present_v_torch, v_scale, config.v_quant_type, config.kv_cache_type)
+            .detach()
+            .cpu()
+            .numpy()
+        )
+
+        # Mask the reference cache to only valid regions
+        v_cache_ref_masked = v_cache_ref.transpose(1, 2).clone()
+        total_seqlens = cache_seqlens + config.q_sequence_length
+        arange = torch.arange(config.buffer_sequence_length, device=device).unsqueeze(0).unsqueeze(0).unsqueeze(-1)
+        total_seqlens_expanded = total_seqlens.unsqueeze(1).unsqueeze(1).unsqueeze(-1)
+        mask = arange >= total_seqlens_expanded
+        v_cache_ref_masked[mask.expand_as(v_cache_ref_masked)] = 0
+        v_cache_ref_dequant = v_cache_ref_masked.cpu().numpy()
+
+        for b in range(config.batch_size):
+            valid_len = (cache_seqlens[b] + config.q_sequence_length).item()
+            print_diff_statistics(
+                torch.tensor(present_v_dequant[b, :, :valid_len, :] - v_cache_ref_dequant[b, :, :valid_len, :]),
+                f"present_v[{b}]",
+            )
+            numpy.testing.assert_allclose(
+                present_v_dequant[b, :, :valid_len, :],
+                v_cache_ref_dequant[b, :, :valid_len, :],
+                rtol=rtol,
+                atol=atol,
+            )
 
 
 def parity_test_gqa_padding_prompt():
@@ -1297,6 +1576,8 @@ def parity_test_gqa_padding_prompt():
         position_ids=None,
         attention_bias=None,
         head_sink=None,
+        k_scale=None,
+        v_scale=None,
         ep="CUDAExecutionProvider",
         device=device,
         share_buffer=config.share_buffer,
@@ -1449,7 +1730,7 @@ def gqa_cuda_prompt_test_cases(allow_head_sink: bool = True, allow_local: bool =
                     b = batches[combo_index % len(batches)]
                     sq, skv = seqs[combo_index % len(seqs)]
                     n, n2 = heads[combo_index % len(heads)]
-                    lws_opts = [-1, random.randint(1, skv)] if allow_local else [-1]
+                    lws_opts = [-1, max(1, skv // 2)] if allow_local else [-1]
                     lws = lws_opts[combo_index % len(lws_opts)]
                     softcap = softcap_opts[combo_index % len(softcap_opts)]
                     use_smooth_softmax, has_head_sink = smmoth_softmax__head_sink[
@@ -1527,7 +1808,7 @@ def gqa_cuda_past_test_cases(
                         b = 1  # Force batch=1 for subsequent prompt
 
                     n, n2 = heads[combo_index % len(heads)]
-                    lws_opts = [-1, random.randint(1, s2)] if allow_local else [-1]
+                    lws_opts = [-1, max(1, s2 // 2)] if allow_local else [-1]
                     lws = lws_opts[combo_index % len(lws_opts)]
                     softcap = softcap_opts[combo_index % len(softcap_opts)]
                     use_smooth_softmax, has_head_sink = smmoth_softmax__head_sink[
@@ -1563,6 +1844,40 @@ def gqa_cuda_past_test_cases(
                     yield name, config
 
 
+def gqa_cuda_quantized_test_cases(is_past: bool):
+    base_cases = (
+        gqa_cuda_past_test_cases(allow_local=True, enforce_share_buffer=True)
+        if is_past
+        else gqa_cuda_prompt_test_cases(allow_local=True)
+    )
+
+    for name, config in base_cases:
+        for kv_type in ["int8", "int4"] if has_int4_kv_cache else ["int8"]:
+            for quant_mode in ["PER_TENSOR", "PER_CHANNEL"]:
+                share_scales_options = [False]
+                if quant_mode == "PER_TENSOR" and kv_type == "int8":
+                    share_scales_options = [True]
+
+                for share_scales in share_scales_options:
+                    q_config = deepcopy(config)
+                    q_config.k_quant_type = quant_mode
+                    q_config.v_quant_type = quant_mode
+                    q_config.kv_cache_type = kv_type
+                    q_config.share_kv_scale = share_scales
+
+                    if kv_type == "int4":
+                        if q_config.head_size % 2 != 0:
+                            continue
+                        q_config.kv_cache_bit_width = 4
+                    elif kv_type == "int8":
+                        q_config.kv_cache_bit_width = 8
+
+                    q_name = f"{name}_quant_{kv_type}_{quant_mode}"
+                    if share_scales:
+                        q_name += "_shared"
+                    yield q_name, q_config
+
+
 # #################################################################################################
 #  Unit Test Classes
 # #################################################################################################
@@ -1579,18 +1894,36 @@ def has_cuda_device(min_capability: int = 80):
     return major * 10 + minor >= min_capability
 
 
-def has_flash_attention():
-    return has_cuda_device(80)
+def has_flash_attention(bf16=False):
+    if not has_cuda_device(80):
+        return False
+    if bf16:
+        return torch.cuda.is_bf16_supported()
+    return True
 
 
-rtol = {"fp16": 5e-3, "bf16": 5e-2}
-atol = {"fp16": 5e-3, "bf16": 1e-2}
+rtol = {"fp16": 5e-3, "bf16": 5e-2, "int8_fp16": 5e-2, "int4_fp16": 5e-2, "int8_bf16": 5e-2, "int4_bf16": 5e-2}
+atol = {"fp16": 5e-3, "bf16": 1e-2, "int8_fp16": 1e-1, "int4_fp16": 1e-1, "int8_bf16": 2e-1, "int4_bf16": 2e-1}
+
+
+def has_quantized_kv_cache():
+    return version.parse(ort_version) >= version.parse("1.24.0")
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQA(unittest.TestCase):
+    def tearDown(self):
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
     @parameterized.expand(gqa_cuda_prompt_test_cases())
     def test_gqa_prompt_flash_attention(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_prompt(
             config=config,
@@ -1605,6 +1938,10 @@ class TestFlashGQA(unittest.TestCase):
 
     @parameterized.expand(gqa_cuda_past_test_cases())
     def test_gqa_past_flash_attention(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_past(
             config=config,
@@ -1618,12 +1955,22 @@ class TestFlashGQA(unittest.TestCase):
         )
 
 
-@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_flash_attention(bf16=True), "Flash Attention is not available, skipping tests.")
 class TestFlashGQABF16(unittest.TestCase):
+    def tearDown(self):
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
     @parameterized.expand(gqa_cuda_prompt_test_cases())
     def test_gqa_prompt_flash_attention_bf16(self, name, config):
         if not torch.cuda.is_bf16_supported():
             self.skipTest("BFloat16 not supported on this device")
+
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
 
         config.kv_cache_type = "bfloat16"
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
@@ -1643,6 +1990,10 @@ class TestFlashGQABF16(unittest.TestCase):
         if not torch.cuda.is_bf16_supported():
             self.skipTest("BFloat16 not supported on this device")
 
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
         config.kv_cache_type = "bfloat16"
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_past(
@@ -1657,10 +2008,74 @@ class TestFlashGQABF16(unittest.TestCase):
         )
 
 
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestFlashGQABF16QuantizedKV(unittest.TestCase):
+    def manual_seed(self):
+        # Reset random seeds before each test to ensure test isolation
+        torch.manual_seed(0)
+        random.seed(69)
+        numpy.random.seed(42)
+
+    def setUp(self):
+        self.manual_seed()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    def tearDown(self):
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_cuda_quantized_test_cases(is_past=False))
+    def test_gqa_quantized_prompt_bf16(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
+        self.manual_seed()
+
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_gqa_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.bfloat16,
+            ort_type=TensorProto.BFLOAT16,
+            causal=True,
+            rtol=rtol[f"{config.kv_cache_type}_bf16"],
+            atol=atol[f"{config.kv_cache_type}_bf16"],
+        )
+
+    @parameterized.expand(gqa_cuda_quantized_test_cases(is_past=True))
+    def test_gqa_quantized_past_bf16(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
+        self.manual_seed()
+
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.bfloat16,
+            ort_type=TensorProto.BFLOAT16,
+            causal=True,
+            rtol=rtol[f"{config.kv_cache_type}_bf16"],
+            atol=atol[f"{config.kv_cache_type}_bf16"],
+        )
+
+
 @unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
 class TestMemoryEfficientGQA(unittest.TestCase):
     @parameterized.expand(gqa_cuda_prompt_test_cases(allow_head_sink=False))
     def test_gqa_prompt_memory_efficient(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         parity_check_gqa_prompt(
             config=config,
@@ -1675,6 +2090,10 @@ class TestMemoryEfficientGQA(unittest.TestCase):
 
     @parameterized.expand(gqa_cuda_past_test_cases(allow_head_sink=False))
     def test_gqa_past_memory_efficient(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         parity_check_gqa_past(
             config=config,
@@ -1692,6 +2111,10 @@ class TestMemoryEfficientGQA(unittest.TestCase):
 class TestBF16MemoryEfficientGQA(unittest.TestCase):
     @parameterized.expand(gqa_cuda_past_test_cases(allow_head_sink=False))
     def test_gqa_past_memory_efficient_bf16(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         parity_check_gqa_past(
             config=config,
@@ -1708,6 +2131,10 @@ class TestBF16MemoryEfficientGQA(unittest.TestCase):
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQAPaddingPrompt(unittest.TestCase):
     def test_gqa_padding_prompt_flash_attention(self):
+        if enable_debug_print:
+            print("-" * 20)
+            print("test_case: test_gqa_padding_prompt_flash_attention")
+
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_test_gqa_padding_prompt()
 
@@ -1715,20 +2142,24 @@ class TestFlashGQAPaddingPrompt(unittest.TestCase):
 @unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
 class TestMemoryEfficientGQAPaddingPrompt(unittest.TestCase):
     def test_gqa_padding_prompt_memory_efficient_attention(self):
+        if enable_debug_print:
+            print("-" * 20)
+            print("test_case: test_gqa_padding_prompt_memory_efficient_attention")
+
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         parity_test_gqa_padding_prompt()
 
 
-@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
-class TestFusedKernelParity(unittest.TestCase):
-    """Tests that verify fused kernels produce the same results as unfused kernels."""
+# #################################################################################################
+# Fused Kernel Parity Tests (ORT_DISABLE_FUSED_KV and ORT_DISABLE_FLASH_DECODE)
+# #################################################################################################
 
-    def test_flash_decode_parity(self):
-        """Test ORT_DISABLE_FLASH_DECODE: fast decode vs standard path."""
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
 
-        # Decoding config (seq_len=1, share_buffer=True)
-        config = GQAConfig(
+def fused_kernel_test_cases():
+    """Test cases specifically for fused vs unfused kernel parity."""
+    configs = [
+        # Decoding with RoPE and shared buffer
+        GQAConfig(
             batch_size=2,
             q_sequence_length=1,
             kv_sequence_length=1,
@@ -1740,41 +2171,105 @@ class TestFusedKernelParity(unittest.TestCase):
             rotary=True,
             packed=False,
             share_buffer=True,
-        )
+        ),
+        # Packed QKV decoding with RoPE
+        GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=128,
+            past_kv_sequence_length=64,
+            buffer_sequence_length=128,
+            rotary=True,
+            packed=True,
+            share_buffer=True,
+        ),
+        # Subsequent prompt with RoPE
+        GQAConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=128,
+            past_kv_sequence_length=32,
+            buffer_sequence_length=64,
+            rotary=True,
+            packed=False,
+            share_buffer=True,
+        ),
+    ]
+    for i, config in enumerate(configs):
+        yield f"fused_config_{i}", config
 
-        # Run with flash decode enabled (default)
-        if "ORT_DISABLE_FLASH_DECODE" in os.environ:
-            del os.environ["ORT_DISABLE_FLASH_DECODE"]
+
+def gqa_xqa_test_cases():
+    # Decoding config (seq_len=1, share_buffer=True)
+    # Testing different group sizes and query types
+    for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+        for group_size in [4, 8, 16, 32]:
+            for past_kv_sequence_length in [1, 4]:
+                for rotary in [False, True]:
+                    for packed in [False, True]:
+                        for head_size in [256, 128, 64]:
+                            kv_num_heads = 4
+                            num_heads = kv_num_heads * group_size
+                            config = GQAConfig(
+                                batch_size=2,
+                                q_sequence_length=1,
+                                kv_sequence_length=1,
+                                num_heads=num_heads,
+                                kv_num_heads=kv_num_heads,
+                                head_size=head_size,
+                                past_kv_sequence_length=past_kv_sequence_length,
+                                buffer_sequence_length=past_kv_sequence_length + 128,
+                                rotary=rotary,
+                                packed=packed,
+                                share_buffer=True,
+                                k_quant_type="PER_TENSOR",
+                                v_quant_type="PER_TENSOR",
+                                kv_cache_type="int8",
+                                share_kv_scale=True,
+                            )
+                            type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                            rot_str = "rot" if rotary else "norot"
+                            pkd_str = "pkd" if packed else "sep"
+                            name = f"{type_str}_g_{group_size}_h{head_size}_past{past_kv_sequence_length}_{rot_str}_{pkd_str}"
+                            yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestXQAQuantizedParity(unittest.TestCase):
+    """Tests that verify fused kernels produce the same results as unfused kernels."""
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_test_cases())
+    def test_xqa_quantized_parity(self, name, config, torch_type, ort_type):
+        """Test XQA per-tensor INT8 quantized parity."""
+        os.environ["ORT_ENABLE_XQA"] = "1"
 
         parity_check_gqa_past(
             config=config,
             ep="CUDAExecutionProvider",
             device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
+            torch_type=torch_type,
+            ort_type=ort_type,
             causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
+            rtol=rtol["int8_bf16"] if torch_type == torch.bfloat16 else rtol["int8_fp16"],
+            atol=atol["int8_bf16"] if torch_type == torch.bfloat16 else atol["int8_fp16"],
+            std=0.1,
         )
 
-        # Run with flash decode disabled
-        os.environ["ORT_DISABLE_FLASH_DECODE"] = "1"
 
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
-
-        # Clean up
-        del os.environ["ORT_DISABLE_FLASH_DECODE"]
-
-
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestGQARegressions(unittest.TestCase):
     """Specific regression tests for historical bugs."""
 
@@ -1816,6 +2311,48 @@ class TestGQARegressions(unittest.TestCase):
             rtol=1e-3,
             atol=1e-3,
             std=1.0,
+        )
+
+    def test_gqa_int8_large_seq_batch4(self):
+        """
+        Regression test for batch_size=4 + max_seq_len=8192 + int8 KV cache crash.
+        This reproduces a CUDA illegal memory access due to scratch size under-allocation.
+        """
+        if "CUDAExecutionProvider" not in get_available_providers():
+            self.skipTest("CUDA required")
+
+        # Config that triggers the crash: batch=4, large max_seq_len, int8 kv
+        config = GQAConfig(
+            batch_size=4,
+            num_heads=32,
+            kv_num_heads=8,
+            head_size=128,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=8191,
+            buffer_sequence_length=8192,
+            rotary=True,
+            rotary_interleaved=False,
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+            kv_cache_type="int8",
+            share_buffer=True,
+            share_kv_scale=True,
+        )
+
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        device = "cuda"
+
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device=device,
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=5e-2,
+            atol=5e-2,
         )
 
 

@@ -7059,7 +7059,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
       }
     };
 
-    const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+    const std::vector<int> opsets{12, 13, 14, 23};  // Clip support int64_t since opset 12
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1,
@@ -7156,7 +7156,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
     return Status::OK();
   };
 
-  const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+  const std::vector<int> opsets{12, 13, 14, 23};  // Clip support int64_t since opset 12
 
   // Float data type tests.
   auto build_test_case_float = [&](ModelTestBuilder& builder) {
@@ -7280,7 +7280,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatOrHalfTypedInitiali
     return Status::OK();
   };
 
-  const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+  const std::vector<int> opsets{12, 13, 14, 23};  // Clip support int64_t since opset 12
 
   // Float data type tests.
   auto build_test_case_float = [&](ModelTestBuilder& builder) {
@@ -7386,7 +7386,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     return Status::OK();
   };
 
-  const std::vector<int> opsets{12, 13, 14};
+  const std::vector<int> opsets{12, 13, 14, 23};
 
   auto build_test_case_float = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
@@ -7525,7 +7525,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
     return Status::OK();
   };
 
-  const std::vector<int> opsets{12, 13, 14};
+  const std::vector<int> opsets{12, 13, 14, 23};
 
   std::vector<float> values{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   std::vector<MLFloat16> values_float16;
@@ -7651,7 +7651,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
     return Status::OK();
   };
 
-  const std::vector<int> opsets{12, 13, 14};
+  const std::vector<int> opsets{12, 13, 14, 23};
 
   // Float data type tests.
   auto build_test_case_float = [&](ModelTestBuilder& builder) {

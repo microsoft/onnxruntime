@@ -42,6 +42,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 
   GetNumCustomOpDomains = GetNumCustomOpDomainsImpl;
   GetCustomOpDomains = GetCustomOpDomainsImpl;
+  ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
@@ -415,5 +416,77 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDevic
   auto importer = std::make_unique<ExampleExternalResourceImporter>(factory);
   *out_importer = importer.release();
 
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfoImpl(
+    OrtEpFactory* this_ptr,
+    const OrtHardwareDevice* const* /*devices*/,
+    size_t /*num_devices*/,
+    const char* compatibility_info,
+    OrtCompiledModelCompatibility* model_compatibility) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  if (model_compatibility == nullptr) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "model_compatibility cannot be nullptr");
+  }
+
+  // Parse the compatibility info to check if it matches our current configuration.
+  // The expected format is "ExampleEP;version=0.1.0;ort_api_version=24".
+  // For this example implementation, we simply check if the string starts with our EP name.
+
+  if (compatibility_info == nullptr || compatibility_info[0] == '\0') {
+    *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+    return nullptr;
+  }
+
+  std::string info(compatibility_info);
+  std::string expected_prefix = factory.ep_name_ + ";";
+
+  if (info.find(expected_prefix) != 0) {
+    // The compatibility info doesn't match our EP
+    *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+    return nullptr;
+  }
+
+  // Parse version parts: "ExampleEP;version=X;ort_api_version=Y"
+  // Look for "version=" and extract the value
+  size_t version_pos = info.find("version=");
+  size_t ort_version_pos = info.find("ort_api_version=");
+
+  if (version_pos == std::string::npos) {
+    // Invalid format
+    *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+    return nullptr;
+  }
+
+  // Extract EP version (between "version=" and the next ";")
+  size_t version_start = version_pos + 8;  // length of "version="
+  size_t version_end = info.find(';', version_start);
+  std::string ep_version = (version_end != std::string::npos)
+                               ? info.substr(version_start, version_end - version_start)
+                               : info.substr(version_start);
+
+  // Check if the EP version matches our version
+  if (ep_version != factory.ep_version_) {
+    // Different EP version - might work but prefer recompilation
+    *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+    return nullptr;
+  }
+
+  // Check ORT API version if present
+  if (ort_version_pos != std::string::npos) {
+    size_t ort_version_start = ort_version_pos + 16;  // length of "ort_api_version="
+    std::string ort_version = info.substr(ort_version_start);
+    std::string current_ort_version = std::to_string(ORT_API_VERSION);
+    if (ort_version != current_ort_version) {
+      // Different ORT version - might still work but prefer recompilation
+      *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+      return nullptr;
+    }
+  }
+
+  // Everything matches - the compiled model is fully compatible
+  *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
   return nullptr;
 }

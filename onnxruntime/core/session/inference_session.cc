@@ -1818,15 +1818,16 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 #if !defined(ORT_MINIMAL_BUILD)
 [[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
   std::string data_type_list;
+  auto weight_freq = graph.GetWeightDataTypeFrequency();
 
-  for (int i = 0; i < ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE; ++i) {
-    if (graph.weight_data_type_freq_[i] > 0) {
+  for (size_t i = 0; i < weight_freq.size(); ++i) {
+    if (weight_freq[i] > 0) {
       if (!data_type_list.empty()) {
         data_type_list += ", ";
       }
-      data_type_list += TensorProto_DataType_Name(i);
+      data_type_list += TensorProto_DataType_Name(static_cast<int>(i));
       data_type_list += ": ";
-      data_type_list += std::to_string(graph.weight_data_type_freq_[i]);
+      data_type_list += std::to_string(weight_freq[i]);
     }
   }
 
