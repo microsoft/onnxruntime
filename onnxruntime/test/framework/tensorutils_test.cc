@@ -586,5 +586,279 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
 }
 
+template <typename T>
+void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
+                                 const std::vector<T>& values,
+                                 gsl::span<const int64_t> indices,
+                                 gsl::span<const int64_t> indices_shape,
+                                 const std::vector<T>& expected_dense_data) {
+  ONNX_NAMESPACE::SparseTensorProto sparse_proto;
+  for (auto dim : dense_shape) {
+    sparse_proto.add_dims(dim);
+  }
+
+  // Create values tensor
+  auto* values_tensor = sparse_proto.mutable_values();
+  values_tensor->set_name("values");
+  // Simplification: assuming float/int32 for now based on T
+  if constexpr (std::is_same_v<T, float>) {
+    values_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (float v : values) values_tensor->add_float_data(v);
+  } else if constexpr (std::is_same_v<T, int32_t>) {
+    values_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    for (int32_t v : values) values_tensor->add_int32_data(v);
+  }
+  // Set values shape [NNZ]
+  values_tensor->add_dims(values.size());
+
+  // Create indices tensor
+  auto* indices_tensor = sparse_proto.mutable_indices();
+  indices_tensor->set_name("indices");
+  indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  for (int64_t idx : indices) {
+    indices_tensor->add_int64_data(idx);
+  }
+  for (auto dim : indices_shape) {
+    indices_tensor->add_dims(dim);
+  }
+
+  ONNX_NAMESPACE::TensorProto dense_proto;
+  std::filesystem::path model_path;  // empty path
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse_proto, model_path, dense_proto));
+
+  // Verify dense proto
+  ASSERT_EQ(dense_proto.dims_size(), dense_shape.size());
+  for (size_t i = 0; i < (size_t)dense_shape.size(); ++i) {
+    ASSERT_EQ(dense_proto.dims(static_cast<int>(i)), dense_shape[i]);
+  }
+
+  std::vector<T> unpacked_data(expected_dense_data.size());
+  ASSERT_STATUS_OK(utils::UnpackTensor<T>(dense_proto, model_path, unpacked_data.data(), unpacked_data.size()));
+
+  EXPECT_EQ(unpacked_data, expected_dense_data);
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_Rank1Indices) {
+  // Dense Shape: [2, 2] -> 4 elements
+  // Indices: [0, 3] (linear)
+  // Values: [1.0, 2.0]
+  // Expected: [1.0, 0.0, 0.0, 2.0]
+  std::vector<int64_t> dense_shape = {2, 2};
+  std::vector<float> values = {1.0f, 2.0f};
+  std::vector<int64_t> indices = {0, 3};
+  std::vector<int64_t> indices_shape = {2};  // [NNZ]
+  std::vector<float> expected = {1.0f, 0.0f, 0.0f, 2.0f};
+
+  TestSparseToDenseConversion<float>(dense_shape, values, indices, indices_shape, expected);
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_Rank2Indices_COO) {
+  // Dense Shape: [3, 3] -> 9 elements
+  // Indices: [[0, 0], [1, 1], [2, 2]] -> flattened: 0,0, 1,1, 2,2
+  // Shape: [3, 2] (NNZ=3, Rank=2)
+  // Values: [10, 20, 30]
+  std::vector<int64_t> dense_shape = {3, 3};
+  std::vector<int32_t> values = {10, 20, 30};
+  std::vector<int64_t> indices = {0, 0, 1, 1, 2, 2};
+  std::vector<int64_t> indices_shape = {3, 2};
+  std::vector<int32_t> expected = {
+      10, 0, 0,
+      0, 20, 0,
+      0, 0, 30};
+
+  TestSparseToDenseConversion<int32_t>(dense_shape, values, indices, indices_shape, expected);
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_InvalidIndicesRank) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(10);
+
+  // Set dimensions for indices to rank 3 (invalid for COO output from some tools, logic expects 1 or 2)
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);
+  ind->add_dims(1);
+  ind->add_dims(1);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Indices should be rank 1 or 2"));
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_OutOfBounds_Rank1) {
+  // Dense size 4
+  // Index 5 -> Out of bounds
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(1);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(5);  // Out of bounds
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse index is out of bounds"));
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_OutOfBounds_Rank2) {
+  // Dense Shape [2, 2] -> linear 0..3
+  // Index [2, 0] -> linear 4 -> Out of bounds
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(2);
+  sparse.add_dims(2);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(1);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);  // NNZ=1
+  ind->add_dims(2);  // Rank=2
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(2);
+  ind->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse index is out of bounds"));
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_InvalidValuesRank) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(10);
+
+  auto* val = sparse.mutable_values();
+  // Set values rank to 2 (invalid)
+  val->add_dims(1);
+  val->add_dims(1);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Values should be rank 1"));
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_NegativeValuesShape) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(10);  // Dense shape
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(-5);  // Negative dimension in values
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse values tensor dims expected to be positive"));
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_NegativeDenseShape) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(10);
+  sparse.add_dims(-2);  // Negative dimension in dense shape
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(1);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse tensor dense dims expected to be positive"));
+}
+
+template <typename T>
+void TestSparseToDenseConversionWithInt8Indices(const std::vector<int64_t>& dense_shape,
+                                                const std::vector<T>& values,
+                                                const std::vector<int8_t>& indices,
+                                                const std::vector<int64_t>& indices_shape,
+                                                const std::vector<T>& expected_dense_data) {
+  ONNX_NAMESPACE::SparseTensorProto sparse_proto;
+  for (auto dim : dense_shape) {
+    sparse_proto.add_dims(dim);
+  }
+
+  // Create values tensor
+  auto* values_tensor = sparse_proto.mutable_values();
+  values_tensor->set_name("values");
+  if constexpr (std::is_same_v<T, float>) {
+    values_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (float v : values) values_tensor->add_float_data(v);
+  } else if constexpr (std::is_same_v<T, int32_t>) {
+    values_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    for (int32_t v : values) values_tensor->add_int32_data(v);
+  }
+  values_tensor->add_dims(values.size());
+
+  // Create indices tensor with INT8 data in raw_data
+  auto* indices_tensor = sparse_proto.mutable_indices();
+  indices_tensor->set_name("indices");
+  indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+
+  std::string raw_indices_data;
+  raw_indices_data.resize(indices.size() * sizeof(int8_t));
+  std::memcpy(raw_indices_data.data(), indices.data(), raw_indices_data.size());
+  indices_tensor->set_raw_data(raw_indices_data);
+
+  for (auto dim : indices_shape) {
+    indices_tensor->add_dims(dim);
+  }
+
+  ONNX_NAMESPACE::TensorProto dense_proto;
+  std::filesystem::path model_path;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse_proto, model_path, dense_proto));
+
+  // Verify dense proto
+  ASSERT_EQ(dense_proto.dims_size(), dense_shape.size());
+  for (size_t i = 0; i < (size_t)dense_shape.size(); ++i) {
+    ASSERT_EQ(dense_proto.dims(static_cast<int>(i)), dense_shape[i]);
+  }
+
+  std::vector<T> unpacked_data(expected_dense_data.size());
+  ASSERT_STATUS_OK(utils::UnpackTensor(dense_proto, model_path, unpacked_data.data(), unpacked_data.size()));
+
+  EXPECT_EQ(unpacked_data, expected_dense_data);
+}
+
+TEST(TensorProtoUtilsTest, SparseTensorProtoToDense_Int8Indices) {
+  // Dense Shape: [5], Indices: [1, 4], Values: [10, 20]
+  // Expected: [0, 10, 0, 0, 20]
+  std::vector<int64_t> dense_shape = {5};
+  std::vector<int32_t> values = {10, 20};
+  std::vector<int8_t> indices = {1, 4};
+  std::vector<int64_t> indices_shape = {2};
+  std::vector<int32_t> expected = {0, 10, 0, 0, 20};
+
+  TestSparseToDenseConversionWithInt8Indices(dense_shape, values, indices, indices_shape, expected);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

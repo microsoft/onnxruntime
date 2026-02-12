@@ -1744,34 +1744,33 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
 static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
                              const std::filesystem::path& model_path,
-                             gsl::span<const int64_t>
-                                 dims,
-                             std::function<void(size_t from_idx, size_t to_idx)>
-                                 copier) {
+                             gsl::span<const int64_t> dense_dims,
+                             int64_t dense_elements,
+                             std::function<void(size_t from_idx, size_t to_idx)> copier) {
   Status status = Status::OK();
   TensorShape indices_shape(indices.dims().data(), indices.dims().size());
-  const auto elements = narrow<size_t>(indices_shape.Size());
+  const auto nnz_elements = narrow<size_t>(indices_shape.Size());
 
   std::vector<int64_t> indices_values;  // used for conversion of smaller size indices
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
-  const bool has_raw_data = indices.has_raw_data();
+  const bool has_raw_data = utils::HasRawData(indices);
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (has_raw_data) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int64_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (nnz_elements * sizeof(int64_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         indices_data = ReinterpretAsSpan<const int64_t>(gsl::make_span(unpack_buffer));
       } else {
-        ORT_RETURN_IF_NOT(indices.int64_data_size() == static_cast<int64_t>(elements),
+        ORT_RETURN_IF_NOT(indices.int64_data_size() == static_cast<int64_t>(nnz_elements),
                           "Sparse indices int64 data size does not match expected");
-        indices_data = gsl::make_span(indices.int64_data().data(), elements);
+        indices_data = gsl::make_span(indices.int64_data().data(), nnz_elements);
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       if (has_raw_data) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int32_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (nnz_elements * sizeof(int32_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
@@ -1779,7 +1778,7 @@ static Status CopySparseData(size_t n_sparse_elements,
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
-        ORT_RETURN_IF_NOT(indices.int32_data_size() == static_cast<int64_t>(elements),
+        ORT_RETURN_IF_NOT(indices.int32_data_size() == static_cast<int64_t>(nnz_elements),
                           "Sparse indices int32 data size does not match expected");
         indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
       }
@@ -1788,7 +1787,7 @@ static Status CopySparseData(size_t n_sparse_elements,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       if (has_raw_data) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int16_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (nnz_elements * sizeof(int16_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
@@ -1804,7 +1803,7 @@ static Status CopySparseData(size_t n_sparse_elements,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       if (has_raw_data) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == elements,
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == nnz_elements,
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
@@ -1824,24 +1823,29 @@ static Status CopySparseData(size_t n_sparse_elements,
           "Invalid SparseTensor indices. Should one of the following types: int8, int16, int32 or int64");
   }
 
-  if (indices_shape.NumDimensions() == 1) {
+  const auto indices_rank = indices_shape.NumDimensions();
+  if (indices_rank == 1) {
     // flattened indexes
     for (size_t i = 0; i < n_sparse_elements; ++i) {
-      copier(i, narrow<size_t>(indices_data[i]));
+      const auto idx = indices_data[i];
+      ORT_RETURN_IF_NOT(idx >= 0 && idx < dense_elements,
+                        "Sparse index is out of bounds. Got:", idx, " expected to be in [0, ", dense_elements, ")");
+
+      copier(i, narrow<size_t>(idx));
     }
-  } else if (indices_shape.NumDimensions() == 2) {
+  } else if (indices_rank == 2) {
     // entries in format {NNZ, rank}
-    ORT_ENFORCE(indices_shape[1] > 0 && static_cast<size_t>(indices_shape[1]) == dims.size());
+    ORT_ENFORCE(indices_shape[1] > 0 && static_cast<size_t>(indices_shape[1]) == dense_dims.size());
     auto rank = static_cast<size_t>(indices_shape[1]);
     auto cur_index = indices_data.begin();
-    std::vector<size_t> multipliers;
+    InlinedVector<size_t> multipliers;
     multipliers.resize(rank);
 
     // calculate sum of inner dimension elements for each dimension.
     // e.g. if shape {2,3,4}, the result should be {3*4, 4, 1}
     multipliers[rank - 1] = 1;
     for (auto r = rank - 1; r > 0; --r) {
-      multipliers[r - 1] = SafeInt<size_t>(dims[r]) * multipliers[r];
+      multipliers[r - 1] = SafeInt<size_t>(dense_dims[r]) * multipliers[r];
     }
 
     // calculate the offset for the entry
@@ -1852,6 +1856,9 @@ static Status CopySparseData(size_t n_sparse_elements,
       for (size_t j = 0; j < rank; ++j) {
         idx += SafeInt<int64_t>(cur_index[j]) * multipliers[j];
       }
+      ORT_RETURN_IF_NOT(idx >= 0 && idx < dense_elements,
+                        "Sparse index is out of bounds. Got:", static_cast<int64_t>(idx),
+                        " expected to be in [0, ", dense_elements, ")");
 
       copier(i, static_cast<size_t>(idx));
       cur_index += rank;
@@ -1860,7 +1867,7 @@ static Status CopySparseData(size_t n_sparse_elements,
     ORT_ENFORCE(cur_index == indices_data.end());
   } else {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
-                             "Invalid SparseTensor indices. Should be rank 0 or 1. Got:", indices_shape);
+                             "Invalid SparseTensor indices shape. Expected be rank 1 or 2. Got:", indices_shape);
   }
 
   return status;
@@ -1871,26 +1878,46 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
                                                    ONNX_NAMESPACE::TensorProto& dense) {
   Status status = Status::OK();
 
+  const auto& indices = sparse.indices();
+  const auto indices_rank = indices.dims_size();
+  if (indices_rank != 1 && indices_rank != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Indices should be rank 1 or 2 for supported COO format. Got:", indices_rank);
+  }
+
   const auto& sparse_values = sparse.values();
+  const auto values_rank = sparse_values.dims_size();
+  if (values_rank != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Values should be rank 1 for COO format. Got:", values_rank);
+  }
+
   auto type = sparse_values.data_type();
   dense.set_data_type(type);
   *dense.mutable_name() = sparse_values.name();
 
   SafeInt<size_t> n_sparse_elements = 1;
   for (auto dim : sparse_values.dims()) {
+    if (dim <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                             "Sparse values tensor dims expected to be positive. Got:", dim);
+    }
     n_sparse_elements *= dim;
   }
 
-  SafeInt<size_t> n_dense_elements = 1;
+  SafeInt<int64_t> dense_elements = 1;
   for (auto dim : sparse.dims()) {
-    n_dense_elements *= dim;
+    if (dim <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                             "Sparse tensor dense dims expected to be positive. Got:", dim);
+    }
+    dense_elements *= dim;
     dense.add_dims(dim);
   }
 
-  const auto& indices = sparse.indices();
-  auto dims = gsl::make_span<const int64_t>(dense.dims().data(), dense.dims().size());
+  const auto dense_dims = gsl::make_span<const int64_t>(dense.dims().data(), dense.dims().size());
 
-  if (type != TensorProto_DataType_STRING) {
+  if (type != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
     auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
     size_t element_size = ml_data->Size();
 
@@ -1901,56 +1928,55 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto.
-    std::string dense_data_storage(n_dense_elements * element_size, 0);
-    if (n_sparse_elements > 0) {
-      void* dense_data = dense_data_storage.data();
+    std::string dense_data_storage(narrow<size_t>(dense_elements) * element_size, 0);
+    void* dense_data = dense_data_storage.data();
 
-      switch (element_size) {
-        case 1: {
-          status = CopySparseData(
-              n_sparse_elements, indices, model_path, dims, [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
-              });
+    switch (element_size) {
+      case 1: {
+        status = CopySparseData(
+            n_sparse_elements, indices, model_path, dense_dims, dense_elements,
+            [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+              static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
+            });
 
-          break;
-        }
-        case 2: {
-          status = CopySparseData(n_sparse_elements, indices, model_path, dims,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint16_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint16_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint16_t));
-                                  });
+        break;
+      }
+      case 2: {
+        status = CopySparseData(n_sparse_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint16_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint16_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint16_t));
+                                });
 
-          break;
-        }
-        case 4: {
-          status = CopySparseData(n_sparse_elements, indices, model_path, dims,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint32_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint32_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint32_t));
-                                  });
+        break;
+      }
+      case 4: {
+        status = CopySparseData(n_sparse_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint32_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint32_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint32_t));
+                                });
 
-          break;
-        }
-        case 8: {
-          status = CopySparseData(n_sparse_elements, indices, model_path, dims,
-                                  [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                                    const auto* src = static_cast<const uint64_t*>(sparse_data) + from_idx;
-                                    auto* dst = static_cast<uint64_t*>(dense_data) + to_idx;
-                                    memcpy(dst, src, sizeof(uint64_t));
-                                  });
-          break;
-        }
-
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Element_size of: ", element_size, " is not supported.",
-                                 " type: ", type);
+        break;
+      }
+      case 8: {
+        status = CopySparseData(n_sparse_elements, indices, model_path, dense_dims, dense_elements,
+                                [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                                  const auto* src = static_cast<const uint64_t*>(sparse_data) + from_idx;
+                                  auto* dst = static_cast<uint64_t*>(dense_data) + to_idx;
+                                  memcpy(dst, src, sizeof(uint64_t));
+                                });
+        break;
       }
 
-      ORT_RETURN_IF_ERROR(status);
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Element_size of: ", element_size, " is not supported.",
+                               " type: ", type);
     }
+
+    ORT_RETURN_IF_ERROR(status);
     utils::SetRawDataInTensorProto(dense, std::move(dense_data_storage));
   } else {
     // No request for std::string
