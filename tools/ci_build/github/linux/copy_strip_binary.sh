@@ -32,7 +32,8 @@ then
     # because the versioned library is excluded by the nuspec generation script.
     # We explicitly overwrite the symlink with the real file to ensure 'nuget pack' (especially on Windows)
     # doesn't pack an empty/broken symlink.
-    if [[ "$LIB_NAME" != "libonnxruntime.dylib" && -L "$BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib" ]]; then
+    # Only applies to versioned libonnxruntime libraries (e.g. libonnxruntime.1.24.0.dylib).
+    if [[ "$LIB_NAME" =~ ^libonnxruntime\..*\.dylib$ && -L "$BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib" ]]; then
        rm "$BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib"
        cp "$BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME" "$BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib"
     fi

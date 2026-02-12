@@ -932,21 +932,30 @@ namespace Microsoft.ML.OnnxRuntime
                         // Probe the specific RID first, then common fallbacks for the current OS
                         string[] ridsToTry;
                         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                        {
                             ridsToTry = new[] { rid, "win-x64", "win-arm64" };
+                        }
                         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                        {
                             ridsToTry = new[] { rid, "linux-x64", "linux-arm64" };
+                        }
                         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                        {
                             // We no longer provide osx-x64 in official package since 1.24.
                             // However, we keep it in the list for build-from-source users.
                             ridsToTry = new[] { rid, "osx-arm64", "osx-x64" };
+                        }
                         else
+                        {
                             ridsToTry = new[] { rid };
+                        }
 
                         foreach (var tryRid in ridsToTry)
                         {
                             string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
                             if (System.IO.File.Exists(probePath) && NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
                             {
+                                LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
                                 return handle;
                             }
                         }
@@ -959,6 +968,7 @@ namespace Microsoft.ML.OnnxRuntime
                         string probePath = System.IO.Path.Combine(baseDir, mappedName);
                         if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
                         {
+                            LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
                             return handle;
                         }
 
@@ -966,18 +976,27 @@ namespace Microsoft.ML.OnnxRuntime
                         probePath = System.IO.Path.Combine(baseDir, "runtimes", rid, "native", mappedName);
                         if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
                         {
+                            LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
                             return handle;
                         }
                     }
 
-#if DEBUG
-                    System.Console.WriteLine($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
-#endif
+                    LogLibLoad($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
+
                 }
             }
 
             // Fall back to default resolution
             return IntPtr.Zero;
+        }
+
+        private static void LogLibLoad(string message)
+        {
+            System.Diagnostics.Trace.WriteLine(message);
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ORT_LOADER_VERBOSITY")))
+            {
+                Console.WriteLine(message);
+            }
         }
 #endif
 

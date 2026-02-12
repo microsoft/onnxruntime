@@ -76,3 +76,4 @@ stages:
           DisableContribOps: $(DisableContribOps)
           DisableMlOps: $(DisableMlOps)
           IsReleaseBuild: $(IsReleaseBuild)
+          ORT_LOADER_VERBOSITY: 1
