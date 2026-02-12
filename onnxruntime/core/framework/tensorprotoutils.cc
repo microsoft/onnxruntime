@@ -1749,16 +1749,16 @@ static Status CopySparseData(size_t n_sparse_elements,
                              std::function<void(size_t from_idx, size_t to_idx)> copier) {
   Status status = Status::OK();
   TensorShape indices_shape(indices.dims().data(), indices.dims().size());
-  const auto nnz_elements = narrow<size_t>(indices_shape.Size());
+  const int64_t nnz_elements = indices_shape.Size();
 
-  std::vector<int64_t> indices_values;  // used for conversion of smaller size indices
+  InlinedVector<int64_t> indices_values;  // used for conversion of smaller size indices
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
   const bool has_raw_data = utils::HasRawData(indices);
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (has_raw_data) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (nnz_elements * sizeof(int64_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (SafeInt<size_t>(nnz_elements) * sizeof(int64_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         indices_data = ReinterpretAsSpan<const int64_t>(gsl::make_span(unpack_buffer));
@@ -1770,7 +1770,7 @@ static Status CopySparseData(size_t n_sparse_elements,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       if (has_raw_data) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (nnz_elements * sizeof(int32_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (SafeInt<size_t>(nnz_elements) * sizeof(int32_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
@@ -1787,7 +1787,7 @@ static Status CopySparseData(size_t n_sparse_elements,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       if (has_raw_data) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (nnz_elements * sizeof(int16_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (SafeInt<size_t>(nnz_elements) * sizeof(int16_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
@@ -1804,7 +1804,7 @@ static Status CopySparseData(size_t n_sparse_elements,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       if (has_raw_data) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == nnz_elements,
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(nnz_elements),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
