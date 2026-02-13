@@ -237,7 +237,7 @@ __global__ void UnpackRoPEAppend(
             constexpr float kInt4Max = 7.0f;
             const float* scale_buffer = (head_type == KEY) ? k_scale : v_scale;
             uint32_t packed = 0;
-            for (int i = 0; i < 4; ++i) {
+            for (int i = 0; i < elements_per_thread / 2; ++i) {
               // Elements are paired as (0,1), (2,3), etc. into single bytes.
               float s0 = per_channel ? scale_buffer[n * head_size + h + i * 2] : scale_buffer[0];
               float s1 = per_channel ? scale_buffer[n * head_size + h + i * 2 + 1] : scale_buffer[0];

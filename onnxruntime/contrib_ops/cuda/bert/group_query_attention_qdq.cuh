@@ -207,8 +207,7 @@ __global__ void QuantizeKernel(T_QUANT* quantized_data,
                                int input_sequence_length,
                                int cache_sequence_length, int num_heads, int head_size,
                                int bit_width, KVQuantizationType quant_type,
-                               bool is_input_bsnh,
-                               bool is_output_bsnh) {
+                               bool is_input_bsnh) {
   // elements_per_head_packed is the number of BYTES occupied by head_size elements.
   int elements_per_head_packed = (bit_width == 4) ? (head_size + 1) / 2 : head_size;
 
@@ -234,30 +233,12 @@ __global__ void QuantizeKernel(T_QUANT* quantized_data,
     if (s >= total_valid_len_b) {
       if (bit_width == 8) {
         int64_t out_idx = i;
-        if (is_output_bsnh) {
-          int64_t b_idx = b;
-          int64_t n_idx = n;
-          int64_t s_idx = s;
-          int64_t h_idx = i % elements_per_head_packed;
-          out_idx = b_idx * cache_sequence_length * num_heads * elements_per_head_packed +
-                    s_idx * num_heads * elements_per_head_packed +
-                    n_idx * elements_per_head_packed +
-                    h_idx;
-        }
+
         reinterpret_cast<int8_t*>(quantized_data)[out_idx] = 0;
 #ifdef USE_FP8_KV_CACHE
       } else if constexpr (std::is_same<T_QUANT, __nv_fp8_e4m3>::value) {  // FP8
         int64_t out_idx = i;
-        if (is_output_bsnh) {
-          int64_t b_idx = b;
-          int64_t n_idx = n;
-          int64_t s_idx = s;
-          int64_t h_idx = i % elements_per_head_packed;
-          out_idx = b_idx * cache_sequence_length * num_heads * elements_per_head_packed +
-                    s_idx * num_heads * elements_per_head_packed +
-                    n_idx * elements_per_head_packed +
-                    h_idx;
-        }
+
         reinterpret_cast<__nv_fp8_e4m3*>(quantized_data)[out_idx] = __nv_fp8_e4m3(0.0f);
 #endif
 #ifdef USE_INT4_KV_CACHE
@@ -271,16 +252,7 @@ __global__ void QuantizeKernel(T_QUANT* quantized_data,
         // Since `h_idx` comes from `i % elements_per_head_packed`, `out_idx` is guaranteed
         // to be within the buffer bounds. Writing kInt4ZeroPacked is safe.
         int64_t out_idx = i;
-        if (is_output_bsnh) {
-          int64_t b_idx = b;
-          int64_t n_idx = n;
-          int64_t s_idx = s;
-          int64_t h_idx = i % elements_per_head_packed;
-          out_idx = b_idx * cache_sequence_length * num_heads * elements_per_head_packed +
-                    s_idx * num_heads * elements_per_head_packed +
-                    n_idx * elements_per_head_packed +
-                    h_idx;
-        }
+
         // INT4 uses +8 bias, so zero values pack to 0x88
         reinterpret_cast<uint8_t*>(quantized_data)[out_idx] = kInt4ZeroPacked;
 #endif
@@ -289,16 +261,6 @@ __global__ void QuantizeKernel(T_QUANT* quantized_data,
     }
 
     int64_t output_idx = i;
-    if (is_output_bsnh) {
-      int64_t b_idx = b;
-      int64_t n_idx = n;
-      int64_t s_idx = s;
-      int64_t h_idx = i % elements_per_head_packed;
-      output_idx = b_idx * cache_sequence_length * num_heads * elements_per_head_packed +
-                   s_idx * num_heads * elements_per_head_packed +
-                   n_idx * elements_per_head_packed +
-                   h_idx;
-    }
 
 #ifdef USE_FP8_KV_CACHE
     if constexpr (std::is_same<T_QUANT, __nv_fp8_e4m3>::value) {
@@ -312,9 +274,9 @@ __global__ void QuantizeKernel(T_QUANT* quantized_data,
       }
 
       float inv_scale = (scale_val == 0.0f) ? 0.0f : 1.0f / scale_val;
-      int64_t flattened_input_idx = is_input_bsnh ? ((int64_t)b * input_sequence_length * num_heads * head_size +
-                                                     (int64_t)s * num_heads * head_size +
-                                                     (int64_t)n * head_size +
+      int64_t flattened_input_idx = is_input_bsnh ? (static_cast<int64_t>(b) * input_sequence_length * num_heads * head_size +
+                                                     static_cast<int64_t>(s) * num_heads * head_size +
+                                                     static_cast<int64_t>(n) * head_size +
                                                      h)
                                                   : ((int64_t)b * num_heads * input_sequence_length * head_size +
                                                      (int64_t)n * input_sequence_length * head_size +
@@ -419,8 +381,7 @@ Status LaunchQuantizeKV(cudaStream_t stream, T_QUANT* quantized_data,
                         int batch_size, int num_heads,
                         int input_sequence_length, int cache_sequence_length, int head_size, int bit_width,
                         KVQuantizationType quant_type,
-                        bool is_input_bsnh,
-                        bool is_output_bsnh) {
+                        bool is_input_bsnh) {
   assert(total_seq_lens != nullptr);
   if (cache_sequence_length == 0) return Status::OK();
 
@@ -431,7 +392,7 @@ Status LaunchQuantizeKV(cudaStream_t stream, T_QUANT* quantized_data,
 
   QuantizeKernel<T, T_QUANT, T_SCALE><<<blocks, kThreadsPerBlock, 0, stream>>>(
       quantized_data, dequantized_data, scale, past_seq_lens, total_seq_lens, total_packed_elements,
-      input_sequence_length, cache_sequence_length, num_heads, head_size, bit_width, quant_type, is_input_bsnh, is_output_bsnh);
+      input_sequence_length, cache_sequence_length, num_heads, head_size, bit_width, quant_type, is_input_bsnh);
 
   return CUDA_CALL(cudaGetLastError());
 }
