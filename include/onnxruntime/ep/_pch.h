@@ -11,6 +11,7 @@
 // This header file is used as a precompiled header so it is always included first.
 
 #pragma push_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#undef ORT_EP_API_ADAPTER_HEADER_INCLUDED
 #define ORT_EP_API_ADAPTER_HEADER_INCLUDED
 
 #include "adapter/allocator.h"
