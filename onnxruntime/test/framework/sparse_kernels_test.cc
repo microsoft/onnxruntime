@@ -756,8 +756,7 @@ static NodeProto CreateConstantNodeAllZeros(bool indices_1D, std::vector<T>& exp
   constant_node.set_op_type("Constant");
   constant_node.add_output("dense_tensor_output");
 
-  std::vector<int64_t> indices;
-  std::vector<int64_t> shape{2, 3, 2};
+  const std::array<int64_t, 3> shape{2, 3, 2};
 
   AttributeProto& attrib = *constant_node.mutable_attribute()->Add();
   attrib.set_name("sparse_value_all_zeros");
@@ -772,7 +771,7 @@ static NodeProto CreateConstantNodeAllZeros(bool indices_1D, std::vector<T>& exp
   } else {
     // indices are shape {NNZ, rank} so convert flattened values of 2, 5, 6 and 10 to rank 3 values
     indices_tp.add_dims(0);
-    indices_tp.add_dims(0);
+    indices_tp.add_dims(3);
   }
 
   indices_tp.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
