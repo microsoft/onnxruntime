@@ -85,6 +85,12 @@ jobs:
 
   - template: set-nightly-build-option-variable-step.yml
 
+  # TODO for testing!!!
+  - powershell: |-
+      Get-PackageProvider -Name NuGet -ForceBootstrap
+      Install-Module -Verbose -AllowClobber -Force Az.Accounts, Az.Storage, Az.Network, Az.Resources, Az.Compute
+    displayName: Install Azure Module Dependencies
+
   - task: AzurePowerShell@5
     displayName: Test AzurePowerShell
     inputs:
@@ -93,6 +99,7 @@ jobs:
       ScriptType: InlineScript
       Inline: |
         Write-Host "Hello from AzurePowerShell"
+  # end of testing changes
 
   - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
     env:
