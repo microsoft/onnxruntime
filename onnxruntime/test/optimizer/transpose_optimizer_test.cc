@@ -123,7 +123,7 @@ TEST(TransposeOptimizerTests, TestSplit) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSplitDefaultAxis) {
@@ -156,7 +156,7 @@ TEST(TransposeOptimizerTests, TestSplitDefaultAxis) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSplitNegativeAxis) {
@@ -190,7 +190,7 @@ TEST(TransposeOptimizerTests, TestSplitNegativeAxis) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestConcat) {
@@ -221,7 +221,7 @@ TEST(TransposeOptimizerTests, TestConcat) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestPad) {
@@ -257,7 +257,7 @@ TEST(TransposeOptimizerTests, TestPad) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {10, 18});
+                    /*opset_version*/ {10, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestPadOpset15) {
@@ -286,7 +286,7 @@ TEST(TransposeOptimizerTests, TestPadOpset15) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestPadNonconst) {
@@ -318,7 +318,7 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {11, 18});
+                    /*opset_version*/ {11, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestResize) {
@@ -382,7 +382,7 @@ TEST(TransposeOptimizerTests, TestResizeOpset11) {
                     // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
                     // assigned to the CPU EP first
                     TransformerLevel::Level2,
-                    /*opset_version*/ {11, 18});
+                    /*opset_version*/ {11, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestResizeOpset15) {
@@ -412,7 +412,7 @@ TEST(TransposeOptimizerTests, TestResizeOpset15) {
                     // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
                     // assigned to the CPU EP first
                     TransformerLevel::Level2,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
@@ -444,7 +444,7 @@ TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
                     // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
                     // assigned to the CPU EP first
                     TransformerLevel::Level2,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestResizeRoiScalesZeroRank0) {
@@ -511,7 +511,7 @@ TEST(TransposeOptimizerTests, TestResizeNonconst) {
                     // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
                     // assigned to the CPU EP first
                     TransformerLevel::Level2,
-                    /*opset_version*/ {11, 18});
+                    /*opset_version*/ {11, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestResizeNonconstOpset13) {
@@ -542,7 +542,7 @@ TEST(TransposeOptimizerTests, TestResizeNonconstOpset13) {
                     // need the level 2 TransposeOptimizer as pushing a Transpose through a Resize requires it to be
                     // assigned to the CPU EP first
                     TransformerLevel::Level2,
-                    /*opset_version*/ {13, 18});
+                    /*opset_version*/ {13, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestAdd) {
@@ -569,7 +569,7 @@ TEST(TransposeOptimizerTests, TestAdd) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestShape) {
@@ -615,7 +615,7 @@ TEST(TransposeOptimizerTests, TestShapeOpset15) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestShapeSliceNoStart) {
@@ -639,7 +639,7 @@ TEST(TransposeOptimizerTests, TestShapeSliceNoStart) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestShapeSliceNegativeEnd) {
@@ -663,7 +663,7 @@ TEST(TransposeOptimizerTests, TestShapeSliceNegativeEnd) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestShapeSliceNegativeStartNoEnd) {
@@ -687,7 +687,7 @@ TEST(TransposeOptimizerTests, TestShapeSliceNegativeStartNoEnd) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestShapeSliceStartAndEnd) {
@@ -712,7 +712,7 @@ TEST(TransposeOptimizerTests, TestShapeSliceStartAndEnd) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestShapeSliceEmptyResult) {
@@ -737,7 +737,7 @@ TEST(TransposeOptimizerTests, TestShapeSliceEmptyResult) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceSumKeepdimsTrue) {
@@ -771,7 +771,7 @@ TEST(TransposeOptimizerTests, TestReduceSumKeepdimsTrue) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 18},
+                    /*opset_version*/ {7, 18, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -797,7 +797,7 @@ TEST(TransposeOptimizerTests, TestReduceSumEmptyAxesKeepdimsTrue) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 18},
+                    /*opset_version*/ {7, 18, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -833,7 +833,7 @@ TEST(TransposeOptimizerTests, TestReduceSumKeepdimsFalse) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 18},
+                    /*opset_version*/ {7, 18, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -859,7 +859,7 @@ TEST(TransposeOptimizerTests, TestReduceSumEmptyAxesKeepdimsFalse) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 18},
+                    /*opset_version*/ {7, 18, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -1235,7 +1235,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsTrue) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsTrueDefaultAxes) {
@@ -1259,7 +1259,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsTrueDefaultAxes) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsFalse) {
@@ -1293,7 +1293,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsFalse) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsFalseDefaultAxes) {
@@ -1317,7 +1317,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsFalseDefaultAxes) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceMax) {
@@ -1349,7 +1349,7 @@ TEST(TransposeOptimizerTests, TestReduceMax) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceMaxDefaultAxes) {
@@ -1372,7 +1372,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxDefaultAxes) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceLogSum) {
@@ -1406,7 +1406,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceLogSum) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceLogSumExp) {
@@ -1440,7 +1440,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceLogSumExp) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceMax) {
@@ -1474,7 +1474,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceMax) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceMean) {
@@ -1508,7 +1508,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceMean) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceMin) {
@@ -1542,7 +1542,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceMin) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceProd) {
@@ -1576,7 +1576,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceProd) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceSumSquare) {
@@ -1610,7 +1610,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceSumSquare) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceL1) {
@@ -1644,7 +1644,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceL1) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReduceOpsReduceL2) {
@@ -1678,7 +1678,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceL2) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSqueezeOpset7) {
@@ -1781,7 +1781,7 @@ TEST(TransposeOptimizerTests, TestSqueezeEmptyNoOpt) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {7, 18});
+                    /*opset_version*/ {7, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSqueezeEmptyNoOptOpset15) {
@@ -1826,7 +1826,7 @@ TEST(TransposeOptimizerTests, TestSqueezeNonconstNoOpt) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestUnsqueezeOpset7) {
@@ -1933,7 +1933,7 @@ TEST(TransposeOptimizerTests, TestUnsqueezeNonconstNoOpt) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 14);
+                    /*opset_version*/ {14, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSlice) {
@@ -2019,7 +2019,7 @@ TEST(TransposeOptimizerTests, TestSliceOpset15) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceNoAxesOpset15) {
@@ -2047,7 +2047,7 @@ TEST(TransposeOptimizerTests, TestSliceNoAxesOpset15) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceNegativeAxesInt32) {
@@ -2076,7 +2076,7 @@ TEST(TransposeOptimizerTests, TestSliceNegativeAxesInt32) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceStepsInt32) {
@@ -2106,7 +2106,7 @@ TEST(TransposeOptimizerTests, TestSliceStepsInt32) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceNegativeAxes) {
@@ -2135,7 +2135,7 @@ TEST(TransposeOptimizerTests, TestSliceNegativeAxes) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceSteps) {
@@ -2165,7 +2165,7 @@ TEST(TransposeOptimizerTests, TestSliceSteps) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceNonconstNoOpt) {
@@ -2193,7 +2193,7 @@ TEST(TransposeOptimizerTests, TestSliceNonconstNoOpt) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceNonconstInt32NoOpt) {
@@ -2221,7 +2221,7 @@ TEST(TransposeOptimizerTests, TestSliceNonconstInt32NoOpt) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStarts) {
@@ -2249,7 +2249,7 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStarts) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthNoOpt) {
@@ -2276,7 +2276,7 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthNoO
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsInt32) {
@@ -2304,7 +2304,7 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsInt32) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthInt32NoOpt) {
@@ -2331,7 +2331,7 @@ TEST(TransposeOptimizerTests, TestSliceDefaultAxesNonconstStartsUnknownLengthInt
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestTile) {
@@ -2358,7 +2358,7 @@ TEST(TransposeOptimizerTests, TestTile) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestTileNonconstReps) {
@@ -2385,7 +2385,7 @@ TEST(TransposeOptimizerTests, TestTileNonconstReps) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestArgMinNoAxisKeepdimsTrue) {
@@ -2412,7 +2412,7 @@ TEST(TransposeOptimizerTests, TestArgMinNoAxisKeepdimsTrue) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestArgMinNoAxisKeepdimsFalse) {
@@ -2439,7 +2439,7 @@ TEST(TransposeOptimizerTests, TestArgMinNoAxisKeepdimsFalse) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestArgMinNoAxis) {
@@ -2465,7 +2465,7 @@ TEST(TransposeOptimizerTests, TestArgMinNoAxis) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestArgMinKeepdimsTrue) {
@@ -2493,7 +2493,7 @@ TEST(TransposeOptimizerTests, TestArgMinKeepdimsTrue) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestArgMinKeepdimsFalse) {
@@ -2521,7 +2521,7 @@ TEST(TransposeOptimizerTests, TestArgMinKeepdimsFalse) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestArgMin) {
@@ -2548,7 +2548,7 @@ TEST(TransposeOptimizerTests, TestArgMin) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestArgMax) {
@@ -2576,7 +2576,7 @@ TEST(TransposeOptimizerTests, TestArgMax) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSoftmax) {
@@ -2603,7 +2603,7 @@ TEST(TransposeOptimizerTests, TestSoftmax) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 12,
+                    /*opset_version*/ {12, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -2631,7 +2631,7 @@ TEST(TransposeOptimizerTests, TestSoftmaxNoAxis) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 12,
+                    /*opset_version*/ {12, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -2660,7 +2660,7 @@ TEST(TransposeOptimizerTests, TestSoftmax_2) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 12,
+                    /*opset_version*/ {12, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -2688,7 +2688,7 @@ TEST(TransposeOptimizerTests, TestSoftmaxNoOptimization) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 12,
+                    /*opset_version*/ {12, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -2716,7 +2716,7 @@ TEST(TransposeOptimizerTests, TestSoftmaxNoOptimization_2) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 12,
+                    /*opset_version*/ {12, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -2744,7 +2744,7 @@ TEST(TransposeOptimizerTests, TestSoftmaxNoOptimization_3) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 12,
+                    /*opset_version*/ {12, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -2829,7 +2829,7 @@ TEST(TransposeOptimizerTests, TestHardmaxAndLogSoftmaxNoAxis) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 15,
+                    /*opset_version*/ {15, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -2857,7 +2857,7 @@ TEST(TransposeOptimizerTests, TestHardmaxAndLogSoftmaxNoAxis_2) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 15,
+                    /*opset_version*/ {15, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 }
@@ -2889,7 +2889,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsAdd) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsMul) {
@@ -2919,7 +2919,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsMul) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsSub) {
@@ -2949,7 +2949,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsSub) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsDiv) {
@@ -2982,7 +2982,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsDiv) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18},
+                    /*opset_version*/ {15, 18, 23},
                     /*per_sample_tolerance*/ 1e-07,
                     /*relative_per_sample_tolerance*/ 1e-06);
 #else
@@ -2990,7 +2990,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsDiv) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 #endif  // defined(_M_ARM64) && _MSC_VER >= 1930
 }
 
@@ -3021,7 +3021,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsPRelu) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsGreater) {
@@ -3051,7 +3051,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsGreater) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsLess) {
@@ -3081,7 +3081,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsLess) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsPow) {
@@ -3111,7 +3111,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsPow) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsMax) {
@@ -3141,7 +3141,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsMax) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsMin) {
@@ -3171,7 +3171,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsMin) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsMean) {
@@ -3201,7 +3201,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsMean) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsSum) {
@@ -3231,7 +3231,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsSum) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsGreaterOrEqual) {
@@ -3261,7 +3261,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsGreaterOrEqual) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsLessOrEqual) {
@@ -3291,7 +3291,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsLessOrEqual) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsEqual) {
@@ -3321,7 +3321,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsEqual) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsAnd) {
@@ -3351,7 +3351,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsAnd) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsOr) {
@@ -3381,7 +3381,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsOr) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsXor) {
@@ -3411,7 +3411,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsXor) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsMod) {
@@ -3442,7 +3442,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsMod) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastOpsBitShift) {
@@ -3473,7 +3473,7 @@ TEST(TransposeOptimizerTests, TestBroadcastOpsBitShift) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestWhere) {
@@ -3504,7 +3504,7 @@ TEST(TransposeOptimizerTests, TestWhere) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 // Utility function that runs TransformerTester for the graph Transpose -> QuantizeLinear -> Transpose.
@@ -3797,7 +3797,7 @@ TEST(TransposeOptimizerTests, TestCast) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestQLinearSoftmax) {
@@ -3827,17 +3827,19 @@ TEST(TransposeOptimizerTests, TestQLinearSoftmax) {
     EXPECT_EQ(transpose_cost, 0);
   };
 
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
-                    TransformerLevel::Level2,
-                    TransformerLevel::Level3,
-                    /*opset_version*/ 13,
-                    /*per_sample_tolerance*/ 0.0,
-                    /*relative_per_sample_tolerance*/ 0.0,
-                    /*transformer*/ nullptr,
-                    /*add_session_options*/ {},
-                    /*disabled_optimizers*/ {},
-                    /*ep*/ DefaultCpuExecutionProvider());
+  for (int opset_version : {13, 23}) {
+    TransformerTester(build_test_case_1,
+                      check_optimized_graph_1,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3,
+                      /*opset_version*/ opset_version,
+                      /*per_sample_tolerance*/ 0.0,
+                      /*relative_per_sample_tolerance*/ 0.0,
+                      /*transformer*/ nullptr,
+                      /*add_session_options*/ {},
+                      /*disabled_optimizers*/ {},
+                      /*ep*/ DefaultCpuExecutionProvider());
+  }
 }
 
 TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
@@ -3868,7 +3870,7 @@ TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestTransposeGraphOutput) {
@@ -3896,7 +3898,7 @@ TEST(TransposeOptimizerTests, TestTransposeGraphOutput) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestSimpleReshapeAsTranspose) {
@@ -3929,7 +3931,7 @@ TEST(TransposeOptimizerTests, TestSimpleReshapeAsTranspose) {
                     check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
@@ -3960,7 +3962,7 @@ TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
                     check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 enum class TransposeReshapeResult {
@@ -4029,7 +4031,7 @@ static void TestTransposeReshape(const std::vector<int64_t>& input_shape,    // 
                     check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 15);
+                    /*opset_version*/ {15, 23});
 }
 
 // Transpose -> Reshape can be merged if the Reshape could also be expressed as a Transpose due to not changing the
@@ -4180,7 +4182,7 @@ TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
                     check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestNonCancelingReshapeDueToNonConstShape) {
@@ -4216,7 +4218,7 @@ TEST(TransposeOptimizerTests, TestNonCancelingReshapeDueToNonConstShape) {
                     check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestPushBroadcastUnsqueezeTranspose) {
@@ -4251,7 +4253,7 @@ TEST(TransposeOptimizerTests, TestPushBroadcastUnsqueezeTranspose) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestOptimizeTowardsTranspose) {
@@ -4281,7 +4283,7 @@ TEST(TransposeOptimizerTests, TestOptimizeTowardsTranspose) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestOnlyOptimizeTowardsTranspose) {
@@ -4308,7 +4310,7 @@ TEST(TransposeOptimizerTests, TestOnlyOptimizeTowardsTranspose) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestDontOptimizeWrongInput) {
@@ -4334,7 +4336,7 @@ TEST(TransposeOptimizerTests, TestDontOptimizeWrongInput) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestOptimizeBothInputs) {
@@ -4362,7 +4364,7 @@ TEST(TransposeOptimizerTests, TestOptimizeBothInputs) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
@@ -4394,7 +4396,7 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
                     check_optimized_graph_1,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15, 18});
+                    /*opset_version*/ {15, 18, 23});
 }
 
 // regression test for a model where the transpose optimizations were not completed in a single pass in level 1.

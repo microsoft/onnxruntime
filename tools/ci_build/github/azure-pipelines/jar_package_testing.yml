@@ -21,7 +21,8 @@ stages:
 - template: templates/final-jar-testing-linux.yml
   parameters:
     OS: MacOS
-    PoolName: 'macOS-14'
+    PoolName: 'AcesShared'
+    PoolDemands: 'ImageOverride -equals ACES_VM_SharedPool_Sequoia'
 
 - stage: GPU_JAR_Testing
   dependsOn: []

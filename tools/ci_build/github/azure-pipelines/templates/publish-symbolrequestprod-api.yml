@@ -52,7 +52,6 @@ steps:
     inputs:
       azureSubscription: ${{ parameters.subscription }}
       azurePowerShellVersion: LatestVersion
-      pwsh: true
       ScriptType: InlineScript
       Inline: |
         # Part 1: Generate an Azure Token
