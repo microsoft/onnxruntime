@@ -566,7 +566,7 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
   opts.output_rel_error = 0.05f;
   RunTest2Bits<float>(opts);
 
-  // M=4 (batch), N=32, K=128, block_size=32
+  // M=4 (rows), N=32, K=128, block_size=32
   opts.M = 4;
   opts.N = 32;
   opts.K = 128;
