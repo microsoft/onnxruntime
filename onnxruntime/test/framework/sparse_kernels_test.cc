@@ -2085,6 +2085,32 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_OutOfBounds_Rank2) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse tensor: test_tensor index is out of bounds"));
 }
 
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_OutOfBounds_Rank2_Dim1) {
+  // Dense Shape [2, 2]
+  // Index [0, 2] -> 2 is out of bounds for the 2nd dimension (size 2)
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("test_tensor_dim1_oob");
+  sparse.add_dims(2);
+  sparse.add_dims(2);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(1);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);  // NNZ=1
+  ind->add_dims(2);  // Rank=2
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(0);
+  ind->add_int64_data(2);  // Out of bounds for dim 1
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse tensor: test_tensor_dim1_oob index is out of bounds"));
+}
+
 TEST(SparseTensorConversionTests, SparseTensorProtoToDense_InvalidValuesRank) {
   ONNX_NAMESPACE::SparseTensorProto sparse;
   sparse.mutable_values()->set_name("test_tensor");
@@ -2150,6 +2176,80 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_NegativeDenseShape) {
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse tensor: test_tensor dense dims expected to be non-negative"));
 }
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_InvalidValuesRank_Zero) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("test_tensor_val_rank_0");
+  sparse.add_dims(10);
+
+  auto* val = sparse.mutable_values();
+  // No dims added -> Rank 0 (Scalar)
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Sparse tensor: test_tensor_val_rank_0 values should be rank 1"));
+}
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch) {
+  // Case where the actual data in 'values' doesn't match the dimension specified in 'values'
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("test_tensor_val_size_mismatch");
+  sparse.add_dims(10);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(2);  // Claiming 2 elements
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+  // Only added 1 element, this should fail during UnpackInitializerData or subsequent checks depending on where it's caught
+  // Note: UnpackTensor checks if size matches.
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(2);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(0);
+  ind->add_int64_data(1);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  // The error comes from UnpackTensor usually
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("data size"));
+}
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch_RawData) {
+  // Case where raw data size doesn't match the shape size * element size
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("test_tensor_val_size_mismatch_raw");
+  sparse.add_dims(10);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(2);  // Claiming 2 elements
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  // 1 float is 4 bytes. We provide 4 bytes, but claim 2 elements (8 bytes needed).
+  float raw_val = 1.0f;
+  val->set_raw_data(&raw_val, sizeof(float));
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(2);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(0);
+  ind->add_int64_data(1);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("values data size does not match expected"));
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace test
 }  // namespace onnxruntime

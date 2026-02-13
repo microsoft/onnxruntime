@@ -1768,7 +1768,7 @@ static Status CopySparseData(const std::string& name,
         ORT_RETURN_IF_NOT(indices.int64_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int64 data size does not match expected: ",
                           indices_elements);
-        indices_data = gsl::make_span(indices.int64_data().data(), indices_elements);
+        indices_data = gsl::make_span(indices.int64_data().data(), narrow<size_t>(indices_elements));
       }
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
@@ -1976,9 +1976,12 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     std::string dense_data_storage(narrow<size_t>(dense_elements) * element_size, 0);
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
-      std::vector<uint8_t> sparse_data_storage;
-      ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, sparse_data_storage));
-      void* sparse_data = sparse_data_storage.data();
+      std::vector<uint8_t> values_data;
+      ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
+      ORT_RETURN_IF_NOT(values_data.size() == static_cast<size_t>(nnz_elements) * element_size,
+                        "Sparse tensor: ", name, " values data size does not match expected: ",
+                        static_cast<size_t>(nnz_elements) * element_size);
+      void* sparse_data = values_data.data();
       void* dense_data = dense_data_storage.data();
 
       switch (element_size) {
