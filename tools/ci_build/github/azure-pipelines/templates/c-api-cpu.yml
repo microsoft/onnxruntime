@@ -203,6 +203,10 @@ stages:
       - input: pipelineArtifact
         artifactName: drop-onnxruntime-java-linux-aarch64
         targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+
+      - input: pipelineArtifact
+        artifactName: drop-onnxruntime-java-osx-arm64
+        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64
