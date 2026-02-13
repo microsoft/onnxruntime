@@ -1020,8 +1020,9 @@ TEST(ModelEditorCompileAPITest, CompileFromOrtModelToFile) {
 // actionable error message.
 TEST(ModelEditorCompileAPITest, LoadConfigFromModelEnvVarFailsForOrtModel) {
   // RAII helper saves the current env var value and restores it when the scope exits.
-  onnxruntime::test::ScopedEnvironmentVariables scoped_env(
-      {{"ORT_LOAD_CONFIG_FROM_MODEL", "1"}});
+  onnxruntime::test::EnvVarMap env_vars;
+  env_vars["ORT_LOAD_CONFIG_FROM_MODEL"] = "1";
+  onnxruntime::test::ScopedEnvironmentVariables scoped_env(env_vars);
 
   std::vector<std::unique_ptr<std::vector<float>>> weights;
   auto model = CreateSimpleGemmModel(weights);
