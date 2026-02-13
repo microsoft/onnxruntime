@@ -85,6 +85,15 @@ jobs:
 
   - template: set-nightly-build-option-variable-step.yml
 
+  - task: AzurePowerShell@5
+    displayName: Test AzurePowerShell
+    inputs:
+      azureSubscription: OnnxrunTimeCodeSign_20240611
+      azurePowerShellVersion: LatestVersion
+      ScriptType: InlineScript
+      Inline: |
+        Write-Host "Hello from AzurePowerShell"
+
   - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
     env:
       TMPDIR: "$(Agent.TempDirectory)"
