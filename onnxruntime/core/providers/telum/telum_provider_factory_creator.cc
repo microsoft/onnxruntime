@@ -85,4 +85,3 @@ std::shared_ptr<IExecutionProviderFactory> TelumProviderFactoryCreator::Create(
 }
 
 }  // namespace onnxruntime
-

@@ -15,4 +15,3 @@ std::shared_ptr<KernelRegistry> GetTelumKernelRegistry();
 
 }  // namespace telum
 }  // namespace onnxruntime
-

@@ -17,4 +17,3 @@ struct TelumProviderFactoryCreator {
 };
 
 }  // namespace onnxruntime
-
