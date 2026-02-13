@@ -69,6 +69,8 @@ stages:
 
 - stage: Android_Java_API_AAR_Testing_Full
   dependsOn: Setup
+  variables:
+    ReleaseVersionSuffix: $[ stageDependencies.Setup.Restore_And_Use_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
   jobs:
   - template: templates/android-java-api-aar-test.yml
     parameters:
@@ -77,11 +79,14 @@ stages:
 
 - stage: Final_AAR_Testing_Android_QNN
   dependsOn: Setup
+  variables:
+    ReleaseVersionSuffix: $[ stageDependencies.Setup.Restore_And_Use_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'] ]
   jobs:
   - template: templates/android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-qnn-aar'
       packageName: 'onnxruntime-android-qnn'
+      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       #TODO: get this information from the setup stage
       QnnSDKVersion: '2.42.0.251225'
 
