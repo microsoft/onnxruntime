@@ -27,6 +27,9 @@
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#ifdef USE_WEBGPU
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -543,7 +546,15 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_LargerK) {
 // DP4A path tests (accuracy_level=4) — exercises the 1024-entry LUT / dequantization
 // path for 2-bit weights with zero_points.
 // DP4A constraints: accuracy_level==4, block_size%32==0, K%128==0, N%16==0.
+// Skipped when the adapter lacks Subgroups support or is Apple (Metal),
+// because the DP4A kernel would silently fall back to the default path.
 TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
+  // Ensure the WebGPU context is initialized so we can query adapter capabilities.
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!contrib::webgpu::HasDP4ADeviceSupport(ep->GetDeviceId())) {
+    GTEST_SKIP() << "DP4A requires Subgroups support on a non-Apple adapter";
+  }
+
   TestOptions2Bits opts{};
   opts.accuracy_level = 4;
   opts.has_zero_point = true;
