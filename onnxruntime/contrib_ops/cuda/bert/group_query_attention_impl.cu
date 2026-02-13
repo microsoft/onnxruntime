@@ -77,31 +77,34 @@ namespace cuda {
 // 3. Ensuring synchronization between past and present KV caches when necessary.
 // 4. Launching the UnpackRoPEQuantizeAppend kernel to unpack, apply RoPE, and update caches.
 // 5. Returning strict Q, K, V pointers ready for the core attention operation.
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status PrepareQKV(
     cudaStream_t stream,
     const int max_threads_per_block,
     const GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<CudaT, CudaU>& data,
-    const CudaT*& q) {
+    GroupQueryAttentionData<T, U>& data,
+    const T*& q) {
+  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
+
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
 
-  CudaT* q_out = reinterpret_cast<CudaT*>(data.qkv_buffer);
+  T* q_out = reinterpret_cast<T*>(data.qkv_buffer);
 
   if (!parameters.is_packed_qkv && !parameters.do_rotary) {
     q_out = nullptr;
   }
 
-  CudaU* k = reinterpret_cast<CudaU*>(data.present_key);
-  CudaU* v = reinterpret_cast<CudaU*>(data.present_value);
+  U* k = reinterpret_cast<U*>(data.present_key);
+  U* v = reinterpret_cast<U*>(data.present_value);
   int max_cache_length = parameters.seqlen_present_kv_cache;
 
   if (!parameters.past_present_share_buffer) {
-    size_t kv_buffer_size = (size_t)batch_size * kv_num_heads * max_cache_length * head_size * sizeof(CudaU);
+    size_t kv_buffer_size = (size_t)batch_size * kv_num_heads * max_cache_length * head_size * sizeof(U);
     CUDA_CALL_THROW(cudaMemsetAsync(data.present_key, 0, kv_buffer_size, stream));
     CUDA_CALL_THROW(cudaMemsetAsync(data.present_value, 0, kv_buffer_size, stream));
   }
@@ -111,8 +114,8 @@ Status PrepareQKV(
 
   // Copy past KV to present KV if needed
   if (!parameters.past_present_share_buffer && data.past_key != nullptr && parameters.seqlen_past_kv_cache > 0) {
-    size_t src_pitch = (size_t)parameters.seqlen_past_kv_cache * head_size * sizeof(CudaU);
-    size_t dst_pitch = (size_t)max_cache_length * head_size * sizeof(CudaU);
+    size_t src_pitch = (size_t)parameters.seqlen_past_kv_cache * head_size * sizeof(U);
+    size_t dst_pitch = (size_t)max_cache_length * head_size * sizeof(U);
     size_t width = src_pitch;
     size_t height = (size_t)batch_size * kv_num_heads;
     CUDA_CALL_THROW(cudaMemcpy2DAsync(data.present_key, dst_pitch, data.past_key, src_pitch, width, height,
@@ -121,23 +124,23 @@ Status PrepareQKV(
                                       cudaMemcpyDeviceToDevice, stream));
   }
 
-  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<CudaT, CudaU>(
-      parameters.is_packed_qkv ? reinterpret_cast<const CudaT*>(data.query) : nullptr,
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.query),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.key),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.value),
+  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
+      parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
       q_out, k, v, data.k_scale, data.v_scale,
       num_heads, kv_num_heads, head_size, sequence_length, batch_size,
       max_cache_length, data.past_seq_lens,
-      reinterpret_cast<const CudaT*>(data.cos_cache), reinterpret_cast<const CudaT*>(data.sin_cache),
+      reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       is_cache_bnsh, parameters.k_quant_type,
       stream, max_threads_per_block)));
 
   if (q_out != nullptr) {
-    q = reinterpret_cast<const CudaT*>(q_out);
+    q = reinterpret_cast<const T*>(q_out);
   } else {
-    q = reinterpret_cast<const CudaT*>(data.query);
+    q = reinterpret_cast<const T*>(data.query);
   }
 
   return Status::OK();
@@ -146,16 +149,16 @@ Status PrepareQKV(
 ////////// Auxiliary Kernels for KV prep
 
 // Concat new to past in present. Supports past BSNH or past BNSH
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status LaunchConcatNewToPastKVHelper(GroupQueryAttentionParameters& parameters,
-                                     GroupQueryAttentionData<CudaT, CudaU>& data,
+                                     GroupQueryAttentionData<T, U>& data,
                                      const void* new_key,
                                      const void* new_value,
                                      cudaStream_t stream,
                                      const int max_threads_per_block,
                                      const bool past_only = false,
-                                     const CudaT* cos_cache = nullptr,
-                                     const CudaT* sin_cache = nullptr,
+                                     const T* cos_cache = nullptr,
+                                     const T* sin_cache = nullptr,
                                      const int rotary_dim = 0,
                                      const int64_t* position_ids = nullptr,
                                      const bool interleaved = false) {
@@ -178,12 +181,12 @@ Status LaunchConcatNewToPastKVHelper(GroupQueryAttentionParameters& parameters,
                                  is_bsnh,
                                  data.past_seq_lens,
                                  data.total_seq_lens,
-                                 reinterpret_cast<const CudaT*>(data.past_key),
-                                 reinterpret_cast<const CudaT*>(data.past_value),
-                                 reinterpret_cast<const CudaT*>(new_key),
-                                 reinterpret_cast<const CudaT*>(new_value),
-                                 reinterpret_cast<CudaT*>(data.present_key),
-                                 reinterpret_cast<CudaT*>(data.present_value),
+                                 reinterpret_cast<const T*>(data.past_key),
+                                 reinterpret_cast<const T*>(data.past_value),
+                                 reinterpret_cast<const T*>(new_key),
+                                 reinterpret_cast<const T*>(new_value),
+                                 reinterpret_cast<T*>(data.present_key),
+                                 reinterpret_cast<T*>(data.present_value),
                                  stream,
                                  max_threads_per_block,
                                  past_only,
@@ -195,9 +198,9 @@ Status LaunchConcatNewToPastKVHelper(GroupQueryAttentionParameters& parameters,
 }
 
 // Concat new to kv buffer in place
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status LaunchConcatKVInPlace(GroupQueryAttentionParameters& parameters,
-                             GroupQueryAttentionData<CudaT, CudaU>& data,
+                             GroupQueryAttentionData<T, U>& data,
                              const void* new_key,
                              const void* new_value,
                              bool is_new_kv_bnsh_format,
@@ -216,10 +219,10 @@ Status LaunchConcatKVInPlace(GroupQueryAttentionParameters& parameters,
                                data.past_seq_lens,
                                data.total_seq_lens,
                                parameters.sequence_length,
-                               reinterpret_cast<const CudaT*>(new_key),
-                               reinterpret_cast<const CudaT*>(new_value),
-                               reinterpret_cast<CudaT*>(data.present_key),
-                               reinterpret_cast<CudaT*>(data.present_value),
+                               reinterpret_cast<const T*>(new_key),
+                               reinterpret_cast<const T*>(new_value),
+                               reinterpret_cast<T*>(data.present_key),
+                               reinterpret_cast<T*>(data.present_value),
                                is_past_kv_bnsh_format,
                                is_new_kv_bnsh_format,
                                stream,
@@ -252,9 +255,9 @@ Status LaunchConcatKVInPlace(GroupQueryAttentionParameters& parameters,
 //   - q_num_heads is divisible by kv_num_heads
 //   - H * q_num_heads <= max_threads_per_block (use UngroupLarge otherwise)
 // ============================================================================
-template <typename CudaT>
-__global__ void Ungroup(const CudaT* kv_in,
-                        CudaT* kv_out,
+template <typename T>
+__global__ void Ungroup(const T* kv_in,
+                        T* kv_out,
                         const int in_seqlen,
                         const int kv_num_heads,
                         const bool is_bsnh) {
@@ -295,9 +298,9 @@ __global__ void Ungroup(const CudaT* kv_in,
 //   blockIdx.y = s (sequence position)
 //   blockIdx.z = b (batch index)
 // ============================================================================
-template <typename CudaT>
-__global__ void UngroupLarge(const CudaT* kv_in,
-                             CudaT* kv_out,
+template <typename T>
+__global__ void UngroupLarge(const T* kv_in,
+                             T* kv_out,
                              const int H,
                              const int in_seqlen,
                              const int q_num_heads,
@@ -328,7 +331,7 @@ __global__ void UngroupLarge(const CudaT* kv_in,
 }
 
 // Ungroup kv or present kv for use in Memory Efficient kernel. If present kv is not null and is BNSH, transposes it.
-template <typename CudaT>
+template <typename T>
 Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
                      float2* k_buff, float2* v_buff,
                      const float2* k_og, const float2* v_og,
@@ -404,8 +407,8 @@ Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
 //   One thread per element in packed_qkv. Thread determines which of Q/K/V
 //   the element belongs to based on the offset within the hidden dimension.
 // ============================================================================
-template <typename CudaT, bool output_bnsh>
-__global__ void UnpackQKV(const CudaT* packed_qkv, CudaT* unpacked_q, CudaT* unpacked_k, CudaT* unpacked_v, const int num_heads,
+template <typename T, bool output_bnsh>
+__global__ void UnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
                           const int kv_num_heads, const int head_size, const int sequence_length,
                           const int batch_size) {
   const int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -419,7 +422,7 @@ __global__ void UnpackQKV(const CudaT* packed_qkv, CudaT* unpacked_q, CudaT* unp
     int offset = tid % d;
     if (output_bnsh) {  // output BNSH
       int head_count = kv_num_heads;
-      CudaT* unpacked = nullptr;
+      T* unpacked = nullptr;
       if (offset < q_hidden) {
         unpacked = unpacked_q;
         head_count = num_heads;
@@ -466,13 +469,13 @@ __global__ void UnpackQKV(const CudaT* packed_qkv, CudaT* unpacked_q, CudaT* unp
 }
 
 // Unpack packed qkv
-template <typename CudaT, bool output_bnsh>
-Status LaunchUnpackQKV(const CudaT* packed_qkv, CudaT* unpacked_q, CudaT* unpacked_k, CudaT* unpacked_v, const int num_heads,
+template <typename T, bool output_bnsh>
+Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unpacked_v, const int num_heads,
                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
                        cudaStream_t stream, const int max_threads_per_block) {
   const int threads = max_threads_per_block;
   const int blocks = (batch_size * sequence_length * (num_heads + 2 * kv_num_heads) * head_size + threads - 1) / threads;
-  UnpackQKV<CudaT, output_bnsh><<<blocks, threads, 0, stream>>>(
+  UnpackQKV<T, output_bnsh><<<blocks, threads, 0, stream>>>(
       packed_qkv, unpacked_q, unpacked_k, unpacked_v, num_heads, kv_num_heads, head_size, sequence_length, batch_size);
   return CUDA_CALL(cudaGetLastError());
 }
@@ -552,13 +555,16 @@ Status LaunchGetSequenceLengths(
 ////////// Kernels (supports right padding but not left padding)
 // Use flash attention for all workloads (rotary, kv append, attention, etc.). No extra kernel is used in this path.
 // Currently, only decoding or subsequent prompt can use this path. First prompt will not use this path.
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status ExtremeDecoding(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<CudaT, CudaU>& data,
+    GroupQueryAttentionData<T, U>& data,
     float scale) {
+  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
+
   ORT_GQA_TRACE("ExtremeDecoding");
 
   const int batch_size = parameters.batch_size;
@@ -575,20 +581,20 @@ Status ExtremeDecoding(
 
   // Ultimate Fused Preprocessing: Unpack, RoPE Q, RoPE K, Quantize K/V, Append K/V
   // This replaces all manual steps (Rotate Q, Rotate K, Quantize, StridedCopy)
-  CudaT* q_rot_ptr = reinterpret_cast<CudaT*>(data.qkv_buffer);
-  const CudaT* q_input_for_xqa = q_rot_ptr;
+  T* q_rot_ptr = reinterpret_cast<T*>(data.qkv_buffer);
+  const T* q_input_for_xqa = q_rot_ptr;
   if (q_rot_ptr == nullptr) {
-    q_input_for_xqa = reinterpret_cast<const CudaT*>(data.query);
+    q_input_for_xqa = reinterpret_cast<const T*>(data.query);
   }
 
-  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<CudaT, CudaU>(
-      parameters.is_packed_qkv ? reinterpret_cast<const CudaT*>(data.query) : nullptr,
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.query),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.key),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.value),
+  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
+      parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
       q_rot_ptr,  // unpacked_q (can be null if !do_rotary)
-      reinterpret_cast<CudaU*>(data.present_key),
-      reinterpret_cast<CudaU*>(data.present_value),
+      reinterpret_cast<U*>(data.present_key),
+      reinterpret_cast<U*>(data.present_value),
       data.k_scale,
       data.v_scale,
       num_heads,
@@ -598,8 +604,8 @@ Status ExtremeDecoding(
       batch_size,
       parameters.seqlen_present_kv_cache,  // max_seqlen (capacity)
       data.past_seq_lens,
-      reinterpret_cast<const CudaT*>(data.cos_cache),
-      reinterpret_cast<const CudaT*>(data.sin_cache),
+      reinterpret_cast<const T*>(data.cos_cache),
+      reinterpret_cast<const T*>(data.sin_cache),
       parameters.do_rotary ? parameters.rotary_dim : 0,
       data.position_ids,
       parameters.rotary_interleaved,
@@ -612,10 +618,10 @@ Status ExtremeDecoding(
   void* xqa_workspace = data.xqa_buffer;
   size_t xqa_workspace_size = data.xqa_buffer_bytes;
 
-  constexpr bool is_fp8 = std::is_same<CudaU, __nv_fp8_e4m3>::value;
+  constexpr bool is_fp8 = std::is_same<U, __nv_fp8_e4m3>::value;
   using onnxruntime::contrib::cuda::XqaQuantType;
   // 5. Launch XQA
-  Status status = onnxruntime::contrib::cuda::LaunchXQAKernel<CudaT>(
+  Status status = onnxruntime::contrib::cuda::LaunchXQAKernel<T>(
       device_prop,
       stream,
       q_input_for_xqa,
@@ -648,13 +654,15 @@ Status ExtremeDecoding(
 
 // Use flash attention for all workloads (rotary, kv append, attention, etc.). No extra kernel is used in this path.
 // Currently, only decoding or subsequent prompt can use this path. First prompt will not use this path.
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status FlashDecoding(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<CudaT, CudaU>& data,
+    GroupQueryAttentionData<T, U>& data,
     float scale) {
+  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
   assert(!parameters.is_first_prompt && parameters.past_present_share_buffer);
 
   ORT_GQA_TRACE("FlashDecoding");
@@ -667,29 +675,29 @@ Status FlashDecoding(
   const int head_size = parameters.head_size;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
   bool is_causal = parameters.is_unidirectional;
-  bool is_bf16 = std::is_same<CudaT, __nv_bfloat16>::value;
+  bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
 
-  void* query = reinterpret_cast<void*>(const_cast<CudaT*>(data.query));
+  void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
   void* key;
   void* value;
 
   if (!parameters.is_packed_qkv) {
-    key = reinterpret_cast<void*>(const_cast<CudaT*>(data.key));
-    value = reinterpret_cast<void*>(const_cast<CudaT*>(data.value));
+    key = reinterpret_cast<void*>(const_cast<T*>(data.key));
+    value = reinterpret_cast<void*>(const_cast<T*>(data.value));
   } else {
     const size_t key_offset = static_cast<size_t>(num_heads * head_size);
     const size_t value_offset = static_cast<size_t>(kv_num_heads * head_size);
-    key = reinterpret_cast<CudaT*>(query) + key_offset;
-    value = reinterpret_cast<CudaT*>(key) + value_offset;
+    key = reinterpret_cast<T*>(query) + key_offset;
+    value = reinterpret_cast<T*>(key) + value_offset;
   }
 
   void* seqlens_k = reinterpret_cast<void*>(data.past_seq_lens);
 
   void* present_key = data.present_key;
   void* present_value = data.present_value;
-  void* cos_cache = reinterpret_cast<void*>(const_cast<CudaT*>(data.cos_cache));
-  void* sin_cache = reinterpret_cast<void*>(const_cast<CudaT*>(data.sin_cache));
-  void* head_sink = reinterpret_cast<void*>(const_cast<CudaT*>(data.head_sink));
+  void* cos_cache = reinterpret_cast<void*>(const_cast<T*>(data.cos_cache));
+  void* sin_cache = reinterpret_cast<void*>(const_cast<T*>(data.sin_cache));
+  void* head_sink = reinterpret_cast<void*>(const_cast<T*>(data.head_sink));
 
   bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
 
@@ -712,13 +720,16 @@ Status FlashDecoding(
 
 // Use extra kernel(s) for unpacking, rotary and kv append.
 // Flash attention is used for attention only.
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status FlashAttention(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<CudaT, CudaU>& data,
+    GroupQueryAttentionData<T, U>& data,
     float scale) {
+  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
+
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -729,21 +740,21 @@ Status FlashAttention(
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
   bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
   bool is_causal = parameters.is_unidirectional;
-  bool is_bf16 = std::is_same<CudaT, __nv_bfloat16>::value;
+  bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
 
   DUMP_TENSOR_INIT();
 
-  const CudaT* q_prep = nullptr;
-  ORT_RETURN_IF_ERROR((PrepareQKV<CudaT, CudaU>(stream, max_threads_per_block, parameters, data, q_prep)));
+  const T* q_prep = nullptr;
+  ORT_RETURN_IF_ERROR((PrepareQKV<T, U>(stream, max_threads_per_block, parameters, data, q_prep)));
 
-  void* query = const_cast<CudaT*>(q_prep);
+  void* query = const_cast<T*>(q_prep);
   void* present_key = data.present_key;
   void* present_value = data.present_value;
 
   // Disable internal RoPE in Flash Attention (pass nullptr)
   void* cos_cache = nullptr;
   void* sin_cache = nullptr;
-  void* head_sink = reinterpret_cast<void*>(const_cast<CudaT*>(data.head_sink));
+  void* head_sink = reinterpret_cast<void*>(const_cast<T*>(data.head_sink));
 
   // We have already appended (and quantized if needed) the new tokens into present_key/value.
   // Pass nullptr for new_k/new_v to disable flash attention kernel's internal Append_KV logic.
@@ -778,13 +789,16 @@ Status FlashAttention(
 
 // Fallback path for decoding quantized kv cache, when XQA is not usable (due to softcap, window, etc.)
 // We dequantize the cache and run standard Flash Attention.
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status DequantizeFlashAttentionFallback(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<CudaT, CudaU>& data,
+    GroupQueryAttentionData<T, U>& data,
     float scale) {
+  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
+
   assert(!parameters.is_first_prompt);  // Only support first prompt for this function.
   assert(parameters.k_quant_type != KVQuantizationType::NONE || parameters.v_quant_type != KVQuantizationType::NONE);
 
@@ -793,25 +807,25 @@ Status DequantizeFlashAttentionFallback(
   // We need to dequantize the entire KV cache (present_key/value) into a float/half buffer (data.qkv_buffer).
   // Layout in qkv_buffer: [Q (rotated)] [K_dequantized] [V_dequantized]
 
-  CudaT* q_rot = reinterpret_cast<CudaT*>(data.qkv_buffer);
+  T* q_rot = reinterpret_cast<T*>(data.qkv_buffer);
   size_t q_elements = static_cast<size_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads * parameters.head_size;
   size_t k_elements = static_cast<size_t>(parameters.batch_size) * parameters.seqlen_present_kv_cache * parameters.kv_num_heads * parameters.head_size;
-  CudaT* k_dequant = q_rot + q_elements;
-  CudaT* v_dequant = k_dequant + k_elements;
+  T* k_dequant = q_rot + q_elements;
+  T* v_dequant = k_dequant + k_elements;
 
   // Step 1: Update Quantized Cache
   // We can use LaunchUnpackRoPEQuantizeAppend to unpack new QKV, apply RoPE, and append to quantized cache.
   // This will also put rotated Q into q_rot.
-  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<CudaT, CudaU>(
-      parameters.is_packed_qkv ? reinterpret_cast<const CudaT*>(data.query) : nullptr,
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.query),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.key),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.value),
-      q_rot, reinterpret_cast<CudaU*>(data.present_key), reinterpret_cast<CudaU*>(data.present_value),
+  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
+      parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
+      q_rot, reinterpret_cast<U*>(data.present_key), reinterpret_cast<U*>(data.present_value),
       data.k_scale, data.v_scale,
       parameters.num_heads, parameters.kv_num_heads, parameters.head_size, parameters.sequence_length, parameters.batch_size,
       parameters.seqlen_present_kv_cache, data.past_seq_lens,
-      reinterpret_cast<const CudaT*>(data.cos_cache), reinterpret_cast<const CudaT*>(data.sin_cache),
+      reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
       parameters.k_quant_type,
@@ -821,19 +835,19 @@ Status DequantizeFlashAttentionFallback(
   // We now have the updated quantized cache in data.present_key/value. We need to dequantize it to k_dequant/v_dequant.
   bool is_bsnh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<CudaT, CudaU, float>(
-      stream, k_dequant, reinterpret_cast<const CudaU*>(data.present_key), data.k_scale,
+  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
+      stream, k_dequant, reinterpret_cast<const U*>(data.present_key), data.k_scale,
       nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
       parameters.head_size, parameters.kv_cache_bit_width, parameters.k_quant_type, is_bsnh)));
 
-  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<CudaT, CudaU, float>(
-      stream, v_dequant, reinterpret_cast<const CudaU*>(data.present_value), data.v_scale,
+  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
+      stream, v_dequant, reinterpret_cast<const U*>(data.present_value), data.v_scale,
       nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
       parameters.head_size, parameters.kv_cache_bit_width, parameters.v_quant_type, is_bsnh)));
 
   // Step 3: Run Flash Attention on dequantized k/v
   bool is_causal = parameters.is_unidirectional;
-  bool is_bf16 = std::is_same<CudaT, __nv_bfloat16>::value;
+  bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
 
   // Use the total_seq_lens here since k_dequant/v_dequant has both past and new tokens.
   void* seqlens_k_ptr = const_cast<void*>(reinterpret_cast<const void*>(data.total_seq_lens));
@@ -842,7 +856,7 @@ Status DequantizeFlashAttentionFallback(
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
       device_prop, stream, q_rot, k_dequant, v_dequant, nullptr /*new K*/, nullptr /*new V*/, data.output,
       reinterpret_cast<void*>(data.softmax_lse), seqlens_k_ptr, nullptr /*cos_cache*/, nullptr /*sin_cache*/,
-      /*cache_batch_idx*/ nullptr, /*leftpad_k*/ nullptr, reinterpret_cast<void*>(const_cast<CudaT*>(data.head_sink)), /*block_table*/ nullptr,
+      /*cache_batch_idx*/ nullptr, /*leftpad_k*/ nullptr, reinterpret_cast<void*>(const_cast<T*>(data.head_sink)), /*block_table*/ nullptr,
       parameters.batch_size, parameters.num_heads, parameters.kv_num_heads, parameters.head_size, parameters.sequence_length,
       parameters.seqlen_present_kv_cache, parameters.sequence_length, 0 /*rotary_dim = 0 as it is already rotated*/,
       scale, parameters.softcap, is_causal, is_bf16, parameters.use_smooth_softmax, is_bsnh, parameters.num_splits,
@@ -854,13 +868,15 @@ Status DequantizeFlashAttentionFallback(
 }
 
 // Use Flash Attention for float key and value, then quantize key/value (int8/fp8/int4) to save to k/v cache.
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status FlashAttentionAndQuantizeKV(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<CudaT, CudaU>& data,
+    GroupQueryAttentionData<T, U>& data,
     float scale) {
+  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
   assert(parameters.is_first_prompt);  // Only support first prompt for this function.
   assert(parameters.k_quant_type != KVQuantizationType::NONE || parameters.v_quant_type != KVQuantizationType::NONE);
 
@@ -878,22 +894,22 @@ Status FlashAttentionAndQuantizeKV(
   size_t q_elements = static_cast<size_t>(batch_size) * sequence_length * num_heads * head_size;
   size_t k_elements = static_cast<size_t>(batch_size) * sequence_length * kv_num_heads * head_size;
 
-  CudaT* q_final = reinterpret_cast<CudaT*>(data.qkv_buffer);
+  T* q_final = reinterpret_cast<T*>(data.qkv_buffer);
 
   // For FlashAttentionAndQuantizeKV, we need float K and V for attention.
   // We'll write them to qkv_buffer.
-  CudaT* k_final = q_final + q_elements;
-  CudaT* v_final = k_final + k_elements;
+  T* k_final = q_final + q_elements;
+  T* v_final = k_final + k_elements;
 
-  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<CudaT, CudaT>(
-      parameters.is_packed_qkv ? reinterpret_cast<const CudaT*>(data.query) : nullptr,
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.query),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.key),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const CudaT*>(data.value),
+  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, T>(
+      parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
+      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
       q_final, k_final, v_final, nullptr, nullptr,
       num_heads, kv_num_heads, head_size, sequence_length, batch_size,
       sequence_length, data.past_seq_lens,
-      reinterpret_cast<const CudaT*>(data.cos_cache), reinterpret_cast<const CudaT*>(data.sin_cache),
+      reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
@@ -901,7 +917,7 @@ Status FlashAttentionAndQuantizeKV(
 
   // 2. Run Float Flash Attention
   bool is_causal = parameters.is_unidirectional;
-  bool is_bf16 = std::is_same<CudaT, __nv_bfloat16>::value;
+  bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
 
   int local_window_size = parameters.local_window_size > 0 ? parameters.local_window_size - 1 : -1;
 
@@ -917,15 +933,15 @@ Status FlashAttentionAndQuantizeKV(
       local_window_size));
 
   if (parameters.k_quant_type != KVQuantizationType::NONE) {
-    ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, CudaU, float>(
-        stream, reinterpret_cast<CudaU*>(data.present_key), reinterpret_cast<const CudaT*>(k_final), data.k_scale,
+    ORT_RETURN_IF_ERROR((LaunchQuantizeKV<T, U, float>(
+        stream, reinterpret_cast<U*>(data.present_key), reinterpret_cast<const T*>(k_final), data.k_scale,
         nullptr, data.total_seq_lens, batch_size, kv_num_heads, sequence_length, parameters.seqlen_present_kv_cache,
         head_size, parameters.kv_cache_bit_width, parameters.k_quant_type, true)));
   }
 
   if (parameters.v_quant_type != KVQuantizationType::NONE) {
-    ORT_RETURN_IF_ERROR((LaunchQuantizeKV<CudaT, CudaU, float>(
-        stream, reinterpret_cast<CudaU*>(data.present_value), reinterpret_cast<const CudaT*>(v_final), data.v_scale,
+    ORT_RETURN_IF_ERROR((LaunchQuantizeKV<T, U, float>(
+        stream, reinterpret_cast<U*>(data.present_value), reinterpret_cast<const T*>(v_final), data.v_scale,
         nullptr, data.total_seq_lens, batch_size, kv_num_heads, sequence_length, parameters.seqlen_present_kv_cache,
         head_size, parameters.kv_cache_bit_width, parameters.v_quant_type, true)));
   }
@@ -935,13 +951,16 @@ Status FlashAttentionAndQuantizeKV(
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status EfficientAttention(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<CudaT, CudaU>& data,
+    GroupQueryAttentionData<T, U>& data,
     float scale) {
+  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
+
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -953,8 +972,8 @@ Status EfficientAttention(
 
   ORT_GQA_TRACE("EfficientAttention");
 
-  const CudaT* q_prep = nullptr;
-  ORT_RETURN_IF_ERROR((PrepareQKV<CudaT, CudaU>(stream, max_threads_per_block, parameters, data, q_prep)));
+  const T* q_prep = nullptr;
+  ORT_RETURN_IF_ERROR((PrepareQKV<T, U>(stream, max_threads_per_block, parameters, data, q_prep)));
 
   const void* query = reinterpret_cast<const void*>(q_prep);
   const void* key;
@@ -971,16 +990,16 @@ Status EfficientAttention(
     const float2* k_og = reinterpret_cast<const float2*>(data.present_key);
     const float2* v_og = reinterpret_cast<const float2*>(data.present_value);
 
-    ORT_RETURN_IF_ERROR(LaunchUngroup<CudaT>(parameters, k_buff, v_buff, k_og, v_og, present_sequence_length,
-                                             present_sequence_length, is_kv_bsnh, stream, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(LaunchUngroup<T>(parameters, k_buff, v_buff, k_og, v_og, present_sequence_length,
+                                         present_sequence_length, is_kv_bsnh, stream, max_threads_per_block));
     key = reinterpret_cast<const void*>(data.k);
     value = reinterpret_cast<const void*>(data.v);
   }
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
-  p.is_bf16 = std::is_same<CudaT, __nv_bfloat16>::value;
-  p.is_half = !p.is_bf16 && (sizeof(CudaT) == 2);
+  p.is_bf16 = std::is_same<T, __nv_bfloat16>::value;
+  p.is_half = !p.is_bf16 && (sizeof(T) == 2);
   p.batch_size = batch_size;
   p.num_heads = num_heads;
   p.sequence_length = sequence_length;
@@ -1000,7 +1019,7 @@ Status EfficientAttention(
   p.attn_bias = nullptr;
   p.is_kv_bsnh = is_kv_bsnh;
   p.output = data.output;
-  p.workspace = MemoryEfficientAttentionParams::need_workspace(p.v_head_size, sizeof(CudaT) == sizeof(float))
+  p.workspace = MemoryEfficientAttentionParams::need_workspace(p.v_head_size, sizeof(T) == sizeof(float))
                     ? data.fmha_buffer
                     : nullptr;
   p.stream = stream;
@@ -1015,13 +1034,13 @@ Status EfficientAttention(
 
 ////////// API Functions
 
-template <typename CudaT, typename CudaU>
+template <typename T, typename U>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& /*cublas*/,
     Stream* ort_stream,
     GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<CudaT, CudaU>& data) {
+    GroupQueryAttentionData<T, U>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
   if (data.use_xqa) {
@@ -1057,7 +1076,6 @@ Status QkvToContext(
 
 template struct GroupQueryAttentionData<half, half>;
 template struct GroupQueryAttentionData<__nv_bfloat16, __nv_bfloat16>;
-template struct GroupQueryAttentionData<BFloat16, BFloat16>;
 template struct GroupQueryAttentionData<half, int8_t>;
 
 template Status QkvToContext<half, half>(
@@ -1073,13 +1091,6 @@ template Status QkvToContext<__nv_bfloat16, __nv_bfloat16>(
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<__nv_bfloat16, __nv_bfloat16>& data);
-
-template Status QkvToContext<BFloat16, BFloat16>(
-    const cudaDeviceProp& device_prop,
-    cublasHandle_t& cublas,
-    Stream* ort_stream,
-    contrib::GroupQueryAttentionParameters& parameters,
-    GroupQueryAttentionData<BFloat16, BFloat16>& data);
 
 template Status QkvToContext<half, int8_t>(
     const cudaDeviceProp& device_prop,

@@ -32,7 +32,7 @@ namespace cuda {
 // 4. Writes the rotated Q back to global memory (unpacked_q) for the subsequent attention kernel.
 //
 // Template Parameters:
-// - T: The floating point type for query (half or BFloat16).
+// - T: The floating point type for query (half or __nv_bfloat16).
 // - U: The cache element type (T for no quant, int8_t for INT8, uint8_t for INT4, __nv_fp8_e4m3 for FP8).
 // - BIT_WIDTH: The bit width for KV cache quantization (16=none, 8=Int8/FP8, 4=Int4).
 // - MAX_HEAD_SIZE: Maximum supported head size, used for shared memory allocation.
@@ -291,7 +291,7 @@ Status DispatchUnpackRoPEAppendHeadSize(
 // Public entry point to launch the Unpack+RoPE+Append kernel.
 // Handles parameter validation, grid/block sizing, and type-based dispatching.
 // Template parameters:
-// - T: Query/Key/Value floating point type (half or BFloat16)
+// - T: Query/Key/Value floating point type (half or __nv_bfloat16)
 // - U: Cache element type (T for no quant, int8_t for INT8, uint8_t for INT4, __nv_fp8_e4m3 for FP8)
 template <typename T, typename U>
 Status LaunchUnpackRoPEAppend(
@@ -304,6 +304,9 @@ Status LaunchUnpackRoPEAppend(
     const int rotary_dim, const int64_t* position_ids, const bool interleaved,
     const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
     cudaStream_t stream, const int max_threads_per_block) {
+  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
+
   constexpr int elements_per_vector = sizeof(float4) / sizeof(T);
 
   if (head_size % elements_per_vector != 0) {
