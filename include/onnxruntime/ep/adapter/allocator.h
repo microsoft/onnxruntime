@@ -3,6 +3,10 @@
 
 #pragma once
 
+#if !defined(ORT_EP_API_ADAPTER_HEADER_INCLUDED)
+#error "This header should not be included directly. Include ep/_pch.h instead."
+#endif
+
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
