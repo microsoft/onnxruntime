@@ -122,7 +122,10 @@ function(AddTest)
   onnxruntime_add_include_to_target(${_UT_TARGET} date::date flatbuffers::flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
-    target_include_directories(${_UT_TARGET} PRIVATE ${CUDAToolkit_INCLUDE_DIRS} ${CUDNN_INCLUDE_DIR})
+    target_include_directories(${_UT_TARGET} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      target_include_directories(${_UT_TARGET} PRIVATE ${CUDNN_INCLUDE_DIR})
+    endif()
     if (onnxruntime_USE_NCCL)
       target_include_directories(${_UT_TARGET} PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
@@ -590,6 +593,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_runtime_path.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_version.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
           )
@@ -1791,7 +1795,10 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     list(APPEND custom_op_src_patterns
         "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu"
         "${TEST_SRC_DIR}/testdata/custom_op_library/cuda/cuda_ops.*")
-    list(APPEND custom_op_lib_include ${CUDAToolkit_INCLUDE_DIRS} ${CUDNN_INCLUDE_DIR})
+    list(APPEND custom_op_lib_include ${CUDAToolkit_INCLUDE_DIRS})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      list(APPEND custom_op_lib_include ${CUDNN_INCLUDE_DIR})
+    endif()
     if (HAS_QSPECTRE)
       list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /Qspectre>")
     endif()

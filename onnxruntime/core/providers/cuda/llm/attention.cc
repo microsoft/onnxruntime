@@ -480,8 +480,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     cublasHandle_t cublas = GetCublasHandle(context);
 
     return onnxruntime::contrib::cuda::QkvToContext<CudaT, CudaT>(
-        device_prop, cublas, context->GetComputeStream(), gqa_parameters,
-        gqa_data);
+        device_prop, cublas, context->GetComputeStream(), gqa_parameters, gqa_data);
   } else {  // MHA path (kv_num_heads == q_num_heads)
     typedef typename ToCudaType<T>::MappedType CudaT;
     contribop_parameters.batch_size = parameters.batch_size;
