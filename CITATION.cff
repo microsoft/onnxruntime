@@ -1,13 +1,15 @@
 cff-version: 1.2.0
-title: ONNX Runtime
-message: "Please use this information to cite ONNX Runtime in
+title: ONNX Runtime QNN
+message: "Please use this information to cite ONNX Runtime QNN in
   research or other publications."
 authors:
-  - name: ONNX Runtime developers
+  - name: ONNX Runtime QNN developers
 date-released: 2018-11-29
-url: "https://onnxruntime.ai"
-repository-code: "https://github.com/microsoft/onnxruntime"
+url: "https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html"
+repository-code: "https://github.com/onnxruntime/onnxruntime-qnn"
 license: "MIT"
 keywords:
   - deep learning
   - machine learning
+  - qnn
+  - qualcomm

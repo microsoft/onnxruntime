@@ -332,7 +332,7 @@ extras_require = {}
 setup(
     name=package_name,
     version=version_number,
-    description="ONNX Runtime is a runtime accelerator for Machine Learning models",
+    description="ONNX Runtime QNN is an onnxruntime execution provider optimized for Qualcomm AI accelerators",
     long_description=long_description,
     long_description_content_type="text/x-rst",
     author="Microsoft Corporation",
@@ -348,7 +348,7 @@ setup(
     install_requires=install_requires,
     extras_require=extras_require,
     python_requires=">=3.10",
-    keywords="onnx machine learning",
+    keywords="onnx machine learning qnn qualcomm",
     entry_points={
         "console_scripts": [
             "onnxruntime_test = onnxruntime.tools.onnxruntime_test:main",

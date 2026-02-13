@@ -2,11 +2,11 @@
 
 ## How to file issues and get help
 
-This project uses [GitHub Issues](https://github.com/Microsoft/onnxruntime/issues) to track bugs and feature requests. Please search the existing
+This project uses [GitHub Issues](https://github.com/onnxruntime/onnxruntime-qnn/issues) to track bugs and feature requests. Please search the existing
 issues before filing new issues to avoid duplicates.  For new issues, file your bug or
 feature request as a new Issue.
 
-For help and questions about using this project, please use [GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+For help and questions about using this project, please use [GitHub Discussions](https://github.com/onnxruntime/onnxruntime-qnn/discussions).
 
 ## Microsoft Support Policy
 

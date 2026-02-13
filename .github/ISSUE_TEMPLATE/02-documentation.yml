@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime QNN GitHub Discussions](https://github.com/onnxruntime/onnxruntime-qnn/discussions).
         Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known issue.
   - type: textarea
     id: doc-descript

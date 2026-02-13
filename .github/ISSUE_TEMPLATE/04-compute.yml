@@ -1,10 +1,12 @@
-name: General
-description: other issues not related to the above
+name: Compute
+description: issues related to ONNX Runtime QNN compute
+title: "[Compute] "
+labels: ["platform:compute"]
 body:
   - type: markdown
     attributes:
       value: |
-        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime QNN GitHub Discussions](https://github.com/onnxruntime/onnxruntime-qnn/discussions).
         Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known issue.
   - type: textarea
     id: issue-descript
@@ -33,16 +35,11 @@ body:
         # System information
         For each of the following items, provide the information listed to ensure that your request is addressed in a timely manner.
   - type: dropdown
-    id: platform
+    id: inf-plat
     attributes:
       label: Platform
       options:
         - Windows
-        - Linux
-        - Mac
-        - Android
-        - iOS
-        - Web Browser
         - Other / Unknown
     validations:
       required: true
@@ -55,13 +52,19 @@ body:
   - type: dropdown
     id: ort-installation
     attributes:
-      label: ONNX Runtime Installation
+      label: ONNX Runtime QNN Installation
       options:
         - Built from Source
         - Released Package
         - Other / Unknown
     validations:
       required: true
+  - type: input
+    id: compiler-version
+    attributes:
+      label: Compiler Version (if 'Built from Source')
+    validations:
+      required: false
   - type: input
     id: ort-version
     attributes:
@@ -92,39 +95,19 @@ body:
         - X64
         - X86
         - ARM64
-        - ARM32
-        - IBM Power
         - Other / Unknown
-    validations:
-      required: true
-  - type: dropdown
-    id: ep
-    attributes:
-      label: Execution Provider
-      options:
-        - Default CPU
-        - CoreML
-        - CUDA
-        - DirectML
-        - oneDNN
-        - OpenVINO
-        - TensorRT
-        - NNAPI
-        - ACL
-        - ArmNN
-        - MIGraphX
-        - Rockchip NPU
-        - SNPE
-        - TVM
-        - Vitis AI
-        - Other / Unknown
-      multiple: yes
     validations:
       required: true
   - type: input
-    id: ep-version
+    id: ort-qnn-version
     attributes:
-      label: Execution Provider Library Version
-      placeholder: ex. CUDA 12.2 or ROCm 5.1.1
+      label: ONNX Runtime QNN Version or Commit ID
     validations:
-      required: false
+      required: true
+  - type: input
+    id: qairt-version
+    attributes:
+      label: QAIRT version
+      placeholder: ex. 2.43.0
+    validations:
+      required: true

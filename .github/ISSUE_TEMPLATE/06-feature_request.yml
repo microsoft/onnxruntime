@@ -1,5 +1,5 @@
 name: Feature Request
-description: requests for new ONNX Runtime features
+description: requests for new ONNX Runtime QNN features
 title: "[Feature Request] "
 labels: ["feature request"]
 body:

@@ -1,12 +1,10 @@
-name: Web
-description: issues related to ONNX Runtime web
-title: "[Web] "
-labels: ["platform:web"]
+name: General
+description: other issues not related to the above
 body:
   - type: markdown
     attributes:
       value: |
-        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime QNN GitHub Discussions](https://github.com/onnxruntime/onnxruntime-qnn/discussions).
         Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known issue.
   - type: textarea
     id: issue-descript
@@ -26,7 +24,7 @@ body:
     id: urgency
     attributes:
       label: Urgency
-      placeholder: Is your issue urgent? If important use cases are blocked, there is a regression in ONNX Runtime functionality, or you have a strict project deadline, please elaborate here.
+      placeholder: Is your issue urgent? If important use cases are blocked, there is a regression in ONNX Runtime QNN functionality, or you have a strict project deadline, please elaborate here.
     validations:
       required: false
   - type: markdown
@@ -34,6 +32,23 @@ body:
       value: |
         # System information
         For each of the following items, provide the information listed to ensure that your request is addressed in a timely manner.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Linux
+        - Android
+        - Other / Unknown
+    validations:
+      required: true
+  - type: input
+    id: os-dist
+    attributes:
+      label: OS Version
+    validations:
+      required: true
   - type: dropdown
     id: ort-installation
     attributes:
@@ -51,15 +66,43 @@ body:
     validations:
       required: true
   - type: dropdown
-    id: ep
+    id: inf-api
     attributes:
-      label: Execution Provider
+      label: ONNX Runtime API
       options:
-        - "'webgl' (WebGL)"
-        - "'wasm'/'cpu' (WebAssembly CPU)"
-        - "'xnnpack' (WebAssembly XNNPACK)"
-        - "'webgpu' (WebGPU)"
+        - Python
+        - C++
+        - C#
+        - C
+        - Java
+        - JavaScript
+        - Obj-C
+        - WinML
         - Other / Unknown
-      multiple: yes
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options:
+        - X64
+        - X86
+        - ARM64
+        - ARM32
+        - Other / Unknown
+    validations:
+      required: true
+  - type: input
+    id: ort-qnn-version
+    attributes:
+      label: ONNX Runtime QNN Version or Commit ID
+    validations:
+      required: true
+  - type: input
+    id: qairt-version
+    attributes:
+      label: QAIRT version
+      placeholder: ex. 2.43.0
     validations:
       required: true

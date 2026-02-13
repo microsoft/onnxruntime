@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime QNN GitHub Discussions](https://github.com/onnxruntime/onnxruntime-qnn/discussions).
         Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known issue.
   - type: textarea
     id: issue-descript
@@ -26,7 +26,7 @@ body:
     id: urgency
     attributes:
       label: Urgency
-      placeholder: Is your issue urgent? If important use cases are blocked, there is a regression in ONNX Runtime functionality, or you have a strict project deadline, please elaborate here.
+      placeholder: Is your issue urgent? If important use cases are blocked, there is a regression in ONNX QNN Runtime functionality, or you have a strict project deadline, please elaborate here.
     validations:
       required: false
   - type: markdown
@@ -41,10 +41,7 @@ body:
       options:
         - Windows
         - Linux
-        - Mac
         - Android
-        - iOS
-        - Web Browser
         - Other / Unknown
     validations:
       required: true
@@ -95,41 +92,22 @@ body:
         - X86
         - ARM64
         - ARM32
-        - IBM Power
         - Other / Unknown
-    validations:
-      required: true
-  - type: dropdown
-    id: ep
-    attributes:
-      label: Execution Provider
-      options:
-        - Default CPU
-        - CoreML
-        - CUDA
-        - DirectML
-        - oneDNN
-        - OpenVINO
-        - TensorRT
-        - NNAPI
-        - ACL
-        - ArmNN
-        - MIGraphX
-        - Rockchip NPU
-        - SNPE
-        - TVM
-        - Vitis AI
-        - Other / Unknown
-      multiple: yes
     validations:
       required: true
   - type: input
-    id: ep-version
+    id: ort-qnn-version
     attributes:
-      label: Execution Provider Library Version
-      placeholder: ex. CUDA 12.2 or ROCm 5.1.1
+      label: ONNX Runtime QNN Version or Commit ID
     validations:
-      required: false
+      required: true
+  - type: input
+    id: qairt-version
+    attributes:
+      label: QAIRT version
+      placeholder: ex. 2.43.0
+    validations:
+      required: true
   - type: textarea
     id: model
     attributes:

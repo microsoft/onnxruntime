@@ -1,12 +1,12 @@
 name: Mobile
-description: issues related to ONNX Runtime mobile
+description: issues related to ONNX Runtime QNN mobile
 title: "[Mobile] "
 labels: ["platform:mobile"]
 body:
   - type: markdown
     attributes:
       value: |
-        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime QNN GitHub Discussions](https://github.com/onnxruntime/onnxruntime-qnn/discussions).
         Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known issue.
   - type: textarea
     id: issue-descript
@@ -40,10 +40,6 @@ body:
       label: Platform
       options:
         - Android
-        - iOS
-        - Xamarin
-        - MAUI
-        - React Native
         - Other / Unknown
     validations:
       required: true
@@ -56,7 +52,7 @@ body:
   - type: dropdown
     id: ort-installation
     attributes:
-      label: ONNX Runtime Installation
+      label: ONNX Runtime QNN Installation
       options:
         - Built from Source
         - Released Package
@@ -67,20 +63,6 @@ body:
     id: compiler-version
     attributes:
       label: Compiler Version (if 'Built from Source')
-    validations:
-      required: false
-  - type: dropdown
-    id: package-name
-    attributes:
-      label: Package Name (if 'Released Package')
-      options:
-        - onnxruntime-mobile
-        - onnxruntime-android
-        - onnxruntime-mobile-objc/onnxruntime-mobile-c
-        - onnxruntime-objc/onnxruntime-c
-        - Microsoft.ML.OnnxRuntime
-        - Microsoft.ML.OnnxRuntime.Managed
-        - onnxruntime-react-native
     validations:
       required: false
   - type: input
@@ -94,14 +76,15 @@ body:
     attributes:
       label: ONNX Runtime API
       options:
-        - C++/C
+        - Python
+        - C++
         - C#
-        - Java/Kotlin
+        - C
+        - Java
         - JavaScript
-        - Objective-C/Swift
+        - Obj-C
+        - WinML
         - Other / Unknown
-    validations:
-      required: true
   - type: dropdown
     id: arch
     attributes:
@@ -110,27 +93,19 @@ body:
         - X64
         - X86
         - ARM64
-        - ARM32
         - Other / Unknown
-    validations:
-      required: true
-  - type: dropdown
-    id: ep
-    attributes:
-      label: Execution Provider
-      options:
-        - Default CPU
-        - CoreML
-        - NNAPI
-        - SNPE
-        - Other / Unknown
-      multiple: yes
     validations:
       required: true
   - type: input
-    id: ep-version
+    id: ort-qnn-version
     attributes:
-      label: Execution Provider Library Version
-      placeholder: ex. CUDA 12.2 or ROCm 5.1.1
+      label: ONNX Runtime QNN Version or Commit ID
     validations:
-      required: false
+      required: true
+  - type: input
+    id: qairt-version
+    attributes:
+      label: QAIRT version
+      placeholder: ex. 2.43.0
+    validations:
+      required: true
