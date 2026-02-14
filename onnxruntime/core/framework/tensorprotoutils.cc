@@ -341,24 +341,46 @@ Status ParseWhiteListedPaths(const PathString& paths_str,
     if (p_str.empty()) return Status::OK();
     std::filesystem::path path(p_str);
     std::error_code ec;
-    // Validate: absolute, exists, not a symlink, and is a directory
     if (!path.is_absolute()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Whitelisted data path is not absolute: ", path.string());
     }
-    if (!std::filesystem::exists(path, ec) || ec) {
+    // canonical() resolves all symlinks and requires the path to exist.
+    // If it fails, the path either doesn't exist or can't be resolved.
+    auto canonical_path = std::filesystem::canonical(path, ec);
+    if (ec) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Whitelisted data path does not exist: ", path.string());
+                             "Whitelisted data path does not exist or cannot be resolved: ", path.string());
     }
-    if (std::filesystem::is_symlink(path, ec) || ec) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Whitelisted data path is a symlink: ", path.string());
+    // Walk each component of the canonical path and check for symlinks.
+    // We choose with approach because both canonical() and weakly_canonical() on Windows
+    // (MSVC's <filesystem> implementation) resolve symlinks for existing path components
+    // using the same underlying Win32 API (GetFinalPathNameByHandle).
+    // So comparing them always produces an equal result, making symlink detection impossible via comparison.
+    // We check the canonical path (not the original) so that normalization differences
+    // (trailing slashes, "..", ".") don't interfere, while still detecting symlinks
+    // that may exist along the resolved path.
+    {
+      auto normalized = path.lexically_normal();
+      std::filesystem::path accumulated;
+      for (const auto& component : normalized) {
+        accumulated /= component;
+        // Skip checking the root (e.g. "C:\" or "/") since is_symlink would fail or be meaningless.
+        if (accumulated == normalized.root_path()) {
+          continue;
+        }
+        if (std::filesystem::is_symlink(accumulated, ec)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Whitelisted data path contains a symlink: ", path.string());
+        }
+      }
     }
-    if (!std::filesystem::is_directory(path, ec) || ec) {
+
+    if (!std::filesystem::is_directory(canonical_path, ec) || ec) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Whitelisted data path is not a directory: ", path.string());
     }
-    result.push_back(path);
+    result.push_back(canonical_path);
     return Status::OK();
   };
 
@@ -375,7 +397,6 @@ Status ParseWhiteListedPaths(const PathString& paths_str,
   ORT_RETURN_IF_ERROR(process_path(paths_str.substr(start)));
 
   paths = std::move(result);
-
   return Status::OK();
 }
 
@@ -388,7 +409,7 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
     // Resolve and verify the path stays within model directory
     auto base_canonical = std::filesystem::weakly_canonical(base_dir);
     // If the symlink exists, it resolves to the target path;
-    // so if the symllink is outside the directory it would be caught here.
+    // so if the symlink is outside the directory it would be caught here.
     auto resolved = std::filesystem::weakly_canonical(base_dir / location);
     // Check that resolved path starts with base directory
     auto [base_end, resolved_it] = std::mismatch(

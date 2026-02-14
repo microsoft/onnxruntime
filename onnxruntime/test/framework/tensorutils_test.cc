@@ -596,6 +596,11 @@ class ParseWhiteListedPathsTest : public ::testing::Test {
     std::filesystem::create_directories(sub_dir_a_);
     std::filesystem::create_directories(sub_dir_b_);
 
+    // Canonicalize the paths so that tests can compare against what ParseWhiteListedPaths stores.
+    test_dir_ = std::filesystem::canonical(test_dir_);
+    sub_dir_a_ = std::filesystem::canonical(sub_dir_a_);
+    sub_dir_b_ = std::filesystem::canonical(sub_dir_b_);
+
     // Create a regular file (not a directory)
     regular_file_ = test_dir_ / "file.txt";
     std::ofstream{regular_file_};
@@ -710,7 +715,25 @@ TEST_F(ParseWhiteListedPathsTest, SymlinkDirectoryReturnsError) {
   InlinedVector<std::filesystem::path> paths;
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
       utils::ParseWhiteListedPaths(ToOrtPath(link_path), paths),
-      "symlink");
+      "contains a symlink");
+}
+
+TEST_F(ParseWhiteListedPathsTest, SymlinkInIntermediateComponentReturnsError) {
+  // Create: test_dir_/link_to_dir_a -> sub_dir_a_, then use test_dir_/link_to_dir_a/nested as the path.
+  // Even though the final target is a real directory, the path has a symlink component.
+  auto nested_dir = sub_dir_a_ / "nested";
+  std::filesystem::create_directories(nested_dir);
+  auto link_in_path = test_dir_ / "link_to_dir_a";
+  try {
+    std::filesystem::create_directory_symlink(sub_dir_a_, link_in_path);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: symlink creation not supported. " << e.what();
+  }
+  auto path_through_link = link_in_path / "nested";
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::ParseWhiteListedPaths(ToOrtPath(path_through_link), paths),
+      "contains a symlink");
 }
 
 TEST_F(ParseWhiteListedPathsTest, OnlySeparatorsReturnsEmptyVector) {
