@@ -413,3 +413,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetLoadCancellationFlag, _Inout_ OrtS
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWhiteListedDataFolders, _Inout_ OrtSessionOptions* options,
+                    _In_ const ORTCHAR_T* whitelisted_data_folders) {
+  API_IMPL_BEGIN
+  if (whitelisted_data_folders == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input whitelisted_data_folders is nullptr");
+  }
+  options->value.whitelisted_data_folders = whitelisted_data_folders;
+  return nullptr;
+  API_IMPL_END
+}

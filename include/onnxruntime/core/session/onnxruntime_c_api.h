@@ -7221,6 +7221,23 @@ struct OrtApi {
                   _Outptr_result_maybenull_ const int64_t** shape_data,
                   _Out_ size_t* shape_data_count);
 
+  /** \brief Set whitelisted data folders for external data loading.
+   *
+   * Sets a semicolon-separated list of absolute directory paths that are allowed as sources
+   * for external data. Each path must be an absolute path to an existing directory and must not
+   * be a symbolic link.
+   *
+   * \param[in] options Session options instance.
+   * \param[in] whitelisted_data_folders Semicolon-separated list of absolute directory paths, or
+   *            nullptr/empty string to clear the whitelist.
+   *
+   * \return nullptr on success, or an OrtStatus on failure.
+   *
+   * \since Version 1.24.
+   */
+  ORT_API2_STATUS(SessionOptionsSetWhiteListedDataFolders, _Inout_ OrtSessionOptions* options,
+                  _In_ const ORTCHAR_T* whitelisted_data_folders);
+
   /** \brief Enable profiling for this run
    *
    * \param[in] options

@@ -1305,6 +1305,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetLoadCancellationFlag(boo
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetWhiteListedDataFolders(const ORTCHAR_T* whitelisted_data_folders) {
+  ThrowOnError(GetApi().SessionOptionsSetWhiteListedDataFolders(this->p_, whitelisted_data_folders));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetLogId(const char* logid) {
   ThrowOnError(GetApi().SetSessionLogId(this->p_, logid));
   return *this;
