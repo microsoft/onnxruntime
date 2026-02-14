@@ -983,7 +983,7 @@ def generate_files(line_list, args):
     ):
         # Process props file
         if is_qnn_package:
-            source_props = os.path.join(
+            source_props_native = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
@@ -992,11 +992,25 @@ def generate_files(line_list, args):
                 "netstandard",
                 "props_qnn.xml",
             )
+            source_props_netstandard = source_props_native
         else:
-            source_props = os.path.join(
+            source_props_native = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "native", "props.xml"
+            )
+            source_props_netstandard = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"
             )
-        target_props = os.path.join(
+
+        target_props_native = os.path.join(
+            args.sources_path,
+            "csharp",
+            "src",
+            "Microsoft.ML.OnnxRuntime",
+            "targets",
+            "native",
+            args.package_name + ".props",
+        )
+        target_props_netstandard = os.path.join(
             args.sources_path,
             "csharp",
             "src",
@@ -1005,17 +1019,33 @@ def generate_files(line_list, args):
             "netstandard",
             args.package_name + ".props",
         )
-        copy_file(source_props, target_props)
-        files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\native" />')
+
+        copy_file(source_props_native, target_props_native)
+        copy_file(source_props_netstandard, target_props_netstandard)
+
+        files_list.append("<file src=" + '"' + target_props_native + '" target="' + build_dir + '\\native" />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.0"  />')
-            files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.1"  />')
+            files_list.append("<file src=" + '"' + target_props_netstandard + '" target="' + build_dir + '\\netstandard2.0"  />')
+            files_list.append("<file src=" + '"' + target_props_netstandard + '" target="' + build_dir + '\\netstandard2.1"  />')
 
         # Process targets file
-        source_targets = os.path.join(
+        source_targets_native = os.path.join(
+            args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "native", "targets.xml"
+        )
+        source_targets_netstandard = os.path.join(
             args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "targets.xml"
         )
-        target_targets = os.path.join(
+
+        target_targets_native = os.path.join(
+            args.sources_path,
+            "csharp",
+            "src",
+            "Microsoft.ML.OnnxRuntime",
+            "targets",
+            "native",
+            args.package_name + ".targets",
+        )
+        target_targets_netstandard = os.path.join(
             args.sources_path,
             "csharp",
             "src",
@@ -1024,11 +1054,14 @@ def generate_files(line_list, args):
             "netstandard",
             args.package_name + ".targets",
         )
-        copy_file(source_targets, target_targets)
-        files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\native"  />')
+
+        copy_file(source_targets_native, target_targets_native)
+        copy_file(source_targets_netstandard, target_targets_netstandard)
+
+        files_list.append("<file src=" + '"' + target_targets_native + '" target="' + build_dir + '\\native"  />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.0" />')
-            files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.1"  />')
+            files_list.append("<file src=" + '"' + target_targets_netstandard + '" target="' + build_dir + '\\netstandard2.0" />')
+            files_list.append("<file src=" + '"' + target_targets_netstandard + '" target="' + build_dir + '\\netstandard2.1"  />')
 
         # Process xamarin targets files
         if args.package_name == "Microsoft.ML.OnnxRuntime":

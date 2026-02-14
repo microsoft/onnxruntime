@@ -1,16 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Target Name="Microsoft_ML_OnnxRuntime_CheckPrerequisites" BeforeTargets="BeforeBuild">
-    <!--
-    Special case .NET Core portable applications.  When building a portable .NET Core app,
-    the PlatformTarget is empty, and you don't know until runtime (i.e. which dotnet.exe)
-    what processor architecture will be used.
-  -->
-    <Error Condition="('$(PlatformTarget)' != 'x64' AND '$(PlatformTarget)' != 'arm32' AND '$(PlatformTarget)' != 'arm64' AND '$(PlatformTarget)' != 'x86' AND '$(PlatformTarget)' != 'AnyCPU') AND
-                      ('$(OutputType)' == 'Exe' OR '$(OutputType)'=='WinExe') AND
-                      !('$(TargetFrameworkIdentifier)' == '.NETCoreApp' AND '$(PlatformTarget)' == '') AND
-                       $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'ios' AND
-                      '$(SuppressOnnxRuntimePlatformCompatibilityError)' != 'true'"
-           Text="Microsoft.ML.OnnxRuntime only supports the AnyCPU, x64, arm32, arm64 and x86 platforms at this time."/>
+  <!-- ========================================================= -->
+  <!-- 1. Block unsupported x86 -->
+  <!-- ========================================================= -->
+<Target Name="OnnxRuntime_BlockUnsupportedPlatform"
+        BeforeTargets="Build"
+        Condition="
+          '$(SuppressOnnxRuntimePlatformCompatibilityError)' != 'true' AND
+          $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'ios' AND
+          $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android' AND
+          '$(PlatformTarget)' == 'x86'">
+
+  <Error Text="Microsoft.ML.OnnxRuntime does not support x86. Please use x64 or ARM64." />
+
+</Target>
+
+
+  <!-- ========================================================= -->
+  <!-- 2. Legacy .NET Framework fallback copy logic -->
+  <!--     (ONLY for non-SDK projects, which only run on Windows.) -->
+  <!-- ========================================================= -->
+  <PropertyGroup Condition="'$(UsingMicrosoftNETSdk)' != 'true' AND '$(OS)' == 'Windows_NT'">
+    <!-- Normalize architecture. Default to x64 for AnyCPU/unspecified as we don't support x86. -->
+    <_OrtArch>x64</_OrtArch>
+    <_OrtArch Condition="'$(PlatformTarget)' == 'ARM64' OR '$(Platform)' == 'ARM64'">arm64</_OrtArch>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UsingMicrosoftNETSdk)' != 'true' AND '$(_OrtArch)' != '' AND '$(OS)' == 'Windows_NT'">
+    <_OrtNativeFiles Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-$(_OrtArch)\native\*.dll" />
+  </ItemGroup>
+
+  <Target Name="OnnxRuntime_CopyNativeFallback"
+          AfterTargets="Build"
+          Condition="'$(UsingMicrosoftNETSdk)' != 'true' AND '@(_OrtNativeFiles)' != ''">
+
+    <Message Importance="Low"
+             Text="Copying ONNX Runtime native binaries for legacy project." />
+
+    <Copy SourceFiles="@(_OrtNativeFiles)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
   </Target>
 </Project>
