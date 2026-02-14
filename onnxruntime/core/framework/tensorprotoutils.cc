@@ -328,6 +328,57 @@ Status TensorProtoWithExternalDataToTensorProto(
   return Status::OK();
 }
 
+Status ParseWhiteListedPaths(const PathString& paths_str,
+                             /*out*/ InlinedVector<std::filesystem::path>& paths) {
+  if (paths_str.empty()) {
+    paths.clear();
+    return Status::OK();
+  }
+
+  InlinedVector<std::filesystem::path> result;
+
+  auto process_path = [&](const PathString& p_str) -> Status {
+    if (p_str.empty()) return Status::OK();
+    std::filesystem::path path(p_str);
+    std::error_code ec;
+    // Validate: absolute, exists, not a symlink, and is a directory
+    if (!path.is_absolute()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Whitelisted data path is not absolute: ", path.string());
+    }
+    if (!std::filesystem::exists(path, ec) || ec) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Whitelisted data path does not exist: ", path.string());
+    }
+    if (std::filesystem::is_symlink(path, ec) || ec) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Whitelisted data path is a symlink: ", path.string());
+    }
+    if (!std::filesystem::is_directory(path, ec) || ec) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Whitelisted data path is not a directory: ", path.string());
+    }
+    result.push_back(path);
+    return Status::OK();
+  };
+
+  constexpr PathChar kSemiColonSep = ORT_TSTR(';');
+
+  size_t start = 0;
+  size_t end = paths_str.find(kSemiColonSep);
+
+  while (end != PathString::npos) {
+    ORT_RETURN_IF_ERROR(process_path(paths_str.substr(start, end - start)));
+    start = end + 1;
+    end = paths_str.find(kSemiColonSep, start);
+  }
+  ORT_RETURN_IF_ERROR(process_path(paths_str.substr(start)));
+
+  paths = std::move(result);
+
+  return Status::OK();
+}
+
 Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
                                 const std::filesystem::path& location) {
   // Reject absolute paths

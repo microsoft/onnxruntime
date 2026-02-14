@@ -526,6 +526,17 @@ Status TensorProtoWithExternalDataToTensorProto(
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
 /// <summary>
+/// This function parses the input string which is expected to be a list of paths separated by ';'
+/// and returns a vector of std::filesystem::paths. The function also validates that each path is an absolute path of a
+/// folder, it is not a symlink and actually exists on the file system.
+/// </summary>
+/// <param name="paths_str"></param>
+/// <param name="paths"></param>
+/// <returns>Status</returns>
+Status ParseWhiteListedPaths(const PathString& paths_str,
+                             /*out*/ InlinedVector<std::filesystem::path>& paths);
+
+/// <summary>
 /// The functions will make sure the 'location' specified in the external data is under the 'base_dir'.
 /// If the `base_dir` is empty, the function only ensures that `location` is not an absolute path.
 /// </summary>
