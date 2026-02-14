@@ -12,6 +12,7 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/rotary_common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 using namespace onnxruntime::cuda;
@@ -304,8 +305,8 @@ Status LaunchUnpackRoPEAppend(
     const int rotary_dim, const int64_t* position_ids, const bool interleaved,
     const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
     cudaStream_t stream, const int max_threads_per_block) {
-  static_assert(std::is_same<T, typename OrtToCudaType<T>::type>::value);
-  static_assert(std::is_same<U, typename OrtToCudaType<U>::type>::value);
+  static_assert(std::is_same<T, typename onnxruntime::cuda::OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename onnxruntime::cuda::OrtToCudaType<U>::type>::value);
 
   constexpr int elements_per_vector = sizeof(float4) / sizeof(T);
 

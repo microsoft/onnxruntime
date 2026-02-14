@@ -50,7 +50,6 @@ limitations under the License.
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_type_conversion.h"
-
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
