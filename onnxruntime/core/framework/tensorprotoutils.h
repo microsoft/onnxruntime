@@ -539,14 +539,17 @@ Status ParseWhiteListedPaths(const PathString& paths_str,
 /// <summary>
 /// The functions will make sure the 'location' specified in the external data is under the 'base_dir'.
 /// If the `base_dir` is empty, the function only ensures that `location` is not an absolute path.
+/// If validation fails for base_dir, the function will check against whitelisted_external_folders.
 /// </summary>
 /// <param name="base_dir">model location directory</param>
 /// <param name="location">location is a string retrieved from TensorProto external data that is not
 ///                        an in-memory tag</param>
+/// <param name="whitelisted_external_folders">additional folders where external data is allowed</param>
 /// <returns>The function will fail if the resolved full path is not under the model directory
-///          or one of the subdirectories</returns>
+///          or one of the whitelisted folders</returns>
 Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location);
+                                const std::filesystem::path& location,
+                                gsl::span<const std::filesystem::path> whitelisted_external_folders = {});
 
 #endif  // !defined(SHARED_PROVIDER)
 

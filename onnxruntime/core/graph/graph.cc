@@ -3737,7 +3737,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
   return ForThisAndAllSubgraphs(all_subgraphs, finalize_func);
 }
 
-Status Graph::ConvertInitializersIntoOrtValues() {
+Status Graph::ConvertInitializersIntoOrtValues(gsl::span<const std::filesystem::path> whitelisted_external_paths) {
   std::vector<Graph*> all_subgraphs;
   FindAllSubgraphs(all_subgraphs);
 
@@ -3771,7 +3771,7 @@ Status Graph::ConvertInitializersIntoOrtValues() {
           std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
           ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
           const auto& location = external_data_info->GetRelPath();
-          auto st = utils::ValidateExternalDataPath(model_dir, location);
+          auto st = utils::ValidateExternalDataPath(model_dir, location, whitelisted_external_paths);
           if (!st.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                    "External data path validation failed for initializer: ", tensor_proto.name(),

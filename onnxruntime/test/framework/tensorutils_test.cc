@@ -511,18 +511,22 @@ class PathValidationTest : public ::testing::Test {
     // Create a temporary directory for the tests.
     base_dir_ = std::filesystem::temp_directory_path() / "PathValidationTest";
     outside_dir_ = std::filesystem::temp_directory_path() / "outside";
+    whitelisted_dir_ = std::filesystem::temp_directory_path() / "whitelisted";
     std::filesystem::create_directories(base_dir_);
     std::filesystem::create_directories(outside_dir_);
+    std::filesystem::create_directories(whitelisted_dir_);
   }
 
   void TearDown() override {
     // Clean up the temporary directory.
     std::filesystem::remove_all(base_dir_);
     std::filesystem::remove_all(outside_dir_);
+    std::filesystem::remove_all(whitelisted_dir_);
   }
 
   std::filesystem::path base_dir_;
   std::filesystem::path outside_dir_;
+  std::filesystem::path whitelisted_dir_;
 };
 
 // Test cases for ValidateExternalDataPath.
@@ -584,6 +588,85 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
     GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: " << e.what();
   }
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathWithWhitelistedFolder) {
+  // Path is valid under the whitelisted folder directly.
+  std::vector<std::filesystem::path> whitelist = {outside_dir_};
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(outside_dir_, "data.bin", whitelist));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathEscapesBaseButMatchesWhitelist) {
+  std::vector<std::filesystem::path> whitelist = {whitelisted_dir_};
+  // "data.bin" is valid under base_dir_, no need for whitelist
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin", whitelist));
+
+  // Create a subdirectory of whitelisted_dir_ and use that as the whitelisted folder.
+  auto whitelisted_sub = whitelisted_dir_ / "sub";
+  std::filesystem::create_directories(whitelisted_sub);
+  std::vector<std::filesystem::path> whitelist2 = {whitelisted_sub};
+
+  // "../data.bin" escapes base_dir_ and also escapes whitelisted_sub
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin", whitelist2).IsOK());
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathWhitelistSavesEscapingPath) {
+  // Location "../outside/data.bin" escapes base_dir_ but resolves under outside_dir_.
+  auto relative_to_outside = std::filesystem::path("..") / "outside" / "data.bin";
+  std::vector<std::filesystem::path> whitelist = {outside_dir_};
+
+  // Without whitelist, it should fail.
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, relative_to_outside).IsOK());
+
+  // With whitelist containing outside_dir_, it should succeed because
+  // outside_dir_ / "../outside/data.bin" resolves under outside_dir_.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, relative_to_outside, whitelist));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathWhitelistDoesNotMatchEither) {
+  // Location escapes both base_dir and all whitelisted folders.
+  auto unrelated_dir = std::filesystem::temp_directory_path() / "unrelated_PathValidationTest";
+  std::filesystem::create_directories(unrelated_dir);
+  auto cleanup = [&]() { std::filesystem::remove_all(unrelated_dir); };
+
+  std::vector<std::filesystem::path> whitelist = {whitelisted_dir_};
+  auto escaping_location = std::filesystem::path("..") / "unrelated_PathValidationTest" / "data.bin";
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, escaping_location, whitelist).IsOK());
+
+  cleanup();
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyWhitelist) {
+  // Empty whitelist should behave the same as no whitelist.
+  std::vector<std::filesystem::path> empty_whitelist;
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin", empty_whitelist));
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin", empty_whitelist).IsOK());
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathMultipleWhitelistedFolders) {
+  // First whitelisted folder doesn't match, second one does.
+  auto another_dir = std::filesystem::temp_directory_path() / "another_PathValidationTest";
+  std::filesystem::create_directories(another_dir);
+  auto cleanup = [&]() { std::filesystem::remove_all(another_dir); };
+
+  auto relative_to_outside = std::filesystem::path("..") / "outside" / "data.bin";
+  std::vector<std::filesystem::path> whitelist = {another_dir, outside_dir_};
+
+  // Escapes base_dir_ but outside_dir_ (second whitelist entry) should match.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, relative_to_outside, whitelist));
+
+  cleanup();
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathAbsoluteLocationRejectsEvenWithWhitelist) {
+  // Absolute paths are always rejected, regardless of whitelist.
+  std::vector<std::filesystem::path> whitelist = {outside_dir_};
+#ifdef _WIN32
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "C:\\data.bin", whitelist).IsOK());
+#else
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "/data.bin", whitelist).IsOK());
+#endif
 }
 
 // Test fixture for ParseWhiteListedPaths tests.
@@ -773,5 +856,6 @@ TEST_F(ParseWhiteListedPathsTest, OutParamUnchangedOnError) {
   ASSERT_EQ(paths.size(), 1u);
   EXPECT_EQ(paths[0], sub_dir_a_);
 }
+
 }  // namespace test
 }  // namespace onnxruntime

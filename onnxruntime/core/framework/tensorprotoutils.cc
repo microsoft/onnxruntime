@@ -401,23 +401,49 @@ Status ParseWhiteListedPaths(const PathString& paths_str,
 }
 
 Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location) {
+                                const std::filesystem::path& location,
+                                gsl::span<const std::filesystem::path> whitelisted_external_folders) {
   // Reject absolute paths
   ORT_RETURN_IF(location.is_absolute(),
                 "Absolute paths not allowed for external data location");
-  if (!base_dir.empty()) {
-    // Resolve and verify the path stays within model directory
-    auto base_canonical = std::filesystem::weakly_canonical(base_dir);
-    // If the symlink exists, it resolves to the target path;
-    // so if the symlink is outside the directory it would be caught here.
-    auto resolved = std::filesystem::weakly_canonical(base_dir / location);
-    // Check that resolved path starts with base directory
+
+  auto validate_location_under_dir = [&location](const std::filesystem::path& dir) -> bool {
+    if (dir.empty()) {
+      return false;
+    }
+    auto base_canonical = std::filesystem::weakly_canonical(dir);
+    auto resolved = std::filesystem::weakly_canonical(dir / location);
     auto [base_end, resolved_it] = std::mismatch(
         base_canonical.begin(), base_canonical.end(),
         resolved.begin(), resolved.end());
-    ORT_RETURN_IF(base_end != base_canonical.end(),
-                  "External data path: ", location, " escapes model directory: ", base_dir);
+    return base_end == base_canonical.end();
+  };
+
+  if (!base_dir.empty()) {
+    if (validate_location_under_dir(base_dir)) {
+      return Status::OK();
+    }
   }
+
+  // base_dir validation failed or base_dir is empty, try whitelisted folders
+  if (!whitelisted_external_folders.empty()) {
+    for (const auto& folder : whitelisted_external_folders) {
+      if (validate_location_under_dir(folder)) {
+        return Status::OK();
+      }
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "External data path: ", location,
+                           " is not under any allowed directory");
+  }
+
+  // No whitelisted folders supplied
+  if (!base_dir.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "External data path: ", location, " escapes model directory: ", base_dir);
+  }
+
   return Status::OK();
 }
 
