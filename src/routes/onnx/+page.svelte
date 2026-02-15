@@ -59,11 +59,6 @@
 				<a href="https://aka.ms/onnx/operators" class="btn btn-primary">onnx/operators</a>
 				ONNX Operators
 			</div>
-
-			<div class="p-3">
-				<a href="https://aka.ms/onnx/modeltypes" class="btn btn-primary">onnx/modeltypes</a>
-				Model classifications (ADO)
-			</div>
 		</div>
 	</section>
 
