@@ -745,6 +745,24 @@ void WindowsTelemetry::LogRunStart(uint32_t session_id, uint64_t run_id) const {
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
+void WindowsTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                                        const std::string& lib_path) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "RegisterEpLibraryWithLibPath",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingString(registration_name.c_str(), "registrationName"),
+                    TraceLoggingString(lib_path.c_str(), "libPath"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
 void WindowsTelemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;

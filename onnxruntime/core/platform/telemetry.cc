@@ -177,6 +177,12 @@ void Telemetry::LogRunStart(uint32_t session_id, uint64_t run_id) const {
   ORT_UNUSED_PARAMETER(run_id);
 }
 
+void Telemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                                 const std::string& lib_path) const {
+  ORT_UNUSED_PARAMETER(registration_name);
+  ORT_UNUSED_PARAMETER(lib_path);
+}
+
 void Telemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
   ORT_UNUSED_PARAMETER(registration_name);
 }

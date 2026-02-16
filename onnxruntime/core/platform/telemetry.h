@@ -110,6 +110,9 @@ class Telemetry {
 
   virtual void LogRunStart(uint32_t session_id, uint64_t run_id) const;
 
+  virtual void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                                const std::string& lib_path) const;
+
   virtual void LogRegisterEpLibraryStart(const std::string& registration_name) const;
 
   virtual void LogRegisterEpLibraryEnd(const std::string& registration_name,
