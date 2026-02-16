@@ -727,6 +727,38 @@ TYPED_TEST(GridSampleTest, test_grid_sample_20_5D_bilinear_zeros_no_align_corner
   RunTests(test, GetExecutionProviders(20));
 }
 
+TYPED_TEST(GridSampleTest, test_grid_sample_20_4D_linear_zeros_mixed_bounds) {
+  // Crafts grid points that mix fully in-bounds sampling with cases where either the right, bottom,
+  // or both neighbors fall outside the source image so zero padding must be applied. This ensures
+  // the optimized bilinear fast path matches the generic implementation for boundary handling.
+  OpTester test("GridSample", 20);
+  std::string mode = "linear";
+  std::string padding_mode = "zeros";
+  int64_t align_corners = 0;
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(2.0f), TypeParam(3.0f), TypeParam(4.0f)};
+  std::initializer_list<int64_t> Grid_shape{1, 2, 2, 2};
+  // (nx, ny) pairs: center (in-bounds), right edge (x out), bottom edge (y out), corner (both out)
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f),   // center (all neighbors in bounds)
+      TypeParam(0.9f), TypeParam(0.0f),   // near right edge (right neighbors out of bounds)
+      TypeParam(0.0f), TypeParam(0.9f),   // near bottom edge (bottom neighbors out)
+      TypeParam(0.9f), TypeParam(0.9f)};  // near bottom-right corner (both right and bottom neighbors out)
+  std::initializer_list<int64_t> Y_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> Y_data{
+      TypeParam(2.5f),    // all neighbors in bounds
+      TypeParam(1.8f),    // right neighbors partially out-of-bounds
+      TypeParam(2.1f),    // bottom neighbors partially out-of-bounds
+      TypeParam(1.44f)};  // both right and bottom neighbors out-of-bounds
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddAttribute("mode", mode);
+  test.AddAttribute("padding_mode", padding_mode);
+  test.AddAttribute("align_corners", align_corners);
+  test.AddOutput<TypeParam>("Y", Y_shape, Y_data);
+  RunTests(test, GetExecutionProviders(20));
+}
+
 TYPED_TEST(GridSampleTest, test_grid_sample_20_4D_bilinear_border_align_corners) {
   OpTester test("GridSample", 20);
   std::string mode = "linear";
