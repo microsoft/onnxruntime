@@ -3034,10 +3034,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
   const Env& env = Env::Default();
 
-  // Assign a unique run_id for telemetry correlation
-  const uint64_t run_id = run_id_counter_.fetch_add(1);
-
-  // Determine whether to emit Run telemetry (LogRunStart + LogRuntimePerf pair)
+  // Determine whether to emit Run telemetry
   bool emit_run_telemetry = false;
   {
     std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
@@ -3047,7 +3044,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   if (emit_run_telemetry) {
-    env.GetTelemetryProvider().LogRunStart(session_id_, run_id);
+    env.GetTelemetryProvider().LogRunStart(session_id_);
   }
 
   int graph_annotation_id = 0;
@@ -3245,7 +3242,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
     telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
     telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-    // Emit RuntimePerf paired with the LogRunStart that fired at entry
+    // Emit RuntimePerf
     if (emit_run_telemetry) {
       env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
                                                 telemetry_.total_run_duration_since_last_,

@@ -982,8 +982,6 @@ class InferenceSession {
     long long runtime_perf_interval_ = kRuntimePerfInitialInterval;
   } telemetry_;
 
-  std::atomic<uint64_t> run_id_counter_{0};  // monotonically increasing run id for correlation
-
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT

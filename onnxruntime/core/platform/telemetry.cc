@@ -172,9 +172,8 @@ void Telemetry::LogSessionCreationEnd(uint32_t session_id,
   ORT_UNUSED_PARAMETER(status);
 }
 
-void Telemetry::LogRunStart(uint32_t session_id, uint64_t run_id) const {
+void Telemetry::LogRunStart(uint32_t session_id) const {
   ORT_UNUSED_PARAMETER(session_id);
-  ORT_UNUSED_PARAMETER(run_id);
 }
 
 void Telemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,

@@ -550,7 +550,6 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
@@ -728,7 +727,7 @@ void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
-void WindowsTelemetry::LogRunStart(uint32_t session_id, uint64_t run_id) const {
+void WindowsTelemetry::LogRunStart(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -741,7 +740,6 @@ void WindowsTelemetry::LogRunStart(uint32_t session_id, uint64_t run_id) const {
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingUInt64(run_id, "runId"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 

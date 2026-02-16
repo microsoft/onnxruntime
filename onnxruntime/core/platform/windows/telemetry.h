@@ -101,7 +101,7 @@ class WindowsTelemetry : public Telemetry {
   void LogSessionCreationEnd(uint32_t session_id,
                            const common::Status& status) const override;
 
-  void LogRunStart(uint32_t session_id, uint64_t run_id) const override;
+  void LogRunStart(uint32_t session_id) const override;
 
   void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                        const std::string& lib_path) const override;
