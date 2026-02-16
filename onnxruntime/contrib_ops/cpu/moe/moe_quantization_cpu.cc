@@ -70,7 +70,7 @@ bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
     out_qtype = BlkQ4Sym64;
   } else if (block_size == 128) {
     out_qtype = BlkQ4Sym128;
-  } else if (block_size == 0) {
+  } else if (block_size == 0 || block_size == 32) {
     out_qtype = BlkQ4Sym;
   } else {
     return false;
@@ -85,7 +85,7 @@ bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
 namespace onnxruntime {
 namespace contrib {
 
-constexpr char* kUseMlasQ4GemmMoe = "ORT_USE_MLAS_Q4_GEMM_MOE";
+constexpr const char* kUseMlasQ4GemmMoe = "ORT_USE_MLAS_Q4_GEMM_MOE";
 
 template <typename TScale>
 void DequantizeBlockWithMlas(const uint8_t* quantized_data,
@@ -433,7 +433,8 @@ Status BuildDirectQ4PackedBCache(const uint8_t* prepacked_weights,
                                  int64_t block_size,
                                  const gsl::span<const int64_t>& scales_dims,
                                  MLAS_BLK_QUANT_TYPE qtype,
-                                 std::vector<std::vector<uint8_t>>& packed_b_by_expert) {
+                                 AllocatorPtr allocator,
+                                 IAllocatorUniquePtr<void>& packed_b) {
   const size_t packed_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols));
   if (packed_size == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to compute MLAS Q4 packed size for cache");
@@ -442,9 +443,10 @@ Status BuildDirectQ4PackedBCache(const uint8_t* prepacked_weights,
   const bool is_block_wise = (scales_dims.size() == 3 && scales_dims[2] > 1);
   const int64_t scales_expert_stride = is_block_wise ? (rows * scales_dims[2]) : rows;
   const size_t prepacked_expert_stride = static_cast<size_t>(rows * cols);
+  const size_t total_packed_size = packed_size * static_cast<size_t>(num_experts);
 
-  packed_b_by_expert.clear();
-  packed_b_by_expert.resize(static_cast<size_t>(num_experts));
+  packed_b = IAllocator::MakeUniquePtr<void>(allocator, total_packed_size, true);
+  uint8_t* packed_b_ptr = static_cast<uint8_t*>(packed_b.get());
 
   std::vector<float> dequantized_transposed(static_cast<size_t>(rows * cols));
   for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
@@ -454,9 +456,7 @@ Status BuildDirectQ4PackedBCache(const uint8_t* prepacked_weights,
     DequantizePrePacked(expert_prepacked, expert_scales, nullptr, block_size, rows, cols,
                         dequantized_transposed.data(), scales_dims);
 
-    auto& packed_b = packed_b_by_expert[static_cast<size_t>(expert_idx)];
-    packed_b.resize(packed_size);
-    MlasQ4GemmPackB(qtype, packed_b.data(), dequantized_transposed.data(),
+    MlasQ4GemmPackB(qtype, packed_b_ptr + expert_idx * packed_size, dequantized_transposed.data(),
                     static_cast<size_t>(rows), static_cast<size_t>(cols), static_cast<size_t>(rows));
   }
 
@@ -469,7 +469,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
-  // If scales are prepacked, they are constant initializers. This enables safe shared cache usage.
+  // If scales are prepacked, they are constant initializers.
   if (input_idx == 3) {
     has_prepacked_fc1_scales_ = true;
     return Status::OK();
@@ -515,6 +515,48 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
       prepacked_weights->buffers_.push_back(std::move(packed_buffer));
       prepacked_weights->buffer_sizes_.push_back(packed_size);
       is_packed = true;
+
+      // Try build MLAS Q4 cache if scales are available
+      if (use_mlas_q4_gemm_) {
+        const Tensor* scales_tensor = nullptr;
+        MLAS_BLK_QUANT_TYPE qtype = BlkQ4Sym;
+        int scales_idx = -1;
+        int zp_idx = -1;
+
+        if (input_idx == 2) {  // FC1
+          scales_idx = 3;
+          zp_idx = 11;
+          CanUseMlasQ4Gemm(expert_weight_bits_, block_size_, rows, cols, qtype);
+        } else if (input_idx == 5) {  // FC2
+          scales_idx = 6;
+          zp_idx = 12;
+          CanUseMlasQ4Gemm(expert_weight_bits_, block_size_, rows, cols, qtype);
+        }
+        // FC3 (8) not supported for now
+
+        if (scales_idx != -1 &&
+            !Info().node().InputDefs()[zp_idx]->Exists() &&
+            Info().TryGetConstantInput(scales_idx, &scales_tensor) &&
+            scales_tensor != nullptr &&
+            CanUseMlasQ4Gemm(expert_weight_bits_, block_size_ > 0 ? block_size_ : 0, rows, cols, qtype)) {
+          IAllocatorUniquePtr<void> cache_buffer;
+          const auto& scales_dims = scales_tensor->Shape().GetDims();
+          const T* scales_data = scales_tensor->Data<T>();
+          // Use the simple packed buffer we just created (buffer 0) as input
+          const uint8_t* simple_packed = dst_base;
+
+          if (BuildDirectQ4PackedBCache(simple_packed, scales_data, num_experts, rows, cols,
+                                        block_size_ > 0 ? block_size_ : 0, scales_dims, qtype,
+                                        alloc, cache_buffer)
+                  .IsOK()) {
+            // Store the size so we can verify later? Container holds size.
+            // We push it as a SECOND buffer.
+            size_t cache_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols)) * static_cast<size_t>(num_experts);
+            prepacked_weights->buffers_.push_back(std::move(cache_buffer));
+            prepacked_weights->buffer_sizes_.push_back(cache_size);
+          }
+        }
+      }
     }
   }
 
@@ -533,9 +575,15 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
 
   if (input_idx == 2 && !prepacked_buffers.empty()) {
     packed_fc1_ = std::move(prepacked_buffers[0]);
+    if (prepacked_buffers.size() > 1) {
+      packed_fc1_mlas_cache_ = std::move(prepacked_buffers[1]);
+    }
     used_shared_buffers = true;
   } else if (input_idx == 5 && !prepacked_buffers.empty()) {
     packed_fc2_ = std::move(prepacked_buffers[0]);
+    if (prepacked_buffers.size() > 1) {
+      packed_fc2_mlas_cache_ = std::move(prepacked_buffers[1]);
+    }
     used_shared_buffers = true;
   } else if (input_idx == 8 && !prepacked_buffers.empty()) {
     packed_fc3_ = std::move(prepacked_buffers[0]);
@@ -559,7 +607,7 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
   }
 
-  use_mlas_q4_gemm_ = ParseEnvironmentVariableWithDefault<bool>(kUseMlasQ4GemmMoe, true);
+  use_mlas_q4_gemm_ = ParseEnvironmentVariableWithDefault<bool>(kUseMlasQ4GemmMoe, false);
 }
 
 template <typename T>
@@ -788,61 +836,20 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     fc2_zp_expert_stride = (hidden_size + zp_pack_size - 1) / zp_pack_size;
   }
 
-  const std::vector<std::vector<uint8_t>>* fc1_direct_q4_cache = nullptr;
-  const std::vector<std::vector<uint8_t>>* fc2_direct_q4_cache = nullptr;
   MLAS_BLK_QUANT_TYPE fc1_direct_qtype = BlkQ4Sym;
   MLAS_BLK_QUANT_TYPE fc2_direct_qtype = BlkQ4Sym;
 
-  if (use_mlas_q4_gemm_ && has_prepacked_fc1_scales_ && packed_fc1_ != nullptr && fc1_zp_data == nullptr &&
-      CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
-                       fc1_out_features, hidden_size, fc1_direct_qtype)) {
-    std::lock_guard<std::mutex> guard(direct_q4_cache_mu_);
-    auto& cache = fc1_direct_q4_cache_;
-    if (cache.packed_b_by_expert.empty() ||
-        cache.scales_data_ptr != static_cast<const void*>(fc1_scales_data) ||
-        cache.rows != fc1_out_features || cache.cols != hidden_size ||
-        cache.num_experts != num_experts || cache.qtype != fc1_direct_qtype) {
-      std::vector<std::vector<uint8_t>> rebuilt_cache;
-      ORT_RETURN_IF_ERROR(BuildDirectQ4PackedBCache(
-          static_cast<const uint8_t*>(packed_fc1_.get()), fc1_scales_data,
-          num_experts, fc1_out_features, hidden_size,
-          is_fc1_block_wise ? block_size_ : 0,
-          fc1_scales_dims, fc1_direct_qtype, rebuilt_cache));
-
-      cache.scales_data_ptr = static_cast<const void*>(fc1_scales_data);
-      cache.rows = fc1_out_features;
-      cache.cols = hidden_size;
-      cache.num_experts = num_experts;
-      cache.qtype = fc1_direct_qtype;
-      cache.packed_b_by_expert = std::move(rebuilt_cache);
-    }
-    fc1_direct_q4_cache = &cache.packed_b_by_expert;
+  // Use pre-packed MLAS cache if available
+  const void* fc1_direct_q4_cache_ptr = nullptr;
+  if (use_mlas_q4_gemm_ && packed_fc1_mlas_cache_ && fc1_zp_data == nullptr &&
+      CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0, fc1_out_features, hidden_size, fc1_direct_qtype)) {
+    fc1_direct_q4_cache_ptr = packed_fc1_mlas_cache_.get();
   }
 
-  if (use_mlas_q4_gemm_ && has_prepacked_fc2_scales_ && packed_fc2_ != nullptr && fc2_zp_data == nullptr &&
-      CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
-                       hidden_size, inter_size, fc2_direct_qtype)) {
-    std::lock_guard<std::mutex> guard(direct_q4_cache_mu_);
-    auto& cache = fc2_direct_q4_cache_;
-    if (cache.packed_b_by_expert.empty() ||
-        cache.scales_data_ptr != static_cast<const void*>(fc2_scales_data) ||
-        cache.rows != hidden_size || cache.cols != inter_size ||
-        cache.num_experts != num_experts || cache.qtype != fc2_direct_qtype) {
-      std::vector<std::vector<uint8_t>> rebuilt_cache;
-      ORT_RETURN_IF_ERROR(BuildDirectQ4PackedBCache(
-          static_cast<const uint8_t*>(packed_fc2_.get()), fc2_scales_data,
-          num_experts, hidden_size, inter_size,
-          is_fc2_block_wise ? block_size_ : 0,
-          fc2_scales_dims, fc2_direct_qtype, rebuilt_cache));
-
-      cache.scales_data_ptr = static_cast<const void*>(fc2_scales_data);
-      cache.rows = hidden_size;
-      cache.cols = inter_size;
-      cache.num_experts = num_experts;
-      cache.qtype = fc2_direct_qtype;
-      cache.packed_b_by_expert = std::move(rebuilt_cache);
-    }
-    fc2_direct_q4_cache = &cache.packed_b_by_expert;
+  const void* fc2_direct_q4_cache_ptr = nullptr;
+  if (use_mlas_q4_gemm_ && packed_fc2_mlas_cache_ && fc2_zp_data == nullptr &&
+      CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0, hidden_size, inter_size, fc2_direct_qtype)) {
+    fc2_direct_q4_cache_ptr = packed_fc2_mlas_cache_.get();
   }
 
   std::vector<std::pair<int64_t, size_t>> expert_workload;
@@ -959,68 +966,39 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       MLAS_BLK_QUANT_TYPE q_type = BlkQ4Sym;  // Initialize to default
       bool use_direct_q4_gemm = use_mlas_q4_gemm_ &&
-                                ((fc1_direct_q4_cache != nullptr) ||
+                                ((fc1_direct_q4_cache_ptr != nullptr) ||
                                  ((packed_fc1_ == nullptr) && (fc1_zp_data == nullptr) &&
                                   CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
                                                    fc1_out_features, hidden_size, q_type)));
 
       if (packed_fc1_ != nullptr) {
-        if (fc1_direct_q4_cache != nullptr) {
-          float* fc1_bias_float = nullptr;
-          if (has_fc1_bias) {
-            const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
-            if constexpr (std::is_same_v<T, MLFloat16>) {
-              MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), thread_bias1_buffer, static_cast<size_t>(fc1_out_features));
-            } else {
-              std::memcpy(thread_bias1_buffer, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
-            }
-            fc1_bias_float = thread_bias1_buffer;
-          }
-
-          const auto& packed_b = (*fc1_direct_q4_cache)[static_cast<size_t>(expert_idx)];
-          Status gemm_status = DirectQ4Gemm(A1, packed_b.data(), fc1_bias_float, C1,
-                                            num_expert_tokens, fc1_out_features, hidden_size, fc1_direct_qtype, tp);
-          if (gemm_status.IsOK()) {
-            goto fc1_gemm_done;
-          }
-        }
-
         if (use_mlas_q4_gemm_ && fc1_zp_data == nullptr &&
             CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
                              fc1_out_features, hidden_size, q_type)) {
-          // Safe non-cached direct path for dynamic scales.
-          const uint8_t* current_packed_ptr = static_cast<const uint8_t*>(packed_fc1_.get()) + expert_idx * fc1_out_features * hidden_size;
-          DequantizePrePacked(current_packed_ptr, fc1_scales_ptr, nullptr,
-                              is_fc1_block_wise ? block_size_ : 0,
-                              fc1_out_features, hidden_size,
-                              B1_dequant, fc1_scales_dims);
-
-          IAllocatorUniquePtr<uint8_t> mlas_packed_fc1;
-          size_t packed_size = MlasQ4GemmPackBSize(q_type, static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size));
-          mlas_packed_fc1 = IAllocator::MakeUniquePtr<uint8_t>(allocator, packed_size);
-          MlasQ4GemmPackB(q_type, mlas_packed_fc1.get(), B1_dequant,
-                          static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size),
-                          static_cast<size_t>(fc1_out_features));
-
-          float* fc1_bias_float = nullptr;
-          if (has_fc1_bias) {
-            const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
-            if constexpr (std::is_same_v<T, MLFloat16>) {
-              MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), thread_bias1_buffer, static_cast<size_t>(fc1_out_features));
-            } else {
-              std::memcpy(thread_bias1_buffer, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
+          if (fc1_direct_q4_cache_ptr != nullptr) {
+            float* fc1_bias_float = nullptr;
+            if (has_fc1_bias) {
+              const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
+              if constexpr (std::is_same_v<T, MLFloat16>) {
+                MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), thread_bias1_buffer, static_cast<size_t>(fc1_out_features));
+              } else {
+                std::memcpy(thread_bias1_buffer, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
+              }
+              fc1_bias_float = thread_bias1_buffer;
             }
-            fc1_bias_float = thread_bias1_buffer;
-          }
 
-          Status gemm_status = DirectQ4Gemm(A1, mlas_packed_fc1.get(), fc1_bias_float, C1,
-                                            num_expert_tokens, fc1_out_features, hidden_size, q_type, tp);
-          if (gemm_status.IsOK()) {
-            goto fc1_gemm_done;
+            size_t packed_size = MlasQ4GemmPackBSize(q_type, static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size));
+            const uint8_t* packed_b = static_cast<const uint8_t*>(fc1_direct_q4_cache_ptr) + expert_idx * packed_size;
+
+            Status gemm_status = DirectQ4Gemm(A1, packed_b, fc1_bias_float, C1,
+                                              num_expert_tokens, fc1_out_features, hidden_size, fc1_direct_qtype, tp);
+            if (gemm_status.IsOK()) {
+              goto fc1_gemm_done;
+            }
           }
         }
 
-        // Dequantize from PrePacked (transposed, unpacked)
+        // Fallback: Dequantize from PrePacked (transposed, unpacked) -> MlasGemm
         const uint8_t* current_packed_ptr = static_cast<const uint8_t*>(packed_fc1_.get()) + expert_idx * fc1_out_features * hidden_size;
 
         DequantizePrePacked(current_packed_ptr, fc1_scales_ptr, fc1_zp_ptr,
@@ -1029,9 +1007,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                             B1_dequant, fc1_scales_dims);
 
         // Use MlasGemm with B1_dequant (which is already float transposed)
-        // GEMM is C = A * B. A [M, K], B [K, N].
-        // B1_dequant is [K, N] (RowMajor).
-        // So we use CblasNoTrans for B.
         MlasGemm(CblasNoTrans, CblasNoTrans,
                  m, n, k,
                  1.0f, A1, k,
@@ -1039,7 +1014,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                  0.0f, C1, n,
                  tp);
 
-        // Skip the check for packed_b fallback logic below
         goto fc1_bias_handling;
       }
 
@@ -1218,66 +1192,36 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
       MLAS_BLK_QUANT_TYPE q_type2 = BlkQ4Sym;  // Initialize to default
       bool use_direct_q4_gemm_fc2 = use_mlas_q4_gemm_ &&
-                                    ((fc2_direct_q4_cache != nullptr) ||
+                                    ((fc2_direct_q4_cache_ptr != nullptr) ||
                                      ((packed_fc2_ == nullptr) && (fc2_zp_data == nullptr) &&
                                       CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
                                                        hidden_size, inter_size, q_type2)));
 
       if (packed_fc2_ != nullptr) {
-        if (fc2_direct_q4_cache != nullptr) {
-          float* fc2_bias_float = nullptr;
-          if (has_fc2_bias) {
-            const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
-            if constexpr (std::is_same_v<T, MLFloat16>) {
-              MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), thread_bias2_buffer, static_cast<size_t>(hidden_size));
-            } else {
-              std::memcpy(thread_bias2_buffer, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
-            }
-            fc2_bias_float = thread_bias2_buffer;
-          }
-
-          const auto& packed_b = (*fc2_direct_q4_cache)[static_cast<size_t>(expert_idx)];
-          Status gemm_status = DirectQ4Gemm(A2, packed_b.data(), fc2_bias_float, C2,
-                                            num_expert_tokens, hidden_size, inter_size, fc2_direct_qtype, tp);
-          if (gemm_status.IsOK()) {
-            fc2_bias_added_by_mlas = true;
-            goto fc2_gemm_done;
-          }
-        }
-
         if (use_mlas_q4_gemm_ && fc2_zp_data == nullptr &&
             CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
                              hidden_size, inter_size, q_type2)) {
-          // Safe non-cached direct path for dynamic scales.
-          const uint8_t* current_packed_ptr = static_cast<const uint8_t*>(packed_fc2_.get()) + expert_idx * hidden_size * inter_size;
-          DequantizePrePacked(current_packed_ptr, fc2_scales_ptr, nullptr,
-                              is_fc2_block_wise ? block_size_ : 0,
-                              hidden_size, inter_size,
-                              B2_dequant, fc2_scales_dims);
-
-          IAllocatorUniquePtr<uint8_t> mlas_packed_fc2;
-          size_t packed_size = MlasQ4GemmPackBSize(q_type2, static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size));
-          mlas_packed_fc2 = IAllocator::MakeUniquePtr<uint8_t>(allocator, packed_size);
-          MlasQ4GemmPackB(q_type2, mlas_packed_fc2.get(), B2_dequant,
-                          static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size),
-                          static_cast<size_t>(hidden_size));
-
-          float* fc2_bias_float = nullptr;
-          if (has_fc2_bias) {
-            const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
-            if constexpr (std::is_same_v<T, MLFloat16>) {
-              MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), thread_bias2_buffer, static_cast<size_t>(hidden_size));
-            } else {
-              std::memcpy(thread_bias2_buffer, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
+          if (fc2_direct_q4_cache_ptr != nullptr) {
+            float* fc2_bias_float = nullptr;
+            if (has_fc2_bias) {
+              const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
+              if constexpr (std::is_same_v<T, MLFloat16>) {
+                MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), thread_bias2_buffer, static_cast<size_t>(hidden_size));
+              } else {
+                std::memcpy(thread_bias2_buffer, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
+              }
+              fc2_bias_float = thread_bias2_buffer;
             }
-            fc2_bias_float = thread_bias2_buffer;
-          }
 
-          Status gemm_status = DirectQ4Gemm(A2, mlas_packed_fc2.get(), fc2_bias_float, C2,
-                                            num_expert_tokens, hidden_size, inter_size, q_type2, tp);
-          if (gemm_status.IsOK()) {
-            fc2_bias_added_by_mlas = true;
-            goto fc2_gemm_done;
+            size_t packed_size = MlasQ4GemmPackBSize(q_type2, static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size));
+            const uint8_t* packed_b = static_cast<const uint8_t*>(fc2_direct_q4_cache_ptr) + expert_idx * packed_size;
+
+            Status gemm_status = DirectQ4Gemm(A2, packed_b, fc2_bias_float, C2,
+                                              num_expert_tokens, hidden_size, inter_size, fc2_direct_qtype, tp);
+            if (gemm_status.IsOK()) {
+              fc2_bias_added_by_mlas = true;
+              goto fc2_gemm_done;
+            }
           }
         }
 

@@ -38,15 +38,6 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
-  struct DirectQ4Cache {
-    const void* scales_data_ptr{nullptr};
-    int64_t rows{0};
-    int64_t cols{0};
-    int64_t num_experts{0};
-    MLAS_BLK_QUANT_TYPE qtype{BlkQ4Sym};
-    std::vector<std::vector<uint8_t>> packed_b_by_expert;
-  };
-
   int64_t expert_weight_bits_;
   int64_t block_size_;
   bool use_mlas_q4_gemm_{false};
@@ -57,9 +48,8 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
   IAllocatorUniquePtr<void> packed_fc2_;
   IAllocatorUniquePtr<void> packed_fc3_;
 
-  mutable std::mutex direct_q4_cache_mu_;
-  mutable DirectQ4Cache fc1_direct_q4_cache_;
-  mutable DirectQ4Cache fc2_direct_q4_cache_;
+  IAllocatorUniquePtr<void> packed_fc1_mlas_cache_;
+  IAllocatorUniquePtr<void> packed_fc2_mlas_cache_;
 };
 
 }  // namespace contrib
