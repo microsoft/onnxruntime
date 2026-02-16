@@ -1145,9 +1145,12 @@ def with_mlas_q4_mode(test_cases):
     expanded_cases = []
     for case in test_cases:
         quant_bits = case[2]
-        expanded_cases.append((*case, False))
         if quant_bits == 4:
+            expanded_cases.append((*case, None))
+            expanded_cases.append((*case, False))
             expanded_cases.append((*case, True))
+        else:
+            expanded_cases.append((*case, None))
     return expanded_cases
 
 
@@ -1164,12 +1167,15 @@ def scoped_env_var(name: str, value: str):
             os.environ[name] = previous
 
 
-def run_parity_with_mlas_q4_mode(test_runner, enable_mlas_q4_gemm: bool):
-    env_value = "1" if enable_mlas_q4_gemm else "0"
-    mode = "enabled" if enable_mlas_q4_gemm else "disabled"
-    print(f"DirectQ4 mode ({ORT_USE_MLAS_Q4_GEMM_MOE}) is {mode}")
-    with scoped_env_var(ORT_USE_MLAS_Q4_GEMM_MOE, env_value):
+def run_parity_with_mlas_q4_mode(test_runner, enable_mlas_q4_gemm: bool | None):
+    if enable_mlas_q4_gemm is None:  # No env var
         test_runner()
+    else:
+        env_value = "1" if enable_mlas_q4_gemm else "0"
+        mode = "enabled" if enable_mlas_q4_gemm else "disabled"
+        print(f"DirectQ4 mode ({ORT_USE_MLAS_Q4_GEMM_MOE}) is {mode}")
+        with scoped_env_var(ORT_USE_MLAS_Q4_GEMM_MOE, env_value):
+            test_runner()
 
 
 class SwigluMoEBlock(SparseMoeBlockORTHelper):

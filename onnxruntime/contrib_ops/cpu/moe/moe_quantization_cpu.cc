@@ -607,7 +607,15 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
   }
 
-  use_mlas_q4_gemm_ = ParseEnvironmentVariableWithDefault<bool>(kUseMlasQ4GemmMoe, false);
+  const auto use_mlas_q4_gemm = ParseEnvironmentVariable<bool>(kUseMlasQ4GemmMoe);
+  if (use_mlas_q4_gemm.has_value()) {
+    use_mlas_q4_gemm_ = *use_mlas_q4_gemm;
+    use_mlas_q4_gemm_overridden_ = true;
+  } else {
+    // Default policy: enable fast path unless this run hits a known accuracy-loss configuration.
+    use_mlas_q4_gemm_ = true;
+    use_mlas_q4_gemm_overridden_ = false;
+  }
 }
 
 template <typename T>
@@ -809,6 +817,13 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const uint8_t* fc1_zp_data = fc1_zero_points ? fc1_zero_points->Data<uint8_t>() : nullptr;
   const uint8_t* fc2_zp_data = fc2_zero_points ? fc2_zero_points->Data<uint8_t>() : nullptr;
 
+  // Known loss-prone case from parity testing: 4-bit symmetric path (row-wise and block-wise).
+  const bool known_accuracy_loss_case = (expert_weight_bits_ == 4) &&
+                                        (fc1_zp_data == nullptr) && (fc2_zp_data == nullptr);
+  const bool use_mlas_q4_gemm_effective = use_mlas_q4_gemm_overridden_
+                                              ? use_mlas_q4_gemm_
+                                              : (use_mlas_q4_gemm_ && !known_accuracy_loss_case);
+
   const int64_t pack_unit = (8 / expert_weight_bits_);
   const int64_t fc1_packed_cols = (hidden_size + pack_unit - 1) / pack_unit;
   const int64_t fc2_packed_cols = (inter_size + pack_unit - 1) / pack_unit;
@@ -841,13 +856,13 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   // Use pre-packed MLAS cache if available
   const void* fc1_direct_q4_cache_ptr = nullptr;
-  if (use_mlas_q4_gemm_ && packed_fc1_mlas_cache_ && fc1_zp_data == nullptr &&
+  if (use_mlas_q4_gemm_effective && packed_fc1_mlas_cache_ && fc1_zp_data == nullptr &&
       CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0, fc1_out_features, hidden_size, fc1_direct_qtype)) {
     fc1_direct_q4_cache_ptr = packed_fc1_mlas_cache_.get();
   }
 
   const void* fc2_direct_q4_cache_ptr = nullptr;
-  if (use_mlas_q4_gemm_ && packed_fc2_mlas_cache_ && fc2_zp_data == nullptr &&
+  if (use_mlas_q4_gemm_effective && packed_fc2_mlas_cache_ && fc2_zp_data == nullptr &&
       CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0, hidden_size, inter_size, fc2_direct_qtype)) {
     fc2_direct_q4_cache_ptr = packed_fc2_mlas_cache_.get();
   }
@@ -965,14 +980,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const size_t k = static_cast<size_t>(hidden_size);
 
       MLAS_BLK_QUANT_TYPE q_type = BlkQ4Sym;  // Initialize to default
-      bool use_direct_q4_gemm = use_mlas_q4_gemm_ &&
+      bool use_direct_q4_gemm = use_mlas_q4_gemm_effective &&
                                 ((fc1_direct_q4_cache_ptr != nullptr) ||
                                  ((packed_fc1_ == nullptr) && (fc1_zp_data == nullptr) &&
                                   CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
                                                    fc1_out_features, hidden_size, q_type)));
 
       if (packed_fc1_ != nullptr) {
-        if (use_mlas_q4_gemm_ && fc1_zp_data == nullptr &&
+        if (use_mlas_q4_gemm_effective && fc1_zp_data == nullptr &&
             CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
                              fc1_out_features, hidden_size, q_type)) {
           if (fc1_direct_q4_cache_ptr != nullptr) {
@@ -1191,14 +1206,14 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const size_t k2 = static_cast<size_t>(inter_size);
 
       MLAS_BLK_QUANT_TYPE q_type2 = BlkQ4Sym;  // Initialize to default
-      bool use_direct_q4_gemm_fc2 = use_mlas_q4_gemm_ &&
+      bool use_direct_q4_gemm_fc2 = use_mlas_q4_gemm_effective &&
                                     ((fc2_direct_q4_cache_ptr != nullptr) ||
                                      ((packed_fc2_ == nullptr) && (fc2_zp_data == nullptr) &&
                                       CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
                                                        hidden_size, inter_size, q_type2)));
 
       if (packed_fc2_ != nullptr) {
-        if (use_mlas_q4_gemm_ && fc2_zp_data == nullptr &&
+        if (use_mlas_q4_gemm_effective && fc2_zp_data == nullptr &&
             CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
                              hidden_size, inter_size, q_type2)) {
           if (fc2_direct_q4_cache_ptr != nullptr) {
