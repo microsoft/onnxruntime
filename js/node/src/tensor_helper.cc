@@ -214,7 +214,8 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
 
       ORT_NAPI_THROW_TYPEERROR_IF(!isValidTypedArray, env,
                                   "Tensor.data must be a typed array (", DATA_TYPE_TYPEDARRAY_MAP[elemType],
-                                  " or Float16Array) for ", tensorTypeString, " tensors, but got typed array (", typedArrayType, ").");
+                                  elemType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? " or Float16Array" : "",
+                                  ") for ", tensorTypeString, " tensors, but got typed array (", typedArrayType, ").");
 
       char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
       size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
