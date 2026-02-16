@@ -5,7 +5,10 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas_q4.h"
 #include "contrib_ops/cpu/moe/moe_base_cpu.h"
+#include <mutex>
+#include <vector>
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,8 +29,37 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
+
+ private:
+  struct DirectQ4Cache {
+    const void* scales_data_ptr{nullptr};
+    int64_t rows{0};
+    int64_t cols{0};
+    int64_t num_experts{0};
+    MLAS_BLK_QUANT_TYPE qtype{BlkQ4Sym};
+    std::vector<std::vector<uint8_t>> packed_b_by_expert;
+  };
+
   int64_t expert_weight_bits_;
   int64_t block_size_;
+  bool use_mlas_q4_gemm_{false};
+  bool has_prepacked_fc1_scales_{false};
+  bool has_prepacked_fc2_scales_{false};
+
+  IAllocatorUniquePtr<void> packed_fc1_;
+  IAllocatorUniquePtr<void> packed_fc2_;
+  IAllocatorUniquePtr<void> packed_fc3_;
+
+  mutable std::mutex direct_q4_cache_mu_;
+  mutable DirectQ4Cache fc1_direct_q4_cache_;
+  mutable DirectQ4Cache fc2_direct_q4_cache_;
 };
 
 }  // namespace contrib
