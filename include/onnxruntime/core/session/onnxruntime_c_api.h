@@ -7229,7 +7229,7 @@ struct OrtApi {
    *
    * \param[in] options Session options instance.
    * \param[in] whitelisted_data_folders Semicolon-separated list of absolute directory paths, or
-   *            nullptr/empty string to clear the whitelist.
+   *            an empty string to clear the whitelist. This pointer must not be NULL.
    *
    * \return nullptr on success, or an OrtStatus on failure.
    *
