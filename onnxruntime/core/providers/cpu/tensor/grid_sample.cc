@@ -185,7 +185,7 @@ void PrecomputeBilinearSamplePlan2D(const T* grid_data,
   const int64_t point_count = H_out * W_out;
 
   for (int64_t idx = 0; idx < point_count; ++idx) {
-    auto& plan = plans[idx];
+    auto& plan = plans[onnxruntime::narrow<size_t>(idx)];
     const T nx = grid_data[idx * 2];
     const T ny = grid_data[idx * 2 + 1];
     const T x = GsDenormalize<T>(nx, W_in, false);
@@ -310,7 +310,7 @@ void TryRunBilinearZerosFastPath2D(const Tensor& input,
                                    std::vector<BilinearSamplePlan2D<T>>& sampling_plan) {
   const int64_t plane_in = H_in * W_in;
   const int64_t plane_out = H_out * W_out;
-  sampling_plan.resize(plane_out);
+  sampling_plan.resize(onnxruntime::narrow<size_t>(plane_out));
 
   const T* grid_data = grid.Data<T>() + n * plane_out * 2;
   PrecomputeBilinearSamplePlan2D(grid_data, H_out, W_out, H_in, W_in, sampling_plan);
