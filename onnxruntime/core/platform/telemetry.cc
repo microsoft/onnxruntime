@@ -157,4 +157,34 @@ void Telemetry::LogProviderOptions(const std::string& provider_id,
   ORT_UNUSED_PARAMETER(captureState);
 }
 
+void Telemetry::LogModelLoadStart(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
+}
+
+void Telemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(status);
+}
+
+void Telemetry::LogSessionCreationEnd(uint32_t session_id,
+                                     const common::Status& status) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(status);
+}
+
+void Telemetry::LogRunStart(uint32_t session_id, uint64_t run_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(run_id);
+}
+
+void Telemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
+  ORT_UNUSED_PARAMETER(registration_name);
+}
+
+void Telemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
+                                     const common::Status& status) const {
+  ORT_UNUSED_PARAMETER(registration_name);
+  ORT_UNUSED_PARAMETER(status);
+}
+
 }  // namespace onnxruntime

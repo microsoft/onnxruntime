@@ -94,6 +94,20 @@ class WindowsTelemetry : public Telemetry {
                           const std::string& provider_options_string,
                           bool captureState) const override;
 
+  void LogModelLoadStart(uint32_t session_id) const override;
+
+  void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const override;
+
+  void LogSessionCreationEnd(uint32_t session_id,
+                           const common::Status& status) const override;
+
+  void LogRunStart(uint32_t session_id, uint64_t run_id) const override;
+
+  void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
+
+  void LogRegisterEpLibraryEnd(const std::string& registration_name,
+                            const common::Status& status) const override;
+
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;

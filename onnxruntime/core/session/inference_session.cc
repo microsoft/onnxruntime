@@ -976,6 +976,9 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     tp = session_profiler_.Start();
   }
   ORT_TRY {
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+
     std::lock_guard<std::mutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
@@ -1009,6 +1012,11 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
+  }
+
+  {
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status);
   }
 
   return status;
@@ -1647,6 +1655,9 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+
   std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
@@ -1766,6 +1777,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
 
   is_model_loaded_ = true;
+
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, Status::OK());
 
   return Status::OK();
 }
@@ -2618,6 +2631,12 @@ common::Status InferenceSession::Initialize() {
     }
   }
 
+  // Log session creation end telemetry
+  {
+    const Env& init_env = Env::Default();
+    init_env.GetTelemetryProvider().LogSessionCreationEnd(session_id_, status);
+  }
+
   return status;
 }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -3015,6 +3034,22 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
   const Env& env = Env::Default();
 
+  // Assign a unique run_id for telemetry correlation
+  const uint64_t run_id = run_id_counter_.fetch_add(1);
+
+  // Determine whether to emit Run telemetry (LogRunStart + LogRuntimePerf pair)
+  bool emit_run_telemetry = false;
+  {
+    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_) {
+      emit_run_telemetry = true;
+    }
+  }
+
+  if (emit_run_telemetry) {
+    env.GetTelemetryProvider().LogRunStart(session_id_, run_id);
+  }
+
   int graph_annotation_id = 0;
   const std::string& graph_annotation_str =
       run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "");
@@ -3210,8 +3245,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
     telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
     telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
-      // send the telemetry
+    // Emit RuntimePerf paired with the LogRunStart that fired at entry
+    if (emit_run_telemetry) {
       env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
                                                 telemetry_.total_run_duration_since_last_,
                                                 telemetry_.duration_per_batch_size_);
@@ -3220,6 +3255,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
       telemetry_.total_runs_since_last_ = 0;
       telemetry_.total_run_duration_since_last_ = 0;
       telemetry_.duration_per_batch_size_.clear();
+
+      // Double the interval, capping at kRuntimePerfMaxInterval
+      telemetry_.runtime_perf_interval_ = std::min(telemetry_.runtime_perf_interval_ * 2,
+                                                   Telemetry::kRuntimePerfMaxInterval);
     }
   }
 

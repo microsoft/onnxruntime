@@ -101,6 +101,20 @@ class Telemetry {
                                   const std::string& provider_options_string,
                                   bool captureState) const;
 
+  virtual void LogModelLoadStart(uint32_t session_id) const;
+
+  virtual void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const;
+
+  virtual void LogSessionCreationEnd(uint32_t session_id,
+                                   const common::Status& status) const;
+
+  virtual void LogRunStart(uint32_t session_id, uint64_t run_id) const;
+
+  virtual void LogRegisterEpLibraryStart(const std::string& registration_name) const;
+
+  virtual void LogRegisterEpLibraryEnd(const std::string& registration_name,
+                                    const common::Status& status) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);
 };

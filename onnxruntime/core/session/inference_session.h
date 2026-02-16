@@ -976,9 +976,13 @@ class InferenceSession {
     std::unordered_map<int64_t, long long> duration_per_batch_size_;  // the duration (us) of Run() calls per batch size since the last report
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
-    // Event Rate per provider < 20 peak events per second
-    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
+    // RuntimePerf backoff: starts at 2s, doubles each emission, caps at 10 min
+    constexpr static long long kRuntimePerfInitialInterval = 2 * 1000 * 1000;                // 2 seconds in (us)
+    constexpr static long long kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;              // 10 minutes in (us)
+    long long runtime_perf_interval_ = kRuntimePerfInitialInterval;
   } telemetry_;
+
+  std::atomic<uint64_t> run_id_counter_{0};  // monotonically increasing run id for correlation
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
 
