@@ -598,8 +598,8 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
     if (prepacked_buffers.size() > 1) {
       int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
       int64_t rank = buffer_data[0];
-      std::vector<int64_t> dims(rank);
-      memcpy(dims.data(), buffer_data + 1, rank * sizeof(int64_t));
+      std::vector<int64_t> dims(static_cast<size_t>(rank));
+      memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
       fc1_shape_ = TensorShape(dims);
     }
     if (prepacked_buffers.size() > 2) {
@@ -611,8 +611,8 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
     if (prepacked_buffers.size() > 1) {
       int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
       int64_t rank = buffer_data[0];
-      std::vector<int64_t> dims(rank);
-      memcpy(dims.data(), buffer_data + 1, rank * sizeof(int64_t));
+      std::vector<int64_t> dims(static_cast<size_t>(rank));
+      memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
       fc2_shape_ = TensorShape(dims);
     }
     if (prepacked_buffers.size() > 2) {
@@ -624,8 +624,8 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
     if (prepacked_buffers.size() > 1) {
       int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
       int64_t rank = buffer_data[0];
-      std::vector<int64_t> dims(rank);
-      memcpy(dims.data(), buffer_data + 1, rank * sizeof(int64_t));
+      std::vector<int64_t> dims(static_cast<size_t>(rank));
+      memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
       fc3_shape_ = TensorShape(dims);
     }
     used_shared_buffers = true;
