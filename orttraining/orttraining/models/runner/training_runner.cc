@@ -33,39 +33,43 @@ namespace onnxruntime {
 namespace training {
 
 static std::vector<FreeDimensionOverride> overrides = {};
-static SessionOptions SESSION_OPTION = {
-    ExecutionMode::ORT_SEQUENTIAL,     // execution_mode
-    ExecutionOrder::PRIORITY_BASED,    // execution_order
-    false,                             // enable_profiling
-    ORT_TSTR(""),                      // optimized_model_filepath
-    true,                              // enable_mem_pattern
-    true,                              // enable_mem_reuse
-    true,                              // enable_cpu_mem_arena
-    ORT_TSTR("onnxruntime_profile_"),  // profile_file_prefix
-    "",                                // session_logid
-    -1,                                // session_log_severity_level
-    0,                                 // session_log_verbosity_level
-    5,                                 // max_num_graph_transformation_steps
-    TransformerLevel::Level1,          // graph_optimization_level
-    {},                                // intra_op_param
-    {},                                // inter_op_param
-    overrides,                         // free_dimension_overrides
-    true,                              // use_per_session_threads
-    true,                              // thread_pool_allow_spinning
-    false,                             // use_deterministic_compute
-    {},                                // config_options
-    {},                                // initializers_to_share_map
+static SessionOptions GetDefaultSessionOptions() {
+  SessionOptions so;
+  so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  so.execution_order = ExecutionOrder::PRIORITY_BASED;
+  so.enable_profiling = false;
+  so.optimized_model_filepath = ORT_TSTR("");
+  so.enable_mem_pattern = true;
+  so.enable_mem_reuse = true;
+  so.enable_cpu_mem_arena = true;
+  so.profile_file_prefix = ORT_TSTR("onnxruntime_profile_");
+  so.session_logid = "";
+  so.session_log_severity_level = -1;
+  so.session_log_verbosity_level = 0;
+  so.max_num_graph_transformation_steps = 5;
+  so.graph_optimization_level = TransformerLevel::Level1;
+  so.intra_op_param = {};
+  so.inter_op_param = {};
+  so.free_dimension_overrides = overrides;
+  so.use_per_session_threads = true;
+  so.thread_pool_allow_spinning = true;
+  so.use_deterministic_compute = false;
+  so.config_options = {};
+  so.initializers_to_share_map = {};
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-    {},  // external_initializers
-    {},  // external_initializer_files
+  so.external_initializers = {};
+  so.external_initializer_files_mmap = {};
 #endif
-    nullptr,  // custom_create_thread_fn
-    nullptr,  // custom_thread_creation_options
-    nullptr,  // custom_join_thread_fn
+  so.custom_create_thread_fn = nullptr;
+  so.custom_thread_creation_options = nullptr;
+  so.custom_join_thread_fn = nullptr;
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-    {},  // custom_op_libs
+  so.custom_op_libs = {};
 #endif
-};
+  return so;
+}
+
+static SessionOptions SESSION_OPTION = GetDefaultSessionOptions();
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
     : TrainingRunner(params, env, SESSION_OPTION) {
