@@ -412,11 +412,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
     case TransformerLevel::Level3: {
 #ifndef DISABLE_CONTRIB_OPS
-      // Register the NCHWc layout transformer if supported by the platform.
-      if (MlasNchwcGetBlockSize() > 1) {
-        const bool use_nchw_layout_for_large_conv =
+      // Register the NCHWc layout transformer if supported by the platform and if user didn't explicitly disable it.
+      const bool disable_nchwc = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableNchwcLayoutTransformation, "0") == "1";
+
+      if (MlasNchwcGetBlockSize() > 1 && !disable_nchwc) {
+        const bool disable_nchwc_layout_for_large_conv =
             session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseNchwLayoutForLargeConv, "0") == "1";
-        transformers.emplace_back(std::make_unique<NchwcTransformer>(use_nchw_layout_for_large_conv));
+        transformers.emplace_back(std::make_unique<NchwcTransformer>(disable_nchwc_layout_for_large_conv));
       }
 
       auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
