@@ -16,17 +16,18 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
-from test_qmoe_cpu import PhiMoEConfig, PhiMoESparseMoeBlock, TensorProto, disable_cpu_qmoe_tests  # noqa: E402
+from test_qmoe_cpu import PhiMoEConfig, PhiMoESparseMoeBlock, TensorProto  # noqa: E402
+
+# Reduces number of tests to run for faster pipeline checks
+pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
 
+@unittest.skipIf(pipeline_mode, "Skip benchmark in CI pipeline.")
 class TestQMoESwiGLUBenchmark(unittest.TestCase):
     """Benchmark tests for QMoE SwiGLU performance measurement."""
 
     def test_qmoe_swiglu_throughput_benchmark(self):
         """Comprehensive throughput benchmark for QMoE SwiGLU across different configurations."""
-        if disable_cpu_qmoe_tests:
-            self.skipTest("QMoE CPU tests disabled")
-
         print("\n=== QMoE SwiGLU Throughput Benchmark ===")
 
         # Test configurations: (name, hidden_size, intermediate_size, num_experts, top_k, quant_bits)
@@ -37,7 +38,7 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
 
         batch_size = 1
         sequence_length = 512
-        num_runs = 30
+        num_runs = 1000
 
         results = []
 

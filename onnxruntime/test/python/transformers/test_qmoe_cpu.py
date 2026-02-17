@@ -1422,8 +1422,6 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         return final_hidden_states
 
 
-disable_cpu_qmoe_tests = False
-
 # Define test cases for different MoE types
 phi3_test_cases = [
     (1, 32, 4),
@@ -1441,7 +1439,6 @@ phi3_blockwise_test_cases = [
 ]
 
 
-@unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestPhiQMoECPU(unittest.TestCase):
     @parameterized.expand(with_mlas_q4_mode(phi3_test_cases))
     def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
@@ -1564,8 +1561,6 @@ class TestPhiQMoECPU(unittest.TestCase):
         run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
 
-disable_cpu_qmoe_tests = False
-
 swiglu_test_cases = [
     (1, 32, 4),
     (1, 32, 8),
@@ -1582,7 +1577,6 @@ swiglu_blockwise_test_cases = [
 ]
 
 
-@unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestSwigluQMoECPU(unittest.TestCase):
     @parameterized.expand(with_mlas_q4_mode(swiglu_test_cases))
     def test_swiglu_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
@@ -1709,9 +1703,6 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
 
     def test_qmoe_swiglu_throughput_benchmark(self):
         """Comprehensive throughput benchmark for QMoE SwiGLU across different configurations."""
-        if disable_cpu_qmoe_tests:
-            self.skipTest("QMoE CPU tests disabled")
-
         print("\n=== QMoE SwiGLU Throughput Benchmark ===")
 
         # Test configurations: (name, hidden_size, intermediate_size, num_experts, top_k, quant_bits)
