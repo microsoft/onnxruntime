@@ -30,39 +30,12 @@ MlasGeluErfKernel(
     size_t N
     )
 {
-<<<<<<< HEAD
     // This kernel is not buffer alias safe because it is implemented in
     // multiple passes: first scale Input into Output, then apply erf in place,
     // and finally combine that intermediate with the original Input values.
     // Callers must guarantee that Input and Output do not overlap (see mlas.h for aliasing requirements).
     for (size_t i = 0; i < N; ++i) {
         Output[i] = Input[i] * kInvSqrt2;
-=======
-#if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-        GetMlasPlatform().GeluF16KernelRoutine(input, output, temp, count, algo);
-    #endif
-#else 
-    (void)temp; 
-    for (int64_t i = 0; i < count; ++i) {
-        float x = static_cast<float>(input[i]);
-        float gelu_val;
-
-        if (algo == "tanh") {
-            // GELU approximation (tanh)
-            const float B = 0.7978845608f;
-            const float C = 0.044715f * B;
-            float tanh_arg = x * (B + C * x * x);
-            float tanh_res = std::tanh(tanh_arg);
-            gelu_val = 0.5f * x * (1.0f + tanh_res);
-        } else {
-            // GELU exact (erf)
-            gelu_val = 0.5f * x *
-                (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2)));
-        }
-
-        output[i] = MLAS_FP16(gelu_val);
->>>>>>> 4f10c21cc4 (Added runtime guards and resolved CIfailures)
     }
 
     MlasComputeErf(Output, Output, N);
