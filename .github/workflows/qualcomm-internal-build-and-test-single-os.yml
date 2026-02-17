@@ -24,7 +24,7 @@ on:
         type: string
       build_test_same_runner:
         description: "If true, run tests on the same runner that build them."
-        default: true
+        default: false
         type: boolean
       test_runner_arch:
         default: "X64"
@@ -36,10 +36,10 @@ on:
         default: false
         type: boolean
       upload_test_archive:
-        default: false
+        default: true
         type: boolean
       upload_wheel:
-        default: false
+        default: true
         type: boolean
       upload_nuget:
         default: false
@@ -74,7 +74,7 @@ on:
         type: string
       build_test_same_runner:
         description: "If true, run tests on the same runner that build them."
-        default: true
+        default: false
         type: boolean
       test_runner_arch:
         description: "The architecture of the test machine to use: X64 or (Windows only) ARM64."
@@ -90,11 +90,11 @@ on:
         type: boolean
       upload_test_archive:
         description: "If true, build a test archive and include is as an artifact."
-        default: false
+        default: true
         type: boolean
       upload_wheel:
         description: "If true, include the wheel as a workflow artifact."
-        default: false
+        default: true
         type: boolean
 
 env:
@@ -142,7 +142,6 @@ jobs:
         if: ${{ inputs.upload_test_archive }}
         with:
           name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}} Tests
-          retention-days: 1
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-${{inputs.target_os}}-${{ inputs.target_arch }}.*
 
@@ -150,7 +149,6 @@ jobs:
         if: ${{ inputs.upload_wheel }}
         with:
           name: ORT ${{inputs.target_os}} ${{ inputs.target_arch }} Python ${{ inputs.target_py_vsn }} Wheel
-          retention-days: 1
           path: |
             ${{ github.workspace }}/build/${{inputs.target_os}}-${{ inputs.target_arch }}/${{ env.BUILD_CONFIG_DIR }}/dist/onnxruntime_qnn*.whl
 
@@ -158,7 +156,6 @@ jobs:
         if: ${{ inputs.upload_nuget }}
         with:
           name: ORT ${{inputs.target_os}} ${{ inputs.target_arch }} Python ${{ inputs.target_py_vsn }} QNN NuGet Package
-          retention-days: 1
           path: |
             ${{ github.workspace }}/build/${{inputs.target_os}}-${{ inputs.target_arch }}/${{ env.BUILD_CONFIG_DIR }}/Qualcomm.ML.OnnxRuntime.QNN*.nupkg
 
@@ -166,7 +163,6 @@ jobs:
         if: ${{ inputs.upload_zip }}
         with:
           name: ORT ${{inputs.target_os}} ${{ inputs.target_arch }} Python ${{ inputs.target_py_vsn }} Zip Asset
-          retention-days: 1
           path: |
             ${{ github.workspace }}/build/${{inputs.target_os}}-${{ inputs.target_arch }}/${{ env.BUILD_CONFIG_DIR }}/dist/onnxruntime-qnn*.zip
 
@@ -209,7 +205,6 @@ jobs:
         if: always() # always run even if the previous step fails
         with:
           name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} py${{ inputs.target_py_vsn != 'None' && inputs.target_py_vsn || 'none'}} Test Results
-          retention-days: 1
           path: |
             ${{ github.workspace }}/build/${{inputs.target_os}}-${{inputs.target_arch}}/${{ env.BUILD_CONFIG_DIR }}/*.results.xml
 

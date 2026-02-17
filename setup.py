@@ -299,6 +299,9 @@ if nightly_build:
 if local_version:
     version_number = version_number + local_version
 
+if wheel_name_suffix:
+    package_name = f"{package_name}-{wheel_name_suffix}"
+
 cmd_classes = {}
 if bdist_wheel is not None:
     cmd_classes["bdist_wheel"] = bdist_wheel

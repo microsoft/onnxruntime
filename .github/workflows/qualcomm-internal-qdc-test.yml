@@ -70,7 +70,6 @@ jobs:
         if: always() # always run even if the previous step fails
         with:
           name: ORT ${{inputs.target_os}} ${{inputs.target_arch}} pynone Test Results
-          retention-days: 1
           path: |
             ${{ github.workspace }}/build/qdc-${{ env.QDC_RESULTS_ARCH }}/*.results.xml
             ${{ github.workspace }}/build/qdc-${{ env.QDC_RESULTS_ARCH }}/*.txt
