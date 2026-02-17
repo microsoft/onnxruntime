@@ -264,6 +264,18 @@ static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "sess
 // The model will be saved to filename post_layout_transform_step_<step_number>.onnx.
 static const char* const kDebugLayoutTransformation = "session.debug_layout_transformation";
 
+// Uses NCHW layout transformation for large convolution operations when a large convolution operation
+// is detected in the model as the NCHWc implementation's performance is worse on some platforms than the NCHW implementation.
+// This is only relevant when operating on an NCHWc supported platform such as x64 with AVX2 or ARM64 with Neon, and when the
+// model has large convolution operations that would be transformed to NCHWc format for better performance.
+// The default is "0", which means the NCHWc layout transformation is not disabled and will be used when large convolution operations
+// are detected. Set to "1" to disable the NCHWc layout transformation for large convolution operations and use NCHW layout instead.
+
+// Option values:
+// - "0": Use of NCHWc layout for the large convolution is not dis-allowed. [DEFAULT]
+// - "1": Use of NCHWc layout for the large convolution is dis-allowed.
+static const char* const kOrtSessionOptionsUseNchwLayoutForLargeConv = "session.use_nchw_layout_for_large_conv";
+
 // Graph nodes that are not supported by the execution providers (EPs) explicitly added to the session are
 // assigned (i.e., "fallback") to the CPU EP by default.
 //

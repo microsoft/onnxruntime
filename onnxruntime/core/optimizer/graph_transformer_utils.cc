@@ -414,7 +414,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #ifndef DISABLE_CONTRIB_OPS
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
-        transformers.emplace_back(std::make_unique<NchwcTransformer>());
+        const bool use_nchw_layout_for_large_conv =
+            session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseNchwLayoutForLargeConv, "0") == "1";
+        transformers.emplace_back(std::make_unique<NchwcTransformer>(use_nchw_layout_for_large_conv));
       }
 
       auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
