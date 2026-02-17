@@ -27,6 +27,17 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
+struct ScopedDirRemover {
+  std::filesystem::path dir;
+  explicit ScopedDirRemover(std::filesystem::path d) : dir(std::move(d)) {}
+  ~ScopedDirRemover() {
+    if (!dir.empty()) {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+    }
+  }
+};
+
 // if `expected_error_message_substring` is nullptr, parsing is expected to be successful
 static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
     std::string_view offset_str,
@@ -628,13 +639,11 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWhitelistDoesNotMatchEither) 
   // Location escapes both base_dir and all whitelisted folders.
   auto unrelated_dir = std::filesystem::temp_directory_path() / "unrelated_PathValidationTest";
   std::filesystem::create_directories(unrelated_dir);
-  auto cleanup = [&]() { std::filesystem::remove_all(unrelated_dir); };
+  ScopedDirRemover cleanup_guard(unrelated_dir);
 
   std::vector<std::filesystem::path> whitelist = {whitelisted_dir_};
   auto escaping_location = std::filesystem::path("..") / "unrelated_PathValidationTest" / "data.bin";
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, escaping_location, whitelist).IsOK());
-
-  cleanup();
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathEmptyWhitelist) {
@@ -648,15 +657,13 @@ TEST_F(PathValidationTest, ValidateExternalDataPathMultipleWhitelistedFolders) {
   // First whitelisted folder doesn't match, second one does.
   auto another_dir = std::filesystem::temp_directory_path() / "another_PathValidationTest";
   std::filesystem::create_directories(another_dir);
-  auto cleanup = [&]() { std::filesystem::remove_all(another_dir); };
+  ScopedDirRemover cleanup_guard(another_dir);
 
   auto relative_to_outside = std::filesystem::path("..") / "outside" / "data.bin";
   std::vector<std::filesystem::path> whitelist = {another_dir, outside_dir_};
 
   // Escapes base_dir_ but outside_dir_ (second whitelist entry) should match.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, relative_to_outside, whitelist));
-
-  cleanup();
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathAbsoluteLocationRejectsEvenWithWhitelist) {
