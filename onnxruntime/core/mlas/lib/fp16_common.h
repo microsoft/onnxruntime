@@ -19,7 +19,8 @@ Abstract:
 #include "mlas_float16.h"
 #include "mlasi.h"
 
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
+    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 // TODO!! Add intel fp16 implementations
 
@@ -629,4 +630,4 @@ MlasSelectFloat16(MLAS_UINT16X8 Vector, MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 V
     return vbslq_f16(Vector, Vector1, Vector2);
 }
 
-#endif  // fp16 vector intrinsic supported
+#endif  // fp16 scalar/vector intrinsic supported

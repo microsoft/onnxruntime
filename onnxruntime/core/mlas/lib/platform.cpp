@@ -19,7 +19,8 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
-#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(MLAS_NEON_INTRINSICS) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
+        defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 #include "erf_neon_fp16.h"
 #include "gelu.h"
 #endif
@@ -640,15 +641,16 @@ Return Value:
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
 
-    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-            this->ErfF16KernelRoutine = MlasSveErfF16Kernel;
-            this->GeluF16KernelRoutine = MlasSveGeluF16Kernel;
-        }
-        else{
-            this->ErfF16KernelRoutine = MlasNeonErfF16Kernel;
-            this->GeluF16KernelRoutine = MlasNeonGeluF16Kernel; 
-        }
+    #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
+        defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+                this->ErfF16KernelRoutine = MlasSveErfF16Kernel;
+                this->GeluF16KernelRoutine = MlasSveGeluF16Kernel;
+            }
+            else{
+                this->ErfF16KernelRoutine = MlasNeonErfF16Kernel;
+                this->GeluF16KernelRoutine = MlasNeonGeluF16Kernel; 
+            }
     #endif
 #endif
 
@@ -669,9 +671,10 @@ Return Value:
     this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
-    this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
+    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
+        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
 #endif
 
 #endif // MLAS_TARGET_ARM64

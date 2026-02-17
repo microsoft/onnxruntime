@@ -1,6 +1,9 @@
 /*++
 
 Copyright 2025 FUJITSU LIMITED
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
 
 Module Name:
 
@@ -23,10 +26,11 @@ MlasComputeFP16Gelu(const MLAS_FP16* input,
                     const std::string& algo)
 {
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
         GetMlasPlatform().GeluF16KernelRoutine(input, output, temp, count, algo);
+        return;
     #endif
-#else 
+#endif 
     (void)temp; 
     for (int64_t i = 0; i < count; ++i) {
         float x = static_cast<float>(input[i]);
@@ -47,5 +51,4 @@ MlasComputeFP16Gelu(const MLAS_FP16* input,
 
         output[i] = MLAS_FP16(gelu_val);
     }
-#endif
 }

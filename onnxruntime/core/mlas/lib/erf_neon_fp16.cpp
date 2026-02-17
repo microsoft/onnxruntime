@@ -1,6 +1,9 @@
 /*++
 
 Copyright 2025 FUJITSU LIMITED
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
 
 Module Name:
 
@@ -14,7 +17,8 @@ Abstract:
 
 #include "erf_neon_fp16.h"
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
+    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 // Helpers to safely convert between float and FP16-bit representation
 static float
