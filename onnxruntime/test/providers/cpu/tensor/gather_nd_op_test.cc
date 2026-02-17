@@ -346,9 +346,9 @@ TEST(GatherNDOpTest, GatherND_batch_dims_mismatch_error) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "GatherND: indices batch size (2) is not divisible by input batch size (3)",
-           {},        // no excluded providers needed
-           nullptr,   // no RunOptions
-           &cpu_only_ep); // force CPU
+           {},             // no excluded providers needed
+           nullptr,        // no RunOptions
+           &cpu_only_ep);  // force CPU
 }
 
 // Test for issue #23828: GatherND should return error when input batch dimension is zero
@@ -369,9 +369,8 @@ TEST(GatherNDOpTest, GatherND_zero_batch_dims_error) {
            "GatherND: input tensor batch dimensions cannot be zero",
            {},
            nullptr,
-           &cpu_only_ep); // force CPU
+           &cpu_only_ep);  // force CPU
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime
