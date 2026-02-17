@@ -5,8 +5,7 @@ import argparse
 import os
 import struct
 
-import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, save
 
 
 def create_model(output_path, external_data_rel_path):
@@ -95,7 +94,7 @@ def create_model(output_path, external_data_rel_path):
     tensor.ClearField("float_data")
 
     # Now save the model proto
-    onnx.save(model, output_path)
+    save(model, output_path)
     print(f"Model saved to {output_path}")
     print(f"External data file created at {external_data_full_path}")
 

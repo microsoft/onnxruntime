@@ -2127,6 +2127,15 @@ Serialized model format will default to ONNX unless:
 
 )pbdoc")
       .def_property(
+          "whitelisted_data_folders",
+          [](const PySessionOptions* options) -> std::basic_string<ORTCHAR_T> {
+            return options->value.whitelisted_data_folders;
+          },
+          [](PySessionOptions* options, std::basic_string<ORTCHAR_T> whitelisted_data_folders) -> void {
+            options->value.whitelisted_data_folders = std::move(whitelisted_data_folders);
+          },
+          R"pbdoc(Semicolon-separated list of whitelisted data folder paths. Used to restrict where external data can be loaded from.)pbdoc")
+      .def_property(
           "enable_cpu_mem_arena",
           [](const PySessionOptions* options) -> bool { return options->value.enable_cpu_mem_arena; },
           [](PySessionOptions* options, bool enable_cpu_mem_arena) -> void {
