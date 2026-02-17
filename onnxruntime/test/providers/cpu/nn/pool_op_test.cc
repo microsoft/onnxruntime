@@ -966,6 +966,38 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Regression test for https://github.com/microsoft/onnxruntime/issues/26708
+// AveragePool with count_include_pad=1 and asymmetric pads (only bottom/right)
+// was using incorrect pad index for hend, producing wrong results.
+TEST(PoolTest, AveragePool_CountIncludePad_AsymmetricPads) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 1, 1});  // no top/left, 1 bottom, 1 right
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  // Input: 2x2 all ones
+  std::vector<float> x_vals = {1.0f, 1.0f,
+                               1.0f, 1.0f};
+  std::vector<int64_t> x_dims = {1, 1, 2, 2};
+
+  // Output: 2x2
+  // Top-left:     (1+1+1+1)/4 = 1.0
+  // Top-right:    (1+0+1+0)/4 = 0.5
+  // Bottom-left:  (1+1+0+0)/4 = 0.5
+  // Bottom-right: (1+0+0+0)/4 = 0.25
+  std::vector<int64_t> expected_dims = {1, 1, 2, 2};
+  std::vector<float> expected_vals = {1.0f, 0.5f,
+                                      0.5f, 0.25f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 // test 'strides' attribute not specified
 TEST(PoolTest, AveragePool_DefaultStrides) {
   OpTester test("AveragePool");
