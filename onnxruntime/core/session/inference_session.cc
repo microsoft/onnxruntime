@@ -736,6 +736,18 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 InferenceSession::~InferenceSession() {
+  // Flush any remaining RuntimePerf counters
+  {
+    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+    if (telemetry_.total_runs_since_last_ > 0) {
+      Env::Default().GetTelemetryProvider().LogRuntimePerf(session_id_,
+                                                           telemetry_.total_runs_since_last_,
+                                                           telemetry_.total_run_duration_since_last_,
+                                                           telemetry_.duration_per_batch_size_,
+                                                           Status::OK());
+    }
+  }
+
   if (session_options_.enable_profiling) {
     ORT_TRY {
       EndProfiling();
@@ -3034,19 +3046,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
   const Env& env = Env::Default();
 
-  // Determine whether to emit Run telemetry
-  bool emit_run_telemetry = false;
-  {
-    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
-    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_) {
-      emit_run_telemetry = true;
-    }
-  }
-
-  if (emit_run_telemetry) {
-    env.GetTelemetryProvider().LogRunStart(session_id_);
-  }
-
   int graph_annotation_id = 0;
   const std::string& graph_annotation_str =
       run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "");
@@ -3242,11 +3241,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
     telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
     telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-    // Emit RuntimePerf
-    if (emit_run_telemetry) {
+    // Emit RuntimePerf on scheduled interval or on error
+    if ((TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_) ||
+        !retval.IsOK()) {
       env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
                                                 telemetry_.total_run_duration_since_last_,
-                                                telemetry_.duration_per_batch_size_);
+                                                telemetry_.duration_per_batch_size_,
+                                                retval);
       // reset counters
       telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
       telemetry_.total_runs_since_last_ = 0;

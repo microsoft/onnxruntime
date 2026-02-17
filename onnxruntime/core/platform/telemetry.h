@@ -85,7 +85,8 @@ class Telemetry {
                                const char* function, uint32_t line) const;
 
   virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
-                              std::unordered_map<int64_t, long long> duration_per_batch_size) const;
+                              std::unordered_map<int64_t, long long> duration_per_batch_size,
+                              const common::Status& status) const;
 
   virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
 
@@ -107,8 +108,6 @@ class Telemetry {
 
   virtual void LogSessionCreationEnd(uint32_t session_id,
                                    const common::Status& status) const;
-
-  virtual void LogRunStart(uint32_t session_id) const;
 
   virtual void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                                 const std::string& lib_path) const;

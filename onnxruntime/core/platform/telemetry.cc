@@ -121,11 +121,13 @@ void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& statu
 }
 
 void Telemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
-                               std::unordered_map<int64_t, long long> duration_per_batch_size) const {
+                               std::unordered_map<int64_t, long long> duration_per_batch_size,
+                               const common::Status& status) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(total_runs_since_last);
   ORT_UNUSED_PARAMETER(total_run_duration_since_last);
   ORT_UNUSED_PARAMETER(duration_per_batch_size);
+  ORT_UNUSED_PARAMETER(status);
 }
 
 void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
@@ -170,10 +172,6 @@ void Telemetry::LogSessionCreationEnd(uint32_t session_id,
                                      const common::Status& status) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(status);
-}
-
-void Telemetry::LogRunStart(uint32_t session_id) const {
-  ORT_UNUSED_PARAMETER(session_id);
 }
 
 void Telemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
