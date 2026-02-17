@@ -31,6 +31,7 @@ def torch_onnx_export(
     enable_onnx_checker=None,
     use_external_data_format=None,
     export_modules_as_functions=False,
+    dynamo=False,
 ):
     if Version(torch.__version__) >= Version("1.11.0"):
         torch.onnx.export(
@@ -49,6 +50,7 @@ def torch_onnx_export(
             keep_initializers_as_inputs=keep_initializers_as_inputs,
             custom_opsets=custom_opsets,
             export_modules_as_functions=export_modules_as_functions,
+            dynamo=dynamo,
         )
     else:
         torch.onnx.export(
