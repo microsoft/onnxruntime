@@ -2237,17 +2237,6 @@ MlasFlashAttention(
     MLAS_THREADPOOL* ThreadPool
 );
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-/**
- * @brief Function to override the packing mechanism decision if kleidi ai is included
- * @param enable     enable kleidiai packing (allow or disallow depending on true/false)
- * @return
-*/
-void
-MLASCALL
-MlasGemmBatchPackUseKleidi(bool enable);
-#endif
-
 void
 MLASCALL
 MlasComputeFP16Erf(

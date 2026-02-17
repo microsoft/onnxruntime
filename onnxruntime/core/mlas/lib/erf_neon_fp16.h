@@ -1,6 +1,9 @@
 /*++
 
 Copyright 2025 FUJITSU LIMITED
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
 
 Module Name:
 

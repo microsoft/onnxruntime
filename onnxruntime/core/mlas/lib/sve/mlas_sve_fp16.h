@@ -1,6 +1,9 @@
 /*++
 
 Copyright 2025 FUJITSU LIMITED
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
 
 Module Name:
 
@@ -19,7 +22,8 @@ Abstract:
 
 #include "mlasi_sve.h"
 
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
+    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
