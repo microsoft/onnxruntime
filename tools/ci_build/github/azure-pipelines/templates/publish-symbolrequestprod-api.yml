@@ -68,7 +68,7 @@ steps:
 
         # Convert the SecureString token to a plain text string for the HTTP header
         # This is done just-in-time before its use.
-        $plainTextToken = $secureTokenObject | ConvertFrom-SecureString -AsPlainText
+        $plainTextToken = [System.Net.NetworkCredential]::new("", $secureTokenObject).Password
         Write-Host "Token converted to plain text for API call (will not be logged)."
 
         # Part 2: Publish Symbols using internal REST API
