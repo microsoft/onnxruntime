@@ -1,0 +1,168 @@
+parameters:
+- name: architecture
+  type: string
+  default: 'x64'
+  values:
+    - x64
+    - arm64
+
+- name: build_py_parameters
+  displayName: 'Specify extra build parameters'
+  type: string
+  default: '--use_azure'
+
+- name: cmake_build_type
+  type: string
+  displayName: 'CMake build type for Windows. Only for Windows CPU packages.'
+  default: 'RelWithDebInfo'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+jobs:
+- job: Windows_py_Wheels_${{parameters.architecture}}
+  ${{ if eq(parameters.architecture, 'arm64') }}:
+    pool:
+      name: 'onnxruntime-qnn-windows-vs-2022-arm64'
+      os: windows
+      hostArchitecture: Arm64
+      demands:
+        - Agent.Version -equals 4.264.2
+  ${{ else }}:
+    pool:
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      os: windows
+  templateContext:
+    sdl:
+      codeSignValidation:
+        enabled: true
+        # TODO: check why pyd file was not signed
+        break: false
+        additionalTargetsGlobPattern: f|**\*.pyd
+      psscriptanalyzer:
+        enabled: true
+      binskim:
+        enabled: true
+        scanOutputDirectoryOnly: true
+    ${{ if eq(parameters.architecture, 'arm64') }}:
+      outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: onnxruntime-win-$(PythonVersion)-arm64
+    ${{ else }}:
+      outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: onnxruntime-win-$(PythonVersion)
+  strategy:
+    matrix:
+      Python311_${{parameters.architecture}}:
+        PythonVersion: '3.11'
+      Python312_${{parameters.architecture}}:
+        PythonVersion: '3.12'
+      Python313_${{parameters.architecture}}:
+        PythonVersion: '3.13'
+      Python314_${{parameters.architecture}}:
+        PythonVersion: '3.14'
+  variables:
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    ExtraParam: ${{ parameters.build_py_parameters }}
+  timeoutInMinutes: 180
+  workspace:
+    clean: all
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: setup-build-tools.yml
+    parameters:
+      host_cpu_arch: ${{parameters.architecture}}
+      python_version: $(PythonVersion)
+
+  - template: set-nightly-build-option-variable-step.yml
+
+  - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
+    env:
+      TMPDIR: "$(Agent.TempDirectory)"
+
+  - task: PythonScript@0
+    displayName: 'Build'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: >
+        --config ${{ parameters.cmake_build_type }}
+        --enable_lto
+        --build_dir $(Build.SourcesDirectory)\build
+        --skip_submodule_sync
+        --cmake_generator "Visual Studio 17 2022"
+        --enable_pybind
+        --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build
+        ${{ parameters.build_py_parameters }}
+        --parallel --use_binskim_compliant_compile_flags --update
+        $(TelemetryOption)
+
+  - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+    - template: publish-symbolrequestprod-api.yml
+      parameters:
+        ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+          symbolExpiryTime: 60
+        includePublicSymbolServer: true
+        symbolsArtifactName: onnxruntime_cpu_win_${{ parameters.architecture }}_$(PythonVersion)
+        symbolsVersion: $(Build.BuildId)
+        symbolProject: 'ONNX Runtime'
+        subscription: 'OnnxrunTimeCodeSign_20240611'
+        searchPattern: |
+          $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
+          $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
+          $(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
+
+  # Esrp signing
+  - template: win-esrp-dll.yml
+    parameters:
+      FolderPath: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+      DisplayName: 'ESRP - Sign Native dlls'
+      DoEsrp: true
+      Pattern: '*.pyd,*.dll'
+
+  - task: PythonScript@0
+    displayName: 'Build wheel'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\setup.py'
+      arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
+      workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+
+  - task: CopyFiles@2
+    displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
+      Contents: '*.whl'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - script: |
+      7z x *.whl
+    workingDirectory: '$(Build.ArtifactStagingDirectory)'
+    displayName: 'unzip the package'
+
+
+  - powershell: |
+      if ("$(PythonVersion)" -notcontains "3.14") {
+        python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
+        Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+        Remove-Item -Recurse -Force onnxruntime
+        if ("$(ExtraParam)".Split() -contains "--use_azure") {
+
+          if( "${{parameters.architecture}}" -eq 'arm64') {
+            $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\arm64-windows\bin;$env:path"
+          }  else {
+            $env:path="$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
+          }
+          python onnxruntime_test_python_azure.py
+        }
+        python onnx_backend_test_series.py
+      }
+    workingDirectory: '$(Build.SourcesDirectory)\build\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+    displayName: 'Run Python Tests'

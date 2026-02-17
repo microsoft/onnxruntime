@@ -103,7 +103,6 @@ struct WebgpuAttentionParameters {
   int num_splits_ = 0;  // number of splits for splitkv
   int rotary_dim_ = 0;  // rotary embedding dimension
   int local_window_size_ = 0;
-  bool kv_share_buffer_ = false;
   bool is_packed_qkv_ = false;
   bool is_subsequent_prompt_ = false;  // indicates whether we have past context and seqlen > 1
   bool is_first_prompt_ = false;       // indicates whether this is first decoding step
@@ -121,6 +120,9 @@ struct WebgpuAttentionParameters {
 
 Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_heads, int sequence_length,
                          int head_size, const Tensor* input_tensor, const Tensor* bias, int bias_offset, Tensor* output_tensor);
+
+Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params,
+                      const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val, int kv_hidden_size);
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,

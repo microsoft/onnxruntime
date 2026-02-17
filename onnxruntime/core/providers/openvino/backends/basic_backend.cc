@@ -63,7 +63,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                                    hw_target,
                                                                    device_config,
                                                                    enable_causallm,
-                                                                   model_file_path());
+                                                                   model_file_path(),
+                                                                   session_context_);
       } else {
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob
@@ -138,20 +139,13 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   }
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
-  auto metadata = shared_context_.shared_weights.metadata;
   if (session_context_.so_share_ep_contexts) {
-    initializer = [&metadata](OVInferRequestPtr ir_ptr) {
-      const auto input_count = ir_ptr->GetNumInputs();
-      for (auto i = 0u; i < input_count; i++) {
-        using Key = SharedContext::SharedWeights::Metadata::Key;
-        const auto tensor_key = Key{ir_ptr->GetInputTensorName(i)};
-        if (metadata.contains(tensor_key)) {
-          auto& value = metadata.at(tensor_key);
-          ir_ptr->SetTensor(tensor_key.name, value.tensor);
-        }
-      }
+    auto model_dir = session_context_.GetModelPath().parent_path();
+    initializer = [this, model_dir = std::move(model_dir)](OVInferRequestPtr ir_ptr) {
+      shared_context_.SetSharedWeightsOnInferRequest(ir_ptr->GetInfReq(), model_dir);
     };
   }
+
   infer_req_pool_ = std::make_unique<InferRequestPool>(exe_network_, num_infer_req, std::move(initializer));
   bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
 }
@@ -242,13 +236,13 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableCaching() {
+void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (subgraph_context_.is_ep_ctx_graph) return;
 
   if (!session_context_.cache_dir.empty() && !session_context_.so_context_enable) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    OVCore::Get()->SetCache(session_context_.cache_dir.string());
+    device_config.emplace(ov::cache_dir(session_context_.cache_dir.string()));
   }
 }
 
@@ -262,7 +256,7 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableStreams() {
+void BasicBackend::EnableStreams(ov::AnyMap& device_config) {
   // Return silently for NPU as it's currently treated as a read-only flag by the NPU plugin
   // and throws an exception for the same
   if (session_context_.device_type.find("NPU") != std::string::npos)
@@ -279,7 +273,7 @@ void BasicBackend::EnableStreams() {
     }
     // Do nothing
   } else {
-    OVCore::Get()->SetStreams(session_context_.device_type, session_context_.num_streams);
+    device_config.emplace(ov::num_streams(session_context_.num_streams));
   }
 }
 
@@ -293,13 +287,13 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching();
+  EnableCaching(device_config);
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
   // Enable streams; default=1 unless overridden by user configuration
-  EnableStreams();
+  EnableStreams(device_config);
 
   // Set the inference_num_threads property of the CPU
   SetNumThreads(device_config);
@@ -315,29 +309,15 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
-                                                      const ov::PartialShape& partial_shape) const {
-  // Check if the number of dimensions matches
-  if (static_cast<int64_t>(ort_dims.size()) != partial_shape.rank().get_length()) {
-    ORT_THROW("Mismatch in number of dimensions between ORT tensor and OpenVINO PartialShape.");
-  }
-  // Validate each dimension
-  for (size_t i = 0; i < ort_dims.size(); ++i) {
-    const auto& ov_dim = partial_shape[i];  // OpenVINO dimension at index i
-    int64_t ort_dim = ort_dims[i];          // ORT dimension at index i
-
-    // Check if the ORT dimension is within the specified range
-    int64_t min_dim = ov_dim.get_min_length();
-    int64_t max_dim = ov_dim.get_max_length();
-    if (ort_dim < min_dim || ort_dim > max_dim) {
-      ORT_THROW(" ORT Dimension is out of range");
-    }
-  }
-}
-
 void BasicBackend::RewindKVCache(size_t index) {
   infer_req_pool_->forEachIdleRequest([&](OVInferRequestPtr& infer_request) {
     infer_request->RewindKVCache(index);
+  });
+}
+
+void BasicBackend::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+  infer_req_pool_->forEachIdleRequest([&](OVInferRequestPtr& infer_request) {
+    infer_request->ReorderKVCache(src_indices, dst_indices);
   });
 }
 
@@ -381,9 +361,6 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
       // Set the input shape based on the input tensor from ort
       auto tensor = context.GetInput(input_info.onnx_index);
       auto ort_shape = tensor.GetTensorTypeAndShapeInfo().GetShape();
-      if (input_info.IsBoundedDynamic()) {
-        ValidateOrtDimsAgainstPartialShape(ort_shape, input_info.shape);
-      }
       auto input_shape = ParameterShape(ort_shape);
 
       infer_request->SetTensor(input_info.name,

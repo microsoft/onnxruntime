@@ -1042,7 +1042,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     ProviderOptions OV_provider_options_map;
     const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
                                                                  "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
-                                                                 "enable_causallm", "disable_dynamic_shapes", "reshape_input"};
+                                                                 "enable_causallm", "disable_dynamic_shapes", "reshape_input", "layout"};
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
@@ -1347,6 +1347,9 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                                    ep_option_keys,
                                                    ep_option_vals,
                                                    py_sess_options.value));
+
+  ORT_RETURN_IF_ERROR(AddEpCustomDomainsToSessionOptions(ep_devices,
+                                                         py_sess_options));
 
   py_sess_options.provider_factories.push_back(std::move(provider_factory));
   return Status::OK();
@@ -1891,6 +1894,47 @@ for model inference.)pbdoc");
             return std::unique_ptr<OrtSyncStream>(stream.release());
           },
           R"pbdoc(The OrtSyncStream instance for the OrtEpDevice.)pbdoc");
+
+  py::class_<OrtEpAssignedNode> py_ep_node(m, "OrtEpAssignedNode",
+                                           R"pbdoc(Contains information about a node assigned to an execution
+provider)pbdoc");
+  py_ep_node
+      .def_property_readonly(
+          "name",
+          [](const OrtEpAssignedNode* ep_node) -> std::string {
+            return ep_node->name;
+          },
+          R"pbdoc(The node's name)pbdoc")
+      .def_property_readonly(
+          "domain",
+          [](const OrtEpAssignedNode* ep_node) -> std::string {
+            return ep_node->domain;
+          },
+          R"pbdoc(The node's domain)pbdoc")
+      .def_property_readonly(
+          "op_type",
+          [](const OrtEpAssignedNode* ep_node) -> std::string {
+            return ep_node->op_type;
+          },
+          R"pbdoc(The node's operator type)pbdoc");
+
+  py::class_<OrtEpAssignedSubgraph> py_ep_subgraph(m, "OrtEpAssignedSubgraph",
+                                                   R"pbdoc(Contains information about a subgraph assigned to an
+execution provider)pbdoc");
+  py_ep_subgraph
+      .def_property_readonly(
+          "ep_name",
+          [](const OrtEpAssignedSubgraph* ep_subgraph) -> std::string {
+            return ep_subgraph->ep_name;
+          },
+          R"pbdoc(The name of the execution provider to which this subgraph is assigned.)pbdoc")
+      .def(
+          "get_nodes",
+          [](const OrtEpAssignedSubgraph* ep_subgraph) -> const std::vector<const OrtEpAssignedNode*>& {
+            return ep_subgraph->nodes;
+          },
+          py::return_value_policy::reference_internal,
+          R"pbdoc(List of nodes in the subgraph.)pbdoc");
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
@@ -2677,6 +2721,25 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def("get_provider_graph_assignment_info", [](const PyInferenceSession* sess) -> const std::vector<const OrtEpAssignedSubgraph*>& {
+#if !defined(ORT_MINIMAL_BUILD)
+        const auto* inference_session = sess->GetSessionHandle();
+        const auto& sess_options = inference_session->GetSessionOptions();
+        bool is_enabled =
+            sess_options.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+
+        if (!is_enabled) {
+          OrtPybindThrowIfError(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, !is_enabled, "Session configuration entry '",
+                                                kOrtSessionOptionsRecordEpGraphAssignmentInfo,
+                                                "' must be set to \"1\" to retrieve EP graph assignment information."));
+        }
+        return inference_session->GetEpGraphAssignmentInfo();
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_THROW("EP graph assignment information is not supported in this build");
+#endif
+      },
+           py::return_value_policy::reference_internal, R"pbdoc(Returns information on the subgraph/nodes assigned to execution providers in the session.)pbdoc")
       .def_property_readonly("session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
             auto session_options = std::make_unique<PySessionOptions>();
             session_options->value = sess->GetSessionHandle()->GetSessionOptions();
@@ -2759,6 +2822,47 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
 #endif
       })
+      .def("set_ep_dynamic_options", [](PyInferenceSession* sess, const py::dict& options) {
+            InlinedVector<const char*> keys;
+            InlinedVector<const char*> values;
+            InlinedVector<std::string> key_strings;
+            InlinedVector<std::string> value_strings;
+
+            // Reserve space to avoid reallocations
+            key_strings.reserve(options.size());
+            value_strings.reserve(options.size());
+            keys.reserve(options.size());
+            values.reserve(options.size());
+
+            // Convert Python dict to C-style arrays
+            for (const auto& item : options) {
+              key_strings.emplace_back(py::str(item.first));
+              value_strings.emplace_back(py::str(item.second));
+              keys.push_back(key_strings.back().c_str());
+              values.push_back(value_strings.back().c_str());
+            }
+
+            if (keys.empty()) {
+              ORT_THROW("No options were provided");
+            }
+
+            ORT_THROW_IF_ERROR(sess->GetSessionHandle()->SetEpDynamicOptions(keys, values)); },
+           R"pbdoc(Set dynamic options for execution providers.
+
+          Args:
+              options (dict): Dictionary of key-value pairs where both keys and values are strings.
+                            These options will be passed to the execution providers to modify
+                            their runtime behavior.
+
+          Example:
+              session.set_ep_dynamic_options({
+                  "option1": "value1",
+                  "option2": "value2"
+              })
+
+          Raises:
+              RuntimeError: If no options are provided or if setting the options fails.
+          )pbdoc")
       .def("set_tuning_results", [](PyInferenceSession* sess, py::list results, bool error_on_invalid) -> void {
 #if !defined(ORT_MINIMAL_BUILD)
         std::vector<TuningResults> tuning_results;

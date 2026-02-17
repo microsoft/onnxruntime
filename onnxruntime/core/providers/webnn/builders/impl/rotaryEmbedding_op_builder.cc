@@ -9,6 +9,7 @@
 #include "core/providers/webnn/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
+#include "attention_helper.h"
 
 // WebNN doesn't provide a dedicated op for RotaryEmbedding. Instead, we implement it by using a
 // combination of WebNN ops. The decomposed graph is referenced from DML EP at:
@@ -92,7 +93,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   const bool position_ids_is_offset = has_position_ids && position_ids_shape.size() == 1;
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
-  emscripten::val position_ids;
+  emscripten::val position_ids = emscripten::val::undefined();
   if (has_position_ids) {
     position_ids = model_builder.GetOperand(input_defs[position_ids_idx]->Name());
   }
@@ -138,7 +139,6 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
     rotary_embedding_dim = head_size;
   }
 
-  const uint32_t half_rotary_embedding_dim = rotary_embedding_dim / 2;
   emscripten::val transpose_options = emscripten::val::object();
 
   // Ensure the input is reshaped to: [batch_size, sequence_length, num_heads, head_size].
@@ -158,178 +158,25 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
         "reshape", input, emscripten::val::array(new_shape), reshape_input_options);
   }
 
-  // Split the input to perform the rotary embedding only on a subregion of the tensor if needed.
-  // The split inputs will be joined back together at the end.
-  emscripten::val partial_input0 = input;
-  emscripten::val partial_input1 = emscripten::val::undefined();
-  if (head_size != rotary_embedding_dim) {
-    const std::vector<uint32_t> splits{rotary_embedding_dim, head_size - rotary_embedding_dim};
-    emscripten::val split_input_options = emscripten::val::object();
-    split_input_options.set("label", node_name + "_split_input");
-    split_input_options.set("axis", 3);
-    emscripten::val split = wnn_builder.call<emscripten::val>(
-        "split", input, emscripten::val::array(splits), split_input_options);
-    partial_input0 = split[0];
-    partial_input1 = split[1];
-  }
-
-  // Split the partial input0 data into 2 equal parts.
-  // Firstly reshape the partial input0.
-  const std::vector<uint32_t> new_partial_input0_shape =
-      interleaved ? std::vector<uint32_t>({batch_size, sequence_length, num_heads, half_rotary_embedding_dim, 2})
-                  : std::vector<uint32_t>({batch_size, sequence_length, num_heads, 2, half_rotary_embedding_dim});
-  emscripten::val reshape_partial_input0_options = emscripten::val::object();
-  reshape_partial_input0_options.set("label", node_name + "_reshape_partial_input0");
-  partial_input0 = wnn_builder.call<emscripten::val>(
-      "reshape", partial_input0, emscripten::val::array(new_partial_input0_shape), reshape_partial_input0_options);
-  // Split partial input0.
-  const int split_axis = interleaved ? 4 : 3;
-  emscripten::val split_partial_input0_options = emscripten::val::object();
-  split_partial_input0_options.set("label", node_name + "_split_partial_input0");
-  split_partial_input0_options.set("axis", split_axis);
-  emscripten::val split_partial_input0 = wnn_builder.call<emscripten::val>(
-      "split", partial_input0, 2, split_partial_input0_options);
-
-  // Swap the two halves and join them together.
-  emscripten::val concat_partial_input0_options = emscripten::val::object();
-  concat_partial_input0_options.set("label", node_name + "_concat_partial_input0");
-  emscripten::val concated_partial_input0 = wnn_builder.call<emscripten::val>(
-      "concat", split_partial_input0.call<emscripten::val>("reverse"), split_axis, concat_partial_input0_options);
-
-  if (position_ids_is_offset) {
-    // We generate a sequence from 0 to sequence_length and add the offset to it.
-    const std::vector<uint32_t> position_ids_range_shape = {1, sequence_length};
-    std::string typed_array_name = "BigInt64Array";
-    int position_ids_data_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
-    const bool is_int64_supported = model_builder.IsInt64Supported();
-    if (!is_int64_supported) {
-      // Int64 is not supported by current context, use int32 instead.
-      typed_array_name = "Int32Array";
-      position_ids_data_type = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    }
-    emscripten::val position_ids_range_buffer = emscripten::val::global(typed_array_name.c_str()).new_(sequence_length);
-    for (uint32_t i = 0; i < sequence_length; i++) {
-      position_ids_range_buffer.set(i, is_int64_supported ? emscripten::val::global("BigInt")(i) : emscripten::val(i));
-    }
-    emscripten::val position_ids_range_desc = emscripten::val::object();
-    position_ids_range_desc.set("shape", emscripten::val::array(position_ids_range_shape));
-    position_ids_range_desc.set("dimensions", emscripten::val::array(position_ids_range_shape));
-    ORT_RETURN_IF_NOT(SetWebnnDataType(position_ids_range_desc, position_ids_data_type),
-                      "WebNN backend does not support data type: ", position_ids_data_type);
-    emscripten::val position_ids_range = wnn_builder.call<emscripten::val>(
-        "constant", position_ids_range_desc, position_ids_range_buffer);
-    // Add the offset to the sequence.
-    emscripten::val position_ids_add_range_options = emscripten::val::object();
-    position_ids_add_range_options.set("label", node_name + "_position_ids_add_range");
-    position_ids = wnn_builder.call<emscripten::val>(
-        "add", position_ids, position_ids_range, position_ids_add_range_options);
-  }
-
-  // Gather the cosine/sine values based on the position_ids (if it presents).
-  emscripten::val gather_cos = cos_cache;
-  emscripten::val gather_sin = sin_cache;
-  if (has_position_ids) {
-    emscripten::val gather_cos_sin_options = emscripten::val::object();
-    gather_cos_sin_options.set("label", node_name + "_gather_cos_sin");
-    gather_cos_sin_options.set("axis", 0);
-    gather_cos = wnn_builder.call<emscripten::val>("gather", gather_cos, position_ids, gather_cos_sin_options);
-    gather_sin = wnn_builder.call<emscripten::val>("gather", gather_sin, position_ids, gather_cos_sin_options);
-  }
-
-  // If it is full rotation, we need to slice the gathered cosine/sine
-  // to get the shape [batch_size, sequence_length, rotary_embedding_dim / 2].
-  if (cos_cache_shape.back() != static_cast<int64_t>(half_rotary_embedding_dim)) {
-    emscripten::val slice_gather_cos_sin_options = emscripten::val::object();
-    slice_gather_cos_sin_options.set("label", node_name + "_slice_gather_cos_sin");
-    const std::vector<uint32_t> starts{0, 0, 0};
-    const std::vector<uint32_t> sizes{batch_size, sequence_length, half_rotary_embedding_dim};
-    gather_cos = wnn_builder.call<emscripten::val>("slice", gather_cos, emscripten::val::array(starts),
-                                                   emscripten::val::array(sizes), slice_gather_cos_sin_options);
-    gather_sin = wnn_builder.call<emscripten::val>("slice", gather_sin, emscripten::val::array(starts),
-                                                   emscripten::val::array(sizes), slice_gather_cos_sin_options);
-  }
-
-  // Reshape and broadcast them to match the number of heads of the input data.
-  const std::vector<uint32_t> reshaped_cos_sin_shape =
-      interleaved ? std::vector<uint32_t>({batch_size, sequence_length, 1, half_rotary_embedding_dim, 1})
-                  : std::vector<uint32_t>({batch_size, sequence_length, 1, 1, half_rotary_embedding_dim});
-  emscripten::val reshape_gather_cos_sin_options = emscripten::val::object();
-  reshape_gather_cos_sin_options.set("label", node_name + "_reshape_gather_cos_sin");
-  gather_cos = wnn_builder.call<emscripten::val>(
-      "reshape", gather_cos, emscripten::val::array(reshaped_cos_sin_shape), reshape_gather_cos_sin_options);
-  gather_sin = wnn_builder.call<emscripten::val>(
-      "reshape", gather_sin, emscripten::val::array(reshaped_cos_sin_shape), reshape_gather_cos_sin_options);
-
-  // Multiply the non-rotated data with the cosine and the rotated data with the sine.
-  emscripten::val mul_cos_options = emscripten::val::object();
-  mul_cos_options.set("label", node_name + "_mul_cos");
-  emscripten::val mul_cos = wnn_builder.call<emscripten::val>(
-      "mul", partial_input0, gather_cos, mul_cos_options);
-  emscripten::val mul_sin_options = emscripten::val::object();
-  mul_sin_options.set("label", node_name + "_mul_sin");
-  emscripten::val mul_sin = wnn_builder.call<emscripten::val>(
-      "mul", concated_partial_input0, gather_sin, mul_sin_options);
-
-  // Create a vector that contains the sign values {-1, 1}.
-  emscripten::val sign_buffer = emscripten::val::undefined();
-  const std::vector<uint32_t> sign_shape = interleaved ? std::vector<uint32_t>({1, 1, 1, 2})
-                                                       : std::vector<uint32_t>({1, 1, 2, 1});
-  emscripten::val sign_constant_desc = emscripten::val::object();
-  sign_constant_desc.set("shape", emscripten::val::array(sign_shape));
-  sign_constant_desc.set("dimensions", emscripten::val::array(sign_shape));
-  ORT_RETURN_IF_NOT(SetWebnnDataType(sign_constant_desc, input_data_type),
-                    "WebNN backend does not support data type: ", input_data_type);
-  if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    sign_buffer = emscripten::val::global("Float32Array").new_(2);
-    sign_buffer.set(0, -1.0f);
-    sign_buffer.set(1, 1.0f);
-  } else if (input_data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    if (model_builder.IsFloat16ArrayAvailable()) {
-      // Float16Array is available - use Float16Array.
-      sign_buffer = emscripten::val::global("Float16Array").new_(2);
-      sign_buffer.set(0, -1.0f);
-      sign_buffer.set(1, 1.0f);
-    } else {
-      // Float16Array is not available - use Uint16Array instead.
-      sign_buffer = emscripten::val::global("Uint16Array").new_(2);
-      sign_buffer.set(0, PackFloat32ToUint16AsFloat16(-1.0f));
-      sign_buffer.set(1, PackFloat32ToUint16AsFloat16(1.0f));
-    }
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported input data type: ", input_data_type);
-  }
-  emscripten::val sign_constant = wnn_builder.call<emscripten::val>("constant", sign_constant_desc, sign_buffer);
-
-  // Multiply the broadcasted sign values with the rotated input.
-  emscripten::val mul_sign_options = emscripten::val::object();
-  mul_sign_options.set("label", node_name + "_mul_sign");
-  mul_sin = wnn_builder.call<emscripten::val>("mul", mul_sin, sign_constant, mul_sign_options);
-
-  // Reshape mul_cos and mul_sin to (batch_size, sequence_length, num_heads, rotary_embedding_dim).
-  const std::vector<uint32_t> reshaped_mul_cos_sin_shape =
-      {batch_size, sequence_length, num_heads, rotary_embedding_dim};
-  emscripten::val reshape_mul_cos_sin_options = emscripten::val::object();
-  reshape_mul_cos_sin_options.set("label", node_name + "_reshape_mul_cos_sign");
-  mul_cos = wnn_builder.call<emscripten::val>(
-      "reshape", mul_cos, emscripten::val::array(reshaped_mul_cos_sin_shape), reshape_mul_cos_sin_options);
-  mul_sin = wnn_builder.call<emscripten::val>(
-      "reshape", mul_sin, emscripten::val::array(reshaped_mul_cos_sin_shape), reshape_mul_cos_sin_options);
-
-  // Add the multiplied cos and sin values together.
-  emscripten::val add_mul_cos_sin_options = emscripten::val::object();
-  add_mul_cos_sin_options.set("label", node_name + "_add_mul_cos_sin");
-  emscripten::val output = wnn_builder.call<emscripten::val>(
-      "add", mul_cos, mul_sin, add_mul_cos_sin_options);
-
-  // Join the added values with the rest of the input.
-  if (head_size != rotary_embedding_dim) {
-    emscripten::val concat_back_input_options = emscripten::val::object();
-    concat_back_input_options.set("label", node_name + "_concat_back_input");
-    emscripten::val concat_inputs = emscripten::val::array();
-    concat_inputs.call<void>("push", output);
-    concat_inputs.call<void>("push", partial_input1);
-    output = wnn_builder.call<emscripten::val>("concat", concat_inputs, 3, concat_back_input_options);
-  }
+  // Apply rotary embedding using the helper function
+  emscripten::val output;
+  ORT_RETURN_IF_ERROR(ApplyRotaryEmbedding(
+      model_builder,
+      node_name,
+      input,
+      cos_cache,
+      sin_cache,
+      position_ids,
+      input_data_type,
+      batch_size,
+      sequence_length,
+      num_heads,
+      head_size,
+      rotary_embedding_dim,
+      interleaved,
+      has_position_ids,
+      position_ids_is_offset,
+      output));
 
   if (input_is_4d) {
     // The output is in 4D shape, we need to transpose it back to the original shape.

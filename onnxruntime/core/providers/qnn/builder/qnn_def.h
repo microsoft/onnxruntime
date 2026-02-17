@@ -19,6 +19,12 @@ namespace qnn {
 #define QNN_SYSTEM_PROFILE_API_ENABLED
 #endif
 
+#if defined(_WIN32) && (defined(__aarch64__) || defined(_M_ARM64))
+#if QNN_API_VERSION_MAJOR > 2 || ((QNN_API_VERSION_MAJOR) == 2 && (QNN_API_VERSION_MINOR >= 32))
+#define QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
+#endif
+#endif
+
 // QNN only support subset of POSIX of dlopen/dlsym/dladdr/dlerror/dlclose
 // except the following flags for dlopen, others should be done only
 // when we really need them
@@ -71,6 +77,15 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpExtremePowerSaver,
 };
 
+typedef struct PerThreadHtpPowerConfigs {
+  std::optional<HtpPerformanceMode> pre_run_perf_mode;
+  std::optional<HtpPerformanceMode> post_run_perf_mode;
+  std::optional<uint32_t> rpc_control_latency;
+  std::optional<uint32_t> rpc_polling_time;
+
+  uint32_t power_config_id = 0;
+} PerThreadHtpPowerConfigs_t;
+
 enum class ContextPriority : uint8_t {
   LOW = 0,
   NORMAL,
@@ -113,6 +128,9 @@ constexpr const int kSleepMediumLatency = 1000;
 constexpr const int kSleepHighLatency = 2000;
 constexpr const int kDcvsDisable = 0;
 constexpr const int kDcvsEnable = 1;
+constexpr const uint32_t kDisableRpcPolling = 0;
+constexpr const uint32_t kDisableRpcControlLatency = 0;
+constexpr const uint32_t kMaxRpcPolling = 9999;
 
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);

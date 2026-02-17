@@ -114,6 +114,14 @@ TEST(Einsum, ExplicitEinsumAsBatchedReduceOp_3D_input_1) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
+TEST(Einsum, ExplicitEinsumAsReduceWithTransposeOp_3D_input_0) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ijk->ki");
+  test.AddInput<float>("x", {2, 3, 4}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f});
+  test.AddOutput<float>("y", {4, 2}, {15.f, 15.f, 18.f, 18.f, 21.f, 21.f, 24.f, 24.f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+}
+
 // Implicit
 // Cannot do implicit reduction
 
@@ -749,6 +757,62 @@ TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar_Half) {
   test.AddInput<MLFloat16>("y", {2, 2}, input_y);
   test.AddOutput<MLFloat16>("o", {2, 2}, output);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+}
+
+// Theme: Empty inputs
+TEST(Einsum, EinsumEmptyInputOuterProduct) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->ij");
+  test.AddInput<float>("x", {0}, {});
+  test.AddInput<float>("y", {0}, {});
+  test.AddOutput<float>("o", {0, 0}, {});
+  // Empty inputs/outputs seem to cause some issue in the WebGpu EP.
+  // Disable for now.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
+}
+
+TEST(Einsum, EinsumEmptyInputTranspose) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ab,ba->ab");
+  test.AddInput<float>("x", {0, 1}, {});
+  test.AddInput<float>("y", {1, 0}, {});
+  test.AddOutput<float>("o", {0, 1}, {});
+  // Empty inputs/outputs seem to cause some issue in the WebGpu EP.
+  // Disable for now.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
+}
+
+TEST(Einsum, EinsumEmptyInputVanish) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ab,ba->a");
+  test.AddInput<float>("x", {1, 0}, {});
+  test.AddInput<float>("y", {0, 1}, {});
+  test.AddOutput<float>("o", {1}, {0.f});
+  // Empty inputs/outputs seem to cause some issue in the WebGpu EP.
+  // Disable for now.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
+}
+
+TEST(Einsum, EinsumEmptyInputVanish3d) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abc,bad->ad");
+  test.AddInput<float>("x", {10, 0, 10}, {});
+  test.AddInput<float>("y", {0, 10, 1}, {});
+  test.AddOutput<float>("o", {10, 1}, std::vector<float>(10, 0.f));
+  // Empty inputs/outputs seem to cause some issue in the WebGpu EP.
+  // Disable for now.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
+}
+
+TEST(Einsum, EinsumEmptyInputVanish3d2empty) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abc,bcd->ad");
+  test.AddInput<float>("x", {0, 0, 0}, {});
+  test.AddInput<float>("y", {0, 0, 1}, {});
+  test.AddOutput<float>("o", {0, 1}, {});
+  // Empty inputs/outputs seem to cause some issue in the WebGpu EP.
+  // Disable for now.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kWebGpuExecutionProvider});
 }
 
 TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {

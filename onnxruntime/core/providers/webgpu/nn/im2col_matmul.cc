@@ -6,19 +6,12 @@
 
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/nn/im2col_matmul.h"
+#include "core/providers/webgpu/nn/conv.h"
 #include "core/providers/webgpu/nn/activation_util.h"
 
 namespace onnxruntime {
 namespace webgpu {
-
 namespace {
-
-// TODO: move to common header.
-template <typename T>
-inline T ceil_div(T numerator, T denominator) {
-  return (numerator + denominator - 1) / denominator;
-}
-
 // Chooses the optimal tile size (M, N) for the im2col operation.
 // This tile size is performance-tuned and varies depending on the target device.
 std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_n) {
@@ -32,8 +25,8 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
     const uint32_t tile_m = tile_pair.first;
     const uint32_t tile_n = tile_pair.second;
 
-    const uint32_t dispatch_m = ceil_div(im2col_m, tile_m);
-    const uint32_t dispatch_n = ceil_div(im2col_n, tile_n);
+    const uint32_t dispatch_m = CeilDiv(im2col_m, tile_m);
+    const uint32_t dispatch_n = CeilDiv(im2col_n, tile_n);
     const uint32_t dispatch = dispatch_m * dispatch_n;
 
     if (dispatch >= 128) {
@@ -46,7 +39,7 @@ std::pair<uint32_t, uint32_t> ChooseTileSize(uint32_t im2col_m, uint32_t im2col_
 }
 
 // Add support for more devices.
-bool IsDeviceSupported(ComputeContext& context) {
+bool IsDeviceSupported(const ComputeContextBase& context) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
 
   if (adapter_info.vendor == std::string_view("intel")) {
@@ -59,15 +52,6 @@ bool IsDeviceSupported(ComputeContext& context) {
 }
 
 }  // namespace
-
-Status OIHW2OHWIProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-
-  return WGSL_TEMPLATE_APPLY(shader, "nn/oihw_to_ohwi.wgsl.template",
-                             WGSL_TEMPLATE_VARIABLE(output, output),
-                             WGSL_TEMPLATE_VARIABLE(src, src));
-}
 
 Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& src = shader.AddInput("src", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -101,34 +85,16 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   const bool has_bias = context.InputCount() > 2;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
 
-  // Transpose OIHW Weight to OHWI
-  // TODO: Move to `Transpose`
-  // TODO: Use prepack
   TensorShape weight_shape = weight->Shape();
   const uint32_t channel_output = onnxruntime::narrow<uint32_t>(weight_shape[0]);
   const uint32_t channel_input = onnxruntime::narrow<uint32_t>(weight_shape[1]);
   const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(weight_shape[2]);
   const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(weight_shape[3]);
 
-  TensorShape ohwi_weight_shape{channel_output, kernel_height, kernel_width, channel_input};
-  Tensor ohwi_weight = context.CreateGPUTensor(weight->DataType(), ohwi_weight_shape);
-  OIHW2OHWIProgram transpose_program{};
-  transpose_program.SetWorkgroupSize(64);
-
-  const uint32_t Ci_tiles = ceil_div(channel_input, 64u);
-  transpose_program.SetDispatchGroupSize(channel_output, Ci_tiles);
-
-  transpose_program.AddInput({weight,
-                              ProgramTensorMetadataDependency::TypeAndRank});
-  transpose_program.AddOutput({&ohwi_weight,
-                               ProgramTensorMetadataDependency::TypeAndRank});
-  transpose_program.AddUniformVariables({{channel_output},
-                                         {channel_input},
-                                         {kernel_height},
-                                         {kernel_width},
-                                         {Ci_tiles},
-                                         {ceil_div(kernel_height * kernel_height, 4u)}});
-  ORT_RETURN_IF_ERROR(context.RunProgram(transpose_program));
+  // Transpose OIHW Weight to OHWI
+  // TODO: Use prepack
+  Tensor ohwi_weight;
+  ORT_RETURN_IF_ERROR(TransposeKernel(context, weight, weight->Shape(), &ohwi_weight, {0, 2, 3, 1}));
 
   // im2col-matmul
   const TensorShape src_shape = src->Shape();
@@ -156,8 +122,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, use_subgroup};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
 
-  const uint32_t M_tiles = ceil_div(im2col_m, tile_m);
-  const uint32_t N_tiles = ceil_div(im2col_n, tile_n);
+  const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);
+  const uint32_t N_tiles = CeilDiv(im2col_n, tile_n);
   im2col_mm_program.SetDispatchGroupSize(M_tiles, N_tiles, batch);
 
   im2col_mm_program.AddInput({src,
@@ -185,7 +151,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {im2col_n},
                                          {M_tiles},
                                          {N_tiles},
-                                         {ceil_div(ceil_div(im2col_k, 4u), 4u)},
+                                         {CeilDiv(CeilDiv(im2col_k, 4u), 4u)},
                                          {dilations},
                                          {pads},
                                          {strides}});
@@ -194,11 +160,10 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   return context.RunProgram(im2col_mm_program);
 }
 
-bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
+bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
                                  const bool is_channels_last,
-                                 const ActivationKind activation_kind,
+                                 const bool is_fused,
                                  const TensorShape weight_shape,
-                                 const AutoPadType auto_pad,
                                  const uint32_t group) {
   if (!IsDeviceSupported(context)) {
     return false;
@@ -206,9 +171,8 @@ bool CanApplyIm2ColMatMulProgram(ComputeContext& context,
 
   // TODO: Support !is_channels_last
   // TODO: Support fuse
-  // TODO: Support auto pad
   // TODO: Support group conv
-  if (!is_channels_last || activation_kind != ActivationKind::None || auto_pad != AutoPadType::NOTSET || group != 1) {
+  if (!is_channels_last || is_fused || group != 1) {
     return false;
   }
 

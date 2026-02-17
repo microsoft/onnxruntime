@@ -21,6 +21,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .SetInputMemType(1, OrtMemTypeCPU)
          .AddInputOutputAlias(0, 0)),
     Squeeze)
 
@@ -32,6 +33,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .SetInputMemType(1, OrtMemTypeCPU)
          .AddInputOutputAlias(0, 0)),
     Squeeze)
 
@@ -43,16 +45,28 @@ ONNX_OPERATOR_KERNEL_EX(
     (Ort::KernelDefBuilder()
          .AddTypeConstraint("T", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))
          .AddTypeConstraint("axes", GetTensorType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64))
+         .SetInputMemType(1, OrtMemTypeCPU)
          .AddInputOutputAlias(0, 0)),
     Squeeze)
 
-Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag) : BaseKernelImpl(info, state) {}
+Squeeze::Squeeze(const OrtKernelInfo* info, void* state, PrivateTag)
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl members to NULL/zero
+      info_{info},
+      data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
+  ort_version_supported = ORT_API_VERSION;
+  Compute = ComputeImpl;
+  Release = ReleaseImpl;
+}
 
 /*static*/
-OrtStatus* Squeeze::Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Squeeze>& kernel) {
+OrtStatus* Squeeze::CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
-  kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
+  auto squeeze_kernel = std::make_unique<Squeeze>(info, state, PrivateTag{});
+
+  kernel = squeeze_kernel.release();
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 static int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
@@ -84,12 +98,16 @@ static std::vector<int64_t> ComputeOutputShape(gsl::span<const int64_t> input_sh
   return output_shape;
 }
 
-OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
-  Ort::KernelContext kernel_context(kernel_ctx);
-  static_cast<void>(this->state_);  // NOTE: Unused in this example.
+/*static*/
+OrtStatus* ORT_API_CALL Squeeze::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  Squeeze* squeeze_kernel = static_cast<Squeeze*>(this_ptr);
+  static_cast<void>(squeeze_kernel->info_);  // NOTE: Unused in this example.
 
+  Ort::KernelContext kernel_context(kernel_ctx);
   gsl::span<const float> input0;
   std::vector<int64_t> shape0;
+  Ort::ConstValue input = kernel_context.GetInput(0);
   RETURN_IF_ERROR(GetKernelInputDataAndShape<float>(kernel_context, 0, input0, shape0));
 
   size_t num_inputs = kernel_context.GetInputCount();
@@ -107,15 +125,15 @@ OrtStatus* Squeeze::DoCompute(OrtKernelContext* kernel_ctx) {
 
   std::vector<int64_t> output_shape = ComputeOutputShape(shape0, axes);
   Ort::UnownedValue output = kernel_context.GetOutput(0, output_shape);
-  float* output_data = output.GetTensorMutableData<float>();
-  size_t num_bytes = output.GetTensorSizeInBytes();
 
-  if (input0.data() != output_data) {  // Don't copy if src == dst
-    // This uses a memcpy because the input and output are both located in the EP's device memory (i.e., cpu memory).
-    // Normally, an EP would use a OrtDataTransferImpl to generically handle copies where the source and destination
-    // could be on different devices.
-    memcpy(output_data, input0.data(), num_bytes);
-  }
-
+  // This kernel aliases the input and output, so a copy is not really necessary.
+  // CopyTensor() will not do a copy if the source and destination buffers are the same.
+  RETURN_IF_ERROR(CopyTensor(*squeeze_kernel->data_transfer_impl_, input, output));
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+/*static*/
+void ORT_API_CALL Squeeze::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
+  delete static_cast<Squeeze*>(this_ptr);
 }

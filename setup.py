@@ -117,6 +117,8 @@ manylinux_tags = [
     "manylinux2014_s390x",
     "manylinux_2_28_x86_64",
     "manylinux_2_28_aarch64",
+    "manylinux_2_34_x86_64",
+    "manylinux_2_34_aarch64",
 ]
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 
@@ -276,6 +278,8 @@ try:
 
                 cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
 
+                qnn_dependencies = ["libcdsprpc.so"]
+
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
                     subprocess.run(
@@ -293,13 +297,23 @@ try:
             else:
                 pass
 
+            # qnn links libc++ rather than libstdc++ for its x86_64 dependencies which we currently do not
+            # support for many_linux. This is not the case for other platforms.
+            qnn_run_audit = environ.get("AUDITWHEEL_ARCH", "x86_64") != "x86_64"
+
             _bdist_wheel.run(self)
-            if is_manylinux and not disable_auditwheel_repair and not is_openvino and not is_qnn:
+            if is_manylinux and not disable_auditwheel_repair and not is_openvino and (not is_qnn or qnn_run_audit):
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + migraphx_dependencies + tensorrt_dependencies + cann_dependencies:
+                for i in (
+                    cuda_dependencies
+                    + migraphx_dependencies
+                    + tensorrt_dependencies
+                    + cann_dependencies
+                    + qnn_dependencies
+                ):
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
@@ -376,7 +390,12 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     # QNN
     qnn_deps = [
         "libQnnCpu.so",
+        "libQnnGpu.so",
         "libQnnHtp.so",
+        "libQnnHtpPrepare.so",
+        "libQnnHtpV68Skel.so",
+        "libQnnHtpV68Stub.so",
+        "libQnnIr.so",
         "libQnnSaver.so",
         "libQnnSystem.so",
         "libHtpPrepare.so",
@@ -434,6 +453,7 @@ else:
         "QnnCpu.dll",
         "QnnGpu.dll",
         "QnnHtp.dll",
+        "QnnIr.dll",
         "QnnSaver.dll",
         "QnnSystem.dll",
         "QnnHtpPrepare.dll",

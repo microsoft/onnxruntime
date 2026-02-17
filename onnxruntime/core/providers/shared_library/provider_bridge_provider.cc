@@ -172,6 +172,10 @@ template <>
 MLDataType DataTypeImpl::GetType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetType_Int4x2(); }
 template <>
 MLDataType DataTypeImpl::GetType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetType_UInt4x2(); }
+template <>
+MLDataType DataTypeImpl::GetType<Int2x4>() { return Provider_GetHost()->DataTypeImpl__GetType_Int2x4(); }
+template <>
+MLDataType DataTypeImpl::GetType<UInt2x4>() { return Provider_GetHost()->DataTypeImpl__GetType_UInt2x4(); }
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 template <>
@@ -222,6 +226,10 @@ template <>
 MLDataType DataTypeImpl::GetTensorType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Int4x2(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_UInt4x2(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Int2x4>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Int2x4(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<UInt2x4>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_UInt2x4(); }
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 template <>

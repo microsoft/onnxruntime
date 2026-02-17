@@ -142,10 +142,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check flash kernel availability and allocate buffers
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
-                             onnxruntime::flash::is_supported(device_prop,
-                                                              parameters.head_size,
-                                                              parameters.num_heads,
-                                                              parameters.kv_num_heads);
+                             onnxruntime::flash::is_supported<T>(device_prop,
+                                                                 parameters.head_size,
+                                                                 parameters.num_heads,
+                                                                 parameters.kv_num_heads);
   size_t softmax_lse_bytes = 0;
   if (use_flash_attention) {
     softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.token_count,

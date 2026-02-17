@@ -9,6 +9,8 @@
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
 
+#include "ep_data_transfer.h"
+
 class ExampleKernelEp;
 
 /// <summary>
@@ -74,6 +76,10 @@ class ExampleKernelEpFactory : public OrtEpFactory {
   const std::string vendor_{"Contoso2"};   // EP vendor name
   const uint32_t vendor_id_{0xB358};       // EP vendor ID
   const std::string ep_version_{"0.1.0"};  // EP version
+
+  Ort::MemoryInfo default_memory_info_;
+  Ort::MemoryInfo readonly_memory_info_;
+  std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 
   // Cached kernel registry used by all OrtEp instances created by this factory. Refer to OrtEp::GetKernelRegistry.
   //

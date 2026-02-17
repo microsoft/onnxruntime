@@ -9,7 +9,7 @@ on:
       - include/onnxruntime/core/session/**
       - orttraining/orttraining/training_api/include/**
   schedule:
-    - cron: '0 0 1,15 * *'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 concurrency:
@@ -49,8 +49,8 @@ jobs:
           rm -rf site/docs/api/c
           mv build/doxygen/html _site/docs/api/c
       - name: Upload new site
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: onnxruntime-c-apidocs
           path: _site
-          retention-days: 30
+          retention-days: 10

@@ -80,7 +80,7 @@ jobs:
         run: |
           nuget restore ${{ github.workspace }}\packages.config -PackagesDirectory ${{ github.workspace }}\build\RelWithDebInfo -ConfigFile ${{ github.workspace }}\NuGet.config
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/
@@ -98,6 +98,34 @@ jobs:
           ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
           DocUpdateNeeded: 'false'
 
+      - name: Run onnxruntime_provider_test with example_plugin_ep
+        shell: pwsh
+        run: |
+          # Note on skipped tests:
+          # The skipped tests are either:
+          # - relying on CPU EP fallback for BFloat16 which is not supported
+          # - testing the LayerNormalization contrib op with mixed input/output types (only supported by a few EPs)
+          # Some other hardcoded EP types are skipped in these tests. For a plugin EP, we skip these tests by
+          # specifying them in the dynamic plugin EP configuration.
+
+          $env:ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON = @"
+          {
+            "ep_library_registration_name": "example_ep",
+            "ep_library_path": "./example_plugin_ep.dll",
+            "selected_ep_name": "example_ep",
+            "tests_to_skip": [
+              "LayerNormTest.LayerNorm_BFloat16Input",
+              "LayerNormTest.LayerNorm_Scale_Float16Input",
+              "LayerNormTest.LayerNorm_Scale_Float16ScaleOutput",
+              "LayerNormTest.LayerNorm_Scale_Bias_Float16Input",
+              "LayerNormTest.LayerNorm_Scale_Bias_Float16ScaleBiasOutput"
+            ]
+          }
+          "@
+
+          .\onnxruntime_provider_test.exe
+        working-directory: ${{ github.workspace }}\build\RelWithDebInfo\RelWithDebInfo
+
       - name: Validate C# native delegates
         shell: cmd
         run: python tools\ValidateNativeDelegateAttributes.py
@@ -111,14 +139,14 @@ jobs:
         working-directory: "${{ github.workspace }}\\build\\RelWithDebInfo\\RelWithDebInfo"
 
       - name: Publish OperatorKernels.md (Conditional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: OperatorKernels.md
           path: ${{ github.workspace }}/docs/OperatorKernels.md
 
       - name: Publish ContribOperators.md (Conditional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: failure() && env.DocUpdateNeeded == 'true'
         with:
           name: ContribOperators.md

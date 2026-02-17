@@ -23,7 +23,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import coloredlogs
 from fusion_options import FusionOptions
 from onnx import ModelProto, load_model
 from onnx_model import OnnxModel
@@ -562,12 +561,11 @@ def _parse_arguments():
 
 def _setup_logger(verbose):
     if verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        logging.basicConfig(
+            format="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s", level=logging.DEBUG, force=True
         )
     else:
-        coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+        logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO, force=True)
 
 
 def main():
