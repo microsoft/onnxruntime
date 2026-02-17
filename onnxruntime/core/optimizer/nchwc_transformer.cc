@@ -358,26 +358,26 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   // on the specific model and hardware characteristics.
   // Although the re-ordering overhead for running the conv as NCHW exists, given the perf difference for large kernels, it is worth trying the option.
   if (kernel_height >= 7 && kernel_width >= 7 && input_channels >= 64 && output_channels >= 32) {
-      if (disable_nchwc_layout_for_large_conv_) {
-        LOGS(logger_, INFO) << "NchwcTransformer: keeping Conv node '" << node.Name()
-                            << "' in NCHW layout due to large kernel/channel dimensions.";
-        return;
-      } else {
-        LOGS(logger_, WARNING) << "NCHWc Conv with large kernel (" << kernel_height << "x" << kernel_width
-                               << ") and large channel counts (input: " << input_channels << ", output: " << output_channels
-                               << ") detected in node '" << node.Name()
-                               << "'. Please try measuring performance with the '"
-                               << kOrtSessionOptionsUseNchwLayoutForLargeConv
-                               << "' session option set to '1' to disable NCHWc data layout "
-                               << "only for such large convolutions in the model. "
-                               << "On certain hardware, large kernel convolutions may perform "
-                               << "worse with NCHWc data layout."
-                               << "Using this session option may introduce some re-ordering overhead for these convolutions, "
-                               << "but it may be worth trying if you see poor performance and have such large convolutions in your model."
-                               << "To avoid re-ordering overheads and to totally disable NCHWc layout transformation for operations, you can set the '"
-                               << kOrtSessionOptionsDisableNchwcLayoutTransformation
-                               << "' session option to '1' which disables NCHWc layout transformation for all operations in the model.";
-      }
+    if (disable_nchwc_layout_for_large_conv_) {
+      LOGS(logger_, INFO) << "NchwcTransformer: keeping Conv node '" << node.Name()
+                          << "' in NCHW layout due to large kernel/channel dimensions.";
+      return;
+    } else {
+      LOGS(logger_, WARNING) << "NCHWc Conv with large kernel (" << kernel_height << "x" << kernel_width
+                             << ") and large channel counts (input: " << input_channels << ", output: " << output_channels
+                             << ") detected in node '" << node.Name()
+                             << "'. Please try measuring performance with the '"
+                             << kOrtSessionOptionsUseNchwLayoutForLargeConv
+                             << "' session option set to '1' to disable NCHWc data layout "
+                             << "only for such large convolutions in the model. "
+                             << "On certain hardware, large kernel convolutions may perform "
+                             << "worse with NCHWc data layout."
+                             << "Using this session option may introduce some re-ordering overhead for these convolutions, "
+                             << "but it may be worth trying if you see poor performance and have such large convolutions in your model."
+                             << "To avoid re-ordering overheads and to totally disable NCHWc layout transformation for operations, you can set the '"
+                             << kOrtSessionOptionsDisableNchwcLayoutTransformation
+                             << "' session option to '1' which disables NCHWc layout transformation for all operations in the model.";
+    }
   }
 
   int64_t group_count;
