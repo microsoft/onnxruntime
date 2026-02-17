@@ -442,11 +442,14 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         if (num_children > 0 && nodes_to_remove.size() + cast_nodes_to_keep.size() == num_children &&
             graph_outputs.find(node.OutputDefs()[0]) == graph_outputs_end) {
           // Check that all kept Cast children are on the same EP as the current node.
+          // An empty EP means the node has not been assigned yet (e.g. pre-partitioning or in tests),
+          // so we only flag a cross-EP conflict when both EPs are explicitly assigned and different.
           bool cross_ep = false;
           const auto& current_ep = node.GetExecutionProviderType();
           for (const auto& n : cast_nodes_to_keep) {
             const Node& kept_node = n;
-            if (kept_node.GetExecutionProviderType() != current_ep) {
+            const auto& kept_ep = kept_node.GetExecutionProviderType();
+            if (!current_ep.empty() && !kept_ep.empty() && kept_ep != current_ep) {
               cross_ep = true;
               break;
             }
