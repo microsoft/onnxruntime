@@ -471,11 +471,9 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
 
   // If scales are prepacked, they are constant initializers.
   if (input_idx == 3) {
-    has_prepacked_fc1_scales_ = true;
     return Status::OK();
   }
   if (input_idx == 6) {
-    has_prepacked_fc2_scales_ = true;
     return Status::OK();
   }
 
@@ -511,10 +509,32 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
       }
     }
 
+    if (input_idx == 2) {
+      fc1_shape_ = shape;
+    } else if (input_idx == 5) {
+      fc2_shape_ = shape;
+    } else if (input_idx == 8) {
+      fc3_shape_ = shape;
+    }
+
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_buffer));
       prepacked_weights->buffer_sizes_.push_back(packed_size);
       is_packed = true;
+
+      // Pack Shape (Buffer 1)
+      auto dims = shape.GetDims();
+      size_t rank_bytes = sizeof(int64_t);
+      size_t dims_bytes = dims.size() * sizeof(int64_t);
+      size_t shape_size = rank_bytes + dims_bytes;
+
+      auto shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, shape_size);
+      int64_t* buffer_data = static_cast<int64_t*>(shape_buffer.get());
+      *buffer_data = static_cast<int64_t>(dims.size());
+      memcpy(buffer_data + 1, dims.data(), dims_bytes);
+
+      prepacked_weights->buffers_.push_back(std::move(shape_buffer));
+      prepacked_weights->buffer_sizes_.push_back(shape_size);
 
       // Try build MLAS Q4 cache if scales are available
       if (use_mlas_q4_gemm_) {
@@ -550,7 +570,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
                                         alloc, cache_buffer)
                   .IsOK()) {
             // Store the size so we can verify later? Container holds size.
-            // We push it as a SECOND buffer.
+            // We push it as a THIRD buffer (Buffer 2) now.
             size_t cache_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols)) * static_cast<size_t>(num_experts);
             prepacked_weights->buffers_.push_back(std::move(cache_buffer));
             prepacked_weights->buffer_sizes_.push_back(cache_size);
@@ -576,17 +596,38 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
   if (input_idx == 2 && !prepacked_buffers.empty()) {
     packed_fc1_ = std::move(prepacked_buffers[0]);
     if (prepacked_buffers.size() > 1) {
-      packed_fc1_mlas_cache_ = std::move(prepacked_buffers[1]);
+      int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
+      int64_t rank = buffer_data[0];
+      std::vector<int64_t> dims(rank);
+      memcpy(dims.data(), buffer_data + 1, rank * sizeof(int64_t));
+      fc1_shape_ = TensorShape(dims);
+    }
+    if (prepacked_buffers.size() > 2) {
+      packed_fc1_mlas_cache_ = std::move(prepacked_buffers[2]);
     }
     used_shared_buffers = true;
   } else if (input_idx == 5 && !prepacked_buffers.empty()) {
     packed_fc2_ = std::move(prepacked_buffers[0]);
     if (prepacked_buffers.size() > 1) {
-      packed_fc2_mlas_cache_ = std::move(prepacked_buffers[1]);
+      int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
+      int64_t rank = buffer_data[0];
+      std::vector<int64_t> dims(rank);
+      memcpy(dims.data(), buffer_data + 1, rank * sizeof(int64_t));
+      fc2_shape_ = TensorShape(dims);
+    }
+    if (prepacked_buffers.size() > 2) {
+      packed_fc2_mlas_cache_ = std::move(prepacked_buffers[2]);
     }
     used_shared_buffers = true;
   } else if (input_idx == 8 && !prepacked_buffers.empty()) {
     packed_fc3_ = std::move(prepacked_buffers[0]);
+    if (prepacked_buffers.size() > 1) {
+      int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
+      int64_t rank = buffer_data[0];
+      std::vector<int64_t> dims(rank);
+      memcpy(dims.data(), buffer_data + 1, rank * sizeof(int64_t));
+      fc3_shape_ = TensorShape(dims);
+    }
     used_shared_buffers = true;
   }
 
@@ -635,17 +676,21 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const auto* fc2_zero_points = context->Input<Tensor>(12);
   const auto* fc3_zero_points = context->Input<Tensor>(13);
 
+  const TensorShape* fc1_shape_ptr = packed_fc1_ ? &fc1_shape_ : (fc1_experts_weights ? &fc1_experts_weights->Shape() : nullptr);
+  const TensorShape* fc2_shape_ptr = packed_fc2_ ? &fc2_shape_ : (fc2_experts_weights ? &fc2_experts_weights->Shape() : nullptr);
+  const TensorShape* fc3_shape_ptr = packed_fc3_ ? &fc3_shape_ : (fc3_experts_weights ? &fc3_experts_weights->Shape() : nullptr);
+
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias, fc1_scales, fc1_zero_points,
-      fc2_experts_weights, fc2_experts_bias, fc2_scales, fc2_zero_points,
-      fc3_experts_weights, fc3_experts_bias, fc3_scales, fc3_zero_points,
+      fc1_shape_ptr, fc1_experts_bias, fc1_scales, fc1_zero_points,
+      fc2_shape_ptr, fc2_experts_bias, fc2_scales, fc2_zero_points,
+      fc3_shape_ptr, fc3_experts_bias, fc3_scales, fc3_zero_points,
       expert_weight_bits_ == 4 ? 2 : 1,
       true,
       block_size_));
 
-  if (fc3_experts_weights || fc3_experts_bias || fc3_scales || fc3_zero_points) {
+  if (fc3_shape_ptr || fc3_experts_bias || fc3_scales || fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
   }
 
@@ -808,8 +853,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const bool is_fc1_block_wise = (fc1_scales_dims.size() == 3 && fc1_scales_dims[2] > 1);
   const bool is_fc2_block_wise = (fc2_scales_dims.size() == 3 && fc2_scales_dims[2] > 1);
 
-  const uint8_t* fc1_weights_data = (packed_fc1_ != nullptr) ? nullptr : fc1_experts_weights->Data<uint8_t>();
-  const uint8_t* fc2_weights_data = (packed_fc2_ != nullptr) ? nullptr : fc2_experts_weights->Data<uint8_t>();
+  const uint8_t* fc1_weights_data = (packed_fc1_ != nullptr) ? nullptr : fc1_experts_weights->template Data<uint8_t>();
+  const uint8_t* fc2_weights_data = (packed_fc2_ != nullptr) ? nullptr : fc2_experts_weights->template Data<uint8_t>();
   const T* fc1_scales_data = fc1_scales->Data<T>();
   const T* fc2_scales_data = fc2_scales->Data<T>();
   const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->Data<T>() : nullptr;

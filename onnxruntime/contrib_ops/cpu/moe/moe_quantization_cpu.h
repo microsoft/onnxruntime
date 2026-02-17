@@ -7,7 +7,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas_q4.h"
 #include "contrib_ops/cpu/moe/moe_base_cpu.h"
-#include <mutex>
 #include <vector>
 
 namespace onnxruntime {
@@ -42,12 +41,14 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
   int64_t block_size_;
   bool use_mlas_q4_gemm_{false};
   bool use_mlas_q4_gemm_overridden_{false};
-  bool has_prepacked_fc1_scales_{false};
-  bool has_prepacked_fc2_scales_{false};
 
   IAllocatorUniquePtr<void> packed_fc1_;
   IAllocatorUniquePtr<void> packed_fc2_;
   IAllocatorUniquePtr<void> packed_fc3_;
+
+  TensorShape fc1_shape_;
+  TensorShape fc2_shape_;
+  TensorShape fc3_shape_;
 
   IAllocatorUniquePtr<void> packed_fc1_mlas_cache_;
   IAllocatorUniquePtr<void> packed_fc2_mlas_cache_;
