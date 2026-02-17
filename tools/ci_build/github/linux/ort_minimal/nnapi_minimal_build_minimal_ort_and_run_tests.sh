@@ -32,6 +32,7 @@ python3 $ORT_ROOT/tools/ci_build/build.py \
     --minimal_build extended \
     --disable_rtti \
     --disable_ml_ops \
+    --disable_generation_ops \
     --disable_exceptions \
     --include_ops_by_config $ORT_ROOT/onnxruntime/test/testdata/required_ops_and_types.config \
     --skip_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache

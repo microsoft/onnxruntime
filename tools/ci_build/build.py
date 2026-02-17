@@ -454,6 +454,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
+        "-Donnxruntime_DISABLE_GENERATION_OPS=" + ("ON" if args.disable_generation_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI="
         + ("ON" if args.disable_rtti or (args.minimal_build is not None and not args.enable_pybind) else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
