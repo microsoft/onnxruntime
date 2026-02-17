@@ -349,7 +349,6 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   const int64_t kernel_height = conv_W_tensor_proto->dims(2);
   const int64_t kernel_width = conv_W_tensor_proto->dims(3);
 
-
   // For large kernels with a large number of input and output channels, some platforms may perform better with the NCHWc transformation disabled.
   // For example, on some AVX platforms, the direct convolution implementation used for NCHWc tensors makes the kernels extremely memory bound and
   // perform poorly on these platforms and that coupled with potential under-clocking on Intel's AVX512 results in extremely poor performance
