@@ -101,5 +101,16 @@ def main():
     print("std::vector<float> expected_Y_no_mask = {" + to_cpp_list(out_no_mask) + "};")
     print()
 
+    # Case 3: groups=2, offset_group=2, non-zero offset (for GroupsWithNonZeroOffset test)
+    run_case(
+        "Groups with non-zero offset (batch=1, 2 groups)",
+        batch_sz=1,
+        n_in=4, n_out=2, n_weight_grps=2, n_offset_grps=2,
+        kernel_h=2, kernel_w=2,
+        stride=(1, 1), pad=(0, 0), dilation=(1, 1),
+        in_h=3, in_w=3,
+        seed=123,
+    )
+
 if __name__ == "__main__":
     main()
