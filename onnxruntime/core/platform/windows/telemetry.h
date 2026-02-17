@@ -100,7 +100,7 @@ class WindowsTelemetry : public Telemetry {
   void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const override;
 
   void LogSessionCreationEnd(uint32_t session_id,
-                           const common::Status& status) const override;
+                             const common::Status& status) const override;
 
   void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                        const std::string& lib_path) const override;
@@ -108,7 +108,7 @@ class WindowsTelemetry : public Telemetry {
   void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
 
   void LogRegisterEpLibraryEnd(const std::string& registration_name,
-                            const common::Status& status) const override;
+                               const common::Status& status) const override;
 
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,

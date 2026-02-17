@@ -977,8 +977,8 @@ class InferenceSession {
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
     // RuntimePerf backoff: starts at 2s, doubles each emission, caps at 10 min
-    constexpr static long long kRuntimePerfInitialInterval = 2 * 1000 * 1000;                // 2 seconds in (us)
-    constexpr static long long kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;              // 10 minutes in (us)
+    constexpr static long long kRuntimePerfInitialInterval = 2 * 1000 * 1000;    // 2 seconds in (us)
+    constexpr static long long kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;  // 10 minutes in (us)
     long long runtime_perf_interval_ = kRuntimePerfInitialInterval;
   } telemetry_;
 

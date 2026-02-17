@@ -712,7 +712,7 @@ void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status
 }
 
 void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
-                                            const common::Status& status) const {
+                                              const common::Status& status) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -733,7 +733,7 @@ void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
 }
 
 void WindowsTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
-                                                        const std::string& lib_path) const {
+                                                       const std::string& lib_path) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -767,7 +767,7 @@ void WindowsTelemetry::LogRegisterEpLibraryStart(const std::string& registration
 }
 
 void WindowsTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                            const common::Status& status) const {
+                                               const common::Status& status) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 

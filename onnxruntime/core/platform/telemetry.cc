@@ -169,13 +169,13 @@ void Telemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& statu
 }
 
 void Telemetry::LogSessionCreationEnd(uint32_t session_id,
-                                     const common::Status& status) const {
+                                      const common::Status& status) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(status);
 }
 
 void Telemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
-                                                 const std::string& lib_path) const {
+                                                const std::string& lib_path) const {
   ORT_UNUSED_PARAMETER(registration_name);
   ORT_UNUSED_PARAMETER(lib_path);
 }
@@ -185,7 +185,7 @@ void Telemetry::LogRegisterEpLibraryStart(const std::string& registration_name) 
 }
 
 void Telemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                     const common::Status& status) const {
+                                        const common::Status& status) const {
   ORT_UNUSED_PARAMETER(registration_name);
   ORT_UNUSED_PARAMETER(status);
 }

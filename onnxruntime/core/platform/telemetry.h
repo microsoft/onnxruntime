@@ -107,15 +107,15 @@ class Telemetry {
   virtual void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const;
 
   virtual void LogSessionCreationEnd(uint32_t session_id,
-                                   const common::Status& status) const;
+                                     const common::Status& status) const;
 
   virtual void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
-                                                const std::string& lib_path) const;
+                                               const std::string& lib_path) const;
 
   virtual void LogRegisterEpLibraryStart(const std::string& registration_name) const;
 
   virtual void LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                    const common::Status& status) const;
+                                       const common::Status& status) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);
