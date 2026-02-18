@@ -69,7 +69,7 @@ def parse_arguments():
     )
     parser.add_argument(
         "--is_release_build",
-        help="Flag indicating if validating a release build or dev build. Only accepts 'true' or 'false'",
+        help="Flag indicating if validating a release build or dev build. Only accepts 'true' or 'false.' Only required for nuget packages.",
     )
 
     return parser.parse_args()
