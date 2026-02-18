@@ -240,7 +240,7 @@ class TestSymLinkOnnxModelExternalData(unittest.TestCase):
             with self.assertRaises(Exception) as cm:
                 ort.InferenceSession(model_symlink_path, providers=["CPUExecutionProvider"])
 
-            # We expect an error about external data not being in whitelisted directories
+            # We expect an error about external data not under model directory or the real model directory.
             self.assertIn("External data path validation failed", str(cm.exception))
         finally:
             shutil.rmtree(self.temp_dir)
