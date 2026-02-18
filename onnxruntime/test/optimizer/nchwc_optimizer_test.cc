@@ -263,9 +263,11 @@ TEST(NchwcOptimizerTests, DisableNchwcLayoutTransformationSessionOption) {
   ASSERT_STATUS_OK(session.Initialize());
 
   auto op_to_count = CountOpsInGraph(session.GetGraph());
+  // No NCHWc Conv or Reorder nodes should be present in the graph.
   EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
   EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
   EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
+  // Regular NCHW Conv node should continue to remain in the graph.
   EXPECT_EQ(op_to_count["Conv"], 1);
 }
 
@@ -296,7 +298,8 @@ TEST(NchwcOptimizerTests, UseNchwLayoutForLargeConvSessionOption) {
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
 
-  auto run_and_count_ops = [&](bool use_nchw_layout_for_large_conv) {
+  auto run_and_count_ops = [&](bool use_nchw_layout_for_large_conv,
+                               std::unordered_map<std::string, int>& op_to_count) {
     SessionOptions session_options;
     session_options.graph_optimization_level = TransformerLevel::Level3;
     session_options.session_logid = "NchwcOptimizerLargeConvTests";
@@ -308,11 +311,12 @@ TEST(NchwcOptimizerTests, UseNchwLayoutForLargeConvSessionOption) {
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     ASSERT_STATUS_OK(session.Initialize());
-    return CountOpsInGraph(session.GetGraph());
+    op_to_count = CountOpsInGraph(session.GetGraph());
   };
 
   // By default, the large convolution is transformed to NCHWc.
-  auto default_counts = run_and_count_ops(false);
+  std::unordered_map<std::string, int> default_counts;
+  run_and_count_ops(false, default_counts);
   // NCHWc Conv and Reorder nodes should be present in the graph.
   EXPECT_EQ(default_counts["com.microsoft.nchwc.Conv"], 1);
   EXPECT_EQ(default_counts["com.microsoft.nchwc.ReorderInput"], 1);
@@ -321,7 +325,8 @@ TEST(NchwcOptimizerTests, UseNchwLayoutForLargeConvSessionOption) {
   EXPECT_EQ(default_counts["Conv"], 0);
 
   // With the session option enabled, keep the large convolution in NCHW.
-  auto nchw_counts = run_and_count_ops(true);
+  std::unordered_map<std::string, int> nchw_counts;
+  run_and_count_ops(true, nchw_counts);
   // No NCHWc Conv or Reorder nodes should be present in the graph.
   EXPECT_EQ(nchw_counts["com.microsoft.nchwc.Conv"], 0);
   EXPECT_EQ(nchw_counts["com.microsoft.nchwc.ReorderInput"], 0);
