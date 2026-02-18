@@ -299,7 +299,7 @@ TEST(NchwcOptimizerTests, UseNchwLayoutForLargeConvSessionOption) {
   model.ToProto().SerializeToString(&model_data);
 
   auto run_and_count_ops = [&](bool use_nchw_layout_for_large_conv,
-                               std::unordered_map<std::string, int>& op_to_count) {
+                               std::map<std::string, int>& op_to_count) {
     SessionOptions session_options;
     session_options.graph_optimization_level = TransformerLevel::Level3;
     session_options.session_logid = "NchwcOptimizerLargeConvTests";
@@ -315,7 +315,7 @@ TEST(NchwcOptimizerTests, UseNchwLayoutForLargeConvSessionOption) {
   };
 
   // By default, the large convolution is transformed to NCHWc.
-  std::unordered_map<std::string, int> default_counts;
+  std::map<std::string, int> default_counts;
   run_and_count_ops(false, default_counts);
   // NCHWc Conv and Reorder nodes should be present in the graph.
   EXPECT_EQ(default_counts["com.microsoft.nchwc.Conv"], 1);
@@ -325,7 +325,7 @@ TEST(NchwcOptimizerTests, UseNchwLayoutForLargeConvSessionOption) {
   EXPECT_EQ(default_counts["Conv"], 0);
 
   // With the session option enabled, keep the large convolution in NCHW.
-  std::unordered_map<std::string, int> nchw_counts;
+  std::map<std::string, int> nchw_counts;
   run_and_count_ops(true, nchw_counts);
   // No NCHWc Conv or Reorder nodes should be present in the graph.
   EXPECT_EQ(nchw_counts["com.microsoft.nchwc.Conv"], 0);
