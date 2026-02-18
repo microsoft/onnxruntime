@@ -8,7 +8,7 @@ on:
     paths:
       - csharp/**
   schedule:
-    - cron: '0 0 1,15 * *'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 concurrency:
@@ -64,4 +64,4 @@ jobs:
       with:
         name: onnxruntime-csharp-apidocs
         path: _site
-        retention-days: 30
+        retention-days: 10

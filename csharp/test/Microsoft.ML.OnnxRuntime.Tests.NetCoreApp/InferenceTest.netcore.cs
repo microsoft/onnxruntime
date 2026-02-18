@@ -601,6 +601,29 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["VGG 16-fp32"] = "bad allocation";
             }
 
+            // The following models are from onnx repo and fail on MacOS nuget test pipeline.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                var macOSSkips = new[]
+                {
+                    "test_castlike_FLOAT_to_STRING_expanded",
+                    "test_castlike_FLOAT_to_BFLOAT16_expanded",
+                    "test_castlike_BFLOAT16_to_FLOAT",
+                    "test_cast_FLOAT_to_STRING",
+                    "test_castlike_FLOAT_to_BFLOAT16",
+                    "test_castlike_STRING_to_FLOAT_expanded",
+                    "test_castlike_STRING_to_FLOAT",
+                    "test_cast_STRING_to_FLOAT",
+                    "test_castlike_BFLOAT16_to_FLOAT_expanded",
+                    "test_cast_BFLOAT16_to_FLOAT",
+                    "test_castlike_FLOAT_to_STRING"
+                };
+                foreach (var model in macOSSkips)
+                {
+                    skipModels[model] = "Skipped on macOS due to flakes or lack of support";
+                }
+            }
+
             return skipModels;
         }
 
@@ -934,6 +957,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
         private void TestPreTrainedModels(string opsetDir, string modelName, bool useOrtValueAPIs = false)
         {
+
             var opsetDirInfo = new DirectoryInfo(opsetDir);
             var opset = opsetDirInfo.Name;
             string onnxModelFileName = null;
