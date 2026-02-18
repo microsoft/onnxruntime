@@ -21,7 +21,7 @@ Abstract:
 
 void
 MLASCALL
-MlasNeonGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, int64_t count, const std::string& algo)
+MlasNeonGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, size_t count, MLAS_GELU_ALGORITHM algo)
 {
     const float16_t v_half1 = 0.5f;
     const float16_t v_one1 = 1.0f;
@@ -36,9 +36,9 @@ MlasNeonGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp
     const MLAS_FLOAT16X8 v_B = MlasBroadcastF16Float16x8(v_B1);
     const MLAS_FLOAT16X8 v_C = MlasBroadcastF16Float16x8(v_C1);
 
-    int64_t i = 0;
+    size_t i = 0;
 
-    if (algo == "tanh") {
+    if (algo == MlasGeluTanh) {
         // Preprocess input into temp[] for tanh
         for (; i + 7 < count; i += 8) {
             MLAS_FLOAT16X8 x = MlasLoadf16Float16x8(reinterpret_cast<const float16_t*>(input + i));

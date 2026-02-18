@@ -22,8 +22,8 @@ MLASCALL
 MlasComputeFP16Gelu(const MLAS_FP16* input,
                     MLAS_FP16* output,
                     MLAS_FP16* temp,
-                    int64_t count,
-                    const std::string& algo)
+                    size_t count,
+                    MLAS_GELU_ALGORITHM algo)
 {
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
     #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
@@ -31,12 +31,12 @@ MlasComputeFP16Gelu(const MLAS_FP16* input,
         return;
     #endif
 #endif 
-    (void)temp; 
-    for (int64_t i = 0; i < count; ++i) {
+    (void)temp; // 'temp' is only used by vectorized kernel implementations and it is unused in the scalar fallback path.
+    for (size_t i = 0; i < count; ++i) {
         float x = static_cast<float>(input[i]);
         float gelu_val;
 
-        if (algo == "tanh") {
+        if (algo == MlasGeluTanh) {
             // GELU approximation (tanh)
             const float B = 0.7978845608f;
             const float C = 0.044715f * B;

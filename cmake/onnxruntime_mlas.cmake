@@ -55,6 +55,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/softmax.h
   ${MLAS_SRC_DIR}/saturation_check.cpp
   ${MLAS_SRC_DIR}/gelu.cpp
+  ${MLAS_SRC_DIR}/gelu.h
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -493,6 +494,7 @@ else()
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlas_sve_fp16.h)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
