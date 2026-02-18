@@ -14,7 +14,7 @@ Usage:
     # Quick experiment (0.5B + 1.5B, 2 seq lengths)
     python run_experiments.py --preset quick
 
-    # Full experiment (all 96 models, 4 seq lengths)
+    # Full experiment (all 96 models, 5 seq lengths)
     python run_experiments.py --preset full
 
     # Custom filtering
@@ -435,7 +435,7 @@ PRESETS = {
         "run_unfused": True,
     },
     "full": {
-        "seq_lengths": [128, 256, 512, 1024],
+        "seq_lengths": [1, 128, 256, 512, 1024],
         "warmup": 3,
         "iterations": 10,
         "model_sizes": None,
@@ -458,7 +458,7 @@ def parse_args():
 Presets:
   validate  0.5B 4-bit models, 1 seq length, 3 iterations (~2 min)
   quick     0.5B + 1.5B models, 2 seq lengths, 10 iterations
-  full      All models, 4 seq lengths, 10 iterations
+  full      All models, 5 seq lengths, 10 iterations
 
 Examples:
   python run_experiments.py --preset validate --dry-run

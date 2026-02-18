@@ -42,6 +42,7 @@ python benchmark.py -m model.onnx -s 128 512 -w 3 -i 10  # custom seq lengths, 3
 python benchmark.py -m model_qdq.onnx --disable-qdq-fusion  # prevent DQ+MatMul -> MatMulNBits fusion
 python benchmark.py -m model_2bit.onnx --enable-lut-gemm     # LUT GEMM for 2-bit models
 python benchmark.py -m model.onnx --perf-test                # cross-check with onnxruntime_perf_test
+python benchmark.py -m model.onnx --save-optimized-model opt.onnx  # save ORT-optimized graph for inspection
 ```
 
 Output: JSON file in `results/` with latency statistics (mean, std, p50, p95, p99) per sequence length.

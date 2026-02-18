@@ -33,6 +33,9 @@ Usage:
     # With profiling (generates Chrome tracing JSON)
     python benchmark.py -m model.onnx --perf-test --profile trace.json
 
+    # Save optimized model to inspect graph after ORT optimizations
+    python benchmark.py -m model_qdq.onnx --save-optimized-model optimized.onnx
+
 References:
     - DQMatMulToMatMulNBits fusion: onnxruntime/core/optimizer/qdq_transformer/
       selectors_actions/qdq_selector_action_transformer.cc
@@ -89,6 +92,7 @@ class BenchmarkConfig:
     perf_test_path: Optional[str] = None  # Optional: run onnxruntime_perf_test for validation
     profile_output: Optional[str] = None  # Profile output path for perf_test -p
     seed: int = 42  # Random seed for reproducibility
+    save_optimized_model: Optional[str] = None  # Path to save ORT-optimized model
     verbose: bool = False
 
 
@@ -136,6 +140,11 @@ def create_session(config: BenchmarkConfig) -> ort.InferenceSession:
     """
     sess_options = ort.SessionOptions()
 
+    # Save the optimized model (after graph transformations) for inspection
+    if config.save_optimized_model:
+        sess_options.optimized_model_filepath = config.save_optimized_model
+        print(f"  Will save optimized model to: {config.save_optimized_model}")
+
     # For 2-bit quantized models, enable LUT-based GEMM
     # See: onnxruntime/core/session/onnxruntime_session_options_config_keys.h
     if config.enable_lut_gemm:
@@ -143,12 +152,14 @@ def create_session(config: BenchmarkConfig) -> ort.InferenceSession:
         print("  Enabled LUT GEMM for 2-bit quantization")
 
     # Disable DQ+MatMul -> MatMulNBits fusion for unfused QDQ comparison
-    # Optimizer name from: onnxruntime/core/optimizer/qdq_transformer/
-    #   selectors_actions/qdq_selector_action_transformer.cc
+    # disabled_optimizers matches by transformer Name(), not individual action name.
+    # The transformer is "QDQSelectorActionTransformer" (not "DQMatMulToMatMulNBits").
+    # See: onnxruntime/core/optimizer/graph_transformer_utils.cc FilterTransformers()
+    #      onnxruntime/core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.cc
     disabled_optimizers = None
     if config.disable_qdq_fusion:
-        disabled_optimizers = ["DQMatMulToMatMulNBits"]
-        print("  Disabled DQMatMulToMatMulNBits fusion")
+        disabled_optimizers = ["QDQSelectorActionTransformer"]
+        print("  Disabled QDQSelectorActionTransformer (prevents DQ+MatMul -> MatMulNBits fusion)")
 
     session = ort.InferenceSession(
         config.model_path,
@@ -580,6 +591,7 @@ Examples:
   python benchmark.py -m model_2bit.onnx --enable-lut-gemm
   python benchmark.py -m model.onnx -o results.json --seed 42
   python benchmark.py -m model.onnx -w 5 -i 30 -v
+  python benchmark.py -m model.onnx --save-optimized-model optimized.onnx
         """,
     )
 
@@ -643,6 +655,12 @@ Examples:
         help="Enable profiling with perf_test, output trace file (default: profile.json)",
     )
     parser.add_argument(
+        "--save-optimized-model",
+        metavar="PATH",
+        default=None,
+        help="Save the ORT-optimized model to this path (useful to inspect graph after fusion)",
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose output",
@@ -665,6 +683,7 @@ Examples:
         disable_qdq_fusion=args.disable_qdq_fusion,
         enable_lut_gemm=args.enable_lut_gemm,
         output_file=args.output,
+        save_optimized_model=args.save_optimized_model,
         perf_test_path=args.perf_test if args.perf_test != "auto" else None,
         profile_output=args.profile,
         seed=args.seed,
