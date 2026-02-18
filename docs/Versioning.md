@@ -57,13 +57,19 @@ npm --version    # Should be v8.0 or newer
 
    Replace `X.Y.Z` with your new version number. The comments following this assert explain additional steps if new APIs were added to this release.
 
-4. **Review all changes**
+4. **Update the C API header `ORT_API_VERSION` value (Manual Step)**
+
+   The script does **not** update the value of `ORT_API_VERSION` in [include/onnxruntime/core/session/onnxruntime_c_api.h](../include/onnxruntime/core/session/onnxruntime_c_api.h).
+
+   The value should be set to the second component of the version string. E.g., `25` for version `1.25.0`.
+
+5. **Review all changes**
 
    Review all modified files. Verify:
    - Version numbers are correct in all updated files
    - The release notes URL format is correct (e.g., `https://github.com/Microsoft/onnxruntime/releases/tag/vX.Y.Z`)
 
-5. **Commit and create PR**
+6. **Commit and create PR**
 
    Commit all changes and create a PR targeting `main` or a release branch as appropriate.
 

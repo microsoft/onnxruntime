@@ -9,7 +9,7 @@ on:
       - onnxruntime/python/**
       - docs/python/**
   schedule:
-    - cron: '0 0 1,15 * *'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 concurrency:
@@ -58,4 +58,4 @@ jobs:
         with:
           name: onnxruntime-python-apidocs
           path: _site
-          retention-days: 30
+          retention-days: 10

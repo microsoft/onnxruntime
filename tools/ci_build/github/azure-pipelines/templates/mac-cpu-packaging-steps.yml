@@ -26,6 +26,15 @@ steps:
     args: '-r $(Build.BinariesDirectory) -a onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion) -l libonnxruntime.$(OnnxRuntimeVersion).dylib -c Release -s $(Build.SourcesDirectory) -t $(Build.SourceVersion)'
     workingDirectory: '$(Build.BinariesDirectory)/Release'
 
+- bash: |
+    mkdir -p $(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)/testdata
+    cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)/testdata/libcustom_op_library.dylib
+    # Copy to testdata/testdata so EndToEndTests can find it when running in Debug configuration
+    mkdir -p $(Build.BinariesDirectory)/testdata/testdata
+    cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.BinariesDirectory)/testdata/testdata/libcustom_op_library.dylib
+  displayName: 'Copy custom op library'
+  condition: succeeded()
+
 - task: ArchiveFiles@2
   inputs:
     rootFolderOrFile: '$(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)'
