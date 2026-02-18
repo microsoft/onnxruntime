@@ -192,7 +192,9 @@ def build_run_matrix(
             scenarios = ["native"]
         else:
             scenarios = ["qdq_fused"]
-            if run_unfused:
+            # Unfused only meaningful for 4-bit: DQ+MatMul->MatMulNBits fusion
+            # only matches int4/uint4 weights (qdq_selectors.cc:Is4BitIntType check)
+            if run_unfused and model.bits == 4:
                 scenarios.append("qdq_unfused")
 
         for scenario in scenarios:
