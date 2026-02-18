@@ -82,6 +82,6 @@ results/
 |---|---|---|
 | mnb | `native` | None — MatMulNBits ops run directly |
 | qdq | `qdq_fused` | None — ORT default optimizer fuses DequantizeLinear+MatMul into MatMulNBits |
-| qdq | `qdq_unfused` | `disabled_optimizers=["DQMatMulToMatMulNBits"]` — keeps DQ+MatMul separate |
+| qdq | `qdq_unfused` | `disabled_optimizers=["QDQSelectorActionTransformer"]` — keeps DQ+MatMul separate |
 
 For 2-bit models, `mlas.use_lut_gemm=1` is additionally enabled in all scenarios (auto-detected by run_experiments.py).
