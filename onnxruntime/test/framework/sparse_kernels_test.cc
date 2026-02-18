@@ -851,8 +851,13 @@ int64_t ActualSize(const TensorProto& actual) {
 }
 
 template <typename T>
-static void RawDataChecker(gsl::span<const T> expected, const TensorProto& actual) {
+static void RawDataChecker(gsl::span<const T> expected, TensorProto actual) {
   int64_t actual_size = ActualSize(actual);
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+       onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+  }
 
   const T* raw_data = reinterpret_cast<const T*>(actual.raw_data().data());
   auto actual_span = gsl::make_span<const T>(raw_data, actual_size);
@@ -861,8 +866,13 @@ static void RawDataChecker(gsl::span<const T> expected, const TensorProto& actua
 }
 
 template <>
-void RawDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat, const TensorProto& actual) {
+void RawDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat, TensorProto actual) {
   int64_t actual_size = ActualSize(actual);
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+       onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+  }
 
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
   const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.raw_data().data());
@@ -872,8 +882,13 @@ void RawDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat, const
 }
 
 template <>
-void RawDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat, const TensorProto& actual) {
+void RawDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat, TensorProto actual) {
   int64_t actual_size = ActualSize(actual);
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+       onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+  }
 
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
   const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.raw_data().data());
