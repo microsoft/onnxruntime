@@ -191,8 +191,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
 
   const bool has_bias = bias != nullptr;
-  const bool has_weight_idx = weight_index > 0;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
+  const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
   const bool has_zero_points = zero_points != nullptr;
   if (has_zero_points) {
     ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());

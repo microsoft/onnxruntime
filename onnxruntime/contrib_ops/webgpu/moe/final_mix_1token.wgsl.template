@@ -1,0 +1,19 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// in: fc2_outputs [used_by, inter_size]
+// in: router_values [num_tokens, num_experts]
+// in: indirect_experts
+// out: output
+// uniform: hidden_size, expert_idx
+
+$MAIN {
+    let expert_idx = indirect_experts[uniforms.expert_idx];
+    let steps = uniforms.hidden_size / workgroup_size_x;
+    let router_value = router_values[expert_idx];
+    let offset = local_idx * steps;
+    for (var i = 0u; i < steps; i++) {
+        let weight = fc2_outputs[offset + i];
+        output[offset + i] += router_value * weight;
+    }
+}
