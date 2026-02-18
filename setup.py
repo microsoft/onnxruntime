@@ -848,17 +848,19 @@ extras_require = {
 if package_name == "onnxruntime-gpu" and cuda_major_version:
     # Determine cufft version: CUDA 13 uses cufft 12, CUDA 12 uses cufft 11
     cufft_version = "12.0" if cuda_major_version == "13" else "11.0"
-    extras_require.update({
-        "cuda": [
-            f"nvidia-cuda-nvrtc-cu{cuda_major_version}~={cuda_major_version}.0",
-            f"nvidia-cuda-runtime-cu{cuda_major_version}~={cuda_major_version}.0",
-            f"nvidia-cufft-cu{cuda_major_version}~={cufft_version}",
-            f"nvidia-curand-cu{cuda_major_version}~=10.0",
-        ],
-        "cudnn": [
-            f"nvidia-cudnn-cu{cuda_major_version}~=9.0",
-        ],
-    })
+    extras_require.update(
+        {
+            "cuda": [
+                f"nvidia-cuda-nvrtc-cu{cuda_major_version}~={cuda_major_version}.0",
+                f"nvidia-cuda-runtime-cu{cuda_major_version}~={cuda_major_version}.0",
+                f"nvidia-cufft-cu{cuda_major_version}~={cufft_version}",
+                f"nvidia-curand-cu{cuda_major_version}~=10.0",
+            ],
+            "cudnn": [
+                f"nvidia-cudnn-cu{cuda_major_version}~=9.0",
+            ],
+        }
+    )
 
 setup(
     name=package_name,
