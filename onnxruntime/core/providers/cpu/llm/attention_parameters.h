@@ -45,6 +45,10 @@ struct AttentionParameters {
   bool transpose_output;      // Whether to transpose the inputs and the outputs from BxNxSxH to BxSxNxH
                               // This covers the case where the inputs are 3D.
 
+  // nonpad_kv_seqlen (Opset 24+): per-batch valid KV sequence lengths, shape [batch_size]
+  bool has_nonpad_kv_seqlen = false;
+  const int64_t* nonpad_kv_seqlen_data = nullptr;
+
   // Checks the consistency of the parameters.
   void checkParameters() const {
     ORT_ENFORCE(batch_size > 0, "Batch size must be greater than 0");

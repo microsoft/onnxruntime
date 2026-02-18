@@ -1414,5 +1414,89 @@ TEST(AttentionTest, AttentionNoPastWithPresentOutput) {
   );
 }
 
+// Test nonpad_kv_seqlen (Opset 24 feature).
+// nonpad_kv_seqlen masks out KV positions >= valid length per batch element.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_4D) {
+  // batch_size=1, q_num_heads=1, kv_num_heads=1
+  // q_seq_len=1, kv_seq_len=4, head_size=2, v_head_size=2
+  // nonpad_kv_seqlen=[2] => only first 2 of 4 KV positions are valid
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  // 4D inputs: (batch, heads, seq, head_size)
+  std::vector<int64_t> q_shape = {1, 1, 1, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  // Q and K all 1.0 so QK scores are uniform
+  std::vector<float> q = {1.0f, 1.0f};
+  std::vector<float> k = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  // V: first 2 positions = 1.0, last 2 = 99.0 (should be masked out)
+  std::vector<float> v = {1.0f, 1.0f, 1.0f, 1.0f, 99.0f, 99.0f, 99.0f, 99.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  // Uniform attention over 2 valid positions with V=1.0 => output is [1.0, 1.0]
+  std::vector<float> expected_y = {1.0f, 1.0f};
+  test.AddOutput<float>("Y", {1, 1, 1, 2}, expected_y, false, 0, 1e-4f);
+
+  // Per spec, present_key/present_value should not be used with nonpad_kv_seqlen.
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test nonpad_kv_seqlen with batch_size > 1 and different valid lengths per batch.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_MultiBatch_4D) {
+  // batch_size=2, q_num_heads=1, kv_num_heads=1
+  // q_seq_len=1, kv_seq_len=4, head_size=2, v_head_size=2
+  // nonpad_kv_seqlen=[2, 3] => batch 0 has 2 valid, batch 1 has 3 valid
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {2, 1, 1, 2};
+  std::vector<int64_t> k_shape = {2, 1, 4, 2};
+  std::vector<int64_t> v_shape = {2, 1, 4, 2};
+
+  // Q and K all 1.0
+  std::vector<float> q = {1.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<float> k(2 * 1 * 4 * 2, 1.0f);
+
+  // V for batch 0: [1, 1], [1, 1], [99, 99], [99, 99]
+  // V for batch 1: [2, 2], [2, 2], [2, 2], [99, 99]
+  std::vector<float> v = {
+      1.0f, 1.0f, 1.0f, 1.0f, 99.0f, 99.0f, 99.0f, 99.0f,  // batch 0
+      2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 99.0f, 99.0f     // batch 1
+  };
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {2, 3});
+
+  // Batch 0: uniform over 2 valid positions, V=1.0 => [1.0, 1.0]
+  // Batch 1: uniform over 3 valid positions, V=2.0 => [2.0, 2.0]
+  std::vector<float> expected_y = {1.0f, 1.0f, 2.0f, 2.0f};
+  test.AddOutput<float>("Y", {2, 1, 1, 2}, expected_y, false, 0, 1e-4f);
+
+  // Per spec, present_key/present_value should not be used with nonpad_kv_seqlen.
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

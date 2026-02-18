@@ -139,6 +139,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* attn_mask = context->Input<Tensor>(3);
   const Tensor* past_key = context->Input<Tensor>(4);
   const Tensor* past_value = context->Input<Tensor>(5);
+  const Tensor* nonpad_kv_seqlen = context->Input<Tensor>(6);  // optional, Opset 24
 
   AttentionParameters parameters;
   TensorShape y_shape;
@@ -154,6 +155,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                   attn_mask,
                   past_key,
                   past_value,
+                  nonpad_kv_seqlen,
                   is_causal_,
                   softcap_,
                   softmax_precision_,
@@ -446,6 +448,15 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
           // We need to add the bias we could not add because out_qk was requested without the mask.
           // This can be optimized with vectorized add using MlasAddFloat32x4.
           MlasEltwiseAdd(output, mask_data + mask_data_offset, output, probs_matrix_size);
+        }
+      }
+      // Apply nonpad_kv_seqlen masking (Opset 24+): mask out KV positions >= valid length per batch.
+      if (parameters.has_nonpad_kv_seqlen) {
+        int valid_kv_len = static_cast<int>(parameters.nonpad_kv_seqlen_data[batch_i]);
+        for (int s = 0; s < parameters.q_sequence_length; ++s) {
+          for (int t = valid_kv_len; t < parameters.total_sequence_length; ++t) {
+            output[s * parameters.total_sequence_length + t] = mask_filter_value<T>();
+          }
         }
       }
       if (parameters.softcap > 0.0f) {
