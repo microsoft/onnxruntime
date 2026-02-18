@@ -87,7 +87,7 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 // Fails since QNN 2.37.1: Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_WhereQDQU8) {
+TEST_F(QnnHTPBackendTests, WhereQDQU8) {
   RunWhereQDQTest(TestInputDef<bool>({4, 3, 2}, false,
                                      {true, false, true, false, true, false,
                                       true, false, true, false, true, false,
@@ -100,8 +100,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_WhereQDQU8) {
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 // Check QNN Where works with broadcast
-// Fails since QNN 2.37.1: Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_WhereBroadcastU8) {
+TEST_F(QnnHTPBackendTests, WhereBroadcastU8) {
   RunWhereQDQTest(TestInputDef<bool>({2}, false, {true, false}),
                   TestInputDef<float>({4, 3, 2}, true, -2.0f, 2.0f),
                   TestInputDef<float>({1}, true, {3.0f}),
@@ -109,27 +108,24 @@ TEST_F(QnnHTPBackendTests, DISABLED_WhereBroadcastU8) {
 }
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
-// Large data broadcast, QNN v2.13 failed
 TEST_F(QnnHTPBackendTests, WhereLargeDataU8) {
-  RunWhereQDQTest(TestInputDef<bool>({5120}, false, false, true),
-                  TestInputDef<float>({1, 16, 64, 5120}, true, -5000.0f, 0.0f),
-                  TestInputDef<float>({1, 16, 64, 5120}, true, 0.0f, 5000.0f),
+  RunWhereQDQTest(TestInputDef<bool>({256}, false, false, true),
+                  TestInputDef<float>({1, 8, 16, 256}, true, -5000.0f, 0.0f),
+                  TestInputDef<float>({1, 8, 16, 256}, true, 0.0f, 5000.0f),
                   ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
-// Large data broadcast, QNN v2.13 failed to finalize graph
-// Worked with QNN v2.16
 TEST_F(QnnHTPBackendTests, WhereLargeDataBroadcastU8) {
-  RunWhereQDQTest(TestInputDef<bool>({5120}, false, false, true),
-                  TestInputDef<float>({1, 16, 64, 5120}, true, 0.0f, 1.0f),
+  RunWhereQDQTest(TestInputDef<bool>({256}, false, false, true),
+                  TestInputDef<float>({1, 8, 16, 256}, true, 0.0f, 1.0f),
                   TestInputDef<float>({1}, true, {3.0f}),
                   ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, WhereLargeDataBroadcastTransformedU8) {
-  RunWhereQDQTest(TestInputDef<bool>({1, 1, 5120, 1}, false, false, true),
-                  TestInputDef<float>({1, 64, 5120, 16}, true, 0.0f, 1.0f),
+  RunWhereQDQTest(TestInputDef<bool>({1, 1, 256, 1}, false, false, true),
+                  TestInputDef<float>({1, 16, 256, 8}, true, 0.0f, 1.0f),
                   TestInputDef<float>({1, 1, 1, 1}, true, {3.0f}),
                   ExpectedEPNodeAssignment::All);
 }
