@@ -247,7 +247,7 @@ dependencies {
     extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
   }
 
-  if (VersionNumber.parse(REACT_NATIVE_VERSION) < VersionNumber.parse("0.71")) {
+  if (REACT_NATIVE_MINOR_VERSION < 71) {
     extractLibs "com.facebook.fbjni:fbjni:+:headers"
     extractLibs "com.facebook.fbjni:fbjni:+"
   }
