@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 name: Qualcomm Internal Build & Test
+
+permissions:
+  contents: read
+  checks: write
+
 on:
   workflow_call:
     inputs:

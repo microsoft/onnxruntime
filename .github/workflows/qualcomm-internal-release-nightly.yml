@@ -3,6 +3,10 @@
 
 name: Scheduled Publish of ONNX Runtime Execution Provider wheel
 
+permissions:
+  contents: read
+  id-token: write
+
 on:
   schedule:
     - cron: "0 9 * * *"  # Every day at 2am in San Diego/PDT (9am UTC)

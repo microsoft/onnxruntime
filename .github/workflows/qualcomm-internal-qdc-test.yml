@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 name: Qualcomm Internal Tests on QDC
+
+permissions:
+  contents: read
+  checks: write
+
 on:
   workflow_call:
     inputs:

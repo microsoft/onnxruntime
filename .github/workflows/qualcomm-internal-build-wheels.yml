@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 name: Qualcomm Internal Build Wheels
+
+permissions:
+  contents: read
+  checks: write
+
 on:
   workflow_call:
     inputs:
