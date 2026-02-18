@@ -55,6 +55,14 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
+    # Telemetry for non-Windows platforms (enabled by USE_TELEMETRY)
+    if (onnxruntime_USE_TELEMETRY)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
+        )
+    endif()
+
     # logging files
     if (onnxruntime_USE_SYSLOG)
         list(APPEND onnxruntime_common_src_patterns
@@ -138,7 +146,11 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
-  set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  if(WIN32)
+    set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  else()
+    target_compile_definitions(onnxruntime_common PRIVATE USE_1DS_TELEMETRY)
+  endif()
 endif()
 if (onnxruntime_USE_MIMALLOC)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
@@ -198,6 +210,32 @@ if(CPUINFO_SUPPORTED)
   # Link cpuinfo if supported
   onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo)
+endif()
+
+# Link telemetry library (1DS SDK) for non-Windows platforms
+if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+  if(TARGET mat)
+    target_link_libraries(onnxruntime_common PRIVATE mat)
+    # Platform-specific system libraries required by the 1DS SDK
+    if(APPLE)
+      target_link_libraries(onnxruntime_common PRIVATE
+        "-framework CoreFoundation"
+        "-framework Security"
+        z
+        sqlite3
+      )
+    elseif(ANDROID)
+      target_link_libraries(onnxruntime_common PRIVATE z log)
+    elseif(UNIX)
+      target_link_libraries(onnxruntime_common PRIVATE
+        curl
+        z
+        sqlite3
+      )
+    endif()
+  else()
+    message(WARNING "Telemetry enabled but 'mat' library target not found")
+  endif()
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

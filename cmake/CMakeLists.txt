@@ -560,6 +560,9 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 include(external/onnxruntime_external_deps.cmake)
 
+# 1DS telemetry integration for non-Windows platforms (must come after external deps)
+include(onnxruntime_1ds_telemetry.cmake)
+
 set(ORT_WARNING_FLAGS)
 if (WIN32)
     # class needs to have dll-interface to be used by clients
