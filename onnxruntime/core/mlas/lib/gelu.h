@@ -18,6 +18,7 @@ Abstract:
 #pragma once
 
 #include "fp16_common.h"
+#include "../inc/mlas.h"
 #if defined(MLAS_NEON_INTRINSICS) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 #include "erf_neon_fp16.h"
 
@@ -27,8 +28,8 @@ MlasNeonGeluF16Kernel(
     const MLAS_FP16* input,
     MLAS_FP16* output,
     MLAS_FP16* temp,
-    int64_t count,
-    const std::string& algo
+    size_t count,
+    MLAS_GELU_ALGORITHM algo
 );
 
 #endif
