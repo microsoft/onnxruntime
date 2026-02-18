@@ -2817,7 +2817,7 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
       << "We no longer externalize data in the Graph constructor.";
 
   // Now externalize explicitly to trigger the bug scenario
-  ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues());
+  ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues({}));
   ASSERT_TRUE(graph.GetInitializedTensor("split_sizes", initializer_after));
   ASSERT_NE(initializer_after, nullptr);
   ASSERT_TRUE(utils::HasExternalDataInMemory(*initializer_after))

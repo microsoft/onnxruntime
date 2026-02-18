@@ -328,24 +328,122 @@ Status TensorProtoWithExternalDataToTensorProto(
   return Status::OK();
 }
 
+Status ParseWhiteListedPaths(const PathString& paths_str,
+                             /*out*/ InlinedVector<std::filesystem::path>& paths) {
+  if (paths_str.empty()) {
+    paths.clear();
+    return Status::OK();
+  }
+
+  InlinedVector<std::filesystem::path> result;
+
+  auto process_path = [&](const PathString& p_str) -> Status {
+    if (p_str.empty()) return Status::OK();
+    std::filesystem::path path(p_str);
+    std::error_code ec;
+    if (!path.is_absolute()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Whitelisted data path is not absolute: ", path.string());
+    }
+    // canonical() resolves all symlinks and requires the path to exist.
+    // If it fails, the path either doesn't exist or can't be resolved.
+    auto canonical_path = std::filesystem::canonical(path, ec);
+    if (ec) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Whitelisted data path does not exist or cannot be resolved: ", path.string());
+    }
+    // Walk each component of the canonical path and check for symlinks.
+    // We choose with approach because both canonical() and weakly_canonical() on Windows
+    // (MSVC's <filesystem> implementation) resolve symlinks for existing path components
+    // using the same underlying Win32 API (GetFinalPathNameByHandle).
+    // So comparing them always produces an equal result, making symlink detection impossible via comparison.
+    // We check the canonical path (not the original) so that normalization differences
+    // (trailing slashes, "..", ".") don't interfere, while still detecting symlinks
+    // that may exist along the resolved path.
+    {
+      auto normalized = path.lexically_normal();
+      std::filesystem::path accumulated;
+      for (const auto& component : normalized) {
+        accumulated /= component;
+        // Skip checking the root (e.g. "C:\" or "/") since is_symlink would fail or be meaningless.
+        if (accumulated == normalized.root_path()) {
+          continue;
+        }
+        if (std::filesystem::is_symlink(accumulated, ec)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Whitelisted data path contains a symlink: ", path.string());
+        }
+      }
+    }
+
+    if (!std::filesystem::is_directory(canonical_path, ec) || ec) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Whitelisted data path is not a directory: ", path.string());
+    }
+    result.push_back(canonical_path);
+    return Status::OK();
+  };
+
+  constexpr PathChar kSemiColonSep = ORT_TSTR(';');
+
+  size_t start = 0;
+  size_t end = paths_str.find(kSemiColonSep);
+
+  while (end != PathString::npos) {
+    ORT_RETURN_IF_ERROR(process_path(paths_str.substr(start, end - start)));
+    start = end + 1;
+    end = paths_str.find(kSemiColonSep, start);
+  }
+  ORT_RETURN_IF_ERROR(process_path(paths_str.substr(start)));
+
+  paths = std::move(result);
+  return Status::OK();
+}
+
 Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location) {
+                                const std::filesystem::path& location,
+                                gsl::span<const std::filesystem::path> whitelisted_external_folders) {
   // Reject absolute paths
   ORT_RETURN_IF(location.is_absolute(),
                 "Absolute paths not allowed for external data location");
-  if (!base_dir.empty()) {
-    // Resolve and verify the path stays within model directory
-    auto base_canonical = std::filesystem::weakly_canonical(base_dir);
-    // If the symlink exists, it resolves to the target path;
-    // so if the symllink is outside the directory it would be caught here.
-    auto resolved = std::filesystem::weakly_canonical(base_dir / location);
-    // Check that resolved path starts with base directory
+
+  auto validate_location_under_dir = [&location](const std::filesystem::path& dir) -> bool {
+    if (dir.empty()) {
+      return false;
+    }
+    auto base_canonical = std::filesystem::weakly_canonical(dir);
+    auto resolved = std::filesystem::weakly_canonical(dir / location);
     auto [base_end, resolved_it] = std::mismatch(
         base_canonical.begin(), base_canonical.end(),
         resolved.begin(), resolved.end());
-    ORT_RETURN_IF(base_end != base_canonical.end(),
-                  "External data path: ", location, " escapes model directory: ", base_dir);
+    return base_end == base_canonical.end();
+  };
+
+  if (!base_dir.empty()) {
+    if (validate_location_under_dir(base_dir)) {
+      return Status::OK();
+    }
   }
+
+  // base_dir validation failed or base_dir is empty, try whitelisted folders
+  if (!whitelisted_external_folders.empty()) {
+    for (const auto& folder : whitelisted_external_folders) {
+      if (validate_location_under_dir(folder)) {
+        return Status::OK();
+      }
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "External data path: ", location,
+                           " is not under any allowed directory");
+  }
+
+  // No whitelisted folders supplied
+  if (!base_dir.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "External data path: ", location, " escapes model directory: ", base_dir);
+  }
+
   return Status::OK();
 }
 

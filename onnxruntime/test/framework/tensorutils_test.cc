@@ -27,6 +27,17 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
+struct ScopedDirRemover {
+  std::filesystem::path dir;
+  explicit ScopedDirRemover(std::filesystem::path d) : dir(std::move(d)) {}
+  ~ScopedDirRemover() {
+    if (!dir.empty()) {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+    }
+  }
+};
+
 // if `expected_error_message_substring` is nullptr, parsing is expected to be successful
 static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
     std::string_view offset_str,
@@ -511,18 +522,22 @@ class PathValidationTest : public ::testing::Test {
     // Create a temporary directory for the tests.
     base_dir_ = std::filesystem::temp_directory_path() / "PathValidationTest";
     outside_dir_ = std::filesystem::temp_directory_path() / "outside";
+    whitelisted_dir_ = std::filesystem::temp_directory_path() / "whitelisted";
     std::filesystem::create_directories(base_dir_);
     std::filesystem::create_directories(outside_dir_);
+    std::filesystem::create_directories(whitelisted_dir_);
   }
 
   void TearDown() override {
     // Clean up the temporary directory.
     std::filesystem::remove_all(base_dir_);
     std::filesystem::remove_all(outside_dir_);
+    std::filesystem::remove_all(whitelisted_dir_);
   }
 
   std::filesystem::path base_dir_;
   std::filesystem::path outside_dir_;
+  std::filesystem::path whitelisted_dir_;
 };
 
 // Test cases for ValidateExternalDataPath.
@@ -584,6 +599,269 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
     GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: " << e.what();
   }
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathWithWhitelistedFolder) {
+  // Path is valid under the whitelisted folder directly.
+  std::vector<std::filesystem::path> whitelist = {outside_dir_};
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(outside_dir_, "data.bin", whitelist));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathEscapesBaseButMatchesWhitelist) {
+  std::vector<std::filesystem::path> whitelist = {whitelisted_dir_};
+  // "data.bin" is valid under base_dir_, no need for whitelist
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin", whitelist));
+
+  // Create a subdirectory of whitelisted_dir_ and use that as the whitelisted folder.
+  auto whitelisted_sub = whitelisted_dir_ / "sub";
+  std::filesystem::create_directories(whitelisted_sub);
+  std::vector<std::filesystem::path> whitelist2 = {whitelisted_sub};
+
+  // "../data.bin" escapes base_dir_ and also escapes whitelisted_sub
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin", whitelist2).IsOK());
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathWhitelistSavesEscapingPath) {
+  // Location "../outside/data.bin" escapes base_dir_ but resolves under outside_dir_.
+  auto relative_to_outside = std::filesystem::path("..") / "outside" / "data.bin";
+  std::vector<std::filesystem::path> whitelist = {outside_dir_};
+
+  // Without whitelist, it should fail.
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, relative_to_outside).IsOK());
+
+  // With whitelist containing outside_dir_, it should succeed because
+  // outside_dir_ / "../outside/data.bin" resolves under outside_dir_.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, relative_to_outside, whitelist));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathWhitelistDoesNotMatchEither) {
+  // Location escapes both base_dir and all whitelisted folders.
+  auto unrelated_dir = std::filesystem::temp_directory_path() / "unrelated_PathValidationTest";
+  std::filesystem::create_directories(unrelated_dir);
+  ScopedDirRemover cleanup_guard(unrelated_dir);
+
+  std::vector<std::filesystem::path> whitelist = {whitelisted_dir_};
+  auto escaping_location = std::filesystem::path("..") / "unrelated_PathValidationTest" / "data.bin";
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, escaping_location, whitelist).IsOK());
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyWhitelist) {
+  // Empty whitelist should behave the same as no whitelist.
+  std::vector<std::filesystem::path> empty_whitelist;
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin", empty_whitelist));
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin", empty_whitelist).IsOK());
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathMultipleWhitelistedFolders) {
+  // First whitelisted folder doesn't match, second one does.
+  auto another_dir = std::filesystem::temp_directory_path() / "another_PathValidationTest";
+  std::filesystem::create_directories(another_dir);
+  ScopedDirRemover cleanup_guard(another_dir);
+
+  auto relative_to_outside = std::filesystem::path("..") / "outside" / "data.bin";
+  std::vector<std::filesystem::path> whitelist = {another_dir, outside_dir_};
+
+  // Escapes base_dir_ but outside_dir_ (second whitelist entry) should match.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, relative_to_outside, whitelist));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathAbsoluteLocationRejectsEvenWithWhitelist) {
+  // Absolute paths are always rejected, regardless of whitelist.
+  std::vector<std::filesystem::path> whitelist = {outside_dir_};
+#ifdef _WIN32
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "C:\\data.bin", whitelist).IsOK());
+#else
+  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "/data.bin", whitelist).IsOK());
+#endif
+}
+
+// Test fixture for ParseWhiteListedPaths tests.
+class ParseWhiteListedPathsTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    test_dir_ = std::filesystem::temp_directory_path() / "ParseWhiteListedPathsTest";
+    sub_dir_a_ = test_dir_ / "dir_a";
+    sub_dir_b_ = test_dir_ / "dir_b";
+    std::filesystem::create_directories(sub_dir_a_);
+    std::filesystem::create_directories(sub_dir_b_);
+
+    // Canonicalize the paths so that tests can compare against what ParseWhiteListedPaths stores.
+    test_dir_ = std::filesystem::canonical(test_dir_);
+    sub_dir_a_ = std::filesystem::canonical(sub_dir_a_);
+    sub_dir_b_ = std::filesystem::canonical(sub_dir_b_);
+
+    // Create a regular file (not a directory)
+    regular_file_ = test_dir_ / "file.txt";
+    std::ofstream{regular_file_};
+  }
+
+  void TearDown() override {
+    std::filesystem::remove_all(test_dir_);
+  }
+
+  PathString ToOrtPath(const std::filesystem::path& p) {
+#ifdef _WIN32
+    return p.wstring();
+#else
+    return p.string();
+#endif
+  }
+
+  std::filesystem::path test_dir_;
+  std::filesystem::path sub_dir_a_;
+  std::filesystem::path sub_dir_b_;
+  std::filesystem::path regular_file_;
+};
+
+TEST_F(ParseWhiteListedPathsTest, EmptyStringReturnsOkAndEmptyVector) {
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(PathString(), paths));
+  EXPECT_TRUE(paths.empty());
+}
+
+TEST_F(ParseWhiteListedPathsTest, SingleValidAbsoluteDirectory) {
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(ToOrtPath(sub_dir_a_), paths));
+  ASSERT_EQ(paths.size(), 1u);
+  EXPECT_EQ(paths[0], sub_dir_a_);
+}
+
+TEST_F(ParseWhiteListedPathsTest, MultipleValidAbsoluteDirectories) {
+  PathString combined = ToOrtPath(sub_dir_a_) + ORT_TSTR(';') + ToOrtPath(sub_dir_b_);
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(combined, paths));
+  ASSERT_EQ(paths.size(), 2u);
+  EXPECT_EQ(paths[0], sub_dir_a_);
+  EXPECT_EQ(paths[1], sub_dir_b_);
+}
+
+TEST_F(ParseWhiteListedPathsTest, RelativePathReturnsError) {
+  InlinedVector<std::filesystem::path> paths;
+  PathString relative_path = ORT_TSTR("relative_dir");
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::ParseWhiteListedPaths(relative_path, paths),
+      "not absolute");
+}
+
+TEST_F(ParseWhiteListedPathsTest, NonExistentPathReturnsError) {
+  auto non_existent = test_dir_ / "does_not_exist";
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::ParseWhiteListedPaths(ToOrtPath(non_existent), paths),
+      "does not exist");
+}
+
+TEST_F(ParseWhiteListedPathsTest, FileNotDirectoryReturnsError) {
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::ParseWhiteListedPaths(ToOrtPath(regular_file_), paths),
+      "not a directory");
+}
+
+TEST_F(ParseWhiteListedPathsTest, EmptySegmentBetweenSeparatorsIsSkipped) {
+  // "dir_a;;dir_b" has an empty segment between the two semicolons
+  PathString combined = ToOrtPath(sub_dir_a_) + ORT_TSTR(';') + ORT_TSTR(';') + ToOrtPath(sub_dir_b_);
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(combined, paths));
+  ASSERT_EQ(paths.size(), 2u);
+  EXPECT_EQ(paths[0], sub_dir_a_);
+  EXPECT_EQ(paths[1], sub_dir_b_);
+}
+
+TEST_F(ParseWhiteListedPathsTest, TrailingSeparatorProducesEmptySegment) {
+  PathString with_trailing = ToOrtPath(sub_dir_a_) + ORT_TSTR(';');
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(with_trailing, paths));
+  ASSERT_EQ(paths.size(), 1u);
+  EXPECT_EQ(paths[0], sub_dir_a_);
+}
+
+TEST_F(ParseWhiteListedPathsTest, LeadingSeparatorProducesEmptySegment) {
+  PathString with_leading = ORT_TSTR(';') + ToOrtPath(sub_dir_a_);
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(with_leading, paths));
+  ASSERT_EQ(paths.size(), 1u);
+  EXPECT_EQ(paths[0], sub_dir_a_);
+}
+
+TEST_F(ParseWhiteListedPathsTest, OutParamIsClearedOnEachCall) {
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(ToOrtPath(sub_dir_a_), paths));
+  ASSERT_EQ(paths.size(), 1u);
+
+  // Call again with empty string; paths should be cleared
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(PathString(), paths));
+  EXPECT_TRUE(paths.empty());
+}
+
+TEST_F(ParseWhiteListedPathsTest, SymlinkDirectoryReturnsError) {
+  auto link_path = test_dir_ / "link_to_dir";
+  try {
+    std::filesystem::create_directory_symlink(sub_dir_a_, link_path);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: symlink creation not supported. " << e.what();
+  }
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::ParseWhiteListedPaths(ToOrtPath(link_path), paths),
+      "contains a symlink");
+}
+
+TEST_F(ParseWhiteListedPathsTest, SymlinkInIntermediateComponentReturnsError) {
+  // Create: test_dir_/link_to_dir_a -> sub_dir_a_, then use test_dir_/link_to_dir_a/nested as the path.
+  // Even though the final target is a real directory, the path has a symlink component.
+  auto nested_dir = sub_dir_a_ / "nested";
+  std::filesystem::create_directories(nested_dir);
+  auto link_in_path = test_dir_ / "link_to_dir_a";
+  try {
+    std::filesystem::create_directory_symlink(sub_dir_a_, link_in_path);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: symlink creation not supported. " << e.what();
+  }
+  auto path_through_link = link_in_path / "nested";
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::ParseWhiteListedPaths(ToOrtPath(path_through_link), paths),
+      "contains a symlink");
+}
+
+TEST_F(ParseWhiteListedPathsTest, OnlySeparatorsReturnsEmptyVector) {
+  PathString only_seps = ORT_TSTR(";;;");
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(only_seps, paths));
+  EXPECT_TRUE(paths.empty());
+}
+
+TEST_F(ParseWhiteListedPathsTest, ErrorOnSecondPathDoesNotModifyOutput) {
+  // Pre-populate paths to verify it is not modified on error
+  InlinedVector<std::filesystem::path> paths;
+  paths.push_back(std::filesystem::path(ORT_TSTR("/dummy/sentinel")));
+
+  auto non_existent = test_dir_ / "no_such_dir";
+  PathString combined = ToOrtPath(sub_dir_a_) + ORT_TSTR(';') + ToOrtPath(non_existent);
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::ParseWhiteListedPaths(combined, paths),
+      "does not exist");
+  // Output container must be unchanged on error
+  ASSERT_EQ(paths.size(), 1u);
+  EXPECT_EQ(paths[0], std::filesystem::path(ORT_TSTR("/dummy/sentinel")));
+}
+
+TEST_F(ParseWhiteListedPathsTest, OutParamUnchangedOnError) {
+  // First call succeeds
+  InlinedVector<std::filesystem::path> paths;
+  ASSERT_STATUS_OK(utils::ParseWhiteListedPaths(ToOrtPath(sub_dir_a_), paths));
+  ASSERT_EQ(paths.size(), 1u);
+  EXPECT_EQ(paths[0], sub_dir_a_);
+
+  // Second call fails - paths should retain the previous successful result
+  PathString relative_path = ORT_TSTR("relative_dir");
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      utils::ParseWhiteListedPaths(relative_path, paths),
+      "not absolute");
+  ASSERT_EQ(paths.size(), 1u);
+  EXPECT_EQ(paths[0], sub_dir_a_);
 }
 
 }  // namespace test

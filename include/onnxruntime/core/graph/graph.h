@@ -1463,10 +1463,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   /// <summary>
   /// This function converts all the graph TensorProto initializers into OrtValues
+  /// and creates a in-memory external data reference for each OrtValue. It validates external paths data references.
+  /// </summary>
+  /// <param name="whitelisted_external_paths"></param>
+  /// <returns></returns>
+  Status ConvertInitializersIntoOrtValues(gsl::span<const std::filesystem::path> whitelisted_external_paths);
+
+  /// <summary>
+  /// This function converts all the graph TensorProto initializers into OrtValues
   /// and creates a in-memory external data reference for each OrtValue.
+  /// External data paths are restricted to the model directory.
   /// </summary>
   /// <returns></returns>
-  Status ConvertInitializersIntoOrtValues();
+  Status ConvertInitializersIntoOrtValues() {
+    return ConvertInitializersIntoOrtValues(gsl::span<const std::filesystem::path>());
+  }
 
   /**
    * @brief This function examines the specified initializers in the graph and converts them inline

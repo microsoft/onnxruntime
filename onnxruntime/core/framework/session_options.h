@@ -226,6 +226,10 @@ struct SessionOptions {
   bool has_explicit_ep_context_gen_options = false;
   epctx::ModelGenOptions ep_context_gen_options = {};
   epctx::ModelGenOptions GetEpContextGenerationOptions() const;
+
+  // Semicolon-separated list of whitelisted data folder paths.
+  // Used to restrict where external data can be loaded from.
+  PathString whitelisted_data_folders;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

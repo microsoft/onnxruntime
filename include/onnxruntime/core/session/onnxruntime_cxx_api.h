@@ -1558,6 +1558,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   ///< Wraps OrtApi::AddFreeDimensionOverrideByName
   SessionOptionsImpl& AddFreeDimensionOverrideByName(const char* dim_name, int64_t dim_value);
+  ///< Wraps OrtApi::SessionOptionsSetWhiteListedDataFolders
+  SessionOptionsImpl& SetWhiteListedDataFolders(const ORTCHAR_T* whitelisted_data_folders);
 };
 }  // namespace detail
 

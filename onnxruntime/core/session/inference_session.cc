@@ -1390,7 +1390,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   //   auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
   //                                                        use_tensor_buffer_true);
   //   ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto_to_add, ort_value));
-  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ConvertInitializersIntoOrtValues());
+  InlinedVector<std::filesystem::path> whitelisted_external_data_folders;
+  ORT_RETURN_IF_ERROR_SESSIONID_(utils::ParseWhiteListedPaths(session_options_.whitelisted_data_folders,
+                                                              whitelisted_external_data_folders));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph.ConvertInitializersIntoOrtValues(whitelisted_external_data_folders));
 
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
                                    Graph& graph, bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {

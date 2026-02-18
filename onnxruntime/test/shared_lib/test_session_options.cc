@@ -130,3 +130,24 @@ TEST(CApiTest, session_options_provider_interface_fail_qnn) {
   EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("Failed to load"));
 }
 #endif  // defined(USE_QNN_PROVIDER_INTERFACE)
+
+TEST(CApiTest, session_options_set_whitelisted_data_folders) {
+  Ort::SessionOptions options;
+  // Verify that passing nullptr fails
+  Ort::Status status{Ort::GetApi().SessionOptionsSetWhiteListedDataFolders(options, nullptr)};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("is nullptr"));
+
+  // Verify that passing a valid string works
+  // We don't verify the effect here, just that the API call succeeds.
+  // The functionality is tested in tensorutils_test.cc.
+#ifdef _WIN32
+  Ort::ThrowOnError(Ort::GetApi().SessionOptionsSetWhiteListedDataFolders(options, L"C:\\tmp"));
+#else
+  Ort::ThrowOnError(Ort::GetApi().SessionOptionsSetWhiteListedDataFolders(options, "/tmp"));
+#endif
+
+  // Verify that passing an empty string works.
+  Ort::ThrowOnError(Ort::GetApi().SessionOptionsSetWhiteListedDataFolders(options, ORT_TSTR("")));
+}
