@@ -8,8 +8,7 @@ import tempfile
 import unittest
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, save
 
 import onnxruntime as ort
 
@@ -70,7 +69,7 @@ class TestWhitelistedData(unittest.TestCase):
             model = helper.make_model(graph)
 
             model_blob_path = os.path.join(blobs_dir, "guid1")
-            onnx.save(model, model_blob_path)
+            save(model, model_blob_path)
 
             # Now create symlinks in snapshots
             model_symlink_path = os.path.join(snapshots_dir, "model.onnx")
@@ -81,9 +80,6 @@ class TestWhitelistedData(unittest.TestCase):
                 os.symlink(data_blob_path, data_symlink_path)
             except (OSError, NotImplementedError) as e:
                 self.skipTest(f"Skipping symlink test: symlink creation is not supported in this environment: {e}")
-
-            print(f"Model symlink: {model_symlink_path} -> {os.readlink(model_symlink_path)}")
-            print(f"Data symlink: {data_symlink_path} -> {os.readlink(data_symlink_path)}")
 
             sess = ort.InferenceSession(model_symlink_path, providers=["CPUExecutionProvider"])
 
@@ -152,7 +148,7 @@ class TestWhitelistedData(unittest.TestCase):
             model = helper.make_model(graph)
 
             model_blob_path = os.path.join(blobs_dir, "guid1")
-            onnx.save(model, model_blob_path)
+            save(model, model_blob_path)
 
             # Now create symlinks in snapshots
             model_symlink_path = os.path.join(snapshots_dir, "model.onnx")
@@ -163,9 +159,6 @@ class TestWhitelistedData(unittest.TestCase):
                 os.symlink(data_blob_path, data_symlink_path)
             except (OSError, NotImplementedError) as e:
                 self.skipTest(f"Skipping symlink test: symlink creation is not supported in this environment: {e}")
-
-            print(f"Model symlink: {model_symlink_path} -> {os.readlink(model_symlink_path)}")
-            print(f"Data symlink: {data_symlink_path} -> {os.readlink(data_symlink_path)}")
 
             sess = ort.InferenceSession(model_symlink_path, providers=["CPUExecutionProvider"])
 
@@ -235,7 +228,7 @@ class TestWhitelistedData(unittest.TestCase):
             model = helper.make_model(graph)
 
             model_blob_path = os.path.join(model_dir, "guid1")
-            onnx.save(model, model_blob_path)
+            save(model, model_blob_path)
 
             # Now create symlinks in snapshots
             model_symlink_path = os.path.join(snapshots_dir, "model.onnx")
@@ -246,9 +239,6 @@ class TestWhitelistedData(unittest.TestCase):
                 os.symlink(data_blob_path, data_symlink_path)
             except (OSError, NotImplementedError) as e:
                 self.skipTest(f"Skipping symlink test: symlink creation is not supported in this environment: {e}")
-
-            print(f"Model symlink: {model_symlink_path} -> {os.readlink(model_symlink_path)}")
-            print(f"Data symlink: {data_symlink_path} -> {os.readlink(data_symlink_path)}")
 
             with self.assertRaises(Exception) as cm:
                 ort.InferenceSession(model_symlink_path, providers=["CPUExecutionProvider"])

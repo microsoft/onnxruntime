@@ -338,7 +338,7 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
     // Resolve and verify the path stays within model directory
     auto base_canonical = std::filesystem::weakly_canonical(base_dir);
     // If the symlink exists, it resolves to the target path;
-    // so if the symllink is outside the directory it would be caught here.
+    // so if the symlink is outside the directory it would be caught here.
     auto resolved = std::filesystem::weakly_canonical(base_dir / location);
 
     // Check that resolved path starts with base directory
@@ -360,11 +360,17 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
         if (real_base_end == real_model_dir.end()) {
           return Status::OK();
         }
-      }
-    }
 
-    ORT_RETURN_IF(base_end != base_canonical.end(),
-                  "External data path: ", location, " escapes model directory: ", base_dir);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "External data path: ", location, " (resolved path: ", resolved,
+                               ") escapes both model directory: ", base_dir,
+                               " and real model directory: ", real_model_dir);
+      }
+
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "External data path: ", location, " (resolved path: ", resolved,
+                             ") escapes model directory: ", base_dir);
+    }
   }
   return Status::OK();
 }
