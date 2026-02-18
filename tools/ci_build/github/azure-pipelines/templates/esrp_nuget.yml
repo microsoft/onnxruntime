@@ -1,10 +1,10 @@
 parameters:
   FolderPath: ''
   DisplayName: ''
-  DoEsrp: 'false'
+  DoEsrp: false
 
 steps:
-- ${{ if eq(parameters['DoEsrp'], 'true') }}:
+- ${{ if eq(parameters.DoEsrp, true) }}:
   - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
     displayName: 'ESRP CodeSigning'
     inputs:
