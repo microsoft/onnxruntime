@@ -222,6 +222,15 @@ class QnnModelWrapper {
 
   Ort::Status GetTensorInfo(const OrtNodeUnitIODef& tensor, TensorInfo& tensor_info) const;
 
+  Ort::Status AddCastNode(const std::string& cast_node_name,
+                          const std::string& input_name,
+                          const std::string& output_name,
+                          Qnn_TensorType_t output_tensor_type,
+                          Qnn_DataType_t output_data_type,
+                          QnnQuantParamsWrapper&& output_quant_params,
+                          std::vector<uint32_t>&& output_shape,
+                          bool do_op_validation);
+
   Ort::Status AddReshapeNode(const std::string& input_name,
                              const std::string& output_name,
                              const std::vector<uint32_t>& input_shape,

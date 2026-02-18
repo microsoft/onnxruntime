@@ -11,7 +11,14 @@
 namespace onnxruntime {
 namespace qnn {
 
-// Handles Gather and GatherElements
+// High-level workflows:
+// 1) GatherElements on HTP with BOOL input: BOOL -> Cast(U8) -> GatherElements(U8) -> Cast(BOOL).
+// 2) Gather with int64 inputs: inputs gets Cast(INT32) in ProcessInt64Tensors;
+//    if ONNX graph output is int64, cast back after Gather.
+// 2.1) Gather with static int64 indices: negative indices get fixed and int64 gets reinterpreted as uint32
+//      in ProcessAttributesAndOutputs, and Cast is added if output is int64.
+// 3) Gather with rank mismatch: Gather -> Reshape -> (optional output cast).
+
 class GatherOpBuilder : public BaseOpBuilder {
  public:
   GatherOpBuilder() : BaseOpBuilder("GatherOpBuilder") {}
@@ -42,6 +49,8 @@ Ort::Status GatherOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   // This causes a Qnn graph execution error. So, reject those configs here.
   // We should consider not using QNN CPU backend for onnxruntime unit tests.
   const std::string& op_type = node_unit.OpType();
+
+  // rank of GatherElements input0 must be > 1 and <= 4 on QNN CPU backend
   if (qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::CPU && op_type == "GatherElements") {
     const auto& input0 = node_unit.Inputs()[0];
     std::vector<uint32_t> input0_shape;
@@ -132,8 +141,8 @@ static Ort::Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
 
   std::vector<uint8_t> qnn_indices_bytes;
 
-  // Get raw bytes for static indices.
-  // If indices are int64, convert them to int32 and update indices_info.qnn_data_type.
+  // A. Get raw bytes for static indices.
+  //    If indices are int64, convert them to int32 and update indices_info.qnn_data_type.
   if (indices_info.is_initializer) {
     std::vector<uint8_t> onnx_indices_bytes;
     RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(indices_info.initializer_tensor, onnx_indices_bytes));
@@ -162,7 +171,7 @@ static Ort::Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
     RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
 
-  // Insert QNN Cast op to convert dynamic indices from int64 to int32.
+  // B. Insert QNN Cast op to convert dynamic indices from int64 to int32.
   auto& input_tensorwrapper = qnn_model_wrapper.GetQnnTensorWrapper(indices_tensor_name);
 
   std::string indices_casted_name{indices_tensor_name};
@@ -170,25 +179,14 @@ static Ort::Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
   if (input_tensorwrapper.GetTensorDataType() == QNN_DATATYPE_INT_64) {
     assert(!indices_info.is_initializer);
     indices_casted_name += "_int32";
-    if (qnn_model_wrapper.IsQnnTensorWrapperExist(indices_casted_name)) {
-      ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_VERBOSE, ("Tensor already added, skip it: " + indices_casted_name).c_str());
-    } else {
-      QnnTensorWrapper indices_cast_tensor(indices_casted_name,
-                                           QNN_TENSOR_TYPE_NATIVE,
-                                           QNN_DATATYPE_INT_32,
-                                           QnnQuantParamsWrapper(),
-                                           std::move(cast_output_shape));
-      RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(indices_cast_tensor)),
-                    "Failed to add gather indices cast tensor.");
-      RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(indices_tensor_name, QNN_OP_CAST),
-                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    QNN_OP_CAST,
-                                                    {indices_tensor_name},
-                                                    {indices_casted_name},
-                                                    {},
-                                                    do_op_validation),
-                    "Failed to add gather indices cast node.");
-    }
+    RETURN_IF_ERROR(qnn_model_wrapper.AddCastNode(utils::GetUniqueName(indices_tensor_name, QNN_OP_CAST),
+                                                  indices_tensor_name,
+                                                  indices_casted_name,
+                                                  QNN_TENSOR_TYPE_NATIVE,
+                                                  QNN_DATATYPE_INT_32,
+                                                  QnnQuantParamsWrapper(),
+                                                  std::move(cast_output_shape),
+                                                  do_op_validation));
   }
   input_names.push_back(indices_casted_name);
   return Ort::Status();
@@ -203,6 +201,27 @@ Ort::Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   RETURN_IF(inputs.size() != 2, ("QNN EP: " + node_unit.OpType() + " operator must have two inputs").c_str());
   RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
+  // Gather/GatherElements on HTP BE don't support BOOL input. Add Cast node to convert BOOL to UINT8.
+  const bool needs_bool_cast = (qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::HTP &&
+                                inputs[0].type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL);
+  if (needs_bool_cast) {
+    const std::string& input0_name = input_names[0];
+    TensorInfo input0_info = {};
+    RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
+    const std::string cast_output_name = utils::GetUniqueName(input0_name, "_bool_to_u8");
+    if (!qnn_model_wrapper.IsQnnTensorWrapperExist(cast_output_name)) {
+      RETURN_IF_ERROR(qnn_model_wrapper.AddCastNode(utils::GetUniqueName(input0_name, QNN_OP_CAST),
+                                                    input0_name,
+                                                    cast_output_name,
+                                                    QNN_TENSOR_TYPE_NATIVE,
+                                                    QNN_DATATYPE_UFIXED_POINT_8,
+                                                    QnnQuantParamsWrapper(1.0f, 0),
+                                                    std::vector<uint32_t>(input0_info.shape),
+                                                    do_op_validation));
+    }
+    input_names[0] = cast_output_name;
+  }
+
   int64_t input0_axis_dim = 0;
   RETURN_IF_ERROR(GetInput0AxisDimValue(qnn_model_wrapper, node_unit, /*default_axis_value=*/0, input0_axis_dim));
   return ProcessIndicesInput(qnn_model_wrapper, inputs[1], input0_axis_dim, logger, input_names, do_op_validation);
@@ -214,6 +233,8 @@ Ort::Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                                                          const Ort::Logger& logger,
                                                          bool do_op_validation) const {
   const bool is_gather_elems = node_unit.OpType() == "GatherElements";
+  const bool needs_bool_cast = (qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::HTP &&
+                                node_unit.Inputs()[0].type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL);
 
   // Create QNN 'axis' parameter.
   std::vector<std::string> param_tensor_names;
@@ -227,33 +248,72 @@ Ort::Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
   qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
   if (is_gather_elems) {
-    return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                          logger, do_op_validation, GetQnnOpType(node_unit.OpType()));
+    if (!needs_bool_cast) {
+      return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
+                            logger, do_op_validation, GetQnnOpType(node_unit.OpType()));
+    }
+
+    // 1. BOOL input flow for GatherElements on HTP:
+    // 1.1 Input: BOOL -> Cast(U8) (done in ProcessInputs)
+    // 1.2 GatherElements on U8
+    // 1.3 Output: U8 -> Cast(BOOL)
+    const auto& gather_output = node_unit.Outputs()[0];
+    const auto& output_name = gather_output.name;
+    std::vector<uint32_t> output_shape;
+    RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(gather_output.shape, output_shape), "Cannot get shape");
+    const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
+
+    const std::string gather_output_name = utils::GetUniqueName(output_name, "_u8_to_bool_in");
+    QnnQuantParamsWrapper gather_quant_params(1.0f, 0);
+    QnnTensorWrapper gather_output_wrapper(gather_output_name,
+                                           QNN_TENSOR_TYPE_NATIVE,
+                                           QNN_DATATYPE_UFIXED_POINT_8,
+                                           std::move(gather_quant_params),
+                                           std::vector<uint32_t>(output_shape));
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(gather_output_wrapper)), "Failed to add tensor.");
+
+    RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
+                                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                  GetQnnOpType(node_unit.OpType()),
+                                                  std::move(input_names),
+                                                  {gather_output_name},
+                                                  std::move(param_tensor_names),
+                                                  do_op_validation),
+                  "Failed to add node.");
+
+    TensorInfo output_info = {};
+    RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(gather_output, output_info));
+    Qnn_TensorType_t output_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+    RETURN_IF_ERROR(qnn_model_wrapper.AddCastNode(utils::GetUniqueName(output_name, "_u8_to_bool"),
+                                                  gather_output_name,
+                                                  output_name,
+                                                  output_tensor_type,
+                                                  output_info.qnn_data_type,
+                                                  output_info.quant_param.Copy(),
+                                                  std::vector<uint32_t>(output_shape),
+                                                  do_op_validation));
+    return Ort::Status();
   }
 
   // if indicies is scalar shape, then need to add Reshape node
   const auto& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
   const auto& indices_input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[1]);
 
-  // Calculate the output shape
-  std::vector<uint32_t> qnn_output_shape;
+  // 1. Determine Gather output shape (QNN expected shape pre-reshape)
+  std::vector<uint32_t> qnn_pre_reshape_output_shape;
   auto input_rank = input_tensor_wrapper.GetTensorRank();
   auto indices_rank = indices_input_tensor_wrapper.GetTensorRank();
-  qnn_output_shape.reserve(static_cast<size_t>(input_rank - 1 + indices_rank));
-
-  const auto& gather_indices = node_unit.Inputs()[1];
-  std::vector<uint32_t> indices_shape;
-  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(gather_indices.shape, indices_shape), "Cannot get shape");
+  qnn_pre_reshape_output_shape.reserve(static_cast<size_t>(input_rank - 1 + indices_rank));
 
   // replace the dimension for p.axis with the shape from the indices
   std::copy(input_tensor_wrapper.GetTensorDims().begin(), input_tensor_wrapper.GetTensorDims().begin() + axis_value,
-            std::back_inserter(qnn_output_shape));
+            std::back_inserter(qnn_pre_reshape_output_shape));
 
   const auto& indicies_shape = indices_input_tensor_wrapper.GetTensorDims();
-  std::copy(indicies_shape.begin(), indicies_shape.end(), std::back_inserter(qnn_output_shape));
+  std::copy(indicies_shape.begin(), indicies_shape.end(), std::back_inserter(qnn_pre_reshape_output_shape));
 
   std::copy(input_tensor_wrapper.GetTensorDims().begin() + axis_value + 1, input_tensor_wrapper.GetTensorDims().end(),
-            std::back_inserter(qnn_output_shape));
+            std::back_inserter(qnn_pre_reshape_output_shape));
 
   const auto& gather_output = node_unit.Outputs()[0];
   const auto& output_name = gather_output.name;
@@ -265,76 +325,93 @@ Ort::Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   RETURN_IF_ERROR(utils::GetQnnDataType(quantize_param.IsQuantized(), gather_output_type, qnn_data_type));
 
-  if (quantize_param.IsPerTensor()) {
+  if (!needs_bool_cast && quantize_param.IsPerTensor()) {
     // Make sure the output quantization parameters are equal to the input.
     RETURN_IF_ERROR(SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
                                                              0 /*input_index*/, 0 /*output_index*/, qnn_data_type,
                                                              quantize_param));
   }
 
-  std::vector<uint32_t> target_output_shape;
-  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(gather_output.shape, target_output_shape), "Cannot get shape");
+  std::vector<uint32_t> onnx_final_output_shape;
+  RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(gather_output.shape, onnx_final_output_shape), "Cannot get shape");
 
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
-  bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
+  bool reshape_required = (qnn_pre_reshape_output_shape.size() != onnx_final_output_shape.size());
 
-  struct CastNodeInfo {
-    std::string node_name;
-    std::string input_name;
-    std::string output_name;
-  };
-  std::vector<CastNodeInfo> cast_node_info_vec;
-
-  // Get the output info for the gather output tensor
+  // 2. Gather output quantization info (shared by optional casts)
   TensorInfo output_info = {};
   RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(gather_output, output_info));
 
-  // Check if we need to add a cast node for int64
-  bool needs_int64_cast = false;
-  if (is_graph_output) {
+  // 3. Decide optional output casts
+  struct OutputCastPlan {
+    bool needs_bool_cast = false;
+    bool needs_int64_cast = false;
+    std::string bool_cast_input_name;
+    std::string int64_cast_node_name;
+    std::string int64_cast_input_name;
+    std::string int64_cast_tensor_name;
+  };
+
+  OutputCastPlan cast_plan;
+  cast_plan.needs_bool_cast = needs_bool_cast;
+
+  // 3.1 INT64: input-side casts may require output cast back to INT64 at graph output
+  if (is_graph_output && !needs_bool_cast) {
     for (const auto& input_name : input_names) {
-      if (input_name.find("_cast_int32") != std::string::npos) {
-        needs_int64_cast = true;
+      if (input_name.find("_cast_int32") != std::string::npos ||
+          input_name.find("_int64_to_int32") != std::string::npos) {
+        cast_plan.needs_int64_cast = true;
         break;
       }
     }
   }
 
-  // Store the cast input name to ensure consistency
-  std::string cast_input_name;
+  // 3.2 BOOL: HTP requires BOOL -> U8 before Gather and U8 -> BOOL after
+  if (cast_plan.needs_bool_cast) {
+    cast_plan.bool_cast_input_name = utils::GetUniqueName(output_name, "_u8_to_bool_in");
+  }
 
-  // If a cast to int64 is needed, add the cast node
-  if (needs_int64_cast) {
-    const std::string cast_node_name = utils::GetUniqueName(node_unit, "_cast_int64");
-    cast_input_name = utils::GetUniqueName(output_name, "_cast_int64");
-    const std::string cast_output_name = output_name;
+  // 3.3 Prepare int64 cast input tensor (created now, cast node added later)
+  if (cast_plan.needs_int64_cast) {
+    cast_plan.int64_cast_node_name = utils::GetUniqueName(node_unit, "_int32_to_int64");
+    cast_plan.int64_cast_tensor_name = utils::GetUniqueName(output_name, "_int32_to_int64_in");
+    cast_plan.int64_cast_input_name = cast_plan.int64_cast_tensor_name;
 
-    // Create the cast input tensor wrapper
-    QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
+    QnnTensorWrapper cast_input_tensorwrapper(cast_plan.int64_cast_tensor_name,
                                               QNN_TENSOR_TYPE_NATIVE,
                                               output_info.qnn_data_type,
                                               output_info.quant_param.Copy(),
-                                              std::move(qnn_output_shape));
-
+                                              std::vector<uint32_t>(qnn_pre_reshape_output_shape));
     RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
-    cast_node_info_vec.emplace_back(CastNodeInfo{cast_node_name, cast_input_name, cast_output_name});
-    Qnn_TensorType_t cast_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-    QnnTensorWrapper cast_output(output_name, cast_tensor_type, qnn_data_type, std::move(quantize_param),
-                                 std::move(target_output_shape));
-    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
   }
 
+  // 4. Choose gather output name based on optional reshape/cast flow
+  // 4.1 BOOL flow: gather -> U8 tensor -> cast back to BOOL
+  // 4.2 INT64 flow: gather -> int32 tensor -> cast back to int64
+  // 4.3 Reshape flow: gather -> reshape -> (optional cast)
   std::string gather_output_name = output_name;
   if (reshape_required) {
     gather_output_name = utils::GetUniqueName(output_name, "_reshape");
-  } else if (needs_int64_cast) {
-    // Use the previously stored cast_input_name for consistency
-    gather_output_name = cast_input_name;
+  } else if (cast_plan.needs_bool_cast) {
+    gather_output_name = cast_plan.bool_cast_input_name;
+  } else if (cast_plan.needs_int64_cast) {
+    // Use the previously stored cast input name for consistency
+    gather_output_name = cast_plan.int64_cast_tensor_name;
   }
 
-  Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-  QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param.Copy(),
-                                         std::move(qnn_output_shape));
+  // 5. Create Gather output tensor and node
+  Qnn_DataType_t gather_qnn_data_type = qnn_data_type;
+  QnnQuantParamsWrapper gather_quant_params = quantize_param.Copy();
+  if (cast_plan.needs_bool_cast) {
+    gather_qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
+    gather_quant_params = QnnQuantParamsWrapper(1.0f, 0);
+  }
+
+  Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output && !cast_plan.needs_bool_cast && !cast_plan.needs_int64_cast)
+                                     ? QNN_TENSOR_TYPE_APP_READ
+                                     : QNN_TENSOR_TYPE_NATIVE;
+  QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, gather_qnn_data_type, gather_quant_params.Copy(),
+                                         std::move(qnn_pre_reshape_output_shape));
   RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(gather_output_wrapper)), "Failed to add tensor.");
   RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                 QNN_OP_PACKAGE_NAME_QTI_AISW,
@@ -346,17 +423,20 @@ Ort::Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                 "Failed to add node.");
 
   if (reshape_required) {
-    // Add Reshape Node after Gather.
-    Qnn_TensorType_t reshape_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-    QnnTensorWrapper reshape_output(output_name, reshape_tensor_type, qnn_data_type, std::move(quantize_param),
-                                    std::move(target_output_shape));
-    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_output)), "Failed to add tensor.");
-    std::string node_output_name = output_name;
-
-    if (needs_int64_cast) {
-      // If needs_int64 is true, use the previously stored cast_input_name for consistency
-      node_output_name = cast_input_name;
+    // 5.1 Add Reshape node after Gather if ONNX output rank differs from QNN rank
+    const bool reshape_is_graph_output = is_graph_output && !cast_plan.needs_bool_cast && !cast_plan.needs_int64_cast;
+    Qnn_TensorType_t reshape_tensor_type = reshape_is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+    std::string reshape_output_name = output_name;
+    if (cast_plan.needs_bool_cast) {
+      reshape_output_name = cast_plan.bool_cast_input_name;
     }
+    if (cast_plan.needs_int64_cast) {
+      reshape_output_name = cast_plan.int64_cast_tensor_name;
+    }
+    QnnTensorWrapper reshape_output(reshape_output_name, reshape_tensor_type, gather_qnn_data_type,
+                                    gather_quant_params.Copy(), std::vector<uint32_t>(onnx_final_output_shape));
+    RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_output)), "Failed to add tensor.");
+    std::string node_output_name = reshape_output_name;
     RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_RESHAPE),
                                                   QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                   QNN_OP_RESHAPE,
@@ -367,18 +447,30 @@ Ort::Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                   "Failed to add node.");
   }
 
-  if (needs_int64_cast) {
-    for (const auto& cast_node_info : cast_node_info_vec) {
-      // Insert cast node.
-      RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
-                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    QNN_OP_CAST,
-                                                    {cast_node_info.input_name},
-                                                    {cast_node_info.output_name},
-                                                    {},
-                                                    do_op_validation),
-                    " Failed to add Cast node");
-    }
+  // 6. Append optional output casts
+  if (cast_plan.needs_bool_cast) {
+    Qnn_TensorType_t output_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+    const std::string cast_input = reshape_required ? cast_plan.bool_cast_input_name : gather_output_name;
+    RETURN_IF_ERROR(qnn_model_wrapper.AddCastNode(utils::GetUniqueName(output_name, "_u8_to_bool"),
+                                                  cast_input,
+                                                  output_name,
+                                                  output_tensor_type,
+                                                  output_info.qnn_data_type,
+                                                  output_info.quant_param.Copy(),
+                                                  std::vector<uint32_t>(onnx_final_output_shape),
+                                                  do_op_validation));
+  }
+
+  if (cast_plan.needs_int64_cast) {
+    Qnn_TensorType_t cast_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+    RETURN_IF_ERROR(qnn_model_wrapper.AddCastNode(cast_plan.int64_cast_node_name,
+                                                  cast_plan.int64_cast_input_name,
+                                                  output_name,
+                                                  cast_tensor_type,
+                                                  qnn_data_type,
+                                                  quantize_param.Copy(),
+                                                  std::vector<uint32_t>(onnx_final_output_shape),
+                                                  do_op_validation));
   }
 
   return Ort::Status();

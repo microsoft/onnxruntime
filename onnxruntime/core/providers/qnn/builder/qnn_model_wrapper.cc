@@ -827,6 +827,39 @@ Ort::Status QnnModelWrapper::GetTensorInfo(const OrtNodeUnitIODef& tensor, Tenso
   return Ort::Status();
 }
 
+// Adds a Cast node to the graph mostly to convert the unsupported input tensor type to spec specified type.
+Ort::Status QnnModelWrapper::AddCastNode(const std::string& cast_node_name,
+                                         const std::string& input_name,
+                                         const std::string& output_name,
+                                         Qnn_TensorType_t output_tensor_type,
+                                         Qnn_DataType_t output_data_type,
+                                         QnnQuantParamsWrapper&& output_quant_params,
+                                         std::vector<uint32_t>&& output_shape,
+                                         bool do_op_validation) {
+  if (IsQnnTensorWrapperExist(output_name)) {
+    ORT_CXX_LOG(logger_, ORT_LOGGING_LEVEL_VERBOSE,
+                ("Tensor already added, skip it: " + output_name).c_str());
+    return Ort::Status();
+  }
+
+  QnnTensorWrapper output_tensorwrapper(output_name,
+                                        output_tensor_type,
+                                        output_data_type,
+                                        std::move(output_quant_params),
+                                        std::move(output_shape));
+  RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add cast tensor.");
+
+  RETURN_IF_NOT(CreateQnnNode(cast_node_name,
+                              QNN_OP_PACKAGE_NAME_QTI_AISW,
+                              QNN_OP_CAST,
+                              {input_name},
+                              {output_name},
+                              {},
+                              do_op_validation),
+                "Failed to add Cast node.");
+  return Ort::Status();
+}
+
 Ort::Status QnnModelWrapper::AddReshapeNode(const std::string& input_name, const std::string& output_name,
                                             const std::vector<uint32_t>& input_shape,
                                             const std::vector<uint32_t>& output_shape,

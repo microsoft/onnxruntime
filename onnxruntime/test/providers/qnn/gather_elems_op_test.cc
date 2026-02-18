@@ -177,6 +177,16 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataInt32_IndicesInt32_Rank1) {
       ExpectedEPNodeAssignment::All);
 }
 
+// Test non-quantized GatherElements op on HTP backend:
+// Input[0] is bool. Indices are int32, positive, and dynamic.
+TEST_F(QnnHTPBackendTests, GatherElems_DataBool_IndicesInt32) {
+  RunHTPGatherElemsOpTest<bool, int32_t>(
+      TestInputDef<bool>({2, 3}, false, {true, false, true, false, true, false}),
+      TestInputDef<int32_t>({2, 3}, false, {1, 2, 0, 2, 0, 0}),
+      {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+      ExpectedEPNodeAssignment::All);
+}
+
 // Test uint8 QDQ GatherElements op on HTP backend:
 // positive, dynamic, int32 indices.
 TEST_F(QnnHTPBackendTests, GatherElems_DataUint8_IndicesInt32) {

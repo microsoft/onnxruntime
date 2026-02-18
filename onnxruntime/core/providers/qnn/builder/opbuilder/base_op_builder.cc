@@ -219,22 +219,14 @@ Ort::Status BaseOpBuilder::ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrappe
         std::vector<uint32_t> output_shape;
         RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_i.shape, output_shape),
                       ("QNN EP: Cannot get input shape for " + input_i.name).c_str());
-        QnnTensorWrapper output_tensorwrapper(cast_output_name,
-                                              tensor_type,
-                                              qnn_data_type,
-                                              QnnQuantParamsWrapper(),
-                                              std::move(output_shape));
-        RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)),
-                      "Failed to add output tensor for QNN Cast node.");
-
-        RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_output_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      QNN_OP_CAST,
-                                                      {input_names[i]},
-                                                      {cast_output_name},
-                                                      {},
-                                                      false),
-                      "Failed to create QNN Cast node.");
+        RETURN_IF_ERROR(qnn_model_wrapper.AddCastNode(cast_output_name,
+                                                      input_names[i],
+                                                      cast_output_name,
+                                                      tensor_type,
+                                                      qnn_data_type,
+                                                      QnnQuantParamsWrapper(),
+                                                      std::move(output_shape),
+                                                      false));
       }
 
       input_names[i] = cast_output_name;

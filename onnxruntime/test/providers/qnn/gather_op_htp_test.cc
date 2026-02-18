@@ -231,6 +231,16 @@ TEST_F(QnnHTPBackendTests, GatherOp_InputIndicesInt64) {
                               ExpectedEPNodeAssignment::All);
 }
 
+// Test that bool Gather runs on HTP backend with bool input/output.
+TEST_F(QnnHTPBackendTests, GatherOp_BoolInputOutput) {
+  RunOpTest<bool, int32_t>("Gather",
+                           TestInputDef<bool>({3, 2}, false, {true, false, true, false, false, true}),
+                           TestInputDef<int32_t>({2, 2}, true, {0, 1, 1, 2}),
+                           {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                           13,
+                           ExpectedEPNodeAssignment::All);
+}
+
 // Test the accuracy of a QDQ GatherND model on QNN EP. Checks if the QDQ model on QNN EP is as accurate as the QDQ model on CPU EP.
 template <typename QuantType, typename IndicesType>
 static void RunQDQGatherNDOpTest(const TestInputDef<float>& input_def,
