@@ -44,10 +44,10 @@ References:
 import argparse
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -67,6 +67,10 @@ except ImportError:
 
 DEFAULT_SEQ_LENGTHS = [128, 256, 512, 1024]
 DEFAULT_BATCH_SIZE = 1
+# Low defaults for quick testing. Recommended for real benchmarks:
+#   Quick validation: warmup=3, iterations=10
+#   Production:       warmup=5, iterations=30
+#   Statistical rigor: warmup=10, iterations=50
 DEFAULT_WARMUP = 1
 DEFAULT_ITERATIONS = 1
 
@@ -84,6 +88,7 @@ class BenchmarkConfig:
     output_file: Optional[str] = None
     perf_test_path: Optional[str] = None  # Optional: run onnxruntime_perf_test for validation
     profile_output: Optional[str] = None  # Profile output path for perf_test -p
+    seed: int = 42  # Random seed for reproducibility
     verbose: bool = False
 
 
@@ -186,10 +191,21 @@ def numpy_dtype_from_onnx_type(onnx_type: str) -> np.dtype:
     return type_map.get(onnx_type, np.float32)
 
 
+def read_model_config(model_path: str) -> Dict[str, Any]:
+    """Read config.json from the model's directory for architecture parameters."""
+    model_dir = os.path.dirname(os.path.abspath(model_path))
+    config_path = os.path.join(model_dir, "config.json")
+    if os.path.exists(config_path):
+        with open(config_path) as f:
+            return json.load(f)
+    return {}
+
+
 def generate_dummy_input(
     input_info: Dict[str, Any],
     seq_length: int,
     batch_size: int,
+    vocab_size: int = 151936,
     num_layers: int = 32,  # Default for most LLMs
     num_heads: int = 32,
     head_dim: int = 128,
@@ -233,8 +249,8 @@ def generate_dummy_input(
     name_lower = name.lower()
 
     if "input_ids" in name_lower:
-        # Random token IDs (typical vocab size range)
-        return np.random.randint(0, 32000, size=resolved_shape, dtype=dtype)
+        # Random token IDs
+        return np.random.randint(0, vocab_size, size=resolved_shape, dtype=dtype)
 
     elif "attention_mask" in name_lower:
         # All ones (attend to everything)
@@ -242,7 +258,7 @@ def generate_dummy_input(
 
     elif "position_ids" in name_lower:
         # Sequential positions
-        positions = np.arange(seq_length, dtype=dtype)
+        positions = np.arange(seq_length, dtype=dtype).reshape(1, seq_length)
         return np.broadcast_to(positions, resolved_shape).copy()
 
     elif "past" in name_lower or "cache" in name_lower:
@@ -262,13 +278,22 @@ def generate_all_dummy_inputs(
     session: ort.InferenceSession,
     seq_length: int,
     batch_size: int,
+    model_path: Optional[str] = None,
 ) -> Dict[str, np.ndarray]:
     """Generate dummy inputs for all model inputs."""
+    # Read model config for vocab_size if available
+    vocab_size = 151936  # default
+    if model_path:
+        model_cfg = read_model_config(model_path)
+        vocab_size = model_cfg.get("vocab_size", vocab_size)
+
     inputs = {}
     input_infos = inspect_model_inputs(session)
 
     for info in input_infos:
-        inputs[info["name"]] = generate_dummy_input(info, seq_length, batch_size)
+        inputs[info["name"]] = generate_dummy_input(
+            info, seq_length, batch_size, vocab_size=vocab_size
+        )
 
     return inputs
 
@@ -326,8 +351,12 @@ def compute_statistics(latencies: List[float], seq_length: int, batch_size: int,
     )
 
 
-def benchmark_sequence_lengths(config: BenchmarkConfig) -> List[LatencyResult]:
-    """Run benchmarks for all specified sequence lengths."""
+def benchmark_sequence_lengths(config: BenchmarkConfig) -> tuple:
+    """Run benchmarks for all specified sequence lengths.
+
+    Returns:
+        Tuple of (results list, model_load_time_s)
+    """
     print(f"\n{'='*60}")
     print(f"Raw Latency Benchmark")
     print(f"{'='*60}")
@@ -340,7 +369,10 @@ def benchmark_sequence_lengths(config: BenchmarkConfig) -> List[LatencyResult]:
 
     # Create session once
     print("Loading model...")
+    load_start = time.perf_counter()
     session = create_session(config)
+    load_time_s = time.perf_counter() - load_start
+    print(f"Model loaded in {load_time_s:.2f}s")
 
     # Print model input info
     input_infos = inspect_model_inputs(session)
@@ -355,7 +387,8 @@ def benchmark_sequence_lengths(config: BenchmarkConfig) -> List[LatencyResult]:
         print(f"\nBenchmarking seq_length={seq_len}...")
 
         # Generate dummy inputs
-        inputs = generate_all_dummy_inputs(session, seq_len, config.batch_size)
+        inputs = generate_all_dummy_inputs(session, seq_len, config.batch_size,
+                                           model_path=config.model_path)
 
         if config.verbose:
             print("  Generated inputs:")
@@ -377,7 +410,7 @@ def benchmark_sequence_lengths(config: BenchmarkConfig) -> List[LatencyResult]:
         print(f"  Mean: {result.mean_ms:.2f} ms ± {result.std_ms:.2f} ms")
         print(f"  P50: {result.p50_ms:.2f} ms, P95: {result.p95_ms:.2f} ms, P99: {result.p99_ms:.2f} ms")
 
-    return results
+    return results, load_time_s
 
 
 # =============================================================================
@@ -483,7 +516,8 @@ def run_perf_test_validation(
 # Output Functions
 # =============================================================================
 
-def save_results(results: List[LatencyResult], output_file: str, config: BenchmarkConfig):
+def save_results(results: List[LatencyResult], output_file: str, config: BenchmarkConfig,
+                 model_load_time_s: float = 0.0):
     """Save benchmark results to JSON file."""
     metadata = {
         "model_path": config.model_path,
@@ -492,6 +526,12 @@ def save_results(results: List[LatencyResult], output_file: str, config: Benchma
         "iterations": config.iterations,
         "disable_qdq_fusion": config.disable_qdq_fusion,
         "enable_lut_gemm": config.enable_lut_gemm,
+        "seed": config.seed,
+        "model_load_time_s": round(model_load_time_s, 3),
+        "ort_version": ort.__version__,
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "python_version": platform.python_version(),
     }
 
     results_data = [r.to_dict() for r in results]
@@ -499,6 +539,11 @@ def save_results(results: List[LatencyResult], output_file: str, config: Benchma
     # Ensure .json extension
     if not output_file.endswith(".json"):
         output_file = output_file + ".json"
+
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     with open(output_file, "w") as f:
         json.dump({"metadata": metadata, "results": results_data}, f, indent=2)
@@ -533,7 +578,8 @@ Examples:
   python benchmark.py -m model.onnx -s 128 512 1024
   python benchmark.py -m model_qdq.onnx --disable-qdq-fusion
   python benchmark.py -m model_2bit.onnx --enable-lut-gemm
-  python benchmark.py -m model.onnx -o results.json
+  python benchmark.py -m model.onnx -o results.json --seed 42
+  python benchmark.py -m model.onnx -w 5 -i 30 -v
         """,
     )
 
@@ -579,7 +625,8 @@ Examples:
     )
     parser.add_argument(
         "--output", "-o",
-        help="Output JSON file path (e.g., results.json)",
+        default=None,
+        help="Output JSON file path. If not specified, auto-saves to results/<model_name>.json",
     )
     parser.add_argument(
         "--perf-test",
@@ -600,6 +647,12 @@ Examples:
         action="store_true",
         help="Enable verbose output",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)",
+    )
 
     args = parser.parse_args()
 
@@ -614,6 +667,7 @@ Examples:
         output_file=args.output,
         perf_test_path=args.perf_test if args.perf_test != "auto" else None,
         profile_output=args.profile,
+        seed=args.seed,
         verbose=args.verbose,
     )
 
@@ -627,11 +681,23 @@ def main():
         print(f"Error: Model file not found: {config.model_path}")
         sys.exit(1)
 
-    results = benchmark_sequence_lengths(config)
+    # Auto-generate output path if not specified
+    if not config.output_file:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        results_dir = os.path.join(script_dir, "results")
+        model_name = os.path.splitext(os.path.basename(config.model_path))[0]
+        # Use parent directory name if model file is just "model.onnx"
+        if model_name == "model":
+            model_name = os.path.basename(os.path.dirname(os.path.abspath(config.model_path)))
+        config.output_file = os.path.join(results_dir, f"{model_name}.json")
+
+    np.random.seed(config.seed)
+
+    results, load_time_s = benchmark_sequence_lengths(config)
     print_summary_table(results)
 
-    if config.output_file:
-        save_results(results, config.output_file, config)
+    save_results(results, config.output_file, config,
+                 model_load_time_s=load_time_s)
 
     # Run perf_test validation if requested
     if run_perf_test:

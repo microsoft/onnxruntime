@@ -1,79 +1,86 @@
-# ORT QDQ vs MatMulNBits Performance Investigation
+# QDQ vs MatMulNBits Benchmarking
 
-This directory contains tools for benchmarking and comparing the performance of different quantization representations in ONNX Runtime on CPU EP:
+Measures raw CPU inference latency comparing QDQ (DequantizeLinear+MatMul) and MatMulNBits representations across quantized Qwen2 models.
 
-1. **MatMulNBits** (QOperator format) - Native quantized operator
-2. **DequantizeLinear → MatMul** (QDQ format) - Standard ONNX operator composition
+## Setup
 
-## Files
-
-- `benchmark_qdq_vs_matmulnbits.ipynb` - Main benchmark notebook
-- `model_list.md` - List of models to generate for the investigation
-
-## Models to Generate
-
-You need to generate the following models for each base LLM:
-
-### Base Models
-- Qwen2.5-1.5B-Instruct (`Qwen/Qwen2.5-1.5B-Instruct`)
-- Phi-3.5-mini-instruct (`microsoft/Phi-3.5-mini-instruct`)
-- Llama-3.1-8B-Instruct (`meta-llama/Llama-3.1-8B-Instruct`)
-
-### Quantization Configurations
-
-| # | Format | Bits | Block Size | Symmetric | Model Suffix |
-|---|--------|------|------------|-----------|--------------|
-| 1 | QOperator (MatMulNBits) | 4 | 64 | Yes | `matmulnbits_4b_bs64_sym` |
-| 2 | QOperator (MatMulNBits) | 4 | 64 | No | `matmulnbits_4b_bs64_asym` |
-| 3 | QOperator (MatMulNBits) | 4 | 128 | Yes | `matmulnbits_4b_bs128_sym` |
-| 4 | QOperator (MatMulNBits) | 4 | 128 | No | `matmulnbits_4b_bs128_asym` |
-| 5 | QOperator (MatMulNBits) | 4 | -1 (per-channel) | Yes | `matmulnbits_4b_perchannel_sym` |
-| 6 | QDQ | 4 | 64 | Yes | `qdq_4b_bs64_sym` |
-| 7 | QDQ | 4 | 64 | No | `qdq_4b_bs64_asym` |
-| 8 | QDQ | 4 | 128 | Yes | `qdq_4b_bs128_sym` |
-| 9 | QDQ | 4 | 128 | No | `qdq_4b_bs128_asym` |
-| 10 | QOperator (MatMulNBits) | 8 | 64 | Yes | `matmulnbits_8b_bs64_sym` |
-| 11 | QDQ | 8 | 64 | Yes | `qdq_8b_bs64_sym` |
-
-**Total: 33 models** (11 configurations × 3 base models)
-
-## Disabling QDQ Fusion
-
-To compare pure DequantizeLinear→MatMul performance (Scenario C), you need to disable the `DQMatMulToMatMulNBits` graph optimizer.
-
-### Method 1: Using `disabled_optimizers` in onnxruntime
-
-```python
-import onnxruntime as ort
-
-session = ort.InferenceSession(
-    "model.onnx",
-    providers=["CPUExecutionProvider"],
-    disabled_optimizers=["DQMatMulToMatMulNBits"]
-)
+```
+pip install onnxruntime numpy
 ```
 
-### Reference in ONNX Runtime Code
+Models should be in a directory (default `C:/dev/llm`) with naming convention:
+- `mnb-qwen-{size}-{bits}-{sym|asym}` (MatMulNBits)
+- `qdq-qwen-{size}-{bits}-{block|channel}-{sym|asym}-{signed|unsigned}` (QDQ)
 
-- **Python API**: `onnxruntime/python/onnxruntime_inference_collection.py` (lines 501-593)
-- **Fusion Registration**: `onnxruntime/core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.cc` (line 302)
+Each directory must contain `model.onnx`.
 
-## Metrics
+## Quick Start
 
-- **TTFT (Time to First Token)**: Measures prompt processing latency
-- **TPS (Tokens per Second)**: Measures decode throughput
+```bash
+# Single model benchmark
+python benchmark.py -m C:/dev/llm/mnb-qwen-0.5b-4-sym/model.onnx
 
-## Usage
+# Dry run to preview batch experiment commands
+python run_experiments.py --preset validate --dry-run
 
-1. Generate all required models using onnxruntime-genai model builder
-2. Update `MODEL_CONFIGS` in the notebook with your model paths
-3. Run the benchmark notebook
-4. Analyze results and export reports
+# Run validation preset (0.5B 4-bit models, ~2 min)
+python run_experiments.py --preset validate
 
-## Test Scenarios
+# Run all 96 models
+python run_experiments.py --preset full
+```
 
-| Scenario | Description | Models Used |
-|----------|-------------|-------------|
-| A (native) | MatMulNBits models as-is | `*_matmulnbits_*` |
-| B (qdq_fused) | QDQ models with auto-fusion to MatMulNBits | `*_qdq_*` |
-| C (qdq_unfused) | QDQ models with fusion disabled | `*_qdq_*` (pre-processed or runtime disabled) |
+## Scripts
+
+### benchmark.py
+
+Benchmarks a single ONNX model. Creates dummy LLM inputs (input_ids, attention_mask, empty past KV cache) and measures inference latency across sequence lengths.
+
+```bash
+python benchmark.py -m model.onnx                     # defaults: seq_lengths=[128,256,512,1024], 1 warmup, 1 iteration
+python benchmark.py -m model.onnx -s 128 512 -w 3 -i 10  # custom seq lengths, 3 warmup, 10 iterations
+python benchmark.py -m model_qdq.onnx --disable-qdq-fusion  # prevent DQ+MatMul -> MatMulNBits fusion
+python benchmark.py -m model_2bit.onnx --enable-lut-gemm     # LUT GEMM for 2-bit models
+python benchmark.py -m model.onnx --perf-test                # cross-check with onnxruntime_perf_test
+```
+
+Output: JSON file in `results/` with latency statistics (mean, std, p50, p95, p99) per sequence length.
+
+### run_experiments.py
+
+Batch runner that discovers models, runs `benchmark.py` as a subprocess for each (sequential, one at a time), and aggregates results.
+
+```bash
+python run_experiments.py --preset validate                  # 0.5B 4-bit only, 3 iterations
+python run_experiments.py --preset quick                     # 0.5B + 1.5B, 10 iterations
+python run_experiments.py --preset full                      # all models, 10 iterations
+python run_experiments.py --preset full --bits 4 8           # exclude 2-bit models
+python run_experiments.py --preset full --model-sizes 0.5b   # filter by size
+python run_experiments.py --aggregate-only                   # re-aggregate existing results
+```
+
+Key flags: `--model-dir`, `--results-dir`, `--format-types`, `--no-unfused`, `--dry-run`, `--timeout`
+
+## Output Structure
+
+```
+results/
+  experiment_config.json    # preset, filters, system info
+  benchmark_results.csv     # full detail (all statistics per model/seq_length)
+  summary.csv               # lightweight (format, size, bits, symmetry, scenario, mean_ms)
+  failed_models.json        # failures (if any)
+  per_model/
+    mnb-qwen-0.5b-4-sym_native.json
+    qdq-qwen-0.5b-4-block-sym-signed_qdq_fused.json
+    ...
+```
+
+## Scenarios
+
+| Model Format | Scenario | Session Options |
+|---|---|---|
+| mnb | `native` | None — MatMulNBits ops run directly |
+| qdq | `qdq_fused` | None — ORT default optimizer fuses DequantizeLinear+MatMul into MatMulNBits |
+| qdq | `qdq_unfused` | `disabled_optimizers=["DQMatMulToMatMulNBits"]` — keeps DQ+MatMul separate |
+
+For 2-bit models, `mlas.use_lut_gemm=1` is additionally enabled in all scenarios (auto-detected by run_experiments.py).
