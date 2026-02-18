@@ -267,9 +267,9 @@ static const char* const kDebugLayoutTransformation = "session.debug_layout_tran
 // Uses NCHW layout for large convolution operations when a large convolution operation is detected
 // in the model as the NCHWc layout implementation performance is worse on some platforms than the NCHW implementation.
 // This is only relevant when operating on an NCHWc supported platform.
-// When this option is used - the large convolution operations in a model that would originally used the NCHWc format
-// will now use NCHW for better performance.
-// The rest of the model will continue to use NCHWc format and benefit from the performance advantages of NCHWc where applicable.
+// When this option is used, large convolution operations in a model that would originally use the NCHWc format
+// will instead use NCHW for better performance.
+// The rest of the model will continue to use the NCHWc format and benefit from its performance advantages where applicable.
 // So, this option might introduce some overhead of re-ordering data between NCHW and NCHWc formats, but it can improve the
 // overall performance of models with large convolution operations on certain hardware platforms.
 // The default value is "0", which means the NCHWc layout transformation is not disabled and will be used even
