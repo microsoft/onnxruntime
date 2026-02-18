@@ -13,14 +13,14 @@ from onnx import TensorProto, helper, save
 import onnxruntime as ort
 
 
-class TestWhitelistedData(unittest.TestCase):
-    def test_huggingface_hub_symlink(self):
-        # working directory structure (simulate huggingface hub local cache):
-        # temp_dir/
+class TestSymLinkOnnxModelExternalData(unittest.TestCase):
+    def test_symlink_model_and_data_under_same_directory(self):
+        # The following directory structure simulates huggingface hub local cache:
+        # temp_dir/         (This corresponds to .cache/huggingface/hub/model_id/)
         #   blobs/
         #     guid1
         #     guid2
-        #   snapshots/version/onnx/
+        #   snapshots/version/
         #       model.onnx -> ../../blobs/guid1
         #       data.bin   -> ../../blobs/guid2
 
@@ -29,7 +29,7 @@ class TestWhitelistedData(unittest.TestCase):
             blobs_dir = os.path.join(self.temp_dir, "blobs")
             os.makedirs(blobs_dir)
 
-            snapshots_dir = os.path.join(self.temp_dir, "snapshots", "version", "onnx")
+            snapshots_dir = os.path.join(self.temp_dir, "snapshots", "version")
             os.makedirs(snapshots_dir)
 
             # Create real files in blobs
@@ -41,8 +41,7 @@ class TestWhitelistedData(unittest.TestCase):
                 f.writelines(struct.pack("f", v) for v in vals)
 
             # Create model in blobs (referencing "data.bin" as external data)
-            # Note: The model proto will just say "data.bin".
-            # When loaded from snapshots/onnx/model.onnx, ORT looks for snapshots/onnx/data.bin
+            # When loaded from snapshots/version/model.onnx, ORT looks for snapshots/version/data.bin
 
             input_ = helper.make_tensor_value_info("input", TensorProto.FLOAT, [10])
             output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [10])
@@ -97,7 +96,7 @@ class TestWhitelistedData(unittest.TestCase):
         #   blobs/
         #     guid1
         #     data/guid2
-        #   snapshots/version/onnx/
+        #   snapshots/version/
         #       model.onnx -> ../../blobs/guid1
         #       data.bin   -> ../../blobs/data/guid2
 
@@ -108,7 +107,7 @@ class TestWhitelistedData(unittest.TestCase):
             data_dir = os.path.join(blobs_dir, "data")
             os.makedirs(data_dir)
 
-            snapshots_dir = os.path.join(self.temp_dir, "snapshots", "version", "onnx")
+            snapshots_dir = os.path.join(self.temp_dir, "snapshots", "version")
             os.makedirs(snapshots_dir)
 
             # Create real files in blobs
@@ -120,8 +119,7 @@ class TestWhitelistedData(unittest.TestCase):
                 f.writelines(struct.pack("f", v) for v in vals)
 
             # Create model in blobs (referencing "data.bin" as external data)
-            # Note: The model proto will just say "data.bin".
-            # When loaded from snapshots/onnx/model.onnx, ORT looks for snapshots/onnx/data.bin
+            # When loaded from snapshots/version/model.onnx, ORT looks for snapshots/version/data.bin
 
             input_ = helper.make_tensor_value_info("input", TensorProto.FLOAT, [10])
             output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [10])
@@ -177,7 +175,7 @@ class TestWhitelistedData(unittest.TestCase):
         #     guid1
         #   data/
         #     guid2
-        #   snapshots/version/onnx/
+        #   snapshots/version/
         #       model.onnx -> ../../model/guid1
         #       data.bin   -> ../../data/guid2
 
@@ -188,20 +186,19 @@ class TestWhitelistedData(unittest.TestCase):
             data_dir = os.path.join(self.temp_dir, "data")
             os.makedirs(data_dir)
 
-            snapshots_dir = os.path.join(self.temp_dir, "snapshots", "version", "onnx")
+            snapshots_dir = os.path.join(self.temp_dir, "snapshots", "version")
             os.makedirs(snapshots_dir)
 
-            # Create real files in blobs
+            # Create real files in data_dir
             # We'll use the helper to create the model, but we need to control where files end up.
-            # Let's manually create the data file in blobs
+            # Let's manually create the data file in data_dir
             data_blob_path = os.path.join(data_dir, "guid2")
             vals = [float(i) for i in range(10)]
             with open(data_blob_path, "wb") as f:
                 f.writelines(struct.pack("f", v) for v in vals)
 
-            # Create model in blobs (referencing "data.bin" as external data)
-            # Note: The model proto will just say "data.bin".
-            # When loaded from snapshots/onnx/model.onnx, ORT looks for snapshots/onnx/data.bin
+            # Create model in model_dir (referencing "data.bin" as external data)
+            # When loaded from snapshots/version/model.onnx, ORT looks for snapshots/version/data.bin
 
             input_ = helper.make_tensor_value_info("input", TensorProto.FLOAT, [10])
             output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [10])
