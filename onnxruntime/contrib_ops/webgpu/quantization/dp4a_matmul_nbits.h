@@ -24,13 +24,13 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits,
                          bool has_zero_points, bool has_bias,
                          bool has_weight_idx, bool has_weight_idx_indirect, bool is_qualcomm) : Program{"DP4AMatMulNBits"},
-                                                                  block_size_(block_size),
-                                                                  nbits_(nbits),
-                                                                  has_bias_(has_bias),
-                                                                  has_zero_points_(has_zero_points),
-                                                                  has_weight_idx_(has_weight_idx),
-                                                                  has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                                  is_qualcomm_(is_qualcomm) {}
+                                                                                                block_size_(block_size),
+                                                                                                nbits_(nbits),
+                                                                                                has_bias_(has_bias),
+                                                                                                has_zero_points_(has_zero_points),
+                                                                                                has_weight_idx_(has_weight_idx),
+                                                                                                has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                                                                is_qualcomm_(is_qualcomm) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
@@ -59,14 +59,14 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
   DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits,
                                bool has_zero_points, bool has_bias,
                                bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights) : Program{"DP4AMatMulNBitsSmallMProgram"},
-                                                                                 tile_size_k_vec_(tile_size_k_vec),
-                                                                                 tile_size_(tile_size),
-                                                                                 nbits_(nbits),
-                                                                                 has_bias_(has_bias),
-                                                                                 has_zero_points_(has_zero_points),
-                                                                                 has_weight_idx_(has_weight_idx),
-                                                                                 has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                                                 single_scale_weights_(single_scale_weights) {}
+                                                                                                               tile_size_k_vec_(tile_size_k_vec),
+                                                                                                               tile_size_(tile_size),
+                                                                                                               nbits_(nbits),
+                                                                                                               has_bias_(has_bias),
+                                                                                                               has_zero_points_(has_zero_points),
+                                                                                                               has_weight_idx_(has_weight_idx),
+                                                                                                               has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                                                                               single_scale_weights_(single_scale_weights) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
