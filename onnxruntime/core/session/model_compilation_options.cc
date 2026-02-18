@@ -12,8 +12,6 @@
 #include "core/common/path_string.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ep_context_options.h"
-#include "core/platform/env.h"
-#include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/environment.h"
 
@@ -53,6 +51,10 @@ void ModelCompilationOptions::SetInputModel(const OrtModel* model) {
 }
 
 Status ModelCompilationOptions::SetOutputModelPath(const std::filesystem::path& output_model_path) {
+  if (output_model_path.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Output model path must not be empty.");
+  }
+
   ConfigOptions& config_options = session_options_.value.config_options;
   epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
 
@@ -291,29 +293,10 @@ Status ModelCompilationOptions::Check() const {
     // Model::LoadFromModelEditorApiModel -> Graph::Resolve()
   }
 
-  // ORT_LOAD_CONFIG_FROM_MODEL is not supported for OrtModel input.
-  // Check early so we fail before session construction.
-  if (input_from_model) {
-    const Env& os_env = Env::Default();
-    if (os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1") {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The environment variable ORT_LOAD_CONFIG_FROM_MODEL=1 is set, but loading "
-                             "config from model is not supported for in-memory OrtModel input. "
-                             "OrtModel is programmatically constructed and has no embedded ORT config. "
-                             "Unset ORT_LOAD_CONFIG_FROM_MODEL or use file/buffer input instead.");
-    }
-  }
-
   // Check output model settings.
   const epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
   bool has_no_output_model_location = std::holds_alternative<std::monostate>(
       ep_context_gen_options.output_model_location);
-
-  // Also treat an empty output file path as "no location" since it's not usable.
-  const auto* output_path = ep_context_gen_options.TryGetOutputModelPath();
-  if (!has_no_output_model_location && output_path != nullptr && output_path->empty()) {
-    has_no_output_model_location = true;
-  }
 
   // Determine if we can derive an output path from the input
   bool can_derive_output_path = input_from_file;
@@ -327,17 +310,6 @@ Status ModelCompilationOptions::Check() const {
       can_derive_output_path = true;
       model_has_path = true;
     }
-  }
-
-  // Fast-fail: If OrtModel has no model_path and user hasn't specified output location or embed mode,
-  // EPs that need to write context binaries will fail later. Fail early with a clear error.
-  if (input_from_model && !model_has_path && has_no_output_model_location &&
-      !ep_context_gen_options.embed_ep_context_in_model) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "OrtModel has no model_path set and no output location was specified. "
-                           "Please either: (1) set the model_path on the OrtGraph before adding to OrtModel, "
-                           "(2) call SetOutputModelPath/SetOutputModelBuffer to specify an output location, or "
-                           "(3) call SetEpContextEmbedMode(true) to embed EP context in the model.");
   }
 
   if (has_no_output_model_location && can_derive_output_path) {

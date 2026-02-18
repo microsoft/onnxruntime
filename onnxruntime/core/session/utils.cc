@@ -340,6 +340,7 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
   }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Add custom domains for all OrtEpDevice instances to inference session.
   // The custom domains should be registered before model load for ORT to validate the custom ops.
   // This mirrors the same block in the file/buffer overload to maintain load-path parity.
@@ -363,6 +364,7 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(all_ep_custom_op_domains));
     }
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Load from OrtModel
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(*model));

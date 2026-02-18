@@ -18,7 +18,6 @@
 
 #include "test/shared_lib/test_fixture.h"
 #include "test/shared_lib/utils.h"
-#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/test_allocator.h"
 
 #include "onnxruntime_config.h"  // generated file in build output dir
@@ -922,11 +921,31 @@ TEST(ModelEditorCompileAPITest, ModelCanBeReusedAfterCompilation) {
     }
   }
 
-  // Model should still be usable for creating a session
+  // Model should still be usable for creating a session and running inference
   Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, model, session_options);
   EXPECT_EQ(session.GetInputCount(), 1u);
   EXPECT_EQ(session.GetOutputCount(), 1u);
+
+  // Run inference to verify data integrity (Z = 2.0 * X * Y where X is 3x4, Y is 4x8)
+  std::vector<float> input_data(3 * 4, 1.0f);  // All ones
+  std::vector<int64_t> input_dims = {3, 4};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
+                                                       input_dims.data(), input_dims.size());
+
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Z"};
+  auto outputs = session.Run(Ort::RunOptions{}, input_names, &input_tensor, 1, output_names, 1);
+  ASSERT_EQ(outputs.size(), 1u);
+  ASSERT_TRUE(outputs[0].IsTensor());
+
+  auto output_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
+  EXPECT_EQ(output_shape, (std::vector<int64_t>{3, 8}));
+
+  // Verify values are non-zero (alpha=2.0, all-ones input, Y has values 1..32)
+  const float* output_data = outputs[0].GetTensorData<float>();
+  EXPECT_NE(output_data[0], 0.0f);
 }
 
 // Test: SetInputModel overrides previous input source (file path)
@@ -1016,41 +1035,7 @@ TEST(ModelEditorCompileAPITest, CompileFromOrtModelToFile) {
   std::filesystem::remove(output_path);
 }
 
-// Test: ORT_LOAD_CONFIG_FROM_MODEL=1 with OrtModel input fails fast with a clear,
-// actionable error message.
-TEST(ModelEditorCompileAPITest, LoadConfigFromModelEnvVarFailsForOrtModel) {
-  // RAII helper saves the current env var value and restores it when the scope exits.
-  onnxruntime::test::EnvVarMap env_vars;
-  env_vars["ORT_LOAD_CONFIG_FROM_MODEL"] = "1";
-  onnxruntime::test::ScopedEnvironmentVariables scoped_env(env_vars);
-
-  std::vector<std::unique_ptr<std::vector<float>>> weights;
-  auto model = CreateSimpleGemmModel(weights);
-
-  Ort::SessionOptions session_options;
-  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
-  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
-  compile_options.SetEpContextEmbedMode(true);
-
-  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
-  void* output_buffer = nullptr;
-  size_t output_size = 0;
-  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
-
-  // Should fail with a clear error about the unsupported env-var/input combination.
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("ORT_LOAD_CONFIG_FROM_MODEL=1"));
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("in-memory OrtModel input"));
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Unset ORT_LOAD_CONFIG_FROM_MODEL"));
-
-  if (output_buffer != nullptr) {
-    allocator->Free(output_buffer);
-  }
-}
-
 // Test: Validation error for OrtModel with no model_path, no output location, and no embed mode.
-// Verifies the error message contains the expected remediation guidance.
 TEST(ModelEditorCompileAPITest, NoOutputLocationNoModelPathFails) {
   std::vector<std::unique_ptr<std::vector<float>>> weights;
   auto model = CreateSimpleGemmModel(weights);
@@ -1062,11 +1047,7 @@ TEST(ModelEditorCompileAPITest, NoOutputLocationNoModelPathFails) {
 
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
   EXPECT_FALSE(status.IsOK());
-  // Should suggest setting output location or model_path, including embed mode as an option
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("SetOutputModelPath"));
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("SetEpContextEmbedMode(true)"));
-  // Should NOT suggest SetEpContextBinaryInformation (that alone is not sufficient)
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::Not(::testing::HasSubstr("SetEpContextBinaryInformation")));
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("output"));
 }
 
 // Test: Setting embed mode with buffer output satisfies the output location requirement
