@@ -35,8 +35,6 @@ typedef svbool_t MLAS_SVBOOL;
 typedef svfloat16_t MLAS_SVFLOAT16;
 typedef svuint16_t MLAS_SVUINT16;
 
-using _mlas_fp16_ = uint16_t;
-
 void
 MLASCALL
 MlasSveErfF16Kernel(

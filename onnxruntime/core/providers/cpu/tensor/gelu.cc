@@ -140,11 +140,27 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
   constexpr int64_t length_per_task = 4096;
   int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
-  if (approximation_algorithm_ != "tanh" && approximation_algorithm_ != "none") {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported approximation_algorithm: ", approximation_algorithm_);
+  MLAS_GELU_ALGORITHM algo;
+
+  if (approximation_algorithm_ == "tanh") {
+    algo = MlasGeluTanh;
+  } else if (approximation_algorithm_ == "none") {
+    algo = MlasGeluNone;
+  } else {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "Unsupported approximation_algorithm: ",
+        approximation_algorithm_);
   }
 
   // Alignment and buffer size for aligned_alloc
+  // Use 64-byte alignment to match the typical CPU cache line size
+
+  if (elem_count == 0) {
+    // Nothing to compute. Output tensor is already correctly shaped.
+    return Status::OK();
+  }
+  
   constexpr size_t alignment = 64;
 
   size_t buffer_size = static_cast<size_t>(elem_count) * sizeof(MLFloat16);
@@ -173,7 +189,7 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
         MLFloat16* p_output = output_data + start;
         int64_t count = std::min(length_per_task, elem_count - start);
         MLFloat16* p_temp = temp_fp16_aligned.get() + start;
-        MlasComputeFP16Gelu(p_input, p_output, p_temp, count, approximation_algorithm_);
+        MlasComputeFP16Gelu(p_input, p_output, p_temp, narrow<size_t>(count), algo);
       },
       0);
   return Status::OK();

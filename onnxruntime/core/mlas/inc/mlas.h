@@ -2237,6 +2237,11 @@ MlasFlashAttention(
     MLAS_THREADPOOL* ThreadPool
 );
 
+typedef enum MLAS_GELU_ALGORITHM {
+    MlasGeluNone = 0,
+    MlasGeluTanh = 1
+} MLAS_GELU_ALGORITHM;
+
 void
 MLASCALL
 MlasComputeFP16Erf(
@@ -2251,6 +2256,6 @@ MlasComputeFP16Gelu(
     const MLAS_FP16* input,
     MLAS_FP16* output,
     MLAS_FP16* temp,
-    int64_t count,
-    const std::string& algo
+    size_t count,
+    MLAS_GELU_ALGORITHM algo
 );

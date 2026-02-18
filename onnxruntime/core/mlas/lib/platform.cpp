@@ -659,17 +659,21 @@ Return Value:
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
+#endif
 
-    #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
-        defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-                this->ErfF16KernelRoutine = MlasSveErfF16Kernel;
-                this->GeluF16KernelRoutine = MlasSveGeluF16Kernel;
-            }
-            else{
-                this->ErfF16KernelRoutine = MlasNeonErfF16Kernel;
-                this->GeluF16KernelRoutine = MlasNeonGeluF16Kernel; 
-            }
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            this->ErfF16KernelRoutine = MlasSveErfF16Kernel;
+            this->GeluF16KernelRoutine = MlasSveGeluF16Kernel;
+        }
+        else{
+            this->ErfF16KernelRoutine = MlasNeonErfF16Kernel;
+            this->GeluF16KernelRoutine = MlasNeonGeluF16Kernel; 
+        }
+    #else
+        this->ErfF16KernelRoutine = MlasNeonErfF16Kernel;
+        this->GeluF16KernelRoutine = MlasNeonGeluF16Kernel;
     #endif
 #endif
 
