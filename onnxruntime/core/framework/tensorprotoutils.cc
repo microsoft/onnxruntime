@@ -508,24 +508,37 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
       case TensorProto_DataType_INT2:
       case TensorProto_DataType_UINT8:
       case TensorProto_DataType_INT8:
-      case TensorProto_DataType_UINT16:
-      case TensorProto_DataType_INT16:
-      case TensorProto_DataType_FLOAT16:
-      case TensorProto_DataType_BFLOAT16:
       case TensorProto_DataType_FLOAT8E4M3FN:
       case TensorProto_DataType_FLOAT8E4M3FNUZ:
       case TensorProto_DataType_FLOAT8E5M2:
       case TensorProto_DataType_FLOAT8E5M2FNUZ:
+        bytes = tensor.mutable_int32_data()->mutable_data();
+        num_elements = tensor.int32_data_size() * (sizeof(int32_t) / sizeof(int8_t));
+        element_size = sizeof(int8_t);
+        break;
+
+      case TensorProto_DataType_UINT16:
+      case TensorProto_DataType_INT16:
+      case TensorProto_DataType_FLOAT16:
+      case TensorProto_DataType_BFLOAT16:
+        bytes = tensor.mutable_int32_data()->mutable_data();
+        num_elements = tensor.int32_data_size() * (sizeof(int32_t) / sizeof(int16_t));
+        element_size = sizeof(int16_t);
+        break;
+
       case TensorProto_DataType_INT32:
         bytes = tensor.mutable_int32_data()->mutable_data();
         num_elements = tensor.int32_data_size();
-        // We are setting this to int32_t size because we need to swap all 4 bytes
-        // to represent 16 bits within 32 bits correctly on a LE/BE system.
         element_size = sizeof(int32_t);
         break;
 
       // uint32_t is stored in uint64_t
       case TensorProto_DataType_UINT32:
+        bytes = tensor.mutable_uint64_data()->mutable_data();
+        num_elements = tensor.uint64_data_size() * (sizeof(uint64_t) / sizeof(uint32_t));
+        element_size = sizeof(uint32_t);
+        break;
+
       case TensorProto_DataType_UINT64:
         bytes = tensor.mutable_uint64_data()->mutable_data();
         num_elements = tensor.uint64_data_size();
