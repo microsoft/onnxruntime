@@ -372,9 +372,9 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                              << "only for such large convolutions in the model. "
                              << "On certain hardware, large kernel convolutions may perform "
                              << "worse with NCHWc data layout."
-                             << "Using this session option may introduce some re-ordering overhead for these convolutions, "
+                             << " Using this session option may introduce some re-ordering overhead for these convolutions, "
                              << "but it may be worth trying if you see poor performance and have such large convolutions in your model."
-                             << "To avoid re-ordering overheads and to totally disable NCHWc layout transformation for operations, you can set the '"
+                             << " To avoid re-ordering overheads and to totally disable NCHWc layout transformation for operations, you can set the '"
                              << kOrtSessionOptionsDisableNchwcLayoutTransformation
                              << "' session option to '1' which disables NCHWc layout transformation for all operations in the model.";
     }
