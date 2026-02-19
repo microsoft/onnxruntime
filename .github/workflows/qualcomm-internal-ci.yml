@@ -6,15 +6,18 @@ name: Qualcomm Internal PR Workflow
 permissions:
   contents: read
   checks: write
+  pull-requests: write
 
 on:
+# push, pull_request, and merge_goup need to be removed
   push:
     branches: [main, rel-*]
   pull_request:
     branches: [main, rel-*]
   merge_group:
     types: [checks_requested]
-
+  issue_comment:
+    types: [created]
   # Allow this workflow to be run manually from the Actions tab
   workflow_dispatch:
 
@@ -25,6 +28,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-trigger:
+    name: Check Comment Trigger
+    if: github.event_name == 'issue_comment'
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check if comment triggers CI
+        id: check
+        run: |
+          # Check if this is a PR (not a regular issue)
+          if [ "${{ github.event.issue.pull_request }}" == "" ]; then
+            echo "Not a pull request, skipping"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if comment contains "/test" (case-sensitive)
+          if ! echo "${{ github.event.comment.body }}" | grep -q "^/test$\|^/test[[:space:]]\|[[:space:]]/test$\|[[:space:]]/test[[:space:]]"; then
+            echo "Comment does not contain '/test', skipping"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if user has write or admin permissions
+          AUTHOR_ASSOCIATION="${{ github.event.comment.author_association }}"
+          if [ "$AUTHOR_ASSOCIATION" != "OWNER" ] && [ "$AUTHOR_ASSOCIATION" != "MEMBER" ] && [ "$AUTHOR_ASSOCIATION" != "COLLABORATOR" ]; then
+            echo "User does not have maintainer privileges (association: $AUTHOR_ASSOCIATION), skipping"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "All checks passed, CI will run"
+          echo "should_run=true" >> $GITHUB_OUTPUT
+
+      - name: Add rocket reaction
+        if: steps.check.outputs.should_run == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
   build-and-test-all:
     name: Build & Test
     uses: ./.github/workflows/qualcomm-internal-build-and-test.yml

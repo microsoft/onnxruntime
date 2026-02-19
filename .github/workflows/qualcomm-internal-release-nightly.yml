@@ -4,6 +4,7 @@
 name: Scheduled Publish of ONNX Runtime Execution Provider wheel
 
 permissions:
+  checks: write
   contents: read
   id-token: write
 
