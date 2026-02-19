@@ -286,8 +286,20 @@ Ort::Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model
     param_tensor_names.push_back(constant_value_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(constant_value_param));
   } else if ((opset_version >= 11 || domain == kMSDomain) && inputs.size() > 2 && inputs[2].Exists()) {
-    // Process optional input constant_value
-    RETURN_IF_ERROR(ProcessConstantValue(qnn_model_wrapper, param_tensor_names, node_unit, inputs[2]));
+    TensorInfo input_info = {};
+    RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[2], input_info));
+    // Pad doesn't support QNN_DATATYPE_FLOAT_16 pad_constant_value.
+    if (input_info.qnn_data_type != QNN_DATATYPE_FLOAT_16) {
+      // Process optional input constant_value
+      RETURN_IF_ERROR(ProcessConstantValue(qnn_model_wrapper, param_tensor_names, node_unit, inputs[2]));
+    } else {
+      // Qualcomm backends don't support QNN_DATATYPE_FLOAT_16 pad_constant_value. Will use default 0.
+      // Fail validation when a fp16 pad_constant_value is not 0.
+      std::vector<uint8_t> unpacked_pad_constant_tensor;
+      RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(input_info.initializer_tensor, unpacked_pad_constant_tensor));
+      MLFloat16 fp16_value = *reinterpret_cast<const MLFloat16*>(unpacked_pad_constant_tensor.data());
+      RETURN_IF_NOT(0 == fp16_value, "pad_constant_value only support 0 when dtype = QNN_DATATYPE_FLOAT_16.");
+    }
   }
 
   if (!has_negative) {
