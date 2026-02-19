@@ -60,3 +60,5 @@ EP_SPECIFIC_USING_DECLARATIONS
 #endif
 
 }  // namespace onnxruntime
+
+#undef EP_SPECIFIC_USING_DECLARATIONS
