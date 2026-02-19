@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include <sstream>
+#include <stdexcept>
+
+#include "api.h"
+
 #define RETURN_IF_ERROR(fn)    \
   do {                         \
     OrtStatus* _status = (fn); \
