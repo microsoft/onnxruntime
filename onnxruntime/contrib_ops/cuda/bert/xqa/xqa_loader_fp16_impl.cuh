@@ -116,6 +116,28 @@ Status LaunchXQAInt8Kernel(
     void* workspace,
     size_t workspace_size);
 
+#ifdef USE_FP8_KV_CACHE
+// Extern declarations for FP8 kernels (implemented in xqa_loader_fp16_fp8_impl.cuh via instantiation)
+Status LaunchXQAFp8Kernel(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    const void* query,
+    const void* key_cache,
+    const void* value_cache,
+    void* output,
+    const int batch_size,
+    const int num_heads,
+    const int kv_num_heads,
+    const int head_size,
+    const int max_seq_len,
+    const float scale,
+    const bool is_bsnh,
+    const int* past_seq_lens,
+    const float* kv_cache_scale,
+    void* workspace,
+    size_t workspace_size);
+#endif
+
 // ============================================================================
 // Dispatcher Implementation
 // ============================================================================
@@ -151,6 +173,18 @@ Status LaunchXQAKernelImpl(
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA INT8 path mismatch.");
     }
   }
+
+#ifdef USE_FP8_KV_CACHE
+  // Dispatch to FP8 path if requested
+  if (kv_quant_type == XqaQuantType::kFp8) {
+    if constexpr (std::is_same<T, half>::value) {
+      return LaunchXQAFp8Kernel(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
+    } else {
+      // BF16 case is handled in xqa_loader_bf16.cu via specialization
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA FP8 path mismatch.");
+    }
+  }
+#endif
 
   int group_size = num_heads / kv_num_heads;
   switch (group_size) {

@@ -329,5 +329,48 @@ TEST(GatherNDOpTest, GatherND_slice_int64_t) {
   test.Run();
 }
 
+// Test for issue #23828: GatherND should return error instead of crashing
+// when batch dimensions mismatch between input and indices
+TEST(GatherNDOpTest, GatherND_batch_dims_mismatch_error) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 1);
+
+  // Input has 3 batches, but indices has 2 slices (indices batch size 2), which is not divisible by 3 - mismatch!
+  test.AddInput<float>("data", {3, 3}, {0.f, 1.f, 2.f, 10.f, 11.f, 12.f, 20.f, 21.f, 22.f});
+  test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
+  test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
+
+  // Force execution only on CPU
+  std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cpu_only_ep;
+  cpu_only_ep.push_back(DefaultCpuExecutionProvider());
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "GatherND: indices batch size (2) is not divisible by input batch size (3)",
+           {},             // no excluded providers needed
+           nullptr,        // no RunOptions
+           &cpu_only_ep);  // force CPU
+}
+
+// Test for issue #23828: GatherND should return error when input batch dimension is zero
+TEST(GatherNDOpTest, GatherND_zero_batch_dims_error) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  test.AddAttribute<int64_t>("batch_dims", 1);
+
+  // Input has 0 batches - should fail with clear error instead of division by zero
+  test.AddInput<float>("data", {0, 3}, {});
+  test.AddInput<int64_t>("indices", {2, 1}, {1, 2});
+  test.AddOutput<float>("output", {2}, {0.f, 0.f});  // dummy output, won't be used
+
+  // Force execution only on CPU
+  std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cpu_only_ep;
+  cpu_only_ep.push_back(DefaultCpuExecutionProvider());
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "GatherND: input tensor batch dimensions cannot be zero",
+           {},
+           nullptr,
+           &cpu_only_ep);  // force CPU
+}
+
 }  // namespace test
 }  // namespace onnxruntime
