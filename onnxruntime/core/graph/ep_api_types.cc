@@ -351,6 +351,10 @@ static Status GetOutputIndex(const EpNode& producer_node,
   gsl::span<const EpValueInfo* const> outputs = producer_node.GetOutputsSpan();
 
   for (size_t i = 0; i < outputs.size(); i++) {
+    if (outputs[i] == nullptr) {  // outputs == nullptr means the output is optional
+      continue;
+    }
+
     if (outputs[i]->GetName() == value_info_name) {
       index = i;
       found = true;
