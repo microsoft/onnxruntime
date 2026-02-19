@@ -28,6 +28,7 @@ static void RunInverseTest(const std::vector<TestInputDef<DataType>>& input_defs
 
   provider_options["backend_type"] = backend_name;
   provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["soc_model"] = "30";
 
   RunQnnModelTest(BuildOpTestCase<DataType>("Inverse", input_defs, {}, attrs, kMSDomain),  // Inverse Op exist in kMSDomain
                   provider_options,
@@ -125,7 +126,7 @@ static void RunQDQInverseOpTest(const TestInputDef<float>& input_defs,
                        tolerance);
 }
 
-TEST_F(QnnHTPBackendTests, DISABLED_Inverse_2d) {
+TEST_F(QnnHTPBackendTests, Inverse_2d) {
   RandomValueGenerator rand_gen_{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const std::vector<int64_t> input_shape{2, 2};
   auto input_vector = rand_gen_.Uniform<float>(input_shape, -100.0f, 100.0f);
@@ -137,7 +138,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_Inverse_2d) {
                         "htp");
 }
 
-TEST_F(QnnHTPBackendTests, DISABLED_Inverse_3d) {
+TEST_F(QnnHTPBackendTests, Inverse_3d) {
   RandomValueGenerator rand_gen_{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const std::vector<int64_t> input_shape{10, 2, 2};
   auto input_vector = rand_gen_.Uniform<float>(input_shape, -100.0f, 100.0f);
@@ -149,7 +150,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_Inverse_3d) {
                         "htp");
 }
 
-TEST_F(QnnHTPBackendTests, DISABLED_Inverse_4d) {
+TEST_F(QnnHTPBackendTests, Inverse_4d) {
   RandomValueGenerator rand_gen_{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const std::vector<int64_t> input_shape{1, 10, 2, 2};
   auto input_vector = rand_gen_.Uniform<float>(input_shape, -100.0f, 100.0f);
