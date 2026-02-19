@@ -449,6 +449,9 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
 
 void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param) {
   tensor_proto.set_raw_data(std::move(param));
+  if constexpr (endian::native != endian::little) {
+    utils::ConvertRawDataInTensorProto(tensor_proto);
+  }
 }
 
 void ConvertRawDataInTensorProto(TensorProto& tensor) {

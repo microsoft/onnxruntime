@@ -1941,6 +1941,13 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
     indices_tensor->add_dims(dim);
   }
 
+  // if set_raw_data is used, data must be converted to LE
+  if constexpr (endian::native != endian::little) {
+    if (raw_data_indices) {
+      utils::ConvertRawDataInTensorProto(*indices_tensor);
+    }
+  }
+
   ONNX_NAMESPACE::TensorProto dense_proto;
   std::filesystem::path model_path;  // empty path
   ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse_proto, model_path, dense_proto));
