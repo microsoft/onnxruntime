@@ -33,7 +33,7 @@ import platform
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 try:
@@ -192,9 +192,11 @@ def build_run_matrix(
             scenarios = ["native"]
         else:
             scenarios = ["qdq_fused"]
-            # Unfused only meaningful for 4-bit: DQ+MatMul->MatMulNBits fusion
-            # only matches int4/uint4 weights (qdq_selectors.cc:Is4BitIntType check)
-            if run_unfused and model.bits == 4:
+            # Unfused only meaningful for 4-bit block-quantized models:
+            # DQ+MatMul->MatMulNBits fusion only matches int4/uint4 weights
+            # (qdq_selectors.cc:Is4BitIntType) with block quantization structure.
+            # Channel-quantized models don't match the fusion pattern.
+            if run_unfused and model.bits == 4 and model.granularity == "block":
                 scenarios.append("qdq_unfused")
 
         for scenario in scenarios:
@@ -256,7 +258,7 @@ def run_single_benchmark(
     start = time.perf_counter()
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
+            cmd, capture_output=True, text=True, timeout=timeout or None
         )
         elapsed = time.perf_counter() - start
 
@@ -504,6 +506,8 @@ Examples:
                         help="Per-model timeout in seconds (default: 600)")
     parser.add_argument("--aggregate-only", action="store_true",
                         help="Only aggregate existing results, don't run benchmarks")
+    parser.add_argument("--retry-failed", action="store_true",
+                        help="Only re-run models from failed_models.json (use with --timeout 0 for timed-out models)")
 
     return parser.parse_args()
 
@@ -563,30 +567,43 @@ def main():
     )
     print(f"Total runs: {len(runs)}")
 
+    # Filter to only failed models if --retry-failed
+    if args.retry_failed:
+        failed_path = os.path.join(results_dir, "failed_models.json")
+        if not os.path.isfile(failed_path):
+            print(f"Error: {failed_path} not found. Run the full experiment first.")
+            sys.exit(1)
+        with open(failed_path) as f:
+            failed_entries = json.load(f)
+        failed_keys = {(e["model"], e["scenario"]) for e in failed_entries}
+        runs = [r for r in runs if (r.model.dir_name, r.scenario) in failed_keys]
+        print(f"Retrying {len(runs)} failed runs (from {len(failed_entries)} failures)")
+
     # Create output directories
     per_model_dir = os.path.join(results_dir, "per_model")
     os.makedirs(per_model_dir, exist_ok=True)
 
-    # Save experiment config (includes system info)
-    config_data = {
-        "preset": args.preset,
-        "model_dir": args.model_dir,
-        "seq_lengths": seq_lengths,
-        "warmup": warmup,
-        "iterations": iterations,
-        "batch_size": args.batch_size,
-        "seed": args.seed,
-        "run_unfused": run_unfused,
-        "model_sizes_filter": model_sizes,
-        "format_types_filter": format_types,
-        "bit_widths_filter": bit_widths,
-        "total_models": len(models),
-        "total_runs": len(runs),
-        "system": get_system_info(),
-    }
-    config_path = os.path.join(results_dir, "experiment_config.json")
-    with open(config_path, "w") as f:
-        json.dump(config_data, f, indent=2)
+    # Save experiment config (includes system info) — skip in dry-run mode
+    if not args.dry_run:
+        config_data = {
+            "preset": args.preset,
+            "model_dir": args.model_dir,
+            "seq_lengths": seq_lengths,
+            "warmup": warmup,
+            "iterations": iterations,
+            "batch_size": args.batch_size,
+            "seed": args.seed,
+            "run_unfused": run_unfused,
+            "model_sizes_filter": model_sizes,
+            "format_types_filter": format_types,
+            "bit_widths_filter": bit_widths,
+            "total_models": len(models),
+            "total_runs": len(runs),
+            "system": get_system_info(),
+        }
+        config_path = os.path.join(results_dir, "experiment_config.json")
+        with open(config_path, "w") as f:
+            json.dump(config_data, f, indent=2)
 
     # Execute runs
     print(f"\n{'#'*60}")
@@ -600,6 +617,11 @@ def main():
     failed = 0
     failed_runs = []  # Track failures for writing to file
     total_elapsed = 0.0
+    failed_path = os.path.join(results_dir, "failed_models.json")
+
+    # When retrying, start with all existing failures; entries are removed as they succeed
+    if args.retry_failed:
+        failed_runs = list(failed_entries)
 
     for idx, run in enumerate(runs, 1):
         label = f"{run.model.dir_name} ({run.scenario})"
@@ -611,6 +633,10 @@ def main():
             continue
 
         result = run_single_benchmark(run, benchmark_script, timeout=args.timeout)
+
+        # Remove old entry for this run (no-op on fresh runs)
+        failed_runs = [e for e in failed_runs
+                       if not (e["model"] == run.model.dir_name and e["scenario"] == run.scenario)]
 
         if result["success"]:
             print(f"Done ({result['elapsed_s']:.1f}s)")
@@ -625,16 +651,14 @@ def main():
 
         total_elapsed += result["elapsed_s"]
 
+        # Write failed_models.json after each run so progress is saved
+        # Always write (even if empty) so succeeded retries are removed from the file
+        with open(failed_path, "w") as f:
+            json.dump(failed_runs, f, indent=2)
+
     if args.dry_run:
         print(f"\nDry run complete. {len(runs)} runs would be executed.")
         return
-
-    # Save failed models list
-    if failed_runs:
-        failed_path = os.path.join(results_dir, "failed_models.json")
-        with open(failed_path, "w") as f:
-            json.dump(failed_runs, f, indent=2)
-        print(f"\nFailed models saved to: {failed_path}")
 
     # Aggregate results and print summary
     rows = aggregate_results(results_dir)
