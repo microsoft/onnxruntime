@@ -1242,15 +1242,6 @@ Graph::Graph(const Model& owning_model,
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     ORT_THROW_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor));
-    if constexpr (endian::native != endian::little) {
-      const AttributeProto& attrib = node.attribute(0);
-      if (attrib.type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
-        const TensorProto& sparse_values = node.attribute(0).sparse_tensor().values();
-        if ((!(sparse_values.has_raw_data())) && utils::HasRawData(*tensor)) {
-          onnxruntime::utils::ConvertRawDataInTensorProto(*tensor);
-        }
-      }
-    }
 
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
