@@ -174,7 +174,8 @@ struct BilinearSamplePlan2D {
   T w22;
   uint8_t mask = 0;
 };
-// PrecomputeBilinearSamplePlan2D, the loop runs across all H_out * W_out points, using the right nx/ny for each (oy, ox) and storing that point’s four indices, four weights, and mask in plans[idx]
+// PrecomputeBilinearSamplePlan2D, the loop runs across all H_out * W_out points, using the right nx/ny for each (oy, ox) and
+//toring that point’s four indices, four weights, and mask in plans[idx]
 template <typename T>
 void PrecomputeBilinearSamplePlan2D(const T* grid_data,
                                     int64_t H_out,
@@ -450,14 +451,16 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
     };
 
     const bool can_use_fast_path = (mode_ == Linear && padding_mode_ == Zeros && !align_corners_);
-    for (int64_t n = 0; n < N; n++) {
-      if (can_use_fast_path) {
+    if (can_use_fast_path) {
+      std::vector<BilinearSamplePlan2D<T>> sampling_plan;
+      for (int64_t n = 0; n < N; n++) {
         // Choose fast path when all 4 neighbors are within the image and use zero for out-of-boundary neighbors.
         // This fast path can be 2-3x faster than the generic path with boundary check and supports Neon optimization.
         // sampling_plan helps precomputing a separate plan entry per output pixel.
-        std::vector<BilinearSamplePlan2D<T>> sampling_plan;
         TryRunBilinearZerosFastPath2D(*input, *grid, Y, n, C, H_in, W_in, H_out, W_out, tp, sampling_plan);
-      } else {
+      }
+    } else {
+      for (int64_t n = 0; n < N; n++) {
         run_generic_path_for_n(n);
       }
     }
