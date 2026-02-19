@@ -994,8 +994,13 @@ TEST(PoolTest, AveragePool_CountIncludePad_AsymmetricPads) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+  // This test targets the CPU fix only. Exclude EPs whose external libraries
+  // (cuDNN, CoreML, etc.) also produce wrong results for this case.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+            kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
+            kDmlExecutionProvider});
 }
 
 // AveragePool3D with count_include_pad=1 and asymmetric pads (only back/bottom)
@@ -1024,8 +1029,13 @@ TEST(PoolTest, AveragePool3D_CountIncludePad_AsymmetricPads) {
                                         0.5f, 0.25f};
   test.AddInput<float>("X", x3d_dims, x3d_vals);
   test.AddOutput<float>("Y", expected3d_dims, expected3d_vals);
+  // This test targets the CPU fix only. Exclude EPs whose external libraries
+  // (cuDNN, CoreML, etc.) also produce wrong results for this case.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+            kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
+            kDmlExecutionProvider});
 }
 
 // test 'strides' attribute not specified
