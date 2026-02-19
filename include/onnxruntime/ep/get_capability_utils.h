@@ -21,7 +21,7 @@ constexpr inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
 }
 
 // Get all output nodes that consume an output from the given node.
-static OrtStatus* GetOutputNodes(gsl::span<Ort::ConstValueInfo const> node_outputs, std::vector<Ort::ConstNode>& result) {
+inline OrtStatus* GetOutputNodes(gsl::span<Ort::ConstValueInfo const> node_outputs, std::vector<Ort::ConstNode>& result) {
   try {
     std::vector<Ort::ConstNode> output_nodes;
     output_nodes.reserve(node_outputs.size());  // May have more
@@ -52,9 +52,9 @@ static OrtStatus* GetOutputNodes(gsl::span<Ort::ConstValueInfo const> node_outpu
 
 // Returns nodes that should be assigned to CPU EP instead of this example EP to avoid costly I/O copies.
 // Based on GetCpuPreferredNodes from onnxruntime/core/framework/fallback_cpu_capability.cc
-OrtStatus* GetCpuPreferredNodes(const OrtGraph& ort_graph, OrtEpGraphSupportInfo& graph_support_info,
-                                const OrtLogger& logger, gsl::span<const OrtNode* const> tentative_nodes,
-                                /*out*/ std::unordered_set<const OrtNode*>& cpu_preferred_nodes) {
+inline OrtStatus* GetCpuPreferredNodes(const OrtGraph& ort_graph, OrtEpGraphSupportInfo& graph_support_info,
+                                       const OrtLogger& logger, gsl::span<const OrtNode* const> tentative_nodes,
+                                       /*out*/ std::unordered_set<const OrtNode*>& cpu_preferred_nodes) {
   try {
     const OrtApi& ort_api = Ort::GetApi();
     const OrtEpApi& ep_api = Ort::GetEpApi();
