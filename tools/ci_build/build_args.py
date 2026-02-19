@@ -841,7 +841,9 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
     )
     # Telemetry arguments (cross-platform)
-    parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (ETW on Windows, 1DS on other platforms).")
+    parser.add_argument(
+        "--use_telemetry", action="store_true", help="Enable telemetry (ETW on Windows, 1DS on other platforms)."
+    )
 
 
 def is_cross_compiling(args: argparse.Namespace) -> bool:

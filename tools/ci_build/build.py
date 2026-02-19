@@ -379,7 +379,7 @@ def generate_build_tree(
     cmake_args += [
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
     ]
-    
+
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),

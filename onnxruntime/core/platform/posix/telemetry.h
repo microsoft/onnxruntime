@@ -50,28 +50,28 @@ class PosixTelemetry : public Telemetry {
   void LogEvaluationStart(uint32_t session_id) const override;
 
   void LogSessionCreation(uint32_t session_id, int64_t ir_version,
-                         const std::string& model_producer_name,
-                         const std::string& model_producer_version,
-                         const std::string& model_domain,
-                         const std::unordered_map<std::string, int>& domain_to_version_map,
-                         const std::string& model_file_name,
-                         const std::string& model_graph_name,
-                         const std::string& model_weight_type,
-                         const std::string& model_graph_hash,
-                         const std::string& model_weight_hash,
-                         const std::unordered_map<std::string, std::string>& model_metadata,
-                         const std::string& loadedFrom,
-                         const std::vector<std::string>& execution_provider_ids,
-                         bool use_fp16, bool captureState) const override;
+                          const std::string& model_producer_name,
+                          const std::string& model_producer_version,
+                          const std::string& model_domain,
+                          const std::unordered_map<std::string, int>& domain_to_version_map,
+                          const std::string& model_file_name,
+                          const std::string& model_graph_name,
+                          const std::string& model_weight_type,
+                          const std::string& model_graph_hash,
+                          const std::string& model_weight_hash,
+                          const std::unordered_map<std::string, std::string>& model_metadata,
+                          const std::string& loadedFrom,
+                          const std::vector<std::string>& execution_provider_ids,
+                          bool use_fp16, bool captureState) const override;
 
   void LogCompileModelStart(uint32_t session_id,
-                           const std::string& input_source,
-                           const std::string& output_target,
-                           uint32_t flags,
-                           int graph_optimization_level,
-                           bool embed_ep_context,
-                           bool has_external_initializers_file,
-                           const std::vector<std::string>& execution_provider_ids) const override;
+                            const std::string& input_source,
+                            const std::string& output_target,
+                            uint32_t flags,
+                            int graph_optimization_level,
+                            bool embed_ep_context,
+                            bool has_external_initializers_file,
+                            const std::vector<std::string>& execution_provider_ids) const override;
 
   void LogCompileModelComplete(uint32_t session_id,
                                bool success,
@@ -80,39 +80,39 @@ class PosixTelemetry : public Telemetry {
                                const std::string& error_message) const override;
 
   void LogRuntimeError(uint32_t session_id, const common::Status& status,
-                      const char* file, const char* function, uint32_t line) const override;
+                       const char* file, const char* function, uint32_t line) const override;
 
   void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last,
-                     int64_t total_run_duration_since_last,
-                     std::unordered_map<int64_t, long long> duration_per_batch_size) const override;
+                      int64_t total_run_duration_since_last,
+                      std::unordered_map<int64_t, long long> duration_per_batch_size) const override;
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
   void LogDriverInfoEvent(const std::string_view device_class,
-                         const std::wstring_view& driver_names,
-                         const std::wstring_view& driver_versions) const override;
+                          const std::wstring_view& driver_names,
+                          const std::wstring_view& driver_versions) const override;
 
   void LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
-                         const std::vector<std::string>& requested_execution_provider_ids,
-                         const std::vector<std::string>& available_execution_provider_ids) const override;
+                          const std::vector<std::string>& requested_execution_provider_ids,
+                          const std::vector<std::string>& available_execution_provider_ids) const override;
 
   void LogProviderOptions(const std::string& provider_id,
-                         const std::string& provider_options_string,
-                         bool captureState) const override;
+                          const std::string& provider_options_string,
+                          bool captureState) const override;
 
  private:
   // Initialize telemetry SDK logger
   void Initialize();
-  
+
   // Shutdown telemetry SDK logger
   void Shutdown();
 
   // Helper to get platform-specific information
   std::string GetPlatformInfo() const;
   std::string GetDeviceInfo() const;
-  
+
   // Safe async event logging
   void LogEventAsync(::Microsoft::Applications::Events::EventProperties&& props) const;
-  
+
   // Posix-specific: Log system resource metrics
   void LogPosixSystemMetrics(uint32_t session_id) const;
 
@@ -134,7 +134,7 @@ class PosixTelemetry : public Telemetry {
   // Global registration count for singleton behavior
   static std::atomic<uint32_t> global_register_count_;
   static std::mutex global_mutex_;
-  
+
   // Make EventBuilder a friend so it can access GetPlatformInfo/GetDeviceInfo
   friend class EventBuilder;
 };
@@ -142,4 +142,3 @@ class PosixTelemetry : public Telemetry {
 }  // namespace onnxruntime
 
 #endif  // !_WIN32
-
