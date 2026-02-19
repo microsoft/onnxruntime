@@ -30,8 +30,8 @@ struct KaiTlsBuffers {
 };
 static thread_local KaiTlsBuffers g_kai_tls;
 
-const kai_matmul_clamp_f32_f32p_f32p_ukernel& sgemm_gemm = GetKleidiAISGemmUKernel();
-const kai_matmul_clamp_f32_f32_f32p_ukernel& sgemm_gemv = GetKleidiAISGemvUKernel();
+const KaiF32SgemmKernel& sgemm_gemm = GetKleidiAISGemmUKernel();
+const KaiF32SgemvKernel& sgemm_gemv = GetKleidiAISGemvUKernel();
 
 
 // Helpers for GEMV
@@ -213,7 +213,7 @@ ArmKleidiAI::MlasGemvBatch(
             g_kai_tls.output_tile.resize(rhs_shape);
 
             // Run specialized 1xN-by-K kernel
-            sgemm_gemv.run_matmul(
+            sgemm_gemv.ukernel.run_matmul(
                 1,                                          // Value of 1 for M == 1 and this value represents N when N == 1 case
                 rhs_shape,                                  // Value of N for M == 1 and this value is M when N == 1
                 K,                                          // K
@@ -336,9 +336,9 @@ Return Value:
 
     if (TransA == CblasNoTrans) {
 
-        const size_t nr = sgemm_gemm.get_nr();
-        const size_t kr = sgemm_gemm.get_kr();
-        const size_t sr = sgemm_gemm.get_sr();
+        const size_t nr = sgemm_gemm.ukernel.get_nr();
+        const size_t kr = sgemm_gemm.ukernel.get_kr();
+        const size_t sr = sgemm_gemm.ukernel.get_sr();
 
         // Ensure size and zero the used span.
         g_kai_tls.bias_zero.resize(N, 0.0f);
@@ -443,17 +443,17 @@ Return Value:
         }
     }
 
-    size_t m_step = sgemm_gemm.get_m_step();
-    size_t n_step = sgemm_gemm.get_n_step();
+    size_t m_step = sgemm_gemm.ukernel.get_m_step();
+    size_t n_step = sgemm_gemm.ukernel.get_n_step();
 
     if ((M < m_step || N < n_step) && !Data->BIsPacked) {
         // Fallback to MLAS
         return false;
     }
 
-    const size_t mr = sgemm_gemm.get_mr();
-    const size_t kr = sgemm_gemm.get_kr();
-    const size_t sr = sgemm_gemm.get_sr();
+    const size_t mr = sgemm_gemm.ukernel.get_mr();
+    const size_t kr = sgemm_gemm.ukernel.get_kr();
+    const size_t sr = sgemm_gemm.ukernel.get_sr();
 
     size_t LhsPackedStride = 0;
     std::byte* LhsPackedData = nullptr;
@@ -547,7 +547,7 @@ Return Value:
         ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
 
         // Get rhs tile, B
-        const size_t rhs_packed_offset = sgemm_gemm.get_rhs_packed_offset(NIdx * n_step, K);
+        const size_t rhs_packed_offset = sgemm_gemm.ukernel.get_rhs_packed_offset(NIdx * n_step, K);
 
         const std::byte* B_base = Data[0].BIsPacked
             ? reinterpret_cast<const std::byte*>(Data[BIdx].B)
@@ -555,7 +555,7 @@ Return Value:
         auto BTile = reinterpret_cast<const void*>(B_base + rhs_packed_offset);
 
         // Get lhs tile, A
-        const size_t lhs_packed_offset = sgemm_gemm.get_lhs_packed_offset(MIdx * m_step, K);
+        const size_t lhs_packed_offset = sgemm_gemm.ukernel.get_lhs_packed_offset(MIdx * m_step, K);
 
         const std::byte* A_base = LhsPackedData + LhsPackedStride * BIdx;
         auto ATile = reinterpret_cast<const float*>(A_base + lhs_packed_offset);
@@ -596,7 +596,9 @@ Return Value:
             out_row_stride_bytes = TileSizeN * sizeof(float);
         }
 
-        sgemm_gemm.run_matmul(
+        KLEIDIAI_KERNEL_LOG(sgemm_gemm.name
+                            << " M=" << TileSizeM << " N=" << TileSizeN << " K=" << K);
+        sgemm_gemm.ukernel.run_matmul(
             TileSizeM,
             TileSizeN,
             K,
