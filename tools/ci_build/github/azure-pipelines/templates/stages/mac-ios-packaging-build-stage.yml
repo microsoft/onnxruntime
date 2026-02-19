@@ -22,7 +22,7 @@ stages:
       buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
       cPodName: onnxruntime-c
       objcPodName: onnxruntime-objc
-    timeoutInMinutes: 270
+    timeoutInMinutes: 360
     templateContext:
       outputs:
       - output: pipelineArtifact
