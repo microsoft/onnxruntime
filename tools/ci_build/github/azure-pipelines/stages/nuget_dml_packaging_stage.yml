@@ -3,10 +3,6 @@ parameters:
   type: boolean
   default: true
 
-- name: IsReleaseBuild
-  type: boolean
-  default: false
-
 stages:
 - stage: NuGet_Packaging_DML
   dependsOn:
