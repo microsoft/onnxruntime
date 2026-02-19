@@ -1,7 +1,7 @@
 #!/bin/bash
 set -ex
 #Every cuda container has this $CUDA_VERSION env var set.
-SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
+SHORT_CUDA_VERSION=$(echo "${CUDA_VERSION}" | sed 's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
 
 #TODO: add --update --build
 BUILD_ARGS=('--config' 'Release'
