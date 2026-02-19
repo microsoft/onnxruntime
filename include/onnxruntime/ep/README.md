@@ -16,4 +16,4 @@ There are 2 types of header files:
 
 ### Usage
 
-Make sure to include "ep/_pch.h" for all source code in the implementation. Using PCH compiler flag is recommended.
+Make sure to include "ep/adapters.h" for all source code in the implementation. Using PCH compiler flag is recommended.
