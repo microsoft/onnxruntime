@@ -21,33 +21,21 @@ constexpr inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
 }
 
 // Get all output nodes that consume an output from the given node.
-inline OrtStatus* GetOutputNodes(gsl::span<Ort::ConstValueInfo const> node_outputs, std::vector<Ort::ConstNode>& result) {
-  try {
-    std::vector<Ort::ConstNode> output_nodes;
-    output_nodes.reserve(node_outputs.size());  // May have more
+inline std::vector<Ort::ConstNode> GetOutputNodes(gsl::span<Ort::ConstValueInfo const> node_outputs) {
+  std::vector<Ort::ConstNode> output_nodes;
+  output_nodes.reserve(node_outputs.size());  // May have more
 
-    // Gather the OrtNode consumers of every output.
-    for (Ort::ConstValueInfo output : node_outputs) {
-      if (output == nullptr) continue;  // Skip missing optional output
+  // Gather the OrtNode consumers of every output.
+  for (Ort::ConstValueInfo output : node_outputs) {
+    if (output == nullptr) continue;  // Skip missing optional output
 
-      auto consumers_info = output.GetConsumers();
-      for (const auto& consumer : consumers_info) {
-        output_nodes.push_back(consumer.node);
-      }
+    auto consumers_info = output.GetConsumers();
+    for (const auto& consumer : consumers_info) {
+      output_nodes.push_back(consumer.node);
     }
-
-    result = std::move(output_nodes);
-    return nullptr;
-  } catch (const Ort::Exception& ex) {
-    Ort::Status status(ex);
-    return status.release();
-  } catch (const std::exception& ex) {
-    Ort::Status status(ex.what(), ORT_EP_FAIL);
-    return status.release();
-  } catch (...) {
-    Ort::Status status("Unknown exception", ORT_EP_FAIL);
-    return status.release();
   }
+
+  return output_nodes;
 }
 
 // Returns nodes that should be assigned to CPU EP instead of this example EP to avoid costly I/O copies.
@@ -156,10 +144,7 @@ inline OrtStatus* GetCpuPreferredNodes(const OrtGraph& ort_graph, OrtEpGraphSupp
             cpu_output_args.insert(output);
           }
 
-          std::vector<Ort::ConstNode> output_nodes;
-          RETURN_IF_ERROR(GetOutputNodes(outputs, output_nodes));
-
-          for (Ort::ConstNode downstream_node : output_nodes) {
+          for (Ort::ConstNode downstream_node : GetOutputNodes(outputs)) {
             candidates.push(downstream_node.GetId());
           }
         }
@@ -225,10 +210,7 @@ inline OrtStatus* GetCpuPreferredNodes(const OrtGraph& ort_graph, OrtEpGraphSupp
           cpu_output_args.insert(output);
         }
 
-        std::vector<Ort::ConstNode> output_nodes;
-        RETURN_IF_ERROR(GetOutputNodes(outputs, output_nodes));
-
-        for (Ort::ConstNode downstream_node : output_nodes) {
+        for (Ort::ConstNode downstream_node : GetOutputNodes(outputs)) {
           candidates.push(downstream_node.GetId());
         }
       }
