@@ -15,6 +15,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     TensorScatter,
     24,
     KernelDefBuilder()
+        .MayInplace(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     TensorScatter);
 
@@ -124,24 +125,26 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
     int64_t batch_idx = p / prefix_stride_for_batch;
     int64_t wi = (write_indices != nullptr) ? write_indices[batch_idx] : 0;
 
-    const uint8_t* update_base = update_raw + SafeInt<size_t>(p) * update_axis_stride;
-    uint8_t* cache_base = dst_bytes + SafeInt<size_t>(p) * cache_axis_stride;
+    ptrdiff_t update_offset = static_cast<ptrdiff_t>(SafeInt<size_t>(p) * update_axis_stride);
+    ptrdiff_t cache_offset = static_cast<ptrdiff_t>(SafeInt<size_t>(p) * cache_axis_stride);
+    const uint8_t* update_base = update_raw + update_offset;
+    uint8_t* cache_base = dst_bytes + cache_offset;
 
     if (!circular_) {
       ORT_ENFORCE(wi + sequence_length <= max_sequence_length,
                   "TensorScatter linear mode: write_indices[", batch_idx, "] + sequence_length (",
                   wi, " + ", sequence_length, ") exceeds max_sequence_length (", max_sequence_length, ")");
       // Single contiguous memcpy for the whole slice.
-      memcpy(cache_base + SafeInt<size_t>(wi) * suffix_bytes,
-             update_base,
-             SafeInt<size_t>(sequence_length) * suffix_bytes);
+      ptrdiff_t wi_offset = static_cast<ptrdiff_t>(SafeInt<size_t>(wi) * suffix_bytes);
+      size_t copy_len = SafeInt<size_t>(sequence_length) * suffix_bytes;
+      memcpy(cache_base + wi_offset, update_base, copy_len);
     } else {
       // Circular: each sequence position wraps independently.
       for (int64_t s = 0; s < sequence_length; ++s) {
         int64_t cache_pos = (wi + s) % max_sequence_length;
-        memcpy(cache_base + SafeInt<size_t>(cache_pos) * suffix_bytes,
-               update_base + SafeInt<size_t>(s) * suffix_bytes,
-               suffix_bytes);
+        ptrdiff_t dst_off = static_cast<ptrdiff_t>(SafeInt<size_t>(cache_pos) * suffix_bytes);
+        ptrdiff_t src_off = static_cast<ptrdiff_t>(SafeInt<size_t>(s) * suffix_bytes);
+        memcpy(cache_base + dst_off, update_base + src_off, suffix_bytes);
       }
     }
   }
