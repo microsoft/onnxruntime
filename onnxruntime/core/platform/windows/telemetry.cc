@@ -712,7 +712,7 @@ void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status
 }
 
 void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
-                                              const common::Status& status) const {
+                                             const common::Status& status) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
