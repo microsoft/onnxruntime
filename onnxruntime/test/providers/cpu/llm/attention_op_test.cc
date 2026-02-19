@@ -1498,5 +1498,124 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_MultiBatch_4D) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// Edge case: nonpad_kv_seqlen = 0 (all positions masked).
+TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {1, 1, 1, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  std::vector<float> q = {1.0f, 1.0f};
+  std::vector<float> k(8, 1.0f);
+  // All V positions are "invalid" — result is uniform over 4 highly-negative-scored positions,
+  // so softmax is uniform 0.25 each.
+  std::vector<float> v = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {0});
+
+  // With all positions masked to -inf, softmax produces uniform weights and
+  // the result is the mean of all V rows: [(10+30+50+70)/4, (20+40+60+80)/4] = [40, 50].
+  std::vector<float> expected_y = {40.0f, 50.0f};
+  test.AddOutput<float>("Y", {1, 1, 1, 2}, expected_y, false, 0, 1e-3f);
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Edge case: nonpad_kv_seqlen = total_sequence_length (no positions masked).
+TEST(AttentionTest, Attention_NonPadKVSeqLen_NoneMasked) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {1, 1, 1, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  std::vector<float> q = {1.0f, 1.0f};
+  std::vector<float> k(8, 1.0f);
+  std::vector<float> v = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  // All 4 KV positions are valid — no masking.
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {4});
+
+  // Uniform attention over all 4 positions: mean of V rows.
+  // [(1+3+5+7)/4, (2+4+6+8)/4] = [4.0, 5.0]
+  std::vector<float> expected_y = {4.0f, 5.0f};
+  test.AddOutput<float>("Y", {1, 1, 1, 2}, expected_y, false, 0, 1e-3f);
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Validation: negative nonpad_kv_seqlen should be rejected.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_NegativeValue) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {1, 1, 1, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  test.AddInput<float>("Q", q_shape, {1.0f, 1.0f});
+  test.AddInput<float>("K", k_shape, std::vector<float>(8, 1.0f));
+  test.AddInput<float>("V", v_shape, std::vector<float>(8, 1.0f));
+  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {-1});
+
+  test.AddOutput<float>("Y", {1, 1, 1, 2}, {0.0f, 0.0f});
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "nonpad_kv_seqlen[0] = -1 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
+// Validation: nonpad_kv_seqlen exceeding total_sequence_length should be rejected.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_ExceedsTotalSeqLen) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  std::vector<int64_t> q_shape = {1, 1, 1, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  test.AddInput<float>("Q", q_shape, {1.0f, 1.0f});
+  test.AddInput<float>("K", k_shape, std::vector<float>(8, 1.0f));
+  test.AddInput<float>("V", v_shape, std::vector<float>(8, 1.0f));
+  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {5});  // total_sequence_length=4
+
+  test.AddOutput<float>("Y", {1, 1, 1, 2}, {0.0f, 0.0f});
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "nonpad_kv_seqlen[0] = 5 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
