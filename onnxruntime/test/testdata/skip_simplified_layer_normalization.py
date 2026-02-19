@@ -28,12 +28,7 @@ input_skip_bias_sum_vi = helper.make_tensor_value_info(
     shape=[batch_size, seq_len, hidden_size],
 )
 
-gamma_init = helper.make_tensor(
-    name="gamma",
-    data_type=TensorProto.FLOAT,
-    dims=[hidden_size],
-    vals=[1] * hidden_size
-)
+gamma_init = helper.make_tensor(name="gamma", data_type=TensorProto.FLOAT, dims=[hidden_size], vals=[1] * hidden_size)
 
 node = helper.make_node(
     op_type="SkipSimplifiedLayerNormalization",
