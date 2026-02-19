@@ -36,11 +36,11 @@ class Ep : public OrtEp {
   inline const DataTransferManager& GetDataTransferManager() const noexcept {
     return data_transfer_manager_;
   }
-  [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
+  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
     *output = temp_space_cpu_allocator_;
     return Status::OK();
   }
-  [[nodiscard]] Status GetTempSpaceAllocator(AllocatorPtr* output) const {
+  Status GetTempSpaceAllocator(AllocatorPtr* output) const {
     *output = temp_space_allocator_;
     return Status::OK();
   }
