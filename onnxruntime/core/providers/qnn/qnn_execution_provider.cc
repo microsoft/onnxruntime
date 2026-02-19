@@ -1512,9 +1512,9 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
 OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
   // We are disabling the HTP shared memory allocator for intermediate values
   // until we learn how to deal with memhandle costs.
-  // if (IsHtpSharedMemoryAllocatorAvailable()) {
-  //  return qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo().device;
-  //}
+  if (IsHtpSharedMemoryAllocatorAvailable()) {
+   return qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo().device;
+  }
   // Default CPU allocator
   return default_device_;
 }
