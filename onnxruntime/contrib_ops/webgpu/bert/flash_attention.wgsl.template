@@ -300,12 +300,12 @@ $MAIN {
     let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
-    // Compute lhs term of update di prime and then compute di prime.
+    // Compute lhs term of update di prime and the compute di prime.
     let dleft = previous_denom * exp(previous_max - new_max);
 #if has_head_sink
     // The head-sink contribution is already accounted for via `previous_denom` (dleft),
     // so we must not add it again here to avoid double counting.
-    var d = dleft + sum;
+    var d = dleft + sum + q_element_t(exp(f32(sink_value) - f32(new_max)));
 #else
     var d = dleft + sum;
 #endif
