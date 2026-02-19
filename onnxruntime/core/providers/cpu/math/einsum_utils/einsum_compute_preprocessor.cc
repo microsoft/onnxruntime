@@ -56,7 +56,7 @@ const std::vector<int64_t>& EinsumComputePreprocessor::GetMappedSubscriptIndices
   return subscript_indices_to_output_indices_;
 }
 
-int64_t EinsumComputePreprocessor::GetNumSubscriptIndices() const {
+size_t EinsumComputePreprocessor::GetNumSubscriptIndices() const {
   return num_subscript_indices_;
 }
 
@@ -73,7 +73,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
                            "Number of subscripts in the input equation does not match number of input tensors");
   }
 
-  int64_t input_index = 0;
+  size_t input_index = 0;
 
   // Holds mapping between input indices to its corresponding subscript labels for each input
   input_subscript_indices_.reserve(inputs_.size());
@@ -84,7 +84,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
   subscript_indices_to_dim_value_.reserve(10);
 
   for (const auto& subscript : left_equation_split) {
-    const auto& shape = inputs_[onnxruntime::narrow<size_t>(input_index)]->Shape();
+    const auto& shape = inputs_[input_index]->Shape();
     const auto& dims = shape.GetDims();
     size_t rank = dims.size();
     size_t dim_counter = 0;
@@ -237,13 +237,13 @@ Status EinsumComputePreprocessor::PostProcessBroadcastedDims() {
       }
     }
 
-    std::vector<int64_t> temp_index_to_last_input(onnxruntime::narrow<size_t>(num_subscript_indices_), -1);
+    std::vector<int64_t> temp_index_to_last_input(num_subscript_indices_, -1);
     for (size_t i = 0; i < subscript_indices_to_last_input_.size(); ++i) {
       temp_index_to_last_input[i + num_of_ellipsis_dims_] = subscript_indices_to_last_input_[i];
     }
     subscript_indices_to_last_input_ = std::move(temp_index_to_last_input);
 
-    std::vector<int64_t> temp_index_to_dim_value(onnxruntime::narrow<size_t>(num_subscript_indices_), -1);
+    std::vector<int64_t> temp_index_to_dim_value(num_subscript_indices_, -1);
     for (size_t i = 0; i < subscript_indices_to_dim_value_.size(); ++i) {
       temp_index_to_dim_value[i + num_of_ellipsis_dims_] = subscript_indices_to_dim_value_[i];
     }
@@ -338,7 +338,7 @@ Status EinsumComputePreprocessor::CalculateOutputShape() {
   bool is_in_middle_of_ellipsis = false;
   int64_t ellipsis_char_count = 0;
 
-  subscript_indices_to_output_indices_.resize(onnxruntime::narrow<size_t>(num_subscript_indices_), -1);
+  subscript_indices_to_output_indices_.resize(num_subscript_indices_, -1);
 
   std::array<int64_t, EinsumOp::num_of_letters> output_letter_to_count;
   output_letter_to_count.fill(0);
@@ -407,13 +407,13 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
   // As part of input preprocessing we "homogenize" them by
   // 1) Making them all of the same rank
   // 2) The axes order in all the inputs are to be made the same
-  int64_t input_iter = 0;
+  size_t input_iter = 0;
   for (const auto* input : inputs_) {
     // Eventually will hold the "preprocessed" version of the original input
     std::unique_ptr<Tensor> preprocessed;
 
     const auto& input_dims = input->Shape().GetDims();
-    const auto& current_subscript_indices = input_subscript_indices_[onnxruntime::narrow<size_t>(input_iter)];
+    const auto& current_subscript_indices = input_subscript_indices_[input_iter];
 
     // If all has gone well, we will have a subscript index (subscript label) for each dim of the input
     if (input_dims.size() != current_subscript_indices.size()) {
@@ -421,10 +421,10 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
                              "Rank of the input must match number of subscript labels corresponding to the input");
     }
 
-    std::vector<int64_t> subscript_indices_to_input_index(onnxruntime::narrow<size_t>(num_subscript_indices_), -1);
+    std::vector<int64_t> subscript_indices_to_input_index(num_subscript_indices_, -1);
 
     // This is the input dims after re-ordering so that all inputs have same axes order
-    TensorShapeVector homogenized_input_dims(onnxruntime::narrow<size_t>(num_subscript_indices_), 1);
+    TensorShapeVector homogenized_input_dims(num_subscript_indices_, 1);
 
     // Preprocessed dim rank may not be the same as original input rank if we need to parse diagonals along the way
     // (which reduces rank in the preprocessed input by 1 for each diagonal we parse)
@@ -437,7 +437,7 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
         subscript_indices_to_input_index[onnxruntime::narrow<size_t>(subscript_index)] = dim_index_in_preprocessed_input++;
         homogenized_input_dims[onnxruntime::narrow<size_t>(subscript_index)] = input_dims[onnxruntime::narrow<size_t>(dim_index_in_original_input)];
       } else {  // Diagonal needs to be parsed along the repeated axes
-        preprocessed = device_diagonal_func_(preprocessed ? *preprocessed : *inputs_[onnxruntime::narrow<size_t>(input_iter)],
+        preprocessed = device_diagonal_func_(preprocessed ? *preprocessed : *inputs_[input_iter],
                                              subscript_indices_to_input_index[onnxruntime::narrow<size_t>(subscript_index)],
                                              dim_index_in_preprocessed_input,
                                              allocator_, einsum_ep_assets_);
@@ -454,10 +454,10 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
     }
 
     // (Identify no-op transpose and prevent triggering the transpose)
-    if (EinsumOp::IsTransposeRequired(preprocessed ? preprocessed->Shape().GetDims().size() : inputs_[onnxruntime::narrow<size_t>(input_iter)]->Shape().GetDims().size(),
+    if (EinsumOp::IsTransposeRequired(preprocessed ? preprocessed->Shape().GetDims().size() : inputs_[input_iter]->Shape().GetDims().size(),
                                       permutation)) {
-      preprocessed = EinsumOp::Transpose(preprocessed ? *preprocessed : *inputs_[onnxruntime::narrow<size_t>(input_iter)],
-                                         preprocessed ? preprocessed->Shape().GetDims() : inputs_[onnxruntime::narrow<size_t>(input_iter)]->Shape().GetDims(),
+      preprocessed = EinsumOp::Transpose(preprocessed ? *preprocessed : *inputs_[input_iter],
+                                         preprocessed ? preprocessed->Shape().GetDims() : inputs_[input_iter]->Shape().GetDims(),
                                          permutation, allocator_, einsum_ep_assets_, device_transpose_func_);
     }
 

@@ -19,10 +19,13 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+class WeightFileManager;
+
 class SharedContext : public std::enable_shared_from_this<SharedContext> {
  public:
-  explicit SharedContext(std::filesystem::path bin_path);
+  explicit SharedContext(const std::filesystem::path& bin_path);
   SharedContext() : SharedContext("") {}
+  virtual ~SharedContext() {}
 
   struct Metadata {
     struct Value {
@@ -83,7 +86,6 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
     return BinManager::GetBinPathForModel(model_path);
   }
 
- private:
   struct WeightsFile {
     ORT_DISALLOW_COPY_AND_ASSIGNMENT(WeightsFile);
     WeightsFile() = delete;
@@ -104,7 +106,9 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
     std::map<std::string, MappingContainer> imported_device_tensors_;
   };
 
-  void LoadTensorFromFile(
+ private:
+  void
+  LoadTensorFromFile(
       Metadata::Value& value,
       const std::filesystem::path& model_dir,
       std::optional<ov::RemoteContext>& remote_context,
@@ -114,8 +118,27 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
   mutable std::shared_mutex mutex_;
   std::filesystem::path bin_path_;
   BinManager bin_manager_;
-  std::unordered_map<std::filesystem::path, std::unique_ptr<WeightsFile>> weight_files_;
+  std::shared_ptr<WeightFileManager> weight_file_manager_;
+  std::unordered_map<std::filesystem::path, std::shared_ptr<WeightsFile>> weight_files_;
   Metadata::Map metadata_;
+};
+
+class WeightFileManager : public WeakSingleton<WeightFileManager> {
+ public:
+  using WeightsFile = SharedContext::WeightsFile;
+  std::shared_ptr<WeightsFile> GetOrCreateWeightsFile(const std::filesystem::path& weights_path) {
+    auto absolute_path = std::filesystem::absolute(weights_path);
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto [it, inserted] = files_.try_emplace(absolute_path, nullptr);
+    if (inserted) {
+      it->second = std::make_shared<WeightsFile>(absolute_path);
+    }
+    return it->second;
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::unordered_map<std::filesystem::path, std::shared_ptr<WeightsFile>> files_;
 };
 
 class SharedContextManager : public WeakSingleton<SharedContextManager> {

@@ -145,17 +145,20 @@ struct PackedMultiHeadAttentionData {
   bool use_memory_efficient_attention;
 };
 
-template <typename T>
+template <typename T, typename U>
 struct GroupQueryAttentionData {
   // Input Tensors
   const T* query = nullptr;
   const T* key = nullptr;
   const T* value = nullptr;
-  const T* past_key = nullptr;
-  const T* past_value = nullptr;
+  const U* past_key = nullptr;
+  const U* past_value = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
+
+  const float* k_scale = nullptr;
+  const float* v_scale = nullptr;
 
   // Total sequence length for each batch. It has shape [batch_size].
   int* total_seq_lens = nullptr;
@@ -186,13 +189,18 @@ struct GroupQueryAttentionData {
 
   // Output Tensors
   T* output = nullptr;
-  void* present_key = nullptr;
-  void* present_value = nullptr;
+  U* present_key = nullptr;
+  U* present_value = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
+  bool use_xqa = false;
+
+  // XQA buffer
+  void* xqa_buffer = nullptr;
+  size_t xqa_buffer_bytes = 0;
 };
 
 template <typename T>
