@@ -1403,6 +1403,7 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
                                     logging::Severity::kERROR,
                                     /*qnn_ctx_model_path*/ "",
                                     /*session_option_pairs*/ {},
+                                    /*graph_optimization_level*/ std::nullopt,
                                     &graph_checker);
     }
   }

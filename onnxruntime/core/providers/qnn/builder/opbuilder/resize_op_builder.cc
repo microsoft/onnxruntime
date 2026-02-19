@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <unordered_map>
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -12,6 +13,11 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+namespace {
+constexpr const char* kNpuBF16InterpolationLimitations =
+    "QNN EP: Resize support BF16 inputs with linear mode only on the NPU.";
+}
 
 class ResizeOpBuilder : public BaseOpBuilder {
  public:
@@ -50,6 +56,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   static const OnnxAttrInfo<std::string> onnx_nearest_mode_attr;
   static const OnnxAttrInfo<int64_t> onnx_antialias_attr;
   static const OnnxAttrInfo<int64_t> onnx_exclude_outside_attr;
+  static const OnnxAttrInfo<float> onnx_cubic_coeff_a_attr;
 
   // Tables that map an ONNX attribute value (string) to the corresponding integer (enum) QNN parameter value.
   // Ex: The "half_pixel" coordinate_transformation_mode is represented as the value 0 in QNN.
@@ -61,7 +68,8 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
 const std::unordered_map<std::string, uint32_t> ResizeOpBuilder::supported_modes = {
     {"nearest", QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST},
-    {"linear", QNN_OP_RESIZE_INTERPOLATION_MODE_LINEAR}};
+    {"linear", QNN_OP_RESIZE_INTERPOLATION_MODE_LINEAR},
+    {"cubic", QNN_OP_RESIZE_INTERPOLATION_MODE_CUBIC}};
 
 const std::unordered_map<std::string, uint32_t> ResizeOpBuilder::supported_coord_transf_modes = {
     {"half_pixel", QNN_OP_RESIZE_TRANSFORMATION_MODE_HALF_PIXEL},
@@ -82,6 +90,7 @@ const OnnxAttrInfo<std::string> ResizeOpBuilder::onnx_nearest_mode_attr = {"near
                                                                            "round_prefer_floor"};
 const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_antialias_attr = {"antialias", 0};
 const OnnxAttrInfo<int64_t> ResizeOpBuilder::onnx_exclude_outside_attr = {"exclude_outside", 0};
+const OnnxAttrInfo<float> ResizeOpBuilder::onnx_cubic_coeff_a_attr = {"cubic_coeff_a", -0.75f};
 
 // Returns the QNN parameter integer value that corresponds to the given ONNX attribute mode string value.
 static Ort::Status GetQnnModeValFromOnnxString(const std::unordered_map<std::string, uint32_t>& supported_qnn_modes,
@@ -218,6 +227,53 @@ Ort::Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output_0.shape, output_shape),
                 "QNN EP: Cannot get shape for Resize output");
 
+  if (interp_mode == "cubic") {
+    const auto& inputs = node_unit.Inputs();
+    if (inputs.size() > 2) {
+      // QNN Resize only consumes input[0] (no ROI/Scales/Sizes); scales are derived internally as output/input per axis.
+      // See https://docs.qualcomm.com/doc/80-63442-10/topic/MasterOpDef.html#resize
+      // Check that if scales input is provided, it's a const initializer and its values match the QNN auto calc. scales.
+      const auto& scales_input = inputs[2];
+      if (!scales_input.name.empty()) {
+        RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(scales_input.name),
+                      "QNN EP: Resize does not support dynamic scales input for cubic mode.");
+
+        const OrtValueInfo* scales_tensor = qnn_model_wrapper.GetConstantTensor(scales_input.name);
+        if (scales_tensor != nullptr) {
+          const OrtApi& ort_api = qnn_model_wrapper.GetOrtApi();
+          const std::vector<int64_t> scales_shape = utils::GetInitializerShape(scales_tensor, ort_api);
+          size_t scales_count = 1;
+          for (int64_t dim : scales_shape) {
+            scales_count *= static_cast<size_t>(dim);
+          }
+
+          if (scales_count > 0) {
+            std::vector<uint8_t> scales_raw;
+            RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(scales_tensor, scales_raw));
+            RETURN_IF_NOT(scales_raw.size() == scales_count * sizeof(float),
+                          "QNN EP: Resize scales input is expected to be float.");
+            RETURN_IF_NOT(scales_count == input_shape.size(),
+                          "QNN EP: Resize scales input rank does not match input rank.");
+
+            const float* scales = reinterpret_cast<const float*>(scales_raw.data());
+            constexpr float kScaleTolerance = 1e-5f;
+            for (size_t i = 0; i < scales_count; ++i) {
+              const float expected_scale = static_cast<float>(output_shape[i]) /
+                                           static_cast<float>(input_shape[i]);
+              if (std::abs(scales[i] - expected_scale) > kScaleTolerance) {
+                return MAKE_EP_FAIL(
+                    ("QNN EP: Resize cubic mode requires scales to match output/input shape for axis [" +
+                     std::to_string(i) + "] (scales[i]=" + std::to_string(scales[i]) +
+                     ", expected=" + std::to_string(expected_scale) + ")")
+                        .c_str());
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Check that only the spatial dimensions (width, height) are resized. The batch_size (N) and channels (C) should
   // be untouched. This code runs before layout transformation, so we know that the current layout is "channel first"
   // (e.g., N, C, S1, S2, ..., SN), and that the minimum rank is 3.
@@ -229,6 +285,11 @@ Ort::Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   std::string error_msg = "QNN EP: Data type " + std::to_string(static_cast<int>(input_data_type)) +
                           " is not supported for Resize operator in CPU backend.";
   RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, input_data_type, error_msg));
+
+  if (is_npu_backend && interp_mode != "linear" &&
+      input_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16) {
+    return MAKE_EP_FAIL(kNpuBF16InterpolationLimitations);
+  }
 
   return Ort::Status();
 }
@@ -356,6 +417,11 @@ Ort::Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
     param_tensor_names.push_back(qnn_interp_mode_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(qnn_interp_mode_param));
 
+    if (is_npu_backend && qnn_interp_mode.uint32Value == QNN_OP_RESIZE_INTERPOLATION_MODE_CUBIC) {
+      const ONNXTensorElementDataType input_dtype = node_unit.Inputs()[0].type;
+      RETURN_IF(input_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, kNpuBF16InterpolationLimitations);
+    }
+
     // Parameter 'nearest_mode'. Processed only when 'interpolation_mode' is NEAREST(0).
     if (qnn_interp_mode.uint32Value == 0) {
       Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
@@ -367,6 +433,16 @@ Ort::Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
                                              qnn_nearest_mode);
       param_tensor_names.push_back(qnn_nearest_mode_param.GetParamTensorName());
       qnn_model_wrapper.AddParamWrapper(std::move(qnn_nearest_mode_param));
+    }
+
+    if (qnn_interp_mode.uint32Value == QNN_OP_RESIZE_INTERPOLATION_MODE_CUBIC) {
+      const float cubic_coeff = GetOnnxAttr(node_helper, onnx_cubic_coeff_a_attr);
+      RETURN_IF_ERROR(AddQnnScalar<float>(qnn_model_wrapper,
+                                          node_unit.Index(),
+                                          node_unit.Name(),
+                                          cubic_coeff,
+                                          QNN_OP_RESIZE_PARAM_CUBIC_COEFF,
+                                          param_tensor_names));
     }
   }
 
