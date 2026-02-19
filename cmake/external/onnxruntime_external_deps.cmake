@@ -7,8 +7,9 @@ include(external/helper_functions.cmake)
 
 file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
 foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
-  # Lines start with "#" are comments
-  if(NOT ONNXRUNTIME_DEP MATCHES "^#")
+  # Lines start with "#" are comments, so skip them.
+  # cpp_client_telemetry is only needed for telemetry on non-Windows platforms, so skip if telemetry is not enabled or it's Windows platform.
+  if((NOT ONNXRUNTIME_DEP MATCHES "^#") AND ((NOT ONNXRUNTIME_DEP MATCHES "^cpp_client_telemetry") OR (onnxruntime_USE_TELEMETRY AND NOT WIN32)))
     # The first column is name
     list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
     # The second column is URL
@@ -875,6 +876,28 @@ endif()
 if(onnxruntime_USE_SNPE)
   include(external/find_snpe.cmake)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
+endif()
+
+# 1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms
+if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+  set(BUILD_UNIT_TESTS_SAVED "${BUILD_UNIT_TESTS}")
+  set(BUILD_FUNC_TESTS_SAVED "${BUILD_FUNC_TESTS}")
+  set(BUILD_SAMPLES_SAVED "${BUILD_SAMPLES}")
+  set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
+  set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
+  set(BUILD_SAMPLES OFF CACHE BOOL "Disable 1DS SDK samples" FORCE)
+
+  onnxruntime_fetchcontent_declare(
+    cpp_client_telemetry
+    URL ${DEP_URL_cpp_client_telemetry}
+    URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
+    EXCLUDE_FROM_ALL
+  )
+  onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+
+  set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
+  set(BUILD_FUNC_TESTS "${BUILD_FUNC_TESTS_SAVED}" CACHE BOOL "" FORCE)
+  set(BUILD_SAMPLES "${BUILD_SAMPLES_SAVED}" CACHE BOOL "" FORCE)
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)

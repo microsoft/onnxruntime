@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
+#include <cwchar>
+#include <winsvc.h>
 #include <mutex>
 #include <string>
 #include <vector>
-#include <cwchar>
-#include <winsvc.h>
 #include "core/common/logging/logging.h"
 #include "onnxruntime_config.h"
 
