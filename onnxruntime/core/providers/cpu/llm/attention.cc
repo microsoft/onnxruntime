@@ -13,6 +13,7 @@
 #include "core/providers/cpu/math/gemm.h"
 
 #include <algorithm>
+#include <vector>
 
 using onnxruntime::attention_helper::AttentionParameters;
 using onnxruntime::attention_helper::QKMatMulOutputMode;
@@ -110,8 +111,23 @@ inline void ComputeAttentionSoftcapInplace(MLFloat16* scores, int sequence_lengt
 }
 
 // Dispatches a GEMM operation across float and MLFloat16 types.
-// For float: uses math::GemmEx.
-// For MLFloat16: uses MlasGemm (hardware fp16) if available, otherwise math::GemmEx.
+//   C = alpha * op(A) * op(B) + beta * C
+//
+// For float: delegates to math::GemmEx which calls MlasGemm (optimized SGEMM).
+// For MLFloat16:
+//   - If the hardware supports native fp16 GEMM for the given transpose combo
+//     (checked via MlasHGemmSupported), uses MlasGemm directly.
+//   - Otherwise, upcasts A/B/C to fp32, runs math::GemmEx (SGEMM), and downcasts
+//     the result back to fp16.  This avoids Eigen's unoptimized fp16 codepath.
+//
+// The fp32 fallback handles strided C carefully: when ldc > N (e.g. 3D interleaved
+// heads where multiple heads share a row), conversion is done row-by-row (N elements
+// per row) to avoid overwriting adjacent heads' data.  When ldc == N (contiguous,
+// the common 4D case), a single bulk conversion is used for efficiency.
+//
+// TODO(xadupre): Consider adding a MlasFlashAttention fast path for float32 when no masks, KV cache,
+// softcap, or nonpad_kv_seqlen are active. This fuses Q*K, softmax, and QK*V into a single
+// L2-cache-tiled pass. See MultiHeadAttention (contrib_ops/cpu/bert/multihead_attention.cc).
 template <typename T>
 inline void AttentionGemm(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
                           int M, int N, int K,
@@ -127,9 +143,51 @@ inline void AttentionGemm(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
       MlasGemm(transA, transB, M, N, K, A, lda, B, ldb, C, ldc,
                MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
     } else {
-      math::GemmEx<T, ThreadPool>(transA, transB, M, N, K,
-                                  MLFloat16(alpha), A, lda, B, ldb,
-                                  MLFloat16(beta), C, ldc, nullptr);
+      // fp16 fallback: upcast to fp32, run optimized SGEMM, downcast result.
+      // Allocate fp32 buffers sized to cover the full strided memory span
+      // (rows * leading_dimension) so GemmEx can read/write at the correct strides.
+      size_t a_rows = (transA == CblasNoTrans) ? static_cast<size_t>(M) : static_cast<size_t>(K);
+      size_t b_rows = (transB == CblasNoTrans) ? static_cast<size_t>(K) : static_cast<size_t>(N);
+      size_t a_count = a_rows * static_cast<size_t>(lda);
+      size_t b_count = b_rows * static_cast<size_t>(ldb);
+      size_t c_count = static_cast<size_t>(M) * static_cast<size_t>(ldc);
+
+      std::vector<float> a_fp32(a_count);
+      std::vector<float> b_fp32(b_count);
+      std::vector<float> c_fp32(c_count);
+
+      // Upcast A and B in bulk (contiguous within each matrix's strided span).
+      MlasConvertHalfToFloatBuffer(A, a_fp32.data(), a_count);
+      MlasConvertHalfToFloatBuffer(B, b_fp32.data(), b_count);
+      if (beta != 0.0f) {
+        // C needs upcast only when beta != 0 (GEMM accumulates into C).
+        // When ldc == N the buffer is contiguous — use a single bulk conversion.
+        // When ldc > N (3D interleaved heads), convert only the N valid columns
+        // per row to avoid reading into adjacent heads' memory.
+        if (ldc == N) {
+          MlasConvertHalfToFloatBuffer(C, c_fp32.data(), c_count);
+        } else {
+          for (int row = 0; row < M; ++row) {
+            MlasConvertHalfToFloatBuffer(C + row * ldc, c_fp32.data() + row * ldc, static_cast<size_t>(N));
+          }
+        }
+      }
+
+      math::GemmEx<float, ThreadPool>(transA, transB, M, N, K,
+                                      alpha, a_fp32.data(), lda,
+                                      b_fp32.data(), ldb,
+                                      beta, c_fp32.data(), ldc, nullptr);
+
+      // Downcast result back to fp16.
+      // Same ldc == N check: bulk conversion when contiguous, row-by-row when
+      // strided to avoid overwriting adjacent heads' output data.
+      if (ldc == N) {
+        MlasConvertFloatToHalfBuffer(c_fp32.data(), C, c_count);
+      } else {
+        for (int row = 0; row < M; ++row) {
+          MlasConvertFloatToHalfBuffer(c_fp32.data() + row * ldc, C + row * ldc, static_cast<size_t>(N));
+        }
+      }
     }
   } else {
     ORT_THROW("Unsupported data type for attention GEMM: ",
