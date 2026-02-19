@@ -12,6 +12,7 @@
 #include "core/common/safeint.h"
 #include "core/common/narrow.h"
 #include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/util/math.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
@@ -522,20 +523,6 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
       prepacked_weights->buffer_sizes_.push_back(packed_size);
       is_packed = true;
 
-      // Pack Shape (Buffer 1)
-      auto dims = shape.GetDims();
-      size_t rank_bytes = sizeof(int64_t);
-      size_t dims_bytes = dims.size() * sizeof(int64_t);
-      size_t shape_size = rank_bytes + dims_bytes;
-
-      auto shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, shape_size);
-      int64_t* buffer_data = static_cast<int64_t*>(shape_buffer.get());
-      *buffer_data = static_cast<int64_t>(dims.size());
-      memcpy(buffer_data + 1, dims.data(), dims_bytes);
-
-      prepacked_weights->buffers_.push_back(std::move(shape_buffer));
-      prepacked_weights->buffer_sizes_.push_back(shape_size);
-
       // Try build MLAS Q4 cache if scales are available
       if (use_mlas_q4_gemm_) {
         const Tensor* scales_tensor = nullptr;
@@ -584,9 +571,10 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
 }
 
 template <typename T>
-Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                             int input_idx,
-                                             /*out*/ bool& used_shared_buffers) {
+Status QMoECPU<T>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
   if (expert_weight_bits_ != 4) {
@@ -596,38 +584,17 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
   if (input_idx == 2 && !prepacked_buffers.empty()) {
     packed_fc1_ = std::move(prepacked_buffers[0]);
     if (prepacked_buffers.size() > 1) {
-      int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
-      int64_t rank = buffer_data[0];
-      std::vector<int64_t> dims(static_cast<size_t>(rank));
-      memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
-      fc1_shape_ = TensorShape(dims);
-    }
-    if (prepacked_buffers.size() > 2) {
-      packed_fc1_mlas_cache_ = std::move(prepacked_buffers[2]);
+      packed_fc1_mlas_cache_ = std::move(prepacked_buffers[1]);
     }
     used_shared_buffers = true;
   } else if (input_idx == 5 && !prepacked_buffers.empty()) {
     packed_fc2_ = std::move(prepacked_buffers[0]);
     if (prepacked_buffers.size() > 1) {
-      int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
-      int64_t rank = buffer_data[0];
-      std::vector<int64_t> dims(static_cast<size_t>(rank));
-      memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
-      fc2_shape_ = TensorShape(dims);
-    }
-    if (prepacked_buffers.size() > 2) {
-      packed_fc2_mlas_cache_ = std::move(prepacked_buffers[2]);
+      packed_fc2_mlas_cache_ = std::move(prepacked_buffers[1]);
     }
     used_shared_buffers = true;
   } else if (input_idx == 8 && !prepacked_buffers.empty()) {
     packed_fc3_ = std::move(prepacked_buffers[0]);
-    if (prepacked_buffers.size() > 1) {
-      int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
-      int64_t rank = buffer_data[0];
-      std::vector<int64_t> dims(static_cast<size_t>(rank));
-      memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
-      fc3_shape_ = TensorShape(dims);
-    }
     used_shared_buffers = true;
   }
 
@@ -646,6 +613,18 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   if (block_size_ > 0) {
     ORT_ENFORCE(block_size_ >= 16, "block_size must be >= 16 when provided.");
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
+  }
+
+  // Initialize shapes from InputDefs
+  const auto& input_defs = op_kernel_info.node().InputDefs();
+  if (input_defs.size() > 2 && input_defs[2]->Exists() && input_defs[2]->Shape()) {
+    fc1_shape_ = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*input_defs[2]->Shape());
+  }
+  if (input_defs.size() > 5 && input_defs[5]->Exists() && input_defs[5]->Shape()) {
+    fc2_shape_ = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*input_defs[5]->Shape());
+  }
+  if (input_defs.size() > 8 && input_defs[8]->Exists() && input_defs[8]->Shape()) {
+    fc3_shape_ = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*input_defs[8]->Shape());
   }
 
   const auto use_mlas_q4_gemm = ParseEnvironmentVariable<bool>(kUseMlasQ4GemmMoe);
@@ -1523,11 +1502,11 @@ template QMoECPU<float>::QMoECPU(const OpKernelInfo& op_kernel_info);
 
 template Status QMoECPU<float>::Compute(OpKernelContext* context) const;
 template Status QMoECPU<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
-template Status QMoECPU<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx, bool& used_shared_buffers);
+template Status QMoECPU<float>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 template QMoECPU<MLFloat16>::QMoECPU(const OpKernelInfo& op_kernel_info);
 template Status QMoECPU<MLFloat16>::Compute(OpKernelContext* context) const;
 template Status QMoECPU<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
-template Status QMoECPU<MLFloat16>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx, bool& used_shared_buffers);
+template Status QMoECPU<MLFloat16>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 
 // Kernel Registration
 ONNX_OPERATOR_TYPED_KERNEL_EX(

@@ -59,24 +59,24 @@ namespace moe_helper {
 
 template <typename Tensor>
 Status CheckInputs(MoEParameters& parameters,
-                   const Tensor* input,         // required
-                   const Tensor* router_probs,  // required
-                   const TensorShape* fc1_experts_weights_shape,
-                   const Tensor* fc1_experts_bias,    // optional
-                   const Tensor* fc1_experts_scales,  // required for qMoE; NULL for MOE
-                   const Tensor* fc1_zero_points,     // optional, for qMoE
-                   const TensorShape* fc2_experts_weights_shape,
-                   const Tensor* fc2_experts_bias,    // optional
-                   const Tensor* fc2_experts_scales,  // required for qMoE; NULL for MOE
-                   const Tensor* fc2_zero_points,     // optional, for qMoE
-                   const TensorShape* fc3_experts_weights_shape,
-                   const Tensor* fc3_experts_bias,    // optional
-                   const Tensor* fc3_experts_scales,  // required for qMoE; NULL for MOE
-                   const Tensor* fc3_zero_points,     // optional, for qMoE
-                   const int64_t pack_size,           // number of weights packed together (like 2 for uint4 packed to uint8)
+                   const Tensor* input,                           // required
+                   const Tensor* router_probs,                    // required
+                   const TensorShape* fc1_experts_weights_shape,  // required
+                   const Tensor* fc1_experts_bias,                // optional
+                   const Tensor* fc1_experts_scales,              // required for qMoE; NULL for MOE
+                   const Tensor* fc1_zero_points,                 // optional, for qMoE
+                   const TensorShape* fc2_experts_weights_shape,  // required
+                   const Tensor* fc2_experts_bias,                // optional
+                   const Tensor* fc2_experts_scales,              // required for qMoE; NULL for MOE
+                   const Tensor* fc2_zero_points,                 // optional, for qMoE
+                   const TensorShape* fc3_experts_weights_shape,  // optional
+                   const Tensor* fc3_experts_bias,                // optional
+                   const Tensor* fc3_experts_scales,              // required for qMoE; NULL for MOE
+                   const Tensor* fc3_zero_points,                 // optional, for qMoE
+                   const int64_t pack_size,                       // number of weights packed together (like 2 for uint4 packed to uint8)
                    const bool is_fused_swiglu,
                    const int64_t block_size = 0) {  // block size for block-wise quantization
-  // Check dimensions of input to avoid input_dims index out of range. CHECK_TENSOR_SHAPE will verify each tensor later.
+  // Required inputs
   if (input == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is required.");
   }
@@ -104,39 +104,17 @@ Status CheckInputs(MoEParameters& parameters,
   int64_t hidden_size = input_dims[input_dims.size() - 1];
   int64_t num_experts = router_probs_dims[1];
 
-  int64_t local_num_experts;
-  if (fc1_experts_weights_shape != nullptr) {
-    local_num_experts = fc1_experts_weights_shape->GetDims()[0];
-  } else if (fc1_experts_scales != nullptr) {
-    local_num_experts = fc1_experts_scales->Shape().GetDims()[0];
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid MoE configuration: both fc1_experts_weights and fc1_experts_scales are null. "
-                           "At least one must be provided.");
-  }
+  int64_t local_num_experts = fc1_experts_weights_shape->GetDims()[0];
 
-  int64_t inter_size;
-  if (fc2_experts_weights_shape != nullptr) {
-    const auto& dims = fc2_experts_weights_shape->GetDims();
-    inter_size = (dims[1] * dims[2] * pack_size) / hidden_size;
-  } else if (fc3_experts_scales != nullptr) {
-    inter_size = fc3_experts_scales->Shape().GetDims()[1];
-  } else if (fc1_experts_scales != nullptr) {
-    int64_t fc1_inter_size = fc1_experts_scales->Shape().GetDims()[1];
-    inter_size = is_fused_swiglu ? fc1_inter_size / 2 : fc1_inter_size;
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid MoE configuration: unable to infer inter_size because "
-                           "fc2_experts_weights, fc3_experts_scales, and fc1_experts_scales are all null.");
-  }
+  int64_t inter_size = (fc2_experts_weights_shape->GetDims()[1] *
+                        fc2_experts_weights_shape->GetDims()[2] * pack_size) /
+                       hidden_size;
 
   bool legacy_shape = false;
-  if (fc2_experts_weights_shape != nullptr && fc1_experts_weights_shape != nullptr) {
-    const auto& fc2_experts_weights_dims = fc2_experts_weights_shape->GetDims();
-    const auto& fc1_experts_weights_dims = fc1_experts_weights_shape->GetDims();
-    legacy_shape = (hidden_size != inter_size && fc2_experts_weights_dims[1] == inter_size) ||
-                   (hidden_size == inter_size && is_fused_swiglu && fc1_experts_weights_dims[1] == hidden_size);
-  }
+  const auto& fc2_experts_weights_dims = fc2_experts_weights_shape->GetDims();
+  const auto& fc1_experts_weights_dims = fc1_experts_weights_shape->GetDims();
+  legacy_shape = (hidden_size != inter_size && fc2_experts_weights_dims[1] == inter_size) ||
+                 (hidden_size == inter_size && is_fused_swiglu && fc1_experts_weights_dims[1] == hidden_size);
 
   // Fused swiglu doubles the output dimension of FC1 since it fused two GEMMs into one.
   const int64_t fc1_inter_size = is_fused_swiglu ? (inter_size + inter_size) : inter_size;
