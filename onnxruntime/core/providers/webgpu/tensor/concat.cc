@@ -38,7 +38,7 @@ WEBGPU_CONCAT_VERSIONED_KERNEL(4, 10)
 WEBGPU_CONCAT_VERSIONED_KERNEL(11, 12)
 WEBGPU_CONCAT_KERNEL(13)
 
-void AppendCalculateInputIndexFunction(std::ostream& os, size_t input_count) {
+void AppendCalculateInputIndexFunction(OStringStream& os, size_t input_count) {
   os << "fn calculate_input_index(global_idx: u32) -> u32 {\n"
      << "  for (var i = 1u; i < " << input_count << "; i = i + 1u) {\n"
      << "    if (global_idx < " << GetElementAt("uniforms.offsets", "i", input_count) << ") {\n"
@@ -49,7 +49,7 @@ void AppendCalculateInputIndexFunction(std::ostream& os, size_t input_count) {
      << "}\n";
 }
 
-void AppendAssignOutputDataFunction(std::ostream& os, gsl::span<const ShaderVariableHelper*> inputs, const ShaderVariableHelper& output, size_t axis, size_t input_count) {
+void AppendAssignOutputDataFunction(OStringStream& os, gsl::span<const ShaderVariableHelper*> inputs, const ShaderVariableHelper& output, size_t axis, size_t input_count) {
   os << "fn assign_output_data(global_idx: u32, input_index: u32) {\n";
   for (size_t i = 0; i < inputs.size(); ++i) {
     if (i == 0) {

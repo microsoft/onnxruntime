@@ -3584,6 +3584,11 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      21);
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, false /*use_contrib_qdq*/);
@@ -3723,7 +3728,12 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                       TransformerLevel::Level1,
                       18, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
                       {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
-    // TODO: fix opset 19
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      21, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false, false /*use_contrib_qdq*/);
