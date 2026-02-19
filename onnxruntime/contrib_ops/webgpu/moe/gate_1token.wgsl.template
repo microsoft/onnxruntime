@@ -59,11 +59,6 @@ $MAIN {
             workgroupBarrier();
         }
     }
-    if (local_idx < K) {
-        // found the top K experts for token, write to output
-        let expert_idx = shared_idxs[local_idx];
-        let expert_base = expert_idx * uniforms.rows;
-    }
     if (local_idx == 0u) {
         // softmax
         var sum : f32 = 0.0;
