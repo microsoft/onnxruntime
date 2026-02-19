@@ -2329,6 +2329,12 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
     } else {
       SetIndices<int64_t>(gathered_span, raw_indices, indices);
     }
+
+    // Raw data is in little endian
+    if constexpr (endian::native != endian::little) {
+      gsl::span<std::byte> bytes(reinterpret_cast<std::byte*>(raw_data.data()), raw_data.size());
+      onnxruntime::utils::SwapByteOrderInplace(element_size, bytes);
+    }
   } else {
     indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
     utils::SetRawDataInTensorProto(indices, std::string());
