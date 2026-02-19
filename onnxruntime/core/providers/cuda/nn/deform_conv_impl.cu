@@ -130,10 +130,8 @@ __device__ __inline__ BFloat16 BilinearInterpolate(
   return BFloat16(w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4);
 }
 
-// 1D parallel: each thread handles (in_c, out_y, out_x, out_b), inner loop over kH x kW.
-// num_kernels = C * out_h * out_w * parallel_imgs.
-// Col layout row-major: rows = C*kH*kW, cols = parallel_imgs*out_h*out_w.
-// data_col[col_row_idx * col_stride + c_col] with col_stride = parallel_imgs*out_h*out_w.
+// 1D parallel: each thread handles one output pixel (out_b, out_y, out_x) for a specific channel (in_c).
+// Optimized memory access patterns and removed redundant calculations.
 template <typename T, typename IndexT>
 __global__ void DeformableIm2ColKernel(
     IndexT num_kernels,
@@ -158,66 +156,103 @@ __global__ void DeformableIm2ColKernel(
     DivMod<IndexT> channel_per_offset_grp_div,
     bool use_mask,
     T* __restrict__ data_col) {
-  
+
   // Reconstruct dimensions from DivMod objects
   const int64_t out_h = out_h_div.d_;
   const int64_t out_w = out_w_div.d_;
   const int64_t parallel_imgs = parallel_imgs_div.d_;
-  
+
   const int64_t out_size = out_h * out_w;
+  // The stride for data_col is (batch * out_h * out_w)
   const int64_t col_stride = parallel_imgs * out_size;
 
   for (IndexT index = blockIdx.x * blockDim.x + threadIdx.x; index < num_kernels; index += blockDim.x * gridDim.x) {
     IndexT val = index;
     IndexT out_x, out_y, out_b, in_c;
-    
+
     // Fast division/modulo to recover coordinates
     out_w_div.divmod(val, val, out_x);
     out_h_div.divmod(val, val, out_y);
     parallel_imgs_div.divmod(val, in_c, out_b);
 
-    IndexT offset_grp, dummy;
-    channel_per_offset_grp_div.divmod(in_c, offset_grp, dummy);
+    // [Optimization 3] Avoid expensive division if offset_group is 1 (very common case).
+    IndexT offset_grp = 0;
+    if (offset_group > 1) {
+        IndexT dummy;
+        channel_per_offset_grp_div.divmod(in_c, offset_grp, dummy);
+    }
 
+    // [Optimization 2] Common Subexpression Elimination (CSE) & Pointer Arithmetic
+    // Pre-calculate base pointers to reduce integer arithmetic inside the inner loops.
+
+    // 1. Input pointer base for this batch and channel.
     const T* input_ptr = input + out_b * (channels * height * width) + in_c * (height * width);
-    const T* offset_ptr = offset + out_b * (offset_group * 2 * weight_h * weight_w * out_size) +
-                          offset_grp * (2 * weight_h * weight_w * out_size);
-    const T* mask_ptr = use_mask ? (mask + out_b * (offset_group * weight_h * weight_w * out_size) +
-                                    offset_grp * (weight_h * weight_w * out_size))
-                                : nullptr;
 
-    const int64_t c_col = out_b * out_size + out_y * out_w + out_x;
+    // 2. Spatial index in the output feature map.
+    const int64_t spatial_idx = out_y * out_w + out_x;
 
+    // 3. Offset pointer base calculation.
+    // Layout: (N, offset_groups, 2*KH*KW, OH, OW)
+    // We pre-calculate the pointer to the start of the specific (n, g) block, plus spatial_idx.
+    const int64_t offset_group_block_size = 2 * weight_h * weight_w * out_size;
+    const T* offset_ptr_base = offset + (out_b * offset_group + offset_grp) * offset_group_block_size + spatial_idx;
+
+    // 4. Mask pointer base calculation (if used).
+    // Layout: (N, offset_groups, KH*KW, OH, OW)
+    const T* mask_ptr_base = nullptr;
+    if (use_mask) {
+        const int64_t mask_group_block_size = weight_h * weight_w * out_size;
+        mask_ptr_base = mask + (out_b * offset_group + offset_grp) * mask_group_block_size + spatial_idx;
+    }
+
+    // 5. Output pointer base calculation.
+    // data_col Layout: (C * KH * KW, N * OH * OW)
+    // The current thread writes to the column `c_col` = (b * OH * OW) + spatial_idx.
+    // The starting row for this channel is `in_c * KH * KW`.
+    const int64_t c_col = out_b * out_size + spatial_idx;
+    T* data_col_ptr_base = data_col + (in_c * weight_h * weight_w) * col_stride + c_col;
+
+    // 6. Pre-calculate invariant coordinate parts.
     // Use float for coordinate math when T is half or BFloat16 to avoid precision loss.
     using CoordT = typename std::conditional<DeformConvUseFloatCoords<T>::value, float, T>::type;
+    const CoordT base_h_im = static_cast<CoordT>(out_y * stride_h - pad_h);
+    const CoordT base_w_im = static_cast<CoordT>(out_x * stride_w - pad_w);
 
 #pragma unroll
     for (int64_t i = 0; i < weight_h; ++i) {
 #pragma unroll
       for (int64_t j = 0; j < weight_w; ++j) {
-        const int64_t mask_idx = i * weight_w + j;
-        const int64_t offset_idx = 2 * mask_idx;
+        const int64_t kernel_idx = i * weight_w + j;
 
         T mask_val = static_cast<T>(1);
         if (use_mask) {
-          mask_val = DeformConvLdg(mask_ptr + mask_idx * out_size + out_y * out_w + out_x);
+          // Access mask using pre-calculated base and stride.
+          mask_val = DeformConvLdg(mask_ptr_base + kernel_idx * out_size);
+
+          // [Optimization 1] Early Exit / Pruning
+          // If mask is 0, the contribution is 0. Skip expensive offset load and interpolation.
+          // Note: casting to float for comparison is safe for standard floating point types.
+          if (static_cast<float>(mask_val) == 0.0f) {
+             data_col_ptr_base[kernel_idx * col_stride] = static_cast<T>(0);
+             continue;
+          }
         }
 
-        const int64_t offset_h_idx = (offset_idx)*out_size + out_y * out_w + out_x;
-        const int64_t offset_w_idx = (offset_idx + 1) * out_size + out_y * out_w + out_x;
-        const CoordT offset_h = static_cast<CoordT>(DeformConvLdg(offset_ptr + offset_h_idx));
-        const CoordT offset_w = static_cast<CoordT>(DeformConvLdg(offset_ptr + offset_w_idx));
+        // Calculate offset pointers relative to the base.
+        // The offset tensor stores (y_offset, x_offset) pairs for each kernel weight.
+        // Stride between y_offset and x_offset is `out_size`.
+        const int64_t offset_offset_idx = (2 * kernel_idx) * out_size;
 
-        const CoordT h_im = static_cast<CoordT>(out_y * stride_h - pad_h + i * dilation_h) + offset_h;
-        const CoordT w_im = static_cast<CoordT>(out_x * stride_w - pad_w + j * dilation_w) + offset_w;
+        const CoordT offset_h = static_cast<CoordT>(DeformConvLdg(offset_ptr_base + offset_offset_idx));
+        const CoordT offset_w = static_cast<CoordT>(DeformConvLdg(offset_ptr_base + offset_offset_idx + out_size));
 
-        T val = static_cast<T>(0);
-        if (mask_val != static_cast<T>(0)) {
-          val = BilinearInterpolate(input_ptr, height, width, h_im, w_im);
-        }
+        const CoordT h_im = base_h_im + static_cast<CoordT>(i * dilation_h) + offset_h;
+        const CoordT w_im = base_w_im + static_cast<CoordT>(j * dilation_w) + offset_w;
 
-        const int64_t col_row_idx = (in_c * weight_h * weight_w) + (i * weight_w + j);
-        data_col[col_row_idx * col_stride + c_col] = val * mask_val;
+        T val = BilinearInterpolate(input_ptr, height, width, h_im, w_im);
+
+        // Write result to data_col using pre-calculated base.
+        data_col_ptr_base[kernel_idx * col_stride] = val * mask_val;
       }
     }
   }
@@ -225,12 +260,30 @@ __global__ void DeformableIm2ColKernel(
 
 // Bias add: Y[n,m,oh,ow] += B[m]. Layout NCHW.
 template <typename T>
-__global__ void DeformConvAddBiasKernel(T* Y, const T* B, int64_t N, int64_t M, int64_t out_h, int64_t out_w) {
-  int64_t out_size = out_h * out_w;
-  int64_t total = N * M * out_size;
-  for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total; idx += blockDim.x * gridDim.x) {
-    int64_t m = (idx / out_size) % M;
-    Y[idx] += DeformConvLdg(B + m);
+__global__ void DeformConvAddBiasKernel(
+    T* Y,
+    const T* B,
+    DivMod<int64_t> spatial_div, // For dividing by (H * W)
+    DivMod<int64_t> channel_div, // For dividing by M (channel count)
+    int64_t total_elements) {
+
+  for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total_elements; idx += blockDim.x * gridDim.x) {
+    int64_t val = idx;
+    int64_t batch_channel_idx, pixel_idx;
+
+    // 1. First decomposition: decompose idx into (batch_channel_idx, pixel_idx)
+    // 等价于: batch_channel_idx = idx / (H*W); pixel_idx = idx % (H*W);
+    spatial_div.divmod(val, batch_channel_idx, pixel_idx);
+
+    int64_t batch_idx, channel_idx;
+
+    // 2. Second decomposition: decompose batch_channel_idx into (batch_idx, channel_idx)
+    // Equivalent to: channel_idx = batch_channel_idx % M;
+    // We only need channel_idx (i.e. m)
+    channel_div.divmod(batch_channel_idx, batch_idx, channel_idx);
+
+    // channel_idx is what we need (i.e. m)
+    Y[idx] += DeformConvLdg(B + channel_idx);
   }
 }
 
@@ -261,8 +314,24 @@ template <typename T>
 void DeformConvAddBiasImpl(cudaStream_t stream, T* Y, const T* B, int64_t N, int64_t M, int64_t out_h, int64_t out_w) {
   int64_t total = N * M * out_h * out_w;
   if (total <= 0) return;
+
+  // 1. Prepare divisor
+  int64_t out_size = out_h * out_w;
+
+  // 2. Create FastDivMod object (note: ensure int64_t version of DivMod is used here)
+  DivMod<int64_t> spatial_div(out_size);
+  DivMod<int64_t> channel_div(M);
+
   int blocks = GetGridSize(static_cast<size_t>(total), kDeformConvThreadsPerBlock);
-  DeformConvAddBiasKernel<T><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(Y, B, N, M, out_h, out_w);
+
+  // 3. Pass DivMod objects
+  DeformConvAddBiasKernel<T><<<blocks, kDeformConvThreadsPerBlock, 0, stream>>>(
+      Y,
+      B,
+      spatial_div,
+      channel_div,
+      total
+  );
 }
 
 template <typename T>
