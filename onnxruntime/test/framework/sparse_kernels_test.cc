@@ -1087,7 +1087,14 @@ static void RawSparseDataChecker(gsl::span<const T> expected_values,
                                  const SparseTensorProto& actual) {
   const int64_t actual_size = ActualSize(actual);
 
-  const T* raw_data = reinterpret_cast<const T*>(actual.values().raw_data().data());
+  auto actual_values = actual.values();
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+       onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+  }
+
+  const T* raw_data = reinterpret_cast<const T*>(actual_values.raw_data().data());
   auto actual_span = gsl::make_span<const T>(raw_data, actual_size);
 
   ASSERT_THAT(actual_span, testing::ContainerEq(expected_values));
@@ -1101,9 +1108,16 @@ void RawSparseDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat,
                                     const SparseTensorProto& actual) {
   const int64_t actual_size = ActualSize(actual);
 
+  auto actual_values = actual.values();
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+       onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+  }
+
   static_assert(sizeof(uint16_t) == sizeof(BFloat16), "Expecting equal sizes");
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
-  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.values().raw_data().data());
+  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual_values.raw_data().data());
   auto actual_span = gsl::make_span<const uint16_t>(raw_data, actual_size);
 
   ASSERT_THAT(actual_span, testing::ContainerEq(expected));
@@ -1116,9 +1130,16 @@ void RawSparseDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat,
                                      const SparseTensorProto& actual) {
   const int64_t actual_size = ActualSize(actual);
 
+  auto actual_values = actual.values();
+
+  // raw data is LE, might need to convert it
+  if constexpr (endian::native != endian::little) {
+       onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+  }
+
   static_assert(sizeof(uint16_t) == sizeof(MLFloat16), "Expecting equal sizes");
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
-  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual.values().raw_data().data());
+  const uint16_t* raw_data = reinterpret_cast<const uint16_t*>(actual_values.raw_data().data());
   auto actual_span = gsl::make_span<const uint16_t>(raw_data, actual_size);
 
   ASSERT_THAT(actual_span, testing::ContainerEq(expected));
