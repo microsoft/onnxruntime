@@ -143,5 +143,7 @@ void CreateFusedMatMulOpBuilder(const std::string& op_type, OpBuilderRegistratio
 
 void CreateIsNanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateGroupNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime
