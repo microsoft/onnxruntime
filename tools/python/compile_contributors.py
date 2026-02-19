@@ -219,6 +219,7 @@ def extract_pr_numbers(text, strict=False):
         # And it avoids matching truncated headlines like (#25... as PR #25
         patterns = [
             r"\(#(\d+)\)",  # (#123)
+            r"(?:^|\s|-)#(\d+)(?:\s|$)",  # #123 at start, or preceded by space/dash, and followed by space or end
             r"microsoft/onnxruntime/pull/(\d+)",
         ]
         results = []
@@ -280,7 +281,7 @@ def get_prs_from_log(log_output, prs_base=None, log_file=None, scan_depth=100):
                 # Reuse commits already fetched in get_pr_details to avoid an extra gh CLI call
                 for commit in details.get("commits", []):
                     all_extracted_nums.extend(extract_pr_numbers(commit.get("messageHeadline", ""), strict=True))
-                    all_extracted_nums.extend(extract_pr_numbers(commit.get("messageBody", ""), strict=True))
+                    # DO NOT scan messageBody for expansion to avoid historical context PRs
 
                 # Filter and Normalize
                 current_pr_int = int(pr_num_str)
