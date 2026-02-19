@@ -25,10 +25,9 @@ samples/cxx/
 
 ### 1. Extract the ONNX Runtime package
 
-Download and extract an ONNX Runtime release archive. For example, with the archive in the `samples/` directory:
+Download and extract an ONNX Runtime release archive. For example:
 
 ```
-cd samples
 tar -xf onnxruntime-win-x64-1.25.0.zip
 ```
 
