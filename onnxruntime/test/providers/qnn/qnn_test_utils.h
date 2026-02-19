@@ -919,15 +919,14 @@ inline void VerifyFp16Output(const std::vector<OrtValue>& cpu_f16_outputs,
 
       // Get errors of f16@CPU_EP and f16@QNN_EP against f32@CPU_EP.
       constexpr float epsilon = 1e-16f;
-      const float cpu_relative_err = std::fabs(expected_val - cpu_f16_val) / (expected_val + epsilon);
-      const float qnn_relative_err = std::fabs(expected_val - qnn_f16_val) / (expected_val + epsilon);
+      const float cpu_relative_err = std::fabs(expected_val - cpu_f16_val) / (std::fabs(expected_val) + epsilon);
+      const float qnn_relative_err = std::fabs(expected_val - qnn_f16_val) / (std::fabs(expected_val) + epsilon);
 
       // Also compare the FP16 values against each other.
-      // This is equivalent to abs(f16@QNN_EP - f16@CPU_EP) / output_range
       const float f16_vals_err = std::fabs(qnn_relative_err - cpu_relative_err);
 
       // True if f16@QNN_EP is at least as accurate as f16@CPU_EP when compared to expected f32@CPU_EP value.
-      const bool is_as_accurate_as_cpu_ep = qnn_relative_err <= qnn_relative_err;
+      const bool is_as_accurate_as_cpu_ep = qnn_relative_err <= cpu_relative_err;
 
       // True if the normalized difference between f16@QNN_EP and f16@CPU_EP is within tolerance.
       const bool f16_vals_diff_within_tolerance = f16_vals_err <= tolerance;
