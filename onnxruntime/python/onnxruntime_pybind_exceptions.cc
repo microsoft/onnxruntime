@@ -12,13 +12,26 @@ void ThrowIfPyErrOccured() {
     PyObject *ptype, *pvalue, *ptraceback;
     PyErr_Fetch(&ptype, &pvalue, &ptraceback);
 
+    // 1. Normalize the exception so pvalue is safe to evaluate
+    PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
+
     PyObject* pStr = PyObject_Str(ptype);
     std::string sType = py::reinterpret_borrow<py::str>(pStr);
     Py_XDECREF(pStr);
-    pStr = PyObject_Str(pvalue);
-    sType += ": ";
-    sType += py::reinterpret_borrow<py::str>(pStr);
-    Py_XDECREF(pStr);
+
+    if (pvalue != nullptr) {
+        pStr = PyObject_Str(pvalue);
+        sType += ": ";
+        sType += py::reinterpret_borrow<py::str>(pStr);
+        Py_XDECREF(pStr);
+    }
+
+    // 2. Safely release the references!
+    // Older version of ORT (<= 1.24.2) does not have these and will leak the traceback objects.
+    Py_XDECREF(ptype);
+    Py_XDECREF(pvalue);
+    Py_XDECREF(ptraceback);
+
     throw Fail(sType);
   }
 }
