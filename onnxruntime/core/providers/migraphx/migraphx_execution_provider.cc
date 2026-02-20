@@ -1237,38 +1237,28 @@ void save_compiled_model(const migraphx::program& prog, const std::filesystem::p
 }
 
 // Generate a vector of batch sizes to compile based on max_compiled_models setting
-// max_compiled_models == 1: only compile for max batch size
-// max_compiled_models == 2: compile for 1 and max batch size
-// max_compiled_models >= 3: compile for 1, max/2 (midpoint), and max batch size
+// Batch sizes are evenly spaced between 1 and max_batch_size.
+// max_compiled_models == 1: {max}
+// max_compiled_models == 2: {1, max}
+// max_compiled_models == 3: {1, max/2, max}
+// max_compiled_models == N: N evenly spaced values from 1 to max
 static std::vector<std::size_t> generate_compiled_batch_sizes(std::size_t max_batch_size, std::size_t max_compiled_models) {
   std::vector<std::size_t> batch_sizes;
   if (max_batch_size == 0) {
     return batch_sizes;
   }
-  
+
   if (max_compiled_models == 1) {
-    // Only compile the max batch size
     batch_sizes.push_back(max_batch_size);
-  } else if (max_compiled_models == 2) {
-    // Compile 1 and max batch size
-    batch_sizes.push_back(1);
-    if (max_batch_size > 1) {
-      batch_sizes.push_back(max_batch_size);
-    }
-  } else {
-    // max_compiled_models >= 3:
-    // Compile {1, mid, max}
-    batch_sizes.push_back(1);
-
-    if (max_batch_size > 2) {
-      std::size_t mid = max_batch_size / 2;
-      if (mid <= 1) mid = 2;
-      if (mid >= max_batch_size) mid = max_batch_size / 2;
-      batch_sizes.push_back(mid);
-    }
-
-    if (max_batch_size > 1) {
-      batch_sizes.push_back(max_batch_size);
+  } else if (max_compiled_models >= 2) {
+    // Evenly divide the range [1, max_batch_size] into max_compiled_models points
+    std::size_t n = max_compiled_models;
+    for (std::size_t i = 0; i < n; ++i) {
+      std::size_t bs = 1 + (max_batch_size - 1) * i / (n - 1);
+      // Avoid duplicates (can happen when max_batch_size is small relative to n)
+      if (batch_sizes.empty() || bs > batch_sizes.back()) {
+        batch_sizes.push_back(bs);
+      }
     }
   }
 
@@ -1286,11 +1276,9 @@ static std::vector<std::size_t> generate_compiled_batch_sizes(std::size_t max_ba
   return batch_sizes;
 }
 
-// Find the nearest compiled batch size for the given requested batch
-// max_compiled_models == 1: always use max batch size
-// max_compiled_models == 2: use 1 if requested <= 1, otherwise max batch size
-// max_compiled_models >= 3: use 1, max/2 (midpoint), or max batch size
-static std::size_t find_nearest_batch_for_compiled_models(std::size_t requested_batch,
+// Find the smallest compiled batch size >= requested_batch
+// Uses the same evenly-spaced scheme as generate_compiled_batch_sizes
+static std::size_t find_nearest_compiled_batch_size(std::size_t requested_batch,
                                                            std::size_t max_batch_size,
                                                            std::size_t max_compiled_models) {
   if (max_batch_size == 0) {
@@ -1299,21 +1287,17 @@ static std::size_t find_nearest_batch_for_compiled_models(std::size_t requested_
 
   if (max_compiled_models == 1) {
     return max_batch_size;
-  } else if (max_compiled_models == 2) {
-    return (requested_batch <= 1) ? 1 : max_batch_size;
-  } else {
-    // max_compiled_models >= 3: compiled sizes are {1, mid, max}
-    std::size_t mid = max_batch_size / 2;
-    if (mid <= 1) mid = 2;
-    if (mid >= max_batch_size) mid = max_batch_size / 2;
-
-    if (requested_batch <= 1) {
-      return 1;
-    } else if (requested_batch <= mid) {
-      return mid;
-    }
-    return max_batch_size;
   }
+
+  // Walk the evenly-spaced batch sizes and return the first one >= requested_batch
+  std::size_t n = max_compiled_models;
+  for (std::size_t i = 0; i < n; ++i) {
+    std::size_t bs = 1 + (max_batch_size - 1) * i / (n - 1);
+    if (bs >= requested_batch) {
+      return bs;
+    }
+  }
+  return max_batch_size;
 }
 
 // Pad input tensor data to a larger batch size
@@ -2367,7 +2351,7 @@ static bool execute_ultra_fast_path(
         // Check if the batch size matches (original or padded)
         if (shape[0] != last_shapes[offset]) {
           // Batch size changed - check if we can use padding
-          std::size_t required_padded = find_nearest_batch_for_compiled_models(
+          std::size_t required_padded = find_nearest_compiled_batch_size(
               original_batch_size, mgx_state->max_dynamic_batch, mgx_state->max_compiled_models);
           
           if (required_padded != padded_batch_size) {
@@ -2512,7 +2496,7 @@ static bool execute_fast_path(
       const auto tensor_shape = tensor_info.GetShape();
       if (!tensor_shape.empty()) {
         original_batch_size = static_cast<std::size_t>(tensor_shape[0]);
-        padded_batch_size = find_nearest_batch_for_compiled_models(original_batch_size,
+        padded_batch_size = find_nearest_compiled_batch_size(original_batch_size,
                                                                     mgx_state->max_dynamic_batch,
                                                                     mgx_state->max_compiled_models);
         needs_padding = (padded_batch_size > original_batch_size);
@@ -3015,7 +2999,7 @@ static void execute_standard_path(
       const auto tensor_shape = tensor_info.GetShape();
       if (!tensor_shape.empty()) {
         original_batch_size = static_cast<std::size_t>(tensor_shape[0]);
-        padded_batch_size = find_nearest_batch_for_compiled_models(original_batch_size,
+        padded_batch_size = find_nearest_compiled_batch_size(original_batch_size,
                                                                     mgx_state->max_dynamic_batch,
                                                                     mgx_state->max_compiled_models);
         needs_padding = (padded_batch_size > original_batch_size);

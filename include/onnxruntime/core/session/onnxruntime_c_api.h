@@ -827,7 +827,7 @@ typedef struct OrtMIGraphXProviderOptions {
    */
   int migraphx_arena_extend_strategy;
   size_t migraphx_max_dynamic_batch;                //Max Dynamic batch size. Default 0 = disabled, nonzero = enabled
-  size_t migraphx_max_compiled_models;              // 1 -> max only (default), 2 -> 1 and max, >=3 -> 1, mid, max
+  size_t migraphx_max_compiled_models;              // Number of evenly-spaced batch sizes to compile (1 -> max only, default)
 
   // This is the legacy struct and don't add new fields here.
 } OrtMIGraphXProviderOptions;

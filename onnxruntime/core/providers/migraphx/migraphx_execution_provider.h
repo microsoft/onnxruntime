@@ -67,7 +67,7 @@ struct MIGraphXFuncState {
   bool dump_model_ops = false;
   bool exhaustive_tune = false;
   size_t max_dynamic_batch;
-  size_t max_compiled_models = 1;  // 1 -> max only (default), 2 -> 1 and max, >=3 -> 1, mid, max
+  size_t max_compiled_models = 1;  // Number of evenly-spaced batch sizes to compile (1 -> max only)
   // Reference to the cached programs map for this node (keyed by input shape hash)
   std::optional<std::reference_wrapper<std::unordered_map<std::string, migraphx::program>>> cached_programs_ref = std::nullopt;
   
@@ -250,7 +250,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   void* external_empty_cache_{nullptr};
   bool first_start_ = true;
   size_t max_dynamic_batch_{0};
-  size_t max_compiled_models_{1};  // 1 -> max only (default), 2 -> 1 and max, >=3 -> 1, mid, max
+  size_t max_compiled_models_{1};  // Number of evenly-spaced batch sizes to compile (1 -> max only)
 };
 
 }; // namespace onnxruntime

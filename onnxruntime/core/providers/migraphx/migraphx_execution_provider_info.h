@@ -58,7 +58,7 @@ struct MIGraphXExecutionProviderInfo {
 
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   size_t max_dynamic_batch{static_cast<size_t>(0)};
-  size_t max_compiled_models{static_cast<size_t>(1)};  // 1 -> max only (default), 2 -> 1 and max, >=3 -> 1, mid, max
+  size_t max_compiled_models{static_cast<size_t>(1)};  // Number of evenly-spaced batch sizes to compile (1 -> max only)
 
   void* external_alloc{nullptr};
   void* external_free{nullptr};
