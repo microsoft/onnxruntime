@@ -31,7 +31,7 @@ MlasComputeFP16Gelu(const MLAS_FP16* input,
         return;
     #endif
 #endif 
-    (void)temp; // 'temp' is only used by vectorized kernel implementations and it is unused in the scalar fallback path.
+    MLAS_UNREFERENCED_PARAMETER(temp); // 'temp' is only used by vectorized kernel implementations and it is unused in the scalar fallback path.
     for (size_t i = 0; i < count; ++i) {
         float x = static_cast<float>(input[i]);
         float gelu_val;
