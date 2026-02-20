@@ -67,9 +67,17 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t group = attrs_.group;
   const int64_t offset_group = attrs_.offset_group;
 
+  // Validate input shapes
+  ORT_RETURN_IF_NOT(stride_h > 0 && stride_w > 0, "Strides must be positive.");
+  ORT_RETURN_IF_NOT(dilation_h > 0 && dilation_w > 0, "Dilations must be positive.");
+  ORT_RETURN_IF_NOT(kH > 0 && kW > 0, "Kernel shape must be positive.");
+  ORT_RETURN_IF_NOT(group > 0, "group must be positive");
+  ORT_RETURN_IF_NOT(offset_group > 0, "offset_group must be positive");
+
   const int64_t out_h = (H + pad_h + pad_h_end - dilation_h * (kH - 1) - 1) / stride_h + 1;
   const int64_t out_w = (W_in + pad_w + pad_w_end - dilation_w * (kW - 1) - 1) / stride_w + 1;
 
+  // Checks
   ORT_RETURN_IF_NOT(W_shape.NumDimensions() == 4, "Weight must be 4D.");
   ORT_RETURN_IF_NOT(offset_shape.NumDimensions() == 4, "Offset must be 4D.");
   ORT_RETURN_IF_NOT(offset_shape[1] == offset_group * 2 * kH * kW,
