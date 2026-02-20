@@ -124,6 +124,7 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
   for (int64_t p = 0; p < prefix_count; ++p) {
     int64_t batch_idx = p / prefix_stride_for_batch;
     int64_t wi = (write_indices != nullptr) ? write_indices[batch_idx] : 0;
+    ORT_ENFORCE(wi >= 0, "TensorScatter: write_indices[", batch_idx, "] = ", wi, " is negative");
 
     ptrdiff_t update_offset = static_cast<ptrdiff_t>(SafeInt<size_t>(p) * update_axis_stride);
     ptrdiff_t cache_offset = static_cast<ptrdiff_t>(SafeInt<size_t>(p) * cache_axis_stride);

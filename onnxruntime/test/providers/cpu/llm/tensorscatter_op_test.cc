@@ -136,7 +136,7 @@ TEST(TensorScatterTest, Linear_Float16) {
   test.Run();
 }
 
-// Explicit axis attribute test (axis=1 on a 4D tensor)
+// Explicit axis attribute test (axis=1 on a 3D tensor)
 TEST(TensorScatterTest, Linear_ExplicitAxis) {
   OpTester test("TensorScatter", 24);
   test.AddAttribute<std::string>("mode", "linear");
