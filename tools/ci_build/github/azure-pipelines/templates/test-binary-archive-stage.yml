@@ -67,9 +67,11 @@ stages:
     # Build and run the C++ sample using the extracted ONNX Runtime package.
 
     - script: >
-        cmake -S $(Build.SourcesDirectory)/samples/cxx -B $(Build.BinariesDirectory)/sample_build
-            -DORT_HEADER_DIR:PATH=$(ORT_PACKAGE_DIR)/include
-            -DORT_LIBRARY_DIR:PATH=$(ORT_PACKAGE_DIR)/lib
+        cmake
+        -S $(Build.SourcesDirectory)/samples/cxx
+        -B $(Build.BinariesDirectory)/sample_build
+        -DORT_HEADER_DIR:PATH=$(ORT_PACKAGE_DIR)/include
+        -DORT_LIBRARY_DIR:PATH=$(ORT_PACKAGE_DIR)/lib
       displayName: 'Generate C++ sample build system'
 
     - script: |
@@ -90,10 +92,12 @@ stages:
       # For win-arm64x, also build and run with x64 emulation.
 
       - script: >
-          cmake -S $(Build.SourcesDirectory)/samples/cxx -B $(Build.BinariesDirectory)/sample_build
-              -DORT_HEADER_DIR:PATH=$(ORT_PACKAGE_DIR)/include
-              -DORT_LIBRARY_DIR:PATH=$(ORT_PACKAGE_DIR)/lib
-              -A x64
+          cmake
+          -S $(Build.SourcesDirectory)/samples/cxx
+          -B $(Build.BinariesDirectory)/sample_build
+          -DORT_HEADER_DIR:PATH=$(ORT_PACKAGE_DIR)/include
+          -DORT_LIBRARY_DIR:PATH=$(ORT_PACKAGE_DIR)/lib
+          -A x64
         displayName: 'Generate C++ sample build system (x64 emulation)'
 
       - script: |
