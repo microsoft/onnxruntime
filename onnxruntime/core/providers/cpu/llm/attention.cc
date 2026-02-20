@@ -144,13 +144,17 @@ inline void AttentionGemm(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
                MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
     } else {
       // fp16 fallback: upcast to fp32, run optimized SGEMM, downcast result.
-      // Allocate fp32 buffers sized to cover the full strided memory span
-      // (rows * leading_dimension) so GemmEx can read/write at the correct strides.
+      // Compute the exact contiguous span each matrix occupies: (rows-1)*stride + cols.
+      // This is the distance from the first element to the last accessed element + 1.
+      // Using rows*stride would overread when the pointer is offset into a larger
+      // interleaved buffer (e.g., 3D layout where lda > K for a non-first head).
       size_t a_rows = (transA == CblasNoTrans) ? static_cast<size_t>(M) : static_cast<size_t>(K);
+      size_t a_cols = (transA == CblasNoTrans) ? static_cast<size_t>(K) : static_cast<size_t>(M);
       size_t b_rows = (transB == CblasNoTrans) ? static_cast<size_t>(K) : static_cast<size_t>(N);
-      size_t a_count = a_rows * static_cast<size_t>(lda);
-      size_t b_count = b_rows * static_cast<size_t>(ldb);
-      size_t c_count = static_cast<size_t>(M) * static_cast<size_t>(ldc);
+      size_t b_cols = (transB == CblasNoTrans) ? static_cast<size_t>(N) : static_cast<size_t>(K);
+      size_t a_count = (a_rows > 0) ? (a_rows - 1) * static_cast<size_t>(lda) + a_cols : 0;
+      size_t b_count = (b_rows > 0) ? (b_rows - 1) * static_cast<size_t>(ldb) + b_cols : 0;
+      size_t c_count = (M > 0) ? static_cast<size_t>(M - 1) * static_cast<size_t>(ldc) + static_cast<size_t>(N) : 0;
 
       std::vector<float> a_fp32(a_count);
       std::vector<float> b_fp32(b_count);
