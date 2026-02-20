@@ -94,16 +94,16 @@ stages:
       - script: >
           cmake
           -S $(Build.SourcesDirectory)/samples/cxx
-          -B $(Build.BinariesDirectory)/sample_build
+          -B $(Build.BinariesDirectory)/sample_build_x64
           -DORT_HEADER_DIR:PATH=$(ORT_PACKAGE_DIR)/include
           -DORT_LIBRARY_DIR:PATH=$(ORT_PACKAGE_DIR)/lib
           -A x64
-        displayName: 'Generate C++ sample build system (x64 emulation)'
+        displayName: 'Generate C++ sample build system (x64)'
 
       - script: |
-          cmake --build $(Build.BinariesDirectory)/sample_build --config Release
-        displayName: 'Build C++ sample (x64 emulation)'
+          cmake --build $(Build.BinariesDirectory)/sample_build_x64 --config Release
+        displayName: 'Build C++ sample (x64)'
 
       - script: |
-          $(Build.BinariesDirectory)/sample_build/onnxruntime_sample_program $(Build.SourcesDirectory)/samples/cxx/add_model.onnx
+          $(Build.BinariesDirectory)/sample_build_x64/onnxruntime_sample_program $(Build.SourcesDirectory)/samples/cxx/add_model.onnx
         displayName: 'Run C++ sample (x64 emulation)'
