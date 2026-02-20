@@ -162,6 +162,14 @@ stages:
 
 - template: templates/test-binary-archive-stage.yml
   parameters:
+    artifactName: onnxruntime-linux-aarch64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: linux-aarch64
+    agentPool: onnxruntime-linux-ARM64-CPU-2019
+
+- template: templates/test-binary-archive-stage.yml
+  parameters:
     artifactName: onnxruntime-linux-x64
     artifactPipelineResource: build
     previousStageName: Setup
@@ -170,11 +178,15 @@ stages:
 
 - template: templates/test-binary-archive-stage.yml
   parameters:
-    artifactName: onnxruntime-win-x64
+    artifactName: onnxruntime-osx-arm64
     artifactPipelineResource: build
     previousStageName: Setup
-    platform: win-x64
-    agentPool: onnxruntime-Win-CPU-VS2022-Latest
+    platform: osx-arm64
+    agentPool:
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
 
 - template: templates/test-binary-archive-stage.yml
   parameters:
@@ -191,6 +203,14 @@ stages:
     previousStageName: Setup
     platform: win-arm64x
     agentPool: onnxruntime-qnn-windows-vs-2022-arm64
+
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-win-x64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: win-x64
+    agentPool: onnxruntime-Win-CPU-VS2022-Latest
 
 # Run GPU tests.
 - stage: Windows_Packaging_cuda_Testing

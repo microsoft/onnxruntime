@@ -7,14 +7,16 @@ parameters:
   type: string
 - name: previousStageName
   type: string
+  default: ''
 - name: platform
   type: string
 - name: agentPool
-  type: string
+  type: object
 
 stages:
 - stage: Binary_Archive_Testing_${{ replace(parameters.platform, '-', '_') }}
-  dependsOn: ${{ parameters.previousStageName }}
+  ${{ if ne(parameters.previousStageName, '') }}:
+    dependsOn: ${{ parameters.previousStageName }}
 
   jobs:
   - job: Binary_Archive_Testing_${{ replace(parameters.platform, '-', '_') }}
@@ -92,9 +94,8 @@ stages:
         $(Build.SourcesDirectory)/samples/cxx/add_model.onnx
       displayName: 'Run C++ sample'
 
+    # For win-arm64x, also build and run for ARM64EC.
     - ${{ if eq(parameters.platform, 'win-arm64x') }}:
-      # For win-arm64x, also build and run for ARM64EC.
-
       - script: >
           cmake
           -S $(Build.SourcesDirectory)/samples/cxx
