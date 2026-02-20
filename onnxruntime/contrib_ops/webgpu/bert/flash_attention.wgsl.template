@@ -1,5 +1,6 @@
 
 #param has_attention_bias
+#param has_head_sink
 #param is_fp16
 #param is_qualcomm
 #param is_unidirectional
@@ -174,7 +175,12 @@ $MAIN {
     loadq(batch_idx, q_idx_global, head_idx, q_element_t(uniforms.alpha));
   }
 
+#if has_head_sink
+  let sink_value = q_element_t(head_sink[head_idx]);
+  var previous_max : q_element_t = sink_value;
+#else
   var previous_max : q_element_t = min_value;
+#endif
   var previous_denom : q_element_t = 0;
   let total_sequence_length = get_total_sequence_length();
 
@@ -296,7 +302,13 @@ $MAIN {
 
     // Compute lhs term of update di prime and the compute di prime.
     let dleft = previous_denom * exp(previous_max - new_max);
+#if has_head_sink
+    // The head-sink contribution is already accounted for via `previous_denom` (dleft),
+    // so we must not add it again here to avoid double counting.
+    var d = dleft + sum + q_element_t(exp(f32(sink_value) - f32(new_max)));
+#else
     var d = dleft + sum;
+#endif
     d = select(d, q_element_t(0.0000001), d == 0);
     qk_1 = qk_1 / d;
     qk_2 = qk_2 / d;
