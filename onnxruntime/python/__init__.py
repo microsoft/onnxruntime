@@ -5,7 +5,7 @@
 
 import os
 
-EP_NAME = "QnnExecutionProvider"
+EP_NAME = "QNNExecutionProvider"
 
 
 def get_ep_names():
@@ -22,6 +22,10 @@ def get_library_path():
 
 def get_qnn_cpu_path():
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "QnnCpu.dll")
+
+
+def get_qnn_gpu_path():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "QnnGpu.dll")
 
 
 def get_qnn_htp_path():

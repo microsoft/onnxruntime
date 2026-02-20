@@ -9,7 +9,7 @@ import onnxruntime as ort
 # Path to the plugin EP library
 ep_lib_path = qnn_ep.get_library_path()
 # Registration name can be anything the application chooses
-ep_registration_name = "QnnExecutionProvider"
+ep_registration_name = "QNNExecutionProvider"
 
 # Register plugin EP library with ONNX Runtime
 ort.register_execution_provider_library(ep_registration_name, ep_lib_path)

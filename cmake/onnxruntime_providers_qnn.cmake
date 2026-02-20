@@ -137,21 +137,39 @@
       COMMENT "Copying onnxruntime_providers_qnn.dll to onnxruntime_qnn directory"
     )
   endif()
+  # Create destination directory first to ensure it exists
+  add_custom_command(
+    TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>/onnxruntime_qnn
+    COMMENT "Creating QNN library destination directory"
+  )
   # Copy version & license files to output directory
   add_custom_command(
     TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
+    # Copy to output directory, required for zip archive
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${REPO_ROOT}/VERSION_NUMBER
         ${REPO_ROOT}/ThirdPartyNotices.txt
         ${REPO_ROOT}/docs/Privacy.md
         ${REPO_ROOT}/LICENSE
         $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
+    # Copy to onnxruntime_qnn directory, required for python wheel
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${REPO_ROOT}/VERSION_NUMBER
+        ${REPO_ROOT}/ThirdPartyNotices.txt
+        ${REPO_ROOT}/docs/Privacy.md
+        ${REPO_ROOT}/LICENSE
+        ${ONNXRUNTIME_ROOT}/python/__init__.py
+        $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>/onnxruntime_qnn
     COMMENT "Copying license files"
   )
   if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
     add_custom_command(
       TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
+        # Copy to output directory, required for zip archive
         COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>/Qualcomm_LICENSE.pdf
+        # Copy to onnxruntime_qnn directory, required for python wheel
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>/onnxruntime_qnn/Qualcomm_LICENSE.pdf
     )
   endif()
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
