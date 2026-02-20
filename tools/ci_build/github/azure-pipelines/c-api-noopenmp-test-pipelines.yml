@@ -182,7 +182,7 @@ stages:
     artifactPipelineResource: build
     previousStageName: Setup
     platform: win-arm64
-    agentPool: Onnxruntime-QNNEP-Windows-2022-ARM64-CPU
+    agentPool: onnxruntime-qnn-windows-vs-2022-arm64
 
 - template: templates/test-binary-archive-stage.yml
   parameters:
@@ -190,7 +190,7 @@ stages:
     artifactPipelineResource: build
     previousStageName: Setup
     platform: win-arm64x
-    agentPool: Onnxruntime-QNNEP-Windows-2022-ARM64-CPU
+    agentPool: onnxruntime-qnn-windows-vs-2022-arm64
 
 # Run GPU tests.
 - stage: Windows_Packaging_cuda_Testing
