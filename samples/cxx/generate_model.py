@@ -18,17 +18,18 @@ Usage:
 import onnx
 from onnx import TensorProto, helper
 
+
 def main():
     # Define inputs and output
-    A = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 3])
-    B = helper.make_tensor_value_info("B", TensorProto.FLOAT, [1, 3])
-    C = helper.make_tensor_value_info("C", TensorProto.FLOAT, [1, 3])
+    a = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 3])
+    b = helper.make_tensor_value_info("B", TensorProto.FLOAT, [1, 3])
+    c = helper.make_tensor_value_info("C", TensorProto.FLOAT, [1, 3])
 
     # Create the Add node
     add_node = helper.make_node("Add", inputs=["A", "B"], outputs=["C"])
 
     # Build the graph and model
-    graph = helper.make_graph([add_node], "add_graph", [A, B], [C])
+    graph = helper.make_graph([add_node], "add_graph", [a, b], [c])
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
     # Validate and save
