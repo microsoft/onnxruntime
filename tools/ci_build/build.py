@@ -373,6 +373,7 @@ def generate_build_tree(
     disable_float4_types = args.android or ("float4" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
+    disable_string_type = "string" in types_to_disable
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
@@ -513,6 +514,7 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_FLOAT4_TYPES=" + ("ON" if disable_float4_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
+        "-Donnxruntime_DISABLE_STRING_TYPE=" + ("ON" if disable_string_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
     if args.minimal_build is not None:
@@ -1816,6 +1818,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
+                log.info("Testing Symlink ONNX Model and External Data")
+                run_subprocess([sys.executable, "onnxruntime_test_python_symlink_data.py"], cwd=cwd, dll_path=dll_path)
+
                 # Disable python onnx tests for TensorRT and CANN EP, because many tests are
                 # not supported yet.
                 if args.use_tensorrt or args.use_cann:

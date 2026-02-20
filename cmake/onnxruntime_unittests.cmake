@@ -593,6 +593,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_run_options.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_runtime_path.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_session_options.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_version.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
           )
@@ -1219,6 +1220,13 @@ block()
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.cc
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
   )
+
+  if (onnxruntime_USE_DNNL)
+    list(APPEND supporting_test_srcs
+      ${TEST_SRC_DIR}/common/dnnl_op_test_utils.cc
+      ${TEST_SRC_DIR}/common/dnnl_op_test_utils.h
+    )
+  endif()
 
   list(APPEND onnxruntime_provider_test_srcs
     ${supporting_test_srcs}
