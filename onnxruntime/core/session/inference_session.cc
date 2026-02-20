@@ -737,7 +737,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 
 InferenceSession::~InferenceSession() {
   // Flush any remaining RuntimePerf counters
-  {
+  ORT_TRY {
     std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
     if (telemetry_.total_runs_since_last_ > 0) {
       Env::Default().GetTelemetryProvider().LogRuntimePerf(session_id_,
@@ -746,6 +746,14 @@ InferenceSession::~InferenceSession() {
                                                            telemetry_.duration_per_batch_size_,
                                                            Status::OK());
     }
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      LOGS(*session_logger_, ERROR) << "Error during telemetry flush: " << e.what();
+    });
+  }
+  ORT_CATCH(...) {
+    LOGS(*session_logger_, ERROR) << "Unknown error during telemetry flush";
   }
 
   if (session_options_.enable_profiling) {
@@ -987,8 +995,8 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
+  const Env& env = Env::Default();
   ORT_TRY {
-    const Env& env = Env::Default();
     env.GetTelemetryProvider().LogModelLoadStart(session_id_);
 
     std::lock_guard<std::mutex> l(session_mutex_);
@@ -1026,10 +1034,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
 
-  {
-    const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status);
-  }
+  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status);
 
   return status;
 }
