@@ -160,7 +160,37 @@ stages:
     NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
     CudaVersion: 12.8
 
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-linux-x64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: linux-x64
+    agentPool: onnxruntime-Ubuntu2204-AMD-CPU
 
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-win-x64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: win-x64
+    agentPool: onnxruntime-Win-CPU-VS2022-Latest
+
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-win-arm64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: win-arm64
+    agentPool: Onnxruntime-QNNEP-Windows-2022-CPU
+
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-win-arm64x
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: win-arm64x
+    agentPool: Onnxruntime-QNNEP-Windows-2022-CPU
 
 # Run GPU tests.
 - stage: Windows_Packaging_cuda_Testing
