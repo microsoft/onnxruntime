@@ -494,7 +494,7 @@ TEST(DeformConvTest, ForwardNoMask) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
 }
 
-// Empty batch (like PyTorch batch_sz=0). (like PyTorch batch_sz=0).
+// Empty batch (like PyTorch batch_sz=0).
 TEST(DeformConvTest, EmptyBatch) {
   DeformConvTestParams p = {};
   p.batch_sz = 0;
@@ -540,7 +540,7 @@ TEST(DeformConvTest, EmptyBatch) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
 }
 
-// Wrong offset channel count -> expect failure (like PyTorch test_wrong_sizes). -> expect failure (like PyTorch test_wrong_sizes).
+// Wrong offset channel count -> expect failure (like PyTorch test_wrong_sizes).
 TEST(DeformConvTest, WrongOffsetShape) {
   DeformConvTestParams p = {};
   p.batch_sz = 1;

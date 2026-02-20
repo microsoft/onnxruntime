@@ -272,7 +272,7 @@ __global__ void DeformConvAddBiasKernel(
     int64_t batch_channel_idx, pixel_idx;
 
     // 1. First decomposition: decompose idx into (batch_channel_idx, pixel_idx)
-    // 等价于: batch_channel_idx = idx / (H*W); pixel_idx = idx % (H*W);
+    // Equivalent to: batch_channel_idx = idx / (H*W); pixel_idx = idx % (H*W);
     spatial_div.divmod(val, batch_channel_idx, pixel_idx);
 
     int64_t batch_idx, channel_idx;
