@@ -477,13 +477,13 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
     return Status::OK();
   }
 
-  // Only support PrePack for FC1 (2), FC2 (5), and FC3 (8) weights
+  // Only support PrePack for FC1 (2) and FC2 (5) weights
   // and only if expert_weight_bits_ == 4 (since we unpack to uint8)
   if (expert_weight_bits_ != 4) {
     return Status::OK();
   }
 
-  if (input_idx == 2 || input_idx == 5 || input_idx == 8) {
+  if (input_idx == 2 || input_idx == 5) {
     const auto& shape = tensor.Shape();
     const int64_t num_experts = shape[0];
     const int64_t rows = shape[1];
@@ -513,8 +513,6 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
       fc1_shape_ = shape;
     } else if (input_idx == 5) {
       fc2_shape_ = shape;
-    } else if (input_idx == 8) {
-      fc3_shape_ = shape;
     }
 
     if (prepacked_weights) {
@@ -546,19 +544,16 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
         if (input_idx == 2) {  // FC1
           scales_idx = 3;
           zp_idx = 11;
-          CanUseMlasQ4Gemm(expert_weight_bits_, block_size_, rows, cols, qtype);
         } else if (input_idx == 5) {  // FC2
           scales_idx = 6;
           zp_idx = 12;
-          CanUseMlasQ4Gemm(expert_weight_bits_, block_size_, rows, cols, qtype);
         }
-        // FC3 (8) not supported for now
 
         if (scales_idx != -1 &&
             !Info().node().InputDefs()[zp_idx]->Exists() &&
             Info().TryGetConstantInput(scales_idx, &scales_tensor) &&
             scales_tensor != nullptr &&
-            CanUseMlasQ4Gemm(expert_weight_bits_, block_size_ > 0 ? block_size_ : 0, rows, cols, qtype)) {
+            CanUseMlasQ4Gemm(expert_weight_bits_, block_size_, rows, cols, qtype)) {
           IAllocatorUniquePtr<void> cache_buffer;
           const auto& scales_dims = scales_tensor->Shape().GetDims();
           const T* scales_data = scales_tensor->Data<T>();
@@ -566,7 +561,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
           const uint8_t* simple_packed = dst_base;
 
           if (BuildDirectQ4PackedBCache(simple_packed, scales_data, num_experts, rows, cols,
-                                        block_size_ > 0 ? block_size_ : 0, scales_dims, qtype,
+                                        block_size_, scales_dims, qtype,
                                         alloc, cache_buffer)
                   .IsOK()) {
             // Store the size so we can verify later? Container holds size.
@@ -594,7 +589,7 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& pr
     return Status::OK();
   }
 
-  if ((input_idx == 2 || input_idx == 5 || input_idx == 8) && !prepacked_buffers.empty()) {
+  if ((input_idx == 2 || input_idx == 5) && !prepacked_buffers.empty()) {
     auto parse_shape = [&](TensorShape& shape) {
       if (prepacked_buffers.size() > 1) {
         int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
@@ -617,9 +612,6 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& pr
       if (prepacked_buffers.size() > 2) {
         packed_fc2_mlas_cache_ = std::move(prepacked_buffers[2]);
       }
-    } else /*if (input_idx == 8)*/ {
-      packed_fc3_ = std::move(prepacked_buffers[0]);
-      parse_shape(fc3_shape_);
     }
     used_shared_buffers = true;
   }
@@ -635,6 +627,7 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 4 or 8.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
+  ORT_ENFORCE(block_size_ >= 0);
 
   if (block_size_ > 0) {
     ORT_ENFORCE(block_size_ >= 16, "block_size must be >= 16 when provided.");
@@ -662,7 +655,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const auto* fc2_experts_weights = packed_fc2_ ? nullptr : context->Input<Tensor>(5);
   const auto* fc2_scales = context->Input<Tensor>(6);
   const auto* fc2_experts_bias = context->Input<Tensor>(7);
-  const auto* fc3_experts_weights = packed_fc3_ ? nullptr : context->Input<Tensor>(8);
+  const auto* fc3_experts_weights = context->Input<Tensor>(8);
   const auto* fc3_scales = context->Input<Tensor>(9);
   const auto* fc3_experts_bias = context->Input<Tensor>(10);
   const auto* fc1_zero_points = context->Input<Tensor>(11);
@@ -671,7 +664,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   const TensorShape* fc1_shape_ptr = packed_fc1_ ? &fc1_shape_ : (fc1_experts_weights ? &fc1_experts_weights->Shape() : nullptr);
   const TensorShape* fc2_shape_ptr = packed_fc2_ ? &fc2_shape_ : (fc2_experts_weights ? &fc2_experts_weights->Shape() : nullptr);
-  const TensorShape* fc3_shape_ptr = packed_fc3_ ? &fc3_shape_ : (fc3_experts_weights ? &fc3_experts_weights->Shape() : nullptr);
+  const TensorShape* fc3_shape_ptr = fc3_experts_weights ? &fc3_experts_weights->Shape() : nullptr;
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(

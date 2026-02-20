@@ -37,7 +37,6 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
                                       int input_idx,
                                       /*out*/ bool& used_shared_buffers) override;
 
- private:
   int64_t expert_weight_bits_;
   int64_t block_size_;
   bool use_mlas_q4_gemm_{false};
@@ -45,11 +44,9 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
 
   IAllocatorUniquePtr<void> packed_fc1_;
   IAllocatorUniquePtr<void> packed_fc2_;
-  IAllocatorUniquePtr<void> packed_fc3_;
 
   TensorShape fc1_shape_;
   TensorShape fc2_shape_;
-  TensorShape fc3_shape_;
 
   IAllocatorUniquePtr<void> packed_fc1_mlas_cache_;
   IAllocatorUniquePtr<void> packed_fc2_mlas_cache_;
