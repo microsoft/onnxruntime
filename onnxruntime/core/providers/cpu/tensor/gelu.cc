@@ -160,7 +160,7 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
     // Nothing to compute. Output tensor is already correctly shaped.
     return Status::OK();
   }
-  
+
   constexpr size_t alignment = 64;
 
   size_t buffer_size = static_cast<size_t>(elem_count) * sizeof(MLFloat16);
