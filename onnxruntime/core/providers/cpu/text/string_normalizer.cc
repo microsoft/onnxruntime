@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "string_normalizer.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
@@ -635,3 +637,5 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   return status;
 }
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)
