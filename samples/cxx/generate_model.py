@@ -15,8 +15,8 @@ Usage:
   python generate_model.py
 """
 
-import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, save_model
+from onnx.checker import check_model
 
 
 def main():
@@ -33,8 +33,8 @@ def main():
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
     # Validate and save
-    onnx.checker.check_model(model)
-    onnx.save(model, "add_model.onnx")
+    check_model(model)
+    save_model(model, "add_model.onnx")
     print("Saved add_model.onnx")
 
 
