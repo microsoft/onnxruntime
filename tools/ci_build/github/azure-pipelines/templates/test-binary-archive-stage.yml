@@ -13,11 +13,11 @@ parameters:
   type: string
 
 stages:
-- stage: Binary_Archive_Testing_${{ parameters.platform }}
+- stage: Binary_Archive_Testing_${{ replace(parameters.platform, '-', '_') }}
   dependsOn: ${{ parameters.previousStageName }}
 
   jobs:
-  - job: Binary_Archive_Testing_${{ parameters.platform }}
+  - job: Binary_Archive_Testing_${{ replace(parameters.platform, '-', '_') }}
     pool: ${{ parameters.agentPool }}
 
     steps:
