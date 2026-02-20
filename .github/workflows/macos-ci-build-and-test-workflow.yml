@@ -19,7 +19,7 @@ on:
       python_version:
         required: false
         type: string
-        default: "3.11"
+        default: "3.14"
       matrix_include:
         required: false
         type: string
