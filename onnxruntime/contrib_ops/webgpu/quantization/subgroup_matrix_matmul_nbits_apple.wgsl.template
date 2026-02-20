@@ -210,7 +210,8 @@ $MAIN {
   }
 
   // Write out
-  // Write out top block
+#if has_bias
+  // Bias path: requires scratch intermediary for element-wise bias addition
   subgroupMatrixStore(&scratch[subtile_id][0], 0, matC00, false, 8);
   subgroupMatrixStore(&scratch[subtile_id][1], 0, matC01, false, 8);
   subgroupMatrixStore(&scratch[subtile_id][2], 0, matC02, false, 8);
@@ -223,7 +224,6 @@ $MAIN {
   storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
   workgroupBarrier();
 
-  // Write out bottom block
   subgroupMatrixStore(&scratch[subtile_id][0], 0, matC10, false, 8);
   subgroupMatrixStore(&scratch[subtile_id][1], 0, matC11, false, 8);
   subgroupMatrixStore(&scratch[subtile_id][2], 0, matC12, false, 8);
@@ -232,4 +232,44 @@ $MAIN {
   matrix_c_offset = matrix_c_offset + 8 * uniforms.N;
   row_limit = i32(uniforms.M) - i32(a_global_base + base_A + 8);
   storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+#else
+  // No-bias path: direct subgroupMatrixStore to output when all rows are in bounds.
+  // The condition is workgroup-uniform (depends only on workgroup_id and uniforms),
+  // so all threads in the workgroup take the same branch — barriers in the else
+  // branch are safe.
+  if (a_global_base + tile_rows <= uniforms.M) {
+    // Fast path: all rows in tile are valid — bypass scratch and barriers entirely
+    let c_base = (a_global_base + base_A) * uniforms.N + b_global_base + base_B;
+    subgroupMatrixStore(&output, c_base, matC00, false, uniforms.N);
+    subgroupMatrixStore(&output, c_base + 8, matC01, false, uniforms.N);
+    subgroupMatrixStore(&output, c_base + 16, matC02, false, uniforms.N);
+    subgroupMatrixStore(&output, c_base + 24, matC03, false, uniforms.N);
+    subgroupMatrixStore(&output, c_base + 8 * uniforms.N, matC10, false, uniforms.N);
+    subgroupMatrixStore(&output, c_base + 8 * uniforms.N + 8, matC11, false, uniforms.N);
+    subgroupMatrixStore(&output, c_base + 8 * uniforms.N + 16, matC12, false, uniforms.N);
+    subgroupMatrixStore(&output, c_base + 8 * uniforms.N + 24, matC13, false, uniforms.N);
+  } else {
+    // Boundary tile: fall back to scratch + bounds-checked scalar stores
+    subgroupMatrixStore(&scratch[subtile_id][0], 0, matC00, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][1], 0, matC01, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][2], 0, matC02, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][3], 0, matC03, false, 8);
+    workgroupBarrier();
+    let row = u32(sg_id / 4);
+    var col = u32(sg_id % 4) * 2;
+    var matrix_c_offset = (a_global_base+base_A) * uniforms.N + b_global_base + base_B;
+    var row_limit:i32 = i32(uniforms.M) - i32(a_global_base + base_A);
+    storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+    workgroupBarrier();
+
+    subgroupMatrixStore(&scratch[subtile_id][0], 0, matC10, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][1], 0, matC11, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][2], 0, matC12, false, 8);
+    subgroupMatrixStore(&scratch[subtile_id][3], 0, matC13, false, 8);
+    workgroupBarrier();
+    matrix_c_offset = matrix_c_offset + 8 * uniforms.N;
+    row_limit = i32(uniforms.M) - i32(a_global_base + base_A + 8);
+    storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
+  }
+#endif
 }  // MAIN
