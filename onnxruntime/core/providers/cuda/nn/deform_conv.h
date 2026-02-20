@@ -15,14 +15,12 @@ namespace cuda {
 // See https://onnx.ai/onnx/operators/onnx__DeformConv.html
 struct DeformConvAttributes {
   explicit DeformConvAttributes(const OpKernelInfo& info) {
-    Status status = info.GetAttrs("kernel_shape", kernel_shape);
-    ORT_ENFORCE(status.IsOK(), "Attribute kernel_shape is not set.");
-    status = info.GetAttrs("strides", strides);
-    ORT_ENFORCE(status.IsOK(), "Attribute strides is not set.");
-    status = info.GetAttrs("pads", pads);
-    ORT_ENFORCE(status.IsOK(), "Attribute pads is not set.");
-    status = info.GetAttrs("dilations", dilations);
-    ORT_ENFORCE(status.IsOK(), "Attribute dilations is not set.");
+    // Optional attributes.
+    // If not present, they will be empty/default, and handled in Compute/ComputeInternal.
+    (void)info.GetAttrs("kernel_shape", kernel_shape);
+    (void)info.GetAttrs("strides", strides);
+    (void)info.GetAttrs("pads", pads);
+    (void)info.GetAttrs("dilations", dilations);
     group = info.GetAttrOrDefault<int64_t>("group", 1);
     offset_group = info.GetAttrOrDefault<int64_t>("offset_group", 1);
   }
