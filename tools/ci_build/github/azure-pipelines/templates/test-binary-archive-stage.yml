@@ -88,8 +88,7 @@ stages:
           $(Build.BinariesDirectory)/sample_build/onnxruntime_sample_program $(Build.SourcesDirectory)/samples/cxx/add_model.onnx
         displayName: 'Run C++ sample'
 
-    # TODO testing with win-arm64
-    - ${{ if eq(parameters.platform, 'win-arm64') }}: #${{ if eq(parameters.platform, 'win-arm64x') }}:
+    - ${{ if eq(parameters.platform, 'win-arm64x') }}:
       # For win-arm64x, also build and run for ARM64EC.
 
       - script: >
