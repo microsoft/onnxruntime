@@ -546,8 +546,21 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(
                                          tensor_data_type)
                                          ->GetElementType();
-  ort_tensor = onnxruntime::Tensor(
-      tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
+
+  if constexpr (endian::native != endian::little) {
+    std::vector<typename std::remove_reference_t<decltype(*tensor_dims)>::return_type> byteswapped_data;
+    byteswapped_data.resize(tensor_dims->size());
+
+    for (size_t i = 0; i < tensor_dims->size(); ++i) {
+      byteswapped_data[i] = tensor_dims->Get(i);
+    }
+
+    ort_tensor = onnxruntime::Tensor(
+        tensor_dtype, TensorShape(byteswapped_data.data(), byteswapped_data.size()), allocator);
+  } else {
+    ort_tensor = onnxruntime::Tensor(
+        tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
+  }
 
   if (fbs_tensor.raw_data() && fbs_tensor.raw_data()->size() == 0U) {
     // Empty tensor. Nothing to unpack.
