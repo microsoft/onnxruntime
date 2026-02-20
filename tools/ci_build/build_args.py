@@ -551,7 +551,7 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float4", "float8", "optional", "sparsetensor"],
+        choices=["float4", "float8", "optional", "sparsetensor", "string"],
         help="Disable selected data types.",
     )
     parser.add_argument(
