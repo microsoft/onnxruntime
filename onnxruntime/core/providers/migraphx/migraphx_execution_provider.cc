@@ -1271,7 +1271,7 @@ static std::vector<std::size_t> generate_compiled_batch_sizes(std::size_t max_ba
     oss << batch_sizes[i];
   }
   oss << "] (count=" << batch_sizes.size() << ")";
-  LOGS_DEFAULT(WARNING) << oss.str();
+  LOGS_DEFAULT(VERBOSE) << oss.str();
 
   return batch_sizes;
 }
