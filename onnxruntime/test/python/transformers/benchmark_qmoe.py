@@ -46,6 +46,9 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
             torch.manual_seed(42)
             numpy.random.seed(42)
 
+            torch_output = None
+            ort_output = None
+
             print(f"\nTesting {config_name}:")
             print(f"  Hidden: {hidden_size}, Intermediate: {intermediate_size}")
             print(f"  Experts: {num_experts}, Top-K: {top_k}, Quant: {quant_bits}-bit")

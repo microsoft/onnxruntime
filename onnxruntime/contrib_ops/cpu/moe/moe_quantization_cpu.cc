@@ -76,7 +76,7 @@ bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
     return false;
   }
 
-  size_t expected_size = MlasQ4GemmPackBSize(out_qtype, static_cast<size_t>(cols), static_cast<size_t>(rows));
+  size_t expected_size = MlasQ4GemmPackBSize(out_qtype, static_cast<size_t>(rows), static_cast<size_t>(cols));
   return expected_size > 0;
 }
 
@@ -550,7 +550,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
         }
 
         if (scales_idx != -1 &&
-            !Info().node().InputDefs()[zp_idx]->Exists() &&
+            (zp_idx >= static_cast<int>(Info().node().InputDefs().size()) || !Info().node().InputDefs()[zp_idx]->Exists()) &&
             Info().TryGetConstantInput(scales_idx, &scales_tensor) &&
             scales_tensor != nullptr &&
             CanUseMlasQ4Gemm(expert_weight_bits_, block_size_, rows, cols, qtype)) {
@@ -564,8 +564,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
                                         block_size_, scales_dims, qtype,
                                         alloc, cache_buffer)
                   .IsOK()) {
-            // Store the size so we can verify later? Container holds size.
-            // We push it as a THIRD buffer (Buffer 2) now.
+            // Store the MLAS Q4 cache as buffer 2 (after unpacked weights and shape).
             size_t cache_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols)) * static_cast<size_t>(num_experts);
             prepacked_weights->buffers_.push_back(std::move(cache_buffer));
             prepacked_weights->buffer_sizes_.push_back(cache_size);
@@ -673,7 +672,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc2_shape_ptr, fc2_experts_bias, fc2_scales, fc2_zero_points,
       fc3_shape_ptr, fc3_experts_bias, fc3_scales, fc3_zero_points,
       expert_weight_bits_ == 4 ? 2 : 1,
-      true,
+      activation_type_ == ActivationType::SwiGLU,
       block_size_));
 
   if (fc3_shape_ptr || fc3_experts_bias || fc3_scales || fc3_zero_points) {
@@ -1079,12 +1078,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
         if (convert_status.IsOK()) {
           float* fc1_bias_float = nullptr;
-          IAllocatorUniquePtr<float> fc1_bias_buffer;
 
           if (has_fc1_bias) {
             const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
-            fc1_bias_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(fc1_out_features));
-            fc1_bias_float = fc1_bias_buffer.get();
+            fc1_bias_float = thread_bias1_buffer;
 
             if constexpr (std::is_same_v<T, MLFloat16>) {
               MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), fc1_bias_float, static_cast<size_t>(fc1_out_features));
@@ -1186,22 +1183,30 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
     fc1_gemm_done:
 
-      const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
-      if (num_expert_tokens >= activation_threshold && tp != nullptr) {
-        const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
-        const int64_t num_activation_blocks = (num_expert_tokens + activation_block_size - 1) / activation_block_size;
+      if (activation_type_ == ActivationType::SwiGLU) {
+        const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
+        if (num_expert_tokens >= activation_threshold && tp != nullptr) {
+          const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
+          const int64_t num_activation_blocks = (num_expert_tokens + activation_block_size - 1) / activation_block_size;
 
-        if (num_activation_blocks > 1) {
-          concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_activation_blocks), [&](std::ptrdiff_t block_idx) {
-            const int64_t start_token = block_idx * activation_block_size;
-            const int64_t end_token = std::min(start_token + activation_block_size, num_expert_tokens);
+          if (num_activation_blocks > 1) {
+            concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_activation_blocks), [&](std::ptrdiff_t block_idx) {
+              const int64_t start_token = block_idx * activation_block_size;
+              const int64_t end_token = std::min(start_token + activation_block_size, num_expert_tokens);
 
-            for (int64_t i = start_token; i < end_token; ++i) {
+              for (int64_t i = start_token; i < end_token; ++i) {
+                const float* C1_token = C1 + i * fc1_out_features;
+                float* A2_token = A2 + i * inter_size;
+                ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+              }
+            });
+          } else {
+            for (int64_t i = 0; i < num_expert_tokens; ++i) {
               const float* C1_token = C1 + i * fc1_out_features;
               float* A2_token = A2 + i * inter_size;
               ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
             }
-          });
+          }
         } else {
           for (int64_t i = 0; i < num_expert_tokens; ++i) {
             const float* C1_token = C1 + i * fc1_out_features;
@@ -1210,11 +1215,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           }
         }
       } else {
-        for (int64_t i = 0; i < num_expert_tokens; ++i) {
-          const float* C1_token = C1 + i * fc1_out_features;
-          float* A2_token = A2 + i * inter_size;
-          ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
-        }
+        ApplyActivationVectorized(C1, num_expert_tokens * fc1_out_features);
+        std::copy(C1, C1 + (num_expert_tokens * fc1_out_features), A2);
       }
 
       const T* fc2_scales_ptr;
@@ -1306,12 +1308,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
         if (convert_status.IsOK()) {
           float* fc2_bias_float = nullptr;
-          IAllocatorUniquePtr<float> fc2_bias_buffer;
 
           if (has_fc2_bias) {
             const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
-            fc2_bias_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(hidden_size));
-            fc2_bias_float = fc2_bias_buffer.get();
+            fc2_bias_float = thread_bias2_buffer;
 
             if constexpr (std::is_same_v<T, MLFloat16>) {
               MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), fc2_bias_float, static_cast<size_t>(hidden_size));
@@ -1503,6 +1503,13 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   }
 
   return Status::OK();
+}
+
+template <typename T>
+void QMoECPU<T>::ApplyActivationVectorized(float* data, int64_t size) const {
+  for (int64_t i = 0; i < size; ++i) {
+    data[i] = ApplyActivation(data[i], activation_type_);
+  }
 }
 
 template QMoECPU<float>::QMoECPU(const OpKernelInfo& op_kernel_info);

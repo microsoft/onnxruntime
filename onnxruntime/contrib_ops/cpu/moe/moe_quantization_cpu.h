@@ -37,6 +37,8 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
                                       int input_idx,
                                       /*out*/ bool& used_shared_buffers) override;
 
+  void ApplyActivationVectorized(float* data, int64_t size) const;
+
   int64_t expert_weight_bits_;
   int64_t block_size_;
   bool use_mlas_q4_gemm_{false};
