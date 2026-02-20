@@ -12,6 +12,9 @@ parameters:
   type: string
 - name: agentPool
   type: object
+- name: agentSetupSteps
+  type: stepList
+  default: []
 
 stages:
 - stage: Binary_Archive_Testing_${{ replace(parameters.platform, '-', '_') }}
@@ -35,6 +38,9 @@ stages:
     - checkout: self
       clean: true
       submodules: none
+
+    - ${{ each agentSetupStep in parameters.agentSetupSteps }}:
+      - ${{ agentSetupStep }}
 
     - download: ${{ parameters.artifactPipelineResource }}
       artifact: ${{ parameters.artifactName }}

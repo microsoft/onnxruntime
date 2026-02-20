@@ -187,6 +187,10 @@ stages:
       os: macOS
       demands:
       - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+    agentSetupSteps:
+      - template: setup-build-tools.yml
+        parameters:
+          host_cpu_arch: arm64
 
 - template: templates/test-binary-archive-stage.yml
   parameters:
