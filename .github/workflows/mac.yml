@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  python_version: 3.11
+  python_version: 3.14
 
 jobs:
   cpu:
