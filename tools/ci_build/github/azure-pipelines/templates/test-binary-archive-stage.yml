@@ -89,21 +89,21 @@ stages:
         displayName: 'Run C++ sample'
 
     - ${{ if eq(parameters.platform, 'win-arm64x') }}:
-      # For win-arm64x, also build and run with x64 emulation.
+      # For win-arm64x, also build and run for ARM64EC.
 
       - script: >
           cmake
           -S $(Build.SourcesDirectory)/samples/cxx
-          -B $(Build.BinariesDirectory)/sample_build_x64
+          -B $(Build.BinariesDirectory)/sample_build_arm64ec
           -DORT_HEADER_DIR:PATH=$(ORT_PACKAGE_DIR)/include
           -DORT_LIBRARY_DIR:PATH=$(ORT_PACKAGE_DIR)/lib
-          -A x64
-        displayName: 'Generate C++ sample build system (x64)'
+          -A ARM64EC
+        displayName: 'Generate C++ sample build system (ARM64EC)'
 
       - script: |
-          cmake --build $(Build.BinariesDirectory)/sample_build_x64 --config Release
-        displayName: 'Build C++ sample (x64)'
+          cmake --build $(Build.BinariesDirectory)/sample_build_arm64ec --config Release
+        displayName: 'Build C++ sample (ARM64EC)'
 
       - script: |
-          $(Build.BinariesDirectory)/sample_build_x64/onnxruntime_sample_program $(Build.SourcesDirectory)/samples/cxx/add_model.onnx
-        displayName: 'Run C++ sample (x64 emulation)'
+          $(Build.BinariesDirectory)/sample_build_arm64ec/onnxruntime_sample_program $(Build.SourcesDirectory)/samples/cxx/add_model.onnx
+        displayName: 'Run C++ sample (ARM64EC)'
