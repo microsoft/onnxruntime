@@ -361,8 +361,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     a = &a_prepack;
   }
 
-  uint32_t tile_size_a = 32;
-  uint32_t work_group_size = 128;
+  uint32_t tile_size_a = 64;
+  uint32_t work_group_size = 256;
   constexpr uint32_t kTileSizeB = 64;
   constexpr uint32_t kU32Components = 4;
   TensorShape y_shape{1, M, N};
@@ -371,10 +371,6 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   const bool has_weight_idx = weight_index > 0;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    tile_size_a = 64;
-    work_group_size = 256;
-  }
   mul_program.SetWorkgroupSize(work_group_size);
   mul_program.SetDispatchGroupSize(
       (N + kTileSizeB - 1) / kTileSizeB,
