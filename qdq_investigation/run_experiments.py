@@ -66,9 +66,16 @@ def parse_model_dirname(dirname: str) -> Optional[ModelMetadata]:
 
     Expected formats:
         mnb-qwen-0.5b-4-sym
+        mnb-qwen-0.5b-4-sym-transpose
         qdq-qwen-0.5b-4-block-sym-signed
+        qdq-qwen-0.5b-4-block-sym-signed-transpose
     """
-    parts = dirname.split("-")
+    # Strip optional "-transpose" suffix before parsing
+    stripped = dirname
+    if dirname.endswith("-transpose"):
+        stripped = dirname[: -len("-transpose")]
+
+    parts = stripped.split("-")
 
     try:
         if parts[0] == "mnb" and len(parts) == 5:
