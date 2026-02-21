@@ -379,7 +379,11 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   mul_program.SetDispatchGroupSize(
       (N + kTileSizeB - 1) / kTileSizeB,
       (M + tile_size_a - 1) / tile_size_a, 1);
-  mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
+  // Input A uses component=4 (vec4 loads) on Apple for better memory coalescing.
+  // Intel uses component=1 because its prepacked A layout requires scalar-level addressing
+  // for subgroupMatrixLoad from the storage buffer.
+  const int a_components = (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 1 : 4;
+  mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}, {weight_index}})
