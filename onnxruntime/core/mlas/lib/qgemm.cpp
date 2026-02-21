@@ -224,7 +224,9 @@ MlasDynamicQGemmBatch (
 
 #if defined(USE_KLEIDIAI)
     //No fallback
-    ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
+    if (GetMlasPlatform().MlasDynamicQGemmBatchOverride != nullptr) {
+        GetMlasPlatform().MlasDynamicQGemmBatchOverride(Shape, DataParams, BatchN, ThreadPool);
+    }
 #endif
 
     MLAS_UNREFERENCED_PARAMETER(Shape);
@@ -348,8 +350,9 @@ MlasDynamicQgemmPackBSize(
     size_t bytes = 0;
 #if defined(USE_KLEIDIAI)
     //No fallback available
-    //TODO: Insert Override
-    bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
+    if (GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride != nullptr) {
+        GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride(N, K);
+    }
 #endif
 
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -442,7 +445,9 @@ MlasDynamicQgemmPackB(
 
 #if defined(USE_KLEIDIAI)
     //No fallback
-    ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
+    if (GetMlasPlatform().MlasDynamicQGemmPackBOverride != nullptr) {
+        GetMlasPlatform().MlasDynamicQGemmPackBOverride(N, K, B, Scales, Bias, PackedB);
+    }
 #endif
 
     MLAS_UNREFERENCED_PARAMETER(N);
