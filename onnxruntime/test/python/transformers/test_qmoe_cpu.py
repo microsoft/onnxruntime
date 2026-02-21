@@ -23,9 +23,11 @@
 # normalization on the selected experts. This provides proper weight distribution
 # while maintaining computational efficiency.
 # --------------------------------------------------------------------------
+import os
 import time
 import unittest
 from collections import OrderedDict
+from contextlib import contextmanager
 
 import numpy
 import torch
@@ -75,6 +77,8 @@ onnxruntime.preload_dlls()
 device = torch.device("cpu")
 
 ort_provider = ["CPUExecutionProvider"]
+
+ORT_USE_MLAS_Q4_GEMM_MOE = "ORT_USE_MLAS_Q4_GEMM_MOE"
 
 torch.manual_seed(42)
 numpy.random.seed(42)
@@ -1137,6 +1141,43 @@ def small_test_cases():
             yield batch_size, sequence_length
 
 
+def with_mlas_q4_mode(test_cases):
+    expanded_cases = []
+    for case in test_cases:
+        quant_bits = case[2]
+        if quant_bits == 4:
+            expanded_cases.append((*case, None))
+            expanded_cases.append((*case, False))
+            expanded_cases.append((*case, True))
+        else:
+            expanded_cases.append((*case, None))
+    return expanded_cases
+
+
+@contextmanager
+def scoped_env_var(name: str, value: str):
+    previous = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = previous
+
+
+def run_parity_with_mlas_q4_mode(test_runner, enable_mlas_q4_gemm: bool | None):
+    if enable_mlas_q4_gemm is None:  # No env var
+        test_runner()
+    else:
+        env_value = "1" if enable_mlas_q4_gemm else "0"
+        mode = "enabled" if enable_mlas_q4_gemm else "disabled"
+        print(f"DirectQ4 mode ({ORT_USE_MLAS_Q4_GEMM_MOE}) is {mode}")
+        with scoped_env_var(ORT_USE_MLAS_Q4_GEMM_MOE, env_value):
+            test_runner()
+
+
 class SwigluMoEBlock(SparseMoeBlockORTHelper):
     def __init__(
         self,
@@ -1381,8 +1422,6 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         return final_hidden_states
 
 
-disable_cpu_qmoe_tests = False
-
 # Define test cases for different MoE types
 phi3_test_cases = [
     (1, 32, 4),
@@ -1400,10 +1439,9 @@ phi3_blockwise_test_cases = [
 ]
 
 
-@unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestPhiQMoECPU(unittest.TestCase):
-    @parameterized.expand(phi3_test_cases)
-    def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(with_mlas_q4_mode(phi3_test_cases))
+    def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         # Create unique seed based on test parameters to ensure different inputs for each test
         base_seed = 2000  # Different base seed from other tests
         param_hash = hash((batch_size, sequence_length, quant_bits))
@@ -1438,10 +1476,10 @@ class TestPhiQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        phi3_moe.parity_check()
+        run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(phi3_test_cases)
-    def test_phi3_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(with_mlas_q4_mode(phi3_test_cases))
+    def test_phi3_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         base_seed = 3000
         param_hash = hash((batch_size, sequence_length, quant_bits))
         unique_seed = base_seed + abs(param_hash) % 1000
@@ -1463,10 +1501,12 @@ class TestPhiQMoECPU(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT,
             use_asymmetric_quant=True,
         )
-        phi3_moe.parity_check()
+        run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(phi3_blockwise_test_cases)
-    def test_phi3_qmoe_blockwise_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+    @parameterized.expand(with_mlas_q4_mode(phi3_blockwise_test_cases))
+    def test_phi3_qmoe_blockwise_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
         torch.manual_seed(42)
         numpy.random.seed(42)
 
@@ -1495,10 +1535,12 @@ class TestPhiQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        phi3_moe.parity_check()
+        run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(phi3_blockwise_test_cases)
-    def test_phi3_qmoe_blockwise_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+    @parameterized.expand(with_mlas_q4_mode(phi3_blockwise_test_cases))
+    def test_phi3_qmoe_blockwise_asymmetric_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
         torch.manual_seed(43)
         numpy.random.seed(43)
 
@@ -1516,10 +1558,8 @@ class TestPhiQMoECPU(unittest.TestCase):
             block_size=block_size,
             use_asymmetric_quant=True,
         )
-        phi3_moe.parity_check()
+        run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
-
-disable_cpu_qmoe_tests = False
 
 swiglu_test_cases = [
     (1, 32, 4),
@@ -1537,10 +1577,9 @@ swiglu_blockwise_test_cases = [
 ]
 
 
-@unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestSwigluQMoECPU(unittest.TestCase):
-    @parameterized.expand(swiglu_test_cases)
-    def test_swiglu_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(with_mlas_q4_mode(swiglu_test_cases))
+    def test_swiglu_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         # Create unique seed based on test parameters to ensure different inputs for each test
         base_seed = 1000  # Different base seed from regular MoE tests
         param_hash = hash((batch_size, sequence_length, quant_bits))
@@ -1574,10 +1613,10 @@ class TestSwigluQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        swiglu_moe.parity_check()
+        run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(swiglu_test_cases)
-    def test_swiglu_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(with_mlas_q4_mode(swiglu_test_cases))
+    def test_swiglu_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         base_seed = 1100
         param_hash = hash((batch_size, sequence_length, quant_bits))
         unique_seed = base_seed + abs(param_hash) % 1000
@@ -1599,10 +1638,12 @@ class TestSwigluQMoECPU(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT,
             use_asymmetric_quant=True,
         )
-        swiglu_moe.parity_check()
+        run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(swiglu_blockwise_test_cases)
-    def test_swiglu_qmoe_blockwise_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+    @parameterized.expand(with_mlas_q4_mode(swiglu_blockwise_test_cases))
+    def test_swiglu_qmoe_blockwise_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
         torch.manual_seed(42)
         numpy.random.seed(42)
 
@@ -1630,10 +1671,12 @@ class TestSwigluQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        swiglu_moe.parity_check()
+        run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(swiglu_blockwise_test_cases)
-    def test_swiglu_qmoe_blockwise_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+    @parameterized.expand(with_mlas_q4_mode(swiglu_blockwise_test_cases))
+    def test_swiglu_qmoe_blockwise_asymmetric_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
         torch.manual_seed(43)
         numpy.random.seed(43)
 
@@ -1651,7 +1694,7 @@ class TestSwigluQMoECPU(unittest.TestCase):
             block_size=block_size,
             use_asymmetric_quant=True,
         )
-        swiglu_moe.parity_check()
+        run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
 
 
 @unittest.skipIf(True, "Skipping QMoE CPU benchmark tests")
@@ -1660,9 +1703,6 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
 
     def test_qmoe_swiglu_throughput_benchmark(self):
         """Comprehensive throughput benchmark for QMoE SwiGLU across different configurations."""
-        if disable_cpu_qmoe_tests:
-            self.skipTest("QMoE CPU tests disabled")
-
         print("\n=== QMoE SwiGLU Throughput Benchmark ===")
 
         # Test configurations: (name, hidden_size, intermediate_size, num_experts, top_k, quant_bits)
