@@ -341,6 +341,7 @@ static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE CUDA_GRAPH_ANNOTATION_MODEL_URI = TSTR("testdata/mul_1_dynamic.onnx");
 #endif
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
+static constexpr PATH_TYPE PR_27412_FP16A_INT4B_MODEL_URI = TSTR("testdata/pr_27412_fp16A_int4B_model.onnx");
 #ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
 #endif
@@ -622,6 +623,13 @@ TEST(CApiTest, TestDanglingInput) {
   const bool null_present = std::any_of(inputs_epdevices.begin(), inputs_epdevices.end(),
                                         [](const auto& device) { return device == nullptr; });
   ASSERT_TRUE(null_present);
+}
+
+// This test tests successful load of a fp16 A and Int4 B quantized model
+// which caused an issue before PR #27412 - there was a crash on Mac M4 while trying to pack scales
+TEST(CApiTest, LoadPr27412Fp16AInt4BModel) {
+  Ort::SessionOptions session_options;
+  EXPECT_NO_THROW(Ort::Session session(*ort_env, PR_27412_FP16A_INT4B_MODEL_URI, session_options));
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
