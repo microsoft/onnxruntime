@@ -20,10 +20,10 @@ void ThrowIfPyErrOccured() {
     Py_XDECREF(pStr);
 
     if (pvalue != nullptr) {
-        pStr = PyObject_Str(pvalue);
-        sType += ": ";
-        sType += py::reinterpret_borrow<py::str>(pStr);
-        Py_XDECREF(pStr);
+      pStr = PyObject_Str(pvalue);
+      sType += ": ";
+      sType += py::reinterpret_borrow<py::str>(pStr);
+      Py_XDECREF(pStr);
     }
 
     // 2. Safely release the references!

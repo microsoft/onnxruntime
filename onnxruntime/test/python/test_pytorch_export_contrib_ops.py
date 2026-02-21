@@ -101,6 +101,7 @@ class ONNXExporterTest(unittest.TestCase):
                 input_names=input_names,
                 output_names=output_names,
                 custom_opsets=custom_opsets,
+                dynamo=False,
             )
 
             # compute onnxruntime output prediction
@@ -143,6 +144,7 @@ class ONNXExporterTest(unittest.TestCase):
             f,
             opset_version=self.opset_version,
             custom_opsets={"com.microsoft": 1},
+            dynamo=False,
         )
         f.seek(0)
         onnx_model = onnx.load(f)
@@ -230,8 +232,8 @@ class ONNXExporterTest(unittest.TestCase):
 # IR version 4 style export.
 ONNXExporterTest_opset9_IRv4 = type(
     "TestONNXRuntime_opset9_IRv4",
-    (unittest.TestCase,),
-    dict(ONNXExporterTest.__dict__, keep_initializers_as_inputs=False),
+    (ONNXExporterTest,),
+    dict(keep_initializers_as_inputs=False),
 )
 
 
