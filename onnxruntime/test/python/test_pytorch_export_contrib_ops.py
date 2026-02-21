@@ -148,9 +148,9 @@ class ONNXExporterTest(unittest.TestCase):
         )
         f.seek(0)
         onnx_model = onnx.load(f)
-        node = onnx_model.graph.node[0]
-        self.assertEqual(node.op_type, "Gelu")
-        self.assertEqual(node.domain, "com.microsoft")
+        # Default GELU should be mapped to ORT contrib Gelu for performance.
+        gelu_nodes = [n for n in onnx_model.graph.node if n.op_type == "Gelu" and n.domain == "com.microsoft"]
+        self.assertEqual(len(gelu_nodes), 1)
 
     @parameterized.parameterized.expand([("default_approximate", "none"), ("tanh_approximate", "tanh")])
     @unittest.skipIf(_torch_version_lower_than("1.12"), "Gelu's approximate parameter unsupported in PyTorch < 1.12")
