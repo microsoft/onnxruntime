@@ -71,6 +71,8 @@ struct NearestPixel_CEIL {
                       TransformCoordinate_TF_HALF_PIXEL_FOR_NN, __VA_ARGS__)                                       \
       CASE_TYPE_COORD(ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE,                                      \
                       TransformCoordinate_TF_CROP_AND_RESIZE, __VA_ARGS__)                                         \
+      CASE_TYPE_COORD(ResizeCoordinateTransformationMode::HALF_PIXEL_SYMMETRIC,                                    \
+                      TransformCoordinate_HALF_PIXEL_SYMMETRIC, __VA_ARGS__)                                       \
       default:                                                                                                     \
         ORT_THROW("unknown ResizeCoordinateTransformationMode");                                                   \
     }                                                                                                              \
