@@ -61,3 +61,4 @@ kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.
 # this entry will be updated to use refs/tags/<version> instead of the raw commit hash.
 kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8d32f81ffeeb6d4885a29cc35d2b0da87.zip;5e855730a2d69057a569f43dd7532db3b2d2a05c
 duktape;https://github.com/svaarala/duktape/releases/download/v2.7.0/duktape-2.7.0.tar.xz;8200c8e417dbab7adcc12c4dbdef7651cfc55794
+vulkan_headers;https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.344;57bc528ef7c4a3f7bfbb59e64a187e3734bd29d8
