@@ -59,6 +59,9 @@ class ONNXExporterTest(unittest.TestCase):
         torch.manual_seed(0)
         pytorch_export_contrib_ops.register()
 
+    def tearDown(self):
+        pytorch_export_contrib_ops.unregister()
+
     def run_test(
         self,
         model,
