@@ -2,11 +2,9 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO pybind/pybind11
     REF "v${VERSION}"
-    # SHA512 is different from https://github.com/microsoft/vcpkg/blob/master/ports/pybind11/portfile.cmake since we use zip file.
-    SHA512 57e681b6bb51fafe68d013757918603ba9f26ebc5d4840a6780f2204fb2b6a6dae08d05467537c3416a2be6071f18d13c44a37f5bf4b5c5335ccf383ec042456
+    # SHA512 for the zip (not tar.gz) file.
+    SHA512 786b1bf534ac67a8d5669f8babf67bb13e48b3a3da1b6344e43ae10a84b80bbc8fea5f12a65fd18739c341fefef5622c5dc096db964dff33cc62ea4259b2e2c1
     HEAD_REF master
-    PATCHES
-        android.diff
 )
 
 vcpkg_cmake_configure(
