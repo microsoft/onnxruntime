@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "onnxruntime_pybind_exceptions.h"
+#include <Python.h>
 
 namespace onnxruntime {
 namespace python {
@@ -9,28 +10,53 @@ namespace py = pybind11;
 
 void ThrowIfPyErrOccured() {
   if (PyErr_Occurred()) {
+    std::string sType = "Unknown Exception";
+
+#if PY_VERSION_HEX >= 0x030C0000  // Python 3.12+ (including 3.14)
+    // 1. Use the modern API which returns the fully constructed exception instance
+    PyObject* err = PyErr_GetRaisedException();
+    if (err != nullptr) {
+      PyObject* pStr = PyObject_Str(err);
+
+      // 2. CRITICAL: Guard against NULL if stringification fails
+      if (pStr != nullptr) {
+        sType = py::reinterpret_borrow<py::str>(pStr);
+        Py_XDECREF(pStr);
+      } else {
+        PyErr_Clear();  // Clear the formatting error indicator
+      }
+      Py_XDECREF(err);
+    }
+#else
+    // Fallback for Python 3.11 and older
     PyObject *ptype, *pvalue, *ptraceback;
     PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-    // 1. Normalize the exception so pvalue is safe to evaluate
     PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
 
-    PyObject* pStr = PyObject_Str(ptype);
-    std::string sType = py::reinterpret_borrow<py::str>(pStr);
-    Py_XDECREF(pStr);
-
+    if (ptype != nullptr) {
+      PyObject* pStr = PyObject_Str(ptype);
+      if (pStr != nullptr) {
+        sType = py::reinterpret_borrow<py::str>(pStr);
+        Py_XDECREF(pStr);
+      } else {
+        PyErr_Clear();
+      }
+    }
     if (pvalue != nullptr) {
-      pStr = PyObject_Str(pvalue);
-      sType += ": ";
-      sType += py::reinterpret_borrow<py::str>(pStr);
-      Py_XDECREF(pStr);
+      PyObject* pStr = PyObject_Str(pvalue);
+      if (pStr != nullptr) {
+        sType += ": ";
+        sType += py::reinterpret_borrow<py::str>(pStr);
+        Py_XDECREF(pStr);
+      } else {
+        PyErr_Clear();
+      }
     }
 
-    // 2. Safely release the references!
-    // Older version of ORT (<= 1.24.2) does not have these and will leak the traceback objects.
     Py_XDECREF(ptype);
     Py_XDECREF(pvalue);
     Py_XDECREF(ptraceback);
+#endif
 
     throw Fail(sType);
   }
