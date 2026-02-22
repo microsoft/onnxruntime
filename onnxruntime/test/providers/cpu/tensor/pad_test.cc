@@ -1391,9 +1391,6 @@ TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
   // Post-slice core: [4]; wrap 3 -> [4, 4, 4, 4]
   const std::vector<float> expected_data = {4, 4, 4, 4};
 
-  // CUDA registers only up to 18 and does not impl wrap mode
-  // so we force version to 19 to automatically exclude EPs that do not
-  // implement wrap mode similar to the above tests.
   OpTester test("Pad", 19);
   test.AddInput<float>("data", input_shape, input_data);
   test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
