@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 
-class ConfigOptions;
+struct ConfigOptions;
 
 void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* config,
                                                      const ConfigOptions& config_options);
