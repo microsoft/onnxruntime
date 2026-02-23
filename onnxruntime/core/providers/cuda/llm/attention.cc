@@ -515,11 +515,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // The attention_bias should be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length)
     // attn_mask can be 2D, 3D, or 4D. Broadcasting aligns from the right (trailing dimensions).
     if (attn_mask != nullptr) {
-      // TODO(titaiwang, xadupre): attn_mask bool is not supported yet
-      if (attn_mask->IsDataType<bool>()) {
-        ORT_THROW("Boolean attn_mask is not supported yet in Attention op (CUDA).");
-      }
-
       size_t attn_mask_dims_size = attn_mask->Shape().NumDimensions();
       auto attn_mask_dims = attn_mask->Shape().GetDims();
       // For 2D mask (q_seq_len, total_seq_len): both batch and heads dimensions need broadcasting
@@ -582,8 +577,24 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
     // Set additional fields
     data.bias = nullptr;  // New Attention op doesn't have bias
+    IAllocatorUniquePtr<void> converted_mask_buffer;
     if (nullptr != attn_mask) {
-      data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
+      if (attn_mask->IsDataType<bool>()) {
+        // Convert boolean mask to additive attention bias: true -> 0.0, false -> mask_filter_value
+        int64_t num_elements = attn_mask->Shape().Size();
+        converted_mask_buffer = GetScratchBuffer<void>(num_elements * sizeof(CudaT), context->GetComputeStream());
+        auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+        ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<CudaT>(
+            attn_mask->Data<bool>(),
+            reinterpret_cast<CudaT*>(converted_mask_buffer.get()),
+            num_elements,
+            contribop_parameters.mask_filter_value,
+            cuda_stream,
+            GetDeviceProp().maxThreadsPerBlock));
+        data.attention_bias = reinterpret_cast<const CudaT*>(converted_mask_buffer.get());
+      } else {
+        data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
+      }
     }
     data.qkv_format = contribop_parameters.qkv_format;
 

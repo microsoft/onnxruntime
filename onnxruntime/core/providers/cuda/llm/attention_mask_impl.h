@@ -52,5 +52,17 @@ Status LaunchConvertMaskToSeqlensK(
     cudaStream_t stream,
     int max_threads_per_block);
 
+// Convert a boolean attention mask to an additive attention bias for the MHA path.
+// Maps true -> 0.0 (attend) and false -> mask_filter_value (mask out).
+// The output has the same shape as the input mask.
+template <typename T>
+Status LaunchConvertBoolMaskToAttentionBias(
+    const bool* attn_mask_bool,
+    T* attention_bias,
+    int64_t num_elements,
+    float mask_filter_value,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 }  // namespace cuda
 }  // namespace onnxruntime
