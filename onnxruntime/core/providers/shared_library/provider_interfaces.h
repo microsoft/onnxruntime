@@ -1004,9 +1004,6 @@ struct ProviderHost {
 
   virtual bool Utils__HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) = 0;
 
-  virtual Status Utils__ValidateExternalDataPath(const std::filesystem::path& base_path,
-                                                 const std::filesystem::path& location) = 0;
-
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,

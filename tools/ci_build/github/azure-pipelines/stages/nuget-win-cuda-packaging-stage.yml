@@ -70,9 +70,9 @@ stages:
     packageName: x64-cuda
     CudaVersion: ${{ parameters.CudaVersion }}
     ${{ if ne(parameters.win_cudnn_home, '') }}:
-      buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --cudnn_home=${{ parameters.win_cudnn_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
+      buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}" --cudnn_home=${{ parameters.win_cudnn_home }}
     ${{ else }}:
-      buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
+      buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
@@ -93,9 +93,9 @@ stages:
     CudaVersion: ${{ parameters.CudaVersion }}
     packageName: x64-tensorrt
     ${{ if ne(parameters.win_cudnn_home, '') }}:
-      buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }} --cudnn_home=${{ parameters.win_cudnn_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
+      buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}" --cudnn_home=${{ parameters.win_cudnn_home }}
     ${{ else }}:
-      buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --parallel 4 --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
+      buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu

@@ -329,7 +329,8 @@ Status TensorProtoWithExternalDataToTensorProto(
 }
 
 Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location) {
+                                const std::filesystem::path& location,
+                                const std::filesystem::path& model_path) {
   // Reject absolute paths
   ORT_RETURN_IF(location.is_absolute(),
                 "Absolute paths not allowed for external data location");
@@ -337,14 +338,39 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
     // Resolve and verify the path stays within model directory
     auto base_canonical = std::filesystem::weakly_canonical(base_dir);
     // If the symlink exists, it resolves to the target path;
-    // so if the symllink is outside the directory it would be caught here.
+    // so if the symlink is outside the directory it would be caught here.
     auto resolved = std::filesystem::weakly_canonical(base_dir / location);
+
     // Check that resolved path starts with base directory
     auto [base_end, resolved_it] = std::mismatch(
         base_canonical.begin(), base_canonical.end(),
         resolved.begin(), resolved.end());
-    ORT_RETURN_IF(base_end != base_canonical.end(),
-                  "External data path: ", location, " escapes model directory: ", base_dir);
+
+    if (base_end != base_canonical.end()) {
+      // If validation against logical base_dir fails, we check against the
+      // real (canonical) path of the model file to support symlinked models
+      // (e.g. models in Hugging Face Hub local cache).
+      if (!model_path.empty()) {
+        auto real_model_dir = std::filesystem::weakly_canonical(model_path).parent_path();
+
+        auto [real_base_end, real_resolved_it] = std::mismatch(
+            real_model_dir.begin(), real_model_dir.end(),
+            resolved.begin(), resolved.end());
+
+        if (real_base_end == real_model_dir.end()) {
+          return Status::OK();
+        }
+
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "External data path: ", location, " (resolved path: ", resolved,
+                               ") escapes both model directory: ", base_dir,
+                               " and real model directory: ", real_model_dir);
+      }
+
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "External data path: ", location, " (resolved path: ", resolved,
+                             ") escapes model directory: ", base_dir);
+    }
   }
   return Status::OK();
 }

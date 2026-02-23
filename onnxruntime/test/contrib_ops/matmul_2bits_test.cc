@@ -27,6 +27,9 @@
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#ifdef USE_WEBGPU
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -538,6 +541,57 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_LargerK) {
   RunWebGpu2BitsTest<float>(1, 32, 64, 32, true);
   RunWebGpu2BitsTest<float>(1, 32, 128, 32, true);
   RunWebGpu2BitsTest<float>(1, 32, 256, 32, true, 0.3f, 0.05f);
+}
+
+// DP4A path tests (accuracy_level=4) — exercises the 1024-entry LUT / dequantization
+// path for 2-bit weights with zero_points.
+// DP4A constraints: accuracy_level==4, block_size%32==0, K%128==0, N%16==0.
+// Skipped when the adapter lacks Subgroups support or is Apple (Metal),
+// because the DP4A kernel would silently fall back to the default path.
+TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
+  // Ensure the WebGPU context is initialized so we can query adapter capabilities.
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!contrib::webgpu::HasDP4ADeviceSupport(ep->GetDeviceId())) {
+    GTEST_SKIP() << "DP4A requires Subgroups support on a non-Apple adapter";
+  }
+
+  TestOptions2Bits opts{};
+  opts.accuracy_level = 4;
+  opts.has_zero_point = true;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+
+  // M=1, N=16, K=128, block_size=32 — minimal DP4A-eligible shape
+  opts.M = 1;
+  opts.N = 16;
+  opts.K = 128;
+  opts.block_size = 32;
+  RunTest2Bits<float>(opts);
+
+  // M=1, N=32, K=256, block_size=32 — larger K
+  opts.M = 1;
+  opts.N = 32;
+  opts.K = 256;
+  opts.block_size = 32;
+  opts.output_abs_error = 0.3f;
+  opts.output_rel_error = 0.05f;
+  RunTest2Bits<float>(opts);
+
+  // M=4 (rows), N=32, K=128, block_size=32
+  opts.M = 4;
+  opts.N = 32;
+  opts.K = 128;
+  opts.block_size = 32;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  RunTest2Bits<float>(opts);
+
+  // M=1, N=16, K=128, block_size=128 — full-block
+  opts.M = 1;
+  opts.N = 16;
+  opts.K = 128;
+  opts.block_size = 128;
+  RunTest2Bits<float>(opts);
 }
 
 #endif  // USE_WEBGPU
