@@ -198,6 +198,11 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   PartitionBufferByColumn(a_weight, row_count, column_count, column_stride, stride, result);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
 
+  // Raw data is in little endian
+  if constexpr (endian::native != endian::little) {
+    onnxruntime::utils::ConvertRawDataInTensorProto(initializer_partition);
+  }
+
   // Partition initial optimizer state if available
   const auto optim_state_it = initial_optimizer_states_.find(original_name);
   if (optim_state_it != initial_optimizer_states_.end()) {
@@ -331,6 +336,11 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   const int64_t row_index_offset = horizontal_parallel_rank_ * row_partition;
   memcpy(result.data(), a_weight + row_index_offset * column_count, sizeof(float) * element_count);
   initializer_partition.set_raw_data(result.data(), element_count * sizeof(float));
+
+  // Raw data is in little endian
+  if constexpr (endian::native != endian::little) {
+    onnxruntime::utils::ConvertRawDataInTensorProto(initializer_partition);
+  }
 
   // Partition initial optimizer state if available
   const auto optim_state_it = initial_optimizer_states_.find(original_name);
@@ -849,6 +859,12 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
     val_partition.insert(val_partition.end(), val, val + size);
     val_partition[2] /= horizontal_parallel_size_;
     tensor_partition.set_raw_data(val_partition.data(), size * sizeof(int64_t));
+
+    // Raw data is in little endian
+    if constexpr (endian::native != endian::little) {
+      onnxruntime::utils::ConvertRawDataInTensorProto(tensor_partition);
+    }
+
     NodeArg& node_arg_partition = graph_utils::AddInitializerWithOrtValue(graph, tensor_partition);
     graph_utils::ReplaceNodeInput(*node_ptr, 1, node_arg_partition);
     graph.RemoveInitializedTensor(shape_arg->Name());
@@ -1178,6 +1194,12 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     val_partition.insert(val_partition.end(), val, val + size);
     val_partition[idx] /= horizontal_parallel_size_;
     tensor_partition.set_raw_data(val_partition.data(), size * sizeof(int64_t));
+
+    // Raw data is in little endian
+    if constexpr (endian::native != endian::little) {
+      onnxruntime::utils::ConvertRawDataInTensorProto(tensor_partition);
+    }
+
     NodeArg& node_arg_partition = graph_utils::AddInitializerWithOrtValue(graph, tensor_partition);
     graph_utils::ReplaceNodeInput(*node_ptr, 1, node_arg_partition);
     graph.RemoveInitializedTensor(shape_arg->Name());
