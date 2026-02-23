@@ -6,7 +6,7 @@
 #ifndef SHARED_PROVIDER
 #include "core/framework/config_options.h"
 #else
-#include "core/providers/shared_library/provider_wrappedtypes.h"
+#include "core/providers/shared_library/provider_api.h"
 #endif
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
