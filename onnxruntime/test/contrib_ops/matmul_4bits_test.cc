@@ -423,6 +423,9 @@ TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
+
+  // See PR #27412 for details on the following test case,
+  // which is added to cover a specific failure case in the past.
   TestMatMulNBitsTyped<float, 369, 6144, 2048, 32, 4>();
 }
 
