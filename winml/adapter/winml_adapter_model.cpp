@@ -611,7 +611,7 @@ ORT_API_STATUS_IMPL(
   input.set_name(input_name);
 
   if (info->type == ONNXType::ONNX_TYPE_TENSOR) {
-    auto num_dims = info->tensor_type_info->GetShape()->GetDims().size();
+    auto num_dims = info->tensor_type_info->HasShape() ? info->tensor_type_info->GetShape()->GetDims().size() : 0;
     CreateTypeProto_Tensor(
       input.mutable_type()->mutable_tensor_type(),
       input_name,
@@ -638,7 +638,7 @@ ORT_API_STATUS_IMPL(
   ONNX_NAMESPACE::TensorProto& input = *graph.add_initializer();
   input.set_name(input_name);
 
-  auto num_dims = info->tensor_type_info->GetShape()->GetDims().size();
+  auto num_dims = info->tensor_type_info->HasShape() ? info->tensor_type_info->GetShape()->GetDims().size() : 0;
   for (size_t i = 0; i < num_dims; i++) {
     input.add_dims(info->tensor_type_info->GetShape()->GetDims()[i]);
   }
@@ -661,12 +661,13 @@ ORT_API_STATUS_IMPL(
   ONNX_NAMESPACE::ValueInfoProto& output = *graph.add_output();
   output.set_name(output_name);
 
+  auto num_dims = info->tensor_type_info->HasShape() ? info->tensor_type_info->GetShape()->GetDims().size() : 0;
   if (info->type == ONNXType::ONNX_TYPE_TENSOR) {
     CreateTypeProto_Tensor(
       output.mutable_type()->mutable_tensor_type(),
       output_name,
-      info->tensor_type_info->GetShape()->GetDims().data(),
-      info->tensor_type_info->GetShape()->GetDims().size(),
+      (num_dims == 0) ? nullptr : info->tensor_type_info->GetShape()->GetDims().data(),
+      num_dims,
       ONNXTensorElementDataTypeToTensorProto_DataType(info->tensor_type_info->GetElementType())
     );
   }
