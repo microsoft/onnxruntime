@@ -3771,7 +3771,7 @@ Status Graph::ConvertInitializersIntoOrtValues() {
           std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
           ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
           const auto& location = external_data_info->GetRelPath();
-          auto st = utils::ValidateExternalDataPath(model_dir, location);
+          auto st = utils::ValidateExternalDataPath(model_dir, location, model_path);
           if (!st.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                    "External data path validation failed for initializer: ", tensor_proto.name(),

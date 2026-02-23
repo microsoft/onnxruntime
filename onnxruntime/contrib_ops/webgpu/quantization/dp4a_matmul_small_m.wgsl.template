@@ -80,9 +80,21 @@ $MAIN {
 #endif
 
 #if n_bits == 2
+#if has_zero_points
+    // The workgroup size is 128, LoadDequantizationTable needs to load 1024 entries.
+    LoadDequantizationTable(local_idx);
+    LoadDequantizationTable(local_idx + 128);
+    LoadDequantizationTable(local_idx + 256);
+    LoadDequantizationTable(local_idx + 384);
+    LoadDequantizationTable(local_idx + 512);
+    LoadDequantizationTable(local_idx + 640);
+    LoadDequantizationTable(local_idx + 768);
+    LoadDequantizationTable(local_idx + 896);
+#else
     // The workgroup size is 128, LoadDequantizationTable needs to be called twice.
     LoadDequantizationTable(local_idx);
-    LoadDequantizationTable(local_idx+127);
+    LoadDequantizationTable(local_idx+128);
+#endif
     workgroupBarrier();
 #endif
 #if single_scale_weights
@@ -141,8 +153,13 @@ $MAIN {
 
 #elif n_bits == 2
                 let b_value = b.getByOffset(b_offset);
+#if has_zero_points
+                let own_b = DequantizedFrom2BitsTo8Bits(b_value.x, zero);
+                let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y, zero);
+#else
                 let own_b = DequantizedFrom2BitsTo8Bits(b_value.x);
                 let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y);
+#endif
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #endif
             }

@@ -882,6 +882,11 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvPointwiseFloatKernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
+        // AArch64 assembly kernel pointwise convolution computes multiple
+        // output positions at once and significantly reduces memory traffic.
+        MLAS_CONV_POINTWISE_FLOAT_KERNEL* const KernelFast = MlasConvPointwiseFloatKernelNeonAsm;
+#endif
 #if defined(__aarch64__) && defined(__linux__)
         if (WorkBlock->UseBf16) {
             Kernel = GetMlasPlatform().ConvPointwiseBf16Kernel;
@@ -923,9 +928,8 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             const float* filter = Filter;
             float* output = Output + BlockSize * ph * OutputWidth;
 
-            size_t InputChannelBatch;
-
-            for (size_t ic = 0; ic < InputChannels; ic += InputChannelBatch) {
+            size_t InputChannelBatch = 0;
+            for (size_t ic = 0; ic < InputChannels; ) {
 
                 constexpr size_t MaximumInputChannelBatch = 128;
 
@@ -937,7 +941,15 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 // Invoke the convolution kernel.
                 //
 
-                Kernel(input, filter, output, StrideWidthBytes, InputChannelBatch /
+                MLAS_CONV_POINTWISE_FLOAT_KERNEL* KernelToUse = Kernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
+                // Heuristically select the AArch64 assembly kernel for larger convolutions
+                if (!WorkBlock->UseBf16 && OutputThisIteration >= 4 &&
+                    StrideHeight == 1 && StrideWidth == 1) {
+                    KernelToUse = KernelFast;
+                }
+#endif
+                KernelToUse(input, filter, output, StrideWidthBytes, InputChannelBatch /
                     BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
                     OutputStrideBytes, OutputThisIteration, Bias, KernelFlags);
 
@@ -949,8 +961,9 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     DoActivation(output, FilterCount, BlockSize * OutputThisIteration);
                 }
 
-                input += MaximumInputChannelBatch * InputSize;
-                filter += BlockSize * MaximumInputChannelBatch;
+                input += InputChannelBatch * InputSize;
+                filter += BlockSize * InputChannelBatch;
+                ic += InputChannelBatch;
             }
 
             //
@@ -1024,6 +1037,9 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvDepthwiseFloatKernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
+        MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* const KernelFast = MlasConvDepthwiseFloatKernelNeonAsm;
+#endif
 #else
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasConvDepthwiseFloatKernel;
 #endif
@@ -1047,7 +1063,13 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             // Invoke the convolution kernel.
             //
 
-            Kernel(Input + BlockSize * (ih * InputWidth - PaddingLeftX), filter,
+            MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* KernelToUse = Kernel;
+#if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
+            if (OutputWidth >= 4) {
+                KernelToUse = KernelFast;
+            }
+#endif
+            KernelToUse(Input + BlockSize * (ih * InputWidth - PaddingLeftX), filter,
                 Output, StrideWidthBytes, DilationWidthBytes, InputStrideBytes,
                 EffectiveKernelHeight, KernelWidth, Input + BlockSize * (ih * InputWidth),
                 InputWidthBytes, DilatedInputWidthBytes, OutputCountLeftPadX,
