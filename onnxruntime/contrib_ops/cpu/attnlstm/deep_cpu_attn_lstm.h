@@ -60,7 +60,7 @@ class DeepCpuAttnLstmOp final : public OpKernel {
                                         activation_func_alphas,
                                         activation_func_betas);
 
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, op_kernel_info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, op_kernel_info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

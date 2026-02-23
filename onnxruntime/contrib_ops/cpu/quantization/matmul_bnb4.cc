@@ -24,7 +24,7 @@ class MatMulBnb4 final : public OpKernel {
         "Invalid quant_type, only 0 (FP4) and 1 (NF4) are supported.");
     is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
     transB_ = static_cast<bool>(info.GetAttrOrDefault("transB", static_cast<int64_t>(1)));
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

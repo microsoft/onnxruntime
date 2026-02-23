@@ -13,7 +13,7 @@ template <typename T>
 class GRUGrad final : public OpKernel {
  public:
   GRUGrad(const OpKernelInfo& info) : OpKernel(info), attributes_(info) {
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

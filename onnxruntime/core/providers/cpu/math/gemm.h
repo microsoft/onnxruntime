@@ -27,7 +27,7 @@ template <typename T>
 class Gemm : protected GemmBase, public OpKernel {
  public:
   Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info) {
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

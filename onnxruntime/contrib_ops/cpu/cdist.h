@@ -22,7 +22,7 @@ class CDist final : public OpKernel {
 
  public:
   CDist(const OpKernelInfo& info) : OpKernel(info) {
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
     std::string metric;
     ORT_ENFORCE(info.GetAttr<std::string>("metric", &metric).IsOK());
     if (metric.compare("sqeuclidean") == 0)

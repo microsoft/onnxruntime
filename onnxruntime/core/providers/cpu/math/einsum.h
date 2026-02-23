@@ -20,7 +20,7 @@ class Einsum : public OpKernel {
     ORT_ENFORCE(info.GetAttr<std::string>("equation", &equation_).IsOK(),
                 "Missing 'equation' attribute");
     einsum_equation_preprocessor_ = std::make_unique<EinsumEquationPreprocessor>(equation_);
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   virtual Status Compute(OpKernelContext* context) const override;

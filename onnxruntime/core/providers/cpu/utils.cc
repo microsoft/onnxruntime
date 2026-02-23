@@ -7,8 +7,8 @@
 
 namespace onnxruntime {
 
-void SetUseKleidiaiFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* config,
-                                     const ConfigOptions& config_options) {
+void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* config,
+                                                     const ConfigOptions& config_options) {
   if (config == nullptr) {
     return;
   }

@@ -36,7 +36,7 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
 
   using_strings_ = !classlabels_strings_.empty();
   class_count_ = static_cast<ptrdiff_t>(intercepts_.size());
-  SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+  SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts

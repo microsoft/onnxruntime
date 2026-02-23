@@ -29,7 +29,7 @@ template <typename T>
 class AttentionBase : public OpKernel {
  public:
   AttentionBase(const OpKernelInfo& info) : OpKernel(info) {
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status ApplyAttention(OpKernelContext* context,

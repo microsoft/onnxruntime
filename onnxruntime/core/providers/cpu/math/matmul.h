@@ -12,7 +12,7 @@ template <typename T>
 class MatMul final : public OpKernel {
  public:
   MatMul(const OpKernelInfo& info) : OpKernel(info) {
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -39,7 +39,7 @@ class MatMul<float> final : public OpKernel {
     use_fastmath_mode_ = (config_ops == "1") && MlasBf16AccelerationSupported();
 #endif
 
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,

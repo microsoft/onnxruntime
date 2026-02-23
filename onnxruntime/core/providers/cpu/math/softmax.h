@@ -34,7 +34,7 @@ class Softmax final : public OpKernel {
 
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
 
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* ctx) const override;

@@ -27,7 +27,7 @@ class SVMCommon {
       degree_ = kernel_params[2];
     }
 
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   void set_kernel_type(KERNEL new_kernel_type) { kernel_type_ = new_kernel_type; }

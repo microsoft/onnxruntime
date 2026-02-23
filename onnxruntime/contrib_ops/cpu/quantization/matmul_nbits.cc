@@ -110,7 +110,7 @@ class MatMulNBits final : public OpKernel {
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("block_size")))},
         compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
-    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 
     const auto& node = info.node();
     auto input_defs = node.InputDefs();
