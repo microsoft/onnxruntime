@@ -107,14 +107,14 @@ MlasGemmBatch(
 
 size_t
 MLASCALL
-MlasDynamicQgemmPackBSize(
+MlasDynamicQGemmPackBSize(
     size_t N,
     size_t K
 );
 
 void
 MLASCALL
-MlasDynamicQgemmPackB(
+MlasDynamicQGemmPackB(
     size_t N,
     size_t K,
     const int8_t* B,

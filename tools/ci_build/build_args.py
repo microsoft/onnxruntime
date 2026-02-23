@@ -546,12 +546,17 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--disable_contrib_ops", action="store_true", help="Disable contrib operators.")
     parser.add_argument("--disable_ml_ops", action="store_true", help="Disable traditional ML operators.")
+    parser.add_argument(
+        "--disable_generation_ops",
+        action="store_true",
+        help="Disable generation contrib operators (BeamSearch, WhisperBeamSearch, GreedySearch, Sampling).",
+    )
     parser.add_argument("--disable_rtti", action="store_true", help="Disable Run-Time Type Information (RTTI).")
     parser.add_argument(
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float4", "float8", "optional", "sparsetensor"],
+        choices=["float4", "float8", "optional", "sparsetensor", "string"],
         help="Disable selected data types.",
     )
     parser.add_argument(

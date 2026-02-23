@@ -217,16 +217,14 @@ def number_of_nvcc_threads(args):
 
         available_memory = psutil.virtual_memory().available
         if isinstance(available_memory, int) and available_memory > 0:
-            if available_memory > 60 * 1024 * 1024 * 1024:
+            if available_memory >= 64 * 1024 * 1024 * 1024:
                 # When available memory is large enough, chance of OOM is small.
-                nvcc_threads = 4
+                nvcc_threads = min(4, int(available_memory / (8 * 4 * 1024 * 1024 * 1024)))
             else:
-                # NVCC need a lot of memory to compile 8 flash attention cu files in Linux or 4 cutlass fmha cu files in Windows.
-                # Here we select number of threads to ensure each thread has enough memory (>= 4 GB). For example,
-                # Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory. When parallel=4 and nvcc_threads=2,
-                # total nvcc threads is 4 * 2, which is barely able to build in 28 GB memory so we will use nvcc_threads=1.
+                # NVCC need a lot of memory to compile 48 flash attention cu files.
+                # Here we select number of threads to ensure each thread has enough memory (>= 4 GB).
                 memory_per_thread = 4 * 1024 * 1024 * 1024
-                fmha_cu_files = 4 if is_windows() else 16
+                fmha_cu_files = 48
                 fmha_parallel_jobs = min(fmha_cu_files, number_of_parallel_jobs(args))
                 nvcc_threads = max(1, int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
                 print(
@@ -375,6 +373,7 @@ def generate_build_tree(
     disable_float4_types = args.android or ("float4" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
+    disable_string_type = "string" in types_to_disable
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
@@ -456,6 +455,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
+        "-Donnxruntime_DISABLE_GENERATION_OPS=" + ("ON" if args.disable_generation_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI="
         + ("ON" if args.disable_rtti or (args.minimal_build is not None and not args.enable_pybind) else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
@@ -515,6 +515,7 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_FLOAT4_TYPES=" + ("ON" if disable_float4_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
+        "-Donnxruntime_DISABLE_STRING_TYPE=" + ("ON" if disable_string_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
     if args.minimal_build is not None:
@@ -1821,6 +1822,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
+                log.info("Testing Symlink ONNX Model and External Data")
+                run_subprocess([sys.executable, "onnxruntime_test_python_symlink_data.py"], cwd=cwd, dll_path=dll_path)
+
                 # Disable python onnx tests for TensorRT and CANN EP, because many tests are
                 # not supported yet.
                 if args.use_tensorrt or args.use_cann:

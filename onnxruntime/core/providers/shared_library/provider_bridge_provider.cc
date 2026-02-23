@@ -652,6 +652,7 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, 
 }
 
 namespace transformers {
+#if !defined(DISABLE_GENERATION_OPS)
 void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
 
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
@@ -689,6 +690,7 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, c
                                             const SessionState& subgraph_session_state) {
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
+#endif  // !defined(DISABLE_GENERATION_OPS)
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN
