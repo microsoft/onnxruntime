@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- ========================================================= -->
+  <!-- Block unsupported x86 -->
+  <!-- ========================================================= -->
+  <Target Name="OnnxRuntime_BlockX86"
+          BeforeTargets="Build"
+          Condition="'$(PlatformTarget)' == 'x86'">
+    <Error Text="Microsoft.ML.OnnxRuntime does not support x86. Please use x64 or ARM64." />
+  </Target>
+</Project>

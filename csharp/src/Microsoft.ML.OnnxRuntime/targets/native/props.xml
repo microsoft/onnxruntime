@@ -7,7 +7,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>
-        $(MSBuildThisFileDirectory)..\native\include;
+        $(MSBuildThisFileDirectory)include;
         %(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
     </ClCompile>
