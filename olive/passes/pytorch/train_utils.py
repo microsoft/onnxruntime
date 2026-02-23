@@ -83,6 +83,11 @@ class BaseHFTrainingArguments(NestedConfig):
         if version.parse(transformers_version) < version.parse("4.41") and "eval_strategy" in args:
             args["evaluation_strategy"] = args.pop("eval_strategy")
         extra_args = args.pop("extra_args")
+        # Filter out fields that are not valid TrainingArguments parameters (e.g. overwrite_output_dir
+        # was removed in transformers 5.0 but is still used by Olive's own logic) and None values
+        # so that transformers uses its own defaults
+        training_args_fields = {f.name for f in dataclasses.fields(transformers.TrainingArguments) if f.init}
+        args = {k: v for k, v in args.items() if k in training_args_fields and v is not None}
         return transformers.TrainingArguments(**args, **extra_args)
 
 

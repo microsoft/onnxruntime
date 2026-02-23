@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import platform
-import shutil
 from itertools import chain
 from pathlib import Path
 from unittest.mock import patch
@@ -211,9 +210,7 @@ def test_onnx_conversion_with_past_key_values(mock_onnx_export, tmp_path, io_con
         nonlocal dummy_kwargs
         # For dynamo export, inputs are passed via kwargs parameter
         dummy_kwargs = kwargs.get("kwargs", {})
-        _, _, output_path = args
-        shutil.copyfile(ONNX_MODEL_PATH, output_path)
-        return MockOnnxProgram(output_path)
+        return MockOnnxProgram(ONNX_MODEL_PATH)
 
     output_folder = tmp_path / "onnx"
     output_folder.mkdir(parents=True, exist_ok=True)

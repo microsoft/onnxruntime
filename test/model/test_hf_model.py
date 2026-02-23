@@ -27,23 +27,16 @@ class TestHFModel:
         self.local_path = huggingface_hub.snapshot_download(self.model_name, revision=self.revision)
 
     @pytest.mark.parametrize("local", [True, False])
-    @pytest.mark.parametrize("trust_remote_code", [True, False])
-    def test_load_model(self, local, trust_remote_code):
+    def test_load_model(self, local):
         olive_model = HfModelHandler(
             model_path=self.local_path if local else self.model_name,
             task=self.task,
-            load_kwargs={"trust_remote_code": trust_remote_code, "revision": self.revision},
+            load_kwargs={"revision": self.revision},
         )
 
         pytorch_model = olive_model.load_model()
         actual_class_path = f"{pytorch_model.__module__}.{pytorch_model.__class__.__name__}"
-        if trust_remote_code:
-            # When using remote code, the model is loaded from transformers_modules
-            assert actual_class_path.startswith("transformers_modules.")
-            assert actual_class_path.endswith(".modeling_phi3.Phi3ForCausalLM")
-        else:
-            # When not using remote code, the model is loaded from transformers
-            assert actual_class_path == "transformers.models.phi3.modeling_phi3.Phi3ForCausalLM"
+        assert actual_class_path == "transformers.models.phi3.modeling_phi3.Phi3ForCausalLM"
 
     @pytest.mark.parametrize("local", [True, False])
     def test_load_model_with_kwargs(self, local):
@@ -73,19 +66,18 @@ class TestHFModel:
         if tokenizer_exists:
             olive_model.get_hf_tokenizer().save_pretrained(tmp_path)
         saved_filepaths = olive_model.save_metadata(tmp_path)
-        # transformers>=4.53.x
-        assert len(saved_filepaths) == (4 if tokenizer_exists else 10)
+        # transformers>=5.0.0
+        assert len(saved_filepaths) == (4 if tokenizer_exists else 7)
         assert all(Path(fp).exists() for fp in saved_filepaths)
         assert isinstance(transformers.AutoConfig.from_pretrained(tmp_path), transformers.Phi3Config)
-        assert isinstance(transformers.AutoTokenizer.from_pretrained(tmp_path), transformers.LlamaTokenizerFast)
+        assert isinstance(transformers.AutoTokenizer.from_pretrained(tmp_path), transformers.PreTrainedTokenizerBase)
 
     @pytest.mark.parametrize("local", [True, False])
-    @pytest.mark.parametrize("trust_remote_code", [True, False])
-    def test_save_pretrained_metadata(self, local, trust_remote_code, tmp_path):
+    def test_save_pretrained_metadata(self, local, tmp_path):
         olive_model = HfModelHandler(
             model_path=self.local_path if local else self.model_name,
             task=self.task,
-            load_kwargs={"trust_remote_code": trust_remote_code, "revision": self.revision},
+            load_kwargs={"revision": self.revision},
         )
 
         # modify the config and save the model
@@ -94,8 +86,8 @@ class TestHFModel:
         loaded_model.save_pretrained(tmp_path)
 
         saved_filepaths = olive_model.save_metadata(tmp_path)
-        # generation config is also saved, transformers>=4.53.x
-        assert len(saved_filepaths) == 9
+        # generation config is also saved, transformers>=5.0.0
+        assert len(saved_filepaths) == 6
 
         with open(tmp_path / "config.json") as f:
             config = json.load(f)
@@ -126,7 +118,7 @@ def test_save_metadata_with_module_files(trust_remote_code, tmp_path):
     assert f"{config.__module__}.{config.__class__.__name__}" == expected_class_name
     assert isinstance(
         transformers.AutoTokenizer.from_pretrained(tmp_path, **load_kwargs),
-        transformers.LlamaTokenizerFast,
+        transformers.PreTrainedTokenizerBase,
     )
 
 

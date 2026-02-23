@@ -35,7 +35,8 @@ def common_test_rotate(rotate_pass, tmp_path, model_path, rotate_mode, atol, **c
     with torch.no_grad():
         original_output = original_model(i)
         rotated_output = rotated_model(i)
-        assert torch.allclose(original_output.logits, rotated_output.logits, atol=atol)
+        # Cast to same dtype before comparison since rotated model may be saved/loaded in a different dtype
+        assert torch.allclose(original_output.logits.float(), rotated_output.logits.float(), atol=atol)
 
 
 @pytest.mark.parametrize("model_path", ["tiny-phi3", "tiny-llama"])

@@ -77,8 +77,8 @@ def get_pytorch_model(batch_size=1):
     )
 
 
-def get_hf_model(model_path="hf-internal-testing/tiny-random-gptj"):
-    return HfModelHandler(model_path=model_path)
+def get_hf_model(model_path="hf-internal-testing/tiny-random-LlamaForCausalLM"):
+    return HfModelHandler(model_path=model_path, task="text-generation")
 
 
 def get_hf_model_config():

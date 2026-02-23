@@ -38,6 +38,8 @@ from olive.passes import Pass
 from olive.passes.onnx.common import get_external_data_config, ir_model_to_olive_model
 from olive.passes.pass_config import BasePassConfig, PassConfigParam, get_user_script_data_config
 
+# pylint: disable=W0212
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,6 +57,128 @@ class TraceModelWrapper(torch.nn.Module):
         if isinstance(self.model(*input_data, **input_dict), dict):
             return list(self.model(*input_data, **input_dict).values())
         return self.model(*input_data, **input_dict)
+
+
+def _register_dynamic_cache_export_support():
+    """Utilities for `DynamicCache` <> torch.export support."""
+    from transformers.cache_utils import DynamicCache, DynamicLayer, DynamicSlidingWindowLayer
+
+    def _get_cache_dict(cache: DynamicCache):
+        """Convert cache to dictionary format for pytree operations."""
+        if any(not isinstance(layer, (DynamicLayer, DynamicSlidingWindowLayer)) for layer in cache.layers):
+            raise RuntimeError("This pytree flattening function should only be applied to DynamicCache")
+
+        return {
+            "cache": [(layer.keys, layer.values) for layer in cache.layers if layer.keys is not None],
+        }
+
+    try:
+        torch.utils._pytree.register_pytree_node(
+            DynamicCache,
+            lambda dynamic_cache: torch.utils._pytree._dict_flatten(_get_cache_dict(dynamic_cache)),
+            _unflatten_dynamic_cache,
+            serialized_type_name=f"{DynamicCache.__module__}.{DynamicCache.__name__}",
+            flatten_with_keys_fn=lambda dynamic_cache: torch.utils._pytree._dict_flatten_with_keys(
+                _get_cache_dict(dynamic_cache)
+            ),
+        )
+        # TODO (team): This won't be needed in torch 2.7.
+        torch.fx._pytree.register_pytree_flatten_spec(
+            DynamicCache,
+            lambda cache, spec: torch.fx._pytree._dict_flatten_spec(_get_cache_dict(cache), spec),
+        )
+    # Catching this in case there are multiple runs for some test runs
+    except ValueError as e:
+        if "already registered as pytree node" not in str(e):
+            raise
+
+
+def _unflatten_dynamic_cache(values, context: torch.utils._pytree.Context):
+    from transformers.cache_utils import DynamicCache
+
+    dictionary = torch.utils._pytree._dict_unflatten(values, context)
+    cache = DynamicCache()
+    # Reconstruct layers from keys and values lists
+    cache_list = dictionary.get("cache", [])
+    for i, (key, value) in enumerate(cache_list):
+        cache.update(key, value, i)
+    return cache
+
+
+def _patch_dynamic_layer_for_export():
+    """Patch DynamicLayer.lazy_initialization for torch.export compatibility (transformers >= 5.0).
+
+    The original uses torch.tensor([]) which creates a 1D empty tensor (shape [0]).
+    torch.export needs consistent tensor ranks, so we use torch.narrow + torch.empty_like
+    to preserve the full shape (e.g. [batch, heads, 0, head_dim]).
+    """
+    from transformers.cache_utils import DynamicLayer
+
+    if not hasattr(DynamicLayer, "lazy_initialization"):
+        return
+
+    def patched_lazy_initialization(self, key_states: torch.Tensor, value_states: torch.Tensor = None):
+        self.dtype, self.device = key_states.dtype, key_states.device
+        like = torch.narrow(key_states, dim=-2, start=0, length=0)
+        if hasattr(key_states, "fake_mode"):
+            with key_states.fake_mode:
+                self.keys = torch.empty_like(like, dtype=self.dtype, device=self.device)
+                self.values = torch.empty_like(like, dtype=self.dtype, device=self.device)
+        else:
+            self.keys = torch.empty_like(like, dtype=self.dtype, device=self.device)
+            self.values = torch.empty_like(like, dtype=self.dtype, device=self.device)
+        self.is_initialized = True
+
+    DynamicLayer.lazy_initialization = patched_lazy_initialization
+    logger.debug("Patched DynamicLayer.lazy_initialization for torch.export compatibility.")
+
+
+def _convert_past_key_values_to_dynamic_cache(dummy_kwargs: dict, config=None) -> dict:
+    """Convert legacy list-format past_key_values to DynamicCache (transformers >= 5.0).
+
+    Transformers 5.0 models expect DynamicCache objects, not lists of (key, value) tensors.
+    When config is provided, the DynamicCache will create correct layer types (e.g.
+    DynamicSlidingWindowLayer for models using sliding window attention).
+    """
+    pkv = dummy_kwargs.get("past_key_values")
+    if pkv is None or not isinstance(pkv, (list, tuple)):
+        return dummy_kwargs
+
+    # Check if it's legacy format: list of [key, value] pairs (each with exactly 2 elements)
+    if not pkv or not isinstance(pkv[0], (list, tuple)) or len(pkv[0]) != 2:
+        return dummy_kwargs
+
+    from transformers.cache_utils import DynamicCache
+
+    dc = DynamicCache(config=config)
+    for layer_idx, kv in enumerate(pkv):
+        dc.update(kv[0], kv[1], layer_idx=layer_idx)
+    dummy_kwargs["past_key_values"] = dc
+    logger.debug("Converted past_key_values from legacy list format to DynamicCache.")
+    return dummy_kwargs
+
+
+def _convert_dynamic_shapes_for_dynamic_cache(dynamic_shapes: dict) -> dict:
+    """Convert dynamic_shapes for past_key_values from nested list to DynamicCache pytree format.
+
+    The old format is: [[key_shape, val_shape], ...] (one pair per layer)
+    The DynamicCache pytree is: {"cache": [(key0, val0), (key1, val1), ...]}
+    matching the structure from _register_dynamic_cache_export_support().
+    """
+    pkv_shapes = dynamic_shapes.get("past_key_values")
+    if pkv_shapes is None or not isinstance(pkv_shapes, (list, tuple)):
+        return dynamic_shapes
+
+    if not pkv_shapes or not isinstance(pkv_shapes[0], (list, tuple)) or len(pkv_shapes[0]) != 2:
+        return dynamic_shapes
+
+    # Convert [[key0, val0], [key1, val1], ...] -> {"cache": [(key0, val0), (key1, val1), ...]}
+    # matching DynamicCache pytree: _dict_flatten({"cache": [(keys, values), ...]})
+    dynamic_shapes["past_key_values"] = {
+        "cache": [tuple(layer) for layer in pkv_shapes],
+    }
+    logger.debug("Converted dynamic_shapes for past_key_values to DynamicCache pytree format.")
+    return dynamic_shapes
 
 
 def _patch_model_if_necessary(pytorch_model: torch.nn.Module):
@@ -179,9 +303,6 @@ def _export_pytorch_model(
     if torch_dtype:
         pytorch_model = pytorch_model.to(torch_dtype)
 
-    # Apply any necessary patches
-    _patch_model_if_necessary(pytorch_model)
-
     # get input and output names, and dynamic axes
     assert io_config is not None, "Cannot get io_config for the model."
     io_config = validate_config(io_config, IoConfig)
@@ -194,8 +315,6 @@ def _export_pytorch_model(
     # is taken, the old export always writes a model to the disk. When that happens we need to
     # load the model back into IR and load all the external tensor to memory
     with tempfile.TemporaryDirectory(prefix="olive_tmp") as tmp_dir:
-        tmp_model_path = resolve_onnx_path(tmp_dir)
-
         if dynamo:
             # Take the "release" version so that dev builds like 2.5.0dev1234 are treated as 2.5.0
             if _torch_is_older_than("2.7.0") and (
@@ -212,11 +331,6 @@ def _export_pytorch_model(
                     "Please upgrade PyTorch to 2.6.0 or above."
                 )
 
-            # Register DynamicCache export support
-            from transformers.integrations.executorch import register_dynamic_cache_export_support
-
-            register_dynamic_cache_export_support()
-
             if isinstance(dummy_inputs, dict):
                 dummy_kwargs = dummy_inputs
                 dummy_inputs = ()
@@ -224,12 +338,32 @@ def _export_pytorch_model(
                 dummy_kwargs = {}
                 dummy_inputs = tuple(dummy_inputs)
 
+            # Apply patches for DynamicCache / past_key_values compatibility
+            if version.parse(transformers.__version__) >= version.parse("5.0"):
+                # transformers >= 5.0: DynamicCache refactored to use DynamicLayer
+
+                _register_dynamic_cache_export_support()
+                _patch_dynamic_layer_for_export()
+                model_config = getattr(pytorch_model, "config", None)
+                dummy_kwargs = _convert_past_key_values_to_dynamic_cache(dummy_kwargs, config=model_config)
+                if io_config.dynamic_shapes:
+                    io_config.dynamic_shapes = _convert_dynamic_shapes_for_dynamic_cache(io_config.dynamic_shapes)
+            else:
+                # transformers < 5.0: patch forward to convert list <-> DynamicCache
+                _patch_model_if_necessary(pytorch_model)
+
             # NOTE: Usually validation is done in io_config.py, but because
             # dynamic_shapes has nested complexity, and it can't be validated multiple
             # times like others, we validate it here.
             io_config.dynamic_shapes, dummy_inputs, dummy_kwargs = _validate_dynamic_shapes(
                 io_config.dynamic_shapes, dummy_inputs, dummy_kwargs, pytorch_model
             )
+            # torch.export requires strict type match between inputs and dynamic_shapes;
+            # _validate_dynamic_shapes may return OrderedDict, so convert back to plain dict
+            if isinstance(io_config.dynamic_shapes, collections.OrderedDict):
+                io_config.dynamic_shapes = dict(io_config.dynamic_shapes)
+            if isinstance(dummy_kwargs, collections.OrderedDict):
+                dummy_kwargs = dict(dummy_kwargs)
 
             # When dynamo=True, PyTorch prefers dynamic_shapes over dynamic_axes.
             # If dynamic_shapes is None and fallback is enabled, don't pass dynamic_axes
@@ -239,7 +373,6 @@ def _export_pytorch_model(
             onnx_program = torch.onnx.export(  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter
                 pytorch_model,
                 dummy_inputs,
-                tmp_model_path,  # needed for fallback=True
                 kwargs=dummy_kwargs,
                 opset_version=config.target_opset,
                 input_names=io_config.input_names,
@@ -247,7 +380,6 @@ def _export_pytorch_model(
                 dynamic_axes=dynamic_axes_for_export,
                 dynamic_shapes=io_config.dynamic_shapes,
                 dynamo=True,
-                fallback=False,
                 optimize=config.optimize,
                 report=logger.isEnabledFor(logging.DEBUG),
             )
@@ -263,6 +395,8 @@ def _export_pytorch_model(
             if not _torch_is_older_than("2.9.0"):
                 # default is True in 2.9.0 and later
                 dynamo_args["dynamo"] = False
+
+            tmp_model_path = resolve_onnx_path(tmp_dir)
 
             torch.onnx.export(
                 pytorch_model,
