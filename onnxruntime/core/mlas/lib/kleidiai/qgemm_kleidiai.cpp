@@ -1,21 +1,17 @@
 //
-// SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2025-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 //
 // SPDX-License-Identifier: MIT
 //
 
-#include <map>
 
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp4x8_qsi8cxp4x8_16x4_neon_i8mm.h"
-#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
-#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.h"
-
-#include "kai_ukernel_interface.h"
-#if defined(ENABLE_QMX_KERNELS)
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa.h"
-#endif // ENABLE_QMX_KERNELS
 
 #include "mlasi_kleidiai.h"
+
+#include "kai_ukernel_interface.h"
+
+#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.h"
 
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffersQgemm {
