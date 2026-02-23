@@ -235,7 +235,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REGISTER_KERNEL_TYPED(T)                                                                   \
+#define REGISTER_DEFORMCONV_KERNEL_TYPED(T)                                                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                        \
       DeformConv,                                                                                 \
       kOnnxDomain,                                                                                \
@@ -250,14 +250,16 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
       kOnnxDomain,                                                                                \
       22,                                                                                         \
       T,                                                                                          \
-      kCudaExecutionProvider,                                                                    \
+      kCudaExecutionProvider,                                                                     \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),        \
       DeformConv<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
-REGISTER_KERNEL_TYPED(BFloat16)
+REGISTER_DEFORMCONV_KERNEL_TYPED(float)
+REGISTER_DEFORMCONV_KERNEL_TYPED(double)
+REGISTER_DEFORMCONV_KERNEL_TYPED(MLFloat16)
+REGISTER_DEFORMCONV_KERNEL_TYPED(BFloat16)
+
+#undef REGISTER_DEFORMCONV_KERNEL_TYPED
 
 }  // namespace cuda
 }  // namespace onnxruntime
