@@ -1055,7 +1055,7 @@ def generate_build_tree(
         cmake_args += [f"-Donnxruntime_PREBUILT_PYTORCH_PATH={os.path.dirname(torch.__file__)}"]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
-    if args.use_dx_interop:
+    if args.enable_dx_interop:
         cmake_args += ["-Donnxruntime_USE_DX_INTEROP=ON"]
 
     if args.use_azure:

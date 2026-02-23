@@ -2112,8 +2112,8 @@ struct OrtEpFactory {
    * external graphics API workloads (D3D12, Vulkan) and ONNX Runtime inference.
    *
    * The factory stores the graphics context configuration and uses it when creating
-   * synchronization streams via CreateSyncStreamForDevice. This approach (suggested by
-   * Scott McKay) is more graceful than passing the command queue directly during stream creation.
+   * synchronization streams via CreateSyncStreamForDevice. This approach
+   * is more graceful than passing the command queue directly during stream creation.
    *
    * The implementation is EP-specific. EPs may create a specialized interop context using
    * platform-specific APIs to enable GPU-GPU synchronization.

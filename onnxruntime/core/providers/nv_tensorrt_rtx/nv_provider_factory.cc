@@ -964,27 +964,34 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     if (config->graphics_api == ORT_GRAPHICS_API_D3D12) {
 #if defined(_WIN32) && USE_DX_INTEROP
-      // Validate required parameters
-      if (config->device == nullptr) {
-        return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "[NvTensorRTRTX EP] InitGraphicsInterop: D3D12 device is null");
-      }
+      // command_queue is optional (performance optimization for GPU-side sync). Without it, skip CIG context.
       if (config->command_queue == nullptr) {
-        return onnxruntime::CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "[NvTensorRTRTX EP] InitGraphicsInterop: D3D12 command queue is null");
+        LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] InitGraphicsInterop: command_queue not passed; skipping graphics interop context (streams will use default context).";
+        return nullptr;  // Success; Interop API still works, streams will use default context
       }
 
-      // Get LUID from CUDA device
+      ID3D12CommandQueue* d3d12_queue = reinterpret_cast<ID3D12CommandQueue*>(config->command_queue);
+
+      // Get device from command queue (no separate device param; avoids mismatch)
+      ID3D12Device* d3d12_device = nullptr;
+      HRESULT hr = d3d12_queue->GetDevice(IID_PPV_ARGS(&d3d12_device));
+      if (FAILED(hr) || d3d12_device == nullptr) {
+        return onnxruntime::CreateStatus(ORT_FAIL,
+                                         "[NvTensorRTRTX EP] InitGraphicsInterop: failed to get D3D12 device from command queue");
+      }
+
+      // Get LUID from CUDA device (OrtEpDevice identifies the GPU via device_id)
       if (cuda_prop.luidDeviceNodeMask == 0) {
+        d3d12_device->Release();
         return onnxruntime::CreateStatus(ORT_FAIL,
                                          "[NvTensorRTRTX EP] CUDA device does not have a valid LUID");
       }
       uint64_t cuda_luid = *reinterpret_cast<const uint64_t*>(cuda_prop.luid);
 
-      // Get LUID from D3D12 device and compare
-      ID3D12Device* d3d12_device = reinterpret_cast<ID3D12Device*>(config->device);
+      // Ensure graphics device from command queue and OrtEpDevice GPU are logically the same
       LUID d3d12_luid = d3d12_device->GetAdapterLuid();
       uint64_t d3d12_luid_64 = (static_cast<uint64_t>(d3d12_luid.HighPart) << 32) | d3d12_luid.LowPart;
+      d3d12_device->Release();
 
       if (d3d12_luid_64 != cuda_luid) {
         return onnxruntime::CreateStatus(ORT_FAIL,
@@ -992,7 +999,6 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
       }
 
       // Create CIG context bound to D3D12 command queue
-      ID3D12CommandQueue* d3d12_queue = reinterpret_cast<ID3D12CommandQueue*>(config->command_queue);
 
       CUctxCigParam cig_param = {CIG_DATA_TYPE_D3D12_COMMAND_QUEUE, d3d12_queue};
       CUctxCreateParams ctx_params = {nullptr, 0, &cig_param};
