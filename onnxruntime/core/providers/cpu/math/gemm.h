@@ -9,8 +9,7 @@
 #include "core/common/common.h"
 #include "core/util/math.h"
 #include "core/providers/cpu/activation/activations.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 
@@ -28,8 +27,7 @@ template <typename T>
 class Gemm : protected GemmBase, public OpKernel {
  public:
   Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info) {
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

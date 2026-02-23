@@ -11,16 +11,15 @@
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_qnbit.h"
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/cpu/utils.h"
 #include "core/providers/common.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 #include "core/platform/threadpool.h"
 #include "core/util/thread_utils.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -111,8 +110,7 @@ class MatMulNBits final : public OpKernel {
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("block_size")))},
         compute_type_{GetComputeType<T1>(nbits_, block_size_, info.GetAttr<int64_t>("accuracy_level"))} {
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 
     const auto& node = info.node();
     auto input_defs = node.InputDefs();

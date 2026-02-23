@@ -6,6 +6,7 @@
 #include <vector>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/utils.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "core/mlas/inc/mlas.h"
@@ -34,14 +35,10 @@ class AttentionBase {
                      int& past_sequence_length) const;
 
  protected:
-<<<<<<< HEAD
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
-  AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {
-=======
   template <typename KernelInfoType>
   AttentionBase(const KernelInfoType& info, bool require_same_hidden_size) {
->>>>>>> origin
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
     num_heads_ = static_cast<int>(num_heads);
@@ -59,8 +56,7 @@ class AttentionBase {
 
     require_same_hidden_size_ = require_same_hidden_size;
 
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status CheckMask(const Tensor* mask_index,

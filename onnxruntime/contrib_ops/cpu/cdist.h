@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/mlas/inc/mlas.h"
 
@@ -23,8 +24,7 @@ class CDist final : public OpKernel {
 
  public:
   CDist(const OpKernelInfo& info) : OpKernel(info) {
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
     std::string metric;
     ORT_ENFORCE(info.GetAttr<std::string>("metric", &metric).IsOK());
     if (metric.compare("sqeuclidean") == 0)

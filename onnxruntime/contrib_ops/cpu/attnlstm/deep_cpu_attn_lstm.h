@@ -10,8 +10,7 @@
 #include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -61,8 +60,7 @@ class DeepCpuAttnLstmOp final : public OpKernel {
                                         activation_func_alphas,
                                         activation_func_betas);
 
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, op_kernel_info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

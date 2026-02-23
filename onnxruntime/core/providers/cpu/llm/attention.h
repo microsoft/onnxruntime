@@ -6,8 +6,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/llm/attention_parameters.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 
@@ -30,8 +29,7 @@ template <typename T>
 class AttentionBase : public OpKernel {
  public:
   AttentionBase(const OpKernelInfo& info) : OpKernel(info) {
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status ApplyAttention(OpKernelContext* context,

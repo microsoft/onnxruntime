@@ -4,6 +4,7 @@
 #include "core/providers/cpu/ml/linearregressor.h"
 #include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -27,8 +28,7 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
   // use the intercepts_ if they're valid
   use_intercepts_ = intercepts_.size() == static_cast<size_t>(num_targets_);
 
-  mlas_backend_kernel_selector_config_.use_kleidiai =
-      info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+  SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts

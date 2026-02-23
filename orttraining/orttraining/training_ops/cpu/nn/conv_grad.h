@@ -5,8 +5,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -15,8 +14,7 @@ template <typename T>
 class ConvGrad final : public OpKernel {
  public:
   explicit ConvGrad(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

@@ -9,8 +9,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 
@@ -21,8 +20,7 @@ class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

@@ -4,11 +4,10 @@
 #pragma once
 
 #include "core/framework/allocator.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
 #include "attention_mechanism.h"
-
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {

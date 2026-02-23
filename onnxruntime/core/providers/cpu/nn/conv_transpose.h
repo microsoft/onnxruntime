@@ -19,8 +19,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 
@@ -28,8 +27,7 @@ template <typename T>
 class ConvTranspose : public OpKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,

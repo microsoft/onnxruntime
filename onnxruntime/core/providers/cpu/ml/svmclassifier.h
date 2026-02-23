@@ -8,7 +8,7 @@
 #include "core/util/math_cpuonly.h"
 #include "ml_common.h"
 #include "core/providers/cpu/math/gemm.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -27,8 +27,7 @@ class SVMCommon {
       degree_ = kernel_params[2];
     }
 
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   void set_kernel_type(KERNEL new_kernel_type) { kernel_type_ = new_kernel_type; }

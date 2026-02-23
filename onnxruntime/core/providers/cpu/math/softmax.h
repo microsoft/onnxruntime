@@ -9,7 +9,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/softmax_shared.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 template <typename T>
@@ -34,8 +34,7 @@ class Softmax final : public OpKernel {
 
     log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmax";
 
-    mlas_backend_kernel_selector_config_.use_kleidiai =
-        info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+    SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* ctx) const override;

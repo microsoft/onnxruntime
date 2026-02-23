@@ -4,6 +4,7 @@
 #include "core/providers/cpu/ml/linearclassifier.h"
 #include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
+#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -36,8 +37,7 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
 
   using_strings_ = !classlabels_strings_.empty();
   class_count_ = static_cast<ptrdiff_t>(intercepts_.size());
-  mlas_backend_kernel_selector_config_.use_kleidiai =
-      info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasDisableKleidiai) != "1";
+  SetUseKleidiaiFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts
