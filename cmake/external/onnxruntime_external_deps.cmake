@@ -739,25 +739,11 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_destroy_buffer_on_destructor.patch &&
 
-          # The dawn_force_enable_f16_nvidia_vulkan.patch contains the following changes:
-          #
-          # - (private) Force enable f16 support for NVIDIA Vulkan
-          #   Dawn disabled f16 support for NVIDIA Vulkan by default because of crashes in f16 CTS tests (crbug.com/tint/2164).
-          #   Since the crashes are limited to specific GPU models, we patched Dawn to remove the restriction.
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_force_enable_f16_nvidia_vulkan.patch &&
-
           # The dawn_binskim.patch contains the following changes:
           #
           # - (private) Fulfill the BinSkim requirements
           #   Some build warnings are not allowed to be disabled in project level.
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
-
-          # The uniform_and_storage_buffer_16_bit_access.patch contains the following changes:
-          #
-          # - (private) Android devices don't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
-          #   in the uniform and converting to fp16 before using.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch &&
 
           # The safari_polyfill.patch contains the following changes:
           #

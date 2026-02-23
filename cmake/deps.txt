@@ -55,7 +55,7 @@ cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v4.2.1.zip;5d2b21b10
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/c24b7bab0c12f53da76d0c31b03b9f0f8ec8f3b4.zip;239063aee4946a9af147b473a4c3da78ba7413b4
 directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v1.613.1.zip;47653509a3371eabb156360f42faf582f314bf2e
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.12.0.zip;7e733cfdc410d777b76122d64232499205589a96
-dawn;https://github.com/google/dawn/archive/13c1635a14574ebb7116b56a69f5519301417fda.zip;0aadd28fc385cf7d657d5fc70a352372d2d3c76a
+dawn;https://github.com/google/dawn/archive/ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38.zip;d4d64d1729104b61e654073566f1a376e16cad92
 kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.gz;6895e72b3d5cf1173358164cb3d64c9d7d33cc84
 # kleidiai-qmx is pinned to a specific commit as there are no tagged releases. When an appropriate tagged release becomes available,
 # this entry will be updated to use refs/tags/<version> instead of the raw commit hash.
