@@ -1578,8 +1578,7 @@ MlasGemmBatch(
         GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data,
-                                                 BatchSize, ThreadPool, BackendKernelSelectorConfig)){
+        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
         return;
     }
     //
@@ -1684,8 +1683,7 @@ Return Value:
         TransA != CBLAS_TRANSPOSE::CblasTrans) {
         size_t bytes_required;
         //TODO pass status by reference to indicate success/fail
-        bytes_required = GetMlasPlatform().MlasSGemmPackBSizeOverride(TransA, TransB, N, K,
-                                          BackendKernelSelectorConfig);
+        bytes_required = GetMlasPlatform().MlasSGemmPackBSizeOverride(TransA, TransB, N, K);
         if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;
         }
@@ -1754,8 +1752,7 @@ Return Value:
         GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans    &&
-        GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB,
-                              BackendKernelSelectorConfig)){
+        GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB){
          return;
     }
 #endif

@@ -861,8 +861,7 @@ bool
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+    MLAS_THREADPOOL* ThreadPool);
 
 typedef
 size_t
@@ -870,8 +869,7 @@ size_t
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
-    size_t K,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+    size_t K);
 
 typedef
 bool
@@ -882,8 +880,7 @@ bool
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+    void* PackedB);
 
 typedef
 void
