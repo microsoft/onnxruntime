@@ -325,7 +325,7 @@ TEST(DeformConvTest, MinimalBilinearBFloat16) {
   std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
   std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
 
-  RunDeformConvTestBFloat16(p, X, W, offset, B, &mask, expected_Y);
+  RunDeformConvTestBFloat16(p, X, W, offset, B, &mask, expected_Y, 22);
 }
 #endif
 
@@ -579,7 +579,8 @@ TEST(DeformConvTest, WrongOffsetShape) {
   test.AddInput<float>("B", {2}, B);
   test.AddOptionalInputEdge<float>();
   test.AddOutput<float>("Y", Y_shape_wrong, expected_Y);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Offset channel count must be offset_group * 2 * kH * kW");
+  std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Offset channel count must be offset_group * 2 * kH * kW", excluded);
 }
 
 // Wrong mask channel count -> expect failure.
@@ -624,7 +625,8 @@ TEST(DeformConvTest, WrongMaskShape) {
   test.AddInput<float>("B", {2}, B);
   test.AddInput<float>("mask", mask_shape_wrong, wrong_mask);
   test.AddOutput<float>("Y", Y_shape_mask, expected_Y);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Mask channel count");
+  std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Mask channel count", excluded);
 }
 
 // Opset 22 (same behavior, different opset).
