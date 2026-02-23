@@ -4,7 +4,6 @@
 #include "core/providers/cpu/ml/linearregressor.h"
 #include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
-#include "core/providers/cpu/utils.h"
 
 namespace onnxruntime {
 namespace ml {

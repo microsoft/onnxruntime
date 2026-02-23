@@ -12,8 +12,6 @@
 #include "core/providers/cpu/utils.h"
 #include "einsum_utils/einsum_compute_preprocessor.h"
 
-
-
 namespace onnxruntime {
 
 class Einsum : public OpKernel {

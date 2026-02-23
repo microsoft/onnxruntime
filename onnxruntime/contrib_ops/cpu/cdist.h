@@ -6,8 +6,6 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/utils.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {
