@@ -114,15 +114,23 @@ stages:
         displayName: 'Build'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
+          arguments: >-
             --config ${{ parameters.cmake_build_type }}
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
             --enable_pybind
             --enable_onnx_tests
-            --parallel 8 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --update --build
-            $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
+            --parallel
+            --use_vcpkg
+            --use_vcpkg_ms_internal_asset_cache
+            --use_binskim_compliant_compile_flags
+            --update
+            --build
+            $(TelemetryOption)
+            ${{ parameters.BUILD_PY_PARAMETERS }}
+            ${{ parameters.EP_BUILD_FLAGS }}
+            ${{ variables.trt_build_flag }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
 

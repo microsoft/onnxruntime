@@ -67,6 +67,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* attn_mask = context->Input<Tensor>(3);
   const Tensor* past_key = context->Input<Tensor>(4);
   const Tensor* past_value = context->Input<Tensor>(5);
+  const Tensor* nonpad_kv_seqlen = context->Input<Tensor>(6);  // optional, Opset 24
 
   attention_helper::AttentionParameters parameters;
   TensorShape y_shape;
@@ -81,6 +82,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                   attn_mask,
                   past_key,
                   past_value,
+                  nonpad_kv_seqlen,
                   is_causal_,
                   softcap_,
                   softmax_precision_,
