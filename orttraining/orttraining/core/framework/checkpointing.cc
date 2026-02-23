@@ -78,13 +78,6 @@ Status SaveRuntimeTensor(
 
   saved_tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
 
-  // TODO need to ensure the data is written in little-endian format...
-  // e.g., with endian_utils.h:WriteLittleEndian()
-  // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/framework/endian_utils.h
-  if constexpr (endian::native != endian::little) {
-    ORT_NOT_IMPLEMENTED("checkpointing currently requires little-endian host byte order");
-  }
-
   ORT_RETURN_IF_NOT(
       data_file.write(tensor_data.data(), length),
       "Failed to write to data file: ", ToUTF8String(relative_data_path));
