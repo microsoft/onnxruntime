@@ -235,7 +235,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REGISTER_DEFORMCONV_KERNEL_TYPED(T)                                                                  \
+#define REGISTER_DEFORMCONV_KERNEL_TYPED(T)                                                       \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                        \
       DeformConv,                                                                                 \
       kOnnxDomain,                                                                                \
