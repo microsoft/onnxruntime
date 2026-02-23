@@ -3,7 +3,12 @@
 
 #include "core/providers/cpu/utils.h"
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/config_options.h"
+#else
+#include "core/providers/shared_library/provider_wrappedtypes.h"
+#endif
+
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
