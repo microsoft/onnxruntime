@@ -175,7 +175,7 @@ struct BilinearSamplePlan2D {
   uint8_t mask = 0;
 };
 // PrecomputeBilinearSamplePlan2D, the loop runs across all H_out * W_out points, using the right nx/ny for each (oy, ox) and
-//toring that point’s four indices, four weights, and mask in plans[idx]
+// storing that point’s four indices, four weights, and mask in plans[idx]
 template <typename T>
 void PrecomputeBilinearSamplePlan2D(const T* grid_data,
                                     int64_t H_out,
