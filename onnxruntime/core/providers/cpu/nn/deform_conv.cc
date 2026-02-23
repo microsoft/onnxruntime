@@ -318,24 +318,27 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
 // Explicit template instantiation for float and double
 template class DeformConv<float>;
+template class DeformConv<double>;
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    DeformConv,
-    19,
-    21,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .InputMemoryType(OrtMemTypeCPUInput, 2)  // offset
-        .InputMemoryType(OrtMemTypeCPUInput, 4),  // optional mask
-    DeformConv<float>);
+#define REGISTER_DEFORMCONV_KERNEL_TYPED(T)                                                        \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                        \
+      DeformConv, 19, 21, T,                                                                       \
+      KernelDefBuilder()                                                                           \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                   \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)   /* offset */                                   \
+          .InputMemoryType(OrtMemTypeCPUInput, 4),  /* optional mask */                            \
+      DeformConv<T>);                                                                              \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                  \
+      DeformConv, 22, T,                                                                           \
+      KernelDefBuilder()                                                                           \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                   \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                                                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 4),                                                 \
+      DeformConv<T>)
 
-ONNX_CPU_OPERATOR_KERNEL(
-    DeformConv,
-    22,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .InputMemoryType(OrtMemTypeCPUInput, 2)
-        .InputMemoryType(OrtMemTypeCPUInput, 4),
-    DeformConv<float>);
+REGISTER_DEFORMCONV_KERNEL_TYPED(float)
+REGISTER_DEFORMCONV_KERNEL_TYPED(double)
+
+#undef REGISTER_DEFORMCONV_KERNEL_TYPED
 
 }  // namespace onnxruntime
