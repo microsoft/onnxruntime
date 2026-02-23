@@ -9,7 +9,7 @@ import unittest
 
 import onnx
 from bart_model_generator import create_bart_attention_sdpa
-from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
+from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
 from gpt2_model_generator import create_gpt2_attention
 from model_loader import get_test_data_path
 from parity_utilities import find_transformers_source
@@ -151,6 +151,25 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "bert_3d_attention_opt.onnx")
+
+    def test_attention_fusion_pre_ln(self):
+        """Test attention fusion for pre-layer-norm first block.
+
+        In a pre-LN model the first block has no Add before the first
+        LayerNormalization — the graph input feeds LN directly.
+        """
+        model = create_bert_attention_pre_ln()
+        dir = "."
+        model_path = os.path.join(dir, "pre_ln_attention.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        # Verify that attention fusion succeeded
+        op_types = [node.op_type for node in optimized_model.model.graph.node]
+        self.assertIn("Attention", op_types, "Attention fusion did not fire for pre-LN first block")
 
     def test_gpt2_attention_fusion(self):
         hidden_size = 64
