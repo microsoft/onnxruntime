@@ -341,7 +341,7 @@ static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE CUDA_GRAPH_ANNOTATION_MODEL_URI = TSTR("testdata/mul_1_dynamic.onnx");
 #endif
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
-static constexpr PATH_TYPE PR_27412_FP16A_INT4B_MODEL_URI = TSTR("testdata/pr_27412_fp16A_int4B_model.onnx");
+static constexpr PATH_TYPE PR_27412_FP16A_INT4B_MODEL_URI = TSTR("testdata/model-int4-ac4.onnx");
 #ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
 #endif
