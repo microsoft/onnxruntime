@@ -15,11 +15,11 @@ namespace onnxruntime {
 
 inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* config,
                                                             const ConfigOptions& config_options) {
-   if (config == nullptr) {
-      return;
-   }
+  if (config == nullptr) {
+    return;
+  }
 
-   config->use_kleidiai = config_options.GetConfigEntry("mlas.disable_kleidiai") != "1";
+  config->use_kleidiai = config_options.GetConfigEntry("mlas.disable_kleidiai") != "1";
 }
 
 }  // namespace onnxruntime
