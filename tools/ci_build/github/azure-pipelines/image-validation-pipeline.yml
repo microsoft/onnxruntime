@@ -1,0 +1,51 @@
+
+stages:
+- stage: Linux_Build_ARM64
+  dependsOn: []
+  jobs:
+  - template: templates/py-linux.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+      is1ES: true
+
+- stage: Linux_Test_ARM64
+  dependsOn: Linux_Build_ARM64
+  jobs:
+  - job: Linux_Test_CPU_aarch64
+    timeoutInMinutes: 120
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: 'onnxruntime-linux-ARM64-CPU-2019'
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - download: current
+      artifact: 'drop-linux-cpu-aarch64-cpu'
+
+    - download: current
+      artifact: 'onnxruntime-aarch64-cpu'
+
+    - bash: |
+        set -e -x
+        mv "$(Pipeline.Workspace)/drop-linux-cpu-aarch64-cpu" $(Build.BinariesDirectory)/Release
+        mv "$(Pipeline.Workspace)/onnxruntime-aarch64-cpu" "$(Build.BinariesDirectory)/whl"
+      displayName: 'Move artifacts to expected locations'
+
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/aarch64/python/cpu
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecpubuildpythonaarch64
+
+    - task: Bash@3
+      displayName: 'Run Python Tests'
+      inputs:
+        targetType: filePath
+        filePath: tools/ci_build/github/linux/run_python_dockertest.sh
+        arguments: -d CPU -c Release -i onnxruntimecpubuildpythonaarch64
