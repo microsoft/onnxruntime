@@ -498,8 +498,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
 
   // See PR #27412 for details on the following test case,
   // which is added to cover a specific failure case in the past.
+  // 6144, 2048
   TestMatMulNBitsTyped<MLFloat16, 369, 128, 2048, 32, 4>();
-
 }
 
 TEST(MatMulNBits, LegacyShape_4b) {
