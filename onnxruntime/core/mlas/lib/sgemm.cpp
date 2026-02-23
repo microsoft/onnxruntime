@@ -1752,7 +1752,7 @@ Return Value:
         GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans    &&
-        GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB){
+        GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }
 #endif
