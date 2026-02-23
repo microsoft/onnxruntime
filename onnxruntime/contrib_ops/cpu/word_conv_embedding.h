@@ -54,7 +54,7 @@ class WordConvEmbedding final : public OpKernel {
       const TensorShape& w_conv_shape,
       const TensorShape& w_char_embedding_shape) const;
 
-private:
+ private:
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
   int64_t embedding_size_{Info().GetAttrOrDefault<int64_t>("embedding_size", -1)};
   int64_t conv_window_size_{Info().GetAttrOrDefault<int64_t>("conv_window_size", -1)};
