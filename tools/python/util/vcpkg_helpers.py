@@ -101,6 +101,16 @@ endif()
     )"""
         )
 
+    # When building ONNX for WebAssembly, we disable doc strings to reduce the binary size. The ONNX doc strings are
+    # only used for error messages and are not critical for end users. Disabling them can significantly reduce the
+    # binary size, which is important for WebAssembly targets.
+    if is_emscripten:
+        f.write(
+            r"""
+    string(APPEND VCPKG_C_FLAGS " -D__ONNX_NO_DOC_STRINGS")
+    string(APPEND VCPKG_CXX_FLAGS " -D__ONNX_NO_DOC_STRINGS")"""
+        )
+
     f.write(r"""
 endif() # End ONNX-specific block
 """)

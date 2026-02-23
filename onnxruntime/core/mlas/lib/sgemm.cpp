@@ -1575,10 +1575,10 @@ MlasGemmBatch(
 {
     // Override
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
-        GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+        GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
         return;
     }
     //
@@ -1677,13 +1677,17 @@ Return Value:
     //
     // KleidiAI or other override
     #if defined(USE_KLEIDIAI)
+<<<<<<< HEAD
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
+=======
+    if (GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
+>>>>>>> origin
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans) {
         size_t bytes_required;
         //TODO pass status by reference to indicate success/fail
-        bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
+        bytes_required = GetMlasPlatform().MlasSGemmPackBSizeOverride(TransA, TransB, N, K);
         if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;
         }
@@ -1748,11 +1752,15 @@ Return Value:
 --*/
 {
 #if defined(USE_KLEIDIAI)
+<<<<<<< HEAD
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+=======
+    if (GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
+>>>>>>> origin
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans    &&
-        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+        GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }
 #endif

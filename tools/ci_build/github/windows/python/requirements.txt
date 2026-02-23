@@ -14,5 +14,4 @@ jinja2
 markupsafe
 semver
 packaging
-coloredlogs
 onnx==1.20.1; python_version < "3.14"

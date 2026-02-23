@@ -182,6 +182,11 @@ void
     }
 }
 
+
+//
+// Implementation of MlasConvNchwFloatKernelNeon
+//
+
 void
     MLASCALL
     MlasConvNchwFloatKernelNeon(
@@ -228,6 +233,7 @@ void
         KernelFlags
     );
 }
+
 
 //
 // Implementation of MlasConvNchwcFloatKernelNeon

@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <cmath>
+#include <string>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -282,16 +283,6 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
 
-  if (is_profiling_) {
-    PendingKernelInfo pending_kernel_info(context.NodeName(),
-                                          context.OpType(),
-                                          program.Name(),
-                                          key,
-                                          inputs,
-                                          outputs);
-    pending_kernels_.emplace_back(std::move(pending_kernel_info));
-  }
-
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
 
   const auto* program_artifact = program_mgr_->Get(key);
@@ -480,6 +471,26 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   WriteTimestamp(num_pending_dispatches_ * 2 + 1);
   ++num_pending_dispatches_;
 
+  // Update profiling data after LaunchComputePipeline
+  if (is_profiling_) {
+    PendingKernelInfo pending_kernel_info(context.NodeName(),
+                                          context.OpType(),
+                                          program.Name(),
+                                          key,
+                                          inputs,
+                                          outputs);
+
+    if (graph_capture_state_ == GraphCaptureState::Capturing) {
+      // Update the last captured command's profiling info
+      if (external_captured_commands_ && !external_captured_commands_->empty()) {
+        external_captured_commands_->back().pending_kernel_info = std::move(pending_kernel_info);
+      }
+    } else {
+      // Add to pending kernels for current run profiling
+      pending_kernels_.emplace_back(std::move(pending_kernel_info));
+    }
+  }
+
   if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
       (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
     EndComputePass();
@@ -577,7 +588,7 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
 }
 
 void WebGpuContext::WriteTimestamp(uint32_t query_index) {
-  if (!is_profiling_ || query_type_ != TimestampQueryType::InsidePasses) {
+  if (!is_profiling_ || graph_capture_state_ == GraphCaptureState::Capturing || query_type_ != TimestampQueryType::InsidePasses) {
     return;
   }
 
@@ -714,7 +725,11 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
 
   EndComputePass();
 
-  if (is_profiling_ && num_pending_dispatches_ > 0) {
+  if (is_profiling_ && num_pending_dispatches_ > 0 && graph_capture_state_ != GraphCaptureState::Capturing) {
+    ORT_ENFORCE(num_pending_dispatches_ == pending_kernels_.size(),
+                "Number of pending dispatches (", num_pending_dispatches_,
+                ") does not match pending kernels size (", pending_kernels_.size(), ")");
+
     uint32_t query_count = num_pending_dispatches_ * 2;
     current_command_encoder_.ResolveQuerySet(
         query_set_,
@@ -793,11 +808,14 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
     if (indirect_dispatch_tensor != nullptr) {
       indirect_buffer = reinterpret_cast<WGPUBuffer>(const_cast<void*>(indirect_dispatch_tensor->DataRaw()));
     }
+
+    // Profiling data will be populated in Run() after this call returns.
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
                                             bind_group_layout,
                                             {x, y, z},
-                                            indirect_buffer});
+                                            indirect_buffer,
+                                            std::nullopt});
   } else {
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
@@ -828,9 +846,6 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
     external_captured_commands_->clear();
   }
 
-  // TODO: support profiling with graph capture.
-  ORT_ENFORCE(!is_profiling_, "profiling is not supported yet under graph capture mode");
-
   graph_capture_state_ = GraphCaptureState::Capturing;
 }
 
@@ -843,6 +858,18 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
     auto& command = captured_commands[i];
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
+
+    // Restore profiling info when profiling is enabled. All commands are expected
+    // to have profiling data in this mode to keep pending_kernels_ consistent
+    // with num_pending_dispatches_.
+    if (is_profiling_) {
+      ORT_ENFORCE(command.pending_kernel_info.has_value(),
+                  "WebGpuContext::Replay: profiling is enabled but captured command at index ",
+                  i,
+                  " is missing pending_kernel_info.");
+      pending_kernels_.emplace_back(*command.pending_kernel_info);
+    }
+
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
     wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
 

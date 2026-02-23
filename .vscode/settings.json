@@ -14,5 +14,23 @@
         "-build/include_subdir",
         "-runtime/references"
     ],
-    "C_Cpp.autoAddFileAssociations": false
+    "C_Cpp.autoAddFileAssociations": false,
+
+    // Exclude build directories and non-essential folders from C++ parsing
+    "C_Cpp.files.exclude": {
+        "**/build/**": true,
+        "**/build_*/**": true,
+        "**/cmake/external/**": true,
+        "**/node_modules/**": true,
+        "**/.git/**": true
+    },
+
+    // Exclude from search but keep in explorer
+    "search.exclude": {
+        "**/build/**": true,
+        "**/build_*/**": true,
+        "**/cmake/external/**": true,
+        "**/node_modules/**": true,
+        "**/.git/**": true
+    }
 }

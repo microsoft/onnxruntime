@@ -851,7 +851,9 @@ bool
     MLAS_THREADPOOL* ThreadPool
     );
 
-typedef void (MLASCALL MLAS_GEMM_BATCH)(
+typedef
+bool
+(MLASCALL MLAS_SGEMM_BATCH_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -862,30 +864,18 @@ typedef void (MLASCALL MLAS_GEMM_BATCH)(
     MLAS_THREADPOOL* ThreadPool,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
-typedef bool (MLASCALL MLAS_GEMM_BATCH_OVERRIDE)(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS* Data,
-    size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool);
-
-typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE)(
+typedef
+size_t
+(MLASCALL MLAS_SGEMM_PACK_B_SIZE_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
-typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_OVERRIDE)(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t N,
-    size_t K);
-
-typedef void (MLASCALL MLAS_GEMM_PACK_B)(
+typedef
+bool
+(MLASCALL MLAS_SGEMM_PACK_B_OVERRIDE)(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -895,13 +885,28 @@ typedef void (MLASCALL MLAS_GEMM_PACK_B)(
     void* PackedB,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
-typedef bool (MLASCALL MLAS_GEMM_PACK_B_OVERRIDE)(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
+typedef
+void
+(MLASCALL MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE)(
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef
+size_t
+(MLASCALL MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE)(
+    size_t N,
+    size_t K);
+
+typedef
+void
+(MLASCALL MLAS_DYNAMIC_QGEMM_PACK_B_OVERRIDE)(
     size_t N,
     size_t K,
-    const float* B,
-    size_t ldb,
+    const int8_t* B,
+    const float* Scales,
+    const float* Bias,
     void* PackedB);
 
 extern "C" {
@@ -966,10 +971,25 @@ extern "C" {
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
 #endif
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC)
+    // Intrinsics kernel for direct NCHW convolution
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
+#if !defined(_WIN32)
+    // AArch64 assembly micro-kernel for direct NCHW convolution
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeonAsm;
+#endif
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
+    // Intrinsics kernel for depthwise NCHWc convolution
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
+#if !defined(_WIN32)
+    // AArch64 assembly micro-kernel for depthwise NCHWc convolution
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeonAsm;
+#endif
+    // Intrinsics kernel for pointwise NCHWc convolution
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon;
+#if !defined(_WIN32)
+    // AArch64 assembly micro-kernel for pointwise NCHWc convolution
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeonAsm;
+#endif
 #if defined(__aarch64__) && defined(__linux__)
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
 #endif
@@ -1336,10 +1356,15 @@ struct MLAS_PLATFORM {
     bool Avx512Supported_ = false;
     bool ArmNeonIsQuantActivationsUnsigned = false;
 
-    // Mlas overrides initialisation
-    MLAS_GEMM_BATCH_OVERRIDE* MlasGemmBatchOverride = nullptr;
-    MLAS_GEMM_PACK_B_SIZE_OVERRIDE* MlasGemmPackBSizeOverride = nullptr;
-    MLAS_GEMM_PACK_B_OVERRIDE* MlasGemmPackBOverride = nullptr;
+    // MLAS SGemm overrides
+    MLAS_SGEMM_BATCH_OVERRIDE* MlasSGemmBatchOverride = nullptr;
+    MLAS_SGEMM_PACK_B_SIZE_OVERRIDE* MlasSGemmPackBSizeOverride = nullptr;
+    MLAS_SGEMM_PACK_B_OVERRIDE* MlasSGemmPackBOverride = nullptr;
+    // MLAS Dynamic QGemm overrides
+    MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE* MlasDynamicQGemmBatchOverride = nullptr;
+    MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE* MlasDynamicQGemmPackBSizeOverride = nullptr;
+    MLAS_DYNAMIC_QGEMM_PACK_B_OVERRIDE* MlasDynamicQGemmPackBOverride = nullptr;
+    // MLAS Conv overrides
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
 

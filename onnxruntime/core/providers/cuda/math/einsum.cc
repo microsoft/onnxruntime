@@ -53,7 +53,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<float>,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer);
     return einsum_compute_processor->Run();
   } else if (inputs[0]->IsDataType<double>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<double>::Create(context, allocator, tp,
@@ -65,7 +66,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<double>,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer);
     return einsum_compute_processor->Run();
   } else if (inputs[0]->IsDataType<MLFloat16>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<MLFloat16>::Create(context, allocator, tp,
@@ -76,7 +78,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer);
     return einsum_compute_processor->Run();
   }
 

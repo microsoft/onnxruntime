@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
@@ -163,6 +164,10 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     inputs.push_back(bias);
   }
 
+  if (intel::CanApplyMatMulIntel(context, helper.M(), helper.N(), helper.K())) {
+    return intel::ApplyMatMulIntel(context, Activation(), inputs, output_tensor);
+  }
+
   return ComputeMatMul(&context, Activation(), inputs, output_tensor, false);
 }
 
@@ -240,29 +245,32 @@ Status ComputeMatMul(ComputeContext* context,
   bool use_bias_in_matmul = has_bias;
   uint32_t split_dim_inner = 1;
 
-  const SplitKConfig& split_k_config = context->GetSplitKConfig();
-  const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, /*is_gemm*/ false, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
-  if (need_split_k) {
-    ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
-    ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
-    ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
+  // Current Split-K implementation relies on atomic operations, which are not deterministic.
+  if (!context->KernelContext().GetUseDeterministicCompute()) {
+    const SplitKConfig& split_k_config = context->GetSplitKConfig();
+    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, /*is_gemm*/ false, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
+    if (need_split_k) {
+      ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
+      ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
+      ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
 
-    // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
-    const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, /*bias_is_scalar*/ false, output_shape_temp);
-    ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
+      // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
+      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, /*bias_is_scalar*/ false, output_shape_temp);
+      ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
 
-    // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
-    // `bias` again in `MatMulProgram`.
-    use_bias_in_matmul = false;
+      // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
+      // `bias` again in `MatMulProgram`.
+      use_bias_in_matmul = false;
 
-    // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
-    // number of splits along `dim_inner`.
-    split_dim_inner = split_k_config.GetSplitDimInner();
-    dispatch_z = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+      // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
+      // number of splits along `dim_inner`.
+      split_dim_inner = split_k_config.GetSplitDimInner();
+      dispatch_z = (dim_inner + split_dim_inner - 1) / split_dim_inner;
 
-    // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
-    // built-in functions.
-    output.is_atomic = true;
+      // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
+      // built-in functions.
+      output.is_atomic = true;
+    }
   }
 
   MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};

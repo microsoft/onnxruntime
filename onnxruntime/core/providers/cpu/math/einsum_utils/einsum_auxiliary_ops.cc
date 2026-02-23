@@ -22,6 +22,12 @@ Status DataCopy(const Tensor& input, Tensor& output, void* /*einsum_cuda_assets*
   return Status::OK();
 }
 
+// CPU specific Zero buffer helper
+Status ZeroBuffer(Tensor& input, void* /*einsum_cuda_assets*/) {
+  memset(input.MutableDataRaw(), 0, input.SizeInBytes());
+  return Status::OK();
+}
+
 // CPU specific Transpose helper
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* /*einsum_cuda_assets*/) {

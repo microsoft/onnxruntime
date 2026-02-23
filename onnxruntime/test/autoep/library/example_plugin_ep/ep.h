@@ -38,6 +38,23 @@ struct MulKernel {
 };
 
 /// <summary>
+/// Kernel for EPContext nodes loaded from compiled models.
+///
+/// This example EP does not support EPContext inference - Compute() returns NOT_IMPLEMENTED.
+/// A production EP would deserialize the ep_cache_context attribute and restore compiled state.
+/// This kernel exists to clearly separate EPContext handling from MulKernel.
+/// </summary>
+struct EpContextKernel {
+  EpContextKernel(const OrtApi& ort_api, const OrtLogger& logger)
+      : ort_api(ort_api), logger(logger) {}
+
+  OrtStatus* Compute(OrtKernelContext* kernel_ctx);
+
+  const OrtApi& ort_api;
+  const OrtLogger& logger;
+};
+
+/// <summary>
 /// Example EP that can compile a single Mul operator.
 /// </summary>
 class ExampleEp : public OrtEp, public ApiPtrs {
@@ -51,8 +68,12 @@ class ExampleEp : public OrtEp, public ApiPtrs {
 
   ~ExampleEp();
 
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>>& Kernels() {
-    return kernels_;
+  std::unordered_map<std::string, std::unique_ptr<MulKernel>>& MulKernels() {
+    return mul_kernels_;
+  }
+
+  std::unordered_map<std::string, std::unique_ptr<EpContextKernel>>& EpContextKernels() {
+    return ep_context_kernels_;
   }
 
  private:
@@ -78,6 +99,9 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos) noexcept;
 
+  static const char* ORT_API_CALL GetCompiledModelCompatibilityInfoImpl(OrtEp* this_ptr,
+                                                                        const OrtGraph* graph) noexcept;
+
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
@@ -87,6 +111,8 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   std::string name_;
   Config config_{};
   const OrtLogger& logger_;
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
+  std::unordered_map<std::string, std::unique_ptr<MulKernel>> mul_kernels_;
+  std::unordered_map<std::string, std::unique_ptr<EpContextKernel>> ep_context_kernels_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;
+  std::string compatibility_info_;  // Cached compatibility string returned by GetCompiledModelCompatibilityInfo
 };

@@ -47,6 +47,8 @@ Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input
 
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
 
+Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets);
+
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
