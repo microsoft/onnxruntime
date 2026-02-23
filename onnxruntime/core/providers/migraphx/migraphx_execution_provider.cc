@@ -1248,6 +1248,16 @@ static std::vector<std::size_t> generate_compiled_batch_sizes(std::size_t max_ba
     return batch_sizes;
   }
 
+  if (max_compiled_models == 0) {
+    LOGS_DEFAULT(WARNING) << "max_compiled_models is 0. Defaulting to 1 (compile max batch size only).";
+    max_compiled_models = 1;
+  } else if (max_compiled_models > max_batch_size) {
+    LOGS_DEFAULT(WARNING) << "max_compiled_models (" << max_compiled_models
+                          << ") exceeds max_batch_size (" << max_batch_size
+                          << "). Setting max_compiled_models to " << max_batch_size << ".";
+    max_compiled_models = max_batch_size;
+  }
+
   if (max_compiled_models == 1) {
     batch_sizes.push_back(max_batch_size);
   } else if (max_compiled_models >= 2) {
