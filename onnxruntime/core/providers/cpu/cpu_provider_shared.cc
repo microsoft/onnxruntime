@@ -243,6 +243,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                  sequence_length, past_sequence_length);
   }
 
+#if !defined(DISABLE_GENERATION_OPS)
   void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override {
     p->contrib::transformers::BeamSearch::Init(info);
   }
@@ -298,6 +299,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) override { p->contrib::transformers::Sampling::Init(info); }
   Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) override { return p->contrib::transformers::Sampling::Compute(ctx); }
   Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::Sampling::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+#endif  // !defined(DISABLE_GENERATION_OPS)
 
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }

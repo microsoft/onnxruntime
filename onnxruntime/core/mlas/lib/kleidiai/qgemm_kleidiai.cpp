@@ -10,9 +10,7 @@
 #include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.h"
 
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1x4_qsi8cxp4vlx4_1x4vl_sme2_dot.h"
+#include "kai_ukernel_interface.h"
 #if defined(ENABLE_QMX_KERNELS)
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa.h"
 #endif // ENABLE_QMX_KERNELS
@@ -26,11 +24,13 @@ struct KaiTlsBuffersQgemm {
 };
 static thread_local KaiTlsBuffersQgemm g_kai_tls_qgemm;
 
+const kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel qgemm_gemm = GetKleidiAIQGemmUKernel();
+
 // Matmul with float output of dynamic-quantized A and symmetric-quantized B.
 
 size_t
 MLASCALL
-ArmKleidiAI::MlasDynamicQgemmPackBSize(
+ArmKleidiAI::MlasDynamicQGemmPackBSize(
     size_t N,
     size_t K
 ) {
@@ -39,10 +39,9 @@ ArmKleidiAI::MlasDynamicQgemmPackBSize(
         return 0;
     }
 
-    // Default to sme2_mopa, but this may not always be the most optimal kernel variant to use.
-    auto nr = kai_get_nr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
-    auto kr = kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
-    auto sr = kai_get_sr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
+    auto nr = qgemm_gemm.get_nr();
+    auto kr = qgemm_gemm.get_kr();
+    auto sr = qgemm_gemm.get_sr();
 
     // Regardless of kernel variant, use the NEON packing variant.
     KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_kxn_qsi8cxp_qsi8cx_neon Groups=1"
@@ -52,7 +51,7 @@ ArmKleidiAI::MlasDynamicQgemmPackBSize(
 
 void
 MLASCALL
-ArmKleidiAI::MlasDynamicQgemmPackB(
+ArmKleidiAI::MlasDynamicQGemmPackB(
     size_t N,
     size_t K,
     const int8_t* B,
@@ -65,10 +64,9 @@ ArmKleidiAI::MlasDynamicQgemmPackB(
         return;
     }
 
-    // Default to sme2_mopa, but this may not always be the most optimal kernel variant to use.
-    auto nr = kai_get_nr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
-    auto kr = kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
-    auto sr = kai_get_sr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa();
+    auto nr = qgemm_gemm.get_nr();
+    auto kr = qgemm_gemm.get_kr();
+    auto sr = qgemm_gemm.get_sr();
 
     // y - float output
     // scale_factor_lhs - lhs scaling factor
@@ -105,17 +103,12 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 ) {
 
-    const size_t mr = UseSME2 ? kai_get_mr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa()
-                              : kai_get_mr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa();
-    const size_t kr = UseSME2 ? kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa()
-                              : kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa();
-    const size_t sr = UseSME2 ? kai_get_sr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa()
-                              : kai_get_sr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa();
+    const size_t mr = qgemm_gemm.get_mr();
+    const size_t kr = qgemm_gemm.get_kr();
+    const size_t sr = qgemm_gemm.get_sr();
 
-    size_t m_step = UseSME2 ? kai_get_m_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa()
-                            : kai_get_m_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa();
-    size_t n_step = UseSME2 ? kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa()
-                            : kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa();
+    size_t m_step = qgemm_gemm.get_m_step();
+    size_t n_step = qgemm_gemm.get_n_step();
 
     if (BatchSize == 0 || Shape.M == 0 || Shape.N == 0 || Shape.K == 0) {
         return;
@@ -216,17 +209,13 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
 
         // Get rhs tile, B
-        const size_t rhs_packed_offset =
-           UseSME2 ? kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(NIdx * n_step, Shape.K)
-                   : kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa(NIdx * n_step, Shape.K);
+        const size_t rhs_packed_offset = qgemm_gemm.get_rhs_packed_offset(NIdx * n_step, Shape.K);
 
         const std::byte* B_base = reinterpret_cast<const std::byte*>(DataParams[BIdx].PackedB);
         auto BTile = reinterpret_cast<const void*>(B_base + rhs_packed_offset);
 
         // Get lhs tile, A
-        const size_t lhs_packed_offset =
-            UseSME2 ? kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(MIdx * m_step, Shape.K)
-                    : kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa(MIdx * m_step, Shape.K);
+        const size_t lhs_packed_offset =qgemm_gemm.get_lhs_packed_offset(MIdx * m_step, Shape.K);
 
         const std::byte* A_base = tls_lhs_base[BIdx]; // LhsPackedData + LhsPackedStride * BIdx; OR DataParams[batch_idx].Workspace;
         auto ATile = reinterpret_cast<const std::byte*>(A_base + lhs_packed_offset);
@@ -240,46 +229,12 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         NIdx * n_step * sizeof(float)
         );
 
-        if (UseSME2) {
-            kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa(
+        qgemm_gemm.run_matmul(
                 TileSizeM, TileSizeN, Shape.K, ATile, BTile,
                 dst_tile,
                 DataParams[BIdx].ldc * sizeof(float),
                 sizeof(float),
                 -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
                 );
-            }
-        else {
-            #if defined(ENABLE_QMX_KERNELS)
-                if(ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
-                {
-                    kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa(
-                        TileSizeM, TileSizeN, Shape.K, ATile, BTile,
-                        dst_tile,
-                        DataParams[BIdx].ldc * sizeof(float),
-                        sizeof(float),
-                        -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-                        );
-                }
-                else
-                {
-                    kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa(
-                        TileSizeM, TileSizeN, Shape.K, ATile, BTile,
-                        dst_tile,
-                        DataParams[BIdx].ldc * sizeof(float),
-                        sizeof(float),
-                        -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-                        );
-                }
-            #else
-                kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa(
-                        TileSizeM, TileSizeN, Shape.K, ATile, BTile,
-                        dst_tile,
-                        DataParams[BIdx].ldc * sizeof(float),
-                        sizeof(float),
-                        -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-                        );
-            #endif // ENABLE_QMX_KERNELS
-        }
     });
 }
