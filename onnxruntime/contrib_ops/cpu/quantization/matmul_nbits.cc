@@ -359,9 +359,9 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
     if (scales && MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
       auto sptr = scales->Data<MLFloat16>();
-      auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
-      auto ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
-      MlasConvertHalfToFloatBuffer(sptr, ptr.get(), tensor_size);
+      auto scales_size = static_cast<size_t>(scales->Shape().Size());
+      auto ptr = IAllocator::MakeUniquePtr<float>(alloc, scales_size, true);
+      MlasConvertHalfToFloatBuffer(sptr, ptr.get(), scales_size);
       scales_fp32_ = std::move(ptr);
     }
 
