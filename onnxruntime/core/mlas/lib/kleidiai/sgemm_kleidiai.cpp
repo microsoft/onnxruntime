@@ -569,48 +569,48 @@ Return Value:
             MIdx * m_step * Data[BIdx].ldc * sizeof(float) +
             NIdx * n_step * sizeof(float)
         );
-        // Allocate temporary buffer for raw A*B result (TLS reusable buffer)
-        size_t tile_elems = TileSizeM * TileSizeN;
 
-        // resize the tile to the required size
-        g_kai_tls.output_tile.resize(tile_elems);
+        // Final output tile pointer
+        float* dst_tile = reinterpret_cast<float*>(CTile);
 
-        float* temp_tile = g_kai_tls.output_tile.data();
+        const float alpha = Data[BIdx].alpha;
+        const float beta = Data[BIdx].beta;
+        const size_t ldc = Data[BIdx].ldc;
+
+        // Select output destination and strides once, then run_matmul exactly once.
+        const bool direct_to_c = (
+            alpha == 1.0f &&
+            beta == 0.0f);
+
+        float* out_tile = nullptr;
+        size_t out_row_stride_bytes = 0;
+
+        if (direct_to_c) {
+            out_tile = dst_tile;
+            out_row_stride_bytes = ldc * sizeof(float);
+        } else {
+            // Compute into a temporary buffer for raw A*B result (TLS reusable buffer)
+            const size_t tile_elems = TileSizeM * TileSizeN;
+            g_kai_tls.output_tile.resize(tile_elems);
+            out_tile = g_kai_tls.output_tile.data();
+            out_row_stride_bytes = TileSizeN * sizeof(float);
+        }
 
         sgemm_gemm.run_matmul(
             TileSizeM,
             TileSizeN,
             K,
-            ATile, BTile, temp_tile,
-            TileSizeN * sizeof(float), sizeof(float),
+            ATile, BTile, out_tile,
+            out_row_stride_bytes, sizeof(float),
             -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
         );
 
-        // Final output tile pointer
-        float* dst_tile = reinterpret_cast<float*>(CTile);
-
-            // quick copy of data in cases where we are not scaling or accumulating anything
-            // with bounds checking on tile sizing to ensure the data fits in the memory block
-            bool can_memcpy = (
-                Data[BIdx].alpha == 1.0f &&
-                Data[BIdx].beta == 0.0f &&
-                Data[BIdx].ldc == TileSizeN &&
-                MIdx * m_step + TileSizeM <= M &&
-                NIdx * n_step + TileSizeN <= N &&
-                TileSizeM != 0 &&
-                TileSizeN != 0);
-
-            if (can_memcpy) {
-                std::memcpy(dst_tile, temp_tile, TileSizeM * TileSizeN * sizeof(float));
-                return;
-            }
-
-            float alpha = Data[BIdx].alpha;
-            float beta = Data[BIdx].beta;
-            size_t ldc = Data[BIdx].ldc;
-
-            ApplyAlphaBeta2D(temp_tile, TileSizeM, TileSizeN, alpha, beta, dst_tile, ldc);
+        if (direct_to_c) {
             return;
-        });
-        return true;
+        }
+
+        ApplyAlphaBeta2D(out_tile, TileSizeM, TileSizeN, alpha, beta, dst_tile, ldc);
+        return;
+    });
+    return true;
 }

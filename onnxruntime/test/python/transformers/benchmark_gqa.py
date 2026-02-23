@@ -22,6 +22,7 @@ except ImportError:
 class TestConfig:
     test_int4: bool = False
     test_int8: bool = False
+    test_fp8: bool = False
 
 
 def get_plot_algos(sm: int, local_window_size: int | None, config: TestConfig | None):
@@ -37,17 +38,21 @@ def get_plot_algos(sm: int, local_window_size: int | None, config: TestConfig | 
 
     # Add quantized variants if requested
     if sm >= 80 and config:
-        quant_vals = ["ort_gqa_int4", "ort_gqa_int8"]
-        quant_names = ["ORT-GQA-INT4", "ORT-GQA-INT8"]
-        quant_styles = [("purple", "dotted"), ("orange", "dashdot")]
+        quant_vals = ["ort_gqa_int4", "ort_gqa_int8", "ort_gqa_fp8"]
+        quant_names = ["ORT-GQA-INT4", "ORT-GQA-INT8", "ORT-GQA-FP8"]
+        quant_styles = [("purple", "dotted"), ("orange", "dashdot"), ("brown", "dashed")]
         if config.test_int4:
-            line_vals.extend(quant_vals[:1])
-            line_names.extend(quant_names[:1])
-            styles.extend(quant_styles[:1])
+            line_vals.append(quant_vals[0])
+            line_names.append(quant_names[0])
+            styles.append(quant_styles[0])
         if config.test_int8:
-            line_vals.extend(quant_vals[1:])
-            line_names.extend(quant_names[1:])
-            styles.extend(quant_styles[1:])
+            line_vals.append(quant_vals[1])
+            line_names.append(quant_names[1])
+            styles.append(quant_styles[1])
+        if config.test_fp8:
+            line_vals.append(quant_vals[2])
+            line_names.append(quant_names[2])
+            styles.append(quant_styles[2])
 
     return {
         "line_vals": line_vals,
@@ -116,6 +121,9 @@ def plot_prompt_performance(
         elif "_int8" in provider:
             k_quant_type = v_quant_type = "PER_TENSOR"
             kv_cache_type = "int8"
+        elif "_fp8" in provider:
+            k_quant_type = v_quant_type = "PER_TENSOR"
+            kv_cache_type = "fp8"
 
         config: GroupQueryAttentionConfig = GroupQueryAttentionConfig(
             batch_size=batch_size,
@@ -204,6 +212,10 @@ def plot_token_performance(
         elif "_int8" in provider:
             k_quant_type = v_quant_type = "PER_TENSOR"
             kv_cache_type = "int8"
+            share_kv_scale = True  # XQA requires shared scale
+        elif "_fp8" in provider:
+            k_quant_type = v_quant_type = "PER_TENSOR"
+            kv_cache_type = "fp8"
             share_kv_scale = True  # XQA requires shared scale
 
         config: GroupQueryAttentionConfig = GroupQueryAttentionConfig(
@@ -303,7 +315,7 @@ if __name__ == "__main__":
 
     s = torch.cuda.Stream()
     with torch.cuda.stream(s), torch.no_grad():
-        config = TestConfig(test_int4=False, test_int8=True)
+        config = TestConfig(test_int4=False, test_int8=True, test_fp8=True)
         run_performance_test(sm, fast=True, config=config, dtype="float16", is_prompt=True)
         run_performance_test(sm, fast=True, config=config, dtype="float16", is_prompt=False)
         # run_performance_test(sm, fast=True, config=config, dtype="bfloat16", is_prompt=True)
