@@ -22,11 +22,11 @@ const subtile_rows = 16;
 const quantization_block_size = 32;
 alias compute_precision = output_element_t;
 
-var<workgroup> tile_A: array<compute_precision, tile_rows * tile_k>;       // 64 x 32 - RxC
-var<workgroup> tile_B: array<compute_precision, tile_cols * tile_k>;       // 64 x 32 - RxC
+var<workgroup> tile_A: array<compute_precision, 2 * tile_rows * tile_k>;   // 2 x 64 x 32 - double buffered
+var<workgroup> tile_B: array<compute_precision, 2 * tile_cols * tile_k>;   // 2 x 64 x 32 - double buffered
 var<workgroup> scratch: array<array<array<compute_precision, 64>, 4>, 8>;  // 64 * 4 * 8
 
-fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
+fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32, buf_offset: u32) {
     let a_global = tile_base + row;
     if (a_global >= uniforms.M) {
         return;
@@ -39,7 +39,7 @@ fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
     let a_vec_offset = (a_global * uniforms.K + k_idx + col) / 4;
     let v0 = a.getByOffset(a_vec_offset);
     let v1 = a.getByOffset(a_vec_offset + 1);
-    let tile_offset = row * tile_k + col;
+    let tile_offset = buf_offset + row * tile_k + col;
     tile_A[tile_offset]     = compute_precision(v0[0]);
     tile_A[tile_offset + 1] = compute_precision(v0[1]);
     tile_A[tile_offset + 2] = compute_precision(v0[2]);
@@ -51,7 +51,7 @@ fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
 }
 
 #if n_bits == 4
-fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
+fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32, buf_offset: u32) {
     let b_global = tile_base + row;
     if (b_global >= uniforms.N) {
         return;
@@ -78,7 +78,7 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     var b_value = b.getByOffset(b_idx);
     var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
     var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
-    let tile_b_base = row * tile_k + col;
+    let tile_b_base = buf_offset + row * tile_k + col;
     tile_B[tile_b_base] = b_value_lower[0];
     tile_B[tile_b_base + 1] = b_value_upper[0];
     tile_B[tile_b_base + 2] = b_value_lower[1];
@@ -91,7 +91,7 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
 #endif
 
 #if n_bits == 8
-fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
+fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32, buf_offset: u32) {
     let b_global = tile_base + row;
     if (b_global >= uniforms.N) {
         return;
@@ -118,7 +118,7 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     var b_value = b.getByOffset(b_idx);
     var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(zero)) * scale;
     var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(zero)) * scale;
-    let tile_b_base = row * tile_k + col;
+    let tile_b_base = buf_offset + row * tile_k + col;
     tile_B[tile_b_base]     = b_value0[0];
     tile_B[tile_b_base + 1] = b_value0[1];
     tile_B[tile_b_base + 2] = b_value0[2];
@@ -180,29 +180,42 @@ $MAIN {
   var matC11: subgroup_matrix_result<compute_precision, 8, 8>;
   var matC12: subgroup_matrix_result<compute_precision, 8, 8>;
   var matC13: subgroup_matrix_result<compute_precision, 8, 8>;
-  for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
-      // Load Phase
-      loadSHMA(a_global_base, kidx, local_idx/4, local_idx%4);
-      loadSHMB(b_global_base, kidx, local_idx/4, local_idx%4);
-      workgroupBarrier();
+  // Double-buffered K-loop: prefetch next tile while computing from current tile.
+  // This overlaps global memory loads with subgroup matrix compute, hiding latency.
+  // Buffer offsets alternate between 0 and buf_stride (non-overlapping regions).
+  const buf_stride_a: u32 = tile_rows * tile_k;
+  const buf_stride_b: u32 = tile_cols * tile_k;
+  var cur_a_buf: u32 = 0u;
+  var cur_b_buf: u32 = 0u;
 
+  // Prefetch first tile into buffer 0
+  loadSHMA(a_global_base, 0u, local_idx/4, local_idx%4, 0u);
+  loadSHMB(b_global_base, 0u, local_idx/4, local_idx%4, 0u);
+  workgroupBarrier();
+
+  for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
+      let next_a_buf = buf_stride_a - cur_a_buf;
+      let next_b_buf = buf_stride_b - cur_b_buf;
+
+      // Prefetch next tile into alternate buffer (overlaps with compute below)
+      let next_kidx = kidx + tile_k;
+      if (next_kidx < uniforms.K) {
+          loadSHMA(a_global_base, next_kidx, local_idx/4, local_idx%4, next_a_buf);
+          loadSHMB(b_global_base, next_kidx, local_idx/4, local_idx%4, next_b_buf);
+      }
+
+      // Compute from current buffer
       for (var step: u32 = 0; step < tile_k; step+=8){
-          // Load to local memory phase
-          let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
-          // Syntax: subgroupMatrixLoad src_ptr,src_offset,is_col_major,src_stride
+          let matrix_a_offset = cur_a_buf + subtile_idy * subtile_rows * tile_k + step;
           var matA0: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
           var matA1: subgroup_matrix_left<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<compute_precision, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
 
-          // tile_B is stored as column major.
-          // [col0-0:32][col1-0:32][col2-0:32]..[col63-0:32]
-          var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
+          var matrix_b_offset = cur_b_buf + subtile_idx * subtile_cols * tile_k + step;
           var matB0: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
           var matB1: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset +  8 * tile_k, true, tile_k);
           var matB2: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
           var matB3: subgroup_matrix_right<compute_precision, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<compute_precision, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
 
-          // Compute Phase
-          // Syntax: subgroupMatrixMultiplyAccumulate left, right, accumulate -> accumulate
           matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
           matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
           matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
@@ -213,7 +226,11 @@ $MAIN {
           matC12 = subgroupMatrixMultiplyAccumulate(matA1, matB2, matC12);
           matC13 = subgroupMatrixMultiplyAccumulate(matA1, matB3, matC13);
       }
+
+      // Barrier: ensures compute finished reading current buffer AND next tile finished loading
       workgroupBarrier();
+      cur_a_buf = next_a_buf;
+      cur_b_buf = next_b_buf;
   }
 
   // Write out
