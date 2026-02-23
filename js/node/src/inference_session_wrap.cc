@@ -181,7 +181,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   size_t inputIndex = 0;
   size_t outputIndex = 0;
   Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault};
+  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
 
   try {
     for (auto& name : inputNames_) {

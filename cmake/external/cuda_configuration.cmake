@@ -85,6 +85,11 @@ macro(setup_cuda_architectures)
   #  * Always use accelerated (`-a` suffix) target for supported real architectures.
   # cmake-format: on
 
+  # Allow override via CUDAARCHS environment variable (standard CMake variable)
+  if(NOT CMAKE_CUDA_ARCHITECTURES AND DEFINED ENV{CUDAARCHS})
+    set(CMAKE_CUDA_ARCHITECTURES "$ENV{CUDAARCHS}")
+  endif()
+
   if(CMAKE_CUDA_ARCHITECTURES STREQUAL "native")
     # Detect highest available compute capability
     set(OUTPUTFILE ${PROJECT_BINARY_DIR}/detect_cuda_arch)
@@ -142,12 +147,12 @@ macro(setup_cuda_architectures)
       continue()
     endif()
 
-    if(CUDA_ARCH MATCHES "^([1-9])([0-9])+a?-virtual$")
+    if(CUDA_ARCH MATCHES "^([1-9])([0-9])+[af]?-virtual$")
       set(CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL ${CUDA_ARCH})
-    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)a?-real$")
+    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)[af]?-real$")
       list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1})
-    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)a?$")
-      list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1})
+    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)([af]?)$")
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1}${CMAKE_MATCH_4})
     else()
       message(FATAL_ERROR "Unrecognized CUDA architecture: ${CUDA_ARCH}")
     endif()
@@ -159,7 +164,7 @@ macro(setup_cuda_architectures)
   set(CMAKE_CUDA_ARCHITECTURES_ORIG "${CMAKE_CUDA_ARCHITECTURES}")
   message(STATUS "GPU architectures: ${CMAKE_CUDA_ARCHITECTURES_ORIG}")
 
-  set(ARCHITECTURES_WITH_KERNELS "80" "86" "89" "90" "100" "120")
+  set(ARCHITECTURES_WITH_KERNELS "80" "86" "89" "90" "100" "110" "120")
   foreach(CUDA_ARCH IN LISTS ARCHITECTURES_WITH_KERNELS)
     if(NOT "${CUDA_ARCH}" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
       add_definitions("-DEXCLUDE_SM_${CUDA_ARCH}")
@@ -168,10 +173,13 @@ macro(setup_cuda_architectures)
   endforeach()
 
   # Enable accelerated features (like WGMMA, TMA and setmaxnreg) for SM >= 90.
-  set(ARCHITECTURES_WITH_ACCEL "90" "100" "101" "120")
+  set(ARCHITECTURES_WITH_ACCEL "90" "100" "101" "110" "120")
   unset(CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
   foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
-    if("${CUDA_ARCH}" IN_LIST ARCHITECTURES_WITH_ACCEL)
+    if(CUDA_ARCH MATCHES "^([0-9]+)f$")
+      # Family code, no -real suffix
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}")
+    elseif("${CUDA_ARCH}" IN_LIST ARCHITECTURES_WITH_ACCEL)
       list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}a-real")
     else()
       list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}-real")

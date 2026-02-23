@@ -764,7 +764,11 @@ if (onnxruntime_USE_WEBGPU)
           # - (private) Fix compatibility issues with Safari. Contains the following changes:
           #   - Polyfill for `device.AdapterInfo` (returns `undefined` in Safari v26.0)
           #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch)
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch &&
+
+          # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
+          # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.
+          ${CMAKE_COMMAND} -E rm -rf <SOURCE_DIR>/test)
 
       onnxruntime_fetchcontent_declare(
         dawn
@@ -857,12 +861,15 @@ set(onnxruntime_LINK_DIRS)
 if (onnxruntime_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
 
-  if(onnxruntime_CUDNN_HOME)
-    file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
-    set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
-  endif()
+  # cuDNN is not needed for minimal CUDA builds (e.g., TensorRT-only builds)
+  if(NOT onnxruntime_CUDA_MINIMAL)
+    if(onnxruntime_CUDNN_HOME)
+      file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
+      set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
+    endif()
 
-  include(cuDNN)
+    include(cuDNN)
+  endif()
 endif()
 
 if(onnxruntime_USE_SNPE)

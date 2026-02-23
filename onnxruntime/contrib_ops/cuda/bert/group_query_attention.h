@@ -15,7 +15,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
+template <typename T, typename U>
 class GroupQueryAttention final : public CudaKernel {
  public:
   GroupQueryAttention(const OpKernelInfo& info);
@@ -35,7 +35,11 @@ class GroupQueryAttention final : public CudaKernel {
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   bool disable_flash_decode_;
-  bool disable_fused_kv_;
+  bool enable_xqa_;
+
+  KVQuantizationType k_quant_type_;
+  KVQuantizationType v_quant_type_;
+  int kv_cache_bit_width_;
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;

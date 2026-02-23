@@ -165,6 +165,8 @@ RpcMemApi CreateApi(void* library_handle) {
 
   ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "rpcmem_to_fd", (void**)&api.to_fd));
 
+  ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "remote_register_buf_attr2", (void**)&api.register_buf));
+
   return api;
 }
 

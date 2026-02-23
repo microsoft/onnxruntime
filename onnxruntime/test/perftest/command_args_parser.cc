@@ -116,6 +116,8 @@ ABSL_FLAG(std::string, i, "",
           "  [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill fill buffer, used while generating QNN context binary.\n"
           "  [QNN only] [enable_htp_shared_memory_allocator]: Enable the QNN HTP shared memory allocator and use it for inputs and outputs. Requires libcdsprpc.so/dll to be available.\n"
           "  Defaults to '0' (disabled).\n"
+          "  [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
+          "  '0' (disabled), '1' (enabled). Default: '0'. \n"
           "  [Example] [For QNN EP] -e qnn -i \"backend_type|cpu\" \n"
           "\n"
           "  [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
@@ -203,6 +205,7 @@ ABSL_FLAG(std::string, filter_ep_devices, "",
 ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
+ABSL_FLAG(bool, compile_only, DefaultPerformanceTestConfig().run_config.compile_only, "Only compile EP context model without running it");
 ABSL_FLAG(bool, h, false, "Print program usage.");
 
 namespace onnxruntime {
@@ -582,6 +585,9 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --compile_binary_embed
   test_config.run_config.compile_binary_embed = absl::GetFlag(FLAGS_compile_binary_embed);
+
+  // --compile_only
+  test_config.run_config.compile_only = absl::GetFlag(FLAGS_compile_only);
 
   if (positional.size() == 2) {
     test_config.model_info.model_file_path = ToPathString(positional[1]);

@@ -42,7 +42,11 @@ struct MlasTMACKernelParams {
     bool one_scale;
 };
 
-const MlasTMACKernelParams&
+/**
+ * Retrieves the T-MAC kernel configuration for a given GEMM problem.
+ * Returns the parameters by value to ensure thread-safety across concurrent calls.
+ */
+MlasTMACKernelParams
 MlasGetLutGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point);
 
 typedef void(MLAS_QNBIT_GEMM_LUT_GEN)(
@@ -53,19 +57,21 @@ typedef void(MLAS_QNBIT_GEMM_LUT_GEN)(
     size_t M,
     size_t K,
     size_t N,
-    size_t act_group_size
+    size_t act_group_size,
+    size_t lut_stride        // Stride (in bytes) between consecutive LUT entries along the batch dimension.
 );
 
 typedef void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
-    const uint8_t* weights,
-    const float* scales,
+    const uint8_t* A,
+    const float* Scales,
     const int8_t* LUT,
     const float* LUT_Scales,
     const float* LUT_Biases,
     float* C,
     int K,
-    int M,  // batch size (number of rows in activation)
-    int N,
+    int M,                  // Batch size (current activation rows).
+    int N,                  // Number of output features to compute in this tile/chunk.
+    int TotalN,             // Total number of output features in the weights (used for parameter mapping).
     size_t BlkLen,
     bool HasZeroPoint
 );

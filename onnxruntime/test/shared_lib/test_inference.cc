@@ -480,6 +480,94 @@ TEST(CApiTest, dim_param) {
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a dense OrtValue tensor.
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_DenseTensor) {
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  Ort::Value x_value = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+  Ort::TensorTypeAndShapeInfo type_shape_info = x_value.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  Ort::Value::Shape shape{};
+  x_value.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
+
+  ASSERT_EQ(elem_type, type_shape_info.GetElementType());
+
+  std::vector<int64_t> expected_shape = type_shape_info.GetShape();
+  gsl::span<const int64_t> actual_shape(shape.shape, shape.shape_len);
+  ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
+}
+
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a scalar OrtValue tensor.
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_Scalar) {
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+
+  std::vector<int64_t> x_shape = {};  // Scalar (no shape)
+  std::array<float, 1> x_values = {1.0f};
+  Ort::Value x_value = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+  Ort::TensorTypeAndShapeInfo type_shape_info = x_value.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  Ort::Value::Shape shape{};
+  x_value.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
+
+  ASSERT_EQ(elem_type, type_shape_info.GetElementType());
+
+  std::vector<int64_t> expected_shape = type_shape_info.GetShape();
+  gsl::span<const int64_t> actual_shape(shape.shape, shape.shape_len);
+  ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
+  ASSERT_EQ(shape.shape, nullptr);
+  ASSERT_EQ(shape.shape_len, 0);
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a sparse OrtValue tensor.
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_SparseTensor) {
+  std::vector<int64_t> common_shape{9, 9};
+  std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
+                              10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0,
+                              18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+                              26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0,
+                              34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 41.0,
+                              42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0, 49.0,
+                              50.0, 51.0, 52.0, 53.0};
+
+  // 2 - D index
+  std::vector<int64_t> indices_shape{gsl::narrow<int64_t>(A_values.size()), 2};
+  std::vector<int64_t> A_indices{0, 1, 0, 2, 0, 6, 0, 7, 0, 8, 1, 0, 1,
+                                 1, 1, 2, 1, 6, 1, 7, 1, 8, 2, 0, 2, 1,
+                                 2, 2, 2, 6, 2, 7, 2, 8, 3, 3, 3, 4, 3,
+                                 5, 3, 6, 3, 7, 3, 8, 4, 3, 4, 4, 4, 5,
+                                 4, 6, 4, 7, 4, 8, 5, 3, 5, 4, 5, 5, 5,
+                                 6, 5, 7, 5, 8, 6, 0, 6, 1, 6, 2, 6, 3,
+                                 6, 4, 6, 5, 7, 0, 7, 1, 7, 2, 7, 3, 7,
+                                 4, 7, 5, 8, 0, 8, 1, 8, 2, 8, 3, 8, 4,
+                                 8, 5};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
+  Ort::Value::Shape ort_values_shape{&indices_shape[0], 1U};
+  auto value_sparse = Ort::Value::CreateSparseTensor(info, A_values.data(), ort_dense_shape, ort_values_shape);
+  value_sparse.UseCooIndices(A_indices.data(), A_indices.size());
+
+  Ort::TensorTypeAndShapeInfo type_shape_info = value_sparse.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  Ort::Value::Shape shape{};
+  value_sparse.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
+
+  ASSERT_EQ(elem_type, type_shape_info.GetElementType());
+
+  std::vector<int64_t> expected_shape = type_shape_info.GetShape();
+  gsl::span<const int64_t> actual_shape(shape.shape, shape.shape_len);
+  ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
 static std::pair<bool, bool> LoadAndGetInputShapePresent(const ORTCHAR_T* const model_url) {
   Ort::Session session(*ort_env, model_url, Ort::SessionOptions{});
   const auto input_num = session.GetInputCount();

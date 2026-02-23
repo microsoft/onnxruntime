@@ -128,27 +128,28 @@ class UpsampleBase {
                                 InlinedVector<float>& scales) const;
 
  protected:
-  explicit UpsampleBase(const OpKernelInfo& info)
+  template <typename KernelInfoType>
+  explicit UpsampleBase(const KernelInfoType& info)
       : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     const auto& node = info.node();
     auto opset = node.SinceVersion();
     is_resize_ = (opset >= 10);
 
     std::string mode;
-    ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
+    ORT_ENFORCE(info.template GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
 
     auto input_count = info.GetInputCount();
     if (input_count == 1) {  // opset < 10
       std::vector<float> scales;
-      ORT_THROW_IF_ERROR(info.GetAttrs<float>("scales", scales));
+      ORT_THROW_IF_ERROR(info.template GetAttrs<float>("scales", scales));
       ORT_THROW_IF_ERROR(ScalesValidation(scales, mode_));
       scales_.assign(scales.cbegin(), scales.cend());
       scales_cached_ = true;
     }
 
     if (opset >= 18) {
-      antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
+      antialias_ = info.template GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
 
       if (antialias_) {
         ORT_ENFORCE((UpsampleMode::LINEAR == mode_ || UpsampleMode::CUBIC == mode_),
@@ -156,21 +157,21 @@ class UpsampleBase {
       }
 
       // The attribute is absent in opset < 18, but the default value as if stretch.
-      std::string keep_aspect_ratio_policy = info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
+      std::string keep_aspect_ratio_policy = info.template GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
       keep_aspect_ratio_policy_ = StringToKeepAspectRatioPolicy(keep_aspect_ratio_policy);
 
       // guard against unit tests that can add an attribute
-      auto axes = info.GetAttrsOrDefault<int64_t>("axes");
+      auto axes = info.template GetAttrsOrDefault<int64_t>("axes");
       axes_.assign(axes.cbegin(), axes.cend());
     }
 
-    extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
+    extrapolation_value_ = info.template GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
     // Coordinate transformation mode attr was introduced in version 11.
     // before that asymmetric mode was the only available transformation mode
     std::string coordinate_transform_mode_name =
         opset > 10
-            ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
+            ? info.template GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
             : "asymmetric";
 
     coordinate_transform_mode_ = StringToCoordinateTransformationMode(coordinate_transform_mode_name);
@@ -184,13 +185,13 @@ class UpsampleBase {
     use_extrapolation_ = need_roi_input_ = (coordinate_transform_mode_ == TF_CROP_AND_RESIZE);
 
     std::string nearest_mode_name = (mode_ == NN && opset >= 11)
-                                        ? info.GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor")
+                                        ? info.template GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor")
                                         : "";
     nearest_mode_ = StringToNearestMode(nearest_mode_name);
     get_nearest_pixel_ = GetNearestPixelFromOriginal(nearest_mode_);
 
-    cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", antialias_constants::kCubicCoeffA);
-    exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
+    cubic_coeff_a_ = info.template GetAttrOrDefault<float>("cubic_coeff_a", antialias_constants::kCubicCoeffA);
+    exclude_outside_ = info.template GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == false || mode_ != LINEAR)) {
       ORT_THROW(

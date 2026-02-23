@@ -145,17 +145,20 @@ struct PackedMultiHeadAttentionData {
   bool use_memory_efficient_attention;
 };
 
-template <typename T>
+template <typename T, typename U>
 struct GroupQueryAttentionData {
   // Input Tensors
   const T* query = nullptr;
   const T* key = nullptr;
   const T* value = nullptr;
-  const T* past_key = nullptr;
-  const T* past_value = nullptr;
+  const U* past_key = nullptr;
+  const U* past_value = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
+
+  const float* k_scale = nullptr;
+  const float* v_scale = nullptr;
 
   // Total sequence length for each batch. It has shape [batch_size].
   int* total_seq_lens = nullptr;
@@ -179,35 +182,25 @@ struct GroupQueryAttentionData {
 
   // Memory Efficient buffers
   T* fmha_buffer = nullptr;
-  T* unpacked_qkv_buffer = nullptr;
-  T* rotary_buffer = nullptr;
-  int64_t* position_ids_buffer = nullptr;  // Separate buffer for generated position IDs
+  T* qkv_buffer = nullptr;
+
   T* k = nullptr;
   T* v = nullptr;
 
-#ifndef NDEBUG
-  // Buffer size tracking for debug validation
-  // Allocated sizes are set during buffer allocation in group_query_attention.cc
-  // Max used sizes are updated during kernel calls in group_query_attention_impl.cu
-  // Validated before operator returns to ensure usage exactly matches allocation
-  size_t unpacked_qkv_buffer_size = 0;       // Allocated size
-  size_t rotary_buffer_size = 0;             // Allocated size
-  size_t position_ids_buffer_size = 0;       // Allocated size
-  mutable size_t unpacked_qkv_max_used = 0;  // Max offset accessed (updated by kernels)
-  mutable size_t rotary_max_used = 0;        // Max offset accessed (updated by kernels)
-  mutable size_t position_ids_max_used = 0;  // Max offset accessed (updated by kernels)
-#endif
-
   // Output Tensors
   T* output = nullptr;
-  T* present_key = nullptr;
-  T* present_value = nullptr;
+  U* present_key = nullptr;
+  U* present_value = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
-  bool disable_fused_kv = false;
+  bool use_xqa = false;
+
+  // XQA buffer
+  void* xqa_buffer = nullptr;
+  size_t xqa_buffer_bytes = 0;
 };
 
 template <typename T>

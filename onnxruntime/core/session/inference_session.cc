@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <queue>
+#include <iomanip>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
@@ -119,6 +120,8 @@ template <typename T>
 inline std::basic_string<T> GetCurrentTimeString() {
   auto now = std::chrono::system_clock::now();
   auto in_time_t = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
   std::tm local_tm;  // NOLINT
 
 #ifdef _WIN32
@@ -129,7 +132,10 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
   T time_str[32];
   OrtStrftime<T>(time_str, sizeof(time_str), GetDateFormatString<T>(), &local_tm);
-  return std::basic_string<T>(time_str);
+
+  std::basic_stringstream<T> ss;
+  ss << time_str << T('_') << std::setfill(T('0')) << std::setw(3) << ms.count();
+  return ss.str();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1812,15 +1818,16 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 #if !defined(ORT_MINIMAL_BUILD)
 [[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
   std::string data_type_list;
+  auto weight_freq = graph.GetWeightDataTypeFrequency();
 
-  for (int i = 0; i < ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE; ++i) {
-    if (graph.weight_data_type_freq_[i] > 0) {
+  for (size_t i = 0; i < weight_freq.size(); ++i) {
+    if (weight_freq[i] > 0) {
       if (!data_type_list.empty()) {
         data_type_list += ", ";
       }
-      data_type_list += TensorProto_DataType_Name(i);
+      data_type_list += TensorProto_DataType_Name(static_cast<int>(i));
       data_type_list += ": ";
-      data_type_list += std::to_string(graph.weight_data_type_freq_[i]);
+      data_type_list += std::to_string(weight_freq[i]);
     }
   }
 
@@ -2034,6 +2041,14 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+std::basic_string<ORTCHAR_T> GenerateProfileFilePath(std::basic_string<ORTCHAR_T> profile_file_prefix) {
+  profile_file_prefix.append(ORT_TSTR("_"));
+  profile_file_prefix.append(GetCurrentTimeString<ORTCHAR_T>());
+  profile_file_prefix.append(ORT_TSTR(".json"));
+  return profile_file_prefix;
+}
+
 }  // namespace
 
 static void ResolveMemoryPatternFlags(SessionState& session_state) {
@@ -2969,9 +2984,27 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  // Ignore run-level profiling request if session-level profiling is already enabled.
+  std::optional<profiling::Profiler> run_profiler;
+  if (run_options.enable_profiling && session_profiler_.IsEnabled()) {
+    LOGS(*session_logger_, WARNING) << "RunOptions requests profiling but session-level profiling is already enabled. "
+                                       "Ignoring run-level profiling request.";
+  }
+  if (run_options.enable_profiling && !session_profiler_.IsEnabled()) {
+    run_profiler.emplace();
+    run_profiler->Initialize(session_logger_);
+    std::basic_string<ORTCHAR_T> profile_file = GenerateProfileFilePath(run_options.profile_file_prefix);
+    for (auto& ep : execution_providers_) {
+      run_profiler->AddEpProfilers(ep->GetProfiler());
+    }
+    run_profiler->StartProfiling(profile_file);
+  }
+
   TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
+  } else if (run_profiler) {
+    tp = run_profiler->Start();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -3112,7 +3145,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
                                      device_stream_collection_holder,
 #endif
-                                     run_logger);
+                                     run_logger,
+                                     run_profiler ? &*run_profiler : nullptr);
       }
 
       // info all execution providers InferenceSession:Run ended
@@ -3120,6 +3154,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
         bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
+      }
+
+      if (run_profiler) {
+        run_profiler->EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
+        run_profiler->EndProfiling();
       }
 
       // Move stream cleanup from ExecuteGraph to here for cuda graph capture.
@@ -3214,7 +3253,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
-    ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+    // Disable run-level profiling for internal runs used for memory allocation or graph capture
+    RunOptions recursive_run_options{run_options};
+    recursive_run_options.enable_profiling = false;
+    ORT_RETURN_IF_ERROR(Run(recursive_run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
 
   // Log runtime error telemetry if the return value is not OK
