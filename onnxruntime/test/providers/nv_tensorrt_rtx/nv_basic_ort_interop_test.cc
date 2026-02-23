@@ -238,6 +238,241 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12InitStreamDeinit) {
   }
 }
 
+// Full D3D12 interop + inference: mirrors SimpleDXInterop_cig_only Main.cpp with random input data.
+// Uses ORT Interop API for semaphore (ImportSemaphore, WaitSemaphore, SignalSemaphore) and runs inference on a Relu model.
+TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
+  ASSERT_NE(ort_env.get(), nullptr);
+
+  constexpr int image_dim = 64;  // Smaller than 1080 for faster unit test
+  const size_t tensor_num_elements = 3 * image_dim * image_dim;
+  const size_t tensor_byte_size = tensor_num_elements * sizeof(uint16_t);
+
+  // Create simple Relu model (1, 3, image_dim, image_dim) FLOAT16
+  PathString model_name = ORT_TSTR("nv_interop_inference_test.onnx");
+  clearFileIfExists(model_name);
+  {
+    onnxruntime::Model model("interop_test", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    ONNX_NAMESPACE::TypeProto tensor_type;
+    tensor_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(image_dim);
+    tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(image_dim);
+
+    auto& input_arg = graph.GetOrCreateNodeArg("input", &tensor_type);
+    auto& output_arg = graph.GetOrCreateNodeArg("output", &tensor_type);
+    graph.AddNode("relu_node", "Relu", "Relu operation", {&input_arg}, {&output_arg});
+    ASSERT_STATUS_OK(graph.Resolve());
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_name));
+  }
+
+  // Random input data (instead of loading an image)
+  std::vector<uint16_t> cpuInputHalf(tensor_num_elements);
+  std::vector<uint16_t> cpuOutputHalf(tensor_num_elements);
+  {
+    RandomValueGenerator random{};
+    std::vector<int64_t> shape{3, image_dim, image_dim};
+    std::vector<uint16_t> input_data =
+        random.Uniform<uint16_t>(shape, static_cast<uint16_t>(0), static_cast<uint16_t>(65535));
+    memcpy(cpuInputHalf.data(), input_data.data(), tensor_byte_size);
+  }
+
+  D3D12CreateDeviceLoadResult d3d12 = LoadD3D12CreateDevice();
+  if (!d3d12.pfn) {
+    GTEST_SKIP() << "d3d12.dll or D3D12CreateDevice not available";
+  }
+  ComPtr<ID3D12Device> pDevice;
+  ComPtr<ID3D12CommandQueue> pCommandQueue;
+  HRESULT hr = d3d12.pfn(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice));
+  if (FAILED(hr)) {
+    GTEST_SKIP() << "D3D12 device creation failed, HRESULT: 0x" << std::hex << hr;
+  }
+  (void)d3d12.module;  // keep d3d12.dll loaded for the duration of the test
+  D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+  queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+  queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+  hr = pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&pCommandQueue));
+  if (FAILED(hr)) {
+    GTEST_SKIP() << "D3D12 command queue creation failed, HRESULT: 0x" << std::hex << hr;
+  }
+
+  RegisteredEpDeviceUniquePtr nv_ep;
+  Utils::RegisterAndGetNvTensorRtRtxEp(*ort_env, nv_ep);
+  const OrtEpDevice* trt_ep_device = nv_ep.get();
+  ASSERT_NE(trt_ep_device, nullptr);
+
+  const OrtApi& ort_api = Ort::GetApi();
+  const OrtInteropApi& interop_api = Ort::GetInteropApi();
+
+  OrtGraphicsInteropConfig graphics_config = {};
+  graphics_config.version = ORT_API_VERSION;
+  graphics_config.graphics_api = ORT_GRAPHICS_API_D3D12;
+  graphics_config.command_queue = pCommandQueue.Get();
+  graphics_config.additional_options = nullptr;
+  {
+    Ort::Status init_status(interop_api.InitGraphicsInteropForEpDevice(trt_ep_device, &graphics_config));
+    if (!init_status.IsOK()) {
+      GTEST_SKIP() << "InitGraphicsInteropForEpDevice failed: " << init_status.GetErrorMessage();
+    }
+  }
+
+  // Optional: D3D12 fence/semaphore for GPU sync between D3D12 and ORT. Only call
+  // CreateExternalResourceImporterForDevice when the EP implements it (e.g. not NV TensorRT RTX).
+  // Otherwise run inference with CPU sync (FlushAndWait) instead.
+  OrtExternalResourceImporter* importer = nullptr;
+  OrtExternalSemaphoreHandle* ort_sem_handle = nullptr;
+  ComPtr<ID3D12Fence> pFence;
+  HANDLE sharedFenceHandle = nullptr;
+  const bool ep_supports_external_importer =
+      (strcmp(ort_api.EpDevice_EpName(trt_ep_device), Utils::nv_tensorrt_rtx_ep_info.registration_name.c_str()) != 0);
+  if (ep_supports_external_importer) {
+    Ort::Status s(interop_api.CreateExternalResourceImporterForDevice(trt_ep_device, &importer));
+    if (s.IsOK() && importer != nullptr) {
+      enum FenceState { FENCE_UPLOAD_DONE = 1, FENCE_KERNEL_DONE = 2 };
+      pDevice->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&pFence));
+      pDevice->CreateSharedHandle(pFence.Get(), nullptr, GENERIC_ALL, nullptr, &sharedFenceHandle);
+      ASSERT_NE(sharedFenceHandle, nullptr);
+      OrtExternalSemaphoreDescriptor sem_desc = {};
+      sem_desc.version = ORT_API_VERSION;
+      sem_desc.type = ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
+      sem_desc.native_handle = sharedFenceHandle;
+      Ort::Status import_s(interop_api.ImportSemaphore(importer, &sem_desc, &ort_sem_handle));
+      ASSERT_TRUE(import_s.IsOK()) << import_s.GetErrorMessage();
+      ASSERT_NE(ort_sem_handle, nullptr);
+    }
+  }
+
+  OrtSyncStream* stream = nullptr;
+  {
+    Ort::Status s(ort_api.CreateSyncStreamForEpDevice(trt_ep_device, nullptr, &stream));
+    ASSERT_TRUE(s.IsOK()) << s.GetErrorMessage();
+  }
+  ASSERT_NE(stream, nullptr);
+
+  // IHV-agnostic memory info for binding D3D12 buffers
+  OrtMemoryInfo* memory_info_agnostic = nullptr;
+  const OrtHardwareDevice* hw_device = ort_api.EpDevice_Device(trt_ep_device);
+  UINT vID = ort_api.HardwareDevice_VendorId(hw_device);
+  ort_api.CreateMemoryInfo_V2("Device_Agnostic", OrtMemoryInfoDeviceType_GPU, vID, 0,
+                              OrtDeviceMemoryType_DEFAULT, 0, OrtArenaAllocator, &memory_info_agnostic);
+  ASSERT_NE(memory_info_agnostic, nullptr);
+
+  // Session options: user compute stream for non-CPU EPs
+  Ort::SessionOptions sessionOptions;
+  sessionOptions.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+  sessionOptions.DisableMemPattern();
+  sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+  sessionOptions.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+  sessionOptions.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+
+  const OrtEpDevice* const* ep_devices = nullptr;
+  size_t num_ep_devices = 0;
+  ort_api.GetEpDevices(*ort_env, &ep_devices, &num_ep_devices);
+  char stream_address[32];
+  sprintf_s(stream_address, "%llu", static_cast<unsigned long long>(reinterpret_cast<size_t>(ort_api.SyncStream_GetHandle(stream))));
+  const char* option_keys[] = {"user_compute_stream", "has_user_compute_stream"};
+  const char* option_values[] = {stream_address, "1"};
+  for (size_t i = 0; i < num_ep_devices; i++) {
+    if (strcmp(ort_api.EpDevice_EpName(ep_devices[i]), "CPUExecutionProvider") != 0) {
+      ort_api.SessionOptionsAppendExecutionProvider_V2(sessionOptions, *ort_env, &ep_devices[i], 1,
+                                                       option_keys, option_values, 2);
+    }
+  }
+
+  // D3D12 resources
+  ComPtr<ID3D12Resource> pInput;
+  ComPtr<ID3D12Resource> pOutput;
+  ComPtr<ID3D12Resource> pUploadRes;
+  ComPtr<ID3D12Resource> pDownloadRes;
+  CreateD3D12Buffer(pDevice.Get(), tensor_byte_size, pInput.GetAddressOf(), D3D12_RESOURCE_STATE_COPY_DEST);
+  CreateD3D12Buffer(pDevice.Get(), tensor_byte_size, pOutput.GetAddressOf(), D3D12_RESOURCE_STATE_COPY_SOURCE);
+  CreateUploadBuffer(pDevice.Get(), tensor_byte_size, pUploadRes.GetAddressOf());
+  CreateReadBackBuffer(pDevice.Get(), tensor_byte_size, pDownloadRes.GetAddressOf());
+
+  ComPtr<ID3D12CommandAllocator> pAllocatorCopy;
+  pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(&pAllocatorCopy));
+  ComPtr<ID3D12GraphicsCommandList> pUploadCommandList;
+  pDevice->CreateCommandList(1, D3D12_COMMAND_LIST_TYPE_COMPUTE, pAllocatorCopy.Get(), nullptr,
+                             IID_PPV_ARGS(&pUploadCommandList));
+  pUploadCommandList->CopyResource(pInput.Get(), pUploadRes.Get());
+  pUploadCommandList->Close();
+  ComPtr<ID3D12GraphicsCommandList> pDownloadCommandList;
+  pDevice->CreateCommandList(1, D3D12_COMMAND_LIST_TYPE_COMPUTE, pAllocatorCopy.Get(), nullptr,
+                             IID_PPV_ARGS(&pDownloadCommandList));
+  pDownloadCommandList->CopyResource(pDownloadRes.Get(), pOutput.Get());
+  pDownloadCommandList->Close();
+
+  Ort::Session session(*ort_env, model_name.c_str(), sessionOptions);
+  Ort::IoBinding ioBinding(session);
+  Ort::AllocatorWithDefaultOptions allocator;
+  Ort::AllocatedStringPtr input_name = session.GetInputNameAllocated(0, allocator);
+  Ort::AllocatedStringPtr output_name = session.GetOutputNameAllocated(0, allocator);
+  int64_t input_dim[] = {1, 3, image_dim, image_dim};
+  int64_t output_dim[] = {1, 3, image_dim, image_dim};
+
+  // Upload random input to D3D12 upload buffer
+  void* pData = nullptr;
+  pUploadRes->Map(0, nullptr, &pData);
+  memcpy(pData, cpuInputHalf.data(), tensor_byte_size);
+  pUploadRes->Unmap(0, nullptr);
+
+  Ort::Value input_tensor(Ort::Value::CreateTensor(
+      memory_info_agnostic, reinterpret_cast<void*>(pInput->GetGPUVirtualAddress()),
+      tensor_byte_size, input_dim, 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
+  Ort::Value output_tensor(Ort::Value::CreateTensor(
+      memory_info_agnostic, reinterpret_cast<void*>(pOutput->GetGPUVirtualAddress()),
+      tensor_byte_size, output_dim, 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
+  ioBinding.BindInput(input_name.get(), input_tensor);
+  ioBinding.BindOutput(output_name.get(), output_tensor);
+  ioBinding.SynchronizeInputs();
+
+  // Run 2 iterations: upload -> sync -> inference -> download
+  const bool use_semaphore_sync = (importer != nullptr && ort_sem_handle != nullptr);
+  enum FenceState { FENCE_UPLOAD_DONE = 1, FENCE_KERNEL_DONE = 2 };
+  Ort::RunOptions run_options;
+  run_options.AddConfigEntry("disable_synchronize_execution_providers", "1");
+  for (int iter = 0; iter < 2; iter++) {
+    ID3D12CommandList* upload_list = pUploadCommandList.Get();
+    pCommandQueue->ExecuteCommandLists(1, &upload_list);
+    if (use_semaphore_sync) {
+      pCommandQueue->Signal(pFence.Get(), FENCE_UPLOAD_DONE);
+      Ort::Status s(interop_api.WaitSemaphore(importer, ort_sem_handle, stream, FENCE_UPLOAD_DONE));
+      ASSERT_TRUE(s.IsOK()) << s.GetErrorMessage();
+    } else {
+      FlushAndWait(pDevice.Get(), pCommandQueue.Get());
+    }
+    session.Run(run_options, ioBinding);
+    if (use_semaphore_sync) {
+      Ort::Status s(interop_api.SignalSemaphore(importer, ort_sem_handle, stream, FENCE_KERNEL_DONE));
+      ASSERT_TRUE(s.IsOK()) << s.GetErrorMessage();
+      pCommandQueue->Wait(pFence.Get(), FENCE_KERNEL_DONE);
+    }
+    ID3D12CommandList* download_list = pDownloadCommandList.Get();
+    pCommandQueue->ExecuteCommandLists(1, &download_list);
+    FlushAndWait(pDevice.Get(), pCommandQueue.Get());
+  }
+
+  // Read back output and sanity check (Relu: output >= 0)
+  void* pOutputData = nullptr;
+  pDownloadRes->Map(0, nullptr, &pOutputData);
+  memcpy(cpuOutputHalf.data(), pOutputData, tensor_byte_size);
+  pDownloadRes->Unmap(0, nullptr);
+  for (size_t i = 0; i < tensor_num_elements; i++) {
+    ASSERT_GE(cpuOutputHalf[i], 0) << "Relu output should be >= 0 at index " << i;
+  }
+
+  // Cleanup
+  interop_api.DeinitGraphicsInteropForEpDevice(trt_ep_device);
+  ort_api.ReleaseSyncStream(stream);
+  ort_api.ReleaseMemoryInfo(memory_info_agnostic);
+  if (importer != nullptr) {
+    interop_api.ReleaseExternalSemaphoreHandle(ort_sem_handle);
+    interop_api.ReleaseExternalResourceImporter(importer);
+    CloseHandle(sharedFenceHandle);
+  }
+}
+
 #endif  // USE_DX_INTEROP && _WIN32
 
 }  // namespace test
