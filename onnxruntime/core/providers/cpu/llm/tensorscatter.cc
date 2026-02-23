@@ -84,6 +84,8 @@ Status TensorScatter::Compute(OpKernelContext* context) const {
   const auto* src_raw = past_cache->DataRaw();
   auto* dst_raw = present_cache->MutableDataRaw();
   if (dst_raw != src_raw) {
+    LOGS(context->Logger(), WARNING) << "TensorScatter: in-place optimization not activated, copying past_cache to present_cache ("
+                                     << total_bytes << " bytes)";
     memcpy(dst_raw, src_raw, total_bytes);
   }
 
