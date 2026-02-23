@@ -423,10 +423,6 @@ TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
-
-  // See PR #27412 for details on the following test case,
-  // which is added to cover a specific failure case in the past.
-  TestMatMulNBitsTyped<float, 369, 6144, 2048, 32, 4>();
 }
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
@@ -499,6 +495,11 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
+
+  // See PR #27412 for details on the following test case,
+  // which is added to cover a specific failure case in the past.
+  TestMatMulNBitsTyped<MLFloat16, 369, 6144, 2048, 32, 4>();
+
 }
 
 TEST(MatMulNBits, LegacyShape_4b) {
