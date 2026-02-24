@@ -540,7 +540,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       contribop_parameters.broadcast_attn_bias_dim_1 = false;
     }
 
-    contribop_parameters.mask_filter_value = mask_filter_value<float>();
+    contribop_parameters.mask_filter_value = static_cast<float>(mask_filter_value<T>());
     contribop_parameters.scale = parameters.scale;
     contribop_parameters.use_tf32 = UseTF32();
     // TODO(titaiwang, xadupre): qk_matmul_output_mode only supports kNone and kQK for now
