@@ -3051,6 +3051,11 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       } else {
         // We break here so we do not have patches of CUDA assigned nodes.
+        if (node != nullptr) {
+          LOGS(logger, WARNING) << "CUDA_EP Halting assignment due to capacity threshold at node: "
+                                << node->Name() << " index: " << node_index;
+        }
+
         resource_accountant->SetStopAssignment();
         break;
       }
