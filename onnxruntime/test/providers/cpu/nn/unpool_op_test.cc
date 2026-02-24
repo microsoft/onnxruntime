@@ -436,5 +436,29 @@ TEST(UnpoolTest, MaxUnPool_DefaultStrides) {
   test.Run();
 }
 
+TEST(UnpoolTest, MaxUnpoolInvalidIndices) {
+  OpTester test("MaxUnpool", 9);
+
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  std::vector<float> t_vals = {1, 2, 3, 4};
+  std::vector<int64_t> t_dims = {1, 1, 4};
+
+  std::vector<int64_t> i_vals = {1, 3, 4, 8};  // 8 is out of bounds
+  std::vector<int64_t> i_dims = {1, 1, 4};
+
+  std::vector<int64_t> expected_dims = {1, 1, 8};
+  std::vector<float> expected_vals = {0, 1, 0, 2, 3, 0, 4, 0};
+
+  std::vector<int64_t> inputDims = {3};
+
+  test.AddInput<float>("xT", t_dims, t_vals);
+  test.AddInput<int64_t>("xI", i_dims, i_vals);
+  test.AddInput<int64_t>("output_shape", inputDims, expected_dims);
+
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(BaseTester::ExpectResult::kExpectFailure, "Index value out of bounds");
+}
 }  // namespace test
 }  // namespace onnxruntime
