@@ -47,7 +47,6 @@ def get_user_config_class(metric_type: str):
     return create_config_class(f"{metric_type.title()}UserConfig", default_config, ConfigBase, validators)
 
 
-# TODO(jambayk): automate latency metric config also we standardize accuracy metric config
 class LatencyMetricConfig(ConfigBase):
     warmup_num: int = WARMUP_NUM
     repeat_test_num: int = REPEAT_TEST_NUM

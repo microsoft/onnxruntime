@@ -43,7 +43,7 @@ class TextGenParams(ConfigBase):
     # might have to expose collator for dataloader to support dynamic padding of batches
     # if false, cannot guarantee all sequences are same length. data loader will have to handle this during collation
     pad_to_max_len: bool = True  # pad sequences to max_len, ignored for JOIN corpus strategy
-    padding_side: str = Field(default="right", validate_default=True)  # pad to the right or left
+    padding_side: str = "right"  # pad to the right or left
     drop_short_sequences: bool = False  # drop sequences shorter than max_len. Mutually exclusive with pad_to_max_len
     use_attention_mask: bool = True  # add attention mask to each example
     # either use chat template or text
@@ -61,9 +61,9 @@ class TextGenParams(ConfigBase):
     # a python f-string template for the text with {column_name} as placeholders
     text_template: Optional[str] = None
     # list of text columns, columns are concatenated together using a space
-    text_cols: Union[str, list[str]] = Field(default="text", validate_default=True)
+    text_cols: Union[str, list[str]] = Field(default=["text"])
     # in JOIN strategies, the rows of text_cols are concatenated together
-    strategy: TextGenStrategy = Field(default=TextGenStrategy.JOIN, validate_default=True)
+    strategy: TextGenStrategy = Field(default=TextGenStrategy.JOIN)
     stride: Optional[int] = None  # required when strategy is JOIN_SLIDING_WINDOW
     # text to join the rows of input columns when strategy is JOIN
     # add_special_tokens: "{bos_token} {text_col1} {eos_token} {joiner} {bos_token} {text_col2} {eos_token}..."

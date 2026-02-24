@@ -218,9 +218,13 @@ class NestedConfig(ConfigBase):
     @model_validator(mode="before")
     @classmethod
     def gather_nested_field(cls, values):
-        # In pydantic v2, values can be None when no arguments are provided
         if values is None:
+            # In pydantic v2, values can be None when no arguments are provided
             values = {}
+
+        if not isinstance(values, dict):
+            # Accept the value as is if 'values' is non-dict type (like bool, int, etc.).
+            return values
 
         all_fields = set(cls.model_fields.keys())
         for field in cls.model_fields.values():
@@ -308,11 +312,11 @@ def validate_enum(enum_class: type, value: str):
 
 
 # validator for object params. This ensures user_script is not None if value v is string
-def validate_object(v, values, field):
-    if "user_script" not in values:
+def validate_object(cls, v, info):
+    if "user_script" not in info.data:
         raise ValueError("Invalid user_script")
-    if isinstance(v, str) and values["user_script"] is None:
-        raise ValueError(f"user_script must be provided if {field.name} is a name string")
+    if isinstance(v, str) and info.data["user_script"] is None:
+        raise ValueError(f"user_script must be provided if {info.field_name} is a name string")
     return v
 
 
@@ -331,7 +335,6 @@ def create_config_class(
 ) -> type[ConfigBase]:
     """Create a Pydantic model class from a configuration dictionary."""
     config = {}
-    field_validators_dict = {}
     validators = validators.copy() if validators else {}
 
     for param, param_config in default_config.items():
@@ -342,19 +345,7 @@ def create_config_class(
                 validator_name = f"{validator_name}_{count}"
                 count += 1
 
-            def make_obj_validator(field_name):
-                @field_validator(field_name)
-                @classmethod
-                def check_obj(cls, v, info):
-                    if "user_script" not in info.data:
-                        raise ValueError("Invalid user_script")
-                    if isinstance(v, str) and info.data.get("user_script") is None:
-                        raise ValueError(f"user_script must be provided if {field_name} is a name string")
-                    return v
-
-                return check_obj
-
-            field_validators_dict[validator_name] = make_obj_validator(param)
+            validators[validator_name] = field_validator(param, mode="before")(validate_object)
 
         type_ = param_config.type_
         if param_config.required:
@@ -363,10 +354,7 @@ def create_config_class(
 
         config[param] = (Optional[type_], param_config.default_value)
 
-    # Use dict() instead of dict comprehension
-    field_validators_dict = dict(validators.items())
-
-    return create_model(class_name, **config, __base__=base, __validators__=field_validators_dict)
+    return create_model(class_name, **config, __base__=base, __validators__=validators)
 
 
 T = TypeVar("T", bound=ConfigBase)

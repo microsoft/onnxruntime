@@ -271,8 +271,12 @@ class RunConfig(NestedConfig):
     @field_validator("evaluators", mode="before")
     @classmethod
     def validate_evaluators(cls, v, info):
-        for idx, metric in enumerate(v.get("metrics", [])):
-            v["metrics"][idx] = _resolve_data_config(metric, info.data, "data_config")
+        if not v:
+            return {}
+
+        for name, config in v.items():
+            for idx, metric in enumerate(config.get("metrics", [])):
+                v[name]["metrics"][idx] = _resolve_data_config(metric, info.data, "data_config")
         return v
 
     @field_validator("engine", mode="before")

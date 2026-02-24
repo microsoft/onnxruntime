@@ -183,16 +183,18 @@ class Metric(NestedConfig):
                 except FileNotFoundError as e:
                     raise ValueError(f"could not load metric {item['name']} from huggingface/evaluate") from e
             elif info.data["backend"] == "torch_metrics":
+                sub_metric_type_cls = None
+                if info.data["type"] == MetricType.ACCURACY:
+                    sub_metric_type_cls = AccuracySubType
+                elif info.data["type"] == MetricType.LATENCY:
+                    sub_metric_type_cls = LatencySubType
+                elif info.data["type"] == MetricType.THROUGHPUT:
+                    sub_metric_type_cls = ThroughputSubType
+                elif info.data["type"] == MetricType.SIZE_ON_DISK:
+                    sub_metric_type_cls = SizeOnDiskSubType
+                if not sub_metric_type_cls:
+                    raise ValueError(f"Unrecognized metric type: {info.data['type']}") from None
                 try:
-                    sub_metric_type_cls = None
-                    if info.data["type"] == MetricType.ACCURACY:
-                        sub_metric_type_cls = AccuracySubType
-                    elif info.data["type"] == MetricType.LATENCY:
-                        sub_metric_type_cls = LatencySubType
-                    elif info.data["type"] == MetricType.THROUGHPUT:
-                        sub_metric_type_cls = ThroughputSubType
-                    elif info.data["type"] == MetricType.SIZE_ON_DISK:
-                        sub_metric_type_cls = SizeOnDiskSubType
                     # if not exist, will raise ValueError
                     item["name"] = sub_metric_type_cls(item["name"])
                 except ValueError:
@@ -220,6 +222,8 @@ class Metric(NestedConfig):
             elif info.data["type"] == MetricType.SIZE_ON_DISK:
                 item["higher_is_better"] = False
                 metric_config_cls = SizeOnDiskMetricConfig
+            if not metric_config_cls:
+                raise ValueError("Unable to identify configuration class for metric.")
             item["metric_config"] = validate_config(item.get("metric_config", {}), metric_config_cls)
             result.append(item)
 

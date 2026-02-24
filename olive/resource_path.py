@@ -144,7 +144,7 @@ def create_resource_path(
     return ResourcePathConfig(type=resource_type, config={config_key: resource_path}).create_resource_path()
 
 
-def validate_resource_path(v, values, field):
+def validate_resource_path(cls, v, info):
     try:
         v = create_resource_path(v)
         if v and v.is_local_resource_or_string_name():

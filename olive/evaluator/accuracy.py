@@ -5,7 +5,7 @@
 import logging
 from abc import abstractmethod
 from inspect import isfunction, signature
-from typing import Any, Callable, ClassVar, Union
+from typing import Any, Callable, ClassVar, Optional, Union
 
 import torch
 import torchmetrics
@@ -28,8 +28,8 @@ class AccuracyBase(AutoConfigClass):
         "perplexity": torchmetrics.text.perplexity.Perplexity,
     }
 
-    def __init__(self, config: Union[ConfigBase, dict[str, Any]] = None) -> None:
-        super().__init__(config)
+    def __init__(self, config: Optional[Union[ConfigBase, dict[str, Any]]] = None) -> None:
+        super().__init__(config or {})
         self.resolve_kwargs()
 
     def resolve_kwargs(self):
@@ -67,7 +67,7 @@ class AccuracyBase(AutoConfigClass):
         return cls._metric_config_from_torch_metrics()
 
     @staticmethod
-    def prepare_tensors(preds, target, dtypes=torch.int):
+    def prepare_tensors(preds, target, dtypes: Union[torch.dtype, list[torch.dtype], tuple[torch.dtype]] = torch.int):
         dtypes = dtypes if isinstance(dtypes, (list, tuple)) else [dtypes, dtypes]
         assert len(dtypes) == 2, "dtypes should be a list or tuple with two elements."
         preds = torch.tensor(preds, dtype=dtypes[0]) if not isinstance(preds, torch.Tensor) else preds.to(dtypes[0])
@@ -80,7 +80,7 @@ class AccuracyBase(AutoConfigClass):
 
 
 class AccuracyScore(AccuracyBase):
-    name: str = "accuracy_score"
+    name: Optional[str] = "accuracy_score"
 
     def measure(self, model_output, target):
         preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target)
@@ -90,7 +90,7 @@ class AccuracyScore(AccuracyBase):
 
 
 class F1Score(AccuracyBase):
-    name: str = "f1_score"
+    name: Optional[str] = "f1_score"
 
     def measure(self, model_output, target):
         preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target)
@@ -100,7 +100,7 @@ class F1Score(AccuracyBase):
 
 
 class Precision(AccuracyBase):
-    name: str = "precision"
+    name: Optional[str] = "precision"
 
     def measure(self, model_output, target):
         preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target)
@@ -110,7 +110,7 @@ class Precision(AccuracyBase):
 
 
 class Recall(AccuracyBase):
-    name: str = "recall"
+    name: Optional[str] = "recall"
 
     def measure(self, model_output, target):
         preds_tensor, target_tensor = self.prepare_tensors(model_output.preds, target)
@@ -120,7 +120,7 @@ class Recall(AccuracyBase):
 
 
 class AUROC(AccuracyBase):
-    name: str = "auroc"
+    name: Optional[str] = "auroc"
 
     def measure(self, model_output, target):
         logits_tensor, target_tensor = self.prepare_tensors(model_output.logits, target, [torch.float, torch.int32])
@@ -133,7 +133,7 @@ class AUROC(AccuracyBase):
 
 
 class Perplexity(AccuracyBase):
-    name: str = "perplexity"
+    name: Optional[str] = "perplexity"
 
     def measure(self, model_output, target):
         # update ignore_index if not set
