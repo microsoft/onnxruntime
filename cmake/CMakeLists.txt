@@ -258,7 +258,7 @@ if (NOT CMAKE_CXX_STANDARD)
   if (onnxruntime_USE_CUDA)
     # Known issues when updating from C++17 to C++20:
     # - MSVC + onnxruntime_USE_CUDA:
-    #   - Compilation error from CUTLASS header cute/tensor.hpp:
+    #   - Compilation error from CUTLASS header cute/tensor.hpp (https://github.com/NVIDIA/cutlass/issues/3065):
     #       cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type
     #       template argument
     # - GCC + onnxruntime_USE_CUDA:
