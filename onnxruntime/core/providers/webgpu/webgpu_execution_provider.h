@@ -31,11 +31,11 @@ struct CapturedCommandInfo;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
-  DataLayout data_layout{DataLayout::NHWC};  // preferred layout is NHWC by default
-  bool enable_graph_capture{false};          // graph capture feature is disabled by default
-  bool enable_pix_capture{false};            // PIX capture is disabled by default
-  bool enable_int64{false};                  // int64 ops are not enabled by default
-  uint32_t multi_rotary_cache_concat_offset{0}; // offset for concatenated multi rotary cache (0 = disabled)
+  DataLayout data_layout{DataLayout::NHWC};      // preferred layout is NHWC by default
+  bool enable_graph_capture{false};              // graph capture feature is disabled by default
+  bool enable_pix_capture{false};                // PIX capture is disabled by default
+  bool enable_int64{false};                      // int64 ops are not enabled by default
+  uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
   std::vector<std::string> force_cpu_node_names{};
 };
 
