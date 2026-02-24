@@ -625,8 +625,8 @@ void
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     MLAS_FP16* Temp,
-    int64_t N,
-    const std::string& Algo
+    size_t N,
+    MLAS_GELU_ALGORITHM Algo
 );
 
 typedef
@@ -1138,8 +1138,7 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
-    MLAS_COMPUTE_ERF_FP16_KERNEL MlasNeonErfF16Kernel;
-    MLAS_COMPUTE_GELU_FP16_KERNEL MlasNeonGeluF16Kernel;
+
 #if defined(MLAS_TARGET_AMD64)
     MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
     MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;

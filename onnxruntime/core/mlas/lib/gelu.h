@@ -19,7 +19,7 @@ Abstract:
 
 #include "fp16_common.h"
 #include "../inc/mlas.h"
-#if defined(MLAS_NEON_INTRINSICS) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 #include "erf_neon_fp16.h"
 
 void

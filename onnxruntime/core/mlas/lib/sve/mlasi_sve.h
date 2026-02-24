@@ -57,8 +57,8 @@ MlasSveGeluF16Kernel(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     MLAS_FP16* Temp,
-    int64_t N,
-    const std::string& Algo
+    size_t N,
+    MLAS_GELU_ALGORITHM Algo
 );
 // function declarations
 MLAS_FORCEINLINE
