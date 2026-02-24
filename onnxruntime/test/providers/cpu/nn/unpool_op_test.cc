@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/graph/constants.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -458,7 +459,10 @@ TEST(UnpoolTest, MaxUnpoolInvalidIndices) {
   test.AddInput<int64_t>("output_shape", inputDims, expected_dims);
 
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(BaseTester::ExpectResult::kExpectFailure, "Index value out of bounds");
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_provider;
+  cpu_execution_provider.push_back(DefaultCpuExecutionProvider());
+  test.Run(BaseTester::ExpectResult::kExpectFailure, "Index value out of bounds", {}, nullptr,
+           &cpu_execution_provider);
 }
 }  // namespace test
 }  // namespace onnxruntime
