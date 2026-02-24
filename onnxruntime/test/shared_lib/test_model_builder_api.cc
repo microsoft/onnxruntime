@@ -932,7 +932,7 @@ TEST(ModelEditorCompileAPITest, ModelCanBeReusedAfterCompilation) {
   std::vector<int64_t> input_dims = {3, 4};
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
-                                                       input_dims.data(), input_dims.size());
+                                                      input_dims.data(), input_dims.size());
 
   const char* input_names[] = {"X"};
   const char* output_names[] = {"Z"};
