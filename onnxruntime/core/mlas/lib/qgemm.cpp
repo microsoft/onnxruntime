@@ -351,7 +351,7 @@ MlasDynamicQgemmPackBSize(
 #if defined(USE_KLEIDIAI)
     //No fallback available
     if (GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride != nullptr) {
-        GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride(N, K);
+       bytes = GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride(N, K);
     }
 #endif
 
