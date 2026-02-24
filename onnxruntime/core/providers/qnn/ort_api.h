@@ -45,6 +45,8 @@
 #include "core/providers/partitioning_utils.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
+// Use shared NodeAttrHelper in static builds to avoid duplicate symbols when linking with NNAPI.
+#include "core/providers/shared/utils/utils.h"
 #else
 // Includes when building QNN EP as a shared library
 #include "core/providers/shared_library/provider_api.h"
@@ -131,6 +133,7 @@ GetQDQNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger) 
 #endif
 }
 
+#if !BUILD_QNN_EP_STATIC_LIB
 /**
  * Wrapping onnxruntime::Node for retrieving attribute values
  */
@@ -177,4 +180,5 @@ class NodeAttrHelper {
  private:
   const NodeAttributes& node_attributes_;
 };
+#endif  // !BUILD_QNN_EP_STATIC_LIB
 }  // namespace onnxruntime
