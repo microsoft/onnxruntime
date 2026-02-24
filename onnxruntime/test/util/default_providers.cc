@@ -210,15 +210,6 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena) {
-#ifdef USE_ARMNN
-  return ArmNNProviderFactoryCreator::Create(enable_arena)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(enable_arena);
-  return nullptr;
-#endif
-}
-
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
