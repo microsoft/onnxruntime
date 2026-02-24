@@ -443,8 +443,8 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         }
 
         if (WorkBlock != nullptr &&
-            WorkBlock->BackendKernelSelectorConfig != nullptr &&
-            WorkBlock->BackendKernelSelectorConfig->use_kleidiai) {
+            (WorkBlock->BackendKernelSelectorConfig == nullptr ||
+             WorkBlock->BackendKernelSelectorConfig->use_kleidiai)) {
             KernelFlags |= MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI;
         }
 

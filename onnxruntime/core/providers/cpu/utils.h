@@ -19,7 +19,7 @@ inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_
     return;
   }
 
-  config->use_kleidiai = config_options.GetConfigEntry("mlas.disable_kleidiai") != "1";
+  config->use_kleidiai = config_options.GetConfigOrDefault("mlas.disable_kleidiai", "0") != "1";
 }
 
 }  // namespace onnxruntime
