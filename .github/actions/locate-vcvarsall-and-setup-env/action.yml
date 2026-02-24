@@ -78,3 +78,7 @@ runs:
 
         REM Call the Python script to update the GitHub Actions environment
         python ${{ github.action_path }}\update_environment.py
+
+    - name: Update environment for cache
+      shell: pwsh
+      run: echo "C:\Program Files\Git\usr\bin\" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
