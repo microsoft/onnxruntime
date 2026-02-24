@@ -42,36 +42,6 @@ namespace op_kernel_type_control {
     using types = ::onnxruntime::TypeList<__VA_ARGS__>;             \
   };
 
-//
-// The following section is the default overrides for a reduced-size WebAssembly build.
-//
-#if defined(__wasm__) && defined(ORT_WASM_REDUCE_DATATYPE)
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Input, 0,
-    bool,
-    int8_t, uint8_t, int32_t, uint32_t, int64_t, uint64_t,
-    float, MLFloat16)
-
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Scatter, Input, 0,
-    bool,
-    int8_t, uint8_t, int32_t, uint32_t, int64_t, uint64_t,
-    float, MLFloat16)
-
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, ScatterElements, Input, 0,
-    bool,
-    int8_t, uint8_t, int32_t, uint32_t, int64_t, uint64_t,
-    float, MLFloat16)
-
-ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, ScatterND, Input, 0,
-    bool,
-    int8_t, uint8_t, int32_t, uint32_t, int64_t, uint64_t,
-    float, MLFloat16)
-
-ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES(
-    bool,
-    int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
-    float, MLFloat16)
-#endif // defined(__wasm__) && defined(ORT_WASM_REDUCE_DATATYPE)
-
 // Examples:
 // Specify allowed types per Op kernel arg:
 //   ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Input, 0, float, int64_t);

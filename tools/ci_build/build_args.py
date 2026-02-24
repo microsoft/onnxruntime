@@ -372,11 +372,6 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument(
-        "--wasm_reduce_datatype",
-        action="store_true",
-        help="Enable WebAssembly reduced datatype support for kernel type control overrides.",
-    )
     parser.add_argument("--emsdk_version", default="4.0.23", help="Specify version of emsdk.")
     parser.add_argument(
         "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
