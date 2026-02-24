@@ -4918,7 +4918,7 @@ TEST(CApiTest, ModelWithExternalDataOutsideModelDirectoryShouldFailToLoad) {
       << "Exception message should indicate external data or security issue. Got: " << exception_message;
 }
 
-TEST(CApiTest, InMemoryModelWithExternalDataOutsideWorkingDirectoryShouldFailToLoad) {
+TEST(CApiTest, InMemoryModel_ExternalDataOutsideWorkingDirectory_FailToLoad) {
   // Attempt to create an ORT session with the malicious model (loaded from bytes).
   // This should fail due to the use of an external file path that is not under current working directory.
   // i.e. ../../../../etc/passwd
@@ -4960,7 +4960,7 @@ TEST(CApiTest, InMemoryModelWithExternalDataOutsideWorkingDirectoryShouldFailToL
       << "Exception message should indicate external data or security issue. Got: " << exception_message;
 }
 
-TEST(CApiTest, InMemoryModelWithExternalDataOutsideModelDirectoryShouldFailToLoad) {
+TEST(CApiTest, InMemoryModel_SessionConfigExternalFileFolder_ExternalDataOutsideModelDirectory_FailToLoad) {
   // Attempt to create an ORT session with the malicious model (loaded from bytes).
   // A valid external file folder path is explicitly set via session options.
   // However, this should still fail due to the use of an external file path that escapes the set directory.

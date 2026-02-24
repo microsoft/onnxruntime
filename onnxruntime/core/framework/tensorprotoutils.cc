@@ -372,9 +372,14 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
                              ") escapes model directory: ", base_dir);
     }
   } else {
-    // The basedir is empty, which occurs when a model is loaded from memory.
-    // We check that the path does not contain ".." that would otherwise allow access to arbitrary files.
+    // The basedir is empty, which occurs when 1) the session loads a model from bytes and 2) the application does not
+    // set an external file folder path via the session config option
+    // `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
+
+    // We conservatively check that the normalized relative path does not contain ".." path components that would allow
+    // access to arbitrary files outside of the current working directory. Based on ONNX checker validation.
     auto norm_location = location.lexically_normal();
+
     if (norm_location.native().find(ORT_TSTR(".."), 0) != std::basic_string<ORTCHAR_T>::npos) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data path: ", location,
                              " (model loaded from bytes) escapes working directory");
