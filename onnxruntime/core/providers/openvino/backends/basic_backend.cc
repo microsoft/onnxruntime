@@ -190,14 +190,12 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     device_config.emplace(ov::hint::model_priority(session_context_.model_priority));
 
   if (session_context_.device_type.find("NPU") != std::string::npos) {
-    std::pair<std::string, ov::Any> device_property;
-    device_property = std::make_pair("NPU_COMPILER_TYPE", "DRIVER");
-
+    // Note: if env var is unspecified, let NPU plugin to pick the default.
     const std::string env_npu_compiler_type = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_NPU_COMPILER_TYPE");
     if (!env_npu_compiler_type.empty()) {
-      device_property = std::make_pair("NPU_COMPILER_TYPE", env_npu_compiler_type);
+      device_config.emplace(ov::device::properties("NPU",
+          std::make_pair("NPU_COMPILER_TYPE", env_npu_compiler_type)));
     }
-    device_config.emplace(ov::device::properties("NPU", device_property));
 #if (((OPENVINO_VERSION_MAJOR == 2024) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2024))
     if (session_context_.so_context_enable) {
       OVCore::Get()->core.set_property("NPU", ov::intel_npu::bypass_umd_caching(true));
