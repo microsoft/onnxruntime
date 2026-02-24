@@ -32,7 +32,7 @@ void SpinPause() {
   static const bool has_tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
   static constexpr uint64_t tpause_spin_delay_cycles = 1000;
   if (has_tpause) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__clang__)
     _tpause(0x0, __rdtsc() + tpause_spin_delay_cycles);
 #elif defined(__linux__)
     __builtin_ia32_tpause(0x0, __rdtsc() + tpause_spin_delay_cycles);
