@@ -50,11 +50,11 @@ std::vector<const Node*> Graph__Nodes(const Graph& graph) {
 #endif
 }
 
-#if BUILD_QNN_EP_STATIC_LIB
-#define NODE_ATTR_ITER_VAL(iter) (iter)->second
-#else
+// NodeAttrHelper: In static builds, use the shared implementation from
+// core/providers/shared/utils/utils.cc to avoid duplicate symbols when
+// linking with other providers (e.g., NNAPI).
+#if !BUILD_QNN_EP_STATIC_LIB
 #define NODE_ATTR_ITER_VAL(iter) (iter)->second()
-#endif
 
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
     : node_attributes_(node.GetAttributes()) {}
@@ -220,4 +220,5 @@ std::optional<std::string> NodeAttrHelper::GetString(const std::string& key) con
 bool NodeAttrHelper::HasAttr(const std::string& key) const {
   return node_attributes_.find(key) != node_attributes_.end();
 }
+#endif  // !BUILD_QNN_EP_STATIC_LIB
 }  // namespace onnxruntime
