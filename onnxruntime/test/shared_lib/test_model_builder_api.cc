@@ -18,6 +18,7 @@
 
 #include "test/shared_lib/test_fixture.h"
 #include "test/shared_lib/utils.h"
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/test_allocator.h"
 
 #include "onnxruntime_config.h"  // generated file in build output dir
@@ -802,8 +803,7 @@ TEST(ModelEditorCompileAPITest, BasicCompileFromOrtModel) {
   compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
 
   // Compile should succeed (note: may not produce EPContext nodes without specific EP, but validation passes)
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
 
   // Verify output was produced
   EXPECT_NE(output_buffer, nullptr);
@@ -893,8 +893,7 @@ TEST(ModelEditorCompileAPITest, ModelCanBeReusedAfterCompilation) {
     size_t output_size = 0;
     compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
 
-    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-    EXPECT_TRUE(status.IsOK()) << "First CompileModel failed: " << status.GetErrorMessage();
+    ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
 
     if (output_buffer != nullptr) {
       allocator->Free(output_buffer);
@@ -913,8 +912,7 @@ TEST(ModelEditorCompileAPITest, ModelCanBeReusedAfterCompilation) {
     size_t output_size = 0;
     compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
 
-    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-    EXPECT_TRUE(status.IsOK()) << "Second CompileModel failed: " << status.GetErrorMessage();
+    ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
 
     if (output_buffer != nullptr) {
       allocator->Free(output_buffer);
@@ -969,8 +967,7 @@ TEST(ModelEditorCompileAPITest, SetInputModelOverridesPreviousInputPath) {
   compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
 
   // Should use the OrtModel, not the nonexistent file
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
 
   if (output_buffer != nullptr) {
     allocator->Free(output_buffer);
@@ -998,8 +995,7 @@ TEST(ModelEditorCompileAPITest, SetInputModelPathOverridesPreviousModel) {
   compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
 
   // Should use the file path, not the OrtModel
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
 
   if (output_buffer != nullptr) {
     allocator->Free(output_buffer);
@@ -1020,8 +1016,7 @@ TEST(ModelEditorCompileAPITest, CompileFromOrtModelToFile) {
   compile_options.SetOutputModelPath(output_path);
   compile_options.SetEpContextEmbedMode(true);
 
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
 
   // Verify output file exists
   EXPECT_TRUE(std::filesystem::exists(output_path));
@@ -1066,8 +1061,7 @@ TEST(ModelEditorCompileAPITest, EmbedModeWithBufferOutputSatisfiesValidation) {
   size_t output_size = 0;
   compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
 
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  EXPECT_TRUE(status.IsOK()) << "CompileModel failed: " << status.GetErrorMessage();
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
 
   if (output_buffer != nullptr) {
     allocator->Free(output_buffer);
