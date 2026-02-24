@@ -3,6 +3,8 @@
 
 #pragma once
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+
 // The following three lines were copied from ABSL
 // cutlass needs them, because cutlass uses "and"/"or" keywords
 #ifdef __cplusplus
@@ -52,6 +54,7 @@ namespace cuda {
 #define CUDNN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m))
 #define CUFFT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUFFT_CALL(expr))
 #endif
+
 // Type mapping for MLFloat16 to half
 template <typename T>
 class ToCudaType {
@@ -243,3 +246,8 @@ cudaDataType_t ToCudaDataType(int32_t element_type);
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#else
+// Define shims and basic types needed by kernels in plugin build when cuda_common.h is included
+#include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#endif

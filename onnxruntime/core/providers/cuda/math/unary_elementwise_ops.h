@@ -3,7 +3,13 @@
 
 #pragma once
 
+#include "core/providers/cuda/cuda_common.h"
+
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+#include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#else
 #include "core/providers/cuda/cuda_kernel.h"
+#endif
 
 namespace onnxruntime {
 namespace cuda {

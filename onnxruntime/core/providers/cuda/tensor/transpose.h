@@ -18,6 +18,11 @@ class Transpose final : public CudaKernel, public TransposeBase {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  Status ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedVector<size_t>& default_perm,
+                            const InlinedVector<size_t>*& p_perm) const;
+#endif
+
   static Status DoTranspose(const Transpose& transpose_kernel,
                             onnxruntime::Stream* ort_stream,
                             const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output);

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
@@ -209,3 +211,7 @@ class CudaKernel : public OpKernel {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#else
+#include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#endif

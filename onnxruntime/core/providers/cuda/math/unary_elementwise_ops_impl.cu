@@ -9,6 +9,9 @@
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
 #endif
+#if defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "onnxruntime_c_api.h"
+#endif
 
 namespace onnxruntime {
 
@@ -307,11 +310,62 @@ struct IsInf_DispFunc {
 
 }  // namespace isinf_details
 
+// IsInf
+// When built as a plugin, we cannot use utils::MLTypeCallDispatcher because it depends on
+// ORT internal framework types and logic that are not exposed to the plugin.
+// Instead, we use a manual switch-case on the ONNX tensor data type to dispatch to the correct
+// template instantiation of the kernel implementation.
 void Explicit_Impl_IsInf(cudaStream_t stream, int op_set,
                          bool detect_positive, bool detect_negative,
                          int32_t input_data_type,
                          const void* input_raw, bool* output_data,
                          size_t count) {
+#if defined(BUILD_CUDA_EP_AS_PLUGIN)
+  // For the plugin EP, we manually dispatch based on the data type enum.
+  if (op_set < 20) {
+    switch (input_data_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+        isinf_details::IsInf_DispFunc<float>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+        isinf_details::IsInf_DispFunc<double>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+      default:
+        break;
+    }
+  } else {
+    switch (input_data_type) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+        isinf_details::IsInf_DispFunc<float>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+        isinf_details::IsInf_DispFunc<double>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+        isinf_details::IsInf_DispFunc<MLFloat16>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+        isinf_details::IsInf_DispFunc<BFloat16>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+#if !defined(DISABLE_FLOAT8_TYPES)
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+        isinf_details::IsInf_DispFunc<Float8E4M3FN>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+        isinf_details::IsInf_DispFunc<Float8E4M3FNUZ>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+        isinf_details::IsInf_DispFunc<Float8E5M2>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+        isinf_details::IsInf_DispFunc<Float8E5M2FNUZ>{}(stream, input_raw, output_data, detect_positive, detect_negative, count);
+        break;
+#endif
+      default:
+        break;
+    }
+  }
+#else
   if (op_set < 20) {
     utils::MLTypeCallDispatcher<float, double> dispatcher{input_data_type};
     dispatcher.Invoke<isinf_details::IsInf_DispFunc>(stream, input_raw, output_data,
@@ -321,6 +375,7 @@ void Explicit_Impl_IsInf(cudaStream_t stream, int op_set,
     dispatcher.Invoke<isinf_details::IsInf_DispFunc>(stream, input_raw, output_data,
                                                      detect_positive, detect_negative, count);
   }
+#endif
 }
 
 // IsNan
@@ -336,11 +391,48 @@ struct IsNan_Disp {
 };
 }  // namespace isnan_details
 
+// IsNan
+// Similarly to IsInf, we use a manual switch-case for type dispatch in the plugin build
+// to avoid dependency on utils::MLTypeCallDispatcher.
 void Explicit_Impl_IsNan(cudaStream_t stream, int32_t input_data_type,
                          const void* input_raw, bool* output_data, size_t count) {
+#if defined(BUILD_CUDA_EP_AS_PLUGIN)
+  // Manual dispatch for plugin EP.
+  switch (input_data_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      isnan_details::IsNan_Disp<float>{}(stream, input_raw, output_data, count);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      isnan_details::IsNan_Disp<double>{}(stream, input_raw, output_data, count);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      isnan_details::IsNan_Disp<MLFloat16>{}(stream, input_raw, output_data, count);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      isnan_details::IsNan_Disp<BFloat16>{}(stream, input_raw, output_data, count);
+      break;
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+      isnan_details::IsNan_Disp<Float8E4M3FN>{}(stream, input_raw, output_data, count);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+      isnan_details::IsNan_Disp<Float8E4M3FNUZ>{}(stream, input_raw, output_data, count);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+      isnan_details::IsNan_Disp<Float8E5M2>{}(stream, input_raw, output_data, count);
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+      isnan_details::IsNan_Disp<Float8E5M2FNUZ>{}(stream, input_raw, output_data, count);
+      break;
+#endif
+    default:
+      break;
+  }
+#else
   // KernelDef constraints would ensure only subset of datatypes is used.
   utils::MLTypeCallDispatcher<ISNAN_OPSET20_FLOATS> dispatcher{input_data_type};
   dispatcher.Invoke<isnan_details::IsNan_Disp>(stream, input_raw, output_data, count);
+#endif
 }
 
 }  // namespace cuda

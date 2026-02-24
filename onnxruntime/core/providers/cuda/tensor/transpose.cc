@@ -10,6 +10,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Transpose,
     kOnnxDomain,
@@ -45,6 +46,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Transpose);
+#endif
 
 // special case acceleration using cublas matrix transpose
 static std::tuple<int, int> TryTransposeWithCublas(const gsl::span<const size_t>& perm, const TensorShape& input_shape) {
@@ -99,9 +101,14 @@ Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               onnxruntime::Stream* ort_stream,
                               const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  cublasHandle_t cublas_handle = CudaKernel::GetCublasHandle(cuda_stream);
+#else
+  cublasHandle_t cublas_handle = CudaKernel::GetCublasHandle(static_cast<CudaStream*>(ort_stream));
+#endif
   return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(),
                                 cuda_stream,
-                                CudaKernel::GetCublasHandle(static_cast<CudaStream*>(ort_stream)),
+                                cublas_handle,
                                 permutations,
                                 input, output);
 }
@@ -281,6 +288,46 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   return status;
 }
+
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+Status Transpose::ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedVector<size_t>& default_perm,
+                                     const InlinedVector<size_t>*& p_perm) const {
+  const size_t rank = X.Shape().NumDimensions();
+  const auto& input_dims = X.Shape().GetDims();
+
+  if (perm_specified_)
+    p_perm = &perm_;
+  else {
+    // Determine permutation to use:
+    // If no permutation was specified in the attributes, the default is [rank-1, ..., 0]
+    default_perm.resize(rank);
+    for (size_t i = 0; i < rank; ++i) default_perm[i] = rank - i - 1;
+    p_perm = &default_perm;
+  }
+
+  if (p_perm->size() != rank) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "perm size: ", p_perm->size(), " does not match input rank: ", std::to_string(rank));
+  }
+
+  // Determine shape of output
+  output_dims.resize(rank);
+  for (size_t i = 0; i < rank; i++) {
+    size_t inpdim = (*p_perm)[i];
+    if (inpdim >= rank) {
+      std::ostringstream ss;
+      ss << "[ ";
+      for (const auto& p : *p_perm)
+        ss << p << " ";
+      ss << "]";
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "perm: ", ss.str(), " does not align with rank of input data: ", std::to_string(rank));
+    }
+    output_dims[i] = input_dims[inpdim];
+  }
+  return Status::OK();
+}
+#endif
 
 Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X_ptr = ctx->Input<Tensor>(0);

@@ -17,6 +17,7 @@ from collections import OrderedDict
 import numpy
 import torch
 import torch.nn.functional as F
+from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from onnx import TensorProto, helper
 from parameterized import parameterized
 from torch import nn
@@ -26,12 +27,15 @@ import onnxruntime
 # Reduces number of tests to run for faster pipeline checks
 pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
+# Prefer CUDA plugin EP for this test when available.
+os.environ.setdefault("ORT_TEST_GQA_USE_CUDA_PLUGIN_EP", "1")
+
 onnxruntime.preload_dlls()
 
 # Determine the execution provider and device based on CUDA availability.
 use_cuda = "CUDAExecutionProvider" in onnxruntime.get_available_providers() and torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
-ort_provider = ["CUDAExecutionProvider"] if use_cuda else ["CPUExecutionProvider"]
+ort_provider = [resolve_cuda_plugin_ep("CUDAExecutionProvider")] if use_cuda else ["CPUExecutionProvider"]
 
 torch.manual_seed(42)
 numpy.random.seed(42)

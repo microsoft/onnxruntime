@@ -599,5 +599,35 @@ BINARY_LOGICALOP_REGISTER_UZILHFD(GreaterOrEqual, 16)
 // Opset-16 adds BFloat16 to allowed types for the LessOrEqual operator
 BINARY_LOGICALOP_REGISTER_UZILHFD(LessOrEqual, 16)
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+template Status Equal<bool>::ComputeInternal(OpKernelContext* context) const;
+template Status Equal<uint32_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Equal<uint64_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Equal<int32_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Equal<int64_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Equal<float>::ComputeInternal(OpKernelContext* context) const;
+template Status Equal<MLFloat16>::ComputeInternal(OpKernelContext* context) const;
+template Status Equal<double>::ComputeInternal(OpKernelContext* context) const;
+template Status Equal<BFloat16>::ComputeInternal(OpKernelContext* context) const;
+
+template Status Greater<uint32_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Greater<uint64_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Greater<int32_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Greater<int64_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Greater<float>::ComputeInternal(OpKernelContext* context) const;
+template Status Greater<MLFloat16>::ComputeInternal(OpKernelContext* context) const;
+template Status Greater<double>::ComputeInternal(OpKernelContext* context) const;
+template Status Greater<BFloat16>::ComputeInternal(OpKernelContext* context) const;
+
+template Status Less<uint32_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Less<uint64_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Less<int32_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Less<int64_t>::ComputeInternal(OpKernelContext* context) const;
+template Status Less<float>::ComputeInternal(OpKernelContext* context) const;
+template Status Less<MLFloat16>::ComputeInternal(OpKernelContext* context) const;
+template Status Less<double>::ComputeInternal(OpKernelContext* context) const;
+template Status Less<BFloat16>::ComputeInternal(OpKernelContext* context) const;
+#endif
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -101,5 +101,9 @@ Status Clip::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+template Status Clip_6<float>::ComputeInternal(OpKernelContext* context) const;
+#endif
+
 }  // namespace cuda
 }  // namespace onnxruntime

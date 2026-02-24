@@ -585,6 +585,44 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     const SessionOptions& session_options,
     const std::string& type,
     const ProviderOptionsMap& provider_options_map) {
+#if !defined(ORT_MINIMAL_BUILD)
+  auto try_create_registered_plugin_factory = [&]() -> std::shared_ptr<IExecutionProviderFactory> {
+    const auto& ep_devices = GetEnv().GetOrtEpDevices();
+    if (ep_devices.empty()) {
+      return nullptr;
+    }
+
+    const OrtEpDevice* selected_device = nullptr;
+    for (const OrtEpDevice* ep_device : ep_devices) {
+      if (!ep_device || ep_device->ep_name != type) {
+        continue;
+      }
+
+      if (selected_device == nullptr) {
+        selected_device = ep_device;
+        break;
+      }
+    }
+
+    if (selected_device == nullptr) {
+      return nullptr;
+    }
+
+    InlinedVector<const OrtEpDevice*> selected_devices;
+    selected_devices.push_back(selected_device);
+
+    std::unique_ptr<IExecutionProviderFactory> ep_factory;
+    const auto status = onnxruntime::CreateIExecutionProviderFactoryForEpDevices(GetEnv(), selected_devices, ep_factory);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << "Failed to create dynamic EP factory for '" << type
+                            << "' from registered EP devices: " << status;
+      return nullptr;
+    }
+
+    return std::shared_ptr<IExecutionProviderFactory>(std::move(ep_factory));
+  };
+#endif
+
   if (type == kCpuExecutionProvider) {
     return onnxruntime::CPUProviderFactoryCreator::Create(
         session_options.enable_cpu_mem_arena);
@@ -1208,6 +1246,13 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << " to ensure all dependencies are met.";
 #endif
   } else {
+#if !defined(ORT_MINIMAL_BUILD)
+    // Try EPs dynamically registered via register_execution_provider_library().
+    if (auto ep_factory = try_create_registered_plugin_factory(); ep_factory) {
+      return ep_factory;
+    }
+#endif
+
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
@@ -1246,7 +1291,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
                                                                     const ProviderOptionsMap& provider_options_map) {
   auto ep_factory = CreateExecutionProviderFactoryInstance(session_options, type, provider_options_map);
   if (ep_factory) {
-    return ep_factory->CreateProvider();
+    const auto& default_logger = GetEnv().GetLoggingManager()->DefaultLogger();
+    OrtSessionOptions ort_session_options;
+    ort_session_options.value = session_options;
+    return ep_factory->CreateProvider(ort_session_options, *default_logger.ToExternal());
   }
   return nullptr;
 }

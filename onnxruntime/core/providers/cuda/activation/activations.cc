@@ -6,6 +6,8 @@
 namespace onnxruntime {
 namespace cuda {
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+
 #define REGISTER_ACTIVATION_VERSIONED_KERNEL(x, startver, endver, T) \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                           \
       x,                                                             \
@@ -31,6 +33,8 @@ namespace cuda {
           .MayInplace(0, 0),                                     \
       x<T>);
 
+#endif  // !defined(BUILD_CUDA_EP_AS_PLUGIN)
+
 #define UNARY_ACTIVATION_COMPUTE(x, T)                                                            \
   template <>                                                                                     \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                  \
@@ -45,6 +49,8 @@ namespace cuda {
                                                                                                   \
     return Status::OK();                                                                          \
   }
+
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
 
 #define UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, T) \
   REGISTER_ACTIVATION_VERSIONED_KERNEL(name, startver, endver, T)
@@ -91,6 +97,38 @@ UNARY_ACTIVATION_OP_HFD_WITH_BF16(LeakyRelu, 16);
 // Opset-22 adds BFloat16 to allowed types for the HardSigmoid / HardSwish operators
 UNARY_ACTIVATION_OP_HFD_WITH_BF16(HardSigmoid, 22);
 UNARY_ACTIVATION_OP_HFD_WITH_BF16(HardSwish, 22);
+
+#else  // BUILD_CUDA_EP_AS_PLUGIN
+
+// In the plugin build, only instantiate the ComputeInternal implementations
+// without the internal ORT kernel registration macros.
+#define UNARY_ACTIVATION_COMPUTE_TYPED(name, T) \
+  UNARY_ACTIVATION_COMPUTE(name, T)
+
+#define UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(name) \
+  UNARY_ACTIVATION_COMPUTE_TYPED(name, MLFloat16)    \
+  UNARY_ACTIVATION_COMPUTE_TYPED(name, float)        \
+  UNARY_ACTIVATION_COMPUTE_TYPED(name, double)       \
+  UNARY_ACTIVATION_COMPUTE_TYPED(name, BFloat16)
+
+#define UNARY_ACTIVATION_COMPUTE_HFD(name)        \
+  UNARY_ACTIVATION_COMPUTE_TYPED(name, MLFloat16) \
+  UNARY_ACTIVATION_COMPUTE_TYPED(name, float)     \
+  UNARY_ACTIVATION_COMPUTE_TYPED(name, double)
+
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(Elu)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(HardSigmoid)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(LeakyRelu)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(Relu)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(Selu)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(Sigmoid)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(Softplus)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(Softsign)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(Tanh)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(ThresholdedRelu)
+UNARY_ACTIVATION_COMPUTE_HFD_WITH_BF16(HardSwish)
+
+#endif  // BUILD_CUDA_EP_AS_PLUGIN
 
 }  // namespace cuda
 }  // namespace onnxruntime
