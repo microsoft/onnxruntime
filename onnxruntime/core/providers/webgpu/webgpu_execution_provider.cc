@@ -829,6 +829,8 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
       enable_graph_capture_{config.enable_graph_capture},
       enable_int64_{config.enable_graph_capture || config.enable_int64},
+      use_multi_rotary_cache_concat_{config.use_multi_rotary_cache_concat},
+      multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), false)} {
   // If graph capture is enabled, create a dedicated buffer manager for graph mode
   if (enable_graph_capture_) {

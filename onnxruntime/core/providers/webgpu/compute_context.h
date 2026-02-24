@@ -97,6 +97,20 @@ class ComputeContextBase {
   }
 
   //
+  // Get whether multi rotary cache concatenation is used.
+  //
+  inline bool UseMultiRotaryCacheConcat() const {
+    return ep_.UseMultiRotaryCacheConcat();
+  }
+
+  //
+  // Get the multi rotary cache concatenation offset.
+  //
+  inline uint32_t MultiRotaryCacheConcatOffset() const {
+    return ep_.MultiRotaryCacheConcatOffset();
+  }
+
+  //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {

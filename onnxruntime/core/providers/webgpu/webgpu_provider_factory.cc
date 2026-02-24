@@ -72,6 +72,30 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  std::string use_multi_rotary_cache_concat_str;
+  if (config_options.TryGetConfigEntry(kUseMultiRotaryCacheConcat, use_multi_rotary_cache_concat_str)) {
+    if (use_multi_rotary_cache_concat_str == kUseMultiRotaryCacheConcat_ON) {
+      webgpu_ep_config.use_multi_rotary_cache_concat = true;
+    } else if (use_multi_rotary_cache_concat_str == kUseMultiRotaryCacheConcat_OFF) {
+      webgpu_ep_config.use_multi_rotary_cache_concat = false;
+    } else {
+      ORT_THROW("Invalid useMultiRotaryCacheConcat value: ", use_multi_rotary_cache_concat_str);
+    }
+  }
+
+  std::string multi_rotary_cache_concat_offset_str;
+  if (config_options.TryGetConfigEntry(kMultiRotaryCacheConcatOffset, multi_rotary_cache_concat_offset_str)) {
+    uint32_t offset_value = 0;
+    auto result = std::from_chars(multi_rotary_cache_concat_offset_str.data(),
+                                  multi_rotary_cache_concat_offset_str.data() + multi_rotary_cache_concat_offset_str.size(),
+                                  offset_value);
+    if (result.ec == std::errc{} && offset_value > 0) {
+      webgpu_ep_config.multi_rotary_cache_concat_offset = offset_value;
+    } else {
+      ORT_THROW("Invalid multiRotaryCacheConcatOffset value: ", multi_rotary_cache_concat_offset_str, ". Must be a positive integer.");
+    }
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.
@@ -108,6 +132,8 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable int64: " << webgpu_ep_config.enable_int64;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP use multi rotary cache concat: " << webgpu_ep_config.use_multi_rotary_cache_concat;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP multi rotary cache concat offset: " << webgpu_ep_config.multi_rotary_cache_concat_offset;
 
   return webgpu_ep_config;
 }

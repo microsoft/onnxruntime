@@ -32,7 +32,9 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding_and_copykv.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
+                             WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, multi_rotary_cache_concat_offset_),
                              WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
+                             WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, use_multi_rotary_cache_concat_),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
@@ -595,7 +597,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
 
   const bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
 
-  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram program(params.rotary_interleaved_, prepare_indirect_dispatch);
+  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram program(params.rotary_interleaved_, prepare_indirect_dispatch, context.UseMultiRotaryCacheConcat(), context.MultiRotaryCacheConcatOffset());
   program
       .CacheHint(params.rotary_interleaved_, prepare_indirect_dispatch)
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})

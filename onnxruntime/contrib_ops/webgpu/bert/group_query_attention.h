@@ -16,7 +16,11 @@ using namespace onnxruntime::webgpu;
 
 class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
  public:
-  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved, bool use_multi_rotary_cache_concat, uint32_t multi_rotary_cache_concat_offset)
+      : Program{"SplitPackedQKVWithRotaryEmbedding"},
+        interleaved_{interleaved},
+        use_multi_rotary_cache_concat_{use_multi_rotary_cache_concat},
+        multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -32,6 +36,8 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
 
  private:
   const bool interleaved_;
+  const bool use_multi_rotary_cache_concat_;
+  const uint32_t multi_rotary_cache_concat_offset_;
 };
 
 class GroupQueryAttention final : public WebGpuKernel {

@@ -32,6 +32,8 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
+                             WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, multi_rotary_cache_concat_offset_),
+                             WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, use_multi_rotary_cache_concat_),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
                              WGSL_TEMPLATE_VARIABLE(key, key),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
@@ -74,7 +76,7 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
   const auto work_per_head_vec = head_size_vec - half_rotary_embedding_dim_vec;
   auto dispatch_size = static_cast<uint32_t>(params.batch_size_ * params.sequence_length_ * params.num_heads_ * work_per_head_vec);
 
-  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_);
+  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_, context.UseMultiRotaryCacheConcat(), context.MultiRotaryCacheConcatOffset());
   program
       .CacheHint(params.rotary_interleaved_)
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
