@@ -106,10 +106,9 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   for (size_t cur_elem = 0; cur_elem < total_elements; ++cur_elem) {
     const int64_t idx = I_data[cur_elem];
-    if (idx < 0 || static_cast<size_t>(idx) >= output_size) {
+    if (idx < 0 || idx >= static_cast<int64_t>(output_size)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Index value out of bounds. Got: ", idx,
-                             ". Valid range is [0, ", output_size, ").");
+                             "Index value out of bounds. Got: ", idx, ". Valid range is [0, ", output_size, ").");
     }
 
     out[static_cast<size_t>(idx)] = X_data[cur_elem];
