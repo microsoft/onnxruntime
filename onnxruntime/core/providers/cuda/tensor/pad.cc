@@ -259,7 +259,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   TArray<fast_divmod> fdm_output_strides(dimension_count);
   TensorPitches output_strides(output_dims);
-  for (auto i = 0; i < dimension_count; i++) {
+  for (size_t i = 0; i < dimension_count; i++) {
     fdm_output_strides[i] = fast_divmod(static_cast<int>(output_strides[i]));
   }
 

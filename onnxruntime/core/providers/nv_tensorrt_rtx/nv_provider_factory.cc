@@ -6,13 +6,15 @@
 #include <atomic>
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_custom_ops.h"
-#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 
+#include "onnx_ctx_model_helper.h"
 #include "nv_provider_factory.h"
 #include "nv_execution_provider.h"
 #include "nv_provider_factory_creator.h"
@@ -20,6 +22,11 @@
 #include "nv_allocator.h"
 
 using namespace onnxruntime;
+
+// External declarations
+namespace onnxruntime {
+extern TensorrtLogger& GetTensorrtLogger(bool verbose_log);
+}
 
 namespace onnxruntime {
 
@@ -145,6 +152,12 @@ struct Nv_Provider : Provider {
 
   void Shutdown() override {
     DeleteRegistry();
+    // ensure that there is no longer an active context which will be destroyed when unloading cudart
+    CUcontext cu_context = 0;
+    CU_CALL_THROW(cuCtxGetCurrent(&cu_context));
+    if (cu_context) {
+      CU_CALL_THROW(cuCtxPopCurrent(&cu_context));
+    }
   }
 
 } g_provider;
@@ -516,6 +529,463 @@ struct NvTrtRtxSyncStreamImpl : OrtSyncStreamImpl {
   const OrtApi& ort_api;
 };
 
+#if defined(_WIN32)
+
+// External Resource Import Implementation (D3D12 to CUDA)
+/**
+ * @brief Derived handle for imported external memory from D3D12 to CUDA.
+ *
+ * Derives from OrtExternalMemoryHandle (base struct) and adds CUDA-specific fields.
+ * This struct holds the CUDA external memory object and the mapped device pointer
+ * that can be used for zero-copy tensor creation.
+ */
+struct NvTrtRtxExternalMemoryHandle : OrtExternalMemoryHandle {
+  CUexternalMemory ext_memory;  ///< CUDA external memory object
+  CUdeviceptr mapped_ptr;       ///< Mapped device pointer for tensor access
+  bool is_dedicated;            ///< Whether the D3D12 resource is a dedicated allocation
+
+  NvTrtRtxExternalMemoryHandle(const OrtExternalMemoryDescriptor& descriptor_in)
+      : ext_memory(nullptr), mapped_ptr(0), is_dedicated(true) {
+    // Initialize base struct fields
+    version = ORT_API_VERSION;
+    descriptor = descriptor_in;
+    ep_device = nullptr;
+    Release = ReleaseCallback;
+  }
+
+  static void ORT_API_CALL ReleaseCallback(_In_ OrtExternalMemoryHandle* handle) noexcept {
+    if (handle == nullptr) return;
+    auto derived = std::unique_ptr<NvTrtRtxExternalMemoryHandle>(
+        static_cast<NvTrtRtxExternalMemoryHandle*>(handle));
+    // Destroy the external memory object (also releases mapped buffer)
+    if (derived->ext_memory != nullptr) {
+      cuDestroyExternalMemory(derived->ext_memory);
+    }
+  }
+};
+
+/**
+ * @brief Derived handle for imported external semaphore from D3D12 fence to CUDA.
+ *
+ * Derives from OrtExternalSemaphoreHandle (base struct) and adds CUDA-specific fields.
+ * D3D12 timeline fences are imported as CUDA external semaphores, enabling
+ * GPU-GPU synchronization between D3D12 and CUDA streams.
+ */
+struct NvTrtRtxExternalSemaphoreHandle : OrtExternalSemaphoreHandle {
+  CUexternalSemaphore ext_semaphore;  ///< CUDA external semaphore object
+
+  NvTrtRtxExternalSemaphoreHandle(const OrtExternalSemaphoreDescriptor& descriptor_in)
+      : ext_semaphore(nullptr) {
+    // Initialize base struct fields
+    version = ORT_API_VERSION;
+    descriptor = descriptor_in;
+    ep_device = nullptr;
+    Release = ReleaseCallback;
+  }
+
+  static void ORT_API_CALL ReleaseCallback(_In_ OrtExternalSemaphoreHandle* handle) noexcept {
+    if (handle == nullptr) return;
+    auto derived = std::unique_ptr<NvTrtRtxExternalSemaphoreHandle>(
+        static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle));
+    // Destroy the external semaphore object
+    if (derived->ext_semaphore != nullptr) {
+      cuDestroyExternalSemaphore(derived->ext_semaphore);
+    }
+  }
+};
+
+/**
+ * @brief Implementation of OrtExternalResourceImporterImpl for NvTensorRtRtx EP.
+ *
+ * This struct implements the external resource importer interface using CUDA Driver APIs
+ * to import D3D12 shared resources and timeline fences for zero-copy import.
+ *
+ * Supported handle types:
+ * - ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE → CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE
+ * - ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP → CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP
+ * - ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE → CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE
+ */
+struct NvTrtRtxExternalResourceImporterImpl : OrtExternalResourceImporterImpl {
+  NvTrtRtxExternalResourceImporterImpl(const OrtEpDevice* ep_device, const OrtApi& ort_api_in)
+      : ep_device_{ep_device}, ort_api{ort_api_in}, ep_api{*ort_api_in.GetEpApi()} {
+    ort_version_supported = ORT_API_VERSION;
+
+    // Memory operations
+    CanImportMemory = CanImportMemoryImpl;
+    ImportMemory = ImportMemoryImpl;
+    ReleaseMemory = ReleaseMemoryImpl;
+    CreateTensorFromMemory = CreateTensorFromMemoryImpl;
+
+    // Semaphore operations
+    CanImportSemaphore = CanImportSemaphoreImpl;
+    ImportSemaphore = ImportSemaphoreImpl;
+    ReleaseSemaphore = ReleaseSemaphoreImpl;
+    WaitSemaphore = WaitSemaphoreImpl;
+    SignalSemaphore = SignalSemaphoreImpl;
+
+    // Release
+    Release = ReleaseImpl;
+  }
+
+  static bool ORT_API_CALL CanImportMemoryImpl(
+      _In_ const OrtExternalResourceImporterImpl* this_ptr,
+      _In_ OrtExternalMemoryHandleType handle_type) noexcept {
+    (void)this_ptr;
+    // CUDA supports both D3D12 resource and heap handles
+    return handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE ||
+           handle_type == ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
+  }
+
+  static OrtStatus* ORT_API_CALL ImportMemoryImpl(
+      _In_ OrtExternalResourceImporterImpl* this_ptr,
+      _In_ const OrtExternalMemoryDescriptor* desc,
+      _Outptr_ OrtExternalMemoryHandle** out_handle) noexcept {
+    auto& impl = *static_cast<NvTrtRtxExternalResourceImporterImpl*>(this_ptr);
+
+    if (desc == nullptr || out_handle == nullptr) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments to ImportMemory");
+    }
+
+    // Validate descriptor version - check minimum supported version for forward compatibility
+    if (desc->version < ORT_API_VERSION) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "OrtExternalMemoryDescriptor version too old");
+    }
+
+    *out_handle = nullptr;
+
+    // Validate handle type
+    if (!CanImportMemoryImpl(this_ptr, desc->handle_type)) {
+      return impl.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                       "Unsupported external memory handle type for CUDA import");
+    }
+
+    // Validate offset does not exceed allocation size
+    if (desc->offset_bytes > desc->size_bytes) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "offset_bytes exceeds size_bytes in OrtExternalMemoryDescriptor");
+    }
+
+    // Set CUDA device for this EP. The imported external memory handle is associated with
+    // the device where it was imported and remains valid regardless of subsequent cudaSetDevice
+    // calls. Multi-GPU scenarios with different sessions/EPs work correctly because each
+    // importer is bound to its EP's device via ep_device_->device_memory_info.
+    ScopedContext ctx(impl.DeviceId());
+
+    // Map ORT handle type to CUDA handle type
+    CUexternalMemoryHandleType cu_handle_type;
+    bool is_dedicated = true;
+    switch (desc->handle_type) {
+      case ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE:
+        cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE;
+        is_dedicated = true;  // D3D12 committed resources are dedicated
+        break;
+      case ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP:
+        cu_handle_type = CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP;
+        is_dedicated = false;  // D3D12 heaps are not dedicated
+        break;
+      default:
+        // Should not reach here - CanImportMemory already validated handle type
+        return impl.ort_api.CreateStatus(ORT_EP_FAIL, "Unexpected external memory handle type");
+    }
+
+    // Setup external memory handle descriptor
+    CUDA_EXTERNAL_MEMORY_HANDLE_DESC ext_mem_desc = {};
+    ext_mem_desc.type = cu_handle_type;
+    ext_mem_desc.handle.win32.handle = desc->native_handle;
+    ext_mem_desc.size = desc->size_bytes;
+    ext_mem_desc.flags = is_dedicated ? CUDA_EXTERNAL_MEMORY_DEDICATED : 0;
+
+    // Import the external memory
+    CUexternalMemory ext_memory = nullptr;
+    CUresult cu_result = cuImportExternalMemory(&ext_memory, &ext_mem_desc);
+    if (cu_result != CUDA_SUCCESS) {
+      const char* error_str = nullptr;
+      cuGetErrorString(cu_result, &error_str);
+      std::string error_msg = "cuImportExternalMemory failed: ";
+      error_msg += error_str ? error_str : "unknown error";
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
+    }
+
+    // Map the external memory to get a device pointer
+    CUDA_EXTERNAL_MEMORY_BUFFER_DESC buffer_desc = {};
+    buffer_desc.offset = desc->offset_bytes;
+    buffer_desc.size = desc->size_bytes - desc->offset_bytes;
+    buffer_desc.flags = 0;
+
+    CUdeviceptr mapped_ptr = 0;
+    cu_result = cuExternalMemoryGetMappedBuffer(&mapped_ptr, ext_memory, &buffer_desc);
+    if (cu_result != CUDA_SUCCESS) {
+      cuDestroyExternalMemory(ext_memory);
+      const char* error_str = nullptr;
+      cuGetErrorString(cu_result, &error_str);
+      std::string error_msg = "cuExternalMemoryGetMappedBuffer failed: ";
+      error_msg += error_str ? error_str : "unknown error";
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
+    }
+
+    // Create and return the derived handle (cast to base pointer)
+    OrtExternalMemoryDescriptor descriptor = {};  // make a copy for the handle
+    descriptor.version = ORT_API_VERSION;
+    descriptor.handle_type = desc->handle_type;
+    descriptor.size_bytes = desc->size_bytes;
+    descriptor.offset_bytes = desc->offset_bytes;
+    auto handle = std::make_unique<NvTrtRtxExternalMemoryHandle>(descriptor);
+    handle->ep_device = impl.ep_device_;
+    handle->ext_memory = ext_memory;
+    handle->mapped_ptr = mapped_ptr;
+    handle->is_dedicated = is_dedicated;
+
+    *out_handle = handle.release();
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseMemoryImpl(
+      _In_ OrtExternalResourceImporterImpl* this_ptr,
+      _In_ OrtExternalMemoryHandle* handle) noexcept {
+    (void)this_ptr;
+
+    if (handle == nullptr) {
+      return;
+    }
+
+    // The handle has a Release callback that does the actual cleanup
+    // This method is called from OrtExternalResourceImporterImpl::ReleaseMemory
+    // The Release callback in the handle will call the static ReleaseCallback
+    auto mem_handle = std::unique_ptr<NvTrtRtxExternalMemoryHandle>(
+        static_cast<NvTrtRtxExternalMemoryHandle*>(handle));
+
+    // Destroy the external memory object (also releases mapped buffer)
+    if (mem_handle->ext_memory != nullptr) {
+      cuDestroyExternalMemory(mem_handle->ext_memory);
+    }
+  }
+
+  static OrtStatus* ORT_API_CALL CreateTensorFromMemoryImpl(
+      _In_ OrtExternalResourceImporterImpl* this_ptr,
+      _In_ const OrtExternalMemoryHandle* mem_handle,
+      _In_ const OrtExternalTensorDescriptor* tensor_desc,
+      _Outptr_ OrtValue** out_tensor) noexcept {
+    auto& impl = *static_cast<NvTrtRtxExternalResourceImporterImpl*>(this_ptr);
+
+    if (mem_handle == nullptr || tensor_desc == nullptr || out_tensor == nullptr) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments to CreateTensorFromMemory");
+    }
+
+    // Validate descriptor version - check minimum supported version for forward compatibility
+    if (tensor_desc->version < ORT_API_VERSION) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "OrtExternalTensorDescriptor version too old");
+    }
+
+    *out_tensor = nullptr;
+
+    auto* handle = static_cast<const NvTrtRtxExternalMemoryHandle*>(mem_handle);
+
+    // Validate tensor offset does not exceed available buffer size
+    size_t available_size = handle->descriptor.size_bytes - handle->descriptor.offset_bytes;
+    if (tensor_desc->offset_bytes > available_size) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "tensor offset_bytes exceeds available imported memory size");
+    }
+
+    // Calculate the data pointer with tensor offset
+    void* data_ptr = reinterpret_cast<void*>(handle->mapped_ptr + tensor_desc->offset_bytes);
+
+    // Get memory info from the EP device (the importer is associated with the OrtEpDevice)
+    const OrtMemoryInfo* memory_info = impl.ep_device_->device_memory_info;
+
+    // Create tensor that references the imported memory. The tensor does not own the memory -
+    // the user manages the lifetime of both the OrtValue and OrtExternalMemoryHandle.
+    // The user must keep the handle alive while the tensor is in use.
+    // No deleter is needed since this is for inference inputs/outputs where the user controls lifetime.
+    OrtStatus* status = impl.ort_api.CreateTensorWithDataAsOrtValue(
+        memory_info,
+        data_ptr,
+        available_size - tensor_desc->offset_bytes,
+        tensor_desc->shape,
+        tensor_desc->rank,
+        tensor_desc->element_type,
+        out_tensor);
+
+    return status;
+  }
+
+  static bool ORT_API_CALL CanImportSemaphoreImpl(
+      _In_ const OrtExternalResourceImporterImpl* this_ptr,
+      _In_ OrtExternalSemaphoreType type) noexcept {
+    (void)this_ptr;
+    // CUDA supports D3D12 timeline fences
+    return type == ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE;
+  }
+
+  static OrtStatus* ORT_API_CALL ImportSemaphoreImpl(
+      _In_ OrtExternalResourceImporterImpl* this_ptr,
+      _In_ const OrtExternalSemaphoreDescriptor* desc,
+      _Outptr_ OrtExternalSemaphoreHandle** out_handle) noexcept {
+    auto& impl = *static_cast<NvTrtRtxExternalResourceImporterImpl*>(this_ptr);
+
+    if (desc == nullptr || out_handle == nullptr) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments to ImportSemaphore");
+    }
+
+    // Validate descriptor version - check minimum supported version for forward compatibility
+    if (desc->version < ORT_API_VERSION) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                       "OrtExternalSemaphoreDescriptor version too old");
+    }
+
+    *out_handle = nullptr;
+
+    // Validate semaphore type
+    if (!CanImportSemaphoreImpl(this_ptr, desc->type)) {
+      return impl.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                       "Unsupported external semaphore type for CUDA import");
+    }
+
+    ScopedContext ctx(impl.DeviceId());
+
+    // Setup external semaphore handle descriptor for D3D12 fence
+    CUDA_EXTERNAL_SEMAPHORE_HANDLE_DESC ext_sem_desc = {};
+    ext_sem_desc.type = CU_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D12_FENCE;
+    ext_sem_desc.handle.win32.handle = desc->native_handle;
+    ext_sem_desc.flags = 0;
+
+    // Import the external semaphore
+    CUexternalSemaphore ext_semaphore = nullptr;
+    CUresult cu_result = cuImportExternalSemaphore(&ext_semaphore, &ext_sem_desc);
+    if (cu_result != CUDA_SUCCESS) {
+      const char* error_str = nullptr;
+      cuGetErrorString(cu_result, &error_str);
+      std::string error_msg = "cuImportExternalSemaphore failed: ";
+      error_msg += error_str ? error_str : "unknown error";
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
+    }
+
+    // Create and return the derived handle (cast to base pointer)
+    auto handle = std::make_unique<NvTrtRtxExternalSemaphoreHandle>(*desc);
+
+    // Populate base struct fields
+    handle->ep_device = impl.ep_device_;
+    // Populate derived fields
+    handle->ext_semaphore = ext_semaphore;
+
+    *out_handle = handle.release();  // Return base pointer
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseSemaphoreImpl(
+      _In_ OrtExternalResourceImporterImpl* this_ptr,
+      _In_ OrtExternalSemaphoreHandle* handle) noexcept {
+    (void)this_ptr;
+
+    if (handle == nullptr) {
+      return;
+    }
+
+    auto sem_handle = std::unique_ptr<NvTrtRtxExternalSemaphoreHandle>(
+        static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle));
+
+    if (sem_handle->ext_semaphore != nullptr) {
+      cuDestroyExternalSemaphore(sem_handle->ext_semaphore);
+    }
+  }
+
+  static OrtStatus* ORT_API_CALL WaitSemaphoreImpl(
+      _In_ OrtExternalResourceImporterImpl* this_ptr,
+      _In_ OrtExternalSemaphoreHandle* handle,
+      _In_ OrtSyncStream* stream,
+      _In_ uint64_t value) noexcept {
+    auto& impl = *static_cast<NvTrtRtxExternalResourceImporterImpl*>(this_ptr);
+
+    if (handle == nullptr || stream == nullptr) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments to WaitSemaphore");
+    }
+
+    auto* sem_handle = static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle);
+
+    // Get the CUDA stream from OrtSyncStream
+    cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.ort_api.SyncStream_GetHandle(stream));
+
+    // Setup wait parameters for D3D12 fence (timeline semaphore)
+    CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS wait_params = {};
+    wait_params.params.fence.value = value;
+    wait_params.flags = 0;
+
+    // Wait on the external semaphore asynchronously
+    CUresult cu_result = cuWaitExternalSemaphoresAsync(
+        &sem_handle->ext_semaphore,
+        &wait_params,
+        1,  // numExtSems
+        cuda_stream);
+
+    if (cu_result != CUDA_SUCCESS) {
+      const char* error_str = nullptr;
+      cuGetErrorString(cu_result, &error_str);
+      std::string error_msg = "cuWaitExternalSemaphoresAsync failed: ";
+      error_msg += error_str ? error_str : "unknown error";
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
+    }
+
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL SignalSemaphoreImpl(
+      _In_ OrtExternalResourceImporterImpl* this_ptr,
+      _In_ OrtExternalSemaphoreHandle* handle,
+      _In_ OrtSyncStream* stream,
+      _In_ uint64_t value) noexcept {
+    auto& impl = *static_cast<NvTrtRtxExternalResourceImporterImpl*>(this_ptr);
+
+    if (handle == nullptr || stream == nullptr) {
+      return impl.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments to SignalSemaphore");
+    }
+
+    auto* sem_handle = static_cast<NvTrtRtxExternalSemaphoreHandle*>(handle);
+
+    // Get the CUDA stream from OrtSyncStream
+    cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.ort_api.SyncStream_GetHandle(stream));
+
+    // Setup signal parameters for D3D12 fence (timeline semaphore)
+    CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS signal_params = {};
+    signal_params.params.fence.value = value;
+    signal_params.flags = 0;
+
+    // Signal the external semaphore asynchronously
+    CUresult cu_result = cuSignalExternalSemaphoresAsync(
+        &sem_handle->ext_semaphore,
+        &signal_params,
+        1,  // numExtSems
+        cuda_stream);
+
+    if (cu_result != CUDA_SUCCESS) {
+      const char* error_str = nullptr;
+      cuGetErrorString(cu_result, &error_str);
+      std::string error_msg = "cuSignalExternalSemaphoresAsync failed: ";
+      error_msg += error_str ? error_str : "unknown error";
+      return impl.ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
+    }
+
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseImpl(_In_ OrtExternalResourceImporterImpl* this_ptr) noexcept {
+    delete static_cast<NvTrtRtxExternalResourceImporterImpl*>(this_ptr);
+  }
+
+  /// @brief Get the CUDA device ID from the EP device's memory info.
+  int DeviceId() const {
+    return ep_device_->device_memory_info->device.Id();
+  }
+
+ private:
+  const OrtEpDevice* ep_device_;
+  const OrtApi& ort_api;
+  const OrtEpApi& ep_api;
+};
+
+#endif  // defined(_WIN32)
+
 // OrtEpApi infrastructure to be able to use the NvTensorRTRTX EP as an OrtEpFactory for auto EP selection.
 struct NvTensorRtRtxEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
@@ -529,7 +999,6 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     GetVendor = GetVendorImpl;
     GetVendorId = GetVendorIdImpl;
     GetVersion = GetVersionImpl;
-    GetVendorId = GetVendorIdImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -541,7 +1010,8 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     IsStreamAware = IsStreamAwareImpl;
     CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
-
+    ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
+    CreateExternalResourceImporterForDevice = CreateExternalResourceImporterForDeviceImpl;
     ort_version_supported = ORT_API_VERSION;  // Set to the ORT version we were compiled with.
   }
 
@@ -584,6 +1054,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
    * @return True if the device is a supported NVIDIA GPU, false otherwise.
    */
   bool IsOrtHardwareDeviceSupported(const OrtHardwareDevice& device) {
+#if _WIN32
     const auto& metadata_entries = device.metadata.Entries();
     const auto it = metadata_entries.find("LUID");
     if (it == metadata_entries.end()) {
@@ -625,6 +1096,25 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
     }
 
     return false;
+#else
+    const auto& metadata_entries = device.metadata.Entries();
+    const auto it = metadata_entries.find("pci_bus_id");
+    if (it == metadata_entries.end()) {
+      return false;
+    }
+    auto& target_id = it->second;
+    int cuda_device_idx = 0;
+    if (cudaDeviceGetByPCIBusId(&cuda_device_idx, target_id.c_str()) != cudaSuccess) {
+      return false;
+    }
+
+    cudaDeviceProp prop;
+    if (cudaGetDeviceProperties(&prop, cuda_device_idx) != cudaSuccess) {
+      return false;
+    }
+    // Ampere architecture or newer is required.
+    return prop.major >= 8;
+#endif
   }
 
   // Creates and returns OrtEpDevice instances for all OrtHardwareDevices that this factory supports.
@@ -661,6 +1151,7 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
         RETURN_IF_ERROR(factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
                                                                     &ep_devices[num_ep_devices]));
+
         factory->ort_api.ReleaseKeyValuePairs(ep_options);
         factory->ort_api.ReleaseKeyValuePairs(ep_metadata);
 
@@ -723,7 +1214,8 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
 
     auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
     cudaStream_t stream = nullptr;
-    CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+    ScopedContext ctx(device_id);
+
     CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
@@ -733,6 +1225,156 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
                                                          factory.ort_api);
     *ort_stream = impl.release();
     return nullptr;
+  }
+
+  /** @brief Create an external resource importer for D3D12 to CUDA import.
+   *
+   * This enables zero-copy import of D3D12 shared resources and timeline fences.
+   * The implementation uses CUDA Driver APIs (cuImportExternalMemory, cuImportExternalSemaphore).
+   *
+   * @param this_ptr The OrtEpFactory instance.
+   * @param ep_device The OrtEpDevice to create the importer for.
+   * @param out_importer Output parameter set to the created OrtExternalResourceImporterImpl.
+   * @return nullptr on success, OrtStatus with error on failure.
+   */
+  static OrtStatus* ORT_API_CALL CreateExternalResourceImporterForDeviceImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpDevice* ep_device,
+      OrtExternalResourceImporterImpl** out_importer) noexcept {
+    auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    if (out_importer == nullptr) {
+      return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                          "out_importer cannot be nullptr");
+    }
+
+    *out_importer = nullptr;
+
+#if defined(_WIN32)
+    // Create the external resource importer
+    auto importer = std::make_unique<NvTrtRtxExternalResourceImporterImpl>(ep_device, factory.ort_api);
+    *out_importer = importer.release();
+
+    return nullptr;
+#else
+    ORT_UNUSED_PARAMETER(ep_device);
+    return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                        "External resource import is only available on Windows builds.");
+#endif
+  }
+
+  /**
+   * This function is called by the public C API GetModelCompatibilityForEpDevices.
+   * It uses TensorRT RTX runtime directly to call runtime->getEngineValidity() to check the 64-byte engine header.
+   *
+   * @param this_ptr Factory instance pointer
+   * @param devices Hardware devices (not used, validation is done against current system)
+   * @param num_devices Number of devices
+   * @param compatibility_info Hex-encoded 64-byte TensorRT RTX engine header (128 hex characters)
+   * @param model_compatibility Output parameter for compatibility status
+   * @return OrtStatus* nullptr on success, error status on failure
+   */
+  static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfoImpl(
+      OrtEpFactory* this_ptr,
+      const OrtHardwareDevice* const* devices,
+      size_t num_devices,
+      const char* compatibility_info,
+      OrtCompiledModelCompatibility* model_compatibility) noexcept {
+    auto& factory = *static_cast<NvTensorRtRtxEpFactory*>(this_ptr);
+
+    // Validate input parameters
+    if (compatibility_info == nullptr || model_compatibility == nullptr) {
+      return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                          "[NvTensorRTRTX EP] Invalid arguments: compatibility_info or model_compatibility is null");
+    }
+
+    // Device parameters not used for header validation
+    ORT_UNUSED_PARAMETER(devices);
+    ORT_UNUSED_PARAMETER(num_devices);
+
+    try {
+      // If no compatibility info provided, validation not applicable
+      if (compatibility_info[0] == '\0') {
+        *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+        return nullptr;
+      }
+
+      // Decode hex string to binary
+      std::vector<uint8_t> engine_header;
+      try {
+        engine_header = HexStringToBinary(std::string(compatibility_info));
+      } catch (const std::exception& ex) {
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to decode engine header: " << ex.what();
+        *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+        return nullptr;
+      }
+
+      // Validate header size (keep in sync with TensorRT engine header size)
+      if (engine_header.size() != kTensorRTEngineHeaderSize) {
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Invalid header size: " << engine_header.size()
+                              << " bytes (expected " << kTensorRTEngineHeaderSize << ")";
+        *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+        return nullptr;
+      }
+
+      // Create TensorRT runtime for validation
+      static std::mutex runtime_creation_mutex;
+      std::unique_ptr<nvinfer1::IRuntime> runtime;
+      {
+        std::lock_guard<std::mutex> lock(runtime_creation_mutex);
+        TensorrtLogger& trt_logger = GetTensorrtLogger(false);
+        runtime.reset(nvinfer1::createInferRuntime(trt_logger));
+      }
+
+      if (!runtime) {
+        LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Failed to create TensorRT runtime";
+        return factory.ort_api.CreateStatus(ORT_FAIL,
+                                            "[NvTensorRTRTX EP] Failed to create TensorRT runtime");
+      }
+
+      // Use TensorRT's getEngineValidity to check compatibility
+      uint64_t diagnostics = 0;
+      nvinfer1::EngineValidity validity = runtime->getEngineValidity(
+          engine_header.data(),
+          engine_header.size(),
+          &diagnostics);
+
+      // Map TensorRT validity to ORT compatibility status
+      switch (validity) {
+        case nvinfer1::EngineValidity::kVALID:
+          *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+          break;
+
+        case nvinfer1::EngineValidity::kSUBOPTIMAL:
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine compatible but recompilation recommended "
+                                << "(diagnostics: 0x" << std::hex << diagnostics << std::dec << ")";
+          *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+          break;
+
+        case nvinfer1::EngineValidity::kINVALID:
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine incompatible with this system "
+                                << "(diagnostics: 0x" << std::hex << diagnostics << std::dec << ")";
+          *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+          break;
+
+        default:
+          LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Unknown validity status: "
+                                << static_cast<int>(validity);
+          *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+          break;
+      }
+
+      return nullptr;
+
+    } catch (const std::exception& ex) {
+      std::string error_msg = std::string("[NvTensorRTRTX EP] Exception during validation: ") + ex.what();
+      LOGS_DEFAULT(ERROR) << error_msg;
+      return factory.ort_api.CreateStatus(ORT_FAIL, error_msg.c_str());
+    } catch (...) {
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Unknown exception during validation";
+      return factory.ort_api.CreateStatus(ORT_FAIL,
+                                          "[NvTensorRTRTX EP] Unknown exception during validation");
+    }
   }
 
   OrtStatus* CreateMemoryInfoForDevices(int num_devices) {

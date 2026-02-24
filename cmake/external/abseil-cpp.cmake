@@ -12,16 +12,17 @@ set(ABSL_USE_EXTERNAL_GOOGLETEST ON)
 
 # Both abseil and xnnpack create a target called memory, which
 # results in a duplicate target if ABSL_ENABLE_INSTALL is on.
-if (onnxruntime_USE_XNNPACK)
-  set(ABSL_ENABLE_INSTALL OFF)
-else()
-  if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
     set(ABSL_ENABLE_INSTALL ON)
-  endif()
 endif()
 
-if(Patch_FOUND AND WIN32)
-  set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch)
+if(Patch_FOUND)
+  if (WIN32)
+    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch &&
+                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_cuda_warnings.patch)
+  else()
+    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_cuda_warnings.patch)
+  endif()
 else()
   set(ABSL_PATCH_COMMAND "")
 endif()

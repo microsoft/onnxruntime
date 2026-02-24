@@ -29,6 +29,8 @@
 
     // Tests that are failing temporarily and should be fixed
     "current_failing_tests": [
+        // TODO(titaiwang): onnx 1.21 should fix lpnorm zero norm issue
+        "^test_l2normalization*",  // LpNormalization(22) not implemented
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
@@ -39,9 +41,45 @@
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
-        "^test_l2normalization*",  // LpNormalization(22) not implemented
-        "^test_l1normalization*",  // LpNormalization(22) not implemented
-        "^test_lpnormalization*",  // LpNormalization(22) not implemented
+        // TODO: support the following tests in Attention-cuda (softcap, softmax precision and qk_matmul_mode)
+        "^test_attention_3d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_3d_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
+        "test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
+        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_4d_softcap_cuda",  // softcap not supported in Attention-cuda
+        "^test_attention_4d_with_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
+        "^test_attention_4d_attn_mask_bool_cuda", // bool mask not supported in Attention-cuda
+        "^test_attention_4d_attn_mask_bool_4d_cuda", // bool mask not supported in Attention-cuda
+        "^test_attention_3d_with_past_and_present_qk_matmul_bias_cuda",  // QK matmul + bias not supported in Attention-cuda
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_cuda", // QK matmul + bias not supported in Attention-cuda
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_cuda", // QK matmul + bias not supported in Attention-cuda
+        "^test_attention_4d_with_qk_matmul_bias_cuda", // QK matmul + bias not supported in Attention-cuda
+        "^test_attention_4d_with_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
+        "^test_attention_3d_with_past_and_present_qk_matmul_softmax_cuda", // QK matmul + softmax not supported in Attention-cuda
+        "^test_attention_4d_with_past_and_present_qk_matmul_bias_cuda", // QK matmul + bias not supported in Attention-cuda
+        // is_causal=Truen && q_seq_len != kv_seq_len not supported in Attention-cuda
+        "^test_attention_3d_causal_cuda",
+        "^test_attention_3d_diff_heads_sizes_causal_cuda",
+        "^test_attention_4d_attn_mask_3d_causal_cuda",
+        "^test_attention_4d_attn_mask_4d_causal_cuda",
+        "^test_attention_4d_causal_cuda",
+        "^test_attention_4d_diff_heads_sizes_causal_cuda",
+        // GQA Attention-cuda does not support fp16 and 4d QKV
+        "^test_attention_4d_gqa_with_past_and_present_fp16_cuda",  // 4d QKV
+        "^test_attention_4d_gqa_with_past_and_present_cuda",  // fp32
+        "^test_attention_4d_gqa_softcap_cuda",  // fp32
+        "^test_attention_4d_gqa_scaled_cuda",  // fp32
+        "^test_attention_4d_gqa_cuda",  // fp32
+        "^test_attention_3d_gqa_attn_mask_cuda",  // fp32
+        "^test_attention_3d_gqa_causal_cuda",  // fp32
+        "^test_attention_3d_gqa_cuda", // fp32
+        "^test_attention_3d_gqa_scaled_cuda", // fp32
+        "^test_attention_3d_gqa_softcap_cuda",  // fp32
+        "^test_attention_3d_gqa_with_past_and_present_cuda",  // fp32
+        "^test_attention_4d_gqa_attn_mask_cuda",  // fp32
+        "^test_attention_4d_gqa_causal_cuda",  // fp32
         "^test_tensorscatter*",  // TensorScatter(24) not implemented
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes

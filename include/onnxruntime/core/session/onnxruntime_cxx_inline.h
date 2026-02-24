@@ -983,6 +983,20 @@ inline OrtCompiledModelCompatibility GetModelCompatibilityForEpDevices(
   return status;
 }
 
+inline AllocatedStringPtr GetCompatibilityInfoFromModelAllocated(const ORTCHAR_T* model_path, const char* ep_type,
+                                                                 OrtAllocator* allocator) {
+  char* compat_info = nullptr;
+  ThrowOnError(GetApi().GetCompatibilityInfoFromModel(model_path, ep_type, allocator, &compat_info));
+  return AllocatedStringPtr(compat_info, detail::AllocatedFree(allocator));
+}
+
+inline AllocatedStringPtr GetCompatibilityInfoFromModelBytesAllocated(const void* model_data, size_t model_data_length,
+                                                                      const char* ep_type, OrtAllocator* allocator) {
+  char* compat_info = nullptr;
+  ThrowOnError(GetApi().GetCompatibilityInfoFromModelBytes(model_data, model_data_length, ep_type, allocator, &compat_info));
+  return AllocatedStringPtr(compat_info, detail::AllocatedFree(allocator));
+}
+
 inline LoraAdapter LoraAdapter::CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                                   OrtAllocator* allocator) {
   OrtLoraAdapter* p;
@@ -1060,6 +1074,16 @@ inline RunOptions& RunOptions::AddActiveLoraAdapter(const LoraAdapter& adapter) 
 
 inline RunOptions& RunOptions::SetSyncStream(OrtSyncStream* stream) {
   GetApi().RunOptionsSetSyncStream(p_, stream);
+  return *this;
+}
+
+inline RunOptions& RunOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
+  ThrowOnError(GetApi().RunOptionsEnableProfiling(p_, profile_file_prefix));
+  return *this;
+}
+
+inline RunOptions& RunOptions::DisableProfiling() {
+  ThrowOnError(GetApi().RunOptionsDisableProfiling(p_));
   return *this;
 }
 
@@ -2362,6 +2386,13 @@ inline const R* ConstValueImpl<T>::GetSparseTensorValues() const {
 }
 
 #endif
+
+template <typename T>
+void ConstValueImpl<T>::GetTensorElementTypeAndShapeDataReference(ONNXTensorElementDataType& elem_type,
+                                                                  Shape& shape) const {
+  ThrowOnError(GetApi().GetTensorElementTypeAndShapeDataReference(this->p_, &elem_type, &shape.shape,
+                                                                  &shape.shape_len));
+}
 
 template <typename T>
 void ValueImpl<T>::FillStringTensor(const char* const* s, size_t s_len) {

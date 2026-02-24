@@ -1242,7 +1242,8 @@ MlasNchwcConv(
     float* Output,
     const MLAS_ACTIVATION* Activation,
     bool ZeroMode,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    bool UseBf16
     );
 
 void
@@ -1836,7 +1837,7 @@ MlasHalfGemmBatch(
     const size_t K,
     const size_t BatchN,
     const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool = nullptr
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -1965,6 +1966,7 @@ struct MLAS_SBGEMM_DATA_PARAMS {
     const MLAS_SBGEMM_POSTPROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false; /**< matrix A is fp32, needs to be converted to bf16*/
     bool BIsfp32 = false; /**< matrix B is fp32, needs to be converted to bf16*/
+    bool ZeroMode = true; /**< true: C = A*B, false: C += A*B */
 };
 
 /**
@@ -1983,7 +1985,7 @@ struct MLAS_SBGEMM_DATA_PARAMS {
  * @return
  */
 void MLASCALL
-MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* DataParams, MLAS_THREADPOOL* ThreadPool = nullptr);
+MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* DataParams, MLAS_THREADPOOL* ThreadPool);
 
 /**
  * @brief For bfloat16 precision GEMM, returns size of the

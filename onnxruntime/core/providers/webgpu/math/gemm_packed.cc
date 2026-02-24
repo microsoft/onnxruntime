@@ -31,7 +31,7 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
-    MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_, is_vec4_);
+    MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
   if (is_vec4_) {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_, /*tile_inner*/ 32, need_split_k, split_dim_inner_));
@@ -45,7 +45,7 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   const ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
-  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, output_components_, c_is_scalar_, /*activation_snippet*/ "", /*is_channels_last*/ false, need_split_k, output_var_type);
+  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, c_is_scalar_, /*activation_snippet*/ "", /*is_channels_last*/ false, need_split_k, output_var_type);
 
   return Status::OK();
 }
@@ -104,37 +104,39 @@ Status ApplyGemmPacked(const Tensor* a,
   uint32_t dispatch_z = 1;
   uint32_t split_dim_inner = 1;
 
-  const SplitKConfig& split_k_config = context.GetSplitKConfig();
-  // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
-  const bool output_is_vec4 = output_components == 4;
-  // The parameter `is_channel_last` is not used for GEMM.
-  const bool need_split_k = split_k_config.UseSplitK(
-      is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, /*is_gemm*/ true, /*is_channels_last*/ true, M, N, K);
-  if (need_split_k) {
-    const Tensor* bias = nullptr;
-    uint32_t output_components_in_fill_bias_program = 4;
-    if (need_handle_bias) {
-      bias = c;
-      output_components_in_fill_bias_program = c_components;
+  // Current Split-K implementation relies on atomic operations, which are not deterministic.
+  if (!context.KernelContext().GetUseDeterministicCompute()) {
+    const SplitKConfig& split_k_config = context.GetSplitKConfig();
+    // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
+    const bool output_is_vec4 = output_components == 4;
+    // The parameter `is_channel_last` is not used for GEMM.
+    const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, /*is_gemm*/ true, /*is_channels_last*/ true, M, N, K);
+    if (need_split_k) {
+      const Tensor* bias = nullptr;
+      uint32_t output_components_in_fill_bias_program = 4;
+      if (need_handle_bias) {
+        bias = c;
+        output_components_in_fill_bias_program = c_components;
+      }
+      const TensorShape output_shape = TensorShape{M, N / output_components_in_fill_bias_program};
+
+      auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
+          bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, c_is_scalar, output_shape);
+      ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
+
+      // When Split-K is used, `bias` will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
+      // instead of here.
+      need_handle_bias = false;
+
+      // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
+      // number of splits along `dim_inner`.
+      split_dim_inner = split_k_config.GetSplitDimInner();
+      dispatch_z = (K + split_dim_inner - 1) / split_dim_inner;
+
+      // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
+      // built-in functions.
+      output.is_atomic = true;
     }
-    const TensorShape output_shape = TensorShape{M, N / output_components_in_fill_bias_program};
-
-    auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
-        bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, c_is_scalar, output_shape);
-    ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
-
-    // When Split-K is used, `bias` will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
-    // instead of here.
-    need_handle_bias = false;
-
-    // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
-    // number of splits along `dim_inner`.
-    split_dim_inner = split_k_config.GetSplitDimInner();
-    dispatch_z = (K + split_dim_inner - 1) / split_dim_inner;
-
-    // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
-    // built-in functions.
-    output.is_atomic = true;
   }
 
   GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components, is_vec4, split_dim_inner};

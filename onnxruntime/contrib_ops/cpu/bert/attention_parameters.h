@@ -25,15 +25,16 @@ struct AttentionParameters {
   int num_splits;      // number of splits for splitkv
   int rotary_dim = 0;  // rotary embedding dimension
   int beam_width;
-  bool is_unidirectional;
-  bool past_present_share_buffer;
+  bool is_unidirectional = false;
+  bool past_present_share_buffer = false;
   bool is_packed_qkv = false;  // whether qkv is packed
-  bool do_rotary;
-  bool broadcast_attn_bias_dim_0;
-  bool broadcast_attn_bias_dim_1;
+  bool do_rotary = false;
+  bool broadcast_attn_bias_dim_0 = false;
+  bool broadcast_attn_bias_dim_1 = false;
   float mask_filter_value;
   float scale;
-  bool use_tf32;
+  bool use_tf32 = false;
+  bool is_output_bnsh = false;  // whether the output format is BNSH
   AttentionMaskType mask_type;
   AttentionQkvFormat qkv_format;
 };
@@ -87,15 +88,19 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
   int local_window_size;        // Mask out tokens prior to total_sequence_length - local_window_size
-  bool kv_share_buffer;
-  bool is_subsequent_prompt;  // indicates whether we have past context and seqlen > 1
-  bool is_first_prompt;       // indicates whether this is first decoding step
+  bool is_subsequent_prompt;    // indicates whether we have past context and seqlen > 1
+  bool is_first_prompt;         // indicates whether this is first decoding step
   bool rotary_interleaved;
   bool use_smooth_softmax;
   float softcap;
   AttentionQkvFormat past_kv_format;
   int zeros_count;
   int* zero_ptr;
+
+  // Quantization parameters for KV cache
+  KVQuantizationType k_quant_type = KVQuantizationType::NONE;
+  KVQuantizationType v_quant_type = KVQuantizationType::NONE;
+  int kv_cache_bit_width = 0;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

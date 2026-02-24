@@ -959,8 +959,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
       device_id_(info.device_id) {
   InitProviderOrtApi();
 
-  // TODO(maximlianm) remove this since we should be able to compile an AOT context file without GPU
-
   if (!info.has_user_compute_stream) {
     // If the app is passing in a compute stream, it already has initialized cuda and created a context.
     // Calling cudaSetDevice() will set the default context in the current thread
@@ -2578,6 +2576,84 @@ const InlinedVector<const Node*> NvExecutionProvider::GetEpContextNodes() const 
   return ep_context_nodes;
 }
 
+std::string NvExecutionProvider::GetCompiledModelCompatibilityInfo(
+    const onnxruntime::GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+
+  // Protect read access to engine_headers_ for thread safety
+  auto lock = GetApiLock();
+
+  // Compatibility info is only supported when there is exactly one engine.
+  // If multiple EPContext nodes/engines exist, return empty so validation is not applicable.
+  if (engine_headers_.size() > 1) {
+    return std::string();
+  }
+
+  // If we have stored engine headers, return the first one found
+  // (typically there's only one per EP context)
+  if (!engine_headers_.empty()) {
+    return engine_headers_.begin()->second;
+  }
+
+  // No headers available - validation not supported for this model
+  return std::string();
+}
+
+common::Status NvExecutionProvider::ValidateCompiledModelCompatibilityInfo(
+    const std::string& compatibility_info,
+    OrtCompiledModelCompatibility& model_compatibility) const {
+  // If no compatibility info provided, validation not applicable
+  if (compatibility_info.empty()) {
+    model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return Status::OK();
+  }
+
+  // Decode hex string to binary
+  std::vector<uint8_t> engine_header;
+  try {
+    engine_header = HexStringToBinary(compatibility_info);
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to decode engine header: " << ex.what();
+    model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+    return Status::OK();
+  }
+
+  // Use TensorRT RTX's getEngineValidity to check compatibility
+  uint64_t diagnostics = 0;
+  nvinfer1::EngineValidity validity = runtime_->getEngineValidity(
+      engine_header.data(),
+      engine_header.size(),
+      &diagnostics);
+
+  // Map TensorRT RTX validity to ORT compatibility status
+  switch (validity) {
+    case nvinfer1::EngineValidity::kVALID:
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Engine is fully compatible with this system";
+      model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+      break;
+
+    case nvinfer1::EngineValidity::kSUBOPTIMAL:
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine is compatible but recompilation recommended "
+                            << "(diagnostics: 0x" << std::hex << diagnostics << std::dec << ")";
+      model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+      break;
+
+    case nvinfer1::EngineValidity::kINVALID:
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine is incompatible with this system "
+                            << "(diagnostics: 0x" << std::hex << diagnostics << std::dec << ")";
+      model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+      break;
+
+    default:
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Unknown TensorRT validity status: "
+                            << static_cast<int>(validity);
+      model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+      break;
+  }
+
+  return Status::OK();
+}
+
 Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
                                                            const Node& fused_node,
                                                            std::unordered_map<std::string, size_t>& input_map,
@@ -2854,6 +2930,18 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "NvTensorRTRTX EP failed to create engine from network for fused node: " + fused_node.Name());
     }
+
+    // Capture engine header (first 64 bytes) for compatibility validation
+    if (serialized_engine->size() >= kTensorRTEngineHeaderSize) {
+      std::string engine_header_hex = BinaryToHexString(
+          serialized_engine->data(),
+          kTensorRTEngineHeaderSize);
+      engine_headers_[fused_node.Name()] = engine_header_hex;
+    } else {
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine too small to capture header for validation: "
+                            << serialized_engine->size() << " bytes";
+    }
+
     trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,

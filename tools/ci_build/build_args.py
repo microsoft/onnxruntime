@@ -372,7 +372,7 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.21", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.23", help="Specify version of emsdk.")
     parser.add_argument(
         "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
     )
@@ -546,12 +546,17 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--disable_contrib_ops", action="store_true", help="Disable contrib operators.")
     parser.add_argument("--disable_ml_ops", action="store_true", help="Disable traditional ML operators.")
+    parser.add_argument(
+        "--disable_generation_ops",
+        action="store_true",
+        help="Disable generation contrib operators (BeamSearch, WhisperBeamSearch, GreedySearch, Sampling).",
+    )
     parser.add_argument("--disable_rtti", action="store_true", help="Disable Run-Time Type Information (RTTI).")
     parser.add_argument(
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float4", "float8", "optional", "sparsetensor"],
+        choices=["float4", "float8", "optional", "sparsetensor", "string"],
         help="Disable selected data types.",
     )
     parser.add_argument(

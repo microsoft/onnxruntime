@@ -21,6 +21,7 @@
 #include "providers.h"
 #include "TestCase.h"
 #include "strings_helper.h"
+#include "utils.h"
 
 #ifdef USE_OPENVINO
 #include "nlohmann/json.hpp"
@@ -90,107 +91,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   // Add EP devices if any (created by plugin EP)
   if (!performance_test_config.registered_plugin_eps.empty()) {
-    std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
-    // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
-    std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
-    std::unordered_set<int> added_ep_device_index_set;
-
-    auto& ep_list = performance_test_config.machine_config.plugin_provider_type_list;
-    std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
-
-    // Select EP devices by provided device index
-    if (!performance_test_config.selected_ep_device_indices.empty()) {
-      std::vector<int> device_list;
-      device_list.reserve(performance_test_config.selected_ep_device_indices.size());
-      ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
-      for (auto index : device_list) {
-        if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
-          fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
-          continue;
-        }
-
-        Ort::ConstEpDevice& device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
-          if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
-            added_ep_devices[device.EpName()].push_back(device);
-            added_ep_device_index_set.insert(index);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s, Type: %d] has been added to session.\n", static_cast<int>(index), device.EpName(), device.Device().Type());
-          }
-        } else {
-          std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
-                                performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
-          fprintf(stderr, "%s", err_msg.c_str());
-        }
-      }
-    } else if (!performance_test_config.filter_ep_device_kv_pairs.empty()) {
-      // Find and select the OrtEpDevice associated with the EP in "--filter_ep_devices".
-      for (const auto& kv : performance_test_config.filter_ep_device_kv_pairs) {
-        for (size_t index = 0; index < ep_devices.size(); ++index) {
-          auto device = ep_devices[index];
-          if (ep_set.find(std::string(device.EpName())) == ep_set.end())
-            continue;
-
-          // Skip if deviced was already added
-          if (added_ep_devices.find(device.EpName()) != added_ep_devices.end() &&
-              std::find(added_ep_devices[device.EpName()].begin(), added_ep_devices[device.EpName()].end(), device) != added_ep_devices[device.EpName()].end())
-            continue;
-
-          // Check both EP metadata and device metadata for a match
-          auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
-          auto device_metadata_kv_pairs = device.Device().Metadata().GetKeyValuePairs();
-          auto ep_metadata_itr = ep_metadata_kv_pairs.find(kv.first);
-          auto device_metadata_itr = device_metadata_kv_pairs.find(kv.first);
-
-          if ((ep_metadata_itr != ep_metadata_kv_pairs.end() && kv.second == ep_metadata_itr->second) ||
-              (device_metadata_itr != device_metadata_kv_pairs.end() && kv.second == device_metadata_itr->second)) {
-            added_ep_devices[device.EpName()].push_back(device);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s, Type: %d] has been added to session.\n", static_cast<int>(index), device.EpName(), device.Device().Type());
-            break;
-          }
-        }
-      }
-    } else {
-      // Find and select the OrtEpDevice associated with the EP in "--plugin_eps".
-      for (size_t index = 0; index < ep_devices.size(); ++index) {
-        Ort::ConstEpDevice& device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
-          added_ep_devices[device.EpName()].push_back(device);
-          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", static_cast<int>(index), device.EpName());
-        }
-      }
-    }
-
-    if (added_ep_devices.empty()) {
-      ORT_THROW("[ERROR] [Plugin EP]: No matching EP devices found.");
-    }
-
-    std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-
-    // EP's associated provider option lists
-    std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
-    ParseEpOptions(ep_option_string, ep_options_list);
-
-    // If user only provide the EPs' provider option lists for the first several EPs,
-    // add empty provider option lists for the rest EPs.
-    if (ep_options_list.size() < ep_list.size()) {
-      for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
-        ep_options_list.emplace_back();  // Adds a new empty map
-      }
-    } else if (ep_options_list.size() > ep_list.size()) {
-      ORT_THROW("[ERROR] [Plugin EP]: Too many EP provider option lists provided.");
-    }
-
-    // EP -> associated provider options
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
-    for (size_t i = 0; i < ep_list.size(); ++i) {
-      ep_options_map.emplace(ep_list[i], ep_options_list[i]);
-    }
-
-    for (auto& ep_and_devices : added_ep_devices) {
-      auto& ep = ep_and_devices.first;
-      auto& devices = ep_and_devices.second;
-      session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
-    }
+    perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config);
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
@@ -357,7 +258,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                          "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
                          "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
                          "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
-                         "json_qnn_graph_dir", "htp_bf16_enable"});
+                         "json_qnn_graph_dir", "disable_file_mapped_weights", "htp_bf16_enable", "enable_vtcm_backup_buffer_sharing", "extended_udma"});
+
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -421,7 +323,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                  key == "offload_graph_io_quantization" ||
                  key == "enable_htp_spill_fill_buffer" ||
                  key == "enable_htp_shared_memory_allocator" ||
-                 key == "dump_json_qnn_graph") {
+                 key == "dump_json_qnn_graph" ||
+                 key == "extended_udma" ||
+                 key == "disable_file_mapped_weights" ||
+                 key == "enable_vtcm_backup_buffer_sharing") {
         std::set<std::string> supported_options = {"0", "1"};
         if (supported_options.find(value) == supported_options.end()) {
           std::ostringstream str_stream;

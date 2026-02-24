@@ -8,6 +8,10 @@ parameters:
 - name: PoolName
   type: string
 
+- name: PoolDemands
+  type: string
+  default: ''
+
 stages:
 - stage: Final_Jar_Testing_${{parameters.OS}}
   dependsOn: []
@@ -17,7 +21,16 @@ stages:
       clean: all
     ${{ if eq(parameters.OS, 'MacOS') }}:
       pool:
-        vmImage: 'macOS-15'
+        # Use PoolName if provided, otherwise fallback to macOS-15
+        ${{ if ne(parameters.PoolName, '') }}:
+          ${{ if contains(parameters.PoolName, '-') }}:
+            vmImage: ${{ parameters.PoolName }}
+          ${{ else }}:
+            name: ${{ parameters.PoolName }}
+            ${{ if ne(parameters.PoolDemands, '') }}:
+              demands: ${{ parameters.PoolDemands }}
+        ${{ else }}:
+          vmImage: 'macOS-15'
     ${{ if eq(parameters.OS, 'Linux') }}:
       pool:
         name: ${{ parameters.PoolName }}
@@ -29,10 +42,15 @@ stages:
     - template: set-version-number-variables-step.yml
 
     - bash: |
-        echo "Downloading and installing Maven $(mavenVersion) for Linux..."
+        echo "Downloading and installing Maven $(mavenVersion)..."
         MAVEN_DIR="$(Agent.TempDirectory)/apache-maven-$(mavenVersion)"
+
         # Download Maven binary
-        wget https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.tar.gz -O $(Agent.TempDirectory)/maven.tar.gz
+        if command -v wget &> /dev/null; then
+            wget https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.tar.gz -O $(Agent.TempDirectory)/maven.tar.gz
+        else
+            curl -L -o $(Agent.TempDirectory)/maven.tar.gz https://archive.apache.org/dist/maven/maven-3/$(mavenVersion)/binaries/apache-maven-$(mavenVersion)-bin.tar.gz
+        fi
 
         # Extract to the temp directory
         mkdir -p ${MAVEN_DIR}
@@ -40,12 +58,24 @@ stages:
 
         # Add Maven's bin directory to the PATH for subsequent tasks in the job
         echo "##vso[task.prependpath]${MAVEN_DIR}/bin"
-      displayName: 'Install Maven (Linux)'
-      condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'))
+      displayName: 'Install Maven'
+      condition: and(succeeded(), in(variables['Agent.OS'], 'Linux', 'Darwin'))
 
     - script: |
         echo "Maven is now on the PATH."
         mvn --version
+
+    - script: |
+        set -e -x
+        if ! /usr/libexec/java_home -v 17 >/dev/null 2>&1; then
+          brew install --cask temurin@17
+        fi
+        JAVA_HOME=$(/usr/libexec/java_home -v 17)
+        echo "JAVA_HOME is set to: $JAVA_HOME"
+        echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_HOME"
+        echo "##vso[task.prependpath]$JAVA_HOME/bin"
+      displayName: 'Install JDK 17 (macOS)'
+      condition: and(succeeded(), eq(variables['Agent.OS'], 'Darwin'))
 
     - download: build
       artifact: 'onnxruntime-java'
@@ -58,12 +88,16 @@ stages:
         goals: 'dependency:copy-dependencies'
         options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
         publishJUnitTestResults: false
-        javaHomeOption: 'JDKVersion'
-        jdkVersionOption: '1.17'
         mavenVersionOption: 'Default'
+        ${{ if eq(parameters.OS, 'MacOS') }}:
+          javaHomeOption: 'Path'
+          jdkDirectory: '$(JAVA_HOME)'
+        ${{ if eq(parameters.OS, 'Linux') }}:
+          javaHomeOption: 'JDKVersion'
+          jdkVersionOption: '1.17'
 
     - task: Bash@3
-      displayName: 'Run Java Tests on Linux/macOS'
+      displayName: 'Run Java Tests'
       condition: and(succeeded(), in(variables['Agent.OS'], 'Linux', 'Darwin'))
       inputs:
         targetType: 'inline'
@@ -80,24 +114,54 @@ stages:
           cd ..
           mkdir tests
           cd tests
-          jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-          rm -f $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
-          ls $(Pipeline.Workspace)/build/tests
+          # 1. Diagnostics
+          echo "System Info:"
+          uname -a
+          if [[ "$(uname)" == "Darwin" ]]; then arch; fi
           echo "Java Version"
           java -version
-          
-          # Set the correct library path based on the OS
+
+          # 2. Extract
+          jar xf $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+          rm -f $(Pipeline.Workspace)/build/onnxruntime-java/testing.jar
+
+          # Identify main jar (avoiding sources and javadoc jars)
+          MAIN_JAR=$(ls $(Pipeline.Workspace)/build/onnxruntime-java/onnxruntime-*.jar | grep -v 'sources' | grep -v 'javadoc' | head -n 1)
+          echo "Extracting native libs from $MAIN_JAR"
+          jar xf $MAIN_JAR ai/onnxruntime/native
+
+          ls -R $(Pipeline.Workspace)/build/tests/ai
+          echo "Java Version"
+          java -version
+
+
+          # 3. Find with robustness
           os_name=$(uname)
-          if [[ "$os_name" == "Linux" ]]; then
-            echo "Platform: Linux. Setting LD_LIBRARY_PATH."
-            export LD_LIBRARY_PATH="$(pwd):$LD_LIBRARY_PATH"
-            java -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
-            --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
-          elif [[ "$os_name" == "Darwin" ]]; then
-            echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
-            export DYLD_LIBRARY_PATH="$(pwd):$DYLD_LIBRARY_PATH"
-            java -DUSE_WEBGPU=1 -DUSE_COREML=1 -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
-            --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+          if [[ "$os_name" == "Linux" ]]; then S_FILE="libonnxruntime.so"; else S_FILE="libonnxruntime.dylib"; fi
+
+          echo "Searching for $S_FILE in $(pwd)..."
+          # Exclude .dSYM paths and find actual file
+          NATIVE_LIB_PATH=$(find $(pwd) -name "$S_FILE" -not -path "*.dSYM*" -type f | head -n 1)
+
+          if [[ -n "$NATIVE_LIB_PATH" ]]; then
+            NATIVE_LIB_DIR=$(dirname "$NATIVE_LIB_PATH")
+            echo "Found native lib dir: $NATIVE_LIB_DIR"
+
+            if [[ "$os_name" == "Linux" ]]; then
+              echo "Platform: Linux. Setting LD_LIBRARY_PATH."
+              export LD_LIBRARY_PATH="$NATIVE_LIB_DIR:$(pwd):$LD_LIBRARY_PATH"
+              java -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+              --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+            elif [[ "$os_name" == "Darwin" ]]; then
+              echo "Platform: macOS. Setting DYLD_LIBRARY_PATH."
+              export DYLD_LIBRARY_PATH="$NATIVE_LIB_DIR:$(pwd):$DYLD_LIBRARY_PATH"
+              java -DUSE_WEBGPU=1 -DUSE_COREML=1 -cp '$(Pipeline.Workspace)/build/tests:$(Pipeline.Workspace)/build/onnxruntime-java/*' org.junit.platform.console.ConsoleLauncher --scan-classpath=$(Pipeline.Workspace)/build/tests \
+              --fail-if-no-tests --disable-banner --reports-dir "$(Build.ArtifactStagingDirectory)/TestResults"
+            fi
+          else
+            echo "Error: $S_FILE not found!"
+            ls -R ai
+            exit 1
           fi
 
 

@@ -27,6 +27,9 @@ namespace DeviceHelpers {
 // Data copy op - Copies raw data from the source tensor's buffer to the destination tensor's buffer
 using DataCopy = std::function<Status(const Tensor& input, Tensor& output, void* einsum_cuda_assets)>;
 
+// Zero buffer op - Sets all bytes in the tensor's buffer to zero
+using ZeroBuffer = std::function<Status(Tensor& input, void* einsum_cuda_assets)>;
+
 // Transpose op - Transposes given input based on data in `permutation`
 using Transpose = std::function<Status(const gsl::span<const size_t>& permutation, const Tensor& input,
                                        Tensor& output, const TensorShape* input_shape_override,
@@ -62,6 +65,8 @@ using Diagonal = std::function<std::unique_ptr<Tensor>(const Tensor& input, int6
 namespace CpuDeviceHelpers {
 
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
+
+Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets);
 
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
