@@ -44,8 +44,12 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     c = &shader.AddInput("c", ShaderUsage::UseUniform);
   }
 
-  const ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
-  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, c_is_scalar_, /*activation_snippet*/ "", /*is_channels_last*/ false, need_split_k, output_var_type);
+  if (need_split_k) {
+    const ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
+    MatMulWriteFnSourceWithSplitK(shader, output, /*is_gemm = */ true, output_var_type);
+  } else {
+    MatMulWriteFnSourceForGemm(shader, output, c, c_components_, c_is_scalar_);
+  }
 
   return Status::OK();
 }
