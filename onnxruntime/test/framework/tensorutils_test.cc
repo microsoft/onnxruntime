@@ -540,6 +540,12 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   // Path with ".." that escapes the base directory.
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin").IsOK());
 
+  // Path with ".." that escapes the current working directory. Base directory is empty when:
+  //  - Session loads a model from bytes
+  //  - Application does not set an external file folder path via the session config option
+  //    kOrtSessionOptionsModelExternalInitializersFileFolderPath.
+  ASSERT_FALSE(utils::ValidateExternalDataPath("", "../data.bin").IsOK());
+
   // Absolute path.
 #ifdef _WIN32
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "C:\\data.bin").IsOK());
