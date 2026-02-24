@@ -15,6 +15,7 @@ from olive.model import OliveModelHandler
 from olive.model.handler import ONNXModelHandler, OpenVINOModelHandler
 from olive.passes import Pass
 from olive.passes.onnx.common import model_proto_to_file
+from olive.passes.openvino.ov_utils import IgnoreScopeTypeEnum
 from olive.passes.pass_config import BasePassConfig, ParamCategory, PassConfigParam, get_user_script_data_config
 
 logger = logging.getLogger(__name__)
@@ -89,12 +90,6 @@ class ModelTypeEnum(StrEnumBase):
 class PresetEnum(StrEnumBase):
     PERFORMANCE = "PERFORMANCE"
     MIXED = "MIXED"
-
-
-class IgnoreScopeTypeEnum(StrEnumBase):
-    NAMES = "names"
-    TYPES = "types"
-    PATTERNS = "patterns"
 
 
 class DropTypeEnum(StrEnumBase):

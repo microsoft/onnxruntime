@@ -7,236 +7,24 @@ import os
 from copy import deepcopy
 from functools import partial
 from pathlib import Path
-from typing import Callable, Optional, Union
-
-from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE
+from typing import Any, Callable, Optional, Union
 
 from olive.common.config_utils import validate_config
-from olive.common.utils import StrEnumBase
 from olive.data.config import DataConfig
 from olive.hardware.accelerator import AcceleratorSpec, Device
 from olive.model.handler import CompositeModelHandler, HfModelHandler, ONNXModelHandler, OpenVINOModelHandler
 from olive.passes import Pass
+from olive.passes.openvino.ov_utils import (
+    IgnoreScopeTypeEnum,
+    OVOptimumLibrary,
+    _convert_to_enum,
+    _validate_enum_value,
+    create_genai_config,
+    infer_library_name,
+)
 from olive.passes.pass_config import BasePassConfig, ParamCategory, PassConfigParam, get_user_script_data_config
 
 logger = logging.getLogger(__name__)
-
-
-class IgnoreScopeTypeEnum(StrEnumBase):
-    NAMES = "names"
-    TYPES = "types"
-    PATTERNS = "patterns"
-
-
-class OVOptimumLibrary(StrEnumBase):
-    TRANSFORMERS = "transformers"
-    DIFFUSERS = "diffusers"
-    TIMM = "timm"
-    SENTENCE_TRANSFORMERS = "sentence_transformers"
-    OPEN_CLIP = "open_clip"
-
-
-def infer_task(
-    task,
-    model_name_or_path,
-    subfolder: str = "",
-    revision: Optional[str] = None,
-    cache_dir: str = HUGGINGFACE_HUB_CACHE,
-    token: Optional[Union[bool, str]] = None,
-    library_name: Optional[str] = None,
-):
-    try:
-        from optimum.exporters import TasksManager
-    except Exception as e:
-        raise ImportError("Unable to import optimum packages:", e) from None
-
-    try:
-        from requests.exceptions import ConnectionError as RequestsConnectionError
-    except Exception as e:
-        raise ImportError("Unable to import ConnectionError packages:", e) from None
-
-    task = TasksManager.map_from_synonym(task)
-    if task == "auto":
-        if library_name == "open_clip":
-            task = "zero-shot-image-classification"
-        else:
-            try:
-                task = TasksManager._infer_task_from_model_name_or_path(  # pylint: disable=W0212
-                    model_name_or_path=model_name_or_path,
-                    subfolder=subfolder,
-                    revision=revision,
-                    cache_dir=cache_dir,
-                    token=token,
-                    library_name=library_name,
-                )
-            except KeyError as e:
-                raise KeyError(
-                    f"The task could not be automatically inferred. Please provide the argument --task with the relevant task from {', '.join(TasksManager.get_all_tasks())}. Detailed error: {e}"
-                ) from None
-            except RequestsConnectionError as e:
-                raise RequestsConnectionError(
-                    f"The task could not be automatically inferred as this is available only for models hosted on the Hugging Face Hub. Please provide the argument --task with the relevant task from {', '.join(TasksManager.get_all_tasks())}. Detailed error: {e}"
-                ) from None
-    return task
-
-
-def maybe_load_preprocessors(
-    src_name_or_path: Union[str, Path], subfolder: str = "", trust_remote_code: bool = False
-) -> list:
-    try:
-        from transformers import AutoFeatureExtractor, AutoImageProcessor, AutoProcessor, AutoTokenizer
-    except Exception as e:
-        raise ImportError("Unable to import transformers packages: ", e) from None
-
-    preprocessors = []
-    try:
-        preprocessors.append(
-            AutoTokenizer.from_pretrained(src_name_or_path, subfolder=subfolder, trust_remote_code=trust_remote_code)
-        )
-    except Exception as e:
-        logger.warning("Could not load tokenizer using specified model ID or path.\n Exception: %s", e)
-
-    try:
-        preprocessors.append(
-            AutoProcessor.from_pretrained(src_name_or_path, subfolder=subfolder, trust_remote_code=trust_remote_code)
-        )
-    except Exception as e:
-        logger.warning("Could not load processor using specified model ID or path.\n Exception: %s", e)
-
-    try:
-        preprocessors.append(
-            AutoFeatureExtractor.from_pretrained(
-                src_name_or_path, subfolder=subfolder, trust_remote_code=trust_remote_code
-            )
-        )
-    except Exception as e:
-        logger.warning("Could not load feature extractor using specified model ID or path.\n Exception: %s", e)
-
-    try:
-        preprocessors.append(
-            AutoImageProcessor.from_pretrained(
-                src_name_or_path, subfolder=subfolder, trust_remote_code=trust_remote_code
-            )
-        )
-    except Exception as e:
-        logger.warning("Could not load image processor using specified model ID or path.\n Exception: %s", e)
-
-    return preprocessors
-
-
-def maybe_convert_tokenizers(library_name: str, output: Path, model=None, preprocessors=None, task=None):
-    try:
-        from optimum.exporters.openvino.convert import export_tokenizer
-    except Exception as e:
-        raise ImportError("Unable to import optimum Intel® package:", e) from None
-
-    try:
-        from transformers import PreTrainedTokenizerBase
-    except Exception as e:
-        raise ImportError("Unable to import transformers packages:", e) from None
-
-    try:
-        from optimum.intel.utils.import_utils import is_openvino_tokenizers_available
-    except Exception as e:
-        raise ImportError("openvino tokenizers unavailable :", e) from None
-
-    if is_openvino_tokenizers_available():
-        if library_name != "diffusers" and preprocessors:
-            tokenizer = next(filter(lambda it: isinstance(it, PreTrainedTokenizerBase), preprocessors), None)
-            if tokenizer:
-                try:
-                    export_tokenizer(tokenizer, output, task=task)
-                except Exception as exception:
-                    logger.warning(
-                        "Could not load tokenizer using specified model ID or path. OpenVINO tokenizer/detokenizer models won't be generated. Exception: %s",
-                        exception,
-                    )
-        elif model:
-            for tokenizer_name in ("tokenizer", "tokenizer_2", "tokenizer_3"):
-                tokenizer = getattr(model, tokenizer_name, None)
-                if tokenizer:
-                    export_tokenizer(tokenizer, output / tokenizer_name, task=task)
-    else:
-        logger.warning("Tokenizer won't be converted.")
-
-
-def _validate_enum_value(value, enum_class: type, param_name: str) -> tuple[bool, str]:
-    """Validate that a value can be converted to an enum (case-insensitive).
-
-    Args:
-        value: The value to validate (None, string, or already enum).
-        enum_class: The enum class to validate against.
-        param_name: Name of the parameter for error messages.
-
-    Returns:
-        Tuple of (is_valid, error_message). error_message is empty if valid.
-
-    """
-    if value is None or isinstance(value, enum_class):
-        return True, ""
-
-    if not isinstance(value, str):
-        return False, f"{param_name} '{value}' is not a valid string or {enum_class.__name__} enum."
-
-    lookup_key = value.lower()
-
-    # Try matching by enum.value first (case-insensitive)
-    value_map = {m.value.lower(): m for m in enum_class}
-    if lookup_key in value_map:
-        return True, ""
-
-    # Try matching by enum.name (case-insensitive)
-    name_map = {m.name.lower(): m for m in enum_class}
-    if lookup_key in name_map:
-        return True, ""
-
-    # Validation failed
-    valid_values = sorted(set([m.value for m in enum_class] + [m.name for m in enum_class]))
-    return False, f"{param_name} '{value}' is not supported. Supported values are: {', '.join(valid_values)}."
-
-
-def _convert_to_enum(value, enum_class: type, param_name: str):
-    """Convert a value to an enum if needed (case-insensitive).
-
-    Accepts:
-    - None (returns None)
-    - Enum instances of the correct type (returns as-is)
-    - Strings matching enum.value (case-insensitive)
-    - Strings matching enum.name (case-insensitive)
-
-    Args:
-        value: The value to convert (None, string, or already enum).
-        enum_class: The enum class to convert to.
-        param_name: Name of the parameter for error messages.
-
-    Returns:
-        The enum value, or None if input was None.
-
-    Raises:
-        ValueError: If conversion fails.
-
-    """
-    if value is None or isinstance(value, enum_class):
-        return value
-
-    if not isinstance(value, str):
-        raise ValueError(f"{param_name} '{value}' is not a valid string or {enum_class.__name__} enum.")
-
-    lookup_key = value.lower()
-
-    # Try matching by enum.value first (case-insensitive)
-    value_map = {m.value.lower(): m for m in enum_class}
-    if lookup_key in value_map:
-        return value_map[lookup_key]
-
-    # Try matching by enum.name (case-insensitive)
-    name_map = {m.name.lower(): m for m in enum_class}
-    if lookup_key in name_map:
-        return name_map[lookup_key]
-
-    # Conversion failed
-    valid_values = sorted(set([m.value for m in enum_class] + [m.name for m in enum_class]))
-    raise ValueError(f"{param_name} '{value}' is not supported. Supported values are: {', '.join(valid_values)}.")
 
 
 def _convert_compress_config_enums(compress_config: dict) -> dict:
@@ -651,14 +439,79 @@ class OpenVINOWeightCompression(Pass):
 
         return advanced_params
 
+    def _apply_compression(
+        self,
+        model_to_compress: Any,
+        config: type[BasePassConfig],
+        output_model_path: str,
+        tokenizer: Optional[Any] = None,
+    ) -> Any:
+        """Apply NNCF weight compression to a model.
+
+        Args:
+            model_to_compress: The model object to compress (OpenVINO model or ONNX model).
+            config: The pass configuration.
+            output_model_path: Path where the output model will be saved.
+            tokenizer: Optional tokenizer for dataset transform (used in HF path).
+
+        Returns:
+            The compressed model object from nncf.compress_weights().
+
+        Raises:
+            ImportError: If nncf is not installed.
+
+        """
+        try:
+            import nncf
+            from nncf.onnx.quantization.backend_parameters import BackendParameters
+        except ImportError:
+            raise ImportError("Please install olive-ai[openvino] to use OpenVINO NNCF") from None
+
+        # get the weight compression dataset
+        compression_dataset = self._get_nncf_dataset(config, tokenizer)
+
+        # get the extra params
+        extra_params = self._get_extra_params(config)
+
+        # local copy of compress_config and ensure enum values are converted
+        # (handles case where validate_config was bypassed, e.g., in unit tests)
+        compress_config = deepcopy(config.compress_config) if config.compress_config else {}
+        compress_config = _convert_compress_config_enums(compress_config)
+
+        # append extra params to compress config
+        compress_config.update(extra_params)
+
+        # get nncf.AdvancedCompressionParameters if any
+        advanced_params = None
+        adv_par = self._get_advanced_compression_params(config)
+        if adv_par is not None:
+            # Handle external_dir for backend_params - add output path at runtime
+            if adv_par.get("_external_dir") is not None:
+                # Create or update backend_params with external data dir
+                if adv_par.get("backend_params") is None:
+                    adv_par["backend_params"] = {BackendParameters.EXTERNAL_DATA_DIR: output_model_path}
+                else:
+                    adv_par["backend_params"][BackendParameters.EXTERNAL_DATA_DIR] = output_model_path
+                # Remove the temporary _external_dir key
+                adv_par.pop("_external_dir")
+
+            advanced_params = nncf.AdvancedCompressionParameters(**adv_par)
+
+        # perform weight compression
+        return nncf.compress_weights(
+            model_to_compress, dataset=compression_dataset, advanced_parameters=advanced_params, **compress_config
+        )
+
     def _run_for_config(
         self,
-        model: Union[HfModelHandler, ONNXModelHandler],
+        model: Union[HfModelHandler, ONNXModelHandler, OpenVINOModelHandler],
         config: type[BasePassConfig],
         output_model_path: str,
     ) -> Union[OpenVINOModelHandler, ONNXModelHandler, CompositeModelHandler]:
-        if not isinstance(model, (HfModelHandler, ONNXModelHandler)):
-            raise TypeError("OpenVINOWeightCompression pass can only be applied to Hugging Face or ONNX models")
+        if not isinstance(model, (HfModelHandler, ONNXModelHandler, OpenVINOModelHandler)):
+            raise TypeError(
+                "OpenVINOWeightCompression pass can only be applied to Hugging Face, ONNX, or OpenVINO models"
+            )
 
         if config.reuse_cache:
             model_name_path = Path(model.model_path)
@@ -680,6 +533,8 @@ class OpenVINOWeightCompression(Pass):
             output_model = self._run_hf_pass(model, config, output_model_path)
         elif isinstance(model, ONNXModelHandler):
             output_model = self._run_onnx_pass(model, config, output_model_path)
+        elif isinstance(model, OpenVINOModelHandler):
+            output_model = self._run_openvino_pass(model, config, output_model_path)
 
         if config.reuse_cache:
             if os.path.exists(model_name_path):
@@ -696,10 +551,7 @@ class OpenVINOWeightCompression(Pass):
         output_model_path: str,
     ) -> Union[OpenVINOModelHandler, CompositeModelHandler]:
         try:
-            import nncf
-            from nncf.onnx.quantization.backend_parameters import BackendParameters
             from optimum.exporters.openvino import main_export as export_optimum_intel
-            from optimum.intel.utils.modeling_utils import _infer_library_from_model_name_or_path
         except ImportError:
             raise ImportError(
                 "Please install Intel® optimum[openvino] to use NNCF for weight compression on HF models"
@@ -708,123 +560,34 @@ class OpenVINOWeightCompression(Pass):
         # local copy of extra_args
         extra_args = deepcopy(config.extra_args) if config.extra_args else {}
 
-        # local copy of compress_config and ensure enum values are converted
-        # (handles case where validate_config was bypassed, e.g., in unit tests)
-        compress_config = deepcopy(config.compress_config) if config.compress_config else {}
-        compress_config = _convert_compress_config_enums(compress_config)
-
         # set the library name for the HF Model
         if extra_args.get("library") is None:
-            lib_name = _infer_library_from_model_name_or_path(model.model_name_or_path)
-            if lib_name == "sentence_transformers":
-                logger.warning(
-                    "Library is not specified. "
-                    "There are multiple possible variants: `sentence_transformers`, `transformers`. "
-                    "`transformers` will be selected. "
-                    "If you want to load your model with the `sentence-transformers` library instead, "
-                    "Please set it as sentence_transformers in extra_args dictionary under 'library' key"
-                )
-                lib_name = "transformers"
-            extra_args["library"] = lib_name
+            lib_name = infer_library_name(model.model_name_or_path)
         else:
             lib_name = extra_args["library"]
 
-        # infer task
-        task = infer_task(extra_args.get("task", "auto"), model.model_name_or_path, library_name=lib_name)
+        # prepare extra args for export
+        extra_args["stateful"] = not extra_args.get("disable_stateful", False)
+        extra_args.pop("disable_stateful", None)
+        extra_args["convert_tokenizer"] = not extra_args.get("disable_convert_tokenizer", False)
+        extra_args.pop("disable_convert_tokenizer", None)
+        extra_args["library_name"] = lib_name
+        extra_args.pop("library", None)
 
-        # model
-        if lib_name == "diffusers":
-            try:
-                from diffusers import DiffusionPipeline
-            except ImportError:
-                raise ImportError("Please install diffusers to use OpenVINO with Diffusers models.") from None
+        # export HF model to OpenVINO format
+        export_optimum_intel(
+            model.model_name_or_path,
+            output_model_path,
+            **extra_args,
+        )
 
-            diffusers_config = DiffusionPipeline.load_config(model.model_name_or_path)
-            class_name = diffusers_config.get("_class_name", None)
+        # load the exported OpenVINO model
+        from optimum.intel import OVModelForCausalLM
 
-            if class_name == "LatentConsistencyModelPipeline":
-                from optimum.intel import OVLatentConsistencyModelPipeline
-
-                model_cls = OVLatentConsistencyModelPipeline
-
-            elif class_name == "StableDiffusionXLPipeline":
-                from optimum.intel import OVStableDiffusionXLPipeline
-
-                model_cls = OVStableDiffusionXLPipeline
-            elif class_name == "StableDiffusionPipeline":
-                from optimum.intel import OVStableDiffusionPipeline
-
-                model_cls = OVStableDiffusionPipeline
-            elif class_name == "StableDiffusion3Pipeline":
-                from optimum.intel import OVStableDiffusion3Pipeline
-
-                model_cls = OVStableDiffusion3Pipeline
-            elif class_name == "FluxPipeline":
-                from optimum.intel import OVFluxPipeline
-
-                model_cls = OVFluxPipeline
-            elif class_name == "SanaPipeline":
-                from optimum.intel import OVSanaPipeline
-
-                model_cls = OVSanaPipeline
-            else:
-                raise NotImplementedError(f"{class_name} isn't supported.")
-
-            output_model = model_cls.from_pretrained(
-                model.model_name_or_path, export=True, load_in_8bit=False, compile=False
-            )
-            if not extra_args.get("disable_convert_tokenizer", False):
-                maybe_convert_tokenizers(lib_name, output_model_path, model, task=task)
-        elif (task.startswith("text-generation") or "automatic-speech-recognition" in task) or (
-            task == "image-text-to-text"
-        ):
-            if task.startswith("text-generation"):
-                from optimum.intel import OVModelForCausalLM
-
-                model_cls = OVModelForCausalLM
-            elif task == "image-text-to-text":
-                from optimum.intel import OVModelForVisualCausalLM
-
-                model_cls = OVModelForVisualCausalLM
-            else:
-                from optimum.intel import OVModelForSpeechSeq2Seq
-
-                model_cls = OVModelForSpeechSeq2Seq
-
-            output_model = model_cls.from_pretrained(
-                model.model_name_or_path,
-                export=True,
-                load_in_8bit=False,
-                compile=False,
-                stateful=not extra_args.get("disable_stateful", False),
-                trust_remote_code=extra_args.get("trust_remote_code", False),
-                variant=extra_args.get("variant", None),
-                cache_dir=extra_args.get("cache_dir", HUGGINGFACE_HUB_CACHE),
-            )
-
-            preprocessors = maybe_load_preprocessors(
-                model.model_name_or_path, trust_remote_code=extra_args.get("trust_remote_code", False)
-            )
-            if not extra_args.get("disable_convert_tokenizer", False):
-                maybe_convert_tokenizers(lib_name, output_model_path, preprocessors=preprocessors, task=task)
-
-        else:
-            extra_args["stateful"] = not extra_args.get("disable_stateful", False)
-            extra_args.pop("disable_stateful", False)
-            extra_args["convert_tokenizer"] = not extra_args.get("disable_convert_tokenizer", False)
-            extra_args.pop("disable_convert_tokenizer", False)
-            extra_args["library_name"] = lib_name
-            extra_args.pop("library", None)
-            export_optimum_intel(
-                model.model_name_or_path,
-                output_model_path,
-                **extra_args,
-            )
+        output_model = OVModelForCausalLM.from_pretrained(output_model_path, compile=False)
 
         # redirect to ONNXModelHandler if extra_args requests ONNX processing
         # this is also only for CausalLM models
-        from optimum.intel import OVModelForCausalLM
-
         if config.extra_args and config.extra_args.get("use_onnx") and isinstance(output_model, OVModelForCausalLM):
             try:
                 from optimum.onnxruntime import ORTModelForCausalLM
@@ -862,38 +625,35 @@ class OpenVINOWeightCompression(Pass):
                 ) from None
             tokenizer = AutoTokenizer.from_pretrained(model.model_name_or_path)
 
-        # get the weight compression dataset
-        compression_dataset = self._get_nncf_dataset(config, tokenizer)
+        # perform weight compression using shared compression logic
+        output_model.model = self._apply_compression(output_model.model, config, output_model_path, tokenizer)
 
-        # get the extra params
-        extra_params = self._get_extra_params(config)
+        # save compressed model to temp directory to avoid file locking issues,
+        # then copy back to output_model_path
+        import gc
+        import shutil
+        import tempfile
 
-        # append extra params to compress config
-        compress_config.update(extra_params)
+        temp_dir = None
+        try:
+            temp_dir = tempfile.mkdtemp(prefix="olive_ov_compress_")
+            output_model.save_pretrained(temp_dir)
 
-        # get nncf.AdvancedCompressionParameters if any
-        advanced_params = None
-        adv_par = self._get_advanced_compression_params(config)
-        if adv_par is not None:
-            # Handle external_dir for backend_params - add output path at runtime
-            if adv_par.get("_external_dir") is not None:
-                # Create or update backend_params with external data dir
-                if adv_par.get("backend_params") is None:
-                    adv_par["backend_params"] = {BackendParameters.EXTERNAL_DATA_DIR: output_model_path}
-                else:
-                    adv_par["backend_params"][BackendParameters.EXTERNAL_DATA_DIR] = output_model_path
-                # Remove the temporary _external_dir key
-                adv_par.pop("_external_dir")
+            # release model to free file handles before copying
+            del output_model
+            gc.collect()
 
-            advanced_params = nncf.AdvancedCompressionParameters(**adv_par)
-
-        # perform weight compression
-        output_model.model = nncf.compress_weights(
-            output_model.model, dataset=compression_dataset, advanced_parameters=advanced_params, **compress_config
-        )
-
-        # save to output_model_path
-        output_model.save_pretrained(output_model_path)
+            # copy all files from temp_dir back to output_model_path
+            for item in Path(temp_dir).iterdir():
+                dest = Path(output_model_path) / item.name
+                if item.is_file():
+                    shutil.copy2(item, dest)
+                elif item.is_dir():
+                    shutil.copytree(item, dest, dirs_exist_ok=True)
+        finally:
+            # clean up temp directory
+            if temp_dir is not None:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
         # check the exported components
         exported_models = [name.stem for name in Path(output_model_path).iterdir() if name.suffix == ".xml"]
@@ -959,9 +719,7 @@ class OpenVINOWeightCompression(Pass):
         output_model_path: str,
     ) -> ONNXModelHandler:
         try:
-            import nncf
             import onnx
-            from nncf.onnx.quantization.backend_parameters import BackendParameters
         except ImportError:
             raise ImportError(
                 "Please install Intel® NNCF and ONNX to use nncf.compress_weights() on ONNX models"
@@ -975,41 +733,8 @@ class OpenVINOWeightCompression(Pass):
         if loaded_model.opset_import[0].version != target_opset:
             loaded_model = onnx.version_converter.convert_version(loaded_model, target_opset)
 
-        # local copy of compress_config and ensure enum values are converted
-        # (handles case where validate_config was bypassed, e.g., in unit tests)
-        compress_config = deepcopy(config.compress_config) if config.compress_config else {}
-        compress_config = _convert_compress_config_enums(compress_config)
-
-        # get the weight compression dataset
-        compression_dataset = self._get_nncf_dataset(config)
-
-        # get the extra params
-        extra_params = self._get_extra_params(config)
-
-        # append extra params to compress config
-        compress_config.update(extra_params)
-
-        # get nncf.AdvancedCompressionParameters if any
-        advanced_params = None
-        adv_par = self._get_advanced_compression_params(config)
-        if adv_par is not None:
-            # Handle external_dir for backend_params - add output path at runtime
-            if adv_par.get("_external_dir") is not None:
-                # Create or update backend_params with external data dir
-                # Note: BackendParameters is already imported from nncf.onnx.quantization.backend_parameters
-                if adv_par.get("backend_params") is None:
-                    adv_par["backend_params"] = {BackendParameters.EXTERNAL_DATA_DIR: output_model_path}
-                else:
-                    adv_par["backend_params"][BackendParameters.EXTERNAL_DATA_DIR] = output_model_path
-                # Remove the temporary _external_dir key
-                adv_par.pop("_external_dir")
-
-            advanced_params = nncf.AdvancedCompressionParameters(**adv_par)
-
-        # perform weight compression
-        output_model = nncf.compress_weights(
-            loaded_model, dataset=compression_dataset, advanced_parameters=advanced_params, **compress_config
-        )
+        # perform weight compression using shared compression logic
+        output_model = self._apply_compression(loaded_model, config, output_model_path)
 
         # save to output_model_path
         model_name = Path(model.model_path).name.replace(".onnx", "_compressed.onnx")
@@ -1024,147 +749,44 @@ class OpenVINOWeightCompression(Pass):
 
         return ONNXModelHandler(model_path=output_model_path)
 
+    def _run_openvino_pass(
+        self,
+        model: OpenVINOModelHandler,
+        config: type[BasePassConfig],
+        output_model_path: str,
+    ) -> OpenVINOModelHandler:
+        """Run weight compression on an OpenVINO model.
 
-def create_genai_config(model_name: str, output_path: str, config: type[BasePassConfig]) -> None:
-    """Generate the genai_config.json from the model config files.
+        Args:
+            model: The OpenVINO model handler.
+            config: The pass configuration.
+            output_model_path: Path where the output model will be saved.
 
-    This is only for Generative AI models for which the config.json and generation_config.json files exist
-    Arguments:
-    @param model_name: name of model ONNX file that is generated
-    @param output_path: path to the output directory where the genai_config.json file will be created
-    @return: None
-    """
-    ip_conf_pth = Path(output_path) / "config.json"
+        Returns:
+            OpenVINOModelHandler for the compressed model.
 
-    # do not create genai_config.json if config.json does not exist
-    if not ip_conf_pth.exists():
-        return
+        Raises:
+            ImportError: If openvino is not installed.
 
-    ip_gen_pth = Path(output_path) / "generation_config.json"
+        """
+        try:
+            import openvino as ov
+        except ImportError:
+            raise ImportError("Please install openvino to use OpenVINO weight compression") from None
 
-    # do not create genai_config.json if generation_config.json does not exist
-    if not ip_gen_pth.exists():
-        return
+        # load the OpenVINO model
+        core = ov.Core()
+        model_config = model.model_config
+        loaded_model = core.read_model(model_config["model"])
 
-    # Step 1: Create your data structure
-    genai_config = {
-        "model": {
-            "bos_token_id": -1,
-            "context_length": -1,
-            "decoder": {
-                "session_options": {
-                    "log_id": "onnxruntime-genai",
-                    "graph_optimization_level": "ORT_DISABLE_ALL",
-                    "provider_options": [
-                        {"OpenVINO": {"device_type": config.target_device.upper(), "enable_causallm": "True"}}
-                    ],
-                },
-                "filename": "openvino_model.onnx",
-                "head_size": -1,
-                "hidden_size": -1,
-                "inputs": {},
-                "outputs": {},
-                "num_attention_heads": -1,
-                "num_hidden_layers": -1,
-                "num_key_value_heads": -1,
-            },
-            "eos_token_id": -1,
-            "type": "",
-            "vocab_size": -1,
-        },
-        "search": {
-            "diversity_penalty": 0.0,
-            "do_sample": False,
-            "early_stopping": True,
-            "length_penalty": 1.0,
-            "max_length": -1,
-            "min_length": 0,
-            "no_repeat_ngram_size": 0,
-            "num_beams": 1,
-            "num_return_sequences": 1,
-            "past_present_share_buffer": False,
-            "repetition_penalty": 1.0,
-            "temperature": 1.0,
-            "top_k": 1,
-            "top_p": 1.0,
-        },
-    }
+        # perform weight compression using shared compression logic
+        compressed_model = self._apply_compression(loaded_model, config, output_model_path)
 
-    import json
+        # save the compressed model
+        output_dir = Path(output_model_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        model_name = model_config["model_name"]
+        output_xml_path = output_dir / f"{model_name}.xml"
+        ov.save_model(compressed_model, output_xml_path)
 
-    with open(ip_conf_pth) as f:
-        src_config = json.load(f)
-
-    with open(ip_gen_pth) as f:
-        src_gen_config = json.load(f)
-
-    try:
-        import onnx
-    except ImportError:
-        raise ImportError(
-            "Please install onnx to create genai_config.json for ONNX OpenVINO IR Encapsulated model"
-        ) from None
-
-    model_path = Path(output_path) / model_name
-    model = onnx.load(model_path)
-
-    # Get input and output tensor names
-    inputs = [inp.name for inp in model.graph.input]
-    outputs = [out.name for out in model.graph.output]
-
-    genai_config["model"]["bos_token_id"] = src_config.get("bos_token_id", -1)
-    genai_config["model"]["context_length"] = src_config.get("max_position_embeddings", -1)
-    genai_config["model"]["decoder"]["filename"] = model_name
-    num_attention_heads = src_config.get("num_attention_heads", -1)
-    hidden_size = src_config.get("hidden_size", -1)
-    if (
-        isinstance(num_attention_heads, int)
-        and isinstance(hidden_size, int)
-        and num_attention_heads > 0
-        and hidden_size >= 0
-    ):
-        genai_config["model"]["decoder"]["head_size"] = hidden_size // num_attention_heads
-    else:
-        if not isinstance(num_attention_heads, int):
-            logger.warning("num_attention_heads is not an int: %s found in src_config", num_attention_heads)
-        elif num_attention_heads <= 0:
-            logger.warning("Invalid num_attention_heads (<= 0) %s found in src_config", num_attention_heads)
-        if not isinstance(hidden_size, int):
-            logger.warning("hidden_size is not an int: %s found in src_config", hidden_size)
-        elif hidden_size < 0:
-            logger.warning("Invalid hidden_size (< 0) %s found in src_config", hidden_size)
-        logger.warning("Setting genai_config['model']['decoder']['head_size'] to -1")
-        genai_config["model"]["decoder"]["head_size"] = -1
-    genai_config["model"]["decoder"]["hidden_size"] = src_config.get("hidden_size", -1)
-
-    for name in inputs:
-        if name != "beam_idx":
-            genai_config["model"]["decoder"]["inputs"].update({name: name})
-
-    for name in outputs:
-        genai_config["model"]["decoder"]["outputs"].update({name: name})
-
-    genai_config["model"]["decoder"]["num_attention_heads"] = src_config.get("num_attention_heads", -1)
-    genai_config["model"]["decoder"]["num_hidden_layers"] = src_config.get("num_hidden_layers", -1)
-    genai_config["model"]["decoder"]["num_key_value_heads"] = src_config.get("num_key_value_heads", -1)
-
-    eos_token_id = src_gen_config.get("eos_token_id", -1)
-    genai_config["model"]["eos_token_id"] = eos_token_id
-    pad_token_id = src_gen_config.get("pad_token_id", None)
-    if pad_token_id is not None:
-        genai_config["model"]["pad_token_id"] = pad_token_id
-    elif eos_token_id != -1:
-        genai_config["model"]["pad_token_id"] = (
-            eos_token_id[0] if isinstance(eos_token_id, list) and len(eos_token_id) > 0 else eos_token_id
-        )
-    else:
-        genai_config["model"]["pad_token_id"] = -1
-    genai_config["model"]["type"] = src_config.get("model_type", "")
-    genai_config["model"]["vocab_size"] = src_config.get("vocab_size", -1)
-
-    genai_config["search"]["max_length"] = src_config.get("max_position_embeddings", -1)
-
-    # Step 2: Write to JSON file
-    output_genai_config = Path(output_path) / "genai_config.json"
-    with open(output_genai_config, "w") as f:
-        json.dump(genai_config, f, indent=4)
+        return OpenVINOModelHandler(model_path=output_model_path)

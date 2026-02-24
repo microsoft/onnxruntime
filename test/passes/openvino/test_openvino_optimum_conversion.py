@@ -8,11 +8,15 @@ import pytest
 
 from olive.passes.olive_pass import create_pass_from_dict
 from olive.passes.openvino.optimum_intel import OpenVINOOptimumConversion
-from test.utils import get_hf_model
+from test.utils import get_hf_model, package_version_at_least
 
 pytestmark = pytest.mark.openvino
 
 
+@pytest.mark.skipif(
+    not package_version_at_least("optimum", "2.1.0"),
+    reason="Requires optimum >= 2.1.0",
+)
 def test_openvino_optimum_conversion_pass_convert_with_tokenizers(tmp_path):
     # setup
     input_hf_model = get_hf_model("hf-internal-testing/tiny-random-PhiForCausalLM")
@@ -37,6 +41,10 @@ def test_openvino_optimum_conversion_pass_convert_with_tokenizers(tmp_path):
     assert bin_file.is_file()
 
 
+@pytest.mark.skipif(
+    not package_version_at_least("optimum", "2.1.0"),
+    reason="Requires optimum >= 2.1.0",
+)
 def test_openvino_optimum_conversion_pass_convert_without_tokenizers(tmp_path):
     # setup
     input_hf_model = get_hf_model("hf-internal-testing/tiny-random-PhiForCausalLM")
@@ -61,6 +69,10 @@ def test_openvino_optimum_conversion_pass_convert_without_tokenizers(tmp_path):
     assert bin_file.is_file()
 
 
+@pytest.mark.skipif(
+    not package_version_at_least("optimum", "2.1.0"),
+    reason="Requires optimum >= 2.1.0",
+)
 def test_openvino_optimum_conversion_pass_convert_with_weight_compression(tmp_path):
     # setup
     input_hf_model = get_hf_model("hf-internal-testing/tiny-random-PhiForCausalLM")
@@ -94,12 +106,16 @@ def test_openvino_optimum_conversion_pass_convert_with_weight_compression(tmp_pa
     assert bin_file.is_file()
 
 
+@pytest.mark.skipif(
+    not package_version_at_least("optimum", "2.1.0"),
+    reason="Requires optimum >= 2.1.0",
+)
 def test_openvino_optimum_conversion_pass_convert_with_quantization(tmp_path):
     # setup
     input_hf_model = get_hf_model("hf-internal-testing/tiny-random-clip-zero-shot-image-classification")
     openvino_optimum_conversion_config = {
         "extra_args": {"device": "npu"},
-        "ov_quant_config": {"weight_format": "int8", "dataset": "auto"},
+        "ov_quant_config": {"weight_format": "int8"},
     }
 
     p = create_pass_from_dict(OpenVINOOptimumConversion, openvino_optimum_conversion_config, disable_search=True)
@@ -121,6 +137,10 @@ def test_openvino_optimum_conversion_pass_convert_with_quantization(tmp_path):
     assert bin_file.is_file()
 
 
+@pytest.mark.skipif(
+    not package_version_at_least("optimum", "2.1.0"),
+    reason="Requires optimum >= 2.1.0",
+)
 def test_openvino_optimum_conversion_pass_convert_multiple_components_without_main(tmp_path):
     # setup
     input_hf_model = get_hf_model("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")

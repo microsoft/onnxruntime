@@ -23,18 +23,18 @@ pip install olive-ai[openvino]
 ### Option 2: Install OpenVINO Runtime and OpenVINO Development Tools from Pypi
 
 ```bash
-pip install openvino>=2025.3.0
-pip install nncf>=2.18.0
+pip install openvino>=2025.4.1
+pip install nncf>=2.19.0
 pip install onnxruntime-openvino
 ```
 
 ### Install Optimum Intel® for Generative AI Workloads
 
 ```bash
-pip install optimum[openvino]<=1.24.0
+pip install optimum[openvino]>=2.1.0
 ```
 
-More detailed instructions are available at [Optimum Intel® Installation Instructions](https://huggingface.co/docs/optimum/main/en/intel/installation)
+More detailed instructions are available at [Optimum Installation Instructions](https://huggingface.co/docs/optimum/installation) and at [Optimum Intel® Installation Instructions](https://huggingface.co/docs/optimum/main/en/intel/installation)
 
 ## Model Conversion
 

@@ -408,3 +408,24 @@ def get_wikitext_data_config(
             "random_seed": 42,
         },
     )
+
+
+def package_version_at_least(package_name: str, min_ver: str) -> bool:
+    """Return True if *package_name* is installed and its version is >= *min_ver*, False otherwise.
+
+    Intended for use in ``pytest.mark.skipif`` conditions where the check
+    must never raise during test collection.
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError
+        from importlib.metadata import version as pkg_version
+
+        from packaging.version import InvalidVersion
+        from packaging.version import parse as parse_version
+    except ImportError:
+        return False
+
+    try:
+        return parse_version(pkg_version(package_name)) >= parse_version(min_ver)
+    except (PackageNotFoundError, InvalidVersion):
+        return False

@@ -5,7 +5,7 @@
 import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE
 
@@ -13,53 +13,10 @@ from olive.common.utils import StrEnumBase
 from olive.hardware.accelerator import AcceleratorSpec, Device
 from olive.model import CompositeModelHandler, HfModelHandler, OpenVINOModelHandler
 from olive.passes import Pass
+from olive.passes.openvino.ov_utils import OVOptimumLibrary, infer_library_name
 from olive.passes.pass_config import BasePassConfig, PassConfigParam, get_user_script_data_config
 
 logger = logging.getLogger(__name__)
-
-
-def maybe_load_preprocessors(
-    src_name_or_path: Union[str, Path], subfolder: str = "", trust_remote_code: bool = False
-) -> list:
-    try:
-        from transformers import AutoFeatureExtractor, AutoImageProcessor, AutoProcessor, AutoTokenizer
-    except Exception as e:
-        raise ImportError("Unable to import transformers packages: ", e) from None
-
-    preprocessors = []
-    try:
-        preprocessors.append(
-            AutoTokenizer.from_pretrained(src_name_or_path, subfolder=subfolder, trust_remote_code=trust_remote_code)
-        )
-    except Exception:
-        pass
-
-    try:
-        preprocessors.append(
-            AutoProcessor.from_pretrained(src_name_or_path, subfolder=subfolder, trust_remote_code=trust_remote_code)
-        )
-    except Exception:
-        pass
-
-    try:
-        preprocessors.append(
-            AutoFeatureExtractor.from_pretrained(
-                src_name_or_path, subfolder=subfolder, trust_remote_code=trust_remote_code
-            )
-        )
-    except Exception:
-        pass
-
-    try:
-        preprocessors.append(
-            AutoImageProcessor.from_pretrained(
-                src_name_or_path, subfolder=subfolder, trust_remote_code=trust_remote_code
-            )
-        )
-    except Exception:
-        pass
-
-    return preprocessors
 
 
 def infer_task(
@@ -70,9 +27,10 @@ def infer_task(
     cache_dir: str = HUGGINGFACE_HUB_CACHE,
     token: Optional[Union[bool, str]] = None,
     library_name: Optional[str] = None,
+    trust_remote_code: bool = False,
 ):
     try:
-        from optimum.exporters import TasksManager
+        from optimum.exporters.tasks import TasksManager
     except Exception as e:
         raise ImportError("Unable to import optimum packages:", e) from None
 
@@ -81,6 +39,7 @@ def infer_task(
     except Exception as e:
         raise ImportError("Unable to import ConnectionError packages:", e) from None
 
+    original_task = task
     task = TasksManager.map_from_synonym(task)
     if task == "auto":
         if library_name == "open_clip":
@@ -96,52 +55,149 @@ def infer_task(
                     library_name=library_name,
                 )
             except KeyError as e:
-                raise KeyError(
-                    f"The task could not be automatically inferred. Please provide the argument --task with the relevant task from {', '.join(TasksManager.get_all_tasks())}. Detailed error: {e}"
-                ) from None
+                try:
+                    from transformers import AutoConfig
+                except ImportError as ie:
+                    raise ImportError(f"Unable to import AutoConfig from transformers: {ie}") from None
+                try:
+                    config = AutoConfig.from_pretrained(model_name_or_path)
+                    with_past_arch_list = ["MistralForCausalLM", "Zamba2ForCausalLM"]
+                    architectures = getattr(config, "architectures", None) or []
+                    if any(arch in architectures for arch in with_past_arch_list):
+                        task = "text-generation-with-past"
+                except Exception:
+                    raise KeyError(
+                        f"The task could not be automatically inferred. Please provide the argument --task with the relevant task from {', '.join(TasksManager.get_all_tasks())}. Detailed error: {e}"
+                    ) from None
             except RequestsConnectionError as e:
                 raise RequestsConnectionError(
                     f"The task could not be automatically inferred as this is available only for models hosted on the Hugging Face Hub. Please provide the argument --task with the relevant task from {', '.join(TasksManager.get_all_tasks())}. Detailed error: {e}"
                 ) from None
+
+    if library_name == "transformers":
+        try:
+            from transformers import AutoConfig
+        except ImportError as e:
+            raise ImportError(f"Unable to import AutoConfig from transformers: {e}") from None
+        config = AutoConfig.from_pretrained(
+            model_name_or_path,
+            subfolder=subfolder,
+            revision=revision,
+            cache_dir=cache_dir,
+            token=token,
+            trust_remote_code=trust_remote_code,
+        )
+        if hasattr(config, "export_model_type"):
+            model_type = config.export_model_type
+        else:
+            model_type = config.model_type
+        custom_architecture = model_type not in TasksManager._SUPPORTED_MODEL_TYPE  # pylint: disable=W0212
+        if not custom_architecture and task + "-with-past" in TasksManager.get_supported_tasks_for_model_type(
+            model_type, exporter="openvino", library_name=library_name
+        ):
+            # Make -with-past the default if --task was not explicitly specified
+            if original_task == "auto":
+                task = task + "-with-past"
+            else:
+                logger.info(
+                    "The task `%s` was manually specified, and past key values will not be reused in the decoding."
+                    " if needed, please pass `--task %s-with-past` to export using the past key values.",
+                    task,
+                    task,
+                )
     return task
 
 
-def maybe_convert_tokenizers(library_name: str, output: Path, model=None, preprocessors=None, task=None):
-    from optimum.exporters.openvino.convert import export_tokenizer
-
+def _main_quantize(
+    model_name_or_path: str,
+    task: str,
+    library_name: str,
+    quantization_config: Union[dict, "OVQuantizationConfigBase"],  # noqa: F821
+    output: Path,
+    cache_dir: str,
+    trust_remote_code: bool = False,
+    subfolder: str = "",
+    revision: str = "main",
+    token: Optional[Union[bool, str]] = None,
+    model_kwargs: Optional[dict[str, Any]] = None,
+):
     try:
-        from transformers import PreTrainedTokenizerBase, ProcessorMixin
-    except Exception as e:
-        raise ImportError("Unable to import transformers packages:", e) from None
+        from optimum.intel.openvino.utils import _HEAD_TO_AUTOMODELS
+        from optimum.intel.utils.import_utils import is_diffusers_available
+    except ImportError as e:
+        raise ImportError("Please install Intel® optimum[openvino] to use OpenVINO Optimum Conversion") from e
 
-    try:
-        from optimum.intel.utils.import_utils import is_openvino_tokenizers_available
-    except Exception as e:
-        raise ImportError("openvino tokenizers unavailable :", e) from None
+    # Step 0. Infer task and library name if needed
+    original_task = task
+    task = infer_task(
+        task,
+        model_name_or_path,
+        subfolder=subfolder,
+        revision=revision,
+        cache_dir=cache_dir,
+        token=token,
+        library_name=library_name,
+        trust_remote_code=trust_remote_code,
+    )
+    if library_name is None:
+        library_name = infer_library_name(
+            model_name_or_path,
+            subfolder=subfolder,
+            revision=revision,
+            cache_dir=cache_dir,
+            token=token,
+        )
 
-    if is_openvino_tokenizers_available():
-        if library_name != "diffusers" and preprocessors:
-            processor_chat_template = None
-            tokenizer = next(filter(lambda it: isinstance(it, PreTrainedTokenizerBase), preprocessors), None)
-            if len(preprocessors) > 1:
-                for processor in preprocessors:
-                    if isinstance(processor, ProcessorMixin) and hasattr(processor, "chat_template"):
-                        processor_chat_template = processor.chat_template
-            if tokenizer:
-                try:
-                    export_tokenizer(tokenizer, output, task=task, processor_chat_template=processor_chat_template)
-                except Exception as exception:
-                    logger.warning(
-                        "Could not load tokenizer using specified model ID or path. OpenVINO tokenizer/detokenizer models won't be generated. Exception: %s",
-                        exception,
-                    )
-        elif model:
-            for tokenizer_name in ("tokenizer", "tokenizer_2", "tokenizer_3"):
-                tokenizer = getattr(model, tokenizer_name, None)
-                if tokenizer:
-                    export_tokenizer(tokenizer, output / tokenizer_name, task=task)
+    # Step 1. Obtain the correct OpenVINO model class
+    if library_name == "diffusers":
+        if not is_diffusers_available():
+            raise ValueError("Export of diffusers models requires the diffusers library to be installed.")
+
+        try:
+            from diffusers import DiffusionPipeline
+        except ImportError as e:
+            raise ImportError("Unable to import diffusers packages:", e) from None
+
+        diffusers_config = DiffusionPipeline.load_config(model_name_or_path)
+        class_name = diffusers_config.get("_class_name", None)
+        ov_class_name = f"OV{class_name}"
+        try:
+            model_cls = getattr(__import__("optimum.intel", fromlist=[ov_class_name]), ov_class_name)
+        except (AttributeError, ImportError) as e:
+            raise RuntimeError(f"Wasn't able to locate OpenVINO class for {class_name} diffusion model.") from e
     else:
-        logger.warning("Tokenizer won't be converted.")
+        try:
+            model_cls_name = _HEAD_TO_AUTOMODELS[task.replace("-with-past", "")]
+            if library_name == "sentence_transformers":
+                model_cls_name = "OVSentenceTransformer"
+            model_cls = getattr(__import__("optimum.intel", fromlist=[model_cls_name]), model_cls_name)
+        except (AttributeError, ImportError, KeyError) as e:
+            raise RuntimeError(f"Wasn't able to locate OpenVINO class for task {original_task} ({task}).") from e
+
+    # Step 2. Load the exported model
+    # Filter out keys that are explicitly passed to from_pretrained to avoid
+    # "got multiple values for keyword argument" TypeError
+    _explicit_keys = {"trust_remote_code", "cache_dir", "use_cache", "compile"}
+    filtered_kwargs = {k: v for k, v in (model_kwargs or {}).items() if k not in _explicit_keys}
+    model = model_cls.from_pretrained(
+        output,
+        compile=False,
+        trust_remote_code=trust_remote_code,
+        cache_dir=cache_dir,
+        use_cache=task.endswith("with-past"),
+        **filtered_kwargs,
+    )
+
+    # Step 3. Apply quantization and save the quantized model
+    model._apply_quantization(  # pylint: disable=W0212
+        quantization_config,
+        compile_only=False,
+        compile_model=False,
+        model_name_or_path=model_name_or_path,
+        trust_remote_code=trust_remote_code,
+        save_directory=output,
+        immediate_save=True,
+    )
 
 
 class OVQuantMode(StrEnumBase):
@@ -152,14 +208,6 @@ class OVQuantMode(StrEnumBase):
     NF4_F8E5M2 = "nf4_f8e5m2"
     INT4_F8E4M3 = "int4_f8e4m3"
     INT4_F8E5M2 = "int4_f8e5m2"
-
-
-class OVOptimumLibrary(StrEnumBase):
-    TRANSFORMERS = "transformers"
-    DIFFUSERS = "diffusers"
-    TIMM = "timm"
-    SENTENCE_TRANSFORMERS = "sentence_transformers"
-    OPEN_CLIP = "open_clip"
 
 
 class OVOptimumFramework(StrEnumBase):
@@ -302,9 +350,12 @@ class OpenVINOOptimumConversion(Pass):
     ) -> Union[OpenVINOModelHandler, CompositeModelHandler]:
         try:
             from optimum.exporters.openvino import main_export as export_optimum_intel
-            from optimum.exporters.openvino.utils import save_preprocessors
-            from optimum.intel.openvino.configuration import OVConfig, get_default_int4_config
-            from optimum.intel.utils.modeling_utils import _infer_library_from_model_name_or_path
+            from optimum.intel.openvino.configuration import (
+                OVConfig,
+                _GPTOSSQuantizationConfig,
+                get_default_quantization_config,
+            )
+            from optimum.intel.utils.import_utils import is_nncf_available
         except ImportError as e:
             raise ImportError("Please install Intel® optimum[openvino] to use OpenVINO Optimum Conversion") from e
 
@@ -323,27 +374,18 @@ class OpenVINOOptimumConversion(Pass):
             }
         )
 
-        if model.load_kwargs and "trust_remote_code" not in extra_args:
-            extra_args["trust_remote_code"] = model.load_kwargs.trust_remote_code
-
         if extra_args.get("library") is None:
-            lib_name = _infer_library_from_model_name_or_path(model.model_name_or_path)
-            if lib_name == "sentence_transformers":
-                logger.warning(
-                    "Library is not specified. "
-                    "There are multiple possible variants: `sentence_transformers`, `transformers`. "
-                    "`transformers` will be selected. "
-                    "If you want to load your model with the `sentence-transformers` library instead, "
-                    "Please set it as sentence_transformers in extra_args dictionary under 'library' key"
-                )
-                lib_name = "transformers"
+            lib_name = infer_library_name(model.model_name_or_path)
         else:
             lib_name = extra_args["library"]
 
         if config.ov_quant_config:
             if config.ov_quant_config.get("weight_format") is None and config.ov_quant_config.get("quant_mode") is None:
                 ov_config = None
-                if not no_compression_parameter_provided(config.ov_quant_config):
+                if (
+                    not no_compression_parameter_provided(config.ov_quant_config)
+                    or config.ov_quant_config.get("quantization_statistics_path", None) is not None
+                ):
                     raise ValueError(
                         "Some compression parameters are provided, but the weight format is not specified. "
                         "Please provide it with weight_format key in ov_quant_config dictionary."
@@ -356,139 +398,98 @@ class OpenVINOOptimumConversion(Pass):
             elif config.ov_quant_config.get("weight_format") in {"fp16", "fp32"}:
                 ov_config = OVConfig(dtype=config.ov_quant_config["weight_format"])
             else:
-                if config.ov_quant_config.get("weight_format") is not None:
-                    # For int4 quantization if no parameter is provided, then use the default config if exists
-                    if (
-                        no_compression_parameter_provided(config.ov_quant_config)
-                        and config.ov_quant_config.get("weight_format") == "int4"
-                    ):
-                        quant_config = get_default_int4_config(model.model_name_or_path)
-                    else:
-                        quant_config = prep_wc_config(config.ov_quant_config, WRAPPER_4_BIT)
-                    if quant_config.get("dataset", None) is not None:
-                        quant_config["trust_remote_code"] = config.ov_quant_config.get("trust_remote_code", False)
-                    ov_config = OVConfig(quantization_config=quant_config)
-                else:
-                    ov_config = None
-                    if config.ov_quant_config.get("dataset", None) is None:
-                        raise ValueError(
-                            "Dataset is required for full quantization. "
-                            "Please provide it in ov_quant_config dictionary under 'dataset' key"
-                        )
-                    if config.ov_quant_config.get("quant_mode") in [
-                        "nf4_f8e4m3",
-                        "nf4_f8e5m2",
-                        "int4_f8e4m3",
-                        "int4_f8e5m2",
-                    ]:
-                        if lib_name == "diffusers":
-                            raise NotImplementedError("Mixed precision quantization isn't supported for diffusers.")
-                        wc_config = prep_wc_config(config.ov_quant_config, WRAPPER_4_BIT)
-                        wc_dtype, q_dtype = config.ov_quant_config["quant_mode"].split("_")
-                        wc_config["dtype"] = wc_dtype
+                if not is_nncf_available():
+                    raise ImportError("Please install nncf to use OpenVINO Optimum Conversion with quantization.")
+                if (
+                    config.ov_quant_config.get("weight_format") is not None
+                    and config.ov_quant_config.get("quant_mode") is not None
+                ):
+                    # both are provided, so raise ValueError
+                    raise ValueError("Both weight_format and quant_mode are provided. Please provide only one of them.")
 
-                        q_config = prep_q_config(config.ov_quant_config)
-                        q_config["dtype"] = q_dtype
-                        quant_config = {
-                            "weight_quantization_config": wc_config,
-                            "full_quantization_config": q_config,
-                            "num_samples": self.args.num_samples,
-                            "dataset": self.args.dataset,
-                            "trust_remote_code": self.args.trust_remote_code,
-                        }
+                default_quantization_config = get_default_quantization_config(
+                    model.model_name_or_path,
+                    config.ov_quant_config.get("weight_format"),
+                    config.ov_quant_config.get("quant_mode"),
+                )
+
+                if config.ov_quant_config.get("weight_format") is not None:
+                    # weight compression
+                    quant_config = prep_wc_config(config.ov_quant_config, WRAPPER_4_BIT)
+                    if no_compression_parameter_provided(config.ov_quant_config) and config.ov_quant_config.get(
+                        "weight_format"
+                    ) in ["int4", "int8"]:
+                        if default_quantization_config is not None:
+                            quant_config = default_quantization_config
+                            logger.info(
+                                "Applying the default quantization config for model %s: %s",
+                                model.model_name_or_path,
+                                quant_config,
+                            )
+                        elif config.ov_quant_config.get("weight_format") == "int4":
+                            quant_config = WRAPPER_4_BIT
+                            logger.info(
+                                "Applying a default 4-bit weight compression config for model %s: %s",
+                                model.model_name_or_path,
+                                quant_config,
+                            )
+                        if config.ov_quant_config.get("quantization_statistics_path", None) is not None:
+                            quant_config["statistics_path"] = config.ov_quant_config.get("quantization_statistics_path")
+                else:
+                    if (
+                        no_quantization_parameter_provided(config.ov_quant_config)
+                        and default_quantization_config is not None
+                    ):
+                        quant_config = default_quantization_config
+                        logger.info(
+                            "Applying the default quantization config for model %s: %s",
+                            model.model_name_or_path,
+                            quant_config,
+                        )
                     else:
-                        quant_config = prep_q_config(config.ov_quant_config)
-                    ov_config = OVConfig(quantization_config=quant_config)
+                        if quant_config.get("dataset", None) is None:
+                            raise ValueError(
+                                "Dataset is required for full quantization. "
+                                "Please provide it in ov_quant_config dictionary under 'dataset' key"
+                            )
+                        if config.ov_quant_config.get("quant_mode") in [
+                            "cb4_f8e4m3",
+                            "int4_f8e4m3",
+                            "int4_f8e5m2",
+                        ]:
+                            if lib_name == "diffusers":
+                                raise NotImplementedError("Mixed precision quantization isn't supported for diffusers.")
+                            wc_config = prep_wc_config(config.ov_quant_config, WRAPPER_4_BIT)
+                            wc_dtype, q_dtype = config.ov_quant_config["quant_mode"].split("_")
+                            wc_config["dtype"] = wc_dtype
+
+                            q_config = prep_q_config(config.ov_quant_config)
+                            q_config["dtype"] = q_dtype
+
+                            quant_config = {
+                                "weight_quantization_config": wc_config,
+                                "full_quantization_config": q_config,
+                                "num_samples": config.ov_quant_config.get("num_samples"),
+                                "dataset": config.ov_quant_config.get("dataset"),
+                            }
+                        else:
+                            if config.ov_quant_config.get("quantization_statistics_path", None) is not None:
+                                logger.warning(
+                                    "quantization_statistics_path is only applicable for weight-only"
+                                    " quantization. It will be ignored."
+                                )
+                            quant_config = prep_q_config(config.ov_quant_config)
+
+                ov_config = OVConfig(quantization_config=quant_config)
         else:
             ov_config = None
 
         # quantization config
         quant_config = ov_config.quantization_config if ov_config else None
-        quantize_with_dataset = quant_config and getattr(quant_config, "dataset", None) is not None
-        task = infer_task(extra_args.get("task", "auto"), model.model_name_or_path, library_name=lib_name)
 
-        # model
-        if lib_name == "diffusers" and quantize_with_dataset:
-            try:
-                from diffusers import DiffusionPipeline
-            except ImportError:
-                raise ImportError("Please install diffusers to use OpenVINO with Diffusers models.") from None
+        apply_main_quantize = quant_config and not isinstance(quant_config, _GPTOSSQuantizationConfig)
 
-            diffusers_config = DiffusionPipeline.load_config(model.model_name_or_path)
-            class_name = diffusers_config.get("_class_name", None)
-
-            if class_name == "LatentConsistencyModelPipeline":
-                from optimum.intel import OVLatentConsistencyModelPipeline
-
-                model_cls = OVLatentConsistencyModelPipeline
-
-            elif class_name == "StableDiffusionXLPipeline":
-                from optimum.intel import OVStableDiffusionXLPipeline
-
-                model_cls = OVStableDiffusionXLPipeline
-            elif class_name == "StableDiffusionPipeline":
-                from optimum.intel import OVStableDiffusionPipeline
-
-                model_cls = OVStableDiffusionPipeline
-            elif class_name == "StableDiffusion3Pipeline":
-                from optimum.intel import OVStableDiffusion3Pipeline
-
-                model_cls = OVStableDiffusion3Pipeline
-            elif class_name == "FluxPipeline":
-                from optimum.intel import OVFluxPipeline
-
-                model_cls = OVFluxPipeline
-            elif class_name == "SanaPipeline":
-                from optimum.intel import OVSanaPipeline
-
-                model_cls = OVSanaPipeline
-            else:
-                raise NotImplementedError(f"Quantization isn't supported for class {class_name}.")
-
-            output_model = model_cls.from_pretrained(
-                model.model_name_or_path, export=True, quantization_config=quant_config
-            )
-            output_model.save_pretrained(output_model_path)
-            if not extra_args.get("disable_convert_tokenizer", False):
-                maybe_convert_tokenizers(lib_name, output_model_path, model, task=task)
-        elif (
-            quantize_with_dataset and (task.startswith("text-generation") or "automatic-speech-recognition" in task)
-        ) or (task == "image-text-to-text" and quant_config is not None):
-            if task.startswith("text-generation"):
-                from optimum.intel import OVModelForCausalLM
-
-                model_cls = OVModelForCausalLM
-            elif task == "image-text-to-text":
-                from optimum.intel import OVModelForVisualCausalLM
-
-                model_cls = OVModelForVisualCausalLM
-            else:
-                from optimum.intel import OVModelForSpeechSeq2Seq
-
-                model_cls = OVModelForSpeechSeq2Seq
-
-            # In this case, to apply quantization an instance of a model class is required
-            output_model = model_cls.from_pretrained(
-                model.model_name_or_path,
-                export=True,
-                quantization_config=quant_config,
-                stateful=not extra_args.get("disable_stateful", False),
-                trust_remote_code=extra_args.get("trust_remote_code", False),
-                variant=extra_args.get("variant", None),
-                cache_dir=extra_args.get("cache_dir", HUGGINGFACE_HUB_CACHE),
-            )
-            output_model.save_pretrained(output_model_path)
-
-            preprocessors = maybe_load_preprocessors(
-                model.model_name_or_path, trust_remote_code=extra_args.get("trust_remote_code", False)
-            )
-            save_preprocessors(
-                preprocessors, output_model.config, output_model_path, extra_args.get("trust_remote_code", False)
-            )
-            if not extra_args.get("disable_convert_tokenizer", False):
-                maybe_convert_tokenizers(lib_name, output_model_path, preprocessors=preprocessors, task=task)
-
-        else:
+        try:
             extra_args["ov_config"] = ov_config
             extra_args["stateful"] = not extra_args.get("disable_stateful", False)
             extra_args.pop("disable_stateful", False)
@@ -501,6 +502,21 @@ class OpenVINOOptimumConversion(Pass):
                 output_model_path,
                 **extra_args,
             )
+            if apply_main_quantize:
+                _main_quantize(
+                    model_name_or_path=model.model_name_or_path,
+                    task=extra_args.get("task", "auto"),
+                    library_name=lib_name,
+                    quantization_config=quant_config,
+                    output=Path(output_model_path),
+                    cache_dir=config.ov_quant_config.get("cache_dir", None) if config.ov_quant_config else None,
+                    trust_remote_code=config.ov_quant_config.get("trust_remote_code", False)
+                    if config.ov_quant_config
+                    else False,
+                    model_kwargs=model.load_kwargs.__dict__ if model.load_kwargs else None,
+                )
+        except Exception as e:
+            raise RuntimeError(f"OpenVINO optimum export failed: {e}") from None
 
         # check the exported components
         exported_models = [name.stem for name in Path(output_model_path).iterdir() if name.suffix == ".xml"]
@@ -578,6 +594,8 @@ def prep_wc_config(quant_cfg, default_cfg):
         "lora_correction": quant_cfg.get("lora_correction", None),
         "dtype": quant_cfg.get("weight_format"),
         "backup_precision": quant_cfg.get("backup_precision"),
+        "statistics_path": quant_cfg.get("statistics_path", None),
+        "group_size_fallback": quant_cfg.get("group_size_fallback", None),
     }
 
 
@@ -590,7 +608,6 @@ def prep_q_config(quant_cfg):
         "dataset": quant_cfg.get("dataset"),
         "num_samples": quant_cfg.get("num_samples"),
         "smooth_quant_alpha": quant_cfg.get("smooth_quant_alpha"),
-        "trust_remote_code": quant_cfg.get("trust_remote_code", False),
     }
 
 

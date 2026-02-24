@@ -646,10 +646,10 @@
         "diffusers": [ "accelerate>=0.30.0", "peft", "diffusers" ],
         "nvmo": [ "nvidia-modelopt[onnx]" ],
         "openvino": [
-            "openvino>=2025.3.0",
-            "nncf>=2.18.0",
+            "openvino>=2025.4.1",
+            "nncf>=2.19.0",
             "numpy<2.0",
-            "optimum[openvino]<=1.24",
+            "optimum[openvino]>=2.1.0",
             "onnxruntime-openvino"
         ],
         "optimum": [ "optimum" ],
