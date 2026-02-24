@@ -24,7 +24,8 @@ struct PoolAttributes {
   // Shared providers don't know about OpNodeProtoHelper
   PoolAttributes(const OpKernelInfo& info,
 #else
-  PoolAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info,
+  template <typename KernelInfoType>
+  PoolAttributes(const KernelInfoType& info,
 #endif
                  const std::string& op_name, int start_version)
       : global_pooling(IsGlobalPooling(op_name)) {
@@ -37,7 +38,7 @@ struct PoolAttributes {
 
     std::string auto_padding;
     if (op_name != "MaxUnpool") {
-      ORT_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_padding).IsOK());
+      ORT_ENFORCE(info.template GetAttr<std::string>("auto_pad", &auto_padding).IsOK());
     }
     auto_pad = StringToAutoPadType(auto_padding);
 
@@ -49,7 +50,7 @@ struct PoolAttributes {
       strides.resize(kernel_shape.size(), 1);
     }
 
-    if (!info.GetAttr<int64_t>("ceil_mode", &ceil_mode).IsOK()) {
+    if (!info.template GetAttr<int64_t>("ceil_mode", &ceil_mode).IsOK()) {
       ceil_mode = 0;
     }
 
@@ -63,7 +64,7 @@ struct PoolAttributes {
 
     if (op_name == "AveragePool") {
       int64_t temp;
-      ORT_ENFORCE(info.GetAttr<int64_t>("count_include_pad", &temp).IsOK());
+      ORT_ENFORCE(info.template GetAttr<int64_t>("count_include_pad", &temp).IsOK());
       count_include_pad = (temp != 0);
     }
 
