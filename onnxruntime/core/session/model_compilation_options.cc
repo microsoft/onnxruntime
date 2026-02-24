@@ -300,7 +300,6 @@ Status ModelCompilationOptions::Check() const {
 
   // Determine if we can derive an output path from the input
   bool can_derive_output_path = input_from_file;
-  bool model_has_path = false;
 
   // For OrtModel input, check if model_path is set in the graph using the virtual GetModelPath() method
   // (avoids dynamic_cast which requires RTTI)
@@ -308,7 +307,6 @@ Status ModelCompilationOptions::Check() const {
     const ORTCHAR_T* model_path_cstr = input_model_->graph->GetModelPath();
     if (model_path_cstr && model_path_cstr[0] != ORT_TSTR('\0')) {
       can_derive_output_path = true;
-      model_has_path = true;
     }
   }
 
