@@ -26,11 +26,11 @@ MlasComputeFP16Gelu(const MLAS_FP16* input,
                     MLAS_GELU_ALGORITHM algo)
 {
 #if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+    #if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
         GetMlasPlatform().GeluF16KernelRoutine(input, output, temp, count, algo);
         return;
     #endif
-#endif 
+#endif
     MLAS_UNREFERENCED_PARAMETER(temp); // 'temp' is only used by vectorized kernel implementations and it is unused in the scalar fallback path.
     for (size_t i = 0; i < count; ++i) {
         float x = static_cast<float>(input[i]);

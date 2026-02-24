@@ -188,7 +188,7 @@ MlasSveErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
 }
 
 void MLASCALL
-MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, int64_t count, const std::string& algo)
+MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, size_t count, MLAS_GELU_ALGORITHM algo)
 {
     const __fp16 r1 = 0.5f;
     const __fp16 r2 = 1.0f;
@@ -204,8 +204,8 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
 
     const __fp16 c1 = -5.0f;
     const __fp16 c2 = 5.0f;
-    if (algo == "tanh") {
-        int64_t i = 0;
+    if (algo == MlasGeluTanh) {
+        size_t i = 0;
         while (i < count) {
             svbool_t pg = MlasSveSelPredictefloat16(i, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[i]);
@@ -219,7 +219,7 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
 
         MlasSveTanhF16Kernel(reinterpret_cast<const MLAS_FP16*>(temp), reinterpret_cast<MLAS_FP16*>(temp), count);
 
-        int64_t j = 0;
+        size_t j = 0;
         while (j < (count)) {
             svbool_t pg = MlasSveSelPredictefloat16(j, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[j]);
@@ -229,7 +229,7 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
             j += svcnth();
         }
     } else {
-        int64_t i = 0;
+        size_t i = 0;
         while (i < (count)) {
             svbool_t pg = MlasSveSelPredictefloat16(i, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[i]);
@@ -240,7 +240,7 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
 
         MlasSveErfF16Kernel(reinterpret_cast<const _mlas_fp16_*>(temp), reinterpret_cast<_mlas_fp16_*>(temp), count);
 
-        int64_t j = 0;
+        size_t j = 0;
         while (j < (count)) {
             svbool_t pg = MlasSveSelPredictefloat16(j, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[j]);
