@@ -856,7 +856,7 @@ static void RawDataChecker(gsl::span<const T> expected, TensorProto actual) {
 
   // raw data is LE, might need to convert it
   if constexpr (endian::native != endian::little) {
-       onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual);
   }
 
   const T* raw_data = reinterpret_cast<const T*>(actual.raw_data().data());
@@ -871,7 +871,7 @@ void RawDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat, Tenso
 
   // raw data is LE, might need to convert it
   if constexpr (endian::native != endian::little) {
-       onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual);
   }
 
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
@@ -887,7 +887,7 @@ void RawDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat, TensorP
 
   // raw data is LE, might need to convert it
   if constexpr (endian::native != endian::little) {
-       onnxruntime::utils::ConvertRawDataInTensorProto(actual);
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual);
   }
 
   auto expected = ReinterpretAsSpan<const uint16_t>(expected_bfloat);
@@ -1091,7 +1091,7 @@ static void RawSparseDataChecker(gsl::span<const T> expected_values,
 
   // raw data is LE, might need to convert it
   if constexpr (endian::native != endian::little) {
-       onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
   }
 
   const T* raw_data = reinterpret_cast<const T*>(actual_values.raw_data().data());
@@ -1112,7 +1112,7 @@ void RawSparseDataChecker<BFloat16>(gsl::span<const BFloat16> expected_bfloat,
 
   // raw data is LE, might need to convert it
   if constexpr (endian::native != endian::little) {
-       onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
   }
 
   static_assert(sizeof(uint16_t) == sizeof(BFloat16), "Expecting equal sizes");
@@ -1134,7 +1134,7 @@ void RawSparseDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat,
 
   // raw data is LE, might need to convert it
   if constexpr (endian::native != endian::little) {
-       onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
+    onnxruntime::utils::ConvertRawDataInTensorProto(actual_values);
   }
 
   static_assert(sizeof(uint16_t) == sizeof(MLFloat16), "Expecting equal sizes");
