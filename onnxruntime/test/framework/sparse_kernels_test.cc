@@ -1939,7 +1939,7 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   if constexpr (std::is_same_v<I, int8_t>) {
     indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
     if (raw_data_indices) {
-      indices_tensor->set_raw_data(indices.data(), indices.size() * sizeof(I));
+      onnxruntime::utils::SetRawDataInTensorProto(*indices_tensor, indices.data(), indices.size() * sizeof(I));
     } else {
       for (auto idx : indices) {
         indices_tensor->add_int32_data(static_cast<int32_t>(idx));  // indices are stored in int32_data for types < int32
@@ -1948,7 +1948,7 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   } else if constexpr (std::is_same_v<I, int16_t>) {
     indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT16);
     if (raw_data_indices) {
-      indices_tensor->set_raw_data(indices.data(), indices.size() * sizeof(I));
+      onnxruntime::utils::SetRawDataInTensorProto(*indices_tensor, indices.data(), indices.size() * sizeof(I));
     } else {
       for (auto idx : indices) {
         indices_tensor->add_int32_data(static_cast<int32_t>(idx));
@@ -1957,7 +1957,7 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   } else if constexpr (std::is_same_v<I, int32_t>) {
     indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
     if (raw_data_indices) {
-      indices_tensor->set_raw_data(indices.data(), indices.size() * sizeof(I));
+      onnxruntime::utils::SetRawDataInTensorProto(*indices_tensor, indices.data(), indices.size() * sizeof(I));
     } else {
       for (auto idx : indices) {
         indices_tensor->add_int32_data(idx);
@@ -1966,7 +1966,7 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   } else if constexpr (std::is_same_v<I, int64_t>) {
     indices_tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     if (raw_data_indices) {
-      indices_tensor->set_raw_data(indices.data(), indices.size() * sizeof(I));
+      onnxruntime::utils::SetRawDataInTensorProto(*indices_tensor, indices.data(), indices.size() * sizeof(I));
     } else {
       for (auto idx : indices) {
         indices_tensor->add_int64_data(idx);
@@ -1975,13 +1975,6 @@ void TestSparseToDenseConversion(gsl::span<const int64_t> dense_shape,
   }
   for (auto dim : indices_shape) {
     indices_tensor->add_dims(dim);
-  }
-
-  // if set_raw_data is used, data must be converted to LE
-  if constexpr (endian::native != endian::little) {
-    if (raw_data_indices) {
-      utils::ConvertRawDataInTensorProto(*indices_tensor);
-    }
   }
 
   ONNX_NAMESPACE::TensorProto dense_proto;
@@ -2279,7 +2272,7 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch_Ra
 
   // 1 float is 4 bytes. We provide 4 bytes, but claim 2 elements (8 bytes needed).
   float raw_val = 1.0f;
-  val->set_raw_data(&raw_val, sizeof(float));
+  onnxruntime::utils::SetRawDataInTensorProto(*val, &raw_val, sizeof(float));
 
   auto* ind = sparse.mutable_indices();
   ind->add_dims(2);

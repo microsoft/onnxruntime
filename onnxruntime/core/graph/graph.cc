@@ -6652,7 +6652,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
         // add OrtValue to ortvalue_initializers_ to keep it alive and to store the deleter if provided.
         ortvalue_initializers_.emplace(name, std::move(v));
       } else {
-        tensor_proto.set_raw_data(t.DataRaw(), t.SizeInBytes());
+        onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, t.DataRaw(), t.SizeInBytes());
       }
 
       TypeProto type_proto{utils::TypeProtoFromTensorProto(tensor_proto)};
