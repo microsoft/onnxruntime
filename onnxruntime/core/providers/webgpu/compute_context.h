@@ -97,14 +97,7 @@ class ComputeContextBase {
   }
 
   //
-  // Get whether multi rotary cache concatenation is used.
-  //
-  inline bool UseMultiRotaryCacheConcat() const {
-    return ep_.UseMultiRotaryCacheConcat();
-  }
-
-  //
-  // Get the multi rotary cache concatenation offset.
+  // Get the multi rotary cache concatenation offset (0 = disabled).
   //
   inline uint32_t MultiRotaryCacheConcatOffset() const {
     return ep_.MultiRotaryCacheConcatOffset();
