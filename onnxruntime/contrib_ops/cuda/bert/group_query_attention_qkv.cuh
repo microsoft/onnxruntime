@@ -60,7 +60,8 @@ __global__ void UnpackRoPEAppend(
     const int64_t* position_ids,
     const bool interleaved,
     const bool is_cache_bnsh,
-    const bool per_channel) {
+    const bool per_channel,
+    const bool is_input_bnsh) {
   using LoadT = float4;
   constexpr int elements_per_thread = sizeof(LoadT) / sizeof(T);
 
@@ -116,19 +117,46 @@ __global__ void UnpackRoPEAppend(
       *reinterpret_cast<LoadT*>(vals) = reinterpret_cast<const LoadT*>(packed_qkv)[packed_idx / elements_per_thread];
     } else {
       if (head_type == QUERY) {
-        const int64_t q_idx = static_cast<int64_t>(b) * sequence_length * q_hidden +
-                              static_cast<int64_t>(s) * q_hidden +
-                              static_cast<int64_t>(n) * head_size + h;
+        int64_t q_idx;
+        if (is_input_bnsh) {
+          // BNSH input: [B, N_q, S, H]
+          q_idx = static_cast<int64_t>(b) * num_heads * sequence_length * head_size +
+                  static_cast<int64_t>(n) * sequence_length * head_size +
+                  static_cast<int64_t>(s) * head_size + h;
+        } else {
+          // BSNH input: [B, S, N_q * H]
+          q_idx = static_cast<int64_t>(b) * sequence_length * q_hidden +
+                  static_cast<int64_t>(s) * q_hidden +
+                  static_cast<int64_t>(n) * head_size + h;
+        }
         *reinterpret_cast<LoadT*>(vals) = reinterpret_cast<const LoadT*>(query)[q_idx / elements_per_thread];
       } else if (head_type == KEY) {
-        const int64_t k_idx = static_cast<int64_t>(b) * sequence_length * k_hidden +
-                              static_cast<int64_t>(s) * k_hidden +
-                              static_cast<int64_t>(n) * head_size + h;
+        int64_t k_idx;
+        if (is_input_bnsh) {
+          // BNSH input: [B, N_kv, S, H]
+          k_idx = static_cast<int64_t>(b) * kv_num_heads * sequence_length * head_size +
+                  static_cast<int64_t>(n) * sequence_length * head_size +
+                  static_cast<int64_t>(s) * head_size + h;
+        } else {
+          // BSNH input: [B, S, N_kv * H]
+          k_idx = static_cast<int64_t>(b) * sequence_length * k_hidden +
+                  static_cast<int64_t>(s) * k_hidden +
+                  static_cast<int64_t>(n) * head_size + h;
+        }
         *reinterpret_cast<LoadT*>(vals) = reinterpret_cast<const LoadT*>(key)[k_idx / elements_per_thread];
       } else {
-        const int64_t v_idx = static_cast<int64_t>(b) * sequence_length * k_hidden +
-                              static_cast<int64_t>(s) * k_hidden +
-                              static_cast<int64_t>(n) * head_size + h;
+        int64_t v_idx;
+        if (is_input_bnsh) {
+          // BNSH input: [B, N_kv, S, H]
+          v_idx = static_cast<int64_t>(b) * kv_num_heads * sequence_length * head_size +
+                  static_cast<int64_t>(n) * sequence_length * head_size +
+                  static_cast<int64_t>(s) * head_size + h;
+        } else {
+          // BSNH input: [B, S, N_kv * H]
+          v_idx = static_cast<int64_t>(b) * sequence_length * k_hidden +
+                  static_cast<int64_t>(s) * k_hidden +
+                  static_cast<int64_t>(n) * head_size + h;
+        }
         *reinterpret_cast<LoadT*>(vals) = reinterpret_cast<const LoadT*>(value)[v_idx / elements_per_thread];
       }
     }
@@ -267,22 +295,23 @@ Status DispatchUnpackRoPEAppendHeadSize(
     const int num_heads, const int kv_num_heads, const int head_size, const int d,
     const int max_seqlen, const int* past_seq_lens,
     const T* cos_cache, const T* sin_cache, const int rotary_dim,
-    const int64_t* position_ids, const bool interleaved, const bool is_cache_bnsh, const bool per_channel) {
+    const int64_t* position_ids, const bool interleaved, const bool is_cache_bnsh, const bool per_channel,
+    const bool is_input_bnsh) {
   if (head_size <= 64) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 64><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
+        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel, is_input_bnsh);
   } else if (head_size <= 128) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 128><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
+        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel, is_input_bnsh);
   } else if (head_size <= 256) {
     UnpackRoPEAppend<T, U, BIT_WIDTH, 256><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
+        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel, is_input_bnsh);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Head size (", head_size, ") exceeds maximum supported MAX_HEAD_SIZE (256).");
   }
@@ -304,7 +333,8 @@ Status LaunchUnpackRoPEAppend(
     const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
     const int rotary_dim, const int64_t* position_ids, const bool interleaved,
     const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
-    cudaStream_t stream, const int max_threads_per_block) {
+    cudaStream_t stream, const int max_threads_per_block,
+    const bool is_input_bnsh = false) {
   static_assert(std::is_same<T, typename onnxruntime::cuda::OrtToCudaType<T>::type>::value);
   static_assert(std::is_same<U, typename onnxruntime::cuda::OrtToCudaType<U>::type>::value);
 
@@ -351,7 +381,7 @@ Status LaunchUnpackRoPEAppend(
     return DispatchUnpackRoPEAppendHeadSize<T, U, 16>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
+        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel, is_input_bnsh);
   } else if constexpr (std::is_same<U, int8_t>::value
 #ifdef USE_FP8_KV_CACHE
                        || std::is_same<U, __nv_fp8_e4m3>::value
@@ -361,14 +391,14 @@ Status LaunchUnpackRoPEAppend(
     return DispatchUnpackRoPEAppendHeadSize<T, U, 8>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
+        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel, is_input_bnsh);
 #ifdef USE_INT4_KV_CACHE
   } else if constexpr (std::is_same<U, uint8_t>::value) {
     // INT4 quantization (packed 2 elements per byte)
     return DispatchUnpackRoPEAppendHeadSize<T, U, 4>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
-        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
+        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel, is_input_bnsh);
 #endif
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported cache type U for GQA quantization.");

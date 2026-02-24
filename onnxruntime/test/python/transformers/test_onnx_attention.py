@@ -89,6 +89,7 @@ class AttentionConfig:
     kv_cache_type: str = ""
     has_attn_mask: bool = False
     attn_mask_dims: int = 2  # 2D, 3D, or 4D boolean mask
+    use_4d: bool = False  # Use 4D BNSH format for QKV inputs instead of 3D BSH
 
 
 # #################################################################################################
@@ -168,17 +169,40 @@ def create_attention_node_and_io(
     )
 
     # --- Graph Inputs ---
-    # ONNX Attention op uses 3D inputs: [batch, seq_len, hidden_size]
-    q_hidden_size = config.q_num_heads * config.head_size
-    kv_hidden_size = config.kv_num_heads * config.head_size
-
-    graph_input = [
-        helper.make_tensor_value_info("query", ort_type, [config.batch_size, config.q_sequence_length, q_hidden_size]),
-        helper.make_tensor_value_info("key", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]),
-        helper.make_tensor_value_info(
-            "value", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
-        ),
-    ]
+    if config.use_4d:
+        # 4D BNSH format: [batch, num_heads, seq_len, head_size]
+        graph_input = [
+            helper.make_tensor_value_info(
+                "query",
+                ort_type,
+                [config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size],
+            ),
+            helper.make_tensor_value_info(
+                "key",
+                ort_type,
+                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
+            ),
+            helper.make_tensor_value_info(
+                "value",
+                ort_type,
+                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
+            ),
+        ]
+    else:
+        # 3D BSH format: [batch, seq_len, hidden_size]
+        q_hidden_size = config.q_num_heads * config.head_size
+        kv_hidden_size = config.kv_num_heads * config.head_size
+        graph_input = [
+            helper.make_tensor_value_info(
+                "query", ort_type, [config.batch_size, config.q_sequence_length, q_hidden_size]
+            ),
+            helper.make_tensor_value_info(
+                "key", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
+            ),
+            helper.make_tensor_value_info(
+                "value", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
+            ),
+        ]
 
     if isinstance(config.kv_cache_type, torch.dtype):
         cache_ort_type = TORCH_DTYPE_TO_ONNX_MAP[config.kv_cache_type]
@@ -217,10 +241,15 @@ def create_attention_node_and_io(
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
 
+    if config.use_4d:
+        # 4D BNSH output: [batch, q_num_heads, q_seq_len, head_size]
+        output_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size]
+    else:
+        # 3D BSH output: [batch, q_seq_len, hidden_size]
+        output_shape = [config.batch_size, config.q_sequence_length, config.q_num_heads * config.head_size]
+
     graph_output = [
-        helper.make_tensor_value_info(
-            "output", ort_type, [config.batch_size, config.q_sequence_length, config.q_num_heads * config.head_size]
-        ),
+        helper.make_tensor_value_info("output", ort_type, output_shape),
         helper.make_tensor_value_info("present_key", cache_ort_type, output_k_shape),
         helper.make_tensor_value_info("present_value", cache_ort_type, output_k_shape),
     ]
@@ -317,19 +346,27 @@ def attention_prompt_func(
         ort_type=ort_type,
     )
 
-    # Reshape to 3D [batch, seq_len, hidden_size]
-    q_3d = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
-    k_3d = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1))
-    v_3d = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1))
+    # Reshape inputs for ONNX model
+    if config.use_4d:
+        # 4D BNSH: [batch, num_heads, seq_len, head_size]
+        # Input q is BSNH, transpose to BNSH
+        q_input = q.transpose(1, 2).contiguous()
+        k_input = k.transpose(1, 2).contiguous()
+        v_input = v.transpose(1, 2).contiguous()
+    else:
+        # 3D BSH: [batch, seq_len, hidden_size]
+        q_input = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
+        k_input = torch.reshape(k, (config.batch_size, config.kv_sequence_length, -1))
+        v_input = torch.reshape(v, (config.batch_size, config.kv_sequence_length, -1))
 
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
     io_binding = ort_session.io_binding()
 
     # Bind inputs
-    bind_tensor(io_binding, "query", q_3d, device, ort_type)
-    bind_tensor(io_binding, "key", k_3d, device, ort_type)
-    bind_tensor(io_binding, "value", v_3d, device, ort_type)
+    bind_tensor(io_binding, "query", q_input, device, ort_type)
+    bind_tensor(io_binding, "key", k_input, device, ort_type)
+    bind_tensor(io_binding, "value", v_input, device, ort_type)
 
     # Bind optional attention mask (boolean padding mask: True=valid, False=masked)
     if config.has_attn_mask and attn_mask is not None:
@@ -345,7 +382,11 @@ def attention_prompt_func(
     else:
         out_dtype = torch.float32
 
-    out_torch = torch.zeros((config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device)
+    if config.use_4d:
+        out_shape = (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size)
+    else:
+        out_shape = (config.batch_size, config.q_sequence_length, hidden_size)
+    out_torch = torch.zeros(out_shape, dtype=out_dtype, device=device)
     bind_output_tensor(io_binding, "output", out_torch, device, ort_type)
 
     # present KV shape for prompt (no past)
@@ -404,10 +445,17 @@ def attention_past_func(
         ort_type=ort_type,
     )
 
-    # Reshape to 3D [batch, seq_len, hidden_size]
-    q_3d = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
-    new_k_3d = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
-    new_v_3d = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
+    # Reshape inputs for ONNX model
+    if config.use_4d:
+        # 4D BNSH: transpose from BSNH to BNSH
+        q_input = q.transpose(1, 2).contiguous()
+        new_k_input = new_k.transpose(1, 2).contiguous()
+        new_v_input = new_v.transpose(1, 2).contiguous()
+    else:
+        # 3D BSH: [batch, seq_len, hidden_size]
+        q_input = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
+        new_k_input = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
+        new_v_input = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
 
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
@@ -417,9 +465,9 @@ def attention_past_func(
     total_seq_len = config.past_kv_sequence_length + config.kv_sequence_length
 
     # Bind inputs
-    bind_tensor(io_binding, "query", q_3d, device, ort_type)
-    bind_tensor(io_binding, "key", new_k_3d, device, ort_type)
-    bind_tensor(io_binding, "value", new_v_3d, device, ort_type)
+    bind_tensor(io_binding, "query", q_input, device, ort_type)
+    bind_tensor(io_binding, "key", new_k_input, device, ort_type)
+    bind_tensor(io_binding, "value", new_v_input, device, ort_type)
 
     # Bind optional attention mask (boolean padding mask: True=valid, False=masked)
     if config.has_attn_mask and attn_mask is not None:
@@ -448,7 +496,11 @@ def attention_past_func(
     else:
         out_dtype = torch.float32
 
-    out_torch = torch.zeros((config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device)
+    if config.use_4d:
+        out_shape = (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size)
+    else:
+        out_shape = (config.batch_size, config.q_sequence_length, hidden_size)
+    out_torch = torch.zeros(out_shape, dtype=out_dtype, device=device)
     bind_output_tensor(io_binding, "output", out_torch, device, ort_type)
 
     # present KV shape (past + new)
@@ -642,7 +694,11 @@ def parity_check_attention_prompt(
                 )
             torch.testing.assert_close(out, first_out, rtol=0, atol=0, msg="Output mismatch between two runs")
 
-    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+    if config.use_4d:
+        # 4D BNSH output -> BSNH for comparison with reference
+        out = out.transpose(1, 2)  # [B, N, S, H] -> [B, S, N, H]
+    else:
+        out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
     out_np = out.to(torch.float32).detach().cpu().numpy()
 
     # --- Comparison ---
@@ -816,7 +872,10 @@ def parity_check_attention_past(
                     present_v, first_present_v, rtol=0, atol=0, msg="present_v mismatch between two runs"
                 )
 
-    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+    if config.use_4d:
+        out = out.transpose(1, 2)  # [B, N, S, H] -> [B, S, N, H]
+    else:
+        out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
     out_np = out.to(torch.float32).detach().cpu().numpy()
 
     if enable_debug_print:
@@ -1047,7 +1106,10 @@ def parity_check_attention_prompt_with_padding(
         ort_type=ort_type,
     )
 
-    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+    if config.use_4d:
+        out = out.transpose(1, 2)  # [B, N, S, H] -> [B, S, N, H]
+    else:
+        out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
 
     # --- Comparison ---
     # Zero out padded positions in both outputs for fair comparison
@@ -1196,7 +1258,10 @@ def parity_check_attention_past_with_padding(
         ort_type=ort_type,
     )
 
-    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+    if config.use_4d:
+        out = out.transpose(1, 2)  # [B, N, S, H] -> [B, S, N, H]
+    else:
+        out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
 
     # --- Comparison ---
     out_np = out.to(torch.float32).detach().cpu().numpy()
@@ -1373,6 +1438,66 @@ def attention_past_padding_test_cases():
                         )
                         name = f"b{b}_s{s}_past{s2}_nh{n}_{n2}_h{h}_mask{mask_dims}d"
                         yield name, config
+
+
+def attention_prompt_4d_test_cases():
+    """
+    Generate test cases for ONNX Attention op with 4D BNSH inputs in prompt phase.
+    """
+    batches = [1, 2]
+    seqs = [(16, 16), (64, 64)]
+    heads = [(8, 2), (8, 4)]
+    h_sizes = [128] if quick_build else [64, 128]
+
+    h_sizes_to_test = h_sizes[:1] if pipeline_mode else h_sizes
+
+    for h in h_sizes_to_test:
+        for b in batches[:1] if pipeline_mode else batches:
+            for sq, skv in seqs[:1] if pipeline_mode else seqs:
+                for n, n2 in heads:
+                    config = AttentionConfig(
+                        batch_size=b,
+                        q_sequence_length=sq,
+                        kv_sequence_length=skv,
+                        past_kv_sequence_length=0,
+                        q_num_heads=n,
+                        kv_num_heads=n2,
+                        head_size=h,
+                        is_causal=1,
+                        use_4d=True,
+                    )
+                    name = f"b{b}_sq{sq}_skv{skv}_nh{n}_{n2}_h{h}_4d"
+                    yield name, config
+
+
+def attention_past_4d_test_cases():
+    """
+    Generate test cases for ONNX Attention op with 4D BNSH inputs in decoding phase.
+    """
+    batches = [1, 2]
+    seqs = [(1, 32), (1, 128)]
+    heads = [(8, 2), (8, 4)]
+    h_sizes = [128] if quick_build else [64, 128]
+
+    h_sizes_to_test = h_sizes[:1] if pipeline_mode else h_sizes
+
+    for h in h_sizes_to_test:
+        for b in batches[:1] if pipeline_mode else batches:
+            for s, s2 in seqs[:1] if pipeline_mode else seqs:
+                for n, n2 in heads:
+                    config = AttentionConfig(
+                        batch_size=b,
+                        q_sequence_length=s,
+                        kv_sequence_length=s,
+                        past_kv_sequence_length=s2,
+                        q_num_heads=n,
+                        kv_num_heads=n2,
+                        head_size=h,
+                        is_causal=1,
+                        use_4d=True,
+                    )
+                    name = f"b{b}_s{s}_past{s2}_nh{n}_{n2}_h{h}_4d"
+                    yield name, config
 
 
 # #################################################################################################
@@ -1644,6 +1769,78 @@ class TestONNXAttentionPaddingMaskMemoryEfficient(unittest.TestCase):
             ort_type=TensorProto.FLOAT16,
             rtol=rtol["fp16"],
             atol=atol["fp16"],
+        )
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestONNXAttentionFlashGQA4D(unittest.TestCase):
+    """Test ONNX Attention op (opset 23) GQA path with Flash Attention and 4D BNSH inputs."""
+
+    @parameterized.expand(attention_prompt_4d_test_cases())
+    def test_attention_prompt_flash_4d(self, name, config):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_attention_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(attention_past_4d_test_cases())
+    def test_attention_past_flash_4d(self, name, config):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_attention_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestONNXAttentionFlashGQA4DBF16(unittest.TestCase):
+    """Test ONNX Attention op (opset 23) GQA path with Flash Attention, 4D BNSH inputs, BFloat16."""
+
+    @parameterized.expand(attention_prompt_4d_test_cases())
+    def test_attention_prompt_flash_4d_bf16(self, name, config):
+        if not torch.cuda.is_bf16_supported():
+            self.skipTest("BFloat16 not supported on this device")
+        config.kv_cache_type = "bfloat16"
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_attention_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.bfloat16,
+            ort_type=TensorProto.BFLOAT16,
+            causal=True,
+            rtol=rtol["bf16"],
+            atol=atol["bf16"],
+        )
+
+    @parameterized.expand(attention_past_4d_test_cases())
+    def test_attention_past_flash_4d_bf16(self, name, config):
+        if not torch.cuda.is_bf16_supported():
+            self.skipTest("BFloat16 not supported on this device")
+        config.kv_cache_type = "bfloat16"
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_attention_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.bfloat16,
+            ort_type=TensorProto.BFLOAT16,
+            causal=True,
+            rtol=rtol["bf16"],
+            atol=atol["bf16"],
         )
 
 

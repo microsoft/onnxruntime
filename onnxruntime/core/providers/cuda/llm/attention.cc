@@ -130,12 +130,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                              "GQA in Attention op (CUDA) does not support float32. "
                              "Please use float16 or bfloat16.");
     }
-    // GQA only supports 3D inputs (B, S, D) in BSNH format, not 4D inputs (B, num_heads, S, head_size) in BNSH format
-    if (!parameters.transpose_output) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "4D QKV inputs (BNSH format) are not supported yet in GQA path of Attention op (CUDA). "
-                             "Please use 3D inputs (B, S, hidden_size) instead.");
-    }
+
     // For now, GQA doesn't support qk_matmul_output_mode other than kNone
     if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -213,6 +208,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<void> present_key_scratch;
     IAllocatorUniquePtr<void> present_value_scratch;
 
+    // Output scratch buffer for BNSH transpose
+    // GQA kernel always outputs BSNH, but 4D BNSH output needs BNSH layout
+    IAllocatorUniquePtr<void> output_scratch_buffer;
+
     // Set input pointers
     gqa_data.query = reinterpret_cast<const CudaT*>(Q->Data<T>());
     gqa_data.key = reinterpret_cast<const CudaT*>(K->Data<T>());
@@ -221,7 +220,17 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
 
     // Set output pointers
-    gqa_data.output = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+    // For BNSH output format, GQA kernel writes BSNH to a scratch buffer, then we transpose to BNSH
+    if (contribop_parameters.qkv_format == onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH) {
+      size_t output_elements = static_cast<size_t>(parameters.batch_size) *
+                               static_cast<size_t>(parameters.q_sequence_length) *
+                               static_cast<size_t>(parameters.q_num_heads) *
+                               static_cast<size_t>(parameters.v_head_size);
+      output_scratch_buffer = GetScratchBuffer<void>(output_elements * sizeof(CudaT), context->GetComputeStream());
+      gqa_data.output = reinterpret_cast<CudaT*>(output_scratch_buffer.get());
+    } else {
+      gqa_data.output = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+    }
 
     // GQA kernel requires present_key/present_value buffers as working storage for KV cache
     // Allocate scratch buffers if outputs are not provided
@@ -258,9 +267,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                    gqa_parameters.kv_num_heads);
 
     gqa_data.use_flash_attention = use_flash_attention;
+    // FlashDecoding doesn't support BNSH input format (passes Q directly to flash without transpose)
+    const bool is_bnsh_input = (contribop_parameters.qkv_format == onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH);
     gqa_data.use_flash_attention_fast_decode = use_flash_attention &&
                                                !gqa_parameters.is_first_prompt &&
-                                               gqa_parameters.past_present_share_buffer;
+                                               gqa_parameters.past_present_share_buffer &&
+                                               !is_bnsh_input;
 
     if (use_flash_attention) {
       // Allocate Flash specific buffers (Softmax LSE, Accum)
@@ -481,8 +493,30 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // Call GQA kernel (with flash or memory efficient attention)
     cublasHandle_t cublas = GetCublasHandle(context);
 
-    return onnxruntime::contrib::cuda::QkvToContext<CudaT, CudaT>(
-        device_prop, cublas, context->GetComputeStream(), gqa_parameters, gqa_data);
+    ORT_RETURN_IF_ERROR((onnxruntime::contrib::cuda::QkvToContext<CudaT, CudaT>(
+        device_prop, cublas, context->GetComputeStream(), gqa_parameters, gqa_data)));
+
+    // For BNSH output, transpose from BSNH scratch buffer to BNSH output tensor
+    if (is_bnsh_input) {
+      auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+      if constexpr (std::is_same_v<CudaT, half>) {
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+            parameters.batch_size, parameters.q_sequence_length,
+            parameters.q_num_heads, parameters.v_head_size,
+            reinterpret_cast<const half*>(output_scratch_buffer.get()),
+            reinterpret_cast<half*>(Y->MutableData<T>()),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+      } else {
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+            parameters.batch_size, parameters.q_sequence_length,
+            parameters.q_num_heads, parameters.v_head_size,
+            reinterpret_cast<const BFloat16*>(output_scratch_buffer.get()),
+            reinterpret_cast<BFloat16*>(Y->MutableData<T>()),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+      }
+    }
+
+    return Status::OK();
   } else {  // MHA path (kv_num_heads == q_num_heads)
     typedef typename ToCudaType<T>::MappedType CudaT;
     contribop_parameters.batch_size = parameters.batch_size;

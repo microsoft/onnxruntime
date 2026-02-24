@@ -94,7 +94,10 @@ Status PrepareQKV(
 
   T* q_out = reinterpret_cast<T*>(data.qkv_buffer);
 
-  if (!parameters.is_packed_qkv && !parameters.do_rotary) {
+  // For BNSH input format, we must always write Q to a BSNH buffer since
+  // flash attention expects Q in BSNH format.
+  const bool is_input_bnsh = (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
+  if (!parameters.is_packed_qkv && !parameters.do_rotary && !is_input_bnsh) {
     q_out = nullptr;
   }
 
@@ -134,7 +137,7 @@ Status PrepareQKV(
       reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       is_cache_bnsh, parameters.k_quant_type,
-      stream, max_threads_per_block)));
+      stream, max_threads_per_block, is_input_bnsh)));
 
   if (q_out != nullptr) {
     q = reinterpret_cast<const T*>(q_out);

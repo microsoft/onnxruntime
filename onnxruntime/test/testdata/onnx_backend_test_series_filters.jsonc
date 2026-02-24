@@ -66,8 +66,7 @@
         "^test_attention_4d_attn_mask_4d_causal_cuda",
         "^test_attention_4d_causal_cuda",
         "^test_attention_4d_diff_heads_sizes_causal_cuda",
-        // GQA Attention-cuda does not support fp16 and 4d QKV
-        "^test_attention_4d_gqa_with_past_and_present_fp16_cuda",  // 4d QKV
+        // GQA Attention-cuda does not support fp32
         "^test_attention_4d_gqa_with_past_and_present_cuda",  // fp32
         "^test_attention_4d_gqa_softcap_cuda",  // fp32
         "^test_attention_4d_gqa_scaled_cuda",  // fp32

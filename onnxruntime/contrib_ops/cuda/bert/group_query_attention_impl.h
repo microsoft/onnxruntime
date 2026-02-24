@@ -100,7 +100,9 @@ struct GQABufferRequirements {
         } else {
           req.qkv_buffer_bytes = elem_size * (q_elements + k_elements + v_elements);
         }
-      } else if (params.do_rotary || params.is_packed_qkv) {
+      } else if (params.do_rotary || params.is_packed_qkv ||
+                 params.qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+        // For BNSH inputs, Q must be transposed to BSNH for flash attention
         req.qkv_buffer_bytes = elem_size * q_elements;
       }
 
@@ -115,6 +117,9 @@ struct GQABufferRequirements {
       } else if (params.do_rotary) {
         // Q rotation + K rotation
         req.qkv_buffer_bytes = elem_size * (q_elements + k_elements);
+      } else if (params.qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+        // For BNSH inputs, Q must be transposed to BSNH
+        req.qkv_buffer_bytes = elem_size * q_elements;
       }
     }
 
