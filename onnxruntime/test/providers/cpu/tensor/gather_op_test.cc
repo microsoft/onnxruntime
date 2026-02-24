@@ -341,7 +341,15 @@ TEST(GatherOpTest, Gather_axis1_indices2d_string) {
   test.Run();
 }
 
-TEST(GatherOpTest, Gather_OOB_write_read) {
+TEST(GatherOpTest, Gather_overflow_check) {
+  // The test uses dimensions (65537, 2) and indices of length 65537, which produce an output
+  // shape of (65537, 65537).
+  // 
+  // 65537 x 65537 = 4,295,098,369 which is greater than the maximum value of a 32-bit integer (2,147,483,647).
+  // 
+  // This test is to verify CPU implementation of the Gather operator doesn't overflow when calculating
+  // the output shape and generating the output tensor.
+
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 1LL);
 
