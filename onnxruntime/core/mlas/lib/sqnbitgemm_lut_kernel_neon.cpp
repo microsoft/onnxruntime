@@ -418,7 +418,10 @@ tbl_g4_int8_float_update_impl_neon(
     for (int i = 0; i < m / 2; i += 16) {
         // For FP32, we need 8 vectors of 4 floats each to cover 32 outputs
         // (compared to FP16's 4 vectors of 8 floats)
-        float32x4_t vec_c0, vec_c1, vec_c2, vec_c3, vec_c4, vec_c5, vec_c6, vec_c7;
+        float32x4_t vec_c0 = vdupq_n_f32(0.0f), vec_c1 = vdupq_n_f32(0.0f),
+                    vec_c2 = vdupq_n_f32(0.0f), vec_c3 = vdupq_n_f32(0.0f),
+                    vec_c4 = vdupq_n_f32(0.0f), vec_c5 = vdupq_n_f32(0.0f),
+                    vec_c6 = vdupq_n_f32(0.0f), vec_c7 = vdupq_n_f32(0.0f);
 
         float partial_sum = 0.0f;
 
