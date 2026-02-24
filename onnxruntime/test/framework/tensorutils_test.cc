@@ -564,6 +564,9 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "data.bin"));
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "./data.bin"));
 
+  // A ".." that is not a path component (part of the filename) is ok
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "data..bin"));
+
   // A path that would escape the current working directory is invalid.
   ASSERT_FALSE(utils::ValidateExternalDataPath("", "../data.bin").IsOK());
 

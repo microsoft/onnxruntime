@@ -380,9 +380,11 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
     // access to arbitrary files outside of the current working directory. Based on ONNX checker validation.
     auto norm_location = location.lexically_normal();
 
-    if (norm_location.native().find(ORT_TSTR(".."), 0) != std::basic_string<ORTCHAR_T>::npos) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data path: ", location,
-                             " (model loaded from bytes) escapes working directory");
+    for (const auto& path_component : norm_location) {
+      if (path_component == ORT_TSTR("..")) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data path: ", location,
+                               " (model loaded from bytes) escapes working directory");
+      }
     }
   }
   return Status::OK();
