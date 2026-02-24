@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cpu/llm/attention.h"
 #include "core/providers/cpu/llm/attention_helper.h"
 #include "core/providers/cuda/llm/attention.h"
 #include "core/providers/cuda/llm/attention_mask_impl.h"
@@ -539,7 +540,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       contribop_parameters.broadcast_attn_bias_dim_1 = false;
     }
 
-    contribop_parameters.mask_filter_value = -10000.0f;
+    contribop_parameters.mask_filter_value = mask_filter_value<float>();
     contribop_parameters.scale = parameters.scale;
     contribop_parameters.use_tf32 = UseTF32();
     // TODO(titaiwang, xadupre): qk_matmul_output_mode only supports kNone and kQK for now
@@ -581,12 +582,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (nullptr != attn_mask) {
       if (attn_mask->IsDataType<bool>()) {
         // Convert boolean mask to additive attention bias: true -> 0.0, false -> mask_filter_value
+        // Use native CUDA types for the kernel (OrtToCudaType maps BFloat16 -> __nv_bfloat16)
+        using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
         int64_t num_elements = attn_mask->Shape().Size();
-        converted_mask_buffer = GetScratchBuffer<void>(num_elements * sizeof(CudaT), context->GetComputeStream());
+        converted_mask_buffer = GetScratchBuffer<void>(num_elements * sizeof(NativeCudaT), context->GetComputeStream());
         auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
-        ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<CudaT>(
+        ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
             attn_mask->Data<bool>(),
-            reinterpret_cast<CudaT*>(converted_mask_buffer.get()),
+            reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
             num_elements,
             contribop_parameters.mask_filter_value,
             cuda_stream,
