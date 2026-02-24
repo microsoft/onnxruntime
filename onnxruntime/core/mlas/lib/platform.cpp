@@ -422,7 +422,7 @@ Return Value:
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
-                this->LutGenKernel = &MlasLutGenKernelAvx2;
+                this->LutGemmDispatch = &MlasLutGemmDispatchAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -664,6 +664,9 @@ Return Value:
 
     this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);
+
+    // Enable LUT-based GEMM for 2-bit quantization on ARM64
+    this->LutGemmDispatch = &MlasLutGemmDispatchNeon;
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
