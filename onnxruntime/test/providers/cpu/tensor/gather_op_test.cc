@@ -342,11 +342,17 @@ TEST(GatherOpTest, Gather_axis1_indices2d_string) {
 }
 
 TEST(GatherOpTest, Gather_overflow_check) {
+// Skip on 32-bit platforms where size_t overflow would truncate the large expected
+// output shape and where allocating the full reference tensor is infeasible.
+#if SIZE_MAX <= UINT32_MAX
+  GTEST_SKIP() << "Gather_overflow_check skipped on 32-bit platforms.";
+#endif
+
   // The test uses dimensions (65537, 2) and indices of length 65537, which produce an output
   // shape of (65537, 65537).
-  // 
+  //
   // 65537 x 65537 = 4,295,098,369 which is greater than the maximum value of a 32-bit integer (2,147,483,647).
-  // 
+  //
   // This test is to verify CPU implementation of the Gather operator doesn't overflow when calculating
   // the output shape and generating the output tensor.
 
