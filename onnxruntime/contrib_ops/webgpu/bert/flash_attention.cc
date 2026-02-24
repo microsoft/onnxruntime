@@ -229,9 +229,6 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
   if (has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
-  if (has_head_sink_) {
-    shader.AddInput("head_sink", ShaderUsage::UseUniform);
-  }
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("metadata", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
@@ -239,7 +236,6 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
   const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_decode_qkt.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
-                             WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
@@ -253,10 +249,9 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
                                                 : parameters.scale_;
 
   const bool has_attention_bias = attention_bias != nullptr;
-  const bool has_head_sink = head_sink != nullptr;
   const int components = 4;
 
-  FlashAttentionDecodeQKTProgram program{"FlashAttentionDecodeQKT", has_attention_bias, tile_size, use_indirect_dispatch, has_head_sink};
+  FlashAttentionDecodeQKTProgram program{"FlashAttentionDecodeQKT", has_attention_bias, tile_size, use_indirect_dispatch};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (use_indirect_dispatch) {
@@ -264,9 +259,6 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
   }
   if (has_attention_bias) {
     program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
-  }
-  if (has_head_sink) {
-    program.AddInput({head_sink, ProgramTensorMetadataDependency::Type});
   }
   program.AddOutputs({{output, ProgramTensorMetadataDependency::Rank},
                       {metadata, ProgramTensorMetadataDependency::Rank, 2}});
@@ -288,7 +280,7 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
     program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_total_seq_length_tile);
   }
   program.SetWorkgroupSize(64)
-      .CacheHint(tile_size, has_attention_bias, use_indirect_dispatch, has_head_sink)
+      .CacheHint(tile_size, has_attention_bias, use_indirect_dispatch)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<float>(alpha)},
