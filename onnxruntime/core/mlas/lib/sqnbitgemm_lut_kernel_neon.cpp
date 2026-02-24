@@ -127,7 +127,6 @@ struct SignedHalvingAdder<2> {
 // Used when precision is more important than speed
 template <int N>
 struct SignedWideningAdder {
-    static_assert(N > 0, "N parameter exists for API compatibility with SignedHalvingAdder");
     int16x8_t lhs_low = vdupq_n_s16(0);
     int16x8_t lhs_high = vdupq_n_s16(0);
 
@@ -302,7 +301,8 @@ LutGemmGenerateLUT_CompFp32(
     size_t M,
     size_t K,
     size_t N,
-    size_t act_group_size
+    size_t act_group_size,
+    size_t lut_stride
 )
 {
     (void)M;  // silence unused parameter warning
@@ -323,7 +323,7 @@ LutGemmGenerateLUT_CompFp32(
     for (int32_t k_outer_1 = 0; k_outer_1 < kk_outer_max; ++k_outer_1) {
         lut_ctor_g4_int8_impl_neon(
             static_cast<int32_t>(act_group_size),
-            &qlut[k_outer_1 * act_group_size * 4],
+            &qlut[k_outer_1 * lut_stride],
             &b[k_outer_1 * act_group_size],
             &lut_scales[k_outer_1],
             &lut_biases[k_outer_1]
@@ -353,11 +353,36 @@ tbl_g4_int8_float_gather_bit2_impl_neon(int32_t m, float* C_global, float* CBits
         }
     }
 
+    // Handle tail cases where m is not a multiple of 32.
+    // This ensures C_global is fully initialized for all m elements.
+    int32_t m_tail = m % 32;
+    if (m_tail > 0) {
+        int32_t m_c_outer = m_c_outer_max;
+        int32_t cse_var_2 = (m_c_outer * 32 * bits);
+        int32_t cse_var_1 = (m_c_outer * 32);
+        for (int32_t m_c_inner = 0; m_c_inner < m_tail; ++m_c_inner) {
+            int32_t bit_offset_0 = (m_c_inner / 8) * 8 * bits + (m_c_inner % 8);
+            int32_t bit_offset_1 = (m_c_inner / 8) * 8 * bits + (m_c_inner % 8) + 8;
+            C_global[cse_var_1 + m_c_inner] = (CBits[cse_var_2 + bit_offset_0] * 0.5f) + CBits[cse_var_2 + bit_offset_1];
+        }
+    }
+
     // Copy to output
     for (int32_t m_inner_outer = 0; m_inner_outer < m_c_outer_max; ++m_inner_outer) {
         PRAGMA_UNROLL
         for (int32_t m_inner = 0; m_inner < 32; ++m_inner) {
             int offset = m_inner_outer * 32 + m_inner;
+            C[offset] = C_global[offset];
+        }
+    }
+
+    // Transfer the remaining tail results from C_global to the final output matrix C.
+    // This is necessary when m is not a multiple of 32, ensuring all output features
+    // are correctly written to the destination buffer.
+    if (m_tail > 0) {
+        int offset_base = m_c_outer_max * 32;
+        for (int32_t m_inner = 0; m_inner < m_tail; ++m_inner) {
+            int offset = offset_base + m_inner;
             C[offset] = C_global[offset];
         }
     }
@@ -433,8 +458,8 @@ tbl_g4_int8_float_update_impl_neon(
             float32x4_t vec_v_top_high_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(sum_top_high)));
             float32x4_t vec_v_top_high_hi = vcvtq_f32_s32(vmovl_high_s16(sum_top_high));
 
-            float lut_s = lut_scales[kk / ActK];
-            float lut_b = lut_biases[kk / ActK];
+            float lut_s = lut_scales[kk / (ActK * 4)];
+            float lut_b = lut_biases[kk / (ActK * 4)];
 
             if (ZeroPoint) {
                 partial_sum += lut_b;
@@ -641,17 +666,20 @@ LutGemmCompute_CompFp32(
     int K,
     int M,
     int N,
+    int TotalN,
     size_t BlkLen,
     bool HasZeroPoint
 )
 {
-    // Validate batch size
-    if (N != 1) {
-        MLAS_THROW_EX(std::runtime_error, "N > 1 is not supported yet");
+    // Validate batch size (M)
+    // For now, TMAC NEON kernel processes one batch row at a time.
+    if (M != 1) {
+        MLAS_THROW_EX(std::runtime_error, "M > 1 is not supported yet in TMAC NEON kernel");
     }
 
-    // Get kernel config
-    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(M, K, 2, BlkLen, HasZeroPoint);
+    // Get kernel config using the total output features (TotalN)
+    // This matches the parameters used during weight packing.
+    const MlasTMACKernelParams& tmac_params = MlasGetLutGemmKernelParams(TotalN, K, 2, BlkLen, HasZeroPoint);
 
     // Configuration
     bool has_zero_point = tmac_params.has_zero_point;
@@ -669,7 +697,11 @@ LutGemmCompute_CompFp32(
     const int32_t actk = static_cast<int32_t>(tmac_params.actk);
 
     const int32_t bm = static_cast<int32_t>(tmac_params.bm);
-    int32_t m = bm / bits;
+    // m is the number of output features this kernel tile produces.
+    // We clamp m by N (the number of features in the current chunk) to ensure
+    // we don't read or write past the tile boundary during the gather phase.
+    int32_t m_full = bm / bits;
+    int32_t m = std::min(m_full, N);
 
     // Validate configuration
     assert(bm % bits == 0);
@@ -680,7 +712,9 @@ LutGemmCompute_CompFp32(
     std::unique_ptr<float[]> CBits(new float[bm]);
     std::unique_ptr<float[]> C_global(new float[m]);
 
+    // Explicitly zero-initialize accumulation buffers to ensure determinism.
     std::memset(CBits.get(), 0, bm * sizeof(float));
+    std::memset(C_global.get(), 0, m * sizeof(float));
 
     // Calculate loop parameters
     const int32_t k_outer_max = K / (kfactor * g);
