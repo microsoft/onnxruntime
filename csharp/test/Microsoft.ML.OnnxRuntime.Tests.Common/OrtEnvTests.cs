@@ -489,4 +489,47 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
     }
+
+    [Collection("Ort Inference Tests")]
+    public class OrtEnvDllImportResolverTest
+    {
+        [Fact(DisplayName = "TestDllImportResolverDoesNotThrow")]
+        public void TestDllImportResolverDoesNotThrow()
+        {
+            // The DllImportResolver is a private static method in NativeMethods.
+            var nativeMethodsType = typeof(OrtEnv).Assembly.GetType("Microsoft.ML.OnnxRuntime.NativeMethods");
+            Assert.NotNull(nativeMethodsType);
+
+            // It might not be defined on all platforms (defined when !NETSTANDARD2_0 && !__ANDROID__ && !__IOS__).
+            var resolverMethod = nativeMethodsType.GetMethod("DllImportResolver", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+            if (resolverMethod != null)
+            {
+                try
+                {
+                    // Invoke with null assembly to force it into edge cases where assembly.Location would throw NullReferenceException.
+                    // It should catch the exception and return IntPtr.Zero gracefully rather than throwing.
+                    var result = resolverMethod.Invoke(null, new object[] { "onnxruntime", null, null });
+
+                    // If it reaches here without throwing TargetInvocationException, the try-catch in DllImportResolver works.
+                    Assert.True(result is IntPtr);
+                }
+                catch (System.Reflection.TargetInvocationException ex)
+                {
+                    // If NativeMethods..cctor() threw because the native library is missing,
+                    // we will get a TypeInitializationException wrapping a DllNotFoundException (or DllImportException).
+                    // This is acceptable locally. What we want to avoid is NullReferenceException from DllImportResolver.
+                    if (ex.InnerException is TypeInitializationException typeInitEx)
+                    {
+                        Assert.IsNotType<NullReferenceException>(typeInitEx.InnerException);
+                    }
+                    else
+                    {
+                        Assert.IsNotType<NullReferenceException>(ex.InnerException);
+                        throw;
+                    }
+                }
+            }
+        }
+    }
 }
