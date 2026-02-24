@@ -26,7 +26,6 @@ available_providers_without_cann = [
     for provider in onnxrt.get_available_providers()
     if provider not in {"CANNExecutionProvider"}
 ]
-
 class TestInferenceSession(unittest.TestCase):
     def test_zip_map_string_float(self):
         sess = onnxrt.InferenceSession(

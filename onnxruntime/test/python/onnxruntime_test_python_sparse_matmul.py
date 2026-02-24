@@ -20,7 +20,6 @@ available_providers = [
     ) if ep == "CANNExecutionProvider" else ep
     for ep in onnxrt.get_available_providers()
 ]
-
 class TestSparseToDenseMatmul(unittest.TestCase):
     def test_run_sparse_output_ort_value_vector(self):
         """
