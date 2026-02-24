@@ -208,8 +208,16 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<void> present_key_scratch;
     IAllocatorUniquePtr<void> present_value_scratch;
 
-    // Output scratch buffer for BNSH transpose
-    // GQA kernel always outputs BSNH, but 4D BNSH output needs BNSH layout
+    // Output scratch buffer for BNSH transpose.
+    // The underlying flash attention kernels (mha_fwd, mha_fwd_kvcache) always produce output in
+    // BSNH layout [B, S, N, H] and have no option to write BNSH directly. When the caller requests
+    // BNSH output (4D input case), we cannot write directly to Y because Y's shape is [B, N, S, H].
+    // Instead, we allocate a temporary BSNH scratch buffer for the kernel to write into, then
+    // transpose to BNSH in a separate pass. This incurs:
+    //   - Extra memory: a full B*S*N*H copy of the output tensor.
+    //   - Extra kernel: a memory-bandwidth-bound Transpose_BSNH_to_BNSH pass over the output.
+    // For LLM decode (S=1) the overhead is negligible; for prefill (large S) it is minor compared
+    // to the O(B*N*S*S*H) attention computation itself.
     IAllocatorUniquePtr<void> output_scratch_buffer;
 
     // Set input pointers
@@ -220,8 +228,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     gqa_data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
 
     // Set output pointers
-    // For BNSH output format, GQA kernel writes BSNH to a scratch buffer, then we transpose to BNSH
     if (contribop_parameters.qkv_format == onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH) {
+      // BNSH output: flash attention writes BSNH into scratch, transposed to Y after QkvToContext.
       size_t output_elements = static_cast<size_t>(parameters.batch_size) *
                                static_cast<size_t>(parameters.q_sequence_length) *
                                static_cast<size_t>(parameters.q_num_heads) *
@@ -229,6 +237,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       output_scratch_buffer = GetScratchBuffer<void>(output_elements * sizeof(CudaT), context->GetComputeStream());
       gqa_data.output = reinterpret_cast<CudaT*>(output_scratch_buffer.get());
     } else {
+      // BSNH output: flash attention layout matches Y directly, no transpose needed.
       gqa_data.output = reinterpret_cast<CudaT*>(Y->MutableData<T>());
     }
 
@@ -259,6 +268,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<void> softmax_lse_accum_buffer;
     IAllocatorUniquePtr<void> out_accum_buffer;
 
+    const bool is_bnsh_input = (contribop_parameters.qkv_format == onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH);
+
     // Check Flash Attention support
 #if USE_FLASH_ATTENTION
     bool use_flash_attention = onnxruntime::flash::is_supported<T>(device_prop,
@@ -268,7 +279,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
     gqa_data.use_flash_attention = use_flash_attention;
     // FlashDecoding doesn't support BNSH input format (passes Q directly to flash without transpose)
-    const bool is_bnsh_input = (contribop_parameters.qkv_format == onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BNSH);
     gqa_data.use_flash_attention_fast_decode = use_flash_attention &&
                                                !gqa_parameters.is_first_prompt &&
                                                gqa_parameters.past_present_share_buffer &&
@@ -496,7 +506,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR((onnxruntime::contrib::cuda::QkvToContext<CudaT, CudaT>(
         device_prop, cublas, context->GetComputeStream(), gqa_parameters, gqa_data)));
 
-    // For BNSH output, transpose from BSNH scratch buffer to BNSH output tensor
+    // For BNSH output, transpose the BSNH scratch buffer into the BNSH output tensor Y.
+    // This is an extra O(B*S*N*H) memory-bandwidth-bound pass (see scratch buffer comment above).
     if (is_bnsh_input) {
       auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
       if constexpr (std::is_same_v<CudaT, half>) {
