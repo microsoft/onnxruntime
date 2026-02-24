@@ -341,6 +341,27 @@ TEST(GatherOpTest, Gather_axis1_indices2d_string) {
   test.Run();
 }
 
+TEST(GatherOpTest, Gather_OOB_write_read) {
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 1LL);
+
+  // Inputs
+  const std::vector<int64_t> data_dims{65537, 2};
+  const std::vector<int64_t> indices_dims{65537};
+  std::vector<uint8_t> data_values(static_cast<size_t>(data_dims[0] * data_dims[1]), 1);
+  std::vector<int64_t> indices_values(static_cast<size_t>(indices_dims[0]), 1);
+  std::vector<uint8_t> expected_output_values(static_cast<size_t>(65537) * static_cast<size_t>(65537), 1);
+
+  test.AddInput<uint8_t>("data", {65537, 2}, data_values);
+  test.AddInput<int64_t>("indices", {65537}, indices_values);
+  test.AddOutput<uint8_t>("output", {65537, 65537}, expected_output_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 1LL);
