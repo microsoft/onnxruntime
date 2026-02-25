@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <type_traits>
 #include <vector>
+#include <type_traits>
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) || defined(_M_ARM64)
 #include <arm_neon.h>
 #endif
 
@@ -175,7 +175,8 @@ struct BilinearSamplePlan2D {
   uint8_t mask = 0;
 };
 // PrecomputeBilinearSamplePlan2D, the loop runs across all H_out * W_out points, using the right nx/ny for each (oy, ox) and
-// storing that point’s four indices, four weights, and mask in plans[idx]
+// storing that point’s four indices, four weights, and mask in plans[idx]. This operation takes place only when bilinear interpolation
+// is used with zero padding and no align_corners set, and it helps to speed up the sampling by precomputing the plan for each output pixel.
 template <typename T>
 void PrecomputeBilinearSamplePlan2D(const T* grid_data,
                                     int64_t H_out,
@@ -234,6 +235,7 @@ void EvaluatePlanForChannel(const T* input_data,
                             int64_t W_in,
                             const BilinearSamplePlan2D<T>* plan_data,
                             int64_t point_count) {
+  ORT_ENFORCE(input_data != nullptr, "EvaluatePlanForChannel requires non-null input_data.");
   for (int64_t idx = 0; idx < point_count; ++idx) {
     const auto& plan = plan_data[idx];
     if (plan.mask == 0) {
@@ -241,7 +243,7 @@ void EvaluatePlanForChannel(const T* input_data,
       continue;
     }
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) || defined(_M_ARM64)
     if constexpr (std::is_same_v<T, float>) {
       if (plan.mask == kAllNeighborsMask) {
         const float* row1_ptr = input_data + plan.y1 * W_in + plan.x1;
@@ -393,77 +395,73 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
 
     concurrency::ThreadPool* tp = H_out * W_out > 64 ? context->GetOperatorThreadPool() : nullptr;
 
-    const auto run_generic_path_for_n = [&](int64_t n_idx) {
-      const T* grid_data = grid->Data<T>() + n_idx * (H_out * W_out) * 2;
-      concurrency::ThreadPool::TrySimpleParallelFor(
-          tp, onnxruntime::narrow<std::ptrdiff_t>(C),
-          [&](std::ptrdiff_t c) {
-            const T* X_data = input->Data<T>() + (n_idx * C + c) * (H_in * W_in);
-            T* Y_data = Y.MutableData<T>() + (n_idx * C + c) * (H_out * W_out);
-
-            for (int64_t oy = 0; oy < H_out; oy++) {
-              for (int64_t ox = 0; ox < W_out; ox++) {
-                const T* gridpoint = grid_data + (oy * W_out + ox) * 2;
-                T* Y_gridpoint = Y_data + oy * W_out + ox;
-                auto nx = gridpoint[0];  // normalized location
-                auto ny = gridpoint[1];
-                auto x = GsDenormalize<T>(nx, W_in, align_corners_);  // actual location
-                auto y = GsDenormalize<T>(ny, H_in, align_corners_);
-
-                if (mode_ == Nearest) {
-                  x = static_cast<T>(std::nearbyint(static_cast<T>(x)));
-                  y = static_cast<T>(std::nearbyint(static_cast<T>(y)));
-                  // x, y are integers in all padding modes
-                  *Y_gridpoint = PixelAtGrid(X_data, static_cast<int64_t>(y), static_cast<int64_t>(x), H_in, W_in, border);
-                } else if (mode_ == Linear) {
-                  int64_t x1 = static_cast<int64_t>(std::floor(x));
-                  int64_t y1 = static_cast<int64_t>(std::floor(y));
-                  int64_t x2 = x1 + 1;
-                  int64_t y2 = y1 + 1;
-
-                  T p11 = PixelAtGrid(X_data, y1, x1, H_in, W_in, border);
-                  T p12 = PixelAtGrid(X_data, y1, x2, H_in, W_in, border);
-                  T p21 = PixelAtGrid(X_data, y2, x1, H_in, W_in, border);
-                  T p22 = PixelAtGrid(X_data, y2, x2, H_in, W_in, border);
-
-                  T dx2 = static_cast<T>(x2) - x;
-                  T dx1 = x - static_cast<T>(x1);
-                  T dy2 = static_cast<T>(y2) - y;
-                  T dy1 = y - static_cast<T>(y1);
-                  *Y_gridpoint = dy2 * (dx2 * p11 + dx1 * p12) + dy1 * (dx2 * p21 + dx1 * p22);
-                } else if (mode_ == Cubic) {
-                  int64_t x0 = static_cast<int64_t>(std::floor(x)) - 1;  // top-left corner of the bbox
-                  int64_t y0 = static_cast<int64_t>(std::floor(y)) - 1;
-
-                  T p[4][4] = {};  // [H][W]
-                  for (int64_t h = 0; h < 4; h++) {
-                    for (int64_t w = 0; w < 4; w++) {
-                      p[h][w] = PixelAtGrid(X_data, h + y0, w + x0, H_in, W_in, border);
-                    }
-                  }
-                  T dx = static_cast<T>(x - x0 - 1);
-                  T dy = static_cast<T>(y - y0 - 1);
-                  *Y_gridpoint = GsBicubicInterpolate(p, dx, dy);
-                }
-              }
-            }
-          });
-    };
-
-    const bool can_use_fast_path = (mode_ == Linear && padding_mode_ == Zeros && !align_corners_);
-    if (can_use_fast_path) {
+    if (mode_ == Linear && padding_mode_ == Zeros && !align_corners_) {
       std::vector<BilinearSamplePlan2D<T>> sampling_plan;
       for (int64_t n = 0; n < N; n++) {
         // Choose fast path when all 4 neighbors are within the image and use zero for out-of-boundary neighbors.
         // This fast path can be 2-3x faster than the generic path with boundary check and supports Neon optimization.
-        // sampling_plan helps precomputing a separate plan entry per output pixel.
+        // sampling_plan helps precomputing a separate plan entry per output pixel when bilinear interpolation is used
+        // with zero padding and no align_corners set.
         TryRunBilinearZerosFastPath2D(*input, *grid, Y, n, C, H_in, W_in, H_out, W_out, tp, sampling_plan);
       }
     } else {
       for (int64_t n = 0; n < N; n++) {
-        run_generic_path_for_n(n);
+        const T* grid_data = grid->Data<T>() + n * (H_out * W_out) * 2;
+        concurrency::ThreadPool::TrySimpleParallelFor(
+            tp, onnxruntime::narrow<std::ptrdiff_t>(C),
+            [&](std::ptrdiff_t c) {
+              const T* X_data = input->Data<T>() + (n * C + c) * (H_in * W_in);
+              T* Y_data = Y.MutableData<T>() + (n * C + c) * (H_out * W_out);
+
+              for (int64_t oy = 0; oy < H_out; oy++) {
+                for (int64_t ox = 0; ox < W_out; ox++) {
+                  const T* gridpoint = grid_data + (oy * W_out + ox) * 2;
+                  T* Y_gridpoint = Y_data + oy * W_out + ox;
+                  auto nx = gridpoint[0];  // normalized location
+                  auto ny = gridpoint[1];
+                  auto x = GsDenormalize<T>(nx, W_in, align_corners_);  // actual location
+                  auto y = GsDenormalize<T>(ny, H_in, align_corners_);
+
+                  if (mode_ == Nearest) {
+                    x = static_cast<T>(std::nearbyint(static_cast<T>(x)));
+                    y = static_cast<T>(std::nearbyint(static_cast<T>(y)));
+                    // x, y are integers in all padding modes
+                    *Y_gridpoint = PixelAtGrid(X_data, static_cast<int64_t>(y), static_cast<int64_t>(x), H_in, W_in, border);
+                  } else if (mode_ == Linear) {
+                    int64_t x1 = static_cast<int64_t>(std::floor(x));
+                    int64_t y1 = static_cast<int64_t>(std::floor(y));
+                    int64_t x2 = x1 + 1;
+                    int64_t y2 = y1 + 1;
+
+                    T p11 = PixelAtGrid(X_data, y1, x1, H_in, W_in, border);
+                    T p12 = PixelAtGrid(X_data, y1, x2, H_in, W_in, border);
+                    T p21 = PixelAtGrid(X_data, y2, x1, H_in, W_in, border);
+                    T p22 = PixelAtGrid(X_data, y2, x2, H_in, W_in, border);
+
+                    T dx2 = static_cast<T>(x2) - x;
+                    T dx1 = x - static_cast<T>(x1);
+                    T dy2 = static_cast<T>(y2) - y;
+                    T dy1 = y - static_cast<T>(y1);
+                    *Y_gridpoint = dy2 * (dx2 * p11 + dx1 * p12) + dy1 * (dx2 * p21 + dx1 * p22);
+                  } else if (mode_ == Cubic) {
+                    int64_t x0 = static_cast<int64_t>(std::floor(x)) - 1;  // top-left corner of the bbox
+                    int64_t y0 = static_cast<int64_t>(std::floor(y)) - 1;
+
+                    T p[4][4] = {};  // [H][W]
+                    for (int64_t h = 0; h < 4; h++) {
+                      for (int64_t w = 0; w < 4; w++) {
+                        p[h][w] = PixelAtGrid(X_data, h + y0, w + x0, H_in, W_in, border);
+                      }
+                    }
+                    T dx = static_cast<T>(x - x0 - 1);
+                    T dy = static_cast<T>(y - y0 - 1);
+                    *Y_gridpoint = GsBicubicInterpolate(p, dx, dy);
+                  }
+                }
+              }
+            });
+        }
       }
-    }
   } else if (data_dims == 3) {
     // sample 3d;
     auto D_in = input_dims[2];
