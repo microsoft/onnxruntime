@@ -1,6 +1,6 @@
 ---
-title: Packaging Guidance
-description: Packaging Guidance
+title: Packaging
+description: Packaging
 grand_parent: Execution Providers
 parent: Plugin Execution Provider Libraries
 nav_order: 4
