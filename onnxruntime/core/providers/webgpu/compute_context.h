@@ -97,6 +97,13 @@ class ComputeContextBase {
   }
 
   //
+  // Get the multi rotary cache concatenation offset (0 = disabled).
+  //
+  inline uint32_t MultiRotaryCacheConcatOffset() const {
+    return ep_.MultiRotaryCacheConcatOffset();
+  }
+
+  //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {

@@ -1756,7 +1756,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # Install cpu only version of torch when cuda is not enabled in Linux.
                 extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
                 run_subprocess(
-                    [sys.executable, "-m", "pip", "install", "torch==2.8.0", "torchvision==0.23.0", *extra],
+                    [sys.executable, "-m", "pip", "install", "torch==2.10.0", "torchvision==0.25.0", *extra],
                     cwd=cwd,
                     dll_path=dll_path,
                     python_path=python_path,
@@ -1833,11 +1833,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
                     )
 
-                    # onnx package does not support python 3.14 yet so skip the transformers tests for python 3.14.
-                    # we can remove this check when onnx package supports python 3.14.
                     if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (
                         3,
-                        14,
+                        15,
                     ):
                         import google.protobuf  # noqa: PLC0415
                         import numpy  # noqa: PLC0415

@@ -55,6 +55,9 @@ parameters:
 - name: win_cudnn_home
   type: string
   default: ''
+- name: IsReleaseBuild
+  type: boolean
+  default: false
 
 stages:
 # Windows CUDA without TensorRT Packaging
@@ -179,6 +182,7 @@ stages:
         ScriptPath: '$(Build.SourcesDirectory)\onnxruntime\tools\nuget\validate_package.py'
         PlatformsSupported: 'win-x64'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
     - task: BatchScript@1
