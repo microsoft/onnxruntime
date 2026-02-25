@@ -63,6 +63,10 @@ REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16, BFloat16)
 REGISTER_KERNEL_TYPED(MLFloat16, int8_t)
 REGISTER_KERNEL_TYPED(BFloat16, int8_t)
+#ifdef USE_FP8_KV_CACHE
+REGISTER_KERNEL_TYPED(MLFloat16, Float8E4M3FN)
+REGISTER_KERNEL_TYPED(BFloat16, Float8E4M3FN)
+#endif
 #ifdef USE_INT4_KV_CACHE
 REGISTER_KERNEL_TYPED(MLFloat16, uint8_t)
 REGISTER_KERNEL_TYPED(BFloat16, uint8_t)
@@ -292,6 +296,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   parameters.past_present_share_buffer = (data.past_key == data.present_key);
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
+  constexpr bool is_int8 = std::is_same<U, int8_t>::value;
+  constexpr bool is_fp8 = std::is_same<U, Float8E4M3FN>::value;
 
   // Allocate XQA scratch if needed (only for Flash Decoding path)
   IAllocatorUniquePtr<void> xqa_scratch_buffer;
@@ -315,18 +321,30 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.local_window_size == -1) {
     int group_size = parameters.num_heads / parameters.kv_num_heads;
 
-    bool is_int8_quantized_supported = (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
+    bool is_int8_quantized_supported = is_int8 &&
+                                       (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                         v_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                         data.k_scale == data.v_scale &&  // XQA requires k_scale and v_scale to be the same. Here requires k_scale and v_scale are same tensor.
-                                        parameters.kv_cache_bit_width == 8 &&
                                         (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
                                         (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32));
+
+#ifdef USE_FP8_KV_CACHE
+    bool is_fp8_quantized_supported = is_fp8 &&
+                                      (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
+                                       v_quant_type_ == KVQuantizationType::PER_TENSOR &&
+                                       data.k_scale == data.v_scale &&
+                                       (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
+                                       (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32) &&
+                                       (device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));  // FP8 requires SM89+ (Ada Lovelace)
+#else
+    constexpr bool is_fp8_quantized_supported = false;
+#endif
 
     bool is_non_quantized_supported = !is_inputs_quantized &&
                                       (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
                                       (64 % group_size == 0);
 
-    data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported);
+    data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
 
     if (data.use_xqa) {
       size_t xqa_internal_bytes = onnxruntime::contrib::cuda::GetXQAScratchSize(
@@ -336,7 +354,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
           parameters.kv_num_heads,
           parameters.head_size,
           parameters.seqlen_present_kv_cache,
-          parameters.k_quant_type != KVQuantizationType::NONE ? XqaQuantType::kInt8 : XqaQuantType::kNone,
+          parameters.k_quant_type != KVQuantizationType::NONE ? (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8) : XqaQuantType::kNone,
           std::is_same<T, BFloat16>::value);
       assert(xqa_internal_bytes > 0);
       // Calculate additional scratch needed for manual RoPE/Append in ExtremeDecoding

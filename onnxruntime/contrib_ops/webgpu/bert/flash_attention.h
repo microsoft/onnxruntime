@@ -17,10 +17,11 @@ using namespace onnxruntime::webgpu;
 
 class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram> {
  public:
-  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram(bool interleaved, bool prepare_indirect_dispatch)
+  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram(bool interleaved, bool prepare_indirect_dispatch, uint32_t multi_rotary_cache_concat_offset)
       : Program{"SplitPackedQKVWithRotaryEmbeddingAndCopyKV"},
         interleaved_(interleaved),
-        prepare_indirect_dispatch_(prepare_indirect_dispatch) {}
+        prepare_indirect_dispatch_(prepare_indirect_dispatch),
+        multi_rotary_cache_concat_offset_(multi_rotary_cache_concat_offset) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -39,6 +40,7 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
  private:
   const bool interleaved_;
   const bool prepare_indirect_dispatch_;
+  const uint32_t multi_rotary_cache_concat_offset_;
 };
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {

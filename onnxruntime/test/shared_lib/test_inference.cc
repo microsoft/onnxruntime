@@ -4918,6 +4918,93 @@ TEST(CApiTest, ModelWithExternalDataOutsideModelDirectoryShouldFailToLoad) {
       << "Exception message should indicate external data or security issue. Got: " << exception_message;
 }
 
+TEST(CApiTest, InMemoryModel_ExternalDataOutsideWorkingDirectory_FailToLoad) {
+  // Attempt to create an ORT session with the malicious model (loaded from bytes).
+  // This should fail due to the use of an external file path that is not under current working directory.
+  // i.e. ../../../../etc/passwd
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_arbitrary_external_file.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::SessionOptions session_options;
+
+  // Load model contents into array
+  std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(model_file_stream.good());
+  model_file_stream.seekg(0, std::ios::end);
+  const auto file_contents_size = onnxruntime::narrow<size_t>(model_file_stream.tellg());
+  model_file_stream.seekg(0, std::ios::beg);
+  std::vector<char> file_contents(file_contents_size, 0);
+  model_file_stream.read(&file_contents[0], file_contents_size);
+  model_file_stream.close();
+
+  bool exception_thrown = false;
+  std::string exception_message;
+
+  try {
+    // This should throw an exception due to malicious external data
+    Ort::Session session(env, file_contents.data(), file_contents_size, session_options);
+  } catch (const Ort::Exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  } catch (const std::exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  }
+
+  // Verify that loading the model failed
+  EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious external data path";
+
+  // Verify that the exception message indicates security or external data issues
+  EXPECT_TRUE(exception_message.find("External data path") != std::string::npos &&
+              exception_message.find("escapes working directory") != std::string::npos)
+      << "Exception message should indicate external data or security issue. Got: " << exception_message;
+}
+
+TEST(CApiTest, InMemoryModel_SessionConfigExternalFileFolder_ExternalDataOutsideModelDirectory_FailToLoad) {
+  // Attempt to create an ORT session with the malicious model (loaded from bytes).
+  // A valid external file folder path is explicitly set via session options.
+  // However, this should still fail due to the use of an external file path that escapes the set directory.
+  // i.e. ../../../../etc/passwd
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_arbitrary_external_file.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "testdata");
+
+  // Load model contents into array
+  std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(model_file_stream.good());
+  model_file_stream.seekg(0, std::ios::end);
+  const auto file_contents_size = onnxruntime::narrow<size_t>(model_file_stream.tellg());
+  model_file_stream.seekg(0, std::ios::beg);
+  std::vector<char> file_contents(file_contents_size, 0);
+  model_file_stream.read(&file_contents[0], file_contents_size);
+  model_file_stream.close();
+
+  bool exception_thrown = false;
+  std::string exception_message;
+
+  try {
+    // This should throw an exception due to malicious external data
+    Ort::Session session(env, file_contents.data(), file_contents_size, session_options);
+  } catch (const Ort::Exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  } catch (const std::exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  }
+
+  // Verify that loading the model failed
+  EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious external data path";
+
+  // Verify that the exception message indicates security or external data issues
+  EXPECT_TRUE(exception_message.find("External data path") != std::string::npos &&
+              exception_message.find("escapes both model directory") != std::string::npos &&
+              exception_message.find("and real model directory") != std::string::npos)
+      << "Exception message should indicate external data or security issue. Got: " << exception_message;
+}
+
 #ifdef ORT_ENABLE_STREAM
 #if USE_CUDA
 

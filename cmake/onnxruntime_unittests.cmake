@@ -1221,6 +1221,13 @@ block()
     ${TEST_SRC_DIR}/common/tensor_op_test_utils.h
   )
 
+  if (onnxruntime_USE_DNNL)
+    list(APPEND supporting_test_srcs
+      ${TEST_SRC_DIR}/common/dnnl_op_test_utils.cc
+      ${TEST_SRC_DIR}/common/dnnl_op_test_utils.h
+    )
+  endif()
+
   list(APPEND onnxruntime_provider_test_srcs
     ${supporting_test_srcs}
     ${onnxruntime_unittest_main_src}

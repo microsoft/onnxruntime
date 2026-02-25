@@ -1,7 +1,7 @@
 #!/bin/bash
 set -ex
 #Every cuda container has this $CUDA_VERSION env var set.
-SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
+SHORT_CUDA_VERSION=$(echo "${CUDA_VERSION}" | sed 's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
 
 #TODO: add --update --build
 BUILD_ARGS=('--config' 'Release'
@@ -29,6 +29,7 @@ for arg in "$@"; do
       # Replace onnxruntime_BUILD_UNIT_TESTS=ON with OFF
       BUILD_ARGS=("${BUILD_ARGS[@]/onnxruntime_BUILD_UNIT_TESTS=ON/onnxruntime_BUILD_UNIT_TESTS=OFF}")
       BUILD_ARGS+=("--enable_cuda_minimal_build")
+      BUILD_ARGS+=("--disable_generation_ops")
       BUILD_ARGS+=("--skip_tests")
       ;;
   esac
@@ -37,7 +38,7 @@ done
 if [ -x "$(command -v ninja)" ]; then
     BUILD_ARGS+=('--cmake_generator' 'Ninja')
 fi
-    
+
 if [ -d /build ]; then
     BUILD_ARGS+=('--build_dir' '/build')
 else
@@ -53,7 +54,7 @@ if [ -f /opt/python/cp312-cp312/bin/python3 ]; then
 else
     python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
 fi
-if [ -x "$(command -v ccache)" ]; then                
-    ccache -sv 
+if [ -x "$(command -v ccache)" ]; then
+    ccache -sv
     ccache -z
 fi

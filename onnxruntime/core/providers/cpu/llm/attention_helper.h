@@ -15,6 +15,7 @@ inline Status ComputeOutputShapeForAttention(
     const Tensor* attn_mask,
     const Tensor* past_key,
     const Tensor* past_value,
+    const Tensor* nonpad_kv_seqlen,
     bool is_causal,
     float softcap,
     int softmax_precision,
@@ -101,6 +102,29 @@ inline Status ComputeOutputShapeForAttention(
                static_cast<int64_t>(parameters.q_num_heads * parameters.v_head_size)};
   }
   parameters.total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;
+
+  // Handle nonpad_kv_seqlen (Opset 24+)
+  if (nonpad_kv_seqlen != nullptr) {
+    ORT_ENFORCE(nonpad_kv_seqlen->Shape().NumDimensions() == 1,
+                "nonpad_kv_seqlen must be a 1D tensor");
+    ORT_ENFORCE(nonpad_kv_seqlen->Shape()[0] == parameters.batch_size,
+                "nonpad_kv_seqlen must have shape [batch_size], got ",
+                nonpad_kv_seqlen->Shape()[0], " vs batch_size=", parameters.batch_size);
+    ORT_ENFORCE(past_key == nullptr && past_value == nullptr,
+                "nonpad_kv_seqlen should not be used together with past_key and past_value inputs");
+    parameters.has_nonpad_kv_seqlen = true;
+    parameters.nonpad_kv_seqlen_data = nonpad_kv_seqlen->Data<int64_t>();
+    // Validate each value is in [0, total_sequence_length].
+    for (int i = 0; i < parameters.batch_size; ++i) {
+      ORT_ENFORCE(parameters.nonpad_kv_seqlen_data[i] >= 0 &&
+                      parameters.nonpad_kv_seqlen_data[i] <= parameters.total_sequence_length,
+                  "nonpad_kv_seqlen[", i, "] = ", parameters.nonpad_kv_seqlen_data[i],
+                  " is out of range [0, ", parameters.total_sequence_length, "]");
+    }
+  } else {
+    parameters.has_nonpad_kv_seqlen = false;
+    parameters.nonpad_kv_seqlen_data = nullptr;
+  }
 
   ORT_ENFORCE(parameters.q_num_heads % parameters.kv_num_heads == 0, "q_num_heads must be a multiple of kv_num_heads. This is required for grouped/multi-query and multi-headed attention.");
   ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.total_sequence_length,
