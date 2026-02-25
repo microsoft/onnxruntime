@@ -19,7 +19,6 @@ Abstract:
 
 #include "fp16_common.h"
 #include "../inc/mlas.h"
-#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 #include "erf_neon_fp16.h"
 
 void
@@ -31,8 +30,6 @@ MlasNeonGeluFP16Kernel(
     size_t count,
     MLAS_GELU_ALGORITHM algo
 );
-
-#endif
 
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
