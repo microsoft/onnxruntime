@@ -11,7 +11,7 @@ import unittest
 import onnx
 from bart_model_generator import create_bart_attention_sdpa
 from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
-from gpt2_model_generator import create_gpt2_attention
+from gpt2_model_generator import create_gpt2_attention, create_gpt2_attention_no_past
 from model_loader import get_test_data_path
 from parity_utilities import find_transformers_source
 
@@ -300,6 +300,41 @@ class TestFusion(unittest.TestCase):
                 # No mask → encoder attention → unidirectional=0
                 if unidirectional_attr is not None:
                     self.assertEqual(unidirectional_attr.i, 0)
+
+    def test_gpt2_attention_no_past_fusion(self):
+        hidden_size = 64
+        num_heads = 4
+        for add_cast in [True, False]:
+            for switch_add_inputs in [False, True]:
+                model = create_gpt2_attention_no_past(
+                    hidden_size=hidden_size,
+                    num_heads=num_heads,
+                    switch_add_inputs=switch_add_inputs,
+                    add_cast=add_cast,
+                )
+                dir = "."
+                model_path = os.path.join(dir, "gpt2_attention_no_past.onnx")
+                onnx.save(model, model_path)
+
+                options = FusionOptions("gpt2")
+
+                optimized_model = optimize_model(
+                    model_path,
+                    model_type="gpt2",
+                    num_heads=num_heads,
+                    hidden_size=hidden_size,
+                    optimization_options=options,
+                )
+
+                os.remove(model_path)
+
+                attention_nodes = [node for node in optimized_model.model.graph.node if node.op_type == "Attention"]
+                self.assertEqual(
+                    len(attention_nodes),
+                    1,
+                    f"Expected 1 Attention node, got {len(attention_nodes)} "
+                    f"(add_cast={add_cast}, switch_add_inputs={switch_add_inputs})",
+                )
 
     def test_megatron_gpt2_attention_fusion(self):
         for enable_skip_layer_norm_fusion in [False, True]:
