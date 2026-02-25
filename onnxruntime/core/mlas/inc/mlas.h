@@ -356,7 +356,7 @@ MlasGemm(
  * @param M                           - Supplies the number of rows of matrix A and matrix C.
  * @param N                           - Supplies the number of columns of matrix B and matrix C.
  * @param K                           - Supplies the number of columns of matrix A and the number
-                                      of rows of matrix B.
+                                        of rows of matrix B.
  * @param alpha                       - Supplies the scalar alpha multiplier (see SGEMM definition).
  * @param A                           - Supplies the address of matrix A.
  * @param lda                         - Supplies the first dimension of matrix A.
