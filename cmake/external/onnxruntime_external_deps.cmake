@@ -752,6 +752,16 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch &&
 
+          # The dawn_dxc_output_dir.patch contains the following changes:
+          #
+          # - (private) Fix DXC output directory for RelWithDebInfo and MinSizeRel configs
+          #   Dawn only overrides the DXC output directory for Debug and Release configs. This causes
+          #   build failures when using multi-config generators (like Visual Studio) with RelWithDebInfo
+          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>,
+          #   and the copy_dxil_dll target copies dxil.dll to a different location.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
+
           # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
           # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.
           ${CMAKE_COMMAND} -E rm -rf <SOURCE_DIR>/test)
