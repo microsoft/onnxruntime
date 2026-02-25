@@ -10,39 +10,7 @@ cmake_policy(SET CMP0104 OLD)
 # Project
 project(onnxruntime C CXX ASM)
 
-# Disable fast-math for Intel oneAPI compiler
-if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
-  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
-    # Using icx-cl compiler driver with MSVC-like arguments
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fp:precise")
-  else()
-    # Using icpx compiler driver
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math")
-  endif()
-endif()
-
-include(CheckCXXCompilerFlag)
-include(CheckLanguage)
 include(CMakeDependentOption)
-include(FetchContent)
-include(CheckFunctionExists)
-include(CheckSymbolExists)
-include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
-
-if (MSVC)
-  #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
-endif()
-
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-# NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-enable_testing()
-if (NOT CMAKE_BUILD_TYPE)
-  message(STATUS "Build type not set - using RelWithDebInfo")
-  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
-endif()
 
 # Options
 option(onnxruntime_USE_VCPKG "Build with the vcpkg package manager" OFF)
@@ -274,6 +242,39 @@ if (NOT CMAKE_CXX_STANDARD)
   else()
     set(CMAKE_CXX_STANDARD 20)
   endif()
+endif()
+
+# Disable fast-math for Intel oneAPI compiler
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
+    # Using icx-cl compiler driver with MSVC-like arguments
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fp:precise")
+  else()
+    # Using icpx compiler driver
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math")
+  endif()
+endif()
+
+include(CheckCXXCompilerFlag)
+include(CheckLanguage)
+include(FetchContent)
+include(CheckFunctionExists)
+include(CheckSymbolExists)
+include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
+
+if (MSVC)
+  #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+endif()
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+# NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+enable_testing()
+if (NOT CMAKE_BUILD_TYPE)
+  message(STATUS "Build type not set - using RelWithDebInfo")
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
