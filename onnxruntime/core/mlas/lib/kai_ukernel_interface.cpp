@@ -1,189 +1,291 @@
 //
-// SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2025-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 //
 // SPDX-License-Identifier: MIT
 //
 
-#include "kai_ukernel_interface.h"
+
 #include "mlasi.h"
+
 #include "kleidiai/mlasi_kleidiai.h"
 
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm.h"
+#include "kai_ukernel_interface.h"
 
+// NEON / NEON+dotprod / i8mm kernels
+//   GEMM/QGEMM
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm.h"
+//   GEMV
+#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p8x1biasf32_6x8x4_neon_mla.h"
+
+// SME kernels
+//   GEMM/QGEMM
+#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa.h"
+//   GEMV
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla.h"
+//   IMATMUL
+#include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.h"
+
+// SME2 kernels
+//   GEMM/QGEMM
+#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa.h"
+#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa.h"
+//   GEMV
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p16vlx1b_1x16vl_sme2_mla.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p8x1biasf32_6x8x4_neon_mla.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.h"
+//   IMATMUL
+#include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa.h"
 
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa.h"
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa.h"
 #if defined(ENABLE_QMX_KERNELS)
+// QMX kernels (optional)
+//   GEMM/QGEMM
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa.h"
+//   IMATMUL
+#include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa.h"
 #endif // ENABLE_QMX_KERNELS
 
-const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod =
-    {kai_get_m_step_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_n_step_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_mr_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_nr_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_kr_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_sr_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_dst_offset_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_get_dst_size_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod,
-      kai_run_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod};
+// -------------------------------------------------------------------------------------------------
+// KleidiAI ukernel wrapper macros
+//
+// These macros exist solely to reduce boilerplate when constructing the various `Kai*Kernel` info
+// structs in this file. The names are field-name sequence based as per the typedef interface.h files.
+// 
+// Pass the ukernel "stem" (the suffix shared by all exported functions), e.g.
+//   matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa
+//
+// Each macro derives the full symbol names like:
+//   kai_get_m_step_<stem>, ... , kai_run_<stem>
+//
+// IMPORTANT:
+// - Only use a macro if the target ukernel exports *exactly* the expected helper/core symbols.
+// - Some ukernel families use different interface shapes; those must use the matching macro (or be
+//   instantiated manually).
+// -------------------------------------------------------------------------------------------------
 
-const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod =
-    {kai_get_m_step_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_n_step_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_mr_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_nr_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_kr_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_sr_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_dst_offset_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_get_dst_size_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod,
-      kai_run_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod};
+// 11-slot `run_matmul` interface shape.
+//
+// Applies to KleidiAI ukernel interface headers/structs such as:
+// - kai/ukernels/matmul/matmul_clamp_f32_f32p_f32p/kai_matmul_clamp_f32_f32p_f32p_interface.h
+//     struct kai_matmul_clamp_f32_f32p_f32p_ukernel
+// - kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp_qsi8cxp_interface.h
+//     struct kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel
+// - kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp_qsi4c32p_interface.h
+//     struct kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel
+//
+// Field sequence (must match exactly):
+//   get_m_step, get_n_step, get_mr, get_nr, get_kr, get_sr,
+//   get_lhs_packed_offset, get_rhs_packed_offset, get_dst_offset, get_dst_size, run_matmul.
+#define KAI_WRAP_UKERNEL_RUN_MATMUL_11(STEM)                                                             \
+    {                                                                                                    \
+        "kai_run_" #STEM,                                                                                \
+        {kai_get_m_step_##STEM,                                                                          \
+         kai_get_n_step_##STEM,                                                                          \
+         kai_get_mr_##STEM,                                                                              \
+         kai_get_nr_##STEM,                                                                              \
+         kai_get_kr_##STEM,                                                                              \
+         kai_get_sr_##STEM,                                                                              \
+         kai_get_lhs_packed_offset_##STEM,                                                               \
+         kai_get_rhs_packed_offset_##STEM,                                                               \
+         kai_get_dst_offset_##STEM,                                                                      \
+         kai_get_dst_size_##STEM,                                                                        \
+         kai_run_##STEM}                                                                                 \
+    }
 
-const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod =
-    {kai_get_m_step_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_n_step_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_mr_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_nr_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_kr_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_sr_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_dst_offset_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_get_dst_size_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod,
-      kai_run_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod};
+// 7-slot packed `run_imatmul` interface shape.
+//
+// Applies to KleidiAI ukernel interface headers/structs such as:
+// - kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p_f32p_interface.h
+//     struct kai_imatmul_clamp_f32_f32p_f32p_ukernel
+//
+// Field sequence (must match exactly):
+//   get_m_step, get_n_step, get_lhs_packed_offset, get_rhs_packed_offset, get_dst_offset, get_dst_size, run_imatmul.
+#define KAI_WRAP_UKERNEL_RUN_IMATMUL_PACKED_7(STEM)                                                      \
+    {                                                                                                    \
+        "kai_run_" #STEM,                                                                                \
+        {kai_get_m_step_##STEM,                                                                          \
+         kai_get_n_step_##STEM,                                                                          \
+         kai_get_lhs_packed_offset_##STEM,                                                               \
+         kai_get_rhs_packed_offset_##STEM,                                                               \
+         kai_get_dst_offset_##STEM,                                                                      \
+         kai_get_dst_size_##STEM,                                                                        \
+         kai_run_##STEM}                                                                                 \
+    }
 
-const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm =
-    {kai_get_m_step_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_n_step_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_mr_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_nr_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_kr_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_sr_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_dst_offset_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_get_dst_size_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm,
-      kai_run_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm};
+// 10-slot `run_matmul` interface shape with un-packed LHS offset helper.
+//
+// Applies to KleidiAI ukernel interface headers/structs such as:
+// - kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p_interface.h
+//     struct kai_matmul_clamp_f32_f32_f32p_ukernel
+// - kai/ukernels/matmul/matmul_clamp_qai8_qai8_qsi8cxp/kai_matmul_clamp_qai8_qai8_qsi8cxp_interface.h
+//     struct kai_matmul_clamp_qai8_qai8p_qsi8cxp_ukernel
+//
+// Field sequence (must match exactly):
+//   get_m_step, get_n_step, get_nr, get_kr, get_sr, get_lhs_offset,
+//   get_rhs_packed_offset, get_dst_offset, get_dst_size, run_matmul.
+//
+// Note: This corresponds to the "GEMV-style" layout currently instantiated manually below.
+#define KAI_WRAP_UKERNEL_RUN_MATMUL_10_LHS_OFFSET(STEM)                                                   \
+    {                                                                                                     \
+        "kai_run_" #STEM,                                                                                 \
+        {kai_get_m_step_##STEM,                                                                           \
+         kai_get_n_step_##STEM,                                                                           \
+         kai_get_nr_##STEM,                                                                               \
+         kai_get_kr_##STEM,                                                                               \
+         kai_get_sr_##STEM,                                                                               \
+         kai_get_lhs_offset_##STEM,                                                                       \
+         kai_get_rhs_packed_offset_##STEM,                                                                \
+         kai_get_dst_offset_##STEM,                                                                       \
+         kai_get_dst_size_##STEM,                                                                         \
+         kai_run_##STEM}                                                                                  \
+    }
 
-const kai_matmul_clamp_f32_f32_f32p_ukernel sgemm_gemv_sme =
-    {kai_get_m_step_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_get_n_step_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_get_nr_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_get_kr_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_get_sr_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_get_lhs_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_get_rhs_packed_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_get_dst_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_get_dst_size_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
-    kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla};
+// 10-slot `run_matmul` interface shape with packed LHS offset helper (no MR field).
+//
+// Applies to KleidiAI ukernel interface headers/structs such as:
+// - kai/ukernels/matmul/matmul_clamp_f16_f16_f16p/kai_matmul_clamp_f16_f16_f16p_interface.h
+//     struct kai_matmul_clamp_f16_f16_f16p_ukernel
+//
+// Field sequence (must match exactly):
+//   get_m_step, get_n_step, get_nr, get_kr, get_sr, get_lhs_packed_offset,
+//   get_rhs_packed_offset, get_dst_offset, get_dst_size, run_matmul.
+#define KAI_WRAP_UKERNEL_RUN_MATMUL_10_LHS_PACKED_OFFSET(STEM)                                             \
+    {                                                                                                     \
+        "kai_run_" #STEM,                                                                                 \
+        {kai_get_m_step_##STEM,                                                                           \
+         kai_get_n_step_##STEM,                                                                           \
+         kai_get_nr_##STEM,                                                                               \
+         kai_get_kr_##STEM,                                                                               \
+         kai_get_sr_##STEM,                                                                               \
+         kai_get_lhs_packed_offset_##STEM,                                                                \
+         kai_get_rhs_packed_offset_##STEM,                                                                \
+         kai_get_dst_offset_##STEM,                                                                       \
+         kai_get_dst_size_##STEM,                                                                         \
+         kai_run_##STEM}                                                                                  \
+    }
 
-const kai_matmul_clamp_f32_f32_f32p_ukernel sgemm_gemv_sme2 =
-    {kai_get_m_step_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_get_n_step_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_get_nr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_get_kr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_get_sr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_get_lhs_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_get_rhs_packed_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_get_dst_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_get_dst_size_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
-    kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla};
+// 6-slot `run_imatmul` interface shape without LHS packed-offset helper.
+//
+// Applies to KleidiAI ukernel interface headers/structs such as:
+// - kai/ukernels/matmul/imatmul_clamp_f32_f32_f32p/kai_imatmul_clamp_f32_f32_f32p_interface.h
+//     struct kai_imatmul_clamp_f32_f32_f32p_ukernel
+//
+// Field sequence (must match exactly):
+//   get_m_step, get_n_step, get_rhs_packed_offset, get_dst_offset, get_dst_size, run_imatmul.
+#define KAI_WRAP_UKERNEL_RUN_IMATMUL_6_NO_LHS_PACKED_OFFSET(STEM)                                          \
+    {                                                                                                     \
+        "kai_run_" #STEM,                                                                                 \
+        {kai_get_m_step_##STEM,                                                                           \
+         kai_get_n_step_##STEM,                                                                           \
+         kai_get_rhs_packed_offset_##STEM,                                                                \
+         kai_get_dst_offset_##STEM,                                                                       \
+         kai_get_dst_size_##STEM,                                                                         \
+         kai_run_##STEM}                                                                                  \
+    }
 
-const kai_matmul_clamp_f32_f32p_f32p_ukernel sgemm_gemm_sme =
-    {kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_nr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_dst_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_get_dst_size_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa,
-    kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa};
+// 4-slot planar `run_dwconv` interface shape.
+//
+// Applies to KleidiAI ukernel interface headers/structs such as:
+// - kai/ukernels/dwconv/dwconv_f32_f32_f32p/kai_dwconv_clamp_f32_f32_f32p_interface.h
+//     struct kai_dwconv_clamp_f32_f32_f32p_planar_ukernel
+//
+// Field sequence (must match exactly):
+//   get_m_step, get_dst_offset, get_dst_size, run_dwconv.
+#define KAI_WRAP_UKERNEL_RUN_DWCONV_PLANAR_4(STEM)                                                         \
+    {                                                                                                     \
+        "kai_run_" #STEM,                                                                                 \
+        {kai_get_m_step_##STEM,                                                                           \
+         kai_get_dst_offset_##STEM,                                                                       \
+         kai_get_dst_size_##STEM,                                                                         \
+         kai_run_##STEM}                                                                                  \
+    }
 
-const kai_matmul_clamp_f32_f32p_f32p_ukernel sgemm_gemm_sme2 =
-    {kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_nr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_dst_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_get_dst_size_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa,
-    kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa};
 
-const kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel qgemm_gemm_sme =
-    {kai_get_m_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_mr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_nr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_sr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_dst_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_get_dst_size_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa,
-    kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa};
 
-const kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel qgemm_gemm_sme2 =
-    {kai_get_m_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_mr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_nr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_sr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_dst_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_get_dst_size_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa,
-    kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa};
+const KaiQnbitGemmKernel kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod);
+
+const KaiQnbitGemmKernel kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod);
+
+const KaiQnbitGemmKernel kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod);
+
+const KaiQnbitGemmKernel kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm);
+
+const KaiF32SgemmKernel sgemm_gemm_sme =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa);
+
+// IMATMUL kernels used by KleidiAI convolution. These are packed-imatmul (7-slot) interfaces.
+const KaiF32IMatmulKernel imatmul_conv_sme =
+    KAI_WRAP_UKERNEL_RUN_IMATMUL_PACKED_7(imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa);
+
+const KaiF32IMatmulKernel imatmul_conv_sme2 =
+    KAI_WRAP_UKERNEL_RUN_IMATMUL_PACKED_7(imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa);
 
 #if defined(ENABLE_QMX_KERNELS)
-const kai_matmul_clamp_f32_f32p_f32p_ukernel sgemm_gemm_qmx =
-    {kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_nr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_lhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_rhs_packed_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_dst_offset_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_get_dst_size_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa,
-    kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa};
-
-const kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel qgemm_gemm_qmx =
-    {kai_get_m_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_n_step_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_mr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_nr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_kr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_sr_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_lhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_rhs_packed_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_dst_offset_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_get_dst_size_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa,
-    kai_run_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa};
+const KaiF32IMatmulKernel imatmul_conv_qmx =
+    KAI_WRAP_UKERNEL_RUN_IMATMUL_PACKED_7(imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa);
 #endif // ENABLE_QMX_KERNELS
 
-const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& GetKleidiAIGemmUKernel() {
+const KaiF32SgemmKernel sgemm_gemm_sme2 =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa);
+
+const KaiDynamicQGemmKernel qgemm_gemm_sme =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme_mopa);
+    
+const KaiDynamicQGemmKernel qgemm_gemm_sme2 =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_sme2_mopa);
+
+
+#if defined(ENABLE_QMX_KERNELS)
+
+const KaiDynamicQGemmKernel qgemm_gemm_qmx =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa);
+
+const KaiF32SgemmKernel sgemm_gemm_qmx =
+    KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_qmx_mopa);
+#endif // ENABLE_QMX_KERNELS
+
+// Gemv kernels do not conform to the same ukernel interface layout
+// Manual instantiation of this as per below is required
+const KaiF32SgemvKernel sgemm_gemv_sme =
+    {
+        "kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla",
+        {kai_get_m_step_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_get_n_step_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_get_nr_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_get_kr_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_get_sr_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_get_lhs_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_get_rhs_packed_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_get_dst_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_get_dst_size_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla,
+        kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x8vl_sme_mla}
+    };
+
+const KaiF32SgemvKernel sgemm_gemv_sme2 =
+    {
+        "kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla",
+        {kai_get_m_step_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_get_n_step_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_get_nr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_get_kr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_get_sr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_get_lhs_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_get_rhs_packed_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_get_dst_offset_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_get_dst_size_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla,
+        kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla}
+    };
+
+
+
+const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm;
     } else {
@@ -191,7 +293,7 @@ const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& GetKleidiAIGemmUKernel() {
     }
 }
 
-const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& GetKleidiAIGemvUKernel() {
+const KaiQnbitGemmKernel& GetKleidiAIGemvUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
         return kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod;
     } else {
@@ -199,7 +301,7 @@ const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& GetKleidiAIGemvUKernel() {
     }
 }
 
-const kai_matmul_clamp_f32_f32p_f32p_ukernel& GetKleidiAISGemmUKernel() {
+const KaiF32SgemmKernel& GetKleidiAISGemmUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return sgemm_gemm_sme2;
     } else {
@@ -217,7 +319,7 @@ const kai_matmul_clamp_f32_f32p_f32p_ukernel& GetKleidiAISGemmUKernel() {
     }
 }
 
-const kai_matmul_clamp_f32_f32_f32p_ukernel& GetKleidiAISGemvUKernel() {
+const KaiF32SgemvKernel& GetKleidiAISGemvUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return sgemm_gemv_sme2;
     } else {
@@ -225,7 +327,25 @@ const kai_matmul_clamp_f32_f32_f32p_ukernel& GetKleidiAISGemvUKernel() {
     }
 }
 
-const kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel& GetKleidiAIQGemmUKernel() {
+const KaiF32IMatmulKernel& GetKleidiAIF32IMatmulUKernel() {
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+        return imatmul_conv_sme2;
+    } else {
+#if defined(ENABLE_QMX_KERNELS)
+        if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
+        {
+            KLEIDIAI_KERNEL_LOG("IMATMUL: Using QMX Kernel");
+            return imatmul_conv_qmx;
+        } else {
+            return imatmul_conv_sme;
+        }
+#else
+        return imatmul_conv_sme;
+#endif // ENABLE_QMX_KERNELS
+    }
+}
+
+const KaiDynamicQGemmKernel& GetKleidiAIQGemmUKernel() {
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
         return qgemm_gemm_sme2;
     } else {
