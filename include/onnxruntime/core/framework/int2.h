@@ -138,7 +138,10 @@ struct Int2x4Base {
 
     // Process complete groups of 4 elements
     for (; dst_i < full_quads; dst_i++) {
+      #pragma GCC diagnostic push
+      #pragma GCC diagnostic ignored "-Warray-bounds"
       dst[dst_i] = Int2x4Base<Signed>(src[src_i], src[src_i + 1], src[src_i + 2], src[src_i + 3]);
+      #pragma GCC diagnostic pop
       src_i += 4;
     }
 
