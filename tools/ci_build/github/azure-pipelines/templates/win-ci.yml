@@ -182,7 +182,7 @@ stages:
           name: commonBuildPyArgs
           value: >-
             --config RelWithDebInfo
-            --parallel 16
+            --parallel
             --use_vcpkg
             --use_vcpkg_ms_internal_asset_cache
             --use_binskim_compliant_compile_flags

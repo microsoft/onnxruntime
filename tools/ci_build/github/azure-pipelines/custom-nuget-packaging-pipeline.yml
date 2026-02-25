@@ -97,7 +97,7 @@ extends:
           msbuildPlatform: x64
           packageName: x64-cuda
           CudaVersion: ${{ parameters.CudaVersion }}
-          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --parallel 4 --nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
+          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --use_webgpu --nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
           runTests: false
           buildJava: false
           java_artifact_id: onnxruntime_gpu

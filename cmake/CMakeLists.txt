@@ -160,6 +160,7 @@ option(onnxruntime_ENABLE_DAWN_BACKEND_D3D12 "Enable D3D12 backend for Dawn (on 
 # XNNPACK EP requires the internal NHWC contrib ops to be available, so this option must be OFF when onnxruntime_USE_XNNPACK is ON
 cmake_dependent_option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF "NOT onnxruntime_USE_XNNPACK" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
+option(onnxruntime_DISABLE_GENERATION_OPS "Disable generation contrib ops (BeamSearch, WhisperBeamSearch, GreedySearch, Sampling)" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
@@ -1068,6 +1069,10 @@ function(onnxruntime_set_compile_flags target_name)
 
     if (onnxruntime_DISABLE_ML_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_ML_OPS)
+    endif()
+
+    if (onnxruntime_DISABLE_GENERATION_OPS)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_GENERATION_OPS)
     endif()
 
     if (onnxruntime_DISABLE_SPARSE_TENSORS)
