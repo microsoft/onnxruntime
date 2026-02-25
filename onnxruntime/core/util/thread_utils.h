@@ -53,12 +53,14 @@ struct OrtThreadPoolParams {
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   // Optional callbacks for thread pool work scheduling.
   // When set, these callbacks are invoked around work execution.
   OrtThreadPoolWorkEnqueueFn work_enqueue_fn = nullptr;
   OrtThreadPoolWorkStartFn work_start_fn = nullptr;
   OrtThreadPoolWorkStopFn work_stop_fn = nullptr;
   void* work_callbacks_user_context = nullptr;
+#endif
 };
 
 std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params);

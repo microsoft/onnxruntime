@@ -848,17 +848,6 @@ struct ThreadingOptions : detail::Base<OrtThreadingOptions> {
 
   /// \brief Wraps OrtApi::SetGlobalCustomJoinThreadFn
   ThreadingOptions& SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);
-
-  /// \brief Wraps OrtApi::SetGlobalWorkCallbacks
-  /// Configures callbacks invoked around thread pool work execution.
-  /// \param on_enqueue Callback invoked when work is enqueued (on submitting thread). May be nullptr.
-  /// \param on_start Callback invoked when work starts (on worker thread). May be nullptr.
-  /// \param on_stop Callback invoked when work completes (on worker thread). May be nullptr.
-  /// \param user_context User-provided context passed to all callbacks. May be nullptr.
-  ThreadingOptions& SetGlobalWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
-                                           OrtThreadPoolWorkStartFn on_start,
-                                           OrtThreadPoolWorkStopFn on_stop,
-                                           void* user_context);
 };
 
 /** \brief The TensorRTOptions (V2)
@@ -1301,6 +1290,14 @@ struct Env : detail::Base<OrtEnv> {
   Status CopyTensors(const std::vector<Value>& src_tensors,
                      const std::vector<Value>& dst_tensors,
                      OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
+
+  /// \\brief Wraps OrtApi::SetDefaultThreadPoolCallbacks
+  /// Stores default work callbacks on the Env for per-session thread pools.
+  /// Requires ORT built with --session_threadpool_callbacks.
+  Env& SetDefaultThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
+                                     OrtThreadPoolWorkStartFn on_start,
+                                     OrtThreadPoolWorkStopFn on_stop,
+                                     void* user_context);
 };
 
 /** \brief Custom Op Domain

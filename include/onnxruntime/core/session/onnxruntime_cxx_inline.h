@@ -500,14 +500,6 @@ inline ThreadingOptions& ThreadingOptions::SetGlobalCustomJoinThreadFn(OrtCustom
   return *this;
 }
 
-inline ThreadingOptions& ThreadingOptions::SetGlobalWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
-                                                                   OrtThreadPoolWorkStartFn on_start,
-                                                                   OrtThreadPoolWorkStopFn on_stop,
-                                                                   void* user_context) {
-  ThrowOnError(GetApi().SetGlobalWorkCallbacks(p_, on_enqueue, on_start, on_stop, user_context));
-  return *this;
-}
-
 inline TensorRTProviderOptions::TensorRTProviderOptions() {
   ThrowOnError(GetApi().CreateTensorRTProviderOptions(&this->p_));
 }
@@ -909,6 +901,14 @@ inline Env& Env::RegisterExecutionProviderLibrary(const char* registration_name,
 
 inline Env& Env::UnregisterExecutionProviderLibrary(const char* registration_name) {
   ThrowOnError(GetApi().UnregisterExecutionProviderLibrary(p_, registration_name));
+  return *this;
+}
+
+inline Env& Env::SetDefaultThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
+                                               OrtThreadPoolWorkStartFn on_start,
+                                               OrtThreadPoolWorkStopFn on_stop,
+                                               void* user_context) {
+  ThrowOnError(GetApi().SetDefaultThreadPoolCallbacks(p_, on_enqueue, on_start, on_stop, user_context));
   return *this;
 }
 

@@ -61,6 +61,7 @@ class EnvThread {
 /// Type that holds a collection of logical processors IDs used for setting affinities.
 using LogicalProcessors = std::vector<int>;
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
 /// Callbacks for thread pool work scheduling.
 struct ThreadPoolWorkCallbacks {
   /// Called when work is about to be enqueued. Runs on the submitting thread.
@@ -77,6 +78,7 @@ struct ThreadPoolWorkCallbacks {
   /// User-provided context passed to all callbacks.
   void* user_context = nullptr;
 };
+#endif
 
 // Parameters that are required to create a set of threads for a thread pool
 struct ThreadOptions {
@@ -108,9 +110,11 @@ struct ThreadOptions {
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   // Optional callbacks for thread pool work scheduling.
   // The pointed-to struct must outlive the ThreadPool.
   const ThreadPoolWorkCallbacks* work_callbacks = nullptr;
+#endif
 };
 
 std::ostream& operator<<(std::ostream& os, const LogicalProcessors&);

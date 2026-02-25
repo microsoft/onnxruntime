@@ -959,32 +959,40 @@ typedef OrtCustomThreadHandle (*OrtCustomCreateThreadFn)(void* ort_custom_thread
  */
 typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_handle);
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
 /** \brief Thread pool work enqueue callback
  *
  * Called when work is about to be enqueued to a thread pool worker thread.
  * This runs on the thread that is submitting the work.
- * \param[in] user_context User-provided context passed when configuring callbacks
- * \return A callback-specific data pointer that will be passed to OnStartWork and OnStopWork
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \return Callback-specific data that will be passed to OnStartWork and OnStopWork. May return NULL.
  */
-typedef void* (*OrtThreadPoolWorkEnqueueFn)(void* user_context);
+typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context) NO_EXCEPTION;
 
 /** \brief Thread pool work start callback
  *
  * Called when a worker thread is about to start executing work.
  * This runs on the worker thread.
- * \param[in] user_context User-provided context passed when configuring callbacks
- * \param[in] cb_data Data returned by the corresponding OnEnqueue call
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
  */
-typedef void (*OrtThreadPoolWorkStartFn)(void* user_context, void* cb_data);
+typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 
 /** \brief Thread pool work stop callback
  *
  * Called when a worker thread has finished executing work.
- * This runs on the worker thread, and is guaranteed to be called even if the work throws an exception.
- * \param[in] user_context User-provided context passed when configuring callbacks
- * \param[in] cb_data Data returned by the corresponding OnEnqueue call
+ * This runs on the worker thread, and is guaranteed to be called regardless of whether the work finishes successfully or not.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
  */
-typedef void (*OrtThreadPoolWorkStopFn)(void* user_context, void* cb_data);
+typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+#else
+// Typedefs must exist unconditionally because the OrtApi struct references them.
+// The implementation returns ORT_NOT_IMPLEMENTED when the flag is not defined.
+typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context) NO_EXCEPTION;
+typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+#endif
 
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
@@ -7271,19 +7279,15 @@ struct OrtApi {
   ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
 
   /// @}
-  /// \name OrtThreadingOptions
+  /// \name OrtEnv
   /// @{
 
-  /** \brief Set global thread pool work callbacks.
+  /** \brief Set default thread pool callbacks for per-session thread pools.
    *
-   * Configures callbacks that are invoked around thread pool work execution.
+   * Stores callbacks on the Env that will be applied to per-session thread pools.
+   * Requires ORT built with --session_threadpool_callbacks.
    *
-   * The callbacks follow this pattern:
-   *   1. on_enqueue: Called on the submitting thread when work is enqueued. Returns callback-specific data.
-   *   2. on_start: Called on the worker thread before executing the work.
-   *   3. on_stop: Called on the worker thread after executing the work (guaranteed even on exception).
-   *
-   * \param[in] tp_options OrtThreadingOptions instance.
+   * \param[in] env OrtEnv instance.
    * \param[in] on_enqueue Callback invoked when work is enqueued (on submitting thread). May be NULL.
    * \param[in] on_start Callback invoked when work starts (on worker thread). May be NULL.
    * \param[in] on_stop Callback invoked when work completes (on worker thread). May be NULL.
@@ -7293,7 +7297,7 @@ struct OrtApi {
    *
    * \since Version 1.25.
    */
-  ORT_API2_STATUS(SetGlobalWorkCallbacks, _Inout_ OrtThreadingOptions* tp_options,
+  ORT_API2_STATUS(SetDefaultThreadPoolCallbacks, _Inout_ OrtEnv* env,
                   _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
                   _In_opt_ OrtThreadPoolWorkStartFn on_start,
                   _In_opt_ OrtThreadPoolWorkStopFn on_stop,

@@ -155,6 +155,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set");
   }
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   // Set up work callbacks if configured.
   // Create a local struct and pass its address - ThreadPool will copy it.
   ThreadPoolWorkCallbacks work_callbacks;
@@ -165,6 +166,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     work_callbacks.user_context = options.work_callbacks_user_context;
     to.work_callbacks = &work_callbacks;
   }
+#endif
 
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                       options.allow_spinning);
@@ -280,27 +282,6 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
   tp_options->intra_op_thread_pool_params.affinity_str = affinity_string;
   return nullptr;
 #endif
-}
-
-ORT_API_STATUS_IMPL(SetGlobalWorkCallbacks, _Inout_ OrtThreadingOptions* tp_options,
-                    _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
-                    _In_opt_ OrtThreadPoolWorkStartFn on_start,
-                    _In_opt_ OrtThreadPoolWorkStopFn on_stop,
-                    _In_opt_ void* user_context) {
-  if (!tp_options) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
-  }
-  // Set callbacks on both intra-op and inter-op thread pools
-  tp_options->intra_op_thread_pool_params.work_enqueue_fn = on_enqueue;
-  tp_options->intra_op_thread_pool_params.work_start_fn = on_start;
-  tp_options->intra_op_thread_pool_params.work_stop_fn = on_stop;
-  tp_options->intra_op_thread_pool_params.work_callbacks_user_context = user_context;
-
-  tp_options->inter_op_thread_pool_params.work_enqueue_fn = on_enqueue;
-  tp_options->inter_op_thread_pool_params.work_start_fn = on_start;
-  tp_options->inter_op_thread_pool_params.work_stop_fn = on_stop;
-  tp_options->inter_op_thread_pool_params.work_callbacks_user_context = user_context;
-  return nullptr;
 }
 
 }  // namespace OrtApis

@@ -54,11 +54,13 @@
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
 // Forward declarations
 namespace onnxruntime {
 struct ThreadPoolWorkCallbacks;
 struct ThreadOptions;
 }  // namespace onnxruntime
+#endif
 
 // ORT thread pool overview
 // ------------------------
@@ -772,22 +774,25 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef std::function<void()> Task;
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   // WorkItem bundles a task with optional callback data.
   struct WorkItem {
-    Task task;
-    void* cb_data = nullptr;
+    Task task_;
+    void* enqueue_data_ = nullptr;
 
     WorkItem() = default;
-    explicit WorkItem(Task t, void* data = nullptr) : task(std::move(t)), cb_data(data) {}
-
-    // Allow implicit conversion from Task for compatibility
-    WorkItem(Task t) : task(std::move(t)), cb_data(nullptr) {}
+    WorkItem(Task t, void* data = nullptr) : task_(std::move(t)), enqueue_data_(data) {}
 
     // Check if this WorkItem has a valid task
-    explicit operator bool() const { return static_cast<bool>(task); }
+    explicit operator bool() const { return static_cast<bool>(task_); }
   };
 
-  typedef RunQueue<WorkItem, Tag, 1024> Queue;
+  using Work = WorkItem;
+#else
+  using Work = Task;
+#endif
+
+  typedef RunQueue<Work, Tag, 1024> Queue;
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
                   const ThreadOptions& thread_options)
@@ -796,8 +801,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
-        work_callbacks_(thread_options.work_callbacks ? std::make_optional(*thread_options.work_callbacks)
-                                                      : std::nullopt),
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        work_callbacks_(thread_options.work_callbacks ? *thread_options.work_callbacks
+                                                      : ThreadPoolWorkCallbacks{}),
+#endif
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
@@ -841,12 +848,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // reject work if the queue of pending work is full.
 
   void Schedule(std::function<void()> fn) override {
-    // Create WorkItem with callback data if callbacks are configured
-    void* cb_data = nullptr;
-    if (work_callbacks_.has_value() && work_callbacks_->on_enqueue) {
-      cb_data = work_callbacks_->on_enqueue(work_callbacks_->user_context);
-    }
-    WorkItem work_item(std::move(fn), cb_data);
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+    Work work_item(std::move(fn), InvokeOnEnqueue());
+#else
+    Work work_item(std::move(fn));
+#endif
 
     PerThread* pt = GetPerThread();
     int q_idx = Rand(&pt->rand) % num_threads_;
@@ -858,7 +864,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       td.EnsureAwake();
     } else {
       // Run the work directly if the queue rejected the work
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
       InvokeWorkItem(work_item);
+#else
+      work_item();
+#endif
     }
   }
 
@@ -1130,20 +1140,23 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       Queue& q = td.queue;
       unsigned w_idx;
 
-      // Create callback data if callbacks are configured
-      void* cb_data = nullptr;
-      if (work_callbacks_.has_value() && work_callbacks_->on_enqueue) {
-        cb_data = work_callbacks_->on_enqueue(work_callbacks_->user_context);
-      }
-
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
       // Create the WorkItem with the task and callback data
-      WorkItem work_item([worker_fn, par_idx, &preferred_workers, &ps, this]() {
+      void* enqueue_data = InvokeOnEnqueue();
+      Work work_item([worker_fn, par_idx, &preferred_workers, &ps, this]() {
         // Record the worker thread that actually runs this task.
         // This will form the preferred worker for the next loop.
         UpdatePreferredWorker(preferred_workers, par_idx);
         worker_fn(par_idx);
         ps.tasks_finished++;
-      }, cb_data);
+      }, enqueue_data);
+#else
+      Work work_item([worker_fn, par_idx, &preferred_workers, &ps, this]() {
+        UpdatePreferredWorker(preferred_workers, par_idx);
+        worker_fn(par_idx);
+        ps.tasks_finished++;
+      });
+#endif
 
       // Attempt to enqueue the task
       auto push_status = q.PushBackWithTag(std::move(work_item), pt.tag, w_idx);
@@ -1219,11 +1232,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       if (dispatch_async && extra_needed > 1) {
         assert(current_dop == 1);
 
-        // Create callback data for dispatch task if callbacks are configured
-        void* dispatch_cb_data = nullptr;
-        if (work_callbacks_.has_value() && work_callbacks_->on_enqueue) {
-          dispatch_cb_data = work_callbacks_->on_enqueue(work_callbacks_->user_context);
-        }
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        void* enqueue_data = InvokeOnEnqueue();
+#endif
 
         // Task for dispatching work asynchronously.
         Task dispatch_task = [current_dop, new_dop, worker_fn, &preferred_workers, &ps, &pt, this]() {
@@ -1251,8 +1262,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           ps.work_done.store(true, std::memory_order_release);
         };
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
         // Create WorkItem with dispatch task and callback data
-        WorkItem dispatch_work_item(std::move(dispatch_task), dispatch_cb_data);
+        Work dispatch_work_item(std::move(dispatch_task), enqueue_data);
+#else
+        Work dispatch_work_item(std::move(dispatch_task));
+#endif
 
         profiler_.LogStart();
         ps.dispatch_q_idx = preferred_workers[current_dop] % num_threads_;
@@ -1397,31 +1412,40 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     }
   }
 
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+  // Invoke the on_enqueue callback if configured, returning the enqueue_data.
+  void* InvokeOnEnqueue() {
+    if (work_callbacks_.on_enqueue) {
+      return work_callbacks_.on_enqueue(work_callbacks_.user_context);
+    }
+    return nullptr;
+  }
+
   // Invoke a WorkItem, executing callbacks around the task if configured.
   // This is called from WorkerLoop and Schedule (for rejected work).
   void InvokeWorkItem(WorkItem& work_item) {
-    void* cb_data = work_item.cb_data;
-    bool has_callbacks = (cb_data != nullptr) && work_callbacks_.has_value();
+    void* enqueue_data = work_item.enqueue_data_;
 
-    if (has_callbacks && work_callbacks_->on_start_work) {
-      work_callbacks_->on_start_work(work_callbacks_->user_context, cb_data);
+    if (work_callbacks_.on_start_work) {
+      work_callbacks_.on_start_work(work_callbacks_.user_context, enqueue_data);
     }
 
     ORT_TRY {
-      work_item.task();
+      work_item.task_();
     }
     ORT_CATCH(...) {
       // Ensure on_stop_work is called even on exception
-      if (has_callbacks && work_callbacks_->on_stop_work) {
-        work_callbacks_->on_stop_work(work_callbacks_->user_context, cb_data);
+      if (work_callbacks_.on_stop_work) {
+        work_callbacks_.on_stop_work(work_callbacks_.user_context, enqueue_data);
       }
       ORT_RETHROW;
     }
 
-    if (has_callbacks && work_callbacks_->on_stop_work) {
-      work_callbacks_->on_stop_work(work_callbacks_->user_context, cb_data);
+    if (work_callbacks_.on_stop_work) {
+      work_callbacks_.on_stop_work(work_callbacks_.user_context, enqueue_data);
     }
   }
+#endif
 
   typedef typename Environment::EnvThread Thread;
   struct WorkerData;
@@ -1571,7 +1595,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   const unsigned num_threads_;
   const bool allow_spinning_;
   const bool set_denormal_as_zero_;
-  std::optional<ThreadPoolWorkCallbacks> work_callbacks_;  // Optional callbacks for work scheduling context preservation
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+  ThreadPoolWorkCallbacks work_callbacks_;
+#endif
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
@@ -1619,7 +1645,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     profiler_.LogThreadId(thread_id);
 
     while (!should_exit) {
-      WorkItem w = q.PopFront();
+      Work w = q.PopFront();
       if (!w) {
         // Spin waiting for work.
         for (int i = 0; i < spin_count && !done_; i++) {
@@ -1708,7 +1734,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
       if (w) {
         td.SetActive();
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
         InvokeWorkItem(w);
+#else
+        w();
+#endif
         profiler_.LogRun(thread_id);
         td.SetSpinning();
       }
@@ -1728,7 +1758,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // "snatching" work from a thread which is just about to notice the
   // work itself.
 
-  WorkItem Steal(StealAttemptKind steal_kind) {
+  Work Steal(StealAttemptKind steal_kind) {
     PerThread* pt = GetPerThread();
     unsigned size = num_threads_;
     unsigned num_attempts = (steal_kind == StealAttemptKind::TRY_ALL) ? size : 1;
@@ -1739,7 +1769,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     for (unsigned i = 0; i < num_attempts; i++) {
       assert(victim < size);
       if (worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
-        WorkItem w = worker_data_[victim].queue.PopBack();
+        Work w = worker_data_[victim].queue.PopBack();
         if (w) {
           return w;
         }
@@ -1750,7 +1780,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       }
     }
 
-    return WorkItem();
+    return Work();
   }
 
   int NonEmptyQueueIndex() {
