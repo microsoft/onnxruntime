@@ -207,6 +207,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
   if (!session_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = session_context_.load_config;
+    const bool skip_compilation_params = subgraph_context_.is_ep_ctx_graph;
 
     // Extract device names from device string and apply their configs
     // Examples: "GPU" -> ["GPU"], "AUTO:GPU.0,CPU" -> ["AUTO", "GPU", "CPU"]
@@ -218,6 +219,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
       if (auto config_it = target_config.find(std::string(base_device)); config_it != target_config.end()) {
         for (const auto& [key, value] : config_it->second) {
+          // Skip compilation-only parameters when importing pre-compiled models
+          if (skip_compilation_params && key == "NPU_COMPILATION_MODE_PARAMS") continue;
           device_config[key] = value;
         }
       }

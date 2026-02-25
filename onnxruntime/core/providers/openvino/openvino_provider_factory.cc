@@ -32,9 +32,11 @@ void ParseConfigOptions(ProviderInfo& pi) {
   pi.so_stop_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionStopShareEpContexts, "0") == "1";
 
   if (pi.so_share_ep_contexts) {
-    ov::AnyMap map;
-    map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
-    pi.load_config["NPU"] = std::move(map);
+    // Set default NPU compilation params only if user hasn't provided them
+    auto& npu_config = pi.load_config["NPU"];
+    if (npu_config.find("NPU_COMPILATION_MODE_PARAMS") == npu_config.end()) {
+      npu_config["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
+    }
   }
 }
 
