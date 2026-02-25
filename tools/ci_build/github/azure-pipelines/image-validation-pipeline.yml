@@ -1,4 +1,13 @@
 
+trigger: none
+
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
 parameters:
 - name: image_list
   displayName: 'Images to validate'
@@ -10,6 +19,26 @@ parameters:
   - 'onnxruntime-ubuntu2204-cuda'
   - 'onnxruntime-win-cpu-vs2022-latest-nvme-x64'
 
-stages:
-- ${{ each image in parameters.image_list }}:
-  - template: stages/${{ image }}-validation.yml
+extends:
+  template: v1/1ES.Unofficial.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.SourcesDirectory)/cmake/external'
+      spotBugs:
+        enabled: false
+      binskim:
+        enabled: false
+      codeSignValidation:
+        enabled: false
+      policheck:
+        enabled: false
+      tsa:
+        enabled: false
+
+    stages:
+    - ${{ each image in parameters.image_list }}:
+      - template: stages/${{ image }}-validation.yml
