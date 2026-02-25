@@ -2,14 +2,14 @@
 packaging
 # protobuf and numpy is same as tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt
 protobuf==6.33.0
-numpy==2.2.6; python_version < "3.14"
-numpy==2.3.2; python_version >= "3.14"
-torch==2.8.0
-torchvision==0.23.0
+numpy==2.2.6; python_version < "3.11"
+numpy==2.4.2; python_version >= "3.11"
+torch==2.10.0
+torchvision==0.25.0
 transformers==4.52.1
 parameterized>=0.8.1
 sentencepiece
 psutil
 einops
-onnxscript==0.5.3; python_version < "3.14"
-onnx-ir==0.1.10; python_version < "3.14"
+onnxscript==0.6.2
+onnx-ir==0.1.16

@@ -75,15 +75,22 @@ stages:
         displayName: 'Build'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
+          arguments: >-
             --config ${{ parameters.cmake_build_type }}
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
             --enable_pybind
             --enable_onnx_tests
-            --parallel 8 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --update --build
-            $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
+            --parallel
+            --use_vcpkg
+            --use_vcpkg_ms_internal_asset_cache
+            --use_binskim_compliant_compile_flags
+            --update
+            --build
+            $(TelemetryOption)
+            ${{ parameters.BUILD_PY_PARAMETERS }}
+            ${{ parameters.EP_BUILD_FLAGS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
       - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
@@ -131,8 +138,6 @@ stages:
 
   - stage: Win_py_webgpu_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
     dependsOn: Win_py_webgpu_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
-    # Skip this stage for Python 3.14 for now until onnx package support python 3.14.
-    condition: and(succeeded(), ne('${{ parameters.PYTHON_VERSION }}', '3.14'))
     jobs:
     - job: Win_py_webgpu_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
       workspace:
