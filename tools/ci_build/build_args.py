@@ -129,8 +129,8 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--parallel",
         nargs="?",
-        const="0",
-        default="1",
+        const=os.cpu_count(),
+        default=0,
         type=int,
         help="Use parallel build. Optional value specifies max jobs (0=num CPUs).",
     )
