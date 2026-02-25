@@ -72,6 +72,25 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// A helper method to construct a SessionOptions object for CPU execution only.
+        /// </summary>
+        /// <returns>A SessionOptions() object configured for CPU execution.</returns>
+        public static SessionOptions MakeSessionOptionWithCpuProvider()
+        {
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                options.AppendExecutionProvider_CPU();
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
         /// A helper method to construct a SessionOptions object for CUDA execution.
         /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>

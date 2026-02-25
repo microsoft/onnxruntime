@@ -69,7 +69,9 @@ namespace Microsoft.ML.OnnxRuntime
         #region Public API
 
         /// <summary>
-        /// Constructs an InferenceSession from a model file
+        /// Constructs an InferenceSession from a model file.
+        /// Uses the runtime's default execution provider priority for all providers available in the native binary.
+        /// To force CPU-only execution, construct the session with SessionOptions.MakeSessionOptionWithCpuProvider().
         /// </summary>
         /// <param name="modelPath"></param>
         public InferenceSession(string modelPath)

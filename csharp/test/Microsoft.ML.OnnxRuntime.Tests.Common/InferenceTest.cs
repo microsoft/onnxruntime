@@ -35,6 +35,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // get instance to setup logging
             var ortEnvInstance = OrtEnv.Instance();
 
+            using (SessionOptions cpuOpt = SessionOptions.MakeSessionOptionWithCpuProvider())
+            {
+                Assert.NotNull(cpuOpt);
+            }
+
             using (SessionOptions opt = new SessionOptions())
             {
                 Assert.NotNull(opt);
