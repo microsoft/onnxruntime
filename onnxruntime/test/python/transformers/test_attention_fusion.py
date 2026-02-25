@@ -328,7 +328,8 @@ class TestFusion(unittest.TestCase):
 
                 os.remove(model_path)
 
-                model_name = "gpt2_attention_no_past_add_opt.onnx" if switch_add_inputs else "gpt2_attention_no_past_opt.onnx"
+                model_suffix = "add_opt" if switch_add_inputs else "opt"
+                model_name = f"gpt2_attention_no_past_{model_suffix}.onnx"
                 self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):
