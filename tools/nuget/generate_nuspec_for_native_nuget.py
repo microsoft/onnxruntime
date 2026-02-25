@@ -67,7 +67,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
         if not child.is_dir():
             continue
 
-        for cpu_arch in ["x86", "x64", "arm", "arm64"]:
+        for cpu_arch in ["x86", "x64", "arm", "arm64", "arm64ec"]:
             if child.name == get_package_name("win", cpu_arch, ep, is_training_package):
                 child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
