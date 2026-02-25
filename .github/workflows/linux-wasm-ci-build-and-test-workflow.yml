@@ -74,6 +74,9 @@ jobs:
           python-version: "3.12"
           architecture: ${{ env.buildArch }}
 
+      - name: Install python dependencies
+        run: python -m pip install flatbuffers
+
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
           vcpkg-version: '2025.08.27'
