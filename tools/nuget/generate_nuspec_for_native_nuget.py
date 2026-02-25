@@ -1235,7 +1235,7 @@ def main():
     if args.is_release_build.lower() != "true" and args.is_release_build.lower() != "false":
         raise Exception("Only valid options for IsReleaseBuild are: true and false")
 
-    debug_output = os.environ.get("SYSTEM_DEBUG") == "true"  # Corresponds to Azure Pipelines System.Debug variable.
+    debug_output = get_env_var("SYSTEM_DEBUG") == "true"  # Corresponds to Azure Pipelines System.Debug variable.
 
     # Generate nuspec
     lines = generate_nuspec(args)
