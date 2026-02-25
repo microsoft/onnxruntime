@@ -19,14 +19,7 @@ namespace contrib {
 namespace webgpu {
 
 namespace {
-
 constexpr unsigned int kMinMForTileOptimization = 4;
-
-template <typename T>
-inline T ceil_div(T numerator, T denominator) {
-  return (numerator + denominator - 1) / denominator;
-}
-
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -124,10 +117,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
 
   const bool has_zero_points = zero_points != nullptr;
-  const uint32_t nbits = onnxruntime::narrow<uint32_t>(bits_);
   if (has_zero_points) {
     ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
-    ORT_ENFORCE(nbits != 2, "Currently, zero points are not supported for Q2 quantization.");
   }
 
   MatMulComputeHelper helper;
@@ -212,9 +203,13 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
-  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
-  // For bits==4, this is counted by elements of uint4. Need add 1 if not divisible by 2.
-  uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
+  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)].
+  // The shader uses a flat linear index to address individual n-bit zero point values.
+  // Since each column's zero points are byte-aligned in the packed buffer, we must round
+  // n_blocks_per_col up to the next multiple of (8/nbits) — the number of zero point
+  // values per byte — so that the linear stride correctly skips byte-boundary padding.
+  const uint32_t zp_elements_per_byte = 8 / static_cast<uint32_t>(nbits);
+  uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
 
 #if !defined(__wasm__)
   int32_t subgroup_matrix_config_index = -1;
@@ -226,9 +221,10 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 #endif
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
+  // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
   if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() || context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
-      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, components_a)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index);
+      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a)) {
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index);
   }
 
   // WideTileProgram
@@ -246,8 +242,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
-    const uint32_t num_N_tile = ceil_div(N, tile_n);
-    const uint32_t num_M_tile = ceil_div(M, tile_m);
+    const uint32_t num_N_tile = CeilDiv(N, tile_n);
+    const uint32_t num_M_tile = CeilDiv(M, tile_m);
 
     MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, tile_m, tile_n, static_cast<uint32_t>(nbits)};
     program.SetWorkgroupSize(workgroup_size);
@@ -268,7 +264,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     if (has_zero_points) {
       program.AddInput({zero_points,
                         ProgramTensorMetadataDependency::TypeAndRank,
-                        {ceil_div(zero_points->Shape().Size(), static_cast<int64_t>(4))},
+                        {CeilDiv(zero_points->Shape().Size(), static_cast<int64_t>(4))},
                         4});
     }
     if (has_bias) {

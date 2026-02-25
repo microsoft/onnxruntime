@@ -7,6 +7,7 @@
 import argparse
 import logging
 import os
+import warnings
 
 import onnx
 import torch
@@ -26,7 +27,6 @@ logger = logging.getLogger("")
 PROVIDERS = {
     "cpu": "CPUExecutionProvider",
     "cuda": "CUDAExecutionProvider",
-    "rocm": "ROCMExecutionProvider",
 }
 
 
@@ -494,6 +494,12 @@ def export_onnx_models(
 
 
 def main(argv=None):
+    warnings.warn(
+        "This example is deprecated. Use the Olive recipe instead: "
+        "https://github.com/microsoft/olive-recipes/tree/main",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     args = parse_arguments(argv)
 
     setup_logger(args.verbose)

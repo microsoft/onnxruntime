@@ -282,7 +282,7 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
   ConfigOptions config_options{};
   // Disable storage buffer cache
   ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
@@ -302,7 +302,7 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
 }
 
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(config_options);
@@ -326,10 +326,6 @@ std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
     return factory->CreateProvider();
   }
 #endif
-  return nullptr;
-}
-
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool) {
   return nullptr;
 }
 

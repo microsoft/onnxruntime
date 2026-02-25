@@ -3,8 +3,10 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 #ifdef _WIN32
 #include <iostream>
 #include <locale>
@@ -35,6 +37,7 @@
 
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
+#include "test/util/include/skipping_test_listener.h"
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
 std::unique_ptr<Ort::Env> ort_env;
@@ -107,12 +110,28 @@ extern "C" void ortenv_teardown() {
   ort_env.reset();
 }
 
+static std::vector<std::unique_ptr<::testing::TestEventListener>> MakeTestEventListeners() {
+  std::vector<std::unique_ptr<::testing::TestEventListener>> result{};
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  {
+    namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
+    const auto tests_to_skip = dynamic_plugin_ep_infra::GetTestsToSkip();
+    auto skipping_test_listener = std::make_unique<onnxruntime::test::SkippingTestListener>(tests_to_skip);
+    result.emplace_back(std::move(skipping_test_listener));
+  }
+#endif
+  return result;
+}
+
 #ifdef USE_TENSORRT
 
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced format parameter.
 #pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::IPluginV2' was declared deprecated
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
 // TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for
@@ -122,6 +141,8 @@ extern "C" void ortenv_teardown() {
 
 #if defined(_MSC_VER)
 #pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 class DummyLogger : public nvinfer1::ILogger {
@@ -151,6 +172,14 @@ int TEST_MAIN(int argc, char** argv) {
   ORT_TRY {
     ortenv_setup();
     ::testing::InitGoogleTest(&argc, argv);
+
+    {
+      auto& test_listeners = ::testing::UnitTest::GetInstance()->listeners();
+      auto test_listeners_to_add = MakeTestEventListeners();
+      for (auto& test_listener_to_add : test_listeners_to_add) {
+        test_listeners.Append(test_listener_to_add.release());
+      }
+    }
 
     status = RUN_ALL_TESTS();
   }

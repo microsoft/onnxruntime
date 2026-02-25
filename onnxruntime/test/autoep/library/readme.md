@@ -18,6 +18,10 @@ used for testing and as reference examples.
   Contains a compiling plugin execution provider that registers its own virtual hardware device. Virtual devices can be
   used for cross compiling models for different targets.
 
+- `example_plugin_ep_kernel_registry/`
+  Contains a basic plugin execution provider that registers operator kernels with ONNX Runtime, as opposed to compiling
+  nodes.
+
 - `plugin_ep_utils.h`
   Common utilities for the example plugin execution provider implementations.
 
@@ -35,4 +39,4 @@ used for testing and as reference examples.
 ---
 
 For more information, see the ONNX Runtime documentation on
-[plugin execution providers](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries.html).
+[plugin execution providers](https://onnxruntime.ai/docs/execution-providers/plugin-ep-libraries/).

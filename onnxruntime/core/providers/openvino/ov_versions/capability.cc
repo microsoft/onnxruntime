@@ -41,14 +41,16 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
     npu_qdq_optimizer_enabled = true;  // see data_ops.cc ~615 where we check for int16 types for gpu, this may change to a better approach later
   }
 
-#if OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 0
-  data_ops_ = new DataOps(graph_viewer_, V_2025_0, device_type_, npu_qdq_optimizer_enabled);
-#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 1
-  data_ops_ = new DataOps(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
+#if OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 1
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 2
-  data_ops_ = new DataOps(graph_viewer_, V_2025_2, device_type_, npu_qdq_optimizer_enabled);
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_2, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 3
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_3, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 4
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_4, device_type_, npu_qdq_optimizer_enabled);
 #else
-  data_ops_ = new DataOps(graph_viewer_, V_2025_2, device_type_, npu_qdq_optimizer_enabled);
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_4, device_type_, npu_qdq_optimizer_enabled);
 #endif
 }
 
@@ -100,8 +102,16 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   if (unsupported_nodes.empty()) {
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
+    auto input_nodes = graph_viewer_.GetInputs();
+    // Input is not a tensor, OV only handle a tensor input
+    for (auto& node : input_nodes) {
+      auto shape = node->Shape();
+      if (!shape) {
+        return result;
+      }
+    }
     // Fill inputs with names
-    Iterable2String(inputs, graph_viewer_.GetInputs());
+    Iterable2String(inputs, input_nodes);
 
     /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
@@ -179,7 +189,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
           omit_subgraph = false;
         } else if (j < total_clusters - 1) {
           bool append_node = false;
-          while (j < total_clusters && !append_node) {
+          while (j < total_clusters - 1 && !append_node) {
             j = j + 1;
             append_node = AddTrivialClusterToNextClusterIfConnected(graph_viewer_, index, connected_clusters[j]);
           }

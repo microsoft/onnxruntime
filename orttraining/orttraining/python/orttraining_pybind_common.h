@@ -20,7 +20,7 @@ using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<st
 
 class ORTTrainingPythonEnv {
  public:
-  ORTTrainingPythonEnv(std::unique_ptr<OrtEnv> ort_env);
+  ORTTrainingPythonEnv(OrtEnvPtr ort_env);
 
   const OrtEnv& GetORTEnv() const;
   OrtEnv& GetORTEnv();
@@ -46,7 +46,7 @@ class ORTTrainingPythonEnv {
   std::string GetExecutionProviderMapKey(const std::string& provider_type,
                                          size_t hash);
 
-  std::unique_ptr<OrtEnv> ort_env_;
+  OrtEnvPtr ort_env_;
   // NOTE: the EPs in the following map probably depends on dynamic EP DLLs that are going to be unloaded by OrtEnv's destructor if we delete OrtEnv
   ExecutionProviderMap execution_provider_instances_map_;
   std::vector<std::string> available_training_eps_;

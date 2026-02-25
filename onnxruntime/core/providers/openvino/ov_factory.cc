@@ -16,7 +16,7 @@
 #include "onnxruntime_c_api.h"
 #include "ov_factory.h"
 #include "openvino/openvino.hpp"
-#include "ov_interface.h"
+#include "weak_singleton.h"
 
 using namespace onnxruntime::openvino_ep;
 using ov_core_singleton = onnxruntime::openvino_ep::WeakSingleton<ov::Core>;

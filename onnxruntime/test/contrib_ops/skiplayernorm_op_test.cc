@@ -60,7 +60,6 @@ static void RunOneTest(
 
   std::string op_type = simplified ? "SkipSimplifiedLayerNormalization" : "SkipLayerNormalization";
 
-  auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
   auto cpu_ep = DefaultCpuExecutionProvider();
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
@@ -95,11 +94,13 @@ static void RunOneTest(
                             sum_output_data);
     }
 
-    if (cpu_ep != nullptr) {
-      execution_providers.push_back(DefaultCpuExecutionProvider());
-    }
+    // Add WebGPU EP first so it gets tested before CPU EP
+    // (ConfigEps runs the first available EP for the operator)
     if (webgpu_ep != nullptr) {
       execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    }
+    if (cpu_ep != nullptr) {
+      execution_providers.push_back(DefaultCpuExecutionProvider());
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -147,7 +148,6 @@ static void RunOneTest(
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
-             rocm_ep != nullptr ||
              webgpu_ep != nullptr) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
@@ -186,8 +186,6 @@ static void RunOneTest(
       execution_providers.push_back(DefaultWebGpuExecutionProvider());
     } else if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
-    } else if (rocm_ep != nullptr) {
-      execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
       if (strict) {
         Ort::CUDAProviderOptions cuda_options;
@@ -877,7 +875,6 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           simplified);
 }
 
-#if !defined(USE_ROCM)
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_No_Batch_Size) {
   int batch_size = 2;
   int sequence_length = 2;
@@ -987,7 +984,6 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           broadcast_skip,
           no_batch_size);
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

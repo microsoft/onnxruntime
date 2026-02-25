@@ -553,7 +553,7 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
   // Verify that Add or Sum can be fused into a preceding NCHWc Conv node,
   // with an optional Relu node following.
   std::vector<std::string> op_types{"Add", "Sum"};
-  static const int opset_versions[] = {7, 10, 11, 12};
+  static const int opset_versions[] = {7, 10, 11, 12, 14, 22};
   for (auto& op_type : op_types) {
     for (auto opset_version : opset_versions) {
       test_case(op_type, opset_version, false);
@@ -1271,7 +1271,7 @@ TEST(NchwcOptimizerTests, UpsampleNearest) {
 
   // Verify that upsample nodes can be converted to the NCHWc format for
   // various versions of the operator.
-  static const int opset_versions[] = {9, 10, 11, 13};
+  static const int opset_versions[] = {9, 10, 11, 13, 18, 19};
   for (auto opset_version : opset_versions) {
     test_case(opset_version, 1.f, 1.f, false);
     test_case(opset_version, 2.f, 2.f, false);
@@ -1327,7 +1327,7 @@ TEST(NchwcOptimizerTests, UpsampleLinear) {
   // various versions of the operator.
   std::vector<std::string> transformation_modes{"asymmetric", "align_corners", "half_pixel"};
   for (auto& transformation_mode : transformation_modes) {
-    static const int opset_versions[] = {9, 10, 11, 13};
+    static const int opset_versions[] = {9, 10, 11, 13, 18, 19};
     for (auto opset_version : opset_versions) {
       // Older versions of the operator do not support transformation modes.
       if (opset_version < 11 && transformation_mode == "asymmetric") {

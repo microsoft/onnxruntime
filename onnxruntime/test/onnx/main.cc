@@ -56,7 +56,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
+      "'openvino', 'migraphx', 'acl', 'armnn', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -90,6 +90,8 @@ void usage() {
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
       "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
       "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
+      "\t    [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
+      "\t    '0' (disabled), '1' (enabled). Default: '0'. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_type|cpu\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -228,7 +230,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
-  bool enable_rocm = false;
   bool enable_migraphx = false;
   bool enable_webgpu = false;
   bool enable_xnnpack = false;
@@ -319,8 +320,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_acl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
             enable_armnn = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
-            enable_rocm = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
           } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
@@ -615,7 +614,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_arch. select from: " + str);
           }
-        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization") {
+        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" || key == "extended_udma") {
           std::unordered_set<std::string> supported_options = {"0", "1"};
           if (supported_options.find(value) == supported_options.end()) {
             std::ostringstream str_stream;
@@ -629,7 +628,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
               "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', "
               "'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode', "
               "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'op_packages', 'qnn_context_priority', "
-              "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization']");
+              "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization', 'extended_udma']");
         }
 
         qnn_options[key] = value;
@@ -745,17 +744,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "ArmNN is not supported in this build\n");
-      return -1;
-#endif
-    }
-    if (enable_rocm) {
-#ifdef USE_ROCM
-      OrtROCMProviderOptions rocm_options;
-      rocm_options.do_copy_in_default_stream = true;
-      // TODO: Support arena configuration for users of test runner
-      sf.AppendExecutionProvider_ROCM(rocm_options);
-#else
-      fprintf(stderr, "ROCM is not supported in this build");
       return -1;
 #endif
     }

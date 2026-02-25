@@ -21,12 +21,27 @@
 #include "test_configuration.h"
 #include "strings_helper.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4127: conditional expression is constant
+#pragma warning(disable : 4127)
+// C4324: structure was padded due to alignment specifier
+// Usage of alignas causes some internal padding in places.
+#pragma warning(disable : 4324)
+// C4702: unreachable code
+#pragma warning(disable : 4702)
+#endif  // _MSC_VER
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
 #include "absl/flags/usage_config.h"
 #include "absl/flags/reflection.h"
 #include "absl/strings/str_split.h"
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif  // _MSC_VER
 
 static const onnxruntime::perftest::PerformanceTestConfig& DefaultPerformanceTestConfig() {
   static onnxruntime::perftest::PerformanceTestConfig default_config{};
@@ -42,7 +57,7 @@ ABSL_FLAG(std::string, F, "",
           "[Usage]: -f \"dimension_denotation1:override_value1\" -f \"dimension_denotation2:override_value2\" ...  or"
           " -f \"dimension_denotation1:override_value1 dimension_denotation2 : override_value2... \". Override value must > 0.");
 ABSL_FLAG(std::string, m, "duration", "Specifies the test mode. Value could be 'duration' or 'times'.");
-ABSL_FLAG(std::string, e, "cpu", "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.");
+ABSL_FLAG(std::string, e, "cpu", "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.");
 ABSL_FLAG(size_t, r, DefaultPerformanceTestConfig().run_config.repeated_times, "Specifies the repeated times if running in 'times' test mode.");
 ABSL_FLAG(size_t, t, DefaultPerformanceTestConfig().run_config.duration_in_seconds, "Specifies the seconds to run for 'duration' mode.");
 ABSL_FLAG(std::string, p, "", "Specifies the profile name to enable profiling and dump the profile data to the file.");
@@ -101,6 +116,8 @@ ABSL_FLAG(std::string, i, "",
           "  [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill fill buffer, used while generating QNN context binary.\n"
           "  [QNN only] [enable_htp_shared_memory_allocator]: Enable the QNN HTP shared memory allocator and use it for inputs and outputs. Requires libcdsprpc.so/dll to be available.\n"
           "  Defaults to '0' (disabled).\n"
+          "  [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
+          "  '0' (disabled), '1' (enabled). Default: '0'. \n"
           "  [Example] [For QNN EP] -e qnn -i \"backend_type|cpu\" \n"
           "\n"
           "  [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
@@ -182,10 +199,13 @@ ABSL_FLAG(std::string, select_ep_devices, "", "Specifies a semicolon-separated l
 ABSL_FLAG(std::string, filter_ep_devices, "",
           "Specifies EP or Device metadata entries as key-value pairs to filter ep devices passed to AppendExecutionProvider_V2.\n"
           "[Usage]: --filter_ep_devices \"<key1>|<value1> <key2>|<value2>\" \n"
-          "Devices that match any of the key-value pair will be appended to the session. --select_ep_devices will take precedence over this option.\n");
+          "Devices that match any of the key-value pair will be appended to the session. --select_ep_devices will take precedence over this option.\n"
+          "[Example] --filter_ep_devices \"ov_device|NPU ov_device|CPU\" \n"
+          "Above example will append npu device first if available, followed by cpu device.");
 ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
+ABSL_FLAG(bool, compile_only, DefaultPerformanceTestConfig().run_config.compile_only, "Only compile EP context model without running it");
 ABSL_FLAG(bool, h, false, "Print program usage.");
 
 namespace onnxruntime {
@@ -325,8 +345,6 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
       } else if (ep == "armnn") {
         test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
-      } else if (ep == "rocm") {
-        test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
       } else if (ep == "migraphx") {
         test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
       } else if (ep == "xnnpack") {
@@ -567,6 +585,9 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --compile_binary_embed
   test_config.run_config.compile_binary_embed = absl::GetFlag(FLAGS_compile_binary_embed);
+
+  // --compile_only
+  test_config.run_config.compile_only = absl::GetFlag(FLAGS_compile_only);
 
   if (positional.size() == 2) {
     test_config.model_info.model_file_path = ToPathString(positional[1]);

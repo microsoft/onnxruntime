@@ -159,6 +159,256 @@ void ComputeJob(
     inv_std_dev_data[task_idx] = MLFloat16(1.0f / mean_square);
   }
 }
+// Write a statistic value (mean or 1/denom) into the output buffer,
+// converting from double to the target type U (including MLFloat16).
+template <typename U>
+ORT_FORCEINLINE void WriteStat(U* dst, ptrdiff_t index, double v) {
+  if constexpr (std::is_same_v<U, MLFloat16>) {
+    dst[index] = MLFloat16(static_cast<float>(v));
+  } else {
+    dst[index] = gsl::narrow_cast<U>(v);
+  }
+}
+template <typename T>
+struct NormalizationMath {
+  static double LoadInput(const T* ptr, int64_t offset) {
+    return static_cast<double>(ptr[offset]);
+  }
+
+  static double LoadScale(const T* scale_data,
+                          const float* scale_float_ptr,
+                          int64_t offset) {
+    ORT_UNUSED_PARAMETER(scale_float_ptr);
+    return static_cast<double>(scale_data[offset]);
+  }
+
+  static double LoadBias(const T* bias_data,
+                         const float* bias_float_ptr,
+                         int64_t offset) {
+    ORT_UNUSED_PARAMETER(bias_float_ptr);
+    if (!bias_data) {
+      return 0.0;
+    }
+    return static_cast<double>(bias_data[offset]);
+  }
+
+  static void StoreOutput(T* dst, int64_t offset, double v) {
+    dst[offset] = static_cast<T>(v);
+  }
+};
+
+struct HalfMath {
+  static double LoadInput(const MLFloat16* ptr, int64_t offset) {
+    return static_cast<double>(static_cast<float>(ptr[offset]));
+  }
+
+  static double LoadScale(const MLFloat16* scale_data,
+                          const float* scale_float_ptr,
+                          int64_t offset) {
+    if (scale_float_ptr) {
+      return static_cast<double>(scale_float_ptr[offset]);
+    }
+    return static_cast<double>(static_cast<float>(scale_data[offset]));
+  }
+
+  static double LoadBias(const MLFloat16* bias_data,
+                         const float* bias_float_ptr,
+                         int64_t offset) {
+    if (bias_float_ptr) {
+      return static_cast<double>(bias_float_ptr[offset]);
+    }
+    if (bias_data) {
+      return static_cast<double>(static_cast<float>(bias_data[offset]));
+    }
+    return 0.0;
+  }
+
+  static void StoreOutput(MLFloat16* dst, int64_t offset, double v) {
+    dst[offset] = MLFloat16(static_cast<float>(v));
+  }
+};
+// Shared generic implementation for LayerNorm with full NumPy-style broadcasting.
+// DataT  - storage type (float/double/MLFloat16)
+// MathPolicy - policy that handles load/store/cast for DataT
+// U      - statistics output type (float, MLFloat16, etc.)
+template <typename DataT, typename MathPolicy, typename U>
+void ComputeJobGenericShared(
+    const DataT* X_data,
+    const DataT* scale_data,
+    const DataT* bias_data,
+    const ptrdiff_t task_idx,
+    const LayerNormParams& params,
+    const float* scale_float_ptr,
+    const float* bias_float_ptr,
+    float epsilon,
+    bool simplified,
+    DataT* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data) {
+  const int64_t norm_size = params.norm_size;
+  const int64_t last_rank = params.last_rank;
+
+  const DataT* p_input = X_data + task_idx * norm_size;
+  DataT* p_output = Y_data + task_idx * norm_size;
+
+  // Compute mean and denom (same for all types, via MathPolicy).
+  double mean = 0.0;
+  double mean_sq = 0.0;
+  for (int64_t h = 0; h < norm_size; ++h) {
+    const double xv = MathPolicy::LoadInput(p_input, h);
+    mean += xv;
+    mean_sq += xv * xv;
+  }
+
+  mean /= static_cast<double>(norm_size);
+  const double denom = simplified
+                           ? std::sqrt(mean_sq / norm_size + epsilon)
+                           : std::sqrt(mean_sq / norm_size - mean * mean + epsilon);
+
+  // Compute outer offsets for this logical row (same as before).
+  int64_t off_sc_row = 0;
+  int64_t off_bi_row = 0;
+
+  const bool has_bias_any = (bias_data != nullptr) || (bias_float_ptr != nullptr);
+
+  if (params.axis > 0) {
+    const auto& outer_strides = params.x_outer_strides;
+
+    for (int64_t d = 0; d < params.axis; ++d) {
+      const size_t du = static_cast<size_t>(d);
+      const int64_t dim = params.x_dims[du];
+      const int64_t idx_d = (dim == 0)
+                                ? 0
+                                : (task_idx / outer_strides[du]) % dim;
+
+      off_sc_row += idx_d * params.scale_strides[du];
+      if (has_bias_any) {
+        off_bi_row += idx_d * params.bias_strides[du];
+      }
+    }
+  }
+
+  // Prepare inner-dimension iteration (multi-dimensional idx for inner dims,
+  //    plus optimized inner loop over the last dimension).
+  ORT_ENFORCE(last_rank > 0);
+  onnxruntime::InlinedVector<int64_t, 8> idx(static_cast<size_t>(last_rank), 0);
+
+  const auto& x_inner_dims = params.x_inner_dims;
+  const auto& scale_inner_inc = params.scale_inner_inc;
+  const auto& bias_inner_inc = params.bias_inner_inc;
+
+  const int64_t last_dim = x_inner_dims[static_cast<size_t>(last_rank - 1)];
+  ORT_ENFORCE(last_dim > 0);
+  ORT_ENFORCE(norm_size % last_dim == 0);
+  const int64_t num_chunks = norm_size / last_dim;
+
+  const int64_t sc_last_stride = !scale_inner_inc.empty() ? scale_inner_inc.back() : 0;
+  const int64_t bi_last_stride =
+      (has_bias_any && !bias_inner_inc.empty()) ? bias_inner_inc.back() : 0;
+
+  //  Outer loop: iterate over "chunks" of the last dimension.
+  for (int64_t c = 0; c < num_chunks; ++c) {
+    int64_t off_sc = off_sc_row;
+    int64_t off_bi = off_bi_row;
+
+    // Base offsets for all inner dims except the last.
+    for (int64_t d = 0; d < last_rank - 1; ++d) {
+      const size_t du = static_cast<size_t>(d);
+      off_sc += idx[du] * scale_inner_inc[du];
+      if (has_bias_any) {
+        off_bi += idx[du] * bias_inner_inc[du];
+      }
+    }
+
+    const int64_t base_h = c * last_dim;
+
+    //  Tight inner loop over the last dimension: compiler can vectorize this.
+    for (int64_t i = 0; i < last_dim; ++i) {
+      const int64_t h = base_h + i;
+
+      const int64_t sc_offset = off_sc + i * sc_last_stride;
+      const int64_t bi_offset = off_bi + i * bi_last_stride;
+
+      const double x = MathPolicy::LoadInput(p_input, h);
+      const double s = MathPolicy::LoadScale(scale_data, scale_float_ptr, sc_offset);
+      const double b = MathPolicy::LoadBias(bias_data, bias_float_ptr, bi_offset);
+
+      const double y = simplified
+                           ? (x / denom) * s
+                           : ((x - mean) / denom) * s + b;
+
+      MathPolicy::StoreOutput(p_output, h, y);
+    }
+
+    //  Update multi-dimensional index 'idx' for the next chunk
+    //    (iterate backwards from the second-to-last dimension).
+    if (last_rank > 1) {
+      for (int64_t d = last_rank - 2; d >= 0; --d) {
+        const size_t du = static_cast<size_t>(d);
+        if (++idx[du] < x_inner_dims[du]) {
+          break;
+        }
+        idx[du] = 0;
+      }
+    }
+  }
+
+  //  Write statistics outputs.
+  if (mean_data) {
+    WriteStat<U>(mean_data, task_idx, mean);
+  }
+  if (inv_std_dev_data) {
+    WriteStat<U>(inv_std_dev_data, task_idx, 1.0 / denom);
+  }
+}
+template <typename T, typename U>
+void ComputeJobGeneric(
+    const T* X_data,
+    const T* scale_data,
+    const T* bias_data,
+    const ptrdiff_t task_idx,
+    const LayerNormParams& params,
+    const float* scale_float_ptr,
+    const float* bias_float_ptr,
+    float epsilon,
+    bool simplified,
+    T* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data) {
+  ORT_UNUSED_PARAMETER(scale_float_ptr);
+  ORT_UNUSED_PARAMETER(bias_float_ptr);
+
+  using Policy = NormalizationMath<T>;
+  ComputeJobGenericShared<T, Policy, U>(
+      X_data, scale_data, bias_data,
+      task_idx, params,
+      nullptr,
+      nullptr,
+      epsilon, simplified,
+      Y_data, mean_data, inv_std_dev_data);
+}
+template <typename U>
+void ComputeJobGeneric(
+    const MLFloat16* X_data,
+    const MLFloat16* scale_data,
+    const MLFloat16* bias_data,
+    const ptrdiff_t task_idx,
+    const LayerNormParams& params,
+    const float* scale_float_ptr,
+    const float* bias_float_ptr,
+    float epsilon,
+    bool simplified,
+    MLFloat16* Y_data,
+    U* mean_data,
+    U* inv_std_dev_data) {
+  using Policy = HalfMath;
+  ComputeJobGenericShared<MLFloat16, Policy, U>(
+      X_data, scale_data, bias_data,
+      task_idx, params,
+      scale_float_ptr, bias_float_ptr,
+      epsilon, simplified,
+      Y_data, mean_data, inv_std_dev_data);
+}
 
 void ConvertMLFloat16ToFloatIfNeeded(const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
   if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
@@ -277,7 +527,13 @@ Status LayerNormImpl::ComputeWithoutContext(
     bool simplified,
     AllocatorPtr alloc) const {
   LayerNormParams params;
-  ORT_RETURN_IF_ERROR(LayerNormHelper::CheckInputs(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, params));
+  const bool has_bias =
+      !simplified &&
+      (bias_data != nullptr ||
+       (std::is_same_v<T, MLFloat16> && prepacked_bias_fp32_data_ != nullptr));
+
+  ORT_RETURN_IF_ERROR(
+      LayerNormHelper::CheckInputs(x_shape, scale_shape, bias_shape, has_bias, axis, params));
 
   IAllocatorUniquePtr<float> scale_fp32;
   IAllocatorUniquePtr<float> bias_fp32;
@@ -294,13 +550,38 @@ Status LayerNormImpl::ComputeWithoutContext(
     }
   }
 
+  // Resolve the float32 pointers for scale/bias (scf/bif) in the MLFloat16 case.
+  // For non-MLFloat16 types, these remain null and the original T* buffers are used.
+  const float* scf = nullptr;
+  const float* bif = nullptr;
+
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    scf = prepacked_scale_fp32_data_ ? prepacked_scale_fp32_data_.get()
+                                     : scale_fp32.get();
+
+    if (has_bias) {
+      bif = prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get()
+                                      : (bias_fp32 ? bias_fp32.get() : nullptr);
+    } else {
+      bif = nullptr;
+    }
+  }
+  // Launch one normalization job per logical row in X. For each row we either:
+  //  - use the generic NumPy-style broadcasting path, or
+  //  - use the existing fast-path based on broadcast_param.
   concurrency::ThreadPool::TryBatchParallelFor(
       thread_pool, static_cast<int32_t>(params.num_rows),
       [&](ptrdiff_t task_idx) {
-        ComputeJob(X_data, scale_data, bias_data, task_idx, params.norm_size, params.broadcast_param,
-                   prepacked_scale_fp32_data_ ? prepacked_scale_fp32_data_.get() : scale_fp32.get(),
-                   prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
-                   epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);
+        if (params.use_generic_broadcast) {
+          ComputeJobGeneric(X_data, scale_data, bias_data, task_idx, params,
+                            scf, bif,
+                            epsilon, simplified, Y_data, mean_data, inv_std_dev_data);
+        } else {
+          ComputeJob(X_data, scale_data, bias_data, task_idx,
+                     params.norm_size, params.broadcast_param,
+                     scf, bif,
+                     epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);
+        }
       },
       0);
 

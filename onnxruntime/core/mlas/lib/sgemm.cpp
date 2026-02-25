@@ -1573,10 +1573,10 @@ MlasGemmBatch(
     )
 {
     // Override
-    if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+    if(GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
         return;
     }
     //
@@ -1670,13 +1670,13 @@ Return Value:
     // Compute the number of bytes required to hold the packed buffer.
     //
     // KleidiAI or other override
-    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
+    #if defined(USE_KLEIDIAI)
+    if (GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans) {
         size_t bytes_required;
         //TODO pass status by reference to indicate success/fail
-        bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
+        bytes_required = GetMlasPlatform().MlasSGemmPackBSizeOverride(TransA, TransB, N, K);
         if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;
         }
@@ -1737,11 +1737,11 @@ Return Value:
 
 --*/
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+#if defined(USE_KLEIDIAI)
+    if (GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans    &&
-        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+        GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }
 #endif

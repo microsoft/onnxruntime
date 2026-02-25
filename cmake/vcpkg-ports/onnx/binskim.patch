@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index cc3ef140..f70312ba 100644
+index 584c0419a..5d4ffff99 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -57,6 +57,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
+@@ -52,6 +52,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
  option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
  option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for ONNX operator schemas." OFF)
  option(ONNX_USE_UNITY_BUILD "Enable Unity (Jumbo) build for" OFF)
@@ -10,9 +10,9 @@ index cc3ef140..f70312ba 100644
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime" OFF)
  endif()
-@@ -409,14 +410,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
- 
- add_library(onnx_proto ${ONNX_PROTO_SRCS})
+@@ -397,14 +398,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
+                                onnx/onnx-operators.in.proto
+                                onnx/onnx-data.in.proto)
  
 -file(GLOB_RECURSE __tmp_srcs "${ONNX_ROOT}/onnx/*.h" "${ONNX_ROOT}/onnx/*.cc")
 -file(GLOB_RECURSE onnx_gtests_src "${ONNX_ROOT}/onnx/test/cpp/*.h"
@@ -20,7 +20,7 @@ index cc3ef140..f70312ba 100644
 -    "${ONNX_ROOT}/onnx/backend/test/cpp/*.cc"
 -    "${ONNX_ROOT}/onnx/backend/test/cpp/*.h")
 -list(REMOVE_ITEM __tmp_srcs "${ONNX_ROOT}/onnx/cpp2py_export.cc")
--list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src})
+-list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src} "${ONNX_ROOT}/onnx/test/cmake/main.cc")
 -list(APPEND ONNX_SRCS ${__tmp_srcs})
 +if(ONNX_MINIMAL_BUILD)
 +    message(STATUS "Configuring ONNX minimal build")
@@ -41,37 +41,40 @@ index cc3ef140..f70312ba 100644
 +        "${ONNX_ROOT}/onnx/backend/test/cpp/*.cc"
 +        "${ONNX_ROOT}/onnx/backend/test/cpp/*.h")
 +    list(REMOVE_ITEM __tmp_srcs "${ONNX_ROOT}/onnx/cpp2py_export.cc")
-+    list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src})
++    list(REMOVE_ITEM __tmp_srcs ${onnx_gtests_src} "${ONNX_ROOT}/onnx/test/cmake/main.cc")
 +    list(APPEND ONNX_SRCS ${__tmp_srcs})
 +endif()
  
- # Hide all symbols we don't need
- set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
-@@ -438,19 +453,6 @@ add_onnx_global_defines(onnx_proto)
- target_include_directories(onnx_proto PUBLIC
-   $<BUILD_INTERFACE:${ONNX_ROOT}>
-   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
--if(MSVC)
--  # For disabling Protobuf related warnings
--  target_compile_options(onnx_proto PUBLIC
--    /wd4146 # unary minus operator applied to unsigned type,
--            # result still unsigned
--    /wd4244 # 'argument': conversion from 'google::
--            # protobuf::uint64' to 'int', possible
--            # loss of data
--    /wd4267 # Conversion from 'size_t' to 'int',
--            # possible loss of data
--    /wd4141 # 'inline': used more than once
--  )
--endif()
+ set(LINKED_PROTOBUF_TARGET protobuf::libprotobuf)
+ if(ONNX_USE_LITE_PROTO)
+diff --git a/cmake/Utils.cmake b/cmake/Utils.cmake
+index 07f2b9071..388d9f7a3 100644
+--- a/cmake/Utils.cmake
++++ b/cmake/Utils.cmake
+@@ -31,18 +31,7 @@ endfunction()
  
- if(CMAKE_SYSTEM_NAME STREQUAL "AIX")
-   # whole-archive linker option not available on AIX.
+ function(add_onnx_compile_options target)
+   if(MSVC)
+-    # For disabling Protobuf related warnings
+-    set(protobuf_warnings
+-        /wd4146 # unary minus operator applied to unsigned type, result still
+-                # unsigned
+-        /wd4244 # 'argument': conversion from 'google::protobuf::uint64' to
+-                # 'int', possible loss of data
+-        /wd4267 # Conversion from 'size_t' to 'int', possible loss of data
+-        /wd4141 # 'inline': used more than once
+-        /wd4047 # '=': 'uintptr_t' differs in levels of indirection from 'void *'
+-    )
+     add_msvc_runtime_flag(${target})
+-    target_compile_options(${target} PUBLIC ${protobuf_warnings})
+     if(ONNX_WERROR)
+       target_compile_options(${target} PRIVATE "/WX")
+     endif()
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
-index ad6dd0c1..50259f32 100644
+index 887151217..ac2e8c463 100644
 --- a/onnx/defs/nn/old.cc
 +++ b/onnx/defs/nn/old.cc
-@@ -4091,7 +4091,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+@@ -4152,7 +4152,6 @@ ONNX_OPERATOR_SET_SCHEMA(
      GroupNormalization,
      18,
      OpSchema()
@@ -79,16 +82,3 @@ index ad6dd0c1..50259f32 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
-diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
-index 7e9bc27f..4b87c5a5 100644
---- a/onnx/defs/schema.h
-+++ b/onnx/defs/schema.h
-@@ -999,7 +999,7 @@ class OpSchemaRegistry final : public ISchemaRegistry {
-   class OpSchemaRegisterOnce final {
-    public:
-     // Export to cpp custom register macro
--    explicit OpSchemaRegisterOnce(
-+    OpSchemaRegisterOnce(
-         OpSchema op_schema,
-         int opset_version_to_load = 0,
-         bool fail_duplicate_schema = true) {

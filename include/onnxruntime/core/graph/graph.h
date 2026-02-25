@@ -779,6 +779,13 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   bool IsSparseInitializer(const std::string& name) const;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /** Gets the frequency count of weight data types in this graph. */
+  gsl::span<const int32_t> GetWeightDataTypeFrequency() const noexcept {
+    return weight_data_type_freq_;
+  }
+#endif
+
   /** Gets an initializer tensor with the provided name.
   @param[out] value Set to the TensorProto* if the initializer is found, or nullptr if not.
   @returns True if found.
@@ -1454,12 +1461,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return Resolve(default_options);
   }
 
+  /// <summary>
+  /// This function converts all the graph TensorProto initializers into OrtValues
+  /// and creates a in-memory external data reference for each OrtValue.
+  /// </summary>
+  /// <returns></returns>
+  Status ConvertInitializersIntoOrtValues();
+
   /**
-   * @brief Converts a subset of graph TensorProto initializers into OrtValues and updates the graph proto.
-   *
-   * This function converts specified TensorProto initializers in the graph into OrtValues and
-   * creates in-memory external data references for each OrtValue. It then updates the provided
-   * GraphProto with the modified initializers.
+   * @brief This function examines the specified initializers in the graph and converts them inline
+   *        if any has external data in memory.
    *
    * @param iterators Span of iterators pointing to the initializers and the order that should be processed
    * @param output_graph_proto The GraphProto to be updated with the modified initializers
@@ -1604,9 +1615,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
+ private:
   int32_t weight_data_type_freq_[ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE] = {0};
 
- private:
   void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.
@@ -1632,17 +1643,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <param name="output_graph_proto">The GraphProto to process</param>
   /// <returns>Status indicating success or failure</returns>
   Status ProcessSubgraphsInMemoryData(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
-
-  /// <summary>
-  /// This function replaces all of the initializers within output_graph_proto
-  /// from this Graph instance. All in memory initializers are regenerated and inlined.
-  /// This is necessary even if the graph_proto_ is already up to date because initializers() may
-  /// contain obsolete initializers that are no longer in use due to optimizations and contain obsolete
-  /// references to OrtValues that may no longer be around (since we like appending rather than replacing).
-  /// </summary>
-  /// <param name="output_graph_proto">Destination GraphProto to receive the updated initializers.</param>
-  /// <returns>Status indicating success or failure.</returns>
-  Status RegenerateInitializersAndReplaceInMemory(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes
@@ -1733,7 +1733,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #if !defined(ORT_MINIMAL_BUILD)
   // Build and verify node connection (edges).
   // Verify NodeArg name/type/shape matching correctly.
-  common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed);
+  common::Status BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed,
+                                  bool& removed_node_with_subgraph);
 
   common::Status VerifyNoDuplicateName();
 
@@ -1752,6 +1753,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                                     const std::vector<const ONNX_NAMESPACE::TypeProto*>& input_types,
                                                     std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types,
                                                     const Graph::ResolveOptions& options);
+
+  // If ONNX operator's PartialDataPropagationFunction() infers concrete shape values in the output
+  // save them to the output NodeArg as a TensorShapeProto or a scalar value so that downstream (consumer) nodes
+  // can use them later for their TypeAndShapeInferenceFunction() and PartialDataPropagationFunction().
+  common::Status SaveShapeValuesFromDataPropagation(const Node& node, NodeArg& output_def,
+                                                    const ONNX_NAMESPACE::TypeProto& propagated_value_as_type_proto) const;
+
+  // Remove intermediate inferred shape values stored in all NodeArgs to reduce memory usage.
+  common::Status CleanUpShapeValuesFromDataPropagation();
 
   // Apply type-inference and type-checking to all inputs and initializers:
   common::Status TypeCheckInputsAndInitializers();

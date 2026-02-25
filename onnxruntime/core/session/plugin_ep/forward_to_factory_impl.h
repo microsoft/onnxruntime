@@ -82,9 +82,17 @@ struct ForwardToFactoryImpl {
     return static_cast<TFactory*>(this_ptr)->CreateSyncStreamForDevice(memory_device, stream_options, stream);
   }
 
-  static OrtStatus* ORT_API_CALL SetEnvironmentOptions(_In_ OrtEpFactory* this_ptr,
-                                                       _In_ const OrtKeyValuePairs* options) noexcept {
-    return static_cast<TFactory*>(this_ptr)->SetEnvironmentOptions(options);
+  static OrtStatus* ORT_API_CALL CreateExternalResourceImporterForDevice(
+      _In_ OrtEpFactory* this_ptr,
+      _In_ const OrtEpDevice* ep_device,
+      _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
+    return static_cast<TFactory*>(this_ptr)->CreateExternalResourceImporterForDevice(ep_device, importer);
+  }
+
+  static OrtStatus* ORT_API_CALL GetHardwareDeviceIncompatibilityDetails(_In_ OrtEpFactory* this_ptr,
+                                                                         _In_ const OrtHardwareDevice* hw,
+                                                                         _Inout_ OrtDeviceEpIncompatibilityDetails* details) noexcept {
+    return static_cast<TFactory*>(this_ptr)->GetHardwareDeviceIncompatibilityDetails(hw, details);
   }
 
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {

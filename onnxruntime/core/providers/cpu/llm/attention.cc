@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/llm/attention.h"
+#include "core/providers/cpu/llm/attention_helper.h"
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -10,6 +11,9 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/math/gemm.h"
+
+#include <algorithm>
+#include <vector>
 
 using onnxruntime::attention_helper::AttentionParameters;
 using onnxruntime::attention_helper::QKMatMulOutputMode;
@@ -62,14 +66,14 @@ void make_copy<MLFloat16, MLFloat16>(MLFloat16* mask_data, const MLFloat16* mask
 template <>
 void make_copy<float, bool>(float* mask_data, const bool* mask_index, size_t size) {
   for (size_t i = 0; i < size; ++i) {
-    mask_data[i] = mask_index[i] ? 0.0f : negative_infinity<float>();
+    mask_data[i] = mask_index[i] ? 0.0f : mask_filter_value<float>();
   }
 }
 
 template <>
 void make_copy<MLFloat16, bool>(MLFloat16* mask_data, const bool* mask_index, size_t size) {
   for (size_t i = 0; i < size; ++i) {
-    mask_data[i] = mask_index[i] ? MLFloat16(0.f) : negative_infinity<MLFloat16>();
+    mask_data[i] = mask_index[i] ? MLFloat16(0.f) : mask_filter_value<MLFloat16>();
   }
 }
 
@@ -106,6 +110,95 @@ inline void ComputeAttentionSoftcapInplace(MLFloat16* scores, int sequence_lengt
   }
 }
 
+// Dispatches a GEMM operation across float and MLFloat16 types.
+//   C = alpha * op(A) * op(B) + beta * C
+//
+// For float: delegates to math::GemmEx which calls MlasGemm (optimized SGEMM).
+// For MLFloat16:
+//   - If the hardware supports native fp16 GEMM for the given transpose combo
+//     (checked via MlasHGemmSupported), uses MlasGemm directly.
+//   - Otherwise, upcasts A/B/C to fp32, runs math::GemmEx (SGEMM), and downcasts
+//     the result back to fp16.  This avoids Eigen's unoptimized fp16 codepath.
+//
+// The fp32 fallback handles strided C carefully: when ldc > N (e.g. 3D interleaved
+// heads where multiple heads share a row), conversion is done row-by-row (N elements
+// per row) to avoid overwriting adjacent heads' data.  When ldc == N (contiguous,
+// the common 4D case), a single bulk conversion is used for efficiency.
+//
+// TODO(xadupre): Consider adding a MlasFlashAttention fast path for float32 when no masks, KV cache,
+// softcap, or nonpad_kv_seqlen are active. This fuses Q*K, softmax, and QK*V into a single
+// L2-cache-tiled pass. See MultiHeadAttention (contrib_ops/cpu/bert/multihead_attention.cc).
+template <typename T>
+inline void AttentionGemm(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
+                          int M, int N, int K,
+                          float alpha,
+                          const T* A, int lda,
+                          const T* B, int ldb,
+                          float beta,
+                          T* C, int ldc) {
+  if constexpr (std::is_same<T, float>::value) {
+    math::GemmEx<T, ThreadPool>(transA, transB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
+  } else if constexpr (std::is_same<T, MLFloat16>::value) {
+    if (MlasHGemmSupported(transA, transB)) {
+      MlasGemm(transA, transB, M, N, K, A, lda, B, ldb, C, ldc,
+               MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
+    } else {
+      // fp16 fallback: upcast to fp32, run optimized SGEMM, downcast result.
+      // Compute the exact contiguous span each matrix occupies: (rows-1)*stride + cols.
+      // This is the distance from the first element to the last accessed element + 1.
+      // Using rows*stride would overread when the pointer is offset into a larger
+      // interleaved buffer (e.g., 3D layout where lda > K for a non-first head).
+      size_t a_rows = (transA == CblasNoTrans) ? static_cast<size_t>(M) : static_cast<size_t>(K);
+      size_t a_cols = (transA == CblasNoTrans) ? static_cast<size_t>(K) : static_cast<size_t>(M);
+      size_t b_rows = (transB == CblasNoTrans) ? static_cast<size_t>(K) : static_cast<size_t>(N);
+      size_t b_cols = (transB == CblasNoTrans) ? static_cast<size_t>(N) : static_cast<size_t>(K);
+      size_t a_count = (a_rows > 0) ? (a_rows - 1) * static_cast<size_t>(lda) + a_cols : 0;
+      size_t b_count = (b_rows > 0) ? (b_rows - 1) * static_cast<size_t>(ldb) + b_cols : 0;
+      size_t c_count = (M > 0) ? static_cast<size_t>(M - 1) * static_cast<size_t>(ldc) + static_cast<size_t>(N) : 0;
+
+      std::vector<float> a_fp32(a_count);
+      std::vector<float> b_fp32(b_count);
+      std::vector<float> c_fp32(c_count);
+
+      // Upcast A and B in bulk (contiguous within each matrix's strided span).
+      MlasConvertHalfToFloatBuffer(A, a_fp32.data(), a_count);
+      MlasConvertHalfToFloatBuffer(B, b_fp32.data(), b_count);
+      if (beta != 0.0f) {
+        // C needs upcast only when beta != 0 (GEMM accumulates into C).
+        // When ldc == N the buffer is contiguous — use a single bulk conversion.
+        // When ldc > N (3D interleaved heads), convert only the N valid columns
+        // per row to avoid reading into adjacent heads' memory.
+        if (ldc == N) {
+          MlasConvertHalfToFloatBuffer(C, c_fp32.data(), c_count);
+        } else {
+          for (int row = 0; row < M; ++row) {
+            MlasConvertHalfToFloatBuffer(C + row * ldc, c_fp32.data() + row * ldc, static_cast<size_t>(N));
+          }
+        }
+      }
+
+      math::GemmEx<float, ThreadPool>(transA, transB, M, N, K,
+                                      alpha, a_fp32.data(), lda,
+                                      b_fp32.data(), ldb,
+                                      beta, c_fp32.data(), ldc, nullptr);
+
+      // Downcast result back to fp16.
+      // Same ldc == N check: bulk conversion when contiguous, row-by-row when
+      // strided to avoid overwriting adjacent heads' output data.
+      if (ldc == N) {
+        MlasConvertFloatToHalfBuffer(c_fp32.data(), C, c_count);
+      } else {
+        for (int row = 0; row < M; ++row) {
+          MlasConvertFloatToHalfBuffer(c_fp32.data() + row * ldc, C + row * ldc, static_cast<size_t>(N));
+        }
+      }
+    }
+  } else {
+    ORT_THROW("Unsupported data type for attention GEMM: ",
+              DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
+  }
+}
+
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   is_causal_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("is_causal", 0)) == 1;
@@ -115,13 +208,13 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
   qk_matmul_output_mode_ = info.node().OutputDefs().size() >= 4 && info.node().OutputDefs()[3]->Exists()
-                               ? static_cast<QKMatMulOutputMode>(mode)
-                               : QKMatMulOutputMode::kNone;
-  ORT_ENFORCE(qk_matmul_output_mode_ == QKMatMulOutputMode::kNone ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKMask ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftCap ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftMax,
+                               ? static_cast<attention_helper::QKMatMulOutputMode>(mode)
+                               : attention_helper::QKMatMulOutputMode::kNone;
+  ORT_ENFORCE(qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQK ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKMask ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftCap ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftMax,
               "qk_matmul_output_mode must be 0, 1, 2, or 3.");
   // The default scale depends on the input dimensions. It is set to nan to indicate that it should be computed.
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
@@ -138,13 +231,15 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* attn_mask = context->Input<Tensor>(3);
   const Tensor* past_key = context->Input<Tensor>(4);
   const Tensor* past_value = context->Input<Tensor>(5);
+  const Tensor* nonpad_kv_seqlen = context->Input<Tensor>(6);  // optional, Opset 24
 
   AttentionParameters parameters;
-  std::vector<int64_t> y_shape;
-  std::vector<int64_t> present_key_shape;
-  std::vector<int64_t> present_value_shape;
-  std::vector<int64_t> output_qk_shape;
+  TensorShape y_shape;
+  TensorShape present_key_shape;
+  TensorShape present_value_shape;
+  TensorShape output_qk_shape;
 
+  // ComputeOutputShapeForAttention also checks the validity of the inputs.
   ORT_ENFORCE(attention_helper::ComputeOutputShapeForAttention(
                   Q,
                   K,
@@ -152,6 +247,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                   attn_mask,
                   past_key,
                   past_value,
+                  nonpad_kv_seqlen,
                   is_causal_,
                   softcap_,
                   softmax_precision_,
@@ -204,8 +300,8 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   // However, if present_key is not requested, we should avoid allocated more memory than needed but that mean
   // allocating one buffer per thread. That's why the implementation is not done.
   // The user should define a model with a present_key even if not used if past_key is not null.
-  ORT_ENFORCE((past_key == nullptr) == (present_key == nullptr),
-              "The implementation only supports past_key and present_key both null or both not null.");
+  ORT_ENFORCE(!((past_key != nullptr) && (present_key == nullptr)),
+              "The implementation does not support past_key provided and present_key being null.");
   const size_t past_chunk_length = static_cast<size_t>(parameters.past_sequence_length) * parameters.head_size;   // P x H
   const size_t q_input_chunk_length = static_cast<size_t>(parameters.q_sequence_length) * parameters.head_size;   // S x H
   const size_t k_input_chunk_length = static_cast<size_t>(parameters.kv_sequence_length) * parameters.head_size;  // L x H
@@ -243,51 +339,49 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   bool delete_mask_data = false;
   bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
   if (mask_index == nullptr) {
-    // No mask = null mask.
+    // No external mask: allocate only if causal behavior needed.
     if (causal) {
-      size_t mask_data_bytes = SafeInt<size_t>(parameters.q_sequence_length) * parameters.total_sequence_length * sizeof(T);
-      void* allocated_ptr = allocator->Alloc(mask_data_bytes);
-      memset(allocated_ptr, 0, mask_data_bytes);
-      mask_data = static_cast<T*>(allocated_ptr);
-      for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
-        for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
-          mask_data[s_i * parameters.total_sequence_length + m_i] = negative_infinity<T>();
+      size_t mask_bytes = SafeInt<size_t>(parameters.q_sequence_length) * parameters.total_sequence_length * sizeof(T);
+      void* raw = allocator->Alloc(mask_bytes);
+      memset(raw, 0, mask_bytes);  // start all allowed
+      mask_data = static_cast<T*>(raw);
+      for (int s = 0; s < parameters.q_sequence_length; ++s) {
+        for (int t = parameters.past_sequence_length + s + 1; t < parameters.total_sequence_length; ++t) {
+          mask_data[s * parameters.total_sequence_length + t] = mask_filter_value<T>();
         }
       }
       delete_mask_data = true;
     }
-  } else if (mask_index->IsDataType<bool>() || causal) {
-    // We need a copy.
-    size_t mask_data_bytes = SafeInt<size_t>(mask_index->Shape().Size()) * sizeof(T);
-    mask_data = static_cast<T*>(allocator->Alloc(mask_data_bytes));
-    delete_mask_data = true;
-
-    if (mask_index->IsDataType<bool>()) {
-      // Convert bool mask to 0/1
-      make_copy(mask_data, mask_index->Data<bool>(), SafeInt<size_t>(mask_index->Shape().Size()));
-    } else if (mask_index != nullptr) {
-      // We make a copy because causal is True.
-      make_copy(mask_data, mask_index->Data<T>(), SafeInt<size_t>(mask_index->Shape().Size()));
-    }
-    if (causal) {
-      // This loop could be parallelized.
-      // According to the specifications, this configuration is not supported
-      // as is_causal=1 or mask is not None (exclusive or).
-      int n_iter = mask_batch_size * mask_num_heads;
-      for (int i = 0; i < n_iter; ++i) {
-        for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
-          for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < parameters.total_sequence_length; m_i++) {
-            mask_data[s_i * parameters.total_sequence_length + m_i + probs_matrix_size * i] = negative_infinity<T>();
+  } else {
+    const bool is_bool_mask = mask_index->IsDataType<bool>();
+    const bool need_copy = is_bool_mask || causal;  // copy if we must convert or overlay causal pattern
+    if (need_copy) {
+      size_t mask_bytes = SafeInt<size_t>(mask_index->Shape().Size()) * sizeof(T);
+      mask_data = static_cast<T*>(allocator->Alloc(mask_bytes));
+      delete_mask_data = true;
+      if (is_bool_mask) {
+        make_copy(mask_data, mask_index->Data<bool>(), SafeInt<size_t>(mask_index->Shape().Size()));
+      } else {
+        make_copy(mask_data, mask_index->Data<T>(), SafeInt<size_t>(mask_index->Shape().Size()));
+      }
+      if (causal) {
+        // Overlay causal -inf above diagonal for every broadcast slice
+        int slices = mask_batch_size * mask_num_heads;
+        for (int slice = 0; slice < slices; ++slice) {
+          T* base = mask_data + probs_matrix_size * slice;
+          for (int s = 0; s < parameters.q_sequence_length; ++s) {
+            for (int t = parameters.past_sequence_length + s + 1; t < parameters.total_sequence_length; ++t) {
+              base[s * parameters.total_sequence_length + t] = mask_filter_value<T>();
+            }
           }
         }
       }
+    } else {
+      // Reuse mask memory directly (numeric, non-causal)
+      mask_data = const_cast<T*>(mask_index->Data<T>());
     }
-  } else {
-    // Nothing to do, no necessary copy.
-    mask_data = const_cast<T*>(mask_index->Data<T>());
   }
 
-  bool transposed_k = parameters.transpose_output && nullptr == present_key;
   if (nullptr != present_key && parameters.kv_num_heads != parameters.q_num_heads) {
     // This is not part of the main loop because it is not needed at every iteration and
     // we cannot ensure the inner body is executed first before getting used in another iteration.
@@ -309,6 +403,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   // If past_key is not null, then we need to concatenate it with K, the concatenation is not transposed.
   const int loop_len = parameters.batch_size * parameters.q_num_heads;
   const float alpha = parameters.scale;
+  bool transposed_k = parameters.transpose_output && nullptr == present_key;
 
   ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t i = begin; i != end; ++i) {
@@ -353,90 +448,22 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
       // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
       // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
-      if constexpr (std::is_same<T, float>::value) {
-        if (parameters.transpose_output) {
-          math::GemmEx<T, ThreadPool>(CblasNoTrans,
-                                      CblasTrans,
-                                      parameters.q_sequence_length,      // M
-                                      parameters.total_sequence_length,  // N
-                                      parameters.head_size,              // K
-                                      alpha,
-                                      Q + q_input_chunk_length * parameters.q_num_heads * batch_i + head_i * parameters.head_size,
-                                      parameters.head_size * parameters.q_num_heads,  // lda
-                                      transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + head_ki * parameters.head_size : k,
-                                      transposed_k ? parameters.head_size * parameters.kv_num_heads : parameters.head_size,  // ldb
-                                      beta,
-                                      output,
-                                      parameters.total_sequence_length,  // ldc
-                                      nullptr);
-        } else {
-          math::Gemm<T, ThreadPool>(CblasNoTrans,
-                                    CblasTrans,
-                                    parameters.q_sequence_length,      // M
-                                    parameters.total_sequence_length,  // N
-                                    parameters.head_size,              // K
-                                    alpha,
-                                    Q + q_input_chunk_length * i,
-                                    k,
-                                    beta,
-                                    output,
-                                    nullptr);
-        }
-      } else if constexpr (std::is_same<T, MLFloat16>::value) {
-        if (MlasHGemmSupported(CblasNoTrans, CblasTrans)) {
-          MlasGemm(CblasNoTrans,
-                   CblasTrans,
-                   parameters.q_sequence_length,      // M
-                   parameters.total_sequence_length,  // N
-                   parameters.head_size,              // K
-                   parameters.transpose_output
-                       ? Q + q_input_chunk_length * parameters.q_num_heads * batch_i + head_i * parameters.head_size
-                       : Q + q_input_chunk_length * i,
-                   parameters.transpose_output
-                       ? parameters.head_size * parameters.q_num_heads
-                       : static_cast<int>(parameters.head_size),  // lda
-                   transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + (head_i % parameters.kv_num_heads) * parameters.head_size : k,
-                   transposed_k
-                       ? parameters.head_size * parameters.kv_num_heads
-                       : static_cast<int>(parameters.head_size),  // ldb
-                   output,
-                   static_cast<int>(parameters.past_sequence_length + parameters.kv_sequence_length),  // ldc
-                   MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
-        } else {
-          if (parameters.transpose_output) {
-            math::GemmEx<T, ThreadPool>(CblasNoTrans,
-                                        CblasTrans,
-                                        parameters.q_sequence_length,      // M
-                                        parameters.total_sequence_length,  // N
-                                        parameters.head_size,              // K
-                                        MLFloat16(alpha),
-                                        Q + q_input_chunk_length * parameters.q_num_heads * batch_i + head_i * parameters.head_size,
-                                        parameters.head_size * parameters.q_num_heads,  // lda
-                                        transposed_k ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + (head_i % parameters.kv_num_heads) * parameters.head_size : k,
-                                        transposed_k ? parameters.head_size * parameters.kv_num_heads : parameters.head_size,  // ldb
-                                        MLFloat16(beta),
-                                        output,
-                                        parameters.total_sequence_length,  // ldc
-                                        nullptr);
-          } else {
-            TensorShape c_shape({parameters.q_sequence_length, parameters.total_sequence_length});
-            Gemm_MLFloat16(CblasNoTrans, CblasTrans,
-                           static_cast<ptrdiff_t>(parameters.q_sequence_length),      // M
-                           static_cast<ptrdiff_t>(parameters.total_sequence_length),  // N
-                           static_cast<ptrdiff_t>(parameters.head_size),              // K
-                           MLFloat16(alpha),
-                           Q + q_input_chunk_length * i,
-                           k,
-                           MLFloat16(beta),
-                           output,
-                           &c_shape,
-                           output,
-                           nullptr);
-          }
-        }
-      } else {
-        ORT_THROW("Unsupported data type for attention Q*K multiplication: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
-      }
+      const T* q_ptr = parameters.transpose_output
+                           ? Q + q_input_chunk_length * parameters.q_num_heads * batch_i + head_i * parameters.head_size
+                           : Q + q_input_chunk_length * i;
+      int q_lda = parameters.transpose_output
+                      ? parameters.head_size * parameters.q_num_heads
+                      : parameters.head_size;
+      const T* k_ptr = transposed_k
+                           ? K + k_input_chunk_length * parameters.kv_num_heads * batch_i + head_ki * parameters.head_size
+                           : k;
+      int k_ldb = transposed_k
+                      ? parameters.head_size * parameters.kv_num_heads
+                      : parameters.head_size;
+
+      AttentionGemm(CblasNoTrans, CblasTrans,
+                    parameters.q_sequence_length, parameters.total_sequence_length, parameters.head_size,
+                    alpha, q_ptr, q_lda, k_ptr, k_ldb, beta, output, parameters.total_sequence_length);
       if (out_qk != nullptr &&
           (parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKMask ||
            parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK)) {
@@ -445,6 +472,15 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
           // We need to add the bias we could not add because out_qk was requested without the mask.
           // This can be optimized with vectorized add using MlasAddFloat32x4.
           MlasEltwiseAdd(output, mask_data + mask_data_offset, output, probs_matrix_size);
+        }
+      }
+      // Apply nonpad_kv_seqlen masking (Opset 24+): mask out KV positions >= valid length per batch.
+      if (parameters.has_nonpad_kv_seqlen) {
+        int valid_kv_len = static_cast<int>(parameters.nonpad_kv_seqlen_data[batch_i]);
+        for (int s = 0; s < parameters.q_sequence_length; ++s) {
+          std::fill(output + s * parameters.total_sequence_length + valid_kv_len,
+                    output + (s + 1) * parameters.total_sequence_length,
+                    mask_filter_value<T>());
         }
       }
       if (parameters.softcap > 0.0f) {
@@ -529,8 +565,8 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
                                                T* present_value,           // present value only (if not using present state)
                                                bool transpose_output,      // whether to transpose the output (0, 2, 1, 3)
                                                ThreadPool* tp) const {
-  ORT_ENFORCE((past_value == nullptr) == (present_value == nullptr),
-              "The implementation only supports past_value and present_value both null or both not null.");
+  ORT_ENFORCE(!((past_value != nullptr) && (present_value == nullptr)),
+              "The implementation does not support past_value provided and present_value being null.");
   const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;   // P x H_v
   const ptrdiff_t v_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;  // L x H_v
   const ptrdiff_t present_chunk_length = past_chunk_length + v_input_chunk_length;              // T x H_v
@@ -586,104 +622,32 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
             }
           }
 
+          // Compute QK * V
+          ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
+          const T* gemm_B;
+          int gemm_ldb;
+          T* gemm_C;
+          int gemm_ldc;
+
           if (transpose_output) {
-            // transpose_output is false
-            ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
-
-            if constexpr (std::is_same<T, float>::value) {
-              // V is transposed but not QK. We use GemmEx with a different value for ldb.
-              math::GemmEx<T, ThreadPool>(CblasNoTrans,
-                                          CblasNoTrans,
-                                          sequence_length,                                                                               // M
-                                          v_head_size,                                                                                   // N
-                                          total_sequence_length,                                                                         // K
-                                          1.f,                                                                                           // alpha
-                                          attention_probs + attention_probs_offset,                                                      // QK
-                                          total_sequence_length,                                                                         // lda
-                                          transposed_v ? V + head_vi * v_head_size + v_input_chunk_length * kv_num_heads * batch_i : v,  // V
-                                          transposed_v ? v_head_size * kv_num_heads : v_head_size,                                       // ldb
-                                          0.f,                                                                                           // beta
-                                          output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size),
-                                          v_head_size * num_heads,  // ldc
-                                          nullptr);
-            } else if constexpr (std::is_same<T, MLFloat16>::value) {
-              // This switch should probably be moved to math_cpu.h.
-              if (MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
-                MlasGemm(CblasNoTrans,
-                         CblasNoTrans,
-                         sequence_length,        // M
-                         v_head_size,            // N
-                         total_sequence_length,  // K
-                         attention_probs + attention_probs_offset,
-                         total_sequence_length,  // lda
-                         transposed_v ? V + head_i * v_head_size + v_input_chunk_length * kv_num_heads * batch_i : v,
-                         transposed_v ? static_cast<int>(v_head_size * kv_num_heads) : static_cast<int>(v_head_size),  // ldb
-                         output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size),
-                         v_head_size * num_heads,  // ldc
-                         MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
-              } else {
-                math::GemmEx<T, ThreadPool>(CblasNoTrans,
-                                            CblasNoTrans,
-                                            sequence_length,                                                                              // M
-                                            v_head_size,                                                                                  // N
-                                            total_sequence_length,                                                                        // K
-                                            MLFloat16(1.f),                                                                               // alpha
-                                            attention_probs + attention_probs_offset,                                                     // QK
-                                            total_sequence_length,                                                                        // lda
-                                            transposed_v ? V + head_i * v_head_size + v_input_chunk_length * kv_num_heads * batch_i : v,  // V
-                                            transposed_v ? v_head_size * kv_num_heads : v_head_size,                                      // ldb
-                                            MLFloat16(0.f),                                                                               // beta
-                                            output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size),
-                                            v_head_size * num_heads,  // ldc
-                                            nullptr);
-              }
-            } else {
-              ORT_THROW("Unsupported data type for attention QK*V multiplication: ",
-                        DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
-            }
+            // 3D inputs: V may be in strided layout, use appropriate strides.
+            gemm_B = transposed_v ? V + head_vi * v_head_size + v_input_chunk_length * kv_num_heads * batch_i : v;
+            gemm_ldb = transposed_v ? v_head_size * kv_num_heads : v_head_size;
+            gemm_C = output + ((batch_i * sequence_length * num_heads + head_i) * v_head_size);
+            gemm_ldc = v_head_size * num_heads;
           } else {
-            // transpose_output is false
-            ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
+            // 4D inputs: V is already in head-contiguous layout.
+            gemm_B = v;
+            gemm_ldb = v_head_size;
             ptrdiff_t dest_offset = SafeInt<ptrdiff_t>(sequence_length) * v_head_size * i;
-            T* dest = output + dest_offset;
-
-            if constexpr (std::is_same<T, float>::value) {
-              math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
-                              attention_probs + attention_probs_offset, v, dest, nullptr);
-            } else if constexpr (std::is_same<T, MLFloat16>::value) {
-              if (MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
-                MlasGemm(CblasNoTrans,
-                         CblasNoTrans,
-                         sequence_length,        // M
-                         v_head_size,            // N
-                         total_sequence_length,  // K
-                         attention_probs + attention_probs_offset,
-                         total_sequence_length,  // lda
-                         v,
-                         static_cast<int>(v_head_size),  // ldb
-                         dest,
-                         static_cast<int>(v_head_size),  // ldc
-                         MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
-              } else {
-                Gemm_MLFloat16(CblasNoTrans,
-                               CblasNoTrans,
-                               static_cast<ptrdiff_t>(sequence_length),        // M
-                               static_cast<ptrdiff_t>(v_head_size),            // N
-                               static_cast<ptrdiff_t>(total_sequence_length),  // K
-                               MLFloat16(1.f),                                 // alpha
-                               attention_probs + attention_probs_offset,
-                               v,
-                               MLFloat16(0.f),  // beta
-                               nullptr,
-                               nullptr,
-                               dest,
-                               nullptr);
-              }
-            } else {
-              ORT_THROW("Unsupported data type for attention QK*V multiplication: ",
-                        DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
-            }
+            gemm_C = output + dest_offset;
+            gemm_ldc = v_head_size;
           }
+
+          AttentionGemm(CblasNoTrans, CblasNoTrans,
+                        sequence_length, v_head_size, total_sequence_length,
+                        1.0f, attention_probs + attention_probs_offset, total_sequence_length,
+                        gemm_B, gemm_ldb, 0.0f, gemm_C, gemm_ldc);
         }
       });
 }

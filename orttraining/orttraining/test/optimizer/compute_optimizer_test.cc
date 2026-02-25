@@ -559,8 +559,6 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_MlmBertE2E) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 

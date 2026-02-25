@@ -216,7 +216,6 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   }
 }
 
-#ifndef USE_ROCM
 template <typename T>
 __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* output, T* qkv_add_bias,
                                     const int rotary_embedding_dim, const int head_size, const int step,
@@ -359,7 +358,6 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
     }
   }
 }
-#endif
 
 // this suppose 3 matrix in total
 template <typename T>
@@ -677,9 +675,7 @@ void InvokeAddBiasTranspose(
   assert(num_heads <= max_threads_per_block);
 
   if (do_rotary) {
-#ifdef USE_ROCM
-    ORT_THROW("Rotary Attention is not supported on ROCm");
-#elif !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
     if (format != 1 && format != 2 && format != 3) {
       ORT_THROW("format must be 1, 2 or 3 for rotary attention");
     }

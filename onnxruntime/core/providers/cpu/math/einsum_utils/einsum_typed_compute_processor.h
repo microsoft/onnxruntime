@@ -31,7 +31,8 @@ class EinsumTypedComputeProcessor {
   void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
                         const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
                         const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
-                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func);
+                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
+                        const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func);
 
   Status Run();
 
@@ -64,6 +65,7 @@ class EinsumTypedComputeProcessor {
   EinsumOp::DeviceHelpers::MatMul<T> device_matmul_func_;
   EinsumOp::DeviceHelpers::ReduceSum<T> device_reduce_sum_func_;
   EinsumOp::DeviceHelpers::DataCopy device_data_copy_func_;
+  EinsumOp::DeviceHelpers::ZeroBuffer device_zero_buffer_func_;
 
   // Holds EP-specific assets required for (auxiliary) ops that need to be executed on non-CPU EPs
   void* einsum_ep_assets_;

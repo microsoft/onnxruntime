@@ -106,7 +106,7 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuff
         if (CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL == record->kind ||
             CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
           CUpti_ActivityKernel3* kernel = (CUpti_ActivityKernel3*)record;
-          std::unordered_map<std::string, std::string> args{
+          InlinedHashMap<std::string, std::string> args{
               {"stream", std::to_string(kernel->streamId)},
               {"grid_x", std::to_string(kernel->gridX)},
               {"grid_y", std::to_string(kernel->gridY)},
@@ -130,7 +130,7 @@ void CUPTIManager::ProcessActivityBuffers(const std::vector<ProfilerActivityBuff
         } else if (CUPTI_ACTIVITY_KIND_MEMCPY == record->kind) {
           CUpti_ActivityMemcpy* mmcpy = (CUpti_ActivityMemcpy*)record;
           std::string name{GetMemcpyKindString((CUpti_ActivityMemcpyKind)mmcpy->copyKind)};
-          std::unordered_map<std::string, std::string> args{
+          InlinedHashMap<std::string, std::string> args{
               {"stream", std::to_string(mmcpy->streamId)},
               {"grid_x", "-1"},
               {"grid_y", "-1"},

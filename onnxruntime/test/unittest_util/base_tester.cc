@@ -424,7 +424,7 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
 bool SetEpsForAllNodes(Graph& graph,
                        const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
                        const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
-                       const std::function<bool(const IExecutionProvider&)>& ep_uses_kernel_registry_fn) {
+                       const std::function<bool(const IExecutionProvider&)>& ep_only_uses_kernel_registry_fn) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelRegistry::TypeConstraintMap type_constraint_map{};
 
@@ -440,7 +440,7 @@ bool SetEpsForAllNodes(Graph& graph,
 
       node.SetExecutionProviderType(provider_type);
 
-      if (!ep_uses_kernel_registry_fn(*ep)) {
+      if (!ep_only_uses_kernel_registry_fn(*ep)) {
         found = true;
         break;
       }
@@ -659,20 +659,26 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
+#ifdef USE_NV
+          // Only include NV TRT RTX EP when is ORT is built with the provider-bridge
+          // version of the EP (i.e., USE_NV is defined). This allows use of the plugin EP version of the EP
+          // when ORT is not built any provider-bridge EPs.
           kNvTensorRTRTXExecutionProvider,
+#endif
           kOpenVINOExecutionProvider,
           kDmlExecutionProvider,
           kAclExecutionProvider,
           kArmNNExecutionProvider,
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
-          kRocmExecutionProvider,
           kCoreMLExecutionProvider,
           kCoreMLExecutionProviderMLProgram,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
           kWebGpuExecutionProvider,
+#endif
       };
 
       // need to special case any synthetic EP names in the exclude list
@@ -732,8 +738,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultAclExecutionProvider();
         else if (provider_type == onnxruntime::kArmNNExecutionProvider)
           execution_provider = DefaultArmNNExecutionProvider();
-        else if (provider_type == onnxruntime::kRocmExecutionProvider)
-          execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == kCoreMLExecutionProviderMLProgram)
@@ -746,8 +750,10 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+#if !defined(USE_WEBGPU) || defined(BUILD_WEBGPU_EP_STATIC_LIB)
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();
+#endif
         else if (provider_type == dynamic_plugin_ep_name) {
           execution_provider = dynamic_plugin_ep_infra::MakeEp();
         }
@@ -770,27 +776,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             allow_released_onnx_opset_only,
             number_of_pre_packed_weights_counter,
             number_of_shared_pre_packed_weights_counter);
-
-        // Run Models with subscribed run_options->config_options
-        if (ctx_.run_options != nullptr &&
-            ctx_.run_options->config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp) == "true") {
-          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-          if (provider_type == onnxruntime::kRocmExecutionProvider) {
-            execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-          }
-
-          if (!execution_providers.empty()) {
-            ExecuteModelForEps(
-                std::move(execution_providers), model, ctx_.session_options,
-                ctx_.expect_result, ctx_.expected_failure_string,
-                ctx_.run_options, feeds, output_names,
-                &custom_session_registries_,
-                /*assign_ep_for_nodes=*/true,
-                allow_released_onnx_opset_only,
-                number_of_pre_packed_weights_counter,
-                number_of_shared_pre_packed_weights_counter);
-          }
-        }
 
         has_run = true;
         cur_provider = "not set";
@@ -850,12 +835,15 @@ void BaseTester::ExecuteModelForEps(
 
   ASSERT_TRUE(!execution_providers.empty()) << "Empty execution providers vector.";
   if (try_assign_ep_for_nodes) {
-    auto ep_uses_kernel_registry = [](const IExecutionProvider& ep) {
+    auto ep_only_uses_kernel_registry = [](const IExecutionProvider& ep) {
       const auto& provider_type = ep.Type();
 
-      constexpr std::array kEpsThatDoNotUseKernelRegistry{
+      constexpr std::array kEpsThatCompileNodes{
           kOpenVINOExecutionProvider,
-          kTensorrtExecutionProvider,
+          kTensorrtExecutionProvider,  // uses kernel registry for Memcpy* nodes only
+#ifdef USE_NV
+          kNvTensorRTRTXExecutionProvider,  // uses kernel registry for Memcpy* nodes only
+#endif
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
           kCoreMLExecutionProvider,
@@ -864,24 +852,33 @@ void BaseTester::ExecuteModelForEps(
           kSnpeExecutionProvider,
       };
 
-      // check list of known EPs that do not use a kernel registry
-      if (const auto ep_it = std::find(kEpsThatDoNotUseKernelRegistry.begin(), kEpsThatDoNotUseKernelRegistry.end(),
+      // check list of known EPs that compile nodes
+      if (const auto ep_it = std::find(kEpsThatCompileNodes.begin(), kEpsThatCompileNodes.end(),
                                        provider_type);
-          ep_it != kEpsThatDoNotUseKernelRegistry.end()) {
+          ep_it != kEpsThatCompileNodes.end()) {
         return false;
       }
 
-      // assume that a dynamic plugin EP which does not return a kernel registry does not use one
-      if (provider_type == dynamic_plugin_ep_infra::GetEpName() &&
-          ep.GetKernelRegistry() == nullptr) {
-        return false;
+      const OrtEp* ort_ep = ep.GetOrtEp();
+
+      if (ort_ep != nullptr) {  // This is a plugin EP
+
+        if (ep.GetKernelRegistry() == nullptr) {
+          // assume that a dynamic plugin EP which does not return a kernel registry does not use one
+          return false;
+        }
+
+        if (ort_ep->Compile != nullptr) {
+          // assume that a plugin EP that compiles nodes does not use a kernel registry for all nodes
+          return false;
+        }
       }
 
       // otherwise, assume that the EP uses a kernel registry
       return true;
     };
 
-    if (!SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries, ep_uses_kernel_registry)) {
+    if (!SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries, ep_only_uses_kernel_registry)) {
       std::string providers;
       for (const auto& ep : execution_providers) {
         providers.append(ep->Type() + " ");

@@ -53,6 +53,8 @@ namespace ArmKleidiAI {
 
 // By default we should try for SME2 first before falling back to SME.
 inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
+inline const bool UseSME = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
+inline const std::string_view vendor_name = MLAS_CPUIDINFO::GetCPUIDInfo().GetCPUVendor();
 
 // Buffer packing routines.
 //
@@ -79,6 +81,19 @@ MlasGemmPackB(
 
 bool
 MLASCALL
+MlasGemvBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize
+    );
+
+
+bool
+MLASCALL
 MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
@@ -92,14 +107,14 @@ MlasGemmBatch(
 
 size_t
 MLASCALL
-MlasDynamicQgemmPackBSize(
+MlasDynamicQGemmPackBSize(
     size_t N,
     size_t K
 );
 
 void
 MLASCALL
-MlasDynamicQgemmPackB(
+MlasDynamicQGemmPackB(
     size_t N,
     size_t K,
     const int8_t* B,

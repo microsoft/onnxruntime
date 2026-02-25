@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <filesystem>
 #include <fstream>
 #include <future>
 #include <iostream>
@@ -21,6 +22,7 @@
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/graph/constants.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_lite_custom_op.h"
@@ -45,10 +47,6 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
 #include <cuda_runtime.h>
-#endif
-
-#ifdef USE_ROCM
-#include <hip/hip_runtime.h>
 #endif
 
 #ifdef USE_DML
@@ -295,14 +293,6 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #else
     return;
 #endif
-  } else if (provider_type == 3) {
-#ifdef USE_ROCM
-    std::cout << "Running simple inference with rocm provider" << std::endl;
-    OrtROCMProviderOptions rocm_options;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
-#else
-    return;
-#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
@@ -347,7 +337,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_DML)
 static constexpr PATH_TYPE CUDA_GRAPH_ANNOTATION_MODEL_URI = TSTR("testdata/mul_1_dynamic.onnx");
 #endif
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
@@ -489,6 +479,94 @@ TEST(CApiTest, dim_param) {
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
+
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a dense OrtValue tensor.
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_DenseTensor) {
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  Ort::Value x_value = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+  Ort::TensorTypeAndShapeInfo type_shape_info = x_value.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  Ort::Value::Shape shape{};
+  x_value.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
+
+  ASSERT_EQ(elem_type, type_shape_info.GetElementType());
+
+  std::vector<int64_t> expected_shape = type_shape_info.GetShape();
+  gsl::span<const int64_t> actual_shape(shape.shape, shape.shape_len);
+  ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
+}
+
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a scalar OrtValue tensor.
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_Scalar) {
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+
+  std::vector<int64_t> x_shape = {};  // Scalar (no shape)
+  std::array<float, 1> x_values = {1.0f};
+  Ort::Value x_value = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+  Ort::TensorTypeAndShapeInfo type_shape_info = x_value.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  Ort::Value::Shape shape{};
+  x_value.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
+
+  ASSERT_EQ(elem_type, type_shape_info.GetElementType());
+
+  std::vector<int64_t> expected_shape = type_shape_info.GetShape();
+  gsl::span<const int64_t> actual_shape(shape.shape, shape.shape_len);
+  ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
+  ASSERT_EQ(shape.shape, nullptr);
+  ASSERT_EQ(shape.shape_len, 0);
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+// Tests calling OrtApi::GetTensorElementTypeAndShapeDataReference for a sparse OrtValue tensor.
+TEST(CApiTest, Value_GetTensorElementTypeAndShapeDataReference_SparseTensor) {
+  std::vector<int64_t> common_shape{9, 9};
+  std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
+                              10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0,
+                              18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+                              26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0,
+                              34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 41.0,
+                              42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0, 49.0,
+                              50.0, 51.0, 52.0, 53.0};
+
+  // 2 - D index
+  std::vector<int64_t> indices_shape{gsl::narrow<int64_t>(A_values.size()), 2};
+  std::vector<int64_t> A_indices{0, 1, 0, 2, 0, 6, 0, 7, 0, 8, 1, 0, 1,
+                                 1, 1, 2, 1, 6, 1, 7, 1, 8, 2, 0, 2, 1,
+                                 2, 2, 2, 6, 2, 7, 2, 8, 3, 3, 3, 4, 3,
+                                 5, 3, 6, 3, 7, 3, 8, 4, 3, 4, 4, 4, 5,
+                                 4, 6, 4, 7, 4, 8, 5, 3, 5, 4, 5, 5, 5,
+                                 6, 5, 7, 5, 8, 6, 0, 6, 1, 6, 2, 6, 3,
+                                 6, 4, 6, 5, 7, 0, 7, 1, 7, 2, 7, 3, 7,
+                                 4, 7, 5, 8, 0, 8, 1, 8, 2, 8, 3, 8, 4,
+                                 8, 5};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
+  Ort::Value::Shape ort_values_shape{&indices_shape[0], 1U};
+  auto value_sparse = Ort::Value::CreateSparseTensor(info, A_values.data(), ort_dense_shape, ort_values_shape);
+  value_sparse.UseCooIndices(A_indices.data(), A_indices.size());
+
+  Ort::TensorTypeAndShapeInfo type_shape_info = value_sparse.GetTensorTypeAndShapeInfo();
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  Ort::Value::Shape shape{};
+  value_sparse.GetTensorElementTypeAndShapeDataReference(elem_type, shape);
+
+  ASSERT_EQ(elem_type, type_shape_info.GetElementType());
+
+  std::vector<int64_t> expected_shape = type_shape_info.GetShape();
+  gsl::span<const int64_t> actual_shape(shape.shape, shape.shape_len);
+  ASSERT_EQ(actual_shape, gsl::span<const int64_t>(expected_shape));
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 static std::pair<bool, bool> LoadAndGetInputShapePresent(const ORTCHAR_T* const model_url) {
   Ort::Session session(*ort_env, model_url, Ort::SessionOptions{});
@@ -1715,15 +1793,12 @@ TEST(CApiTest, test_custom_op_library) {
 #ifdef USE_CUDA
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 1, nullptr, lib_name.c_str());
-#elif USE_ROCM
-  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 3, nullptr, lib_name.c_str());
 #elif USE_DML
   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
                          expected_values_y, 4, nullptr, lib_name.c_str());
 #else
-TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                       expected_values_y, 0, nullptr, lib_name.c_str());
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
 
@@ -2103,27 +2178,6 @@ TEST(CApiTest, get_allocator_cuda) {
 }
 #endif
 
-#ifdef USE_ROCM
-TEST(CApiTest, get_allocator_rocm) {
-  Ort::SessionOptions session_options;
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
-  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
-
-  Ort::MemoryInfo info_rocm("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-  Ort::Allocator rocm_allocator(session, info_rocm);
-
-  auto allocator_info = rocm_allocator.GetInfo();
-  ASSERT_TRUE(info_rocm == allocator_info);
-  void* p = rocm_allocator.Alloc(1024);
-  ASSERT_NE(p, nullptr);
-  rocm_allocator.Free(p);
-
-  auto mem_allocation = rocm_allocator.GetAllocation(1024);
-  ASSERT_NE(nullptr, mem_allocation.get());
-  ASSERT_EQ(1024U, mem_allocation.size());
-}
-#endif
-
 #if defined(USE_QNN)
 
 TEST(CApiTest, get_allocator_qnn_htp_shared) {
@@ -2424,7 +2478,7 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
 
 #endif  // defined(USE_QNN)
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_DML)
 TEST(CApiTest, basic_cuda_graph) {
   [[maybe_unused]] const auto& api = Ort::GetApi();
   Ort::SessionOptions session_options;
@@ -2445,19 +2499,6 @@ TEST(CApiTest, basic_cuda_graph) {
   cuda_options.Update(options_map);
   session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
-#elif defined(USE_ROCM)
-  // Enable hip graph in rocm provider option.
-  OrtROCMProviderOptions* rocm_options = nullptr;
-  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
-  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
-      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
-  std::vector<const char*> keys{"enable_hip_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
-
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_rocm_options.get()) == nullptr);
 #elif defined(USE_DML)
   // Enable dynamic DML graph in DML provider option.
   session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
@@ -2469,13 +2510,7 @@ TEST(CApiTest, basic_cuda_graph) {
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
-#if defined(USE_ROCM)
-// local hipify
-#define cudaMemcpy hipMemcpy
-#define cudaMemcpyHostToDevice hipMemcpyHostToDevice
-#define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
-  Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#elif defined(USE_CUDA) || defined(USE_TENSORRT)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_DML)
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
@@ -2491,7 +2526,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
   ASSERT_NE(input_data.get(), nullptr);
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 #elif defined(USE_DML)
   ComPtr<ID3D12Resource> input_resource;
@@ -2524,7 +2559,7 @@ TEST(CApiTest, basic_cuda_graph) {
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #elif defined(USE_DML)
   ComPtr<ID3D12Resource> output_resource;
@@ -2538,7 +2573,7 @@ TEST(CApiTest, basic_cuda_graph) {
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
@@ -2549,7 +2584,7 @@ TEST(CApiTest, basic_cuda_graph) {
   // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 #elif defined(USE_DML)
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
@@ -2559,7 +2594,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
   session.Run(Ort::RunOptions(), binding);
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
@@ -2571,14 +2606,9 @@ TEST(CApiTest, basic_cuda_graph) {
   // Clean up
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
-#if defined(USE_ROCM)
-#undef cudaMemcpy
-#undef cudaMemcpyHostToDevice
-#undef cudaMemcpyDeviceToHost
-#endif
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_DML)
 struct CudaGraphInputOutputData_0 {
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -2622,12 +2652,6 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
                                        Ort::MemoryAllocation& input_data,
                                        Ort::MemoryAllocation& output_data,
                                        const char* cuda_graph_annotation) {
-// a local hipify of select cuda symbols to avoid code duplication
-#ifdef USE_ROCM
-#define cudaMemcpy hipMemcpy
-#define cudaMemcpyHostToDevice hipMemcpyHostToDevice
-#define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
-#endif
 #ifdef USE_DML
   Ort::SessionOptions session_options;
   Ort::Allocator allocator(session, info_mem);
@@ -2731,11 +2755,6 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
   // Clean up
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
-#ifdef USE_ROCM
-#undef cudaMemcpy
-#undef cudaMemcpyHostToDevice
-#undef cudaMemcpyDeviceToHost
-#endif
 }
 
 TEST(CApiTest, basic_cuda_graph_with_annotation) {
@@ -2758,20 +2777,6 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
   Ort::MemoryInfo info_mem("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-#elif defined(USE_ROCM)
-  // Enable hip graph in rocm provider option.
-  OrtROCMProviderOptions* rocm_options = nullptr;
-  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
-  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
-      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
-  std::vector<const char*> keys{"enable_hip_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
-
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_rocm_options.get()) == nullptr);
-  Ort::MemoryInfo info_mem("Hip", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 #endif
 
   Ort::Session session(*ort_env, CUDA_GRAPH_ANNOTATION_MODEL_URI, session_options);
@@ -2820,34 +2825,10 @@ TEST(CApiTest, cuda_graph_with_shape_nodes) {
 }
 #endif  // defined(USE_CUDA) || defined(USE_TENSORRT)
 
-#if defined(USE_ROCM)
-TEST(CApiTest, hip_graph_with_shape_nodes) {
-  const auto& api = Ort::GetApi();
-
-  // Enable hip graph in rocm provider option.
-  OrtROCMProviderOptions* rocm_options = nullptr;
-  ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
-  std::unique_ptr<OrtROCMProviderOptions, decltype(api.ReleaseROCMProviderOptions)>
-      rel_rocm_options(rocm_options, api.ReleaseROCMProviderOptions);
-  std::vector<const char*> keys{"enable_hip_graph"};
-  std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateROCMProviderOptions(rel_rocm_options.get(), keys.data(), values.data(), 1) == nullptr);
-
-  Ort::SessionOptions session_options;
-  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
-                  static_cast<OrtSessionOptions*>(session_options),
-                  rel_rocm_options.get()) == nullptr);
-
-  // Successful loading of the ONNX model with shape nodes with hip graph feature enabled
-  Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
-}
-#endif  // defined(USE_ROCM)
-
 #if defined(USE_DML)
 TEST(CApiTest, dml_graph_with_shape_nodes) {
   const auto& api = Ort::GetApi();
 
-  // Enable hip graph in rocm provider option.
   const OrtDmlApi* ort_dml_api;
   Ort::SessionOptions session_options;
   session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
@@ -2861,7 +2842,7 @@ TEST(CApiTest, dml_graph_with_shape_nodes) {
 
 #endif  // REDUCED_OPS_BUILD
 
-#endif  // defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA) || defined(USE_TENSORRT)
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
@@ -4870,3 +4851,270 @@ TEST(CApiTest, custom_cast) {
                                inputs, "output", expected_dims_y, expected_values_y, 0,
                                custom_op_domain, nullptr);
 }
+
+TEST(CApiTest, ModelWithMaliciousExternalDataInMemoryShouldFailToLoad) {
+  // Attempt to create an ORT session with the malicious model
+  // This should fail due to the invalid external in-memory reference
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_evil_weights.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::SessionOptions session_options;
+
+  bool exception_thrown = false;
+  std::string exception_message;
+
+  try {
+    // This should throw an exception due to malicious external data
+    Ort::Session session(env, model_path, session_options);
+  } catch (const Ort::Exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  } catch (const std::exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  }
+
+  // Verify that loading the model failed
+  EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious in-memory data";
+
+  // Verify that the exception message indicates security or external data issues
+  EXPECT_TRUE(exception_message.find("in-memory") != std::string::npos ||
+              exception_message.find("references") != std::string::npos ||
+              exception_message.find("invalid") != std::string::npos ||
+              exception_message.find("model") != std::string::npos)
+      << "Exception message should indicate external data or security issue. Got: " << exception_message;
+}
+
+TEST(CApiTest, ModelWithExternalDataOutsideModelDirectoryShouldFailToLoad) {
+  // Attempt to create an ORT session with the malicious model
+  // This should fail due to the external file that is not under model directory structure
+  // i.e. ../../../../etc/passwd
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_arbitrary_external_file.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::SessionOptions session_options;
+
+  bool exception_thrown = false;
+  std::string exception_message;
+
+  try {
+    // This should throw an exception due to malicious external data
+    Ort::Session session(env, model_path, session_options);
+  } catch (const Ort::Exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  } catch (const std::exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  }
+
+  // Verify that loading the model failed
+  EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious external data";
+
+  // Verify that the exception message indicates security or external data issues
+  EXPECT_TRUE(exception_message.find("External data path escapes model directory") != std::string::npos ||
+              exception_message.find("invalid") != std::string::npos ||
+              exception_message.find("model") != std::string::npos)
+      << "Exception message should indicate external data or security issue. Got: " << exception_message;
+}
+
+TEST(CApiTest, InMemoryModel_ExternalDataOutsideWorkingDirectory_FailToLoad) {
+  // Attempt to create an ORT session with the malicious model (loaded from bytes).
+  // This should fail due to the use of an external file path that is not under current working directory.
+  // i.e. ../../../../etc/passwd
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_arbitrary_external_file.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::SessionOptions session_options;
+
+  // Load model contents into array
+  std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(model_file_stream.good());
+  model_file_stream.seekg(0, std::ios::end);
+  const auto file_contents_size = onnxruntime::narrow<size_t>(model_file_stream.tellg());
+  model_file_stream.seekg(0, std::ios::beg);
+  std::vector<char> file_contents(file_contents_size, 0);
+  model_file_stream.read(&file_contents[0], file_contents_size);
+  model_file_stream.close();
+
+  bool exception_thrown = false;
+  std::string exception_message;
+
+  try {
+    // This should throw an exception due to malicious external data
+    Ort::Session session(env, file_contents.data(), file_contents_size, session_options);
+  } catch (const Ort::Exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  } catch (const std::exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  }
+
+  // Verify that loading the model failed
+  EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious external data path";
+
+  // Verify that the exception message indicates security or external data issues
+  EXPECT_TRUE(exception_message.find("External data path") != std::string::npos &&
+              exception_message.find("escapes working directory") != std::string::npos)
+      << "Exception message should indicate external data or security issue. Got: " << exception_message;
+}
+
+TEST(CApiTest, InMemoryModel_SessionConfigExternalFileFolder_ExternalDataOutsideModelDirectory_FailToLoad) {
+  // Attempt to create an ORT session with the malicious model (loaded from bytes).
+  // A valid external file folder path is explicitly set via session options.
+  // However, this should still fail due to the use of an external file path that escapes the set directory.
+  // i.e. ../../../../etc/passwd
+  constexpr const ORTCHAR_T* model_path = TSTR("testdata/test_arbitrary_external_file.onnx");
+
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "testdata");
+
+  // Load model contents into array
+  std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(model_file_stream.good());
+  model_file_stream.seekg(0, std::ios::end);
+  const auto file_contents_size = onnxruntime::narrow<size_t>(model_file_stream.tellg());
+  model_file_stream.seekg(0, std::ios::beg);
+  std::vector<char> file_contents(file_contents_size, 0);
+  model_file_stream.read(&file_contents[0], file_contents_size);
+  model_file_stream.close();
+
+  bool exception_thrown = false;
+  std::string exception_message;
+
+  try {
+    // This should throw an exception due to malicious external data
+    Ort::Session session(env, file_contents.data(), file_contents_size, session_options);
+  } catch (const Ort::Exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  } catch (const std::exception& e) {
+    exception_thrown = true;
+    exception_message = e.what();
+  }
+
+  // Verify that loading the model failed
+  EXPECT_TRUE(exception_thrown) << "Expected model loading to fail due to malicious external data path";
+
+  // Verify that the exception message indicates security or external data issues
+  EXPECT_TRUE(exception_message.find("External data path") != std::string::npos &&
+              exception_message.find("escapes both model directory") != std::string::npos &&
+              exception_message.find("and real model directory") != std::string::npos)
+      << "Exception message should indicate external data or security issue. Got: " << exception_message;
+}
+
+#ifdef ORT_ENABLE_STREAM
+#if USE_CUDA
+
+namespace {
+struct TestCudaStreamOverrideUsed : onnxruntime::Stream {
+  TestCudaStreamOverrideUsed(onnxruntime::Stream* stream)
+      : onnxruntime::Stream(stream->GetHandle(), stream->GetDevice()), real_stream(stream) {}
+
+  std::unique_ptr<onnxruntime::synchronize::Notification> CreateNotification(size_t num_consumers) override {
+    return real_stream->CreateNotification(num_consumers);
+  }
+
+  TestCudaStreamOverrideUsed(const TestCudaStreamOverrideUsed&) = delete;
+  TestCudaStreamOverrideUsed& operator=(const TestCudaStreamOverrideUsed&) = delete;
+
+  void Flush() override {
+    flush_count++;
+    real_stream->Flush();
+  }
+
+  onnxruntime::Status CleanUpOnRunEnd() override { return real_stream->CleanUpOnRunEnd(); }
+
+  onnxruntime::Stream* real_stream;
+  size_t flush_count{0};
+};
+}  // namespace
+
+TEST(CApiTest, TestSyncStreamOverride) {
+#ifdef _WIN32
+  auto cuda_lib = ORT_TSTR("onnxruntime_providers_cuda.dll");
+#else
+  auto cuda_lib = ORT_TSTR("onnxruntime_providers_cuda.so");
+#endif
+
+  if (!std::filesystem::exists(cuda_lib)) {
+    GTEST_SKIP() << "CUDA library was not found";
+  }
+
+  constexpr const char* cuda_ep_name = "ORT Cuda";
+  ort_env->RegisterExecutionProviderLibrary(cuda_ep_name, cuda_lib);
+  auto ep_devices = ort_env->GetEpDevices();
+
+  Ort::ConstEpDevice cuda_device;
+  for (const auto& device : ep_devices) {
+    if (device.Device().Type() == OrtHardwareDeviceType_GPU &&
+        device.Device().VendorId() == 0x10DE) {  // NVIDIA vendor ID
+      cuda_device = device;
+      break;
+    }
+  }
+
+  if (!cuda_device) {
+    GTEST_SKIP() << "No CUDA device found, skipping test.";
+  }
+
+  // Create session with CUDA EP using C++ public API in Ort:: namespace
+  {
+    // Create a stream on CUDA Device
+    const auto sync_stream = cuda_device.CreateSyncStream();
+    TestCudaStreamOverrideUsed cuda_override_stream(sync_stream);
+
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, Ort::KeyValuePairs{});
+
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+    constexpr const std::array<const char*, 1U> input_names = {"X"};
+    constexpr const std::array<const char*, 1U> output_names = {"Y"};
+    constexpr const std::array<int64_t, 2U> input_shape = {3LL, 2LL};
+    float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    auto input_value = Ort::Value::CreateTensor<float>(
+        Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU),
+        x_value, std::size(x_value), input_shape.data(), input_shape.size());
+    Ort::Value ort_inputs[] = {std::move(input_value)};
+
+    Ort::RunOptions run_options;
+    run_options.SetSyncStream(reinterpret_cast<OrtSyncStream*>(&cuda_override_stream));
+
+    auto output_values = session.Run(run_options,
+                                     input_names.data(), ort_inputs, std::size(ort_inputs),
+                                     output_names.data(), output_names.size());
+
+    ASSERT_GT(cuda_override_stream.flush_count, 0U)
+        << "Expected the custom CUDA stream override to be used during session run.";
+  }
+
+  ort_env->UnregisterExecutionProviderLibrary(cuda_ep_name);
+}
+#endif
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CApiTest, GetEpGraphAssignmentInfo_NotEnabledError) {
+  // Test that calling OrtApi::Session_GetEpGraphAssignmentInfo() without enabling the appropriate
+  // session configuration option returns an error.
+
+  Ort::SessionOptions options;
+  // Do not set:
+  // options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+  try {
+    session.GetEpGraphAssignmentInfo();
+    ASSERT_TRUE(false) << "Call to Session_GetEpGraphAssignmentInfo should have failed";
+  } catch (const Ort::Exception& ex) {
+    ASSERT_EQ(ex.GetOrtErrorCode(), ORT_FAIL);
+
+    std::ostringstream oss;
+    oss << "Session configuration entry '" << kOrtSessionOptionsRecordEpGraphAssignmentInfo << "' must be set to \"1\"";
+    ASSERT_THAT(ex.what(), testing::HasSubstr(oss.str()));
+  }
+}
+#endif

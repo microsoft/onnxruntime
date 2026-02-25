@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/providers/webgpu/webgpu_external_header.h"
-
+#include <memory>
 #include <utility>
 
+#include "core/providers/webgpu/webgpu_external_header.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -94,6 +94,13 @@ class ComputeContextBase {
   //
   inline bool IsGraphCaptureEnabled() const {
     return ep_.IsGraphCaptureEnabled();
+  }
+
+  //
+  // Get the multi rotary cache concatenation offset (0 = disabled).
+  //
+  inline uint32_t MultiRotaryCacheConcatOffset() const {
+    return ep_.MultiRotaryCacheConcatOffset();
   }
 
   //

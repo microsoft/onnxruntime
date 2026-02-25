@@ -634,6 +634,7 @@ MlasGemm(
 {
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
+
 /**
  * @brief Parameters that define the shape of a dynamically quantized GEMM operation.
  *
@@ -646,6 +647,7 @@ struct MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS {
     size_t N = 0;                  /**< Column size of matrix B */
     size_t K = 0;                  /**< Column size of matrix A and Row size of matrix B */
 };
+
 /**
  * @brief Parameters that define the data buffers and layout for a dynamic quant GEMM.
  *
@@ -680,6 +682,14 @@ MlasDynamicQGemm (
     MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool);
 }
 
+/**
+ * @brief Determines whether a dynamic quantized GEMM implementation is available on the current platform.
+ *
+ * MlasDynamicQGemm() and MlasDynamicQGemmBatch() should only be called if this function returns true.
+ */
+bool
+MLASCALL
+MlasIsDynamicQGemmAvailable();
 
 //
 // Symmetric QGEMM has limited buffer overrun.
@@ -830,7 +840,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
     MlasConvAlgorithmDepthwise,
 #endif
 };
@@ -1116,6 +1126,16 @@ MlasEltwiseAdd(
     size_t N
     );
 
+template <typename T>
+void
+MLASCALL
+MlasEltwiseMul(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
+    );
+
 template<typename T>
 void
 MLASCALL
@@ -1222,7 +1242,8 @@ MlasNchwcConv(
     float* Output,
     const MLAS_ACTIVATION* Activation,
     bool ZeroMode,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    bool UseBf16
     );
 
 void
@@ -1816,7 +1837,7 @@ MlasHalfGemmBatch(
     const size_t K,
     const size_t BatchN,
     const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool = nullptr
+    MLAS_THREADPOOL* ThreadPool
     );
 
 /**
@@ -1945,6 +1966,7 @@ struct MLAS_SBGEMM_DATA_PARAMS {
     const MLAS_SBGEMM_POSTPROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false; /**< matrix A is fp32, needs to be converted to bf16*/
     bool BIsfp32 = false; /**< matrix B is fp32, needs to be converted to bf16*/
+    bool ZeroMode = true; /**< true: C = A*B, false: C += A*B */
 };
 
 /**
@@ -1963,7 +1985,7 @@ struct MLAS_SBGEMM_DATA_PARAMS {
  * @return
  */
 void MLASCALL
-MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* DataParams, MLAS_THREADPOOL* ThreadPool = nullptr);
+MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* DataParams, MLAS_THREADPOOL* ThreadPool);
 
 /**
  * @brief For bfloat16 precision GEMM, returns size of the
@@ -2105,14 +2127,3 @@ MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
 );
-
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-/**
- * @brief Function to override the packing mechanism decision if kleidi ai is included
- * @param enable     enable kleidiai packing (allow or disallow depending on true/false)
- * @return
-*/
-void
-MLASCALL
-MlasGemmBatchPackUseKleidi(bool enable);
-#endif

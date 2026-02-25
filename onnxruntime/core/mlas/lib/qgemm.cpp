@@ -19,7 +19,7 @@ Abstract:
 #include "qgemm.h"
 
 // TODO: When overrides are implemented, remove this
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -201,6 +201,17 @@ MlasGemmBatch(
     });
 }
 
+bool
+MLASCALL
+MlasIsDynamicQGemmAvailable()
+{
+#if defined(USE_KLEIDIAI)
+  return (ArmKleidiAI::UseSME2 || ArmKleidiAI::UseSME);
+#else
+  return false;
+#endif
+}
+
 void
 MLASCALL
 MlasDynamicQGemmBatch (
@@ -209,10 +220,12 @@ MlasDynamicQGemmBatch (
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
 ) {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    //No fallback and putting in guards. This implementation is SME2 specific.
-    if(ArmKleidiAI::UseSME2){
-        ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
+    assert(MlasIsDynamicQGemmAvailable());
+
+#if defined(USE_KLEIDIAI)
+    //No fallback
+    if (GetMlasPlatform().MlasDynamicQGemmBatchOverride != nullptr) {
+        GetMlasPlatform().MlasDynamicQGemmBatchOverride(Shape, DataParams, BatchN, ThreadPool);
     }
 #endif
 
@@ -332,12 +345,13 @@ MlasDynamicQgemmPackBSize(
     size_t K
 )
 {
+    assert(MlasIsDynamicQGemmAvailable());
+
     size_t bytes = 0;
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
     //No fallback available
-    //TODO: Insert Override
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
-        bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
+    if (GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride != nullptr) {
+       bytes = GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride(N, K);
     }
 #endif
 
@@ -405,11 +419,15 @@ Return Value:
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
         ~(BufferAlignment - 1);
-    // If this gemm B argument is used in a dynamically quantization gemm operation we can optimize for
+    // If this gemm B argument is used in a dynamically quantized gemm operation we can optimize for
     // this use case. Concat both packed representations for later decision. This allows for cases later
-    // where we still have the prepack at the cost of some memory otherwise we can use the qgemm quantization 
+    // where we still have the prepack at the cost of some memory otherwise we can use the qgemm quantization
     // for better performance
-    return AlignedBytesRequired + MlasDynamicQgemmPackBSize(N, K);
+    if (MlasIsDynamicQGemmAvailable()) {
+        return AlignedBytesRequired + MlasDynamicQgemmPackBSize(N, K);
+    } else {
+        return AlignedBytesRequired;
+    }
 }
 
 void
@@ -423,10 +441,12 @@ MlasDynamicQgemmPackB(
     void* PackedB
 )
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    assert(MlasIsDynamicQGemmAvailable());
+
+#if defined(USE_KLEIDIAI)
     //No fallback
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
-        ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
+    if (GetMlasPlatform().MlasDynamicQGemmPackBOverride != nullptr) {
+        GetMlasPlatform().MlasDynamicQGemmPackBOverride(N, K, B, Scales, Bias, PackedB);
     }
 #endif
 

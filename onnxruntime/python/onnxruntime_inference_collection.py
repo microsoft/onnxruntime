@@ -219,6 +219,15 @@ class Session:
         "Return registered execution providers' configurations."
         return self._provider_options
 
+    def get_provider_graph_assignment_info(self) -> Sequence[onnxruntime.OrtEpAssignedSubgraph]:
+        """
+        Get information about the subgraphs assigned to each execution provider and the nodes within.
+
+        Application must enable the recording of graph assignment information by setting the session configuration
+        for the key "session.record_ep_graph_assignment_info" to "1".
+        """
+        return self._sess.get_provider_graph_assignment_info()
+
     def set_providers(self, providers=None, provider_options=None) -> None:
         """
         Register the input list of execution providers. The underlying session is re-created.
@@ -397,6 +406,16 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
+    def set_ep_dynamic_options(self, options: dict[str, str]):
+        """
+        Set dynamic options for execution providers.
+
+        :param options: Dictionary of key-value pairs where both keys and values are strings.
+                        These options will be passed to the execution providers to modify
+                        their runtime behavior.
+        """
+        self._sess.set_ep_dynamic_options(options)
+
     def get_tuning_results(self):
         return self._sess.get_tuning_results()
 
@@ -502,8 +521,42 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
-        # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
-        if "TensorrtExecutionProvider" in available_providers:
+        # Validate that TensorrtExecutionProvider and NvTensorRTRTXExecutionProvider are not both specified
+        if providers:
+            has_tensorrt = any(
+                provider == "TensorrtExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
+                for provider in providers
+            )
+            has_tensorrt_rtx = any(
+                provider == "NvTensorRTRTXExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
+                for provider in providers
+            )
+            if has_tensorrt and has_tensorrt_rtx:
+                raise ValueError(
+                    "Cannot enable both 'TensorrtExecutionProvider' and 'NvTensorRTRTXExecutionProvider' "
+                    "in the same session."
+                )
+        # Tensorrt and TensorRT RTX can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
+        if "NvTensorRTRTXExecutionProvider" in available_providers:
+            if (
+                providers
+                and any(
+                    provider == "CUDAExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                    for provider in providers
+                )
+                and any(
+                    provider == "NvTensorRTRTXExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
+                    for provider in providers
+                )
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
+        elif "TensorrtExecutionProvider" in available_providers:
             if (
                 providers
                 and any(
@@ -518,33 +571,6 @@ class InferenceSession(Session):
                 )
             ):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
-        if "NvTensorRTRTXExecutionProvider" in available_providers:
-            if (
-                providers
-                and any(
-                    provider == "CUDAExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
-                    for provider in providers
-                )
-                and any(
-                    provider == "NvTensorRTRTXExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "NvExecutionProvider")
-                    for provider in providers
-                )
-            ):
-                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
-        # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
-        elif "MIGraphXExecutionProvider" in available_providers:
-            if providers and any(
-                provider == "ROCMExecutionProvider"
-                or (isinstance(provider, tuple) and provider[0] == "ROCMExecutionProvider")
-                for provider in providers
-            ):
-                self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
             else:
                 self._fallback_providers = ["CPUExecutionProvider"]
         else:
