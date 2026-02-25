@@ -22,7 +22,7 @@
 #include "core/common/common.h"
 #endif
 
-#include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 #ifndef CBLAS_ENUM_DEFINED_H
 #define CBLAS_ENUM_DEFINED_H
