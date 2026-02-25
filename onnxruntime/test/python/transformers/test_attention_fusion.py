@@ -328,13 +328,8 @@ class TestFusion(unittest.TestCase):
 
                 os.remove(model_path)
 
-                attention_nodes = [node for node in optimized_model.model.graph.node if node.op_type == "Attention"]
-                self.assertEqual(
-                    len(attention_nodes),
-                    1,
-                    f"Expected 1 Attention node, got {len(attention_nodes)} "
-                    f"(add_cast={add_cast}, switch_add_inputs={switch_add_inputs})",
-                )
+                model_name = "gpt2_attention_no_past_add_opt.onnx" if switch_add_inputs else "gpt2_attention_no_past_opt.onnx"
+                self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):
         for enable_skip_layer_norm_fusion in [False, True]:
