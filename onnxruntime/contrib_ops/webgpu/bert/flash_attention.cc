@@ -246,7 +246,7 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
 
 Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
                                       const Tensor* attention_bias, Tensor* output, Tensor* present_key, Tensor* metadata, const Tensor* seqlen_k,
-                                      const WebgpuAttentionParameters& parameters, const Tensor* indirect_buffer, uint32_t num_total_seq_length_tile, uint32_t num_present_sequence_length_tile, uint32_t tile_size, bool use_indirect_dispatch, uint32_t present_sequence_length, const Tensor* head_sink) {
+                                      const WebgpuAttentionParameters& parameters, const Tensor* indirect_buffer, uint32_t num_total_seq_length_tile, uint32_t num_present_sequence_length_tile, uint32_t tile_size, bool use_indirect_dispatch, uint32_t present_sequence_length) {
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
 
@@ -551,7 +551,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeQKT(context, Q, attention_bias, &qk, present_key, &metadata, seqlen_k,
                                                      parameters, indirect_buffer_ptr, num_total_seq_length_tile,
                                                      num_present_sequence_length_tile, tile_size, use_indirect_dispatch,
-                                                     present_sequence_length, head_sink));
+                                                     present_sequence_length));
 
   const TensorShapeVector out_split_vx_dims({parameters.batch_size_, parameters.num_heads_,
                                              num_present_sequence_length_tile, parameters.head_size_});
