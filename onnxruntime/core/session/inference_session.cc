@@ -743,8 +743,7 @@ InferenceSession::~InferenceSession() {
       Env::Default().GetTelemetryProvider().LogRuntimePerf(session_id_,
                                                            telemetry_.total_runs_since_last_,
                                                            telemetry_.total_run_duration_since_last_,
-                                                           telemetry_.duration_per_batch_size_,
-                                                           Status::OK());
+                                                           telemetry_.duration_per_batch_size_);
     }
   }
   ORT_CATCH(const std::exception& e) {
@@ -3238,30 +3237,32 @@ Status InferenceSession::Run(const RunOptions& run_options,
     break;
   }
 
-  // time to send telemetry?
+  // Only include successful inferences in batch since failed inferences can skew the metric
+  if (retval.IsOK())
   {
-    // Adding lock_guard here to ensure that telemetry updates are thread-safe.
-    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
-    ++telemetry_.total_runs_since_last_;
-    telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
-    telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
+    // time to send telemetry?
+    {
+      // Adding lock_guard here to ensure that telemetry updates are thread-safe.
+      std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+      ++telemetry_.total_runs_since_last_;
+      telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+      telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-    // Emit RuntimePerf on scheduled interval or on error
-    if ((TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_) ||
-        !retval.IsOK()) {
-      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                                telemetry_.total_run_duration_since_last_,
-                                                telemetry_.duration_per_batch_size_,
-                                                retval);
-      // reset counters
-      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-      telemetry_.total_runs_since_last_ = 0;
-      telemetry_.total_run_duration_since_last_ = 0;
-      telemetry_.duration_per_batch_size_.clear();
+      // Emit RuntimePerf on scheduled interval or on error
+      if ((TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_)) {
+        env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                                  telemetry_.total_run_duration_since_last_,
+                                                  telemetry_.duration_per_batch_size_);
+        // reset counters
+        telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+        telemetry_.total_runs_since_last_ = 0;
+        telemetry_.total_run_duration_since_last_ = 0;
+        telemetry_.duration_per_batch_size_.clear();
 
-      // Double the interval, capping at kRuntimePerfMaxInterval
-      telemetry_.runtime_perf_interval_ = std::min(telemetry_.runtime_perf_interval_ * 2,
-                                                   Telemetry::kRuntimePerfMaxInterval);
+        // Double the interval, capping at kRuntimePerfMaxInterval
+        telemetry_.runtime_perf_interval_ = std::min(telemetry_.runtime_perf_interval_ * 2,
+                                                     Telemetry::kRuntimePerfMaxInterval);
+      }
     }
   }
 

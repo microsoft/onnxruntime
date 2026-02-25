@@ -617,7 +617,8 @@ Status Environment::CreateAndRegisterInternalEps() {
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
   std::lock_guard<std::mutex> lock{mutex_};
 
-  Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, ToUTF8String(lib_path));
+  std::string lib_file_name = std::filesystem::path(lib_path).filename().string();
+  Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, lib_file_name);
 
   std::vector<EpFactoryInternal*> internal_factories = {};
   std::unique_ptr<EpLibrary> ep_library;
