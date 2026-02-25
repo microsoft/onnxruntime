@@ -306,8 +306,8 @@ def generate_dependencies(xml_text, package_name, version):
         xml_text.append("</dependencies>")
 
 
-def get_env_var(key):
-    return os.environ.get(key)
+def get_env_var(key, default_value=None):
+    return os.environ.get(key, default_value)
 
 
 def generate_release_notes(line_list, dependency_sdk_info):
@@ -1235,7 +1235,7 @@ def main():
     if args.is_release_build.lower() != "true" and args.is_release_build.lower() != "false":
         raise Exception("Only valid options for IsReleaseBuild are: true and false")
 
-    debug_output = get_env_var("SYSTEM_DEBUG") == "true"  # Corresponds to Azure Pipelines System.Debug variable.
+    debug_output = get_env_var("SYSTEM_DEBUG", "").lower() == "true"
 
     # Generate nuspec
     lines = generate_nuspec(args)
