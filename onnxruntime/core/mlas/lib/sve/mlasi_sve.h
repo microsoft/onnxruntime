@@ -37,15 +37,7 @@ typedef svuint16_t MLAS_SVUINT16;
 
 void
 MLASCALL
-MlasSveErfF16Kernel(
-    const _mlas_fp16_* Input,
-    _mlas_fp16_* Output,
-    size_t N
-);
-
-void 
-MLASCALL 
-MlasSveTanhF16Kernel(
+MlasSveErfFP16Kernel(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     size_t N
@@ -53,7 +45,15 @@ MlasSveTanhF16Kernel(
 
 void 
 MLASCALL 
-MlasSveGeluF16Kernel(
+MlasSveTanhFP16Kernel(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+void 
+MLASCALL 
+MlasSveGeluFP16Kernel(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     MLAS_FP16* Temp,

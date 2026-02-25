@@ -75,13 +75,13 @@ Tanh_Vector_SVE_fp16(MLAS_SVFLOAT16 x, MLAS_SVBOOL pg)
 }
 
 void
-MlasSveTanhF16Kernel(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N)
+MlasSveTanhFP16Kernel(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N)
 {
     size_t offset = 0;
     const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
     auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
     while (offset < N) {
-        MLAS_SVBOOL pg = MlasSveSelPredictefloat16(offset, N);
+        MLAS_SVBOOL pg = MlasSveSelPredicatefloat16(offset, N);
         MLAS_SVFLOAT16 x = MlasSvereinterpretf16_u16(MlasSveLoadUint16(pg, &input[offset]));
         MLAS_SVFLOAT16 y = Tanh_Vector_SVE_fp16(x, pg);
         MlasSveStoreUint16(pg, &output[offset], MlasSvereinterpretu16_f16(y));
@@ -127,8 +127,10 @@ exp_neg_rational_approx_f16(MLAS_SVBOOL pg, MLAS_SVFLOAT16 x)
 }
 
 void MLASCALL
-MlasSveErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
+MlasSveErfFP16Kernel(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N)
 {
+    const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
+    auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
     const __fp16 p = 0.328f;
     const __fp16 a1 = 0.2505f;
     const __fp16 a2 = -0.2881f;
@@ -154,8 +156,8 @@ MlasSveErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
 
     size_t i = 0;
     while (i < N) {
-        MLAS_SVBOOL pg = MlasSveSelPredictefloat16(i, N);
-        MLAS_SVFLOAT16 x = MlasSvereinterpretf16_u16(MlasSveLoadUint16(pg, &Input[i]));
+        MLAS_SVBOOL pg = MlasSveSelPredicatefloat16(i, N);
+        MLAS_SVFLOAT16 x = MlasSvereinterpretf16_u16(MlasSveLoadUint16(pg, &input[i]));
         MLAS_SVBOOL neg_mask = MlasSveComparelessthanfloat16(pg, x, vzero);
         MLAS_SVFLOAT16 sign = MlasSveSelectfloat16(neg_mask, vneg_one, vone);
         MLAS_SVFLOAT16 absx = MlasSveAbsolutefloat16(MlasSveBroadcastfloat16(v3), pg, x);
@@ -182,13 +184,13 @@ MlasSveErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
         erf_approx = MlasSveMinfloat16(pg, erf_approx, vone);
         erf_approx = MlasSveMaxfloat16(pg, erf_approx, vneg_one);
         MLAS_SVFLOAT16 result = MlasSveSelectfloat16(use_mask, erf_approx, sign);
-        MlasSveStoreUint16(pg, &Output[i], MlasSvereinterpretu16_f16(result));
+        MlasSveStoreUint16(pg, &output[i], MlasSvereinterpretu16_f16(result));
         i += svcntp_b16(svptrue_b16(), pg);
     }
 }
 
 void MLASCALL
-MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, size_t count, MLAS_GELU_ALGORITHM algo)
+MlasSveGeluFP16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, size_t count, MLAS_GELU_ALGORITHM algo)
 {
     const __fp16 r1 = 0.5f;
     const __fp16 r2 = 1.0f;
@@ -207,7 +209,7 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
     if (algo == MlasGeluTanh) {
         size_t i = 0;
         while (i < count) {
-            svbool_t pg = MlasSveSelPredictefloat16(i, count);
+            svbool_t pg = MlasSveSelPredicatefloat16(i, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[i]);
             MLAS_SVFLOAT16 v_x2 = MlasSveMulfloat16(pg, v_x, v_x);
             MLAS_SVFLOAT16 v_inner = MlasSveMLAfloat16(pg, v_B, v_C, v_x2);
@@ -217,11 +219,11 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
             i += svcnth();
         }
 
-        MlasSveTanhF16Kernel(reinterpret_cast<const MLAS_FP16*>(temp), reinterpret_cast<MLAS_FP16*>(temp), count);
+        MlasSveTanhFP16Kernel(reinterpret_cast<const MLAS_FP16*>(temp), reinterpret_cast<MLAS_FP16*>(temp), count);
 
         size_t j = 0;
         while (j < (count)) {
-            svbool_t pg = MlasSveSelPredictefloat16(j, count);
+            svbool_t pg = MlasSveSelPredicatefloat16(j, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[j]);
             MLAS_SVFLOAT16 v_tanh = MlasSveLoadFloat16(pg, &temp[j]);
             MLAS_SVFLOAT16 v_result = MlasSveMulfloat16(pg, v_half, MlasSveMulfloat16(pg, v_x, svadd_f16_m(pg, v_one, v_tanh)));
@@ -231,18 +233,18 @@ MlasSveGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp,
     } else {
         size_t i = 0;
         while (i < (count)) {
-            svbool_t pg = MlasSveSelPredictefloat16(i, count);
+            svbool_t pg = MlasSveSelPredicatefloat16(i, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[i]);
             MLAS_SVFLOAT16 v_scaled = MlasSveMulfloat16(pg, v_x, v_sqrt1_2);
             MlasSveStoreF16(pg, &temp[i], v_scaled);
             i += svcnth();
         }
 
-        MlasSveErfF16Kernel(reinterpret_cast<const _mlas_fp16_*>(temp), reinterpret_cast<_mlas_fp16_*>(temp), count);
+        MlasSveErfFP16Kernel(temp, temp, count);
 
         size_t j = 0;
         while (j < (count)) {
-            svbool_t pg = MlasSveSelPredictefloat16(j, count);
+            svbool_t pg = MlasSveSelPredicatefloat16(j, count);
             MLAS_SVFLOAT16 v_x = MlasSveLoadFloat16(pg, &input[j]);
             MLAS_SVFLOAT16 v_erf = MlasSveLoadFloat16(pg, &temp[j]);
             MLAS_SVFLOAT16 v_result = MlasSveMulfloat16(pg, v_half, MlasSveMulfloat16(pg, v_x, MlasSveAddfloat16(pg, v_one, v_erf)));
