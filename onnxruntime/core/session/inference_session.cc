@@ -3248,7 +3248,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
       telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-      // Emit RuntimePerf on scheduled interval or on error
+      // Emit RuntimePerf on scheduled interval
       if ((TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.runtime_perf_interval_)) {
         env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
                                                   telemetry_.total_run_duration_since_last_,
