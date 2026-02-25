@@ -3238,8 +3238,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // Only include successful inferences in batch since failed inferences can skew the metric
-  if (retval.IsOK())
-  {
+  if (retval.IsOK()) {
     // time to send telemetry?
     {
       // Adding lock_guard here to ensure that telemetry updates are thread-safe.
