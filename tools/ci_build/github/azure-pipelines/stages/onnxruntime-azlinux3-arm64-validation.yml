@@ -12,7 +12,6 @@ stages:
     parameters:
       arch: 'aarch64'
       machine_pool: ${{ parameters.machine_pool }}
-      is1ES: true
 
 - stage: Linux_Test_ARM64
   dependsOn: Linux_Build_ARM64

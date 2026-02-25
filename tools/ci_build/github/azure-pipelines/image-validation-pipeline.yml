@@ -5,6 +5,10 @@ parameters:
   type: stringList
   values:
   - 'onnxruntime-azlinux3-arm64'
+  - 'onnxruntime-qnn-windows22-arm64'
+  - 'onnxruntime-qnnep-ubuntu2204-managed2'
+  - 'onnxruntime-ubuntu2204-cuda'
+  - 'onnxruntime-win-cpu-vs2022-latest-nvme-x64'
 
 stages:
 - ${{ each image in parameters.image_list }}:
