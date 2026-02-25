@@ -249,10 +249,14 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-// Convert a SparseTensorProto to a dense TensorProto
-// If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
-// The resulting TensorProto will contain the data as raw data.
-// model_path is used for constructing full path for external_data
+/// <summary>
+// The function supports only COO format with 1D or 2D indices. Values shape is expected to be 1D.
+// The function does not support sparse tensors of other formats like CSR/CSC.
+/// </summary>
+/// <param name="sparse"></param>
+/// <param name="model_path">model path is only used if there are references to external data.</param>
+/// <param name="dense">The resulting dense tensor proto.</param>
+/// <returns>Status</returns>
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const std::filesystem::path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense);
