@@ -3,11 +3,16 @@
 #pragma once
 
 #include <cuda_fp16.h>
+#include <type_traits>
+#ifdef USE_FP8_KV_CACHE
+#include <cuda_fp8.h>
+#endif
 
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/rotary_common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 using namespace onnxruntime::cuda;
@@ -28,18 +33,19 @@ namespace cuda {
 // 4. Writes the rotated Q back to global memory (unpacked_q) for the subsequent attention kernel.
 //
 // Template Parameters:
-// - T: The floating point type (half or BFloat16).
-// - BIT_WIDTH: The bit width for KV cache quantization (16=none, 8=Int8, 4=Int4).
+// - T: The floating point type for query (half or __nv_bfloat16).
+// - U: The cache element type (T for no quant, int8_t for INT8, uint8_t for INT4, __nv_fp8_e4m3 for FP8).
+// - BIT_WIDTH: The bit width for KV cache quantization (16=none, 8=Int8/FP8, 4=Int4).
 // - MAX_HEAD_SIZE: Maximum supported head size, used for shared memory allocation.
-template <typename T, int BIT_WIDTH = 16, int MAX_HEAD_SIZE = 256>
+template <typename T, typename U, int BIT_WIDTH = 16, int MAX_HEAD_SIZE = 256>
 __global__ void UnpackRoPEAppend(
     const T* packed_qkv,
     const T* query,
     const T* key,
     const T* value,
     T* unpacked_q,
-    void* k_cache,
-    void* v_cache,
+    U* k_cache,
+    U* v_cache,
     const float* k_scale,
     const float* v_scale,
     const int num_heads,
@@ -200,24 +206,39 @@ __global__ void UnpackRoPEAppend(
             // No quantization: direct store
             reinterpret_cast<LoadT*>(cache_ptr)[cache_idx / elements_per_thread] = *reinterpret_cast<LoadT*>(vals);
           } else if constexpr (BIT_WIDTH == 8) {
-            // Int8 Quantization: 1 element per byte
+            // 8-bit quantization: either INT8 or FP8 E4M3 based on cache type U
             const float* scale_buffer = (head_type == KEY) ? k_scale : v_scale;
             uint64_t packed = 0;
-            for (int i = 0; i < elements_per_thread; ++i) {
-              float sc = per_channel ? scale_buffer[n * head_size + h + i] : scale_buffer[0];
-              float inv_s = (sc == 0.0f) ? 0.0f : 1.0f / sc;
-              int8_t q = static_cast<int8_t>(max(-128.0f, min(127.0f, rintf(static_cast<float>(vals[i]) * inv_s))));
-              packed |= (static_cast<uint64_t>(static_cast<uint8_t>(q)) << (i * 8));
+#ifdef USE_FP8_KV_CACHE
+            if constexpr (std::is_same<U, __nv_fp8_e4m3>::value) {
+              // FP8 E4M3 Quantization: scale and convert to FP8 format
+              constexpr float kFp8E4M3Max = 448.0f;
+              for (int i = 0; i < elements_per_thread; ++i) {
+                float sc = per_channel ? scale_buffer[n * head_size + h + i] : scale_buffer[0];
+                float scaled_val = min(kFp8E4M3Max, max(-kFp8E4M3Max, static_cast<float>(vals[i]) * (sc == 0.0f ? 0.0f : 1.0f / sc)));
+                __nv_fp8_e4m3 fp8_val = __nv_fp8_e4m3(scaled_val);
+                packed |= (static_cast<uint64_t>(*reinterpret_cast<uint8_t*>(&fp8_val)) << (i * 8));
+              }
+            } else
+#endif
+            {
+              // INT8 Quantization: round and clamp to [-128, 127]
+              for (int i = 0; i < elements_per_thread; ++i) {
+                float sc = per_channel ? scale_buffer[n * head_size + h + i] : scale_buffer[0];
+                int8_t q = static_cast<int8_t>(max(-128.0f, min(127.0f, rintf(static_cast<float>(vals[i]) * (sc == 0.0f ? 0.0f : 1.0f / sc)))));
+                packed |= (static_cast<uint64_t>(static_cast<uint8_t>(q)) << (i * 8));
+              }
             }
             // Store 8 elements (8 bytes) at once
-            reinterpret_cast<uint64_t*>(cache_ptr)[cache_idx / 8] = packed;
+            unsigned char* cache_byte_ptr = reinterpret_cast<unsigned char*>((head_type == KEY) ? k_cache : v_cache);
+            reinterpret_cast<uint64_t*>(cache_byte_ptr + cache_idx)[0] = packed;
           } else if constexpr (BIT_WIDTH == 4) {
             // Int4 Quantization: 2 elements per byte
             constexpr float kInt4Min = -8.0f;
             constexpr float kInt4Max = 7.0f;
             const float* scale_buffer = (head_type == KEY) ? k_scale : v_scale;
             uint32_t packed = 0;
-            for (int i = 0; i < 4; ++i) {
+            for (int i = 0; i < elements_per_thread / 2; ++i) {
               // Elements are paired as (0,1), (2,3), etc. into single bytes.
               float s0 = per_channel ? scale_buffer[n * head_size + h + i * 2] : scale_buffer[0];
               float s1 = per_channel ? scale_buffer[n * head_size + h + i * 2 + 1] : scale_buffer[0];
@@ -237,28 +258,28 @@ __global__ void UnpackRoPEAppend(
 
 // Internal dispatcher that selects the appropriate template specialization based on head_size.
 // MAX_HEAD_SIZE is used to optimize shared memory usage and kernel performance.
-template <typename T, int BIT_WIDTH>
+template <typename T, typename U, int BIT_WIDTH>
 Status DispatchUnpackRoPEAppendHeadSize(
     const dim3& grid, const dim3& block, cudaStream_t stream,
     const T* packed_qkv, const T* query, const T* key, const T* value,
-    T* unpacked_q, void* k_cache, void* v_cache,
+    T* unpacked_q, U* k_cache, U* v_cache,
     const float* k_scale, const float* v_scale,
     const int num_heads, const int kv_num_heads, const int head_size, const int d,
     const int max_seqlen, const int* past_seq_lens,
     const T* cos_cache, const T* sin_cache, const int rotary_dim,
     const int64_t* position_ids, const bool interleaved, const bool is_cache_bnsh, const bool per_channel) {
   if (head_size <= 64) {
-    UnpackRoPEAppend<T, BIT_WIDTH, 64><<<grid, block, 0, stream>>>(
+    UnpackRoPEAppend<T, U, BIT_WIDTH, 64><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
   } else if (head_size <= 128) {
-    UnpackRoPEAppend<T, BIT_WIDTH, 128><<<grid, block, 0, stream>>>(
+    UnpackRoPEAppend<T, U, BIT_WIDTH, 128><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
   } else if (head_size <= 256) {
-    UnpackRoPEAppend<T, BIT_WIDTH, 256><<<grid, block, 0, stream>>>(
+    UnpackRoPEAppend<T, U, BIT_WIDTH, 256><<<grid, block, 0, stream>>>(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
@@ -269,18 +290,24 @@ Status DispatchUnpackRoPEAppendHeadSize(
 }
 
 // Public entry point to launch the Unpack+RoPE+Append kernel.
-// Handles parameter validation, grid/block sizing, and bit-width dispatching.
-template <typename T>
+// Handles parameter validation, grid/block sizing, and type-based dispatching.
+// Template parameters:
+// - T: Query/Key/Value floating point type (half or __nv_bfloat16)
+// - U: Cache element type (T for no quant, int8_t for INT8, uint8_t for INT4, __nv_fp8_e4m3 for FP8)
+template <typename T, typename U>
 Status LaunchUnpackRoPEAppend(
     const T* packed_qkv, const T* query, const T* key, const T* value,
-    T* unpacked_q, void* k_cache, void* v_cache,
+    T* unpacked_q, U* k_cache, U* v_cache,
     const float* k_scale, const float* v_scale,
     const int num_heads, const int kv_num_heads, const int head_size,
     const int sequence_length, const int batch_size, const int max_seqlen,
     const int* past_seq_lens, const T* cos_cache, const T* sin_cache,
     const int rotary_dim, const int64_t* position_ids, const bool interleaved,
     const bool is_cache_bnsh, const KVQuantizationType k_quant_type,
-    const int bit_width, cudaStream_t stream, const int max_threads_per_block) {
+    cudaStream_t stream, const int max_threads_per_block) {
+  static_assert(std::is_same<T, typename onnxruntime::cuda::OrtToCudaType<T>::type>::value);
+  static_assert(std::is_same<U, typename onnxruntime::cuda::OrtToCudaType<U>::type>::value);
+
   constexpr int elements_per_vector = sizeof(float4) / sizeof(T);
 
   if (head_size % elements_per_vector != 0) {
@@ -315,26 +342,37 @@ Status LaunchUnpackRoPEAppend(
 
   bool per_channel = (k_quant_type == KVQuantizationType::PER_CHANNEL);
 
-  if (bit_width == 0) {
-    return DispatchUnpackRoPEAppendHeadSize<T, 16>(
+  // Dispatch based on cache type U:
+  // - std::is_same<T, U>: No quantization (BIT_WIDTH=16)
+  // - std::is_same<U, int8_t> or FP8: 8-bit quantization (BIT_WIDTH=8)
+  // - std::is_same<U, uint8_t>: 4-bit quantization (BIT_WIDTH=4)
+  if constexpr (std::is_same<T, U>::value) {
+    // No quantization: cache type same as input type
+    return DispatchUnpackRoPEAppendHeadSize<T, U, 16>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
-  } else if (bit_width == 8) {
-    return DispatchUnpackRoPEAppendHeadSize<T, 8>(
+  } else if constexpr (std::is_same<U, int8_t>::value
+#ifdef USE_FP8_KV_CACHE
+                       || std::is_same<U, __nv_fp8_e4m3>::value
+#endif
+  ) {
+    // INT8 or FP8 quantization (both 8-bit, distinguished inside kernel by type check)
+    return DispatchUnpackRoPEAppendHeadSize<T, U, 8>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
 #ifdef USE_INT4_KV_CACHE
-  } else if (bit_width == 4) {
-    return DispatchUnpackRoPEAppendHeadSize<T, 4>(
+  } else if constexpr (std::is_same<U, uint8_t>::value) {
+    // INT4 quantization (packed 2 elements per byte)
+    return DispatchUnpackRoPEAppendHeadSize<T, U, 4>(
         grid, block, stream, packed_qkv, query, key, value, unpacked_q, k_cache, v_cache,
         k_scale, v_scale, num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
 #endif
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported cache type U for GQA quantization.");
   }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported bit_width (", bit_width, ") for GQA quantization.");
 }
 
 }  // namespace cuda

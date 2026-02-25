@@ -116,6 +116,28 @@ Status LaunchXQAInt8KernelBF16(
     void* workspace,
     size_t workspace_size);
 
+#ifdef USE_FP8_KV_CACHE
+// Extern declarations for FP8 kernels with BF16 query (implemented in xqa_loader_bf16_fp8_impl.cuh)
+Status LaunchXQAFp8KernelBF16(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    const void* query,
+    const void* key_cache,
+    const void* value_cache,
+    void* output,
+    const int batch_size,
+    const int num_heads,
+    const int kv_num_heads,
+    const int head_size,
+    const int max_seq_len,
+    const float scale,
+    const bool is_bsnh,
+    const int* past_seq_lens,
+    const float* kv_cache_scale,
+    void* workspace,
+    size_t workspace_size);
+#endif
+
 // ============================================================================
 // Specialization for BFloat16
 // ============================================================================
@@ -170,6 +192,16 @@ Status LaunchXQAKernelImpl<__nv_bfloat16>(
                                    scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace,
                                    workspace_size);
   }
+
+#ifdef USE_FP8_KV_CACHE
+  // Dispatch to FP8 path if requested
+  if (kv_quant_type == XqaQuantType::kFp8) {
+    return LaunchXQAFp8KernelBF16(device_prop, stream, query, key_cache, value_cache, output,
+                                  batch_size, num_heads, kv_num_heads, head_size, max_seq_len,
+                                  scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace,
+                                  workspace_size);
+  }
+#endif
 
   int group_size = num_heads / kv_num_heads;
   switch (group_size) {
