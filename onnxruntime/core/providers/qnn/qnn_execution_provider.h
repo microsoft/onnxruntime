@@ -83,6 +83,15 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool IsHtpSharedMemoryAllocatorAvailable() const { return enable_htp_shared_mem_allocator_ && rpcmem_library_ != nullptr; }
 
  private:
+
+   typedef struct GraphFinalizationInfo {
+    std::string model_name;
+    std::unique_ptr<qnn::QnnModel> model;
+    std::unique_ptr<std::thread> thread;
+    Status result;
+
+  } GraphFinalizationInfo_t;
+  
   // Will return true if any power config options need to be updated
   bool GetPerThreadHtpPowerConfigs(qnn::PerThreadHtpPowerConfigs_t& per_thread_htp_power_configs,
                                    const ConfigOptions& config_options);
@@ -121,6 +130,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool enable_spill_fill_buffer_ = false;
   bool enable_file_mapped_weights_ = true;
   bool enable_htp_shared_mem_allocator_ = false;
+  uint8_t num_graph_prepare_threads_ = 2;
 #if defined(_WIN32)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif

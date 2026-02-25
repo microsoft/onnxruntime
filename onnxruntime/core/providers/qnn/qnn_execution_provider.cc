@@ -14,6 +14,7 @@
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_thread_pool.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
@@ -540,6 +541,21 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_fp16_precision: " << enable_HTP_FP16_precision_ << " only 0 or 1 allowed. Set to 0.";
     }
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
+  }
+
+  static const std::string QNN_NUM_GRAPH_PREPARE_THREADS = "num_graph_prepare_threads";
+  auto num_graph_prepare_threads_pos = provider_options_map.find(QNN_NUM_GRAPH_PREPARE_THREADS);
+  if (num_graph_prepare_threads_pos != provider_options_map.end()) {
+    int value = std::stoi(num_graph_prepare_threads_pos->second);
+    num_graph_prepare_threads_ = static_cast<uint8_t>(value);
+    LOGS_DEFAULT(VERBOSE) << "User specified num_graph_prepare_threads: " << std::to_string(num_graph_prepare_threads_);
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "Using default number of graph prepare threads: " << std::to_string(num_graph_prepare_threads_);
+  }
+
+  if (num_graph_prepare_threads_ > 4 || num_graph_prepare_threads_ < 1) {
+    LOGS_DEFAULT(ERROR) << "Specified number of graph prepare threads (" << std::to_string(num_graph_prepare_threads_)
+                        << ") but number is outside of allowable range [1,4]. Using default value of 2.";
   }
 
   if (qnn_context_embed_mode_ && share_ep_contexts_) {
@@ -1228,6 +1244,12 @@ void QNNExecutionProvider::InitQnnHtpGraphConfigs(qnn::QnnConfigsBuilder<QnnGrap
 Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                  std::vector<NodeComputeInfo>& node_compute_funcs,
                                                  const logging::Logger& logger) {
+
+  std::vector<GraphFinalizationInfo_t> model_infos;
+  model_infos.reserve(fused_nodes_and_graphs.size());
+
+  qnn::thread::QnnJobThreadPool tp(num_graph_prepare_threads_);
+  tp.Start();
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
@@ -1278,14 +1300,29 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
                                                 all_graph_configs_ptr, json_graph_filepath));
-    ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
+  
+    auto& model_info = model_infos.emplace_back();
+    model_info.model_name = fused_node.Name();
+    model_info.model = std::move(qnn_model);
+
+    tp.Submit([qnn_model = model_info.model.get(), &logger, res = &model_info.result] {
+      *res = qnn_model->FinalizeGraphs(logger);
+    });
+  }
+
+  tp.WaitForAllJobsToFinish();
+
+  for (auto& model_info : model_infos) {    
+    ORT_RETURN_IF_ERROR(model_info.result);
+    
+    auto qnn_model = std::move(model_info.model);
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 
-    LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
-    qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
-
+    LOGS(logger, VERBOSE) << "fused node name: " << model_info.model_name;
+    qnn_models_.emplace(model_info.model_name, std::move(qnn_model));
     ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
   }
+
   return Status::OK();
 }
 
@@ -1386,6 +1423,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     return Status::OK();
   }
 
+  LOGS_DEFAULT(WARNING) << "FINDME: NUMBER OF FUSED NODES: " << std::to_string(fused_nodes_and_graphs.size());
   ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
   // Generate QNN context model if it's QDQ model + context_cache_enabled=true + not exist already
   if (!is_qnn_ctx_model && context_cache_enabled_ && !is_ctx_file_exist) {
@@ -1400,6 +1438,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                           max_spill_fill_buffer_size));
     }
     qnn_ep_context_model_ = Factory<Model>::Create(std::string{"qnn_ep_context_model"}, false, logger);
+    
     ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
                                                   context_buffer.get(),
                                                   buffer_size,
@@ -1413,6 +1452,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   logger,
                                                   share_ep_contexts_,
                                                   stop_share_ep_contexts_));
+                                                  
 
     if (share_ep_contexts_ && !stop_share_ep_contexts_ &&
         nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {

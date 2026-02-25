@@ -258,8 +258,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                          "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
                          "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
                          "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
-                         "json_qnn_graph_dir", "disable_file_mapped_weights", "htp_bf16_enable", "enable_vtcm_backup_buffer_sharing", "extended_udma"});
-
+                         "json_qnn_graph_dir", "disable_file_mapped_weights", "htp_bf16_enable", "enable_vtcm_backup_buffer_sharing",
+                         "extended_udma", "num_graph_prepare_threads"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -277,7 +277,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("Supported profiling_level: " + str);
         }
       } else if (key == "backend_type" || key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" ||
-                 key == "device_id") {
+                 key == "device_id" || "num_graph_prepare_threads") {
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",

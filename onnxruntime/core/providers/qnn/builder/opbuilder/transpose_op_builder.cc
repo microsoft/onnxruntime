@@ -29,6 +29,7 @@ class TransposeOpBuilder : public BaseOpBuilder {
   Status ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
                               const NodeUnit& node_unit,
                               std::vector<std::string>& param_tensor_names) const;
+  mutable int num_ops = 0;
 };
 
 Status TransposeOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapper,
@@ -67,6 +68,7 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
                                                        const logging::Logger& logger,
                                                        bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
+  ORT_RETURN_IF(num_ops++ > 2, "Forced unsupported failure");
 
   if (input_names.size() < 1) {
     return Status::OK();
