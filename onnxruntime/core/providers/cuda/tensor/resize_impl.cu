@@ -585,6 +585,13 @@ size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
                  static_cast<size_t>(std::accumulate(output_dims.begin(),
                                                      output_dims.end(), (int64_t)0));
     case UpsampleMode::LINEAR:
+      // For LINEAR mode:
+      // - bilinear (2-D/4-D) uses mapping for [H, W]
+      // - trilinear (3-D/5-D) uses mapping for [D, H, W]
+      if (output_dims.size() == 3 || output_dims.size() == 5) {
+        return sizeof(LinearMappingInfo) *
+               static_cast<size_t>(std::accumulate(output_dims.rbegin(), output_dims.rbegin() + 3, (int64_t)0));
+      }
       return sizeof(LinearMappingInfo) *
              static_cast<size_t>(std::accumulate(output_dims.rbegin(), output_dims.rbegin() + 2, (int64_t)0));
     case UpsampleMode::CUBIC:
