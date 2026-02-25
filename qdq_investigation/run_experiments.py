@@ -290,6 +290,53 @@ def run_single_benchmark(
 # Result Aggregation
 # =============================================================================
 
+def _parse_json_filename(name_no_ext: str):
+    """Parse a per-model JSON filename into (dir_name, scenario, weight_layout).
+
+    Supports two naming conventions:
+      Convention A (run_experiments.py):
+        mnb-qwen-0.5b-4-sym_native.json
+        qdq-qwen-0.5b-4-block-sym-signed-transpose_qdq_fused.json
+      Convention B (ARM / manual runs):
+        mnb-qwen-0.5b-4-sym.json          -> native
+        qdq-qwen-0.5b-4-block-sym-signed.json          -> qdq_fused
+        qdq-qwen-0.5b-4-block-sym-signed-unfused.json  -> qdq_unfused
+        qdq-qwen-0.5b-4-block-sym-signed-transpose.json -> qdq_fused + transpose
+
+    Returns (dir_name, scenario, weight_layout) or None on failure.
+    """
+    # --- Convention A: underscore-separated scenario suffix ---
+    for suffix in ["_qdq_unfused", "_qdq_fused", "_native"]:
+        if name_no_ext.endswith(suffix):
+            dir_name = name_no_ext[:-len(suffix)]
+            scenario = suffix[1:]  # strip leading underscore
+            is_transpose = dir_name.endswith("-transpose")
+            weight_layout = "transpose" if is_transpose else "original"
+            return dir_name, scenario, weight_layout
+
+    # --- Convention B: no underscore suffix; infer from name structure ---
+    candidate = name_no_ext
+    scenario = None
+
+    # Check for "-unfused" scenario marker
+    if candidate.endswith("-unfused"):
+        candidate = candidate[:-len("-unfused")]
+        scenario = "qdq_unfused"
+
+    # Check for "-transpose" weight layout marker (may appear before or instead of -unfused)
+    is_transpose = candidate.endswith("-transpose")
+    parse_name = candidate  # name to pass to parse_model_dirname (strips -transpose internally)
+
+    meta = parse_model_dirname(parse_name)
+    if meta is not None:
+        if scenario is None:
+            scenario = "native" if meta.format_type == "mnb" else "qdq_fused"
+        weight_layout = "transpose" if is_transpose else "original"
+        return candidate, scenario, weight_layout
+
+    return None
+
+
 def aggregate_results(results_dir: str) -> List[Dict[str, Any]]:
     """Merge all per-model JSON files into a single list of result rows."""
     per_model_dir = os.path.join(results_dir, "per_model")
@@ -299,18 +346,14 @@ def aggregate_results(results_dir: str) -> List[Dict[str, Any]]:
 
     for json_file in json_files:
         filename = os.path.basename(json_file)
-        # Parse: {dir_name}_{scenario}.json
         name_no_ext = filename.rsplit(".", 1)[0]
-        # Find the last underscore that separates dir_name from scenario
-        # Scenarios are: native, qdq_fused, qdq_unfused
-        for suffix in ["_qdq_unfused", "_qdq_fused", "_native"]:
-            if name_no_ext.endswith(suffix):
-                dir_name = name_no_ext[:-len(suffix)]
-                scenario = suffix[1:]  # strip leading underscore
-                break
-        else:
+
+        parsed = _parse_json_filename(name_no_ext)
+        if parsed is None:
             print(f"  Warning: Could not parse filename: {filename}, skipping")
             continue
+
+        dir_name, scenario, weight_layout = parsed
 
         meta = parse_model_dirname(dir_name)
         if meta is None:
@@ -335,6 +378,7 @@ def aggregate_results(results_dir: str) -> List[Dict[str, Any]]:
                 "symmetry": meta.symmetry,
                 "granularity": meta.granularity or "",
                 "signedness": meta.signedness or "",
+                "weight_layout": weight_layout,
                 "dir_name": dir_name,
                 "scenario": scenario,
                 "model_load_time_s": file_metadata.get("model_load_time_s", ""),
@@ -370,8 +414,8 @@ def save_summary_csv(rows: List[Dict[str, Any]], output_path: str):
 
     fieldnames = [
         "format_type", "model_size", "bits", "symmetry",
-        "granularity", "signedness", "scenario", "seq_length",
-        "mean_ms", "model_load_time_s",
+        "granularity", "signedness", "weight_layout", "scenario",
+        "seq_length", "mean_ms", "model_load_time_s",
     ]
 
     with open(output_path, "w", newline="") as f:
@@ -404,7 +448,7 @@ def print_summary(rows: List[Dict[str, Any]]):
         return
 
     header = (f"{'Format':>6} {'Size':>5} {'Bits':>4} {'Sym':>5} {'Gran':>8} "
-              f"{'Sign':>10} {'Scenario':>13} {'SeqLen':>7} {'Mean(ms)':>10}")
+              f"{'Sign':>10} {'Layout':>10} {'Scenario':>13} {'SeqLen':>7} {'Mean(ms)':>10}")
     print(header)
     print("-" * len(header))
 
@@ -416,6 +460,7 @@ def print_summary(rows: List[Dict[str, Any]]):
             f"{r['symmetry']:>5} "
             f"{r.get('granularity', ''):>8} "
             f"{r.get('signedness', ''):>10} "
+            f"{r.get('weight_layout', ''):>10} "
             f"{r['scenario']:>13} "
             f"{r['seq_length']:>7} "
             f"{r['mean_ms']:>10.2f}"
