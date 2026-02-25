@@ -384,7 +384,7 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // Option values:
 // - "0": Use KleidiAI kernels when available. [DEFAULT]
 // - "1": Disable KleidiAI kernels even if available.
-static const char* const kOrtSessionOptionsMlasDisableKleidiai = "mlas.disable_kleidiai";
+static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.

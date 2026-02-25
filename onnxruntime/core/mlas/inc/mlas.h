@@ -352,7 +352,7 @@ MlasGemm(
           The pre-packed weights `B` MUST be in accordance with the specified backend kernel selector configuration.
           The caller is responsible for ensuring this.
  *
- * @param TransA                       - Supplies the transpose operation for matrix A.
+ * @param TransA                      - Supplies the transpose operation for matrix A.
  * @param M                           - Supplies the number of rows of matrix A and matrix C.
  * @param N                           - Supplies the number of columns of matrix B and matrix C.
  * @param K                           - Supplies the number of columns of matrix A and the number

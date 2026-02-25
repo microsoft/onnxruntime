@@ -9,13 +9,14 @@
 #include "core/providers/shared_library/provider_api.h"
 #endif
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
 inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& config,
                                                             const ConfigOptions& config_options) {
-  config.use_kleidiai = config_options.GetConfigOrDefault("mlas.disable_kleidiai", "0") != "1";
+  config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
 }
 
 }  // namespace onnxruntime
