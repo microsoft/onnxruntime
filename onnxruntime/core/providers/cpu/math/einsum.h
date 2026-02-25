@@ -9,7 +9,7 @@
 #include "einsum_utils/einsum_typed_compute_processor.h"
 #endif
 
-#include "core/providers/cpu/utils.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "einsum_utils/einsum_compute_preprocessor.h"
 
 namespace onnxruntime {

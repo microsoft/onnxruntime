@@ -6,7 +6,7 @@
 #include <vector>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/utils.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 

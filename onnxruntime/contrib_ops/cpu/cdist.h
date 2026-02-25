@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/utils.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 namespace contrib {

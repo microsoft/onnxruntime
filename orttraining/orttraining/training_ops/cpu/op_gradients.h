@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/utils.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include <cctype>
 
 namespace onnxruntime {
