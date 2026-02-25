@@ -19,7 +19,7 @@ namespace onnxruntime {
 class MatMulIntegerBase : public OpKernel {
  public:
   MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {
-    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,

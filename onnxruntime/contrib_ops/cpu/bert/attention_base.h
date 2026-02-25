@@ -54,7 +54,7 @@ class AttentionBase {
 
     require_same_hidden_size_ = require_same_hidden_size;
 
-    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status CheckMask(const Tensor* mask_index,

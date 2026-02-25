@@ -54,7 +54,7 @@ class MoEBaseCPU {
     activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.0f);
     activation_beta_ = op_kernel_info.GetAttrOrDefault<float>("activation_beta", 0.0f);
 
-    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, op_kernel_info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, op_kernel_info.GetConfigOptions());
   }
 
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;

@@ -27,7 +27,7 @@ class Conv<float> : public OpKernel {
  public:
   Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     activation_.ActivationKind = MlasIdentityActivation;
-    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;

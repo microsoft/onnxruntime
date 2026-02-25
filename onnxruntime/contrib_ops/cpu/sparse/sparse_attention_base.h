@@ -36,7 +36,7 @@ class SparseAttentionBase {
     ORT_ENFORCE(info.GetAttr("sparse_block_size", &sparse_block_size).IsOK());
     sparse_block_size_ = static_cast<int>(sparse_block_size);
 
-    SetupMlasBackendKernelSelectorFromConfigOptions(&mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   int num_heads_;     // number of attention heads of Q
