@@ -781,6 +781,41 @@ Ort::Model CreateSimpleGemmModel(std::vector<std::unique_ptr<std::vector<float>>
 
   return model;
 }
+
+// Helper to run inference on the simple Gemm model and verify all output values.
+// Model is Z = 2.0 * X * Y where X is 3x4 (all ones) and Y is 4x8 (iota 1..32).
+// Expected output: each row is 2 * column_sums_of_Y = {104, 112, 120, 128, 136, 144, 152, 160}.
+void RunAndVerifySimpleGemmModel(const Ort::Model& model) {
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, model, session_options);
+  ASSERT_EQ(session.GetInputCount(), 1u);
+  ASSERT_EQ(session.GetOutputCount(), 1u);
+
+  std::vector<float> input_data(3 * 4, 1.0f);
+  std::vector<int64_t> input_dims = {3, 4};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
+                                                      input_dims.data(), input_dims.size());
+
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Z"};
+  auto outputs = session.Run(Ort::RunOptions{}, input_names, &input_tensor, 1, output_names, 1);
+  ASSERT_EQ(outputs.size(), 1u);
+  ASSERT_TRUE(outputs[0].IsTensor());
+
+  auto output_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
+  ASSERT_EQ(output_shape, (std::vector<int64_t>{3, 8}));
+
+  const float* output_data = outputs[0].GetTensorData<float>();
+  // alpha=2.0, X is all ones, so each output row = 2 * sum of each column of Y (iota 1..32 in 4x8)
+  const std::vector<float> expected_row = {104.0f, 112.0f, 120.0f, 128.0f, 136.0f, 144.0f, 152.0f, 160.0f};
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 8; ++col) {
+      EXPECT_FLOAT_EQ(output_data[row * 8 + col], expected_row[col])
+          << "Mismatch at row=" << row << " col=" << col;
+    }
+  }
+}
 }  // namespace
 
 // Test basic compilation from OrtModel
@@ -813,9 +848,10 @@ TEST(ModelEditorCompileAPITest, BasicCompileFromOrtModel) {
   if (output_buffer != nullptr) {
     allocator->Free(output_buffer);
   }
-}
 
-// Test validation: null model pointer
+  // Verify the model still produces correct inference results after compilation
+  RunAndVerifySimpleGemmModel(model);
+}
 TEST(ModelEditorCompileAPITest, CompileFromNullModel_Fails) {
   Ort::SessionOptions session_options;
   Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
@@ -876,7 +912,9 @@ TEST(ModelEditorCompileAPITest, CompileFromModelWithEmptyInputsOutputs_Fails) {
   EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("input"));
 }
 
-// Test: model can be reused after compilation
+// Test: model can be reused after compilation.
+// NOTE: This is not an explicit API guarantee. It documents current behavior so that if a future change
+// breaks model reuse, the regression is surfaced and can be evaluated.
 TEST(ModelEditorCompileAPITest, ModelCanBeReusedAfterCompilation) {
   std::vector<std::unique_ptr<std::vector<float>>> weights;
   auto model = CreateSimpleGemmModel(weights);
@@ -920,30 +958,7 @@ TEST(ModelEditorCompileAPITest, ModelCanBeReusedAfterCompilation) {
   }
 
   // Model should still be usable for creating a session and running inference
-  Ort::SessionOptions session_options;
-  Ort::Session session(*ort_env, model, session_options);
-  EXPECT_EQ(session.GetInputCount(), 1u);
-  EXPECT_EQ(session.GetOutputCount(), 1u);
-
-  // Run inference to verify data integrity (Z = 2.0 * X * Y where X is 3x4, Y is 4x8)
-  std::vector<float> input_data(3 * 4, 1.0f);  // All ones
-  std::vector<int64_t> input_dims = {3, 4};
-  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
-                                                      input_dims.data(), input_dims.size());
-
-  const char* input_names[] = {"X"};
-  const char* output_names[] = {"Z"};
-  auto outputs = session.Run(Ort::RunOptions{}, input_names, &input_tensor, 1, output_names, 1);
-  ASSERT_EQ(outputs.size(), 1u);
-  ASSERT_TRUE(outputs[0].IsTensor());
-
-  auto output_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
-  EXPECT_EQ(output_shape, (std::vector<int64_t>{3, 8}));
-
-  // Verify values are non-zero (alpha=2.0, all-ones input, Y has values 1..32)
-  const float* output_data = outputs[0].GetTensorData<float>();
-  EXPECT_NE(output_data[0], 0.0f);
+  RunAndVerifySimpleGemmModel(model);
 }
 
 // Test: SetInputModel overrides previous input source (file path)
