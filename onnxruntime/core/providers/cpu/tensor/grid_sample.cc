@@ -460,8 +460,8 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                 }
               }
             });
-        }
       }
+    }
   } else if (data_dims == 3) {
     // sample 3d;
     auto D_in = input_dims[2];
