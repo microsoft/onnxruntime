@@ -291,5 +291,9 @@ WEBGPU_ELEMENTWISE_KERNEL(LeakyRelu, 16, WebGpuSupportedFloatTypes())
 WEBGPU_LU_IMPL(ThresholdedRelu, "select(vec4<x_element_t>(0), a, a > vec4<x_element_t>(uniforms.attr))", "", 1.0f)
 WEBGPU_ELEMENTWISE_KERNEL(ThresholdedRelu, 10, WebGpuSupportedFloatTypes())
 
+WEBGPU_ELEMENTWISE_IMPL(Softplus, "select(log(1.0 + exp(a)), a + log(1.0 + exp(-a)), a > x_value_t(0))", "", ShaderUsage::UseValueTypeAlias)
+WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Softplus, 1, 21, WebGpuSupportedFloatTypes())
+WEBGPU_ELEMENTWISE_KERNEL(Softplus, 22, WebGpuSupportedFloatTypes())
+
 }  // namespace webgpu
 }  // namespace onnxruntime
