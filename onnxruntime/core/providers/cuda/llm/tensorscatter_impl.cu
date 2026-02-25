@@ -28,16 +28,12 @@ __global__ void _TensorScatterKernel(
 
   int64_t batch_idx = prefix_idx / prefix_stride_for_batch;
   int64_t wi = (write_indices != nullptr) ? write_indices[batch_idx] : 0;
-  // Clamp negative write indices to 0 (can't throw from device code,
-  // following the ScatterND clamping pattern).
-  if (wi < 0) wi = 0;
+  // write_indices are validated on the host before kernel launch.
   int64_t cache_pos;
   if (circular) {
     cache_pos = (wi + seq_idx) % max_seq_len;
   } else {
     cache_pos = wi + seq_idx;
-    // Clamp to valid range to prevent out-of-bounds writes.
-    if (cache_pos >= max_seq_len) cache_pos = max_seq_len - 1;
   }
 
   int64_t out_offset = prefix_idx * (max_seq_len * suffix_count) + cache_pos * suffix_count + suffix_idx;
@@ -59,7 +55,7 @@ Status _TensorScatterDispatchCircular(
   size_t total_elements = static_cast<size_t>(prefix_count) * static_cast<size_t>(seq_len) * static_cast<size_t>(suffix_count);
   if (total_elements == 0) return Status::OK();
 
-  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(total_elements) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(CeilDiv(total_elements, static_cast<size_t>(GridDim::maxThreadsPerBlock)));
 
   if (circular) {
     _TensorScatterKernel<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
@@ -73,7 +69,7 @@ Status _TensorScatterDispatchCircular(
         total_elements);
   }
 
-  return Status::OK();
+  return CUDA_CALL(cudaGetLastError());
 }
 
 Status TensorScatterImpl(
