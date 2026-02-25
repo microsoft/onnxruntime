@@ -14,7 +14,7 @@ namespace ep {
 namespace adapter {
 
 /// <summary>
-/// An adapter class partially implementing the facade of `onnxruntime::KernelDef`.
+/// An adapter class partially implementing the interface of `onnxruntime::KernelDef`.
 /// </summary>
 class KernelDef {
  public:

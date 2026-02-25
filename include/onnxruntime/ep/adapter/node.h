@@ -12,7 +12,7 @@ namespace ep {
 namespace adapter {
 
 /// <summary>
-/// An adapter class partially implementing the facade of `onnxruntime::Node`.
+/// An adapter class partially implementing the interface of `onnxruntime::Node`.
 /// </summary>
 struct Node {
   explicit Node(const OrtKernelInfo* kernel_info) : kernel_info_{kernel_info} {}

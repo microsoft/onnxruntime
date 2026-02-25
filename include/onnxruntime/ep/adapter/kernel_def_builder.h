@@ -38,7 +38,7 @@ inline const OrtDataType* MLDataTypeToOrtDataType(MLDataType ml_type) {
 }
 
 /// <summary>
-/// An adapter class partially implementing the facade of `onnxruntime::KernelDefBuilder`.
+/// An adapter class partially implementing the interface of `onnxruntime::KernelDefBuilder`.
 /// </summary>
 struct KernelDefBuilder {
   static std::unique_ptr<KernelDefBuilder> Create() { return std::make_unique<KernelDefBuilder>(); }

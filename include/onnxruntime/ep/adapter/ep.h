@@ -20,11 +20,11 @@ namespace adapter {
 /// </summary>
 class Ep : public OrtEp {
  protected:
-  explicit Ep(IExecutionProvider* impl, AllocatorPtr temp_space_cpu_allocator, AllocatorPtr temp_space_allocator)
+  explicit Ep(std::unique_ptr<IExecutionProvider> impl, AllocatorPtr temp_space_cpu_allocator, AllocatorPtr temp_space_allocator)
       : OrtEp{},
-        impl_(impl),
-        data_transfer_manager_{impl->GetDataTransfer()},
-        profiler_{impl->GetProfiler()},
+        impl_(std::move(impl)),
+        data_transfer_manager_{impl_->GetDataTransfer()},
+        profiler_{impl_->GetProfiler()},
         temp_space_cpu_allocator_{temp_space_cpu_allocator},
         temp_space_allocator_{temp_space_allocator} {
   }

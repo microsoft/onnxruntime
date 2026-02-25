@@ -27,7 +27,7 @@ namespace ep {
 namespace adapter {
 
 /// <summary>
-/// An adapter class partially implementing the facade of `onnxruntime::OpKernelInfo`.
+/// An adapter class partially implementing the interface of `onnxruntime::OpKernelInfo`.
 /// </summary>
 struct OpKernelInfo {
   //

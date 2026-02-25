@@ -24,7 +24,7 @@ struct FuncManager {};
 using KernelCreatePtrFn = std::add_pointer<Status(FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out)>::type;
 
 /// <summary>
-/// An adapter class partially implementing the facade of `onnxruntime::KernelCreateInfo`.
+/// An adapter class partially implementing the interface of `onnxruntime::KernelCreateInfo`.
 /// </summary>
 struct KernelCreateInfo {
   Ort::KernelDef kernel_def;
@@ -46,7 +46,7 @@ struct KernelCreateInfo {
 };
 
 /// <summary>
-/// An adapter class partially implementing the facade of `onnxruntime::KernelRegistry`.
+/// An adapter class partially implementing the interface of `onnxruntime::KernelRegistry`.
 /// </summary>
 struct KernelRegistry {
   KernelRegistry() = default;

@@ -29,7 +29,7 @@ namespace adapter {
 struct OpKernelContext;
 
 /// <summary>
-/// An adapter class partially implementing the facade of `onnxruntime::OpKernel`.
+/// An adapter class partially implementing the interface of `onnxruntime::OpKernel`.
 /// </summary>
 struct OpKernel {
   explicit OpKernel(const OpKernelInfo& info) : op_kernel_info_{info} {}
@@ -61,7 +61,7 @@ struct OpKernel {
 };
 
 /// <summary>
-/// An adapter class partially implementing the facade of `onnxruntime::OpKernelContext`.
+/// An adapter class partially implementing the interface of `onnxruntime::OpKernelContext`.
 /// </summary>
 struct OpKernelContext {
   explicit OpKernelContext(OrtKernelContext* context, const OpKernel& op_kernel) : context_{context},
@@ -156,10 +156,10 @@ struct KernelImpl : OrtKernelImpl {
  private:
   static OrtStatus* ORT_API_CALL ComputeImpl(_In_ OrtKernelImpl* this_ptr,
                                              _In_ OrtKernelContext* context) noexcept {
-    const auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
-    OpKernelContext ctx{context, *kernel_impl};
     Status status;
     ORT_TRY {
+      const auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
+      OpKernelContext ctx{context, *kernel_impl};
       status = kernel_impl->Compute(&ctx);
     }
     ORT_CATCH(const std::exception& ex) {
@@ -184,10 +184,10 @@ struct KernelImpl : OrtKernelImpl {
                                                    _In_ OrtAllocator* /* allocator */,
                                                    _In_opt_ OrtSharedPrePackedWeightCache* /* prepacked_weight_cache */,
                                                    _Out_ bool* is_packed) noexcept {
-    auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
-    const auto tensor = CreateTensorFromApiValue(weight);
     Status status;
     ORT_TRY {
+      auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
+      const auto tensor = CreateTensorFromApiValue(weight);
       status = kernel_impl->PrePack(tensor, input_index, AllocatorPtr{}, *is_packed, nullptr);
     }
     ORT_CATCH(const std::exception& ex) {
