@@ -42,7 +42,7 @@
           },
           // seqlens_k
           {
-            "data": [1],
+            "data": [0],
             "dims": [1],
             "type": "int32"
           },
@@ -197,7 +197,7 @@
           },
           // seqlens_k
           {
-            "data": [3],
+            "data": [2],
             "dims": [1],
             "type": "int32"
           },
@@ -276,7 +276,7 @@
           },
           // seqlens_k
           {
-            "data": [3],
+            "data": [2],
             "dims": [1],
             "type": "int32"
           },
@@ -363,7 +363,7 @@
           },
           // seqlens_k
           {
-            "data": [3],
+            "data": [2],
             "dims": [1],
             "type": "int32"
           },
@@ -450,7 +450,7 @@
           },
           // seqlens_k
           {
-            "data": [1],
+            "data": [0],
             "dims": [1],
             "type": "int32"
           },
@@ -526,7 +526,7 @@
           },
           // seqlens_k
           {
-            "data": [3],
+            "data": [2],
             "dims": [1],
             "type": "int32"
           },
@@ -690,7 +690,7 @@
           },
           // seqlens_k
           {
-            "data": [1],
+            "data": [0],
             "dims": [1],
             "type": "int32"
           },
@@ -769,7 +769,7 @@
           },
           // seqlens_k
           {
-            "data": [1],
+            "data": [0],
             "dims": [1],
             "type": "int32"
           },
@@ -845,7 +845,7 @@
           },
           // seqlens_k
           {
-            "data": [1],
+            "data": [0],
             "dims": [1],
             "type": "int32"
           },
@@ -921,7 +921,7 @@
           },
           // seqlens_k
           {
-            "data": [2],
+            "data": [1],
             "dims": [1],
             "type": "int32"
           },
@@ -1006,7 +1006,7 @@
           },
           // seqlens_k
           {
-            "data": [1],
+            "data": [0],
             "dims": [1],
             "type": "int32"
           },
@@ -1100,7 +1100,7 @@
           },
           // seqlens_k
           {
-            "data": [4],
+            "data": [3],
             "dims": [1],
             "type": "int32"
           },
@@ -1186,7 +1186,7 @@
           },
           // seqlens_k
           {
-            "data": [1],
+            "data": [0],
             "dims": [1],
             "type": "int32"
           },
@@ -1269,7 +1269,7 @@
   //         },
   //         // seqlens_k
   //         {
-  //           "data": [3],
+  //           "data": [2],
   //           "dims": [1],
   //           "type": "int32"
   //         },
@@ -1363,7 +1363,7 @@
           },
           // seqlens_k
           {
-            "data": [3],
+            "data": [2],
             "dims": [1],
             "type": "int32"
           },
