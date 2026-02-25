@@ -17,8 +17,7 @@ Abstract:
 
 #include "erf_neon_fp16.h"
 
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
-    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 // Helpers to safely convert between float and FP16-bit representation
 static float
@@ -73,8 +72,10 @@ exp_neg_rational_approx_f16(MLAS_FLOAT16X8 x)
 }
 
 void
-MlasNeonErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
+MlasNeonErfFP16Kernel(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N)
 {
+    const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
+    auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
     const float16_t p = 0.328f;
     const float16_t a1 = 0.2505f;
     const float16_t a2 = -0.2881f;
@@ -101,7 +102,7 @@ MlasNeonErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
 
     size_t i = 0;
     for (; i + 8 <= N; i += 8) {
-        MLAS_FLOAT16X8 x = MlasLoadFloat16x8(&Input[i]);
+        MLAS_FLOAT16X8 x = MlasLoadFloat16x8(&input[i]);
         MLAS_UINT16X8 neg_mask = MlasCompareLessThanFloat16(x, vzero);
         MLAS_FLOAT16X8 sign = MlasSelectFloat16(neg_mask, vneg_one, vone);
         MLAS_FLOAT16X8 absx = MlasAbsFloat16(x);
@@ -128,16 +129,16 @@ MlasNeonErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
         erf_approx = MlasMinimumFloat16(erf_approx, vone);
         erf_approx = MlasMaximumFloat16(erf_approx, vneg_one);
         MLAS_FLOAT16X8 result = MlasSelectFloat16(use_mask, erf_approx, sign);
-        MlasStoreFloat16x8(&Output[i], result);
+        MlasStoreFloat16x8(&output[i], result);
     }
 
     for (; i < N; i++) {
-        float x = fp16_to_float(Input[i]);
+        float x = fp16_to_float(input[i]);
         float sign = (x < 0) ? -1.0f : 1.0f;
         float absx = fabsf(x);
 
         if (absx > 4.0f) {
-            Output[i] = float_to_fp16(sign);
+            output[i] = float_to_fp16(sign);
             continue;
         }
 
@@ -148,7 +149,7 @@ MlasNeonErfF16Kernel(const _mlas_fp16_* Input, _mlas_fp16_* Output, size_t N)
         if (erf_approx > 1.0f) erf_approx = 1.0f;
         if (erf_approx < -1.0f) erf_approx = -1.0f;
 
-        Output[i] = float_to_fp16(erf_approx);
+        output[i] = float_to_fp16(erf_approx);
     }
 }
 #endif

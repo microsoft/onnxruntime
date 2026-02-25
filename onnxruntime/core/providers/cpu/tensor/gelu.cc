@@ -23,9 +23,23 @@
 inline void* AlignedAlloc(size_t alignment, size_t size) {
 #if defined(_WIN32)
   return _aligned_malloc(size, alignment);
+#elif defined(__APPLE__) || defined(__ANDROID__)
+  // Use posix_memalign on Apple platforms for compatibility with macOS 10.14 and earlier.
+  void* p = nullptr;
+  if (posix_memalign(&p, alignment, size) != 0) {
+    return nullptr;
+  }
+  return p;
 #else
   // std::aligned_alloc requires size to be a multiple of alignment
-  return std::aligned_alloc(alignment, size);
+  size_t aligned_size = size;
+  if (alignment != 0) {
+    size_t remainder = aligned_size % alignment;
+    if (remainder != 0) {
+      aligned_size += alignment - remainder;
+    }
+  }
+  return std::aligned_alloc(alignment, aligned_size);
 #endif
 }
 
@@ -145,7 +159,7 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
   if (approximation_algorithm_ == "tanh") {
     algo = MlasGeluTanh;
   } else if (approximation_algorithm_ == "none") {
-    algo = MlasGeluNone;
+    algo = MlasGeluErf;
   } else {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
@@ -153,14 +167,12 @@ Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
         approximation_algorithm_);
   }
 
-  // Alignment and buffer size for aligned_alloc
-  // Use 64-byte alignment to match the typical CPU cache line size
-
   if (elem_count == 0) {
     // Nothing to compute. Output tensor is already correctly shaped.
     return Status::OK();
   }
-
+  // Alignment and buffer size for aligned_alloc
+  // Use 64-byte alignment to match the typical CPU cache line size
   constexpr size_t alignment = 64;
 
   size_t buffer_size = static_cast<size_t>(elem_count) * sizeof(MLFloat16);

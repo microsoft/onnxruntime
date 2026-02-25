@@ -21,7 +21,7 @@ Abstract:
 #endif
 #if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 #include "erf_neon_fp16.h"
-#include "gelu.h"
+#include "gelu_neon_fp16.h"
 #endif
 #if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
@@ -662,19 +662,22 @@ Return Value:
     }
 #endif
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
     #if defined(MLAS_USE_SVE)
         if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
-            this->ErfF16KernelRoutine = MlasSveErfF16Kernel;
-            this->GeluF16KernelRoutine = MlasSveGeluF16Kernel;
+            this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasSveGeluFP16Kernel;
+            this->TanhFP16KernelRoutine = MlasSveTanhFP16Kernel;
         }
         else{
-            this->ErfF16KernelRoutine = MlasNeonErfF16Kernel;
-            this->GeluF16KernelRoutine = MlasNeonGeluF16Kernel; 
+            this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel; 
+            this->TanhFP16KernelRoutine = nullptr;
         }
     #else
-        this->ErfF16KernelRoutine = MlasNeonErfF16Kernel;
-        this->GeluF16KernelRoutine = MlasNeonGeluF16Kernel;
+        this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+        this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
+        this->TanhFP16KernelRoutine = nullptr;
     #endif
 #endif
 

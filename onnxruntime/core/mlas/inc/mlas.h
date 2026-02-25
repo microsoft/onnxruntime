@@ -2238,11 +2238,29 @@ MlasFlashAttention(
     MLAS_THREADPOOL* ThreadPool
 );
 
+/**
+ * @brief Enumeration of supported GELU algorithm variants.
+ *
+ * MlasGeluErf  - Exact GELU implementation using the error function (erf).
+ * MlasGeluTanh - Approximate GELU implementation using tanh-based formulation.
+ */
 typedef enum MLAS_GELU_ALGORITHM {
-    MlasGeluNone = 0,
+    MlasGeluErf = 0,
     MlasGeluTanh = 1
 } MLAS_GELU_ALGORITHM;
 
+/**
+ * @brief Computes element-wise FP16 error function (erf).
+ *
+ * This routine computes:
+ *     Output[i] = erf(Input[i])
+ * for N elements. Depending on platform capabilities, this may use
+ * vectorized FP16 intrinsics or fall back to a scalar FP32 conversion path.
+ *
+ * @param Input   Pointer to input buffer of N FP16 elements.
+ * @param Output  Pointer to output buffer of N FP16 elements.
+ * @param N       Number of elements to process.
+ */
 void
 MLASCALL
 MlasComputeFP16Erf(
@@ -2251,6 +2269,28 @@ MlasComputeFP16Erf(
     size_t N
 );
 
+/**
+ * @brief Computes element-wise FP16 GELU activation.
+ *
+ * This routine computes:
+ *
+ *   If algo == MlasGeluTanh (approximate):
+ *     GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+ *
+ *   If algo == MlasGeluErf (exact):
+ *     GELU(x) = 0.5 * x * (1 + erf(x / sqrt(2)))
+ *
+ * Depending on platform capabilities, this may use vectorized FP16 kernels
+ * (SVE/NEON) or fall back to a scalar FP32 conversion path.
+ *
+ * @param input   Pointer to input buffer of FP16 elements.
+ * @param output  Pointer to output buffer of FP16 elements.
+ * @param temp    Temporary scratch buffer of at least 'count' FP16 elements.
+ *                Required by certain vectorized implementations. May be unused
+ *                in scalar fallback paths.
+ * @param count   Number of elements to process.
+ * @param algo    GELU algorithm variant (exact erf or tanh approximation).
+ */
 void
 MLASCALL 
 MlasComputeFP16Gelu(

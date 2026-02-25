@@ -58,7 +58,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/softmax.h
   ${MLAS_SRC_DIR}/saturation_check.cpp
   ${MLAS_SRC_DIR}/gelu.cpp
-  ${MLAS_SRC_DIR}/gelu.h
+  ${MLAS_SRC_DIR}/gelu_neon_fp16.h
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -553,8 +553,6 @@ else()
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
-            ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
-            ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
           )
           if (onnxruntime_USE_ARM_NEON_NCHWC)
             list(APPEND mlas_platform_srcs
