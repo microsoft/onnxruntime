@@ -1235,6 +1235,8 @@ def main():
     if args.is_release_build.lower() != "true" and args.is_release_build.lower() != "false":
         raise Exception("Only valid options for IsReleaseBuild are: true and false")
 
+    debug_output = bool(os.environ.get("SYSTEM_DEBUG", False))  # Corresponds to Azure Pipelines System.Debug variable.
+
     # Generate nuspec
     lines = generate_nuspec(args)
 
@@ -1242,8 +1244,8 @@ def main():
     print(f"nuspec_name: {args.nuspec_name}")
     with open(os.path.join(args.native_build_path, args.nuspec_name), "w") as f:
         for line in lines:
-            # Uncomment the printing of the line if you need to debug what's produced on a CI machine
-            # print(line)
+            if debug_output:
+                print(line)
             f.write(line)
             f.write("\n")
 
