@@ -345,7 +345,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // which uses Gemm/Matmul for its implementation.
   // At the time of writing, there is no backend other than MLAS that implements
   // double type Gemm/Matmul. Hence, the cost of plumbing through the session option
-  // to endable/disable a backend (like KleidiAI) is not justified.
+  // to enable/disable a backend (like KleidiAI) is not justified.
   // It is better re-visited when it is relevant for the double type.
   ORT_RETURN_IF_ERROR(
       SoftmaxCPU<T>(
