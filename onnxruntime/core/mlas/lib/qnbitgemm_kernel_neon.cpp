@@ -196,14 +196,9 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
 #ifdef USE_KLEIDIAI
-<<<<<<< HEAD
     if (UseKleidiAI(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
-        const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
-=======
-    if (UseKleidiAI(K, BlkLen, HasZeroPoint)) {
         const auto& k = GetKleidiAIGemmUKernel();
         const auto& ukernel = k.ukernel;
->>>>>>> origin
         std::byte* PackedQuantBDataBegin = PackedQuantB.PackedQuantBData;
 
         const size_t nr = ukernel.get_nr();
@@ -424,15 +419,9 @@ QNBitGemmPerGemmWorkspaceSize(
         case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
 #ifdef USE_KLEIDIAI
-<<<<<<< HEAD
             if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
-                const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
-                    M == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
-=======
-            if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
                 const auto& k = (M == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
                 const auto& ukernel = k.ukernel;
->>>>>>> origin
 
                 const size_t mr = ukernel.get_mr();
                 const size_t kr = ukernel.get_kr();
