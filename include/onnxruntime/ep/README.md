@@ -11,9 +11,9 @@ There are 2 types of header files:
   - `onnxruntime/test/autoep/library/plugin_ep_utils.h`
   - `include/onnxruntime/core/providers/utils/` (#25753)
 
-- Header files specifically used for supporting WebGPU EP and CUDA EP to use EP APIs. These header files do not only depend on ONNX Runtime public API, but also depend on ONNX Runtime internal headers.
+- Header files specifically used for supporting WebGPU EP and CUDA EP to use EP APIs. These header files do not only depend on ONNX Runtime public API, but also depend on ONNX Runtime internal headers. They define adapter classes that replace their compatible, internal ONNX Runtime equivalents.
   - `include/onnxruntime/ep/adapter/`
 
 ### Usage
 
-Make sure to include "ep/adapters.h" for all source code in the implementation. Using PCH compiler flag is recommended.
+Make sure to include "ep/adapters.h" to include all adapter implementation code. This file brings the adapter classes into the EP's namespace, so it should be included before other EP code that relies on the adapter classes. Using "ep/adapters.h" as a pre-compiled header is the recommended way to include it first.

@@ -101,7 +101,7 @@ inline detail::LoggerCapture CreateMessageCapture(
 }  // namespace ep
 }  // namespace onnxruntime
 
-// Undefine and redefine LOGS_DEFAULT
+// Undefine and redefine logging macros
 #undef LOGS_DEFAULT_CATEGORY
 #define LOGS_DEFAULT_CATEGORY(severity, category) \
   LOGS_CATEGORY(::onnxruntime::ep::adapter::Logger::DefaultLogger(), severity, category)

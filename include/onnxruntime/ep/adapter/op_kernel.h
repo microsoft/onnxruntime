@@ -142,7 +142,7 @@ struct OpKernelContext {
 };
 
 /// <summary>
-/// A bridge class between `onnxruntime::ep::adapter::OpKernel` and `onnxruntime::OrtKernelImpl`.
+/// A bridge class between `onnxruntime::ep::adapter::OpKernel` and `::OrtKernelImpl`.
 /// </summary>
 struct KernelImpl : OrtKernelImpl {
   explicit KernelImpl(std::unique_ptr<OpKernel> impl)

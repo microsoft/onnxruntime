@@ -17,12 +17,12 @@ namespace adapter {
 struct Node {
   explicit Node(const OrtKernelInfo* kernel_info) : kernel_info_{kernel_info} {}
   /** Gets the Node's name. */
-  const std::string Name() const noexcept {
+  std::string Name() const noexcept {
     return kernel_info_.GetNodeName();
   }
 
   /** Gets the Node's operator type. */
-  const std::string OpType() const noexcept {
+  std::string OpType() const noexcept {
     return kernel_info_.GetOperatorType();
   }
 
