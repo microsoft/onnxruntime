@@ -495,6 +495,16 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
+
+  // See PR #27412 for details on the following test case,
+  // which is added to cover a specific failure case in the past.
+  // 6144, 2048
+
+  // Since K is larger (more change of larger error),
+  // and N is larger (more chance of havinga value with larger error),
+  // we set a higher tolerance for this case to avoid false positives
+  // and flaky failures.
+  TestMatMulNBitsTyped<MLFloat16, 369, 6144, 2048, 32, 4>(0.2f, 0.03f);
 }
 
 TEST(MatMulNBits, LegacyShape_4b) {
