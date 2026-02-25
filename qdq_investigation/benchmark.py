@@ -68,7 +68,7 @@ except ImportError:
 # Configuration
 # =============================================================================
 
-DEFAULT_SEQ_LENGTHS = [128, 256, 512, 1024]
+DEFAULT_SEQ_LENGTHS = [1, 128, 256, 512, 1024]
 DEFAULT_BATCH_SIZE = 1
 # Low defaults for quick testing. Recommended for real benchmarks:
 #   Quick validation: warmup=3, iterations=10
@@ -149,7 +149,7 @@ def create_session(config: BenchmarkConfig) -> ort.InferenceSession:
     # See: onnxruntime/core/session/onnxruntime_session_options_config_keys.h
     if config.enable_lut_gemm:
         sess_options.add_session_config_entry("mlas.use_lut_gemm", "1")
-        print("  Enabled LUT GEMM for 2-bit quantization")
+        # print("  Enabled LUT GEMM for 2-bit quantization")
 
     # Disable DQ+MatMul -> MatMulNBits fusion for unfused QDQ comparison
     # disabled_optimizers matches by transformer Name(), not individual action name.
@@ -159,7 +159,7 @@ def create_session(config: BenchmarkConfig) -> ort.InferenceSession:
     disabled_optimizers = None
     if config.disable_qdq_fusion:
         disabled_optimizers = ["QDQSelectorActionTransformer"]
-        print("  Disabled QDQSelectorActionTransformer (prevents DQ+MatMul -> MatMulNBits fusion)")
+        # print("  Disabled QDQSelectorActionTransformer (prevents DQ+MatMul -> MatMulNBits fusion)")
 
     session = ort.InferenceSession(
         config.model_path,
@@ -293,7 +293,7 @@ def generate_all_dummy_inputs(
 ) -> Dict[str, np.ndarray]:
     """Generate dummy inputs for all model inputs."""
     # Read model config for vocab_size if available
-    vocab_size = 151936  # default
+    vocab_size = 150000  # default
     if model_path:
         model_cfg = read_model_config(model_path)
         vocab_size = model_cfg.get("vocab_size", vocab_size)
@@ -386,11 +386,11 @@ def benchmark_sequence_lengths(config: BenchmarkConfig) -> tuple:
     print(f"Model loaded in {load_time_s:.2f}s")
 
     # Print model input info
-    input_infos = inspect_model_inputs(session)
-    print(f"\nModel inputs ({len(input_infos)}):")
-    for info in input_infos:
-        print(f"  - {info['name']}: shape={info['shape']}, type={info['type']}")
-    print()
+    # input_infos = inspect_model_inputs(session)
+    # print(f"\nModel inputs ({len(input_infos)}):")
+    # for info in input_infos:
+    #     print(f"  - {info['name']}: shape={info['shape']}, type={info['type']}")
+    # print()
 
     results = []
 
