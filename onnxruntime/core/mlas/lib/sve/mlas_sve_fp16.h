@@ -16,14 +16,9 @@ Abstract:
 --*/
 
 #pragma once
-#include <arm_fp16.h>
-#include <math.h>  // for isnan if needed
-#include <stddef.h>
-
 #include "mlasi_sve.h"
 
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
-    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
@@ -76,7 +71,7 @@ MlasSveDivfloat16(MLAS_SVBOOL pg, MLAS_SVFLOAT16 x, MLAS_SVFLOAT16 y)
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
 MLAS_SVBOOL
-MlasSveSelPredictefloat16(size_t x, size_t y)
+MlasSveSelPredicatefloat16(size_t x, size_t y)
 {
     return svwhilelt_b16(x, y);
 }

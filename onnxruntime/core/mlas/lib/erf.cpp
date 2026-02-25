@@ -27,8 +27,7 @@ Abstract:
 #include "sve/mlasi_sve.h"
 #endif
 
-#if defined(MLAS_NEON_INTRINSICS) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
-        defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 #include "erf_neon_fp16.h"
 #endif
 
@@ -285,12 +284,10 @@ MlasComputeFP16Erf(
     size_t N
     )
 {
-#if defined(MLAS_USE_SVE) || defined(MLAS_NEON_INTRINSICS)
-    #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
-        GetMlasPlatform().ErfF16KernelRoutine(reinterpret_cast<const _mlas_fp16_*>(Input), reinterpret_cast<_mlas_fp16_*>(Output), N);
-        return;    
-    #endif
-#endif
+    if(GetMlasPlatform().ErfFP16KernelRoutine){
+        GetMlasPlatform().ErfFP16KernelRoutine(Input, Output, N);
+        return;
+    }
     std::vector<float> input_fp32(N);
     std::vector<float> output_fp32(N);
 

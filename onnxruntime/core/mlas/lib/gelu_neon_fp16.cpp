@@ -14,14 +14,13 @@ Abstract:
     This module contains  Gelu helper functions .
 
 --*/
-#include "gelu.h"
+#include "gelu_neon_fp16.h"
 #include <cmath>
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && \
-    defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 void
 MLASCALL
-MlasNeonGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, size_t count, MLAS_GELU_ALGORITHM algo)
+MlasNeonGeluFP16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp, size_t count, MLAS_GELU_ALGORITHM algo)
 {
     const float16_t v_half1 = 0.5f;
     const float16_t v_one1 = 1.0f;
@@ -75,7 +74,7 @@ MlasNeonGeluF16Kernel(const MLAS_FP16* input, MLAS_FP16* output, MLAS_FP16* temp
         }
 
         // Erf processing
-        MlasNeonErfF16Kernel(reinterpret_cast<const _mlas_fp16_*>(temp), reinterpret_cast<_mlas_fp16_*>(temp), count);
+        MlasNeonErfFP16Kernel(temp, temp, count);
     }
 
     // Final GELU output = 0.5 * x * (1 + tanh|erf)
