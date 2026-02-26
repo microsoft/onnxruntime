@@ -377,6 +377,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
     // GQA only supports masking, not additive bias.
     // For bool mask, we need to convert it to sequence lengths on GPU.
+    // Note: The GQA path interprets 2D bool masks as (batch_size, total_seq_len) since it converts
+    // masks to seqlens_k directly (bypassing ONNX right-aligned broadcasting). This differs from
+    // the MHA path below, where 2D masks follow ONNX broadcasting: [A, B] → [1, 1, A, B], so
+    // 2D = (q_seq_len, total_seq_len) with both batch and heads broadcast.
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
       // Allocate validation result buffer on GPU
       auto validation_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
@@ -512,9 +516,17 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     contribop_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_NONE;
 
     // Determine broadcast flags for attention_bias (if it exists)
-    // Note: The new Attention op uses attn_mask as attention_bias
-    // The attention_bias should be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length)
-    // attn_mask can be 2D, 3D, or 4D. Broadcasting aligns from the right (trailing dimensions).
+    // The MHA path uses attn_mask as attention_bias (additive bias added before softmax).
+    // Bool masks are element-wise converted to additive bias (true → 0.0, false → -inf),
+    // preserving the original shape, so the same broadcasting rules apply to both types.
+    //
+    // ONNX broadcasting is right-aligned to target shape (batch, heads, q_seq, total_seq):
+    //   2D [A, B]       → [1, 1, A, B]    : A = q_seq_len, B = total_seq_len
+    //   3D [A, B, C]    → [1, A, B, C]    : A = heads, B = q_seq_len, C = total_seq_len
+    //   4D [A, B, C, D] → [A, B, C, D]    : A = batch, B = heads, C = q_seq_len, D = total_seq_len
+    //
+    // Note: A 2D mask cannot represent per-batch padding because the batch dimension is broadcast.
+    // For per-batch boolean padding masks, use 4D shape (batch, 1, 1, total_seq_len).
     if (attn_mask != nullptr) {
       size_t attn_mask_dims_size = attn_mask->Shape().NumDimensions();
       auto attn_mask_dims = attn_mask->Shape().GetDims();
@@ -583,8 +595,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     IAllocatorUniquePtr<void> converted_mask_buffer;
     if (nullptr != attn_mask) {
       if (attn_mask->IsDataType<bool>()) {
-        // Convert boolean mask to additive attention bias: true -> 0.0, false -> mask_filter_value
-        // Use native CUDA types for the kernel (OrtToCudaType maps BFloat16 -> __nv_bfloat16)
+        // Convert boolean mask to additive attention bias: true -> 0.0, false -> mask_filter_value.
+        // The conversion is element-wise and preserves the original shape, so the broadcast flags
+        // set above apply identically to the converted float buffer.
         using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
         int64_t num_elements = attn_mask->Shape().Size();
         converted_mask_buffer = GetScratchBuffer<void>(num_elements * sizeof(NativeCudaT), context->GetComputeStream());
