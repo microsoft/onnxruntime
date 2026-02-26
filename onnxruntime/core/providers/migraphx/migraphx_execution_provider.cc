@@ -4137,7 +4137,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
             map_defer_compilation_[context->node_name], fp16_enable_, bf16_enable_, fp8_enable_, int8_enable_,
             int8_calibration_cache_available_, dynamic_range_map_,
-            model_cache_path_.string(), dump_model_ops_, exhaustive_tune_, max_dynamic_batch_,
+            model_cache_path_, dump_model_ops_, exhaustive_tune_, max_dynamic_batch_,
             max_compiled_models_, std::ref(cached_programs_[context->node_name])};
       
       // Initialize dynamic batch support if max_dynamic_batch > 0
