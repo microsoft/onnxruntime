@@ -113,8 +113,9 @@ def parity_check_mha_prompt(
                 config.batch_size, config.q_num_heads, -1, -1
             )
         elif config.attn_mask_dims == 3:
-            attn_bias_ref = attn_mask.unsqueeze(1).expand(
-                -1, config.q_num_heads, -1, -1
+            # 3D [heads, q_seq, total_seq]: batch broadcasts
+            attn_bias_ref = attn_mask.unsqueeze(0).expand(
+                config.batch_size, -1, -1, -1
             )
         else:
             attn_bias_ref = attn_mask
@@ -296,6 +297,12 @@ def parity_check_mha_prompt_with_attn_bias(
     """
     torch.manual_seed(0)
 
+    # Compute effective per-batch seqlens based on mask broadcasting.
+    # For 2D mask, all batches see the same mask (first batch's pattern).
+    effective_seqlens = seqlens.clone()
+    if config.attn_mask_dims == 2:
+        effective_seqlens[:] = seqlens[0]
+
     q = (
         torch.randn(
             config.batch_size,
@@ -320,9 +327,9 @@ def parity_check_mha_prompt_with_attn_bias(
     )
     v = torch.randn_like(k) * std
 
-    # Zero out padded positions in K, V for proper comparison
+    # Zero out padded positions in K, V based on effective seqlens
     for b in range(config.batch_size):
-        valid_len = seqlens[b].item()
+        valid_len = effective_seqlens[b].item()
         if valid_len < config.kv_sequence_length:
             k[b, valid_len:, :, :] = 0
             v[b, valid_len:, :, :] = 0
@@ -338,16 +345,22 @@ def parity_check_mha_prompt_with_attn_bias(
         dtype=torch_type,
     )
 
-    # Create 4D reference bias
-    attn_bias_ref = create_additive_mask_from_seqlens(
-        seqlens=seqlens,
-        total_seq_len=config.kv_sequence_length,
-        mask_dims=4,
-        q_seq_len=config.q_sequence_length,
-        num_heads=config.q_num_heads,
-        device=device,
-        dtype=torch_type,
-    )
+    # Create 4D reference bias by broadcasting the reduced mask the same way ORT does.
+    # This ensures the reference matches the actual broadcasting behavior.
+    # 2D [q_seq, total_seq] → [1, 1, q_seq, total_seq] → [batch, heads, q_seq, total_seq]
+    # 3D [heads, q_seq, total_seq] → [1, heads, q_seq, total_seq] → [batch, heads, q_seq, total_seq]
+    # 4D [batch, heads, q_seq, total_seq] → as-is
+    if config.attn_mask_dims == 2:
+        attn_bias_ref = attn_mask.unsqueeze(0).unsqueeze(0).expand(
+            config.batch_size, config.q_num_heads, -1, -1
+        ).contiguous()
+    elif config.attn_mask_dims == 3:
+        # 3D [heads, q_seq, total_seq]: batch broadcasts, heads per-head
+        attn_bias_ref = attn_mask.unsqueeze(0).expand(
+            config.batch_size, -1, -1, -1
+        ).contiguous()
+    else:
+        attn_bias_ref = attn_mask
 
     # --- PyTorch Reference Path ---
     out_ref, _ = attention_ref(
@@ -373,9 +386,9 @@ def parity_check_mha_prompt_with_attn_bias(
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
 
     # --- Comparison ---
-    # Zero out padded positions in both outputs
+    # Zero out padded positions in both outputs based on effective seqlens
     for b in range(config.batch_size):
-        valid_len = seqlens[b].item()
+        valid_len = effective_seqlens[b].item()
         if valid_len < config.q_sequence_length:
             out[b, valid_len:, :, :] = 0
             out_ref[b, valid_len:, :, :] = 0

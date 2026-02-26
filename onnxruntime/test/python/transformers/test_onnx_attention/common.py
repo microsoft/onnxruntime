@@ -204,7 +204,8 @@ def create_attention_node_and_io(
 
         # Mask shapes differ between GQA (bool) and MHA (additive) paths:
         # GQA bool: 2D=[batch, total_seq], 3D=[heads, q_seq, total_seq], 4D=[batch, heads, q_seq, total_seq]
-        # MHA additive: 2D=[q_seq, total_seq], 3D=[batch, q_seq, total_seq], 4D=[batch, heads, q_seq, total_seq]
+        # MHA additive: 2D=[q_seq, total_seq], 3D=[heads, q_seq, total_seq], 4D=[batch, heads, q_seq, total_seq]
+        # ONNX broadcasting aligns from the right: 3D [A, B, C] → [_, A, B, C] where A=heads
         if config.attn_mask_type == "bool":
             if config.attn_mask_dims == 2:
                 mask_shape = [config.batch_size, mask_seq_len]
@@ -216,7 +217,8 @@ def create_attention_node_and_io(
             if config.attn_mask_dims == 2:
                 mask_shape = [config.q_sequence_length, mask_seq_len]
             elif config.attn_mask_dims == 3:
-                mask_shape = [config.batch_size, config.q_sequence_length, mask_seq_len]
+                # 3D aligns to [_, heads, q_seq, total_seq] — dim 0 must be 1 or num_heads
+                mask_shape = [config.q_num_heads, config.q_sequence_length, mask_seq_len]
             else:  # 4D
                 mask_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, mask_seq_len]
         graph_input.append(helper.make_tensor_value_info("attn_mask", mask_ort_type, mask_shape))
@@ -692,7 +694,7 @@ def create_additive_mask_from_seqlens(
     Returns:
         Additive mask where 0.0 = valid, -inf = masked.
         - 2D: [q_seq_len, total_seq_len]
-        - 3D: [batch_size, q_seq_len, total_seq_len]
+        - 3D: [num_heads, q_seq_len, total_seq_len]
         - 4D: [batch_size, num_heads, q_seq_len, total_seq_len]
     """
     batch_size = seqlens.shape[0]
@@ -711,8 +713,8 @@ def create_additive_mask_from_seqlens(
         # 2D: [q_seq_len, total_seq_len] — only works when all batches have same seqlens
         return additive_4d[0, 0, :, :]
     elif mask_dims == 3:
-        # 3D: [batch_size, q_seq_len, total_seq_len] — heads always broadcast
-        return additive_4d[:, 0, :, :]
+        # 3D: [heads, q_seq_len, total_seq_len] — batch always broadcasts, use first batch
+        return additive_4d[0, :, :, :]
     else:  # 4D
         return additive_4d
 
@@ -738,5 +740,7 @@ def has_flash_attention():
 
 
 # Default tolerances
-rtol = {"fp16": 5e-3, "fp32": 1e-4, "bf16": 5e-2}
-atol = {"fp16": 5e-3, "fp32": 1e-4, "bf16": 1e-2}
+# Note: fp32 tolerances are relaxed because TF32 is enabled by default on Ampere+ GPUs
+# (see attention.cc: use_tf32 = UseTF32()), giving roughly fp16-level matmul precision.
+rtol = {"fp16": 5e-3, "fp32": 5e-3, "bf16": 5e-2}
+atol = {"fp16": 5e-3, "fp32": 5e-3, "bf16": 1e-2}
