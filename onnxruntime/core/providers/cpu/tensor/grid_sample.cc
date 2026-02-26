@@ -225,12 +225,12 @@ void PrecomputeBilinearSamplePlan2D(const T* grid_data,
 }
 
 template <typename T>
-void EvaluatePlanForChannel(const T* input_data,
+void EvaluatePlanForChannel(const T& input_data,
                             T* output_data,
                             int64_t W_in,
                             const BilinearSamplePlan2D<T>* plan_data,
                             int64_t point_count) {
-  ORT_ENFORCE(input_data != nullptr, "EvaluatePlanForChannel requires non-null input_data.");
+  const T* input_ptr = &input_data;
   for (int64_t idx = 0; idx < point_count; ++idx) {
     const auto& plan = plan_data[idx];
     if (plan.mask == 0) {
@@ -246,22 +246,22 @@ void EvaluatePlanForChannel(const T* input_data,
     if (plan.mask == kAllNeighborsMask) {
       const int64_t row1 = plan.y1 * W_in;
       const int64_t row2 = plan.y2 * W_in;
-      p11 = input_data[row1 + plan.x1];
-      p12 = input_data[row1 + plan.x2];
-      p21 = input_data[row2 + plan.x1];
-      p22 = input_data[row2 + plan.x2];
+      p11 = input_ptr[row1 + plan.x1];
+      p12 = input_ptr[row1 + plan.x2];
+      p21 = input_ptr[row2 + plan.x1];
+      p22 = input_ptr[row2 + plan.x2];
     } else {
       if (plan.mask & kTopLeftMask) {
-        p11 = input_data[plan.y1 * W_in + plan.x1];
+        p11 = input_ptr[plan.y1 * W_in + plan.x1];
       }
       if (plan.mask & kTopRightMask) {
-        p12 = input_data[plan.y1 * W_in + plan.x2];
+        p12 = input_ptr[plan.y1 * W_in + plan.x2];
       }
       if (plan.mask & kBottomLeftMask) {
-        p21 = input_data[plan.y2 * W_in + plan.x1];
+        p21 = input_ptr[plan.y2 * W_in + plan.x1];
       }
       if (plan.mask & kBottomRightMask) {
-        p22 = input_data[plan.y2 * W_in + plan.x2];
+        p22 = input_ptr[plan.y2 * W_in + plan.x2];
       }
     }
 
@@ -298,9 +298,8 @@ void TryRunBilinearZerosFastPath2D(const Tensor& input,
   concurrency::ThreadPool::TrySimpleParallelFor(
       tp, onnxruntime::narrow<std::ptrdiff_t>(C),
       [&](std::ptrdiff_t c) {
-        const T* X_data = input_data + (n * C + c) * plane_in;
         T* Y_data = output_data + (n * C + c) * plane_out;
-        EvaluatePlanForChannel(X_data, Y_data, W_in, sampling_plan.data(), plane_out);
+        EvaluatePlanForChannel(*(input_data + (n * C + c) * plane_in), Y_data, W_in, sampling_plan.data(), plane_out);
       });
 }
 
