@@ -179,12 +179,13 @@ void PrecomputeBilinearSamplePlan2D(const T* grid_data,
                                     int64_t H_in,
                                     int64_t W_in,
                                     std::vector<BilinearSamplePlan2D<T>>& plans) {
-  const size_t point_count = H_out * W_out;
+  const int64_t point_count = H_out * W_out;
 
-  for (size_t idx = 0; idx < point_count; ++idx) {
-    auto& plan = plans[idx];
-    const T nx = grid_data[idx * 2];
-    const T ny = grid_data[idx * 2 + 1];
+  for (int64_t idx = 0; idx < point_count; ++idx) {
+    const auto sidx = onnxruntime::narrow<size_t>(idx);
+    auto& plan = plans[sidx];
+    const T nx = grid_data[sidx * 2];
+    const T ny = grid_data[sidx * 2 + 1];
     const T x = GsDenormalize<T>(nx, W_in, false);
     const T y = GsDenormalize<T>(ny, H_in, false);
 
@@ -225,12 +226,12 @@ void PrecomputeBilinearSamplePlan2D(const T* grid_data,
 }
 
 template <typename T>
-void EvaluatePlanForChannel(const T& input_data,
+void EvaluatePlanForChannel(const T* input_data,
                             T* output_data,
                             int64_t W_in,
                             const BilinearSamplePlan2D<T>* plan_data,
                             int64_t point_count) {
-  const T* input_ptr = &input_data;
+  ORT_ENFORCE(input_data != nullptr, "EvaluatePlanForChannel requires non-null input_data.");
   for (int64_t idx = 0; idx < point_count; ++idx) {
     const auto& plan = plan_data[idx];
     if (plan.mask == 0) {
@@ -246,22 +247,22 @@ void EvaluatePlanForChannel(const T& input_data,
     if (plan.mask == kAllNeighborsMask) {
       const int64_t row1 = plan.y1 * W_in;
       const int64_t row2 = plan.y2 * W_in;
-      p11 = input_ptr[row1 + plan.x1];
-      p12 = input_ptr[row1 + plan.x2];
-      p21 = input_ptr[row2 + plan.x1];
-      p22 = input_ptr[row2 + plan.x2];
+      p11 = input_data[row1 + plan.x1];
+      p12 = input_data[row1 + plan.x2];
+      p21 = input_data[row2 + plan.x1];
+      p22 = input_data[row2 + plan.x2];
     } else {
       if (plan.mask & kTopLeftMask) {
-        p11 = input_ptr[plan.y1 * W_in + plan.x1];
+        p11 = input_data[plan.y1 * W_in + plan.x1];
       }
       if (plan.mask & kTopRightMask) {
-        p12 = input_ptr[plan.y1 * W_in + plan.x2];
+        p12 = input_data[plan.y1 * W_in + plan.x2];
       }
       if (plan.mask & kBottomLeftMask) {
-        p21 = input_ptr[plan.y2 * W_in + plan.x1];
+        p21 = input_data[plan.y2 * W_in + plan.x1];
       }
       if (plan.mask & kBottomRightMask) {
-        p22 = input_ptr[plan.y2 * W_in + plan.x2];
+        p22 = input_data[plan.y2 * W_in + plan.x2];
       }
     }
 
@@ -282,8 +283,8 @@ void TryRunBilinearZerosFastPath2D(const Tensor& input,
                                    concurrency::ThreadPool* tp,
                                    std::vector<BilinearSamplePlan2D<T>>& sampling_plan) {
   const int64_t plane_in = H_in * W_in;
-  const size_t plane_out = H_out * W_out;
-  sampling_plan.resize(plane_out);
+  const int64_t plane_out = H_out * W_out;
+  sampling_plan.resize(onnxruntime::narrow<size_t>(plane_out));
 
   const T* grid_data = grid.Data<T>() + n * plane_out * 2;
   PrecomputeBilinearSamplePlan2D(grid_data, H_out, W_out, H_in, W_in, sampling_plan);
@@ -298,8 +299,9 @@ void TryRunBilinearZerosFastPath2D(const Tensor& input,
   concurrency::ThreadPool::TrySimpleParallelFor(
       tp, onnxruntime::narrow<std::ptrdiff_t>(C),
       [&](std::ptrdiff_t c) {
+        const T* X_data = input_data + (n * C + c) * plane_in;
         T* Y_data = output_data + (n * C + c) * plane_out;
-        EvaluatePlanForChannel(*(input_data + (n * C + c) * plane_in), Y_data, W_in, sampling_plan.data(), plane_out);
+        EvaluatePlanForChannel(X_data, Y_data, W_in, sampling_plan.data(), plane_out);
       });
 }
 
