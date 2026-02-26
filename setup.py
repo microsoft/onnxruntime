@@ -16,6 +16,7 @@ from pathlib import Path
 from shutil import copyfile
 
 from packaging.tags import sys_tags
+from setuptools import Distribution as _Distribution
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext as _build_ext
 from setuptools.command.install import install as InstallCommandBase
@@ -24,6 +25,63 @@ nightly_build = False
 package_name = "onnxruntime"
 wheel_name_suffix = None
 logger = logging.getLogger()
+
+
+class Distribution(_Distribution):
+    """Custom Distribution class that adds Provides-Dist metadata for variant packages.
+    
+    This class extends setuptools.Distribution to support the `provides_dist` parameter,
+    which specifies a list of distribution names that this package provides. This is
+    particularly useful for variant packages (e.g., onnxruntime-gpu) that should be
+    recognized as providing the base package (onnxruntime) for dependency resolution.
+    
+    The class overrides the metadata writing process to inject Provides-Dist entries
+    into the wheel's METADATA file, ensuring that modern dependency resolvers (pip, uv,
+    poetry, pdm) correctly recognize the relationship between variant and base packages.
+    
+    Args:
+        attrs: Dictionary of package attributes, including the optional 'provides_dist'
+               parameter which should be a list of strings in the format:
+               ["package_name (==version)", ...]
+    
+    Example:
+        setup(
+            name="onnxruntime-gpu",
+            version="1.23.2",
+            provides_dist=["onnxruntime (==1.23.2)"],
+            distclass=Distribution,
+            ...
+        )
+    """
+    
+    def __init__(self, attrs=None):
+        # Store provides_dist before calling super().__init__ to avoid setter issues
+        provides_dist_value = attrs.get("provides_dist") if attrs else None
+        if attrs and "provides_dist" in attrs:
+            # Remove it from attrs so parent __init__ doesn't try to set it
+            attrs = dict(attrs)
+            del attrs["provides_dist"]
+        
+        super().__init__(attrs)
+        
+        # Now set provides_dist
+        self.provides_dist = provides_dist_value
+        
+        # Override the metadata's write_pkg_file method to add Provides-Dist
+        original_write_pkg_file = self.metadata.write_pkg_file
+        
+        def write_pkg_file_with_provides(file):
+            """Enhanced write_pkg_file that includes Provides-Dist metadata."""
+            # Call original method
+            original_write_pkg_file(file)
+            
+            # Add Provides-Dist entries if available and valid
+            if self.provides_dist and isinstance(self.provides_dist, (list, tuple)):
+                for entry in self.provides_dist:
+                    if entry:  # Skip empty strings
+                        file.write(f"Provides-Dist: {entry}\n")
+        
+        self.metadata.write_pkg_file = write_pkg_file_with_provides
 
 
 def parse_arg_remove_boolean(argv, arg_name):
@@ -787,6 +845,13 @@ if wheel_name_suffix:
         # for training packages, local version is used to indicate device types
         package_name = f"{package_name}-{wheel_name_suffix}"
 
+# Determine if we need to add Provides-Dist metadata
+# This is needed when the package name differs from "onnxruntime" but should be treated as providing it
+provides_dist_metadata = []
+if package_name != "onnxruntime":
+    # All variant packages (gpu, migraphx, openvino, etc.) provide the base onnxruntime package
+    provides_dist_metadata = [f"onnxruntime (=={version_number})"]
+
 cmd_classes = {}
 if bdist_wheel is not None:
     cmd_classes["bdist_wheel"] = bdist_wheel
@@ -879,6 +944,8 @@ setup(
     data_files=data_files,
     install_requires=install_requires,
     extras_require=extras_require,
+    provides_dist=provides_dist_metadata,
+    distclass=Distribution,
     python_requires=">=3.10",
     keywords="onnx machine learning",
     entry_points={
