@@ -42,16 +42,16 @@ struct OpKernel {
     return op_kernel_info_;
   }
 
-  virtual Status CreateControlFlowKernelImpl(const OrtKernelInfo* info, OrtKernelImpl** impl) {
+  virtual Status CreateControlFlowKernelImpl(const OrtKernelInfo* /*info*/, OrtKernelImpl** /*impl*/) {
     return Status::OK();
   }
 
   virtual Status Compute(OpKernelContext* p_op_kernel_context) const = 0;
-  virtual Status PrePack(const Tensor& tensor,
-                         int input_idx,
-                         AllocatorPtr alloc,
+  virtual Status PrePack(const Tensor& /*tensor*/,
+                         int /*input_idx*/,
+                         AllocatorPtr /*alloc*/,
                          /*out*/ bool& is_packed,
-                         /*out*/ PrePackedWeights* prepacked_weights) {
+                         /*out*/ PrePackedWeights* /*prepacked_weights*/) {
     is_packed = false;
     return Status::OK();
   }
@@ -81,7 +81,7 @@ struct OpKernelContext {
       return &input_tensors_[index];
     }
 
-    if (index < constant_input_tensors_.size() && constant_input_tensors_[index].DataRaw() != nullptr) {
+    if (static_cast<size_t>(index) < constant_input_tensors_.size() && constant_input_tensors_[index].DataRaw() != nullptr) {
       return &constant_input_tensors_[index];
     }
 
@@ -130,6 +130,10 @@ struct OpKernelContext {
   bool GetUseDeterministicCompute() const {
     // TODO(fs-eire): Implement GetUseDeterministicCompute().
     return false;
+  }
+
+  void* GetGPUComputeStream() const {
+    return context_.GetGPUComputeStream();
   }
 
  private:

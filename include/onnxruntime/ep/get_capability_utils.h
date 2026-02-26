@@ -4,7 +4,6 @@
 #pragma once
 
 #include <gsl/span>
-#include <unordered_set>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>

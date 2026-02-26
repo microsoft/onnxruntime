@@ -130,7 +130,7 @@ struct KernelDefBuilder {
     return *this;
   }
 
-  KernelDefBuilder& ExecQueueId(int queue_id) { return *this; }
+  KernelDefBuilder& ExecQueueId(int /*queue_id*/) { return *this; }
 
   Ort::KernelDef Build() { return builder_.Build(); }
 

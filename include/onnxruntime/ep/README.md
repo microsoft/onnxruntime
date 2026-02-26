@@ -17,3 +17,5 @@ There are 2 types of header files:
 ### Usage
 
 Make sure to include "ep/adapters.h" to include all adapter implementation code. This file brings the adapter classes into the EP's namespace, so it should be included before other EP code that relies on the adapter classes. Using "ep/adapters.h" as a pre-compiled header is the recommended way to include it first.
+
+`ep/adapters.h` has conflicts with shared provider. Shared provider should be disabled when using these adapters.
