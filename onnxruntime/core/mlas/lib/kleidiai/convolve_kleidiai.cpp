@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <array>
+#include <vector>
 
 #include <unordered_map>
 
@@ -467,28 +469,14 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     // pad_ptr must be at least 'ci' floats for padding pixels.
     // Using a thread_local grow-only buffer to avoid cross-thread interference and ensure sizing is correct.
+    //
+    // The pad buffer contents are always zero. Since the buffer is grow-only and never written with non-zero data,
+    // we only need to zero-initialize newly-grown elements.
     thread_local std::vector<float> pad_ptr;
-    const float* old_pad_ptr = pad_ptr.data();
-    bool has_pad_ptr_changed = false;
 
     if (pad_ptr.size() < padsize) {
         pad_ptr.resize(padsize, 0.f);
-        if (pad_ptr.data() != old_pad_ptr) {
-            has_pad_ptr_changed = true;
-        }
-    } else {
-        // Ensure any previously-used region remains zeroed (grow-only means it should already be zeros,
-        // but keep this explicit for safety).
-        std::fill(pad_ptr.begin(), pad_ptr.end(), 0.f);
     }
-
-    LhsCacheKey key = {
-        ci, ih, iw,
-        padding, sh, sw,
-        kh, kw,
-        1, 1,
-        HashWeights(in)
-    };
 
     //create lhs in format required for imatmul
     const auto m = ComputeConvOutSize(ih, kh, padding, sh) * ComputeConvOutSize(iw, kw, padding, sw);
@@ -498,18 +486,31 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     auto nhwc = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
 
-    // Cache of computed lhs ptr offsets.  thread_local to prevent interference from parallel sessions.
-    thread_local std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
+    // Cache of computed lhs ptr offsets. thread_local to prevent interference from parallel sessions.
+    //
+    // Entries include pointers to the pad buffer for out-of-bounds pixels, so we must not reuse entries after the
+    // pad buffer is reallocated. To avoid clearing the entire cache, we group caches by pad buffer identity and
+    // invalidate only the old group when the pad buffer moves.
+    using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
+    thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
 
-    if (has_pad_ptr_changed)
-    {
-        // If the pad buffer was resized and a re-allocation has occurred, the cached lhs ptrs are invalid as they
-        // would be referencing the old pad buffer.
-        // See discussion in https://github.com/microsoft/onnxruntime/pull/27214.
-        // TODO(hasesh / JonathanC-ARM): A better approach would be to include the pad buffer address in the cache key
-        // or any other approach that would reduce unnecessary cache invalidations.
-        lhs_ptrs_cache.clear();
+    // If pad_ptr moved (vector reallocation), drop only the old group to avoid accumulating unreachable entries.
+    thread_local const float* last_pad_ptr = nullptr;
+    const float* cur_pad_ptr = pad_ptr.data();
+    if (last_pad_ptr != nullptr && last_pad_ptr != cur_pad_ptr) {
+        lhs_ptrs_cache_by_pad.erase(last_pad_ptr);
     }
+    last_pad_ptr = cur_pad_ptr;
+
+    LhsCacheKey key = {
+        ci, ih, iw,
+        padding, sh, sw,
+        kh, kw,
+        1, 1,
+        HashWeights(in)
+    };
+
+    auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];
 
     std::shared_ptr<const void*[]> lhs_ptrs;
     if (auto found = lhs_ptrs_cache.find(key); found != lhs_ptrs_cache.end()) {

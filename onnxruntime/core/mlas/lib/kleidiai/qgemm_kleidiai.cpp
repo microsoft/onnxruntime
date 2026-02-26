@@ -6,6 +6,10 @@
 
 
 
+#include <array>
+#include <cstddef>
+#include <vector>
+
 #include "mlasi_kleidiai.h"
 
 #include "kai_ukernel_interface.h"
