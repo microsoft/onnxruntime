@@ -2,11 +2,6 @@
 // Licensed under the MIT License.
 
 #include <vector>
-#include <type_traits>
-
-#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) || defined(_M_ARM64)
-#include <arm_neon.h>
-#endif
 
 #include "core/providers/cpu/tensor/grid_sample.h"
 #include "core/framework/element_type_lists.h"
@@ -184,10 +179,10 @@ void PrecomputeBilinearSamplePlan2D(const T* grid_data,
                                     int64_t H_in,
                                     int64_t W_in,
                                     std::vector<BilinearSamplePlan2D<T>>& plans) {
-  const int64_t point_count = H_out * W_out;
+  const size_t point_count = H_out * W_out;
 
-  for (int64_t idx = 0; idx < point_count; ++idx) {
-    auto& plan = plans[onnxruntime::narrow<size_t>(idx)];
+  for (size_t idx = 0; idx < point_count; ++idx) {
+    auto& plan = plans[idx];
     const T nx = grid_data[idx * 2];
     const T ny = grid_data[idx * 2 + 1];
     const T x = GsDenormalize<T>(nx, W_in, false);
@@ -243,31 +238,6 @@ void EvaluatePlanForChannel(const T* input_data,
       continue;
     }
 
-#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) || defined(_M_ARM64)
-    if constexpr (std::is_same_v<T, float>) {
-      if (plan.mask == kAllNeighborsMask) {
-        const float* row1_ptr = input_data + plan.y1 * W_in + plan.x1;
-        const float* row2_ptr = input_data + plan.y2 * W_in + plan.x1;
-
-        float32x2_t row1 = vld1_f32(row1_ptr);  // [p11, p12]
-        float32x2_t row2 = vld1_f32(row2_ptr);  // [p21, p22]
-        float32x4_t neighbors = vcombine_f32(row1, row2);
-
-        float32x2_t weights_row1 = vdup_n_f32(plan.w12);
-        weights_row1 = vset_lane_f32(plan.w11, weights_row1, 0);
-        float32x2_t weights_row2 = vdup_n_f32(plan.w22);
-        weights_row2 = vset_lane_f32(plan.w21, weights_row2, 0);
-        float32x4_t weights = vcombine_f32(weights_row1, weights_row2);
-
-        float32x4_t products = vmulq_f32(neighbors, weights);
-        float32x2_t sum_pairs = vadd_f32(vget_low_f32(products), vget_high_f32(products));
-        float32x2_t accum = vpadd_f32(sum_pairs, sum_pairs);
-        output_data[idx] = vget_lane_f32(accum, 0);
-        continue;
-      }
-    }
-#endif
-
     T p11 = T{};
     T p12 = T{};
     T p21 = T{};
@@ -312,14 +282,18 @@ void TryRunBilinearZerosFastPath2D(const Tensor& input,
                                    concurrency::ThreadPool* tp,
                                    std::vector<BilinearSamplePlan2D<T>>& sampling_plan) {
   const int64_t plane_in = H_in * W_in;
-  const int64_t plane_out = H_out * W_out;
-  sampling_plan.resize(onnxruntime::narrow<size_t>(plane_out));
+  const size_t plane_out = H_out * W_out;
+  sampling_plan.resize(plane_out);
 
   const T* grid_data = grid.Data<T>() + n * plane_out * 2;
   PrecomputeBilinearSamplePlan2D(grid_data, H_out, W_out, H_in, W_in, sampling_plan);
 
   const T* input_data = input.Data<T>();
   T* output_data = output.MutableData<T>();
+
+  if (plane_out == 0) {
+    return;
+  }
 
   concurrency::ThreadPool::TrySimpleParallelFor(
       tp, onnxruntime::narrow<std::ptrdiff_t>(C),
