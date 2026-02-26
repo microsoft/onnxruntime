@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <array>
+#include <vector>
 
 #include <unordered_map>
 
@@ -43,15 +45,13 @@ struct LhsCacheKey {
     size_t kh, kw;
     size_t dilationh, dilationw;
     size_t data_hash;
-    size_t pad_ptr;
 
     bool operator==(const LhsCacheKey& other) const {
         return ci == other.ci && ih == other.ih && iw == other.iw &&
                padding == other.padding && sh == other.sh && sw == other.sw &&
                kh == other.kh && kw == other.kw &&
                dilationh == other.dilationh && dilationw == other.dilationw &&
-               data_hash == other.data_hash &&
-               pad_ptr == other.pad_ptr;
+               data_hash == other.data_hash;
     }
 };
 
@@ -98,8 +98,7 @@ namespace std {
                 (std::hash<size_t>()(k.kh) << 7) ^
                 (std::hash<size_t>()(k.kw) << 8) ^
                 (std::hash<size_t>()(k.dilationh) << 9) ^
-                (std::hash<size_t>()(k.dilationw) << 10) ^
-                (std::hash<size_t>()(k.pad_ptr) << 11);
+                (std::hash<size_t>()(k.dilationw) << 10);
         }
     };
 
@@ -479,15 +478,6 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
         pad_ptr.resize(padsize, 0.f);
     }
 
-    LhsCacheKey key = {
-        ci, ih, iw,
-        padding, sh, sw,
-        kh, kw,
-        1, 1,
-        HashWeights(in),
-        reinterpret_cast<size_t>(pad_ptr.data())
-    };
-
     //create lhs in format required for imatmul
     const auto m = ComputeConvOutSize(ih, kh, padding, sh) * ComputeConvOutSize(iw, kw, padding, sw);
 
@@ -498,9 +488,29 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     // Cache of computed lhs ptr offsets. thread_local to prevent interference from parallel sessions.
     //
-    // The cache key includes the pad buffer identity because entries include pointers to the pad buffer for
-    // out-of-bounds pixels. If the pad buffer is reallocated, cached entries for the previous buffer must not be reused.
-    thread_local std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
+    // Entries include pointers to the pad buffer for out-of-bounds pixels, so we must not reuse entries after the
+    // pad buffer is reallocated. To avoid clearing the entire cache, we group caches by pad buffer identity and
+    // invalidate only the old group when the pad buffer moves.
+    using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
+    thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
+
+    // If pad_ptr moved (vector reallocation), drop only the old group to avoid accumulating unreachable entries.
+    thread_local const float* last_pad_ptr = nullptr;
+    const float* cur_pad_ptr = pad_ptr.data();
+    if (last_pad_ptr != nullptr && last_pad_ptr != cur_pad_ptr) {
+        lhs_ptrs_cache_by_pad.erase(last_pad_ptr);
+    }
+    last_pad_ptr = cur_pad_ptr;
+
+    LhsCacheKey key = {
+        ci, ih, iw,
+        padding, sh, sw,
+        kh, kw,
+        1, 1,
+        HashWeights(in)
+    };
+
+    auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];
 
     std::shared_ptr<const void*[]> lhs_ptrs;
     if (auto found = lhs_ptrs_cache.find(key); found != lhs_ptrs_cache.end()) {

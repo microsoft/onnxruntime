@@ -4,12 +4,15 @@
 // SPDX-License-Identifier: MIT
 //
 
+#include <vector>
+#include <cstring>
+#include <cstddef>
+
 #include "mlas.h"
 
 #include "mlasi_kleidiai.h"
 
 #include "kai_ukernel_interface.h"
-
 
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"

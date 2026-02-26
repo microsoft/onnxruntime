@@ -331,7 +331,7 @@ class MlasConv2DTest : public MlasTestBase {
         }
       }
     }
-    
+
     //
     // Regression test: exercise a KleidiAI Conv2D path when KleidiAI is enabled.
     // See https://github.com/microsoft/onnxruntime/issues/26669.
@@ -346,9 +346,9 @@ class MlasConv2DTest : public MlasTestBase {
     // Repeat a few times to increase the likelihood of triggering a reallocation and verify the path.
     //
     for (int i = 0; i < 4; ++i) {
-        Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // smaller CI
-        Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);  // larger CI forces pad buffer growth
-        Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // sanity: back to smaller CI after growth
+      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // smaller CI
+      Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);  // larger CI forces pad buffer growth
+      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // sanity: back to smaller CI after growth
     }
   }
 };
