@@ -20,8 +20,8 @@ namespace ep {
 using onnxruntime::ep::Api;
 
 // Constructor
-Ep::Ep(IExecutionProvider* impl, Factory& factory, const OrtLogger& logger, const Config& config)
-    : onnxruntime::ep::adapter::Ep{impl, config.cpu_allocator, config.device_allocator},
+Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogger& logger, const Config& config)
+    : onnxruntime::ep::adapter::Ep{std::move(impl), config.cpu_allocator, config.device_allocator},
       factory_{factory},
       logger_{logger},
       config_{config} {

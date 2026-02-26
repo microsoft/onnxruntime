@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
@@ -28,7 +29,7 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   };
 
   // Do not use a std::unique_ptr for impl_ because this requires the actual type definition.
-  Ep(IExecutionProvider* impl, Factory& factory, const OrtLogger& logger, const Config& config);
+  Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogger& logger, const Config& config);
 
   inline const OrtLogger& GetOrtLogger() const noexcept {
     return logger_;

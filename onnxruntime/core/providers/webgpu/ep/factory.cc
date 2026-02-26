@@ -132,10 +132,9 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   try {
     auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
     auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
-    auto webgpu_ep_impl = static_cast<WebGpuExecutionProvider*>(webgpu_ep.release());
-    webgpu_ep_impl->SetEpLogger(logger);
+    static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
     auto factory = static_cast<Factory*>(this_ptr);
-    *ep = new Ep(webgpu_ep_impl, *factory, *logger, factory->config_);
+    *ep = new Ep(std::move(webgpu_ep), *factory, *logger, factory->config_);
     return nullptr;
   } catch (const Ort::Exception& ex) {
     Ort::Status status(ex);

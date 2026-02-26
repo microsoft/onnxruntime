@@ -121,9 +121,9 @@
     endif()
 
     # Configure precompiled headers for shared library build
-    # PCH ensures ep/_pch.h is included first and improves compilation speed
+    # PCH ensures ep/adapters.h is included first and improves compilation speed
     target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
-      "${REPO_ROOT}/include/onnxruntime/ep/_pch.h"
+      "${REPO_ROOT}/include/onnxruntime/ep/adapters.h"
     )
   endif()
 
