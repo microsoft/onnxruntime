@@ -37,7 +37,7 @@ extends:
       policheck:
         enabled: false
       tsa:
-        enabled: false
+        enabled: true
 
     stages:
     - ${{ each image in parameters.image_list }}:
