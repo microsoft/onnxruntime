@@ -1,5 +1,6 @@
 
 #param has_attention_bias
+#param has_head_sink
 #param is_fp16
 #param is_qualcomm
 #param is_unidirectional
@@ -174,8 +175,14 @@ $MAIN {
     loadq(batch_idx, q_idx_global, head_idx, q_element_t(uniforms.alpha));
   }
 
+#if has_head_sink
+  let sink_value = q_element_t(head_sink[head_idx]);
+  var previous_max : q_element_t = sink_value;
+  var previous_denom : q_element_t = 1;
+#else
   var previous_max : q_element_t = min_value;
   var previous_denom : q_element_t = 0;
+#endif
   let total_sequence_length = get_total_sequence_length();
 
 #if is_unidirectional
@@ -295,7 +302,7 @@ $MAIN {
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
     // Compute lhs term of update di prime and the compute di prime.
-    let dleft = previous_denom * exp(previous_max - new_max);
+    let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
     var d = dleft + sum;
     d = select(d, q_element_t(0.0000001), d == 0);
     qk_1 = qk_1 / d;

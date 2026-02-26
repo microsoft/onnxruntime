@@ -176,6 +176,7 @@ struct ProviderHostCPU {
                                             int sequence_length,
                                             int& past_sequence_length) = 0;
 
+#if !defined(DISABLE_GENERATION_OPS)
   // BeamSearch
   virtual void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) = 0;
   virtual Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) = 0;
@@ -204,6 +205,7 @@ struct ProviderHostCPU {
   virtual void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) = 0;
   virtual Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) = 0;
   virtual Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) = 0;
+#endif  // !defined(DISABLE_GENERATION_OPS)
 
 #ifdef ENABLE_ATEN
   virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;

@@ -249,10 +249,14 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-// Convert a SparseTensorProto to a dense TensorProto
-// If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
-// The resulting TensorProto will contain the data as raw data.
-// model_path is used for constructing full path for external_data
+/// <summary>
+// The function supports only COO format with 1D or 2D indices. Values shape is expected to be 1D.
+// The function does not support sparse tensors of other formats like CSR/CSC.
+/// </summary>
+/// <param name="sparse"></param>
+/// <param name="model_path">model path is only used if there are references to external data.</param>
+/// <param name="dense">The resulting dense tensor proto.</param>
+/// <returns>Status</returns>
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const std::filesystem::path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense);
@@ -522,16 +526,19 @@ Status TensorProtoWithExternalDataToTensorProto(
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
 /// <summary>
-/// The functions will make sure the 'location' specified in the external data is under the 'base_dir'.
+/// Validates if the external data path is under the model directory.
+/// If the model is a symlink, it checks against both the logical model directory (base_dir)
+/// and the real/canonical directory of the model.
 /// If the `base_dir` is empty, the function only ensures that `location` is not an absolute path.
 /// </summary>
-/// <param name="base_dir">model location directory</param>
-/// <param name="location">location is a string retrieved from TensorProto external data that is not
-///                        an in-memory tag</param>
-/// <returns>The function will fail if the resolved full path is not under the model directory
-///          or one of the subdirectories</returns>
+/// <param name="base_dir">Logical model location directory</param>
+/// <param name="location">Location string retrieved from TensorProto external data</param>
+/// <param name="model_path">Optional path to the model file, used for canonical path validation if base_dir check fails</param>
+/// <returns>The function will fail if the resolved full path is not under the logical model directory
+///          nor the real directory of the model path</returns>
 Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location);
+                                const std::filesystem::path& location,
+                                const std::filesystem::path& model_path = {});
 
 #endif  // !defined(SHARED_PROVIDER)
 

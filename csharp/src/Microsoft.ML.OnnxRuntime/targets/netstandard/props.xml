@@ -113,7 +113,8 @@
 
     <!-- arm64 -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll"
-          Condition="'$(PlatformTarget)' == 'ARM64'">
+          Condition="'$(PlatformTarget)' == 'ARM64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll')">
       <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
@@ -128,7 +129,8 @@
 
     <!-- arm -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime.dll"
-          Condition="'$(PlatformTarget)' == 'ARM'">
+          Condition="'$(PlatformTarget)' == 'ARM' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime.dll')">
       <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>

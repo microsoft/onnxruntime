@@ -779,6 +779,13 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   bool IsSparseInitializer(const std::string& name) const;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+  /** Gets the frequency count of weight data types in this graph. */
+  gsl::span<const int32_t> GetWeightDataTypeFrequency() const noexcept {
+    return weight_data_type_freq_;
+  }
+#endif
+
   /** Gets an initializer tensor with the provided name.
   @param[out] value Set to the TensorProto* if the initializer is found, or nullptr if not.
   @returns True if found.
@@ -1608,9 +1615,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
+ private:
   int32_t weight_data_type_freq_[ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE] = {0};
 
- private:
   void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.

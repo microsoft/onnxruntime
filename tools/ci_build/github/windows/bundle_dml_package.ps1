@@ -27,17 +27,27 @@ $arm64ExtractPath = "win-dml-arm64-unzipped"
 Write-Host "Extracting $arm64ZipFile to $arm64ExtractPath..."
 & $sevenZipPath x $arm64ZipFile -o"$arm64ExtractPath" -y
 
+# Debug: List contents of extracted arm64 zip
+Write-Host "Contents of $arm64ExtractPath (recursive):"
+Get-ChildItem -Path $arm64ExtractPath -Recurse | ForEach-Object { Write-Host "  - $($_.FullName)" }
+
 # 2. Find the target NuGet package.
 # It finds all .nupkg files that do not contain "Managed" in their name.
-$nupkgFiles = Get-ChildItem -Path . -Recurse -Filter *.nupkg | Where-Object { $_.Name -notlike "*Managed*" }
+$nupkgFiles = Get-ChildItem -Path . -Filter *.nupkg | Where-Object { ($_.Name -notlike "*Managed*") -and ($_.Name -notlike "*.symbols.nupkg") }
 
-# 3. Validate that exactly one package was found.
-if ($nupkgFiles.Count -ne 1) {
-    Write-Error "Error: Expected to find exactly one non-managed NuGet package, but found $($nupkgFiles.Count)."
+Write-Host "Found $($nupkgFiles.Count) candidate nupkg file(s) for bundling:"
+$nupkgFiles | ForEach-Object { Write-Host "  - $($_.FullName)" }
+
+# 3. Select the best package (shortest name prefers Release over Dev, and Main over Symbols)
+if ($nupkgFiles.Count -eq 0) {
+    Write-Error "Error: No matching NuGet packages found to bundle into."
     exit 1
 }
-$nupkg = $nupkgFiles[0]
-Write-Host "Found package to process: $($nupkg.Name)"
+if ($nupkgFiles.Count -gt 1) {
+    Write-Warning "Found multiple packages. Selecting the one with the shortest filename as the target for bundling."
+}
+$nupkg = $nupkgFiles | Sort-Object {$_.Name.Length} | Select-Object -First 1
+Write-Host "Selected target package: $($nupkg.Name)"
 
 # 4. Validate the package name matches the expected format.
 if ($nupkg.Name -notlike "Microsoft.ML.OnnxRuntime.DirectML*.nupkg") {
@@ -61,14 +71,36 @@ New-Item -ItemType Directory -Path $tempDir | Out-Null
 Write-Host "Extracting $($nupkg.Name) to $tempDir..."
 & $sevenZipPath x $nupkg.FullName -o"$tempDir" -y
 
+# Debug: Print the .nuspec content
+$nuspecFile = Get-ChildItem -Path $tempDir -Filter *.nuspec | Select-Object -First 1
+if ($nuspecFile) {
+    Write-Host "Found manifest: $($nuspecFile.FullName)"
+    Write-Host "--- Manifest Content ---"
+    Get-Content $nuspecFile.FullName | ForEach-Object { Write-Host $_ }
+    Write-Host "------------------------"
+}
+
+# Debug: List contents of extracted target nupkg
+Write-Host "Contents of $tempDir (recursive):"
+Get-ChildItem -Path $tempDir -Recurse | ForEach-Object { Write-Host "  - $($_.FullName)" }
+
 # Step B: Create the new runtime directory structure.
 $newRuntimePath = Join-Path $tempDir "runtimes\win-arm64\native"
+Write-Host "Ensuring destination path exists: $newRuntimePath"
 New-Item -ItemType Directory -Path $newRuntimePath -Force | Out-Null
 
 # Step C: Copy the ARM64 binaries into the new structure.
 $arm64SourcePath = Join-Path . "$arm64ExtractPath\runtimes\win-arm64\native"
-Write-Host "Copying ARM64 binaries from $arm64SourcePath to $newRuntimePath..."
-Copy-Item -Path "$arm64SourcePath\*" -Destination $newRuntimePath -Recurse -Force
+if (Test-Path $arm64SourcePath) {
+    Write-Host "Copying ARM64 binaries from $arm64SourcePath to $newRuntimePath..."
+    $filesToCopy = Get-ChildItem -Path "$arm64SourcePath\*"
+    Write-Host "Files found in source: $($filesToCopy.Count)"
+    $filesToCopy | ForEach-Object { Write-Host "  -> $($_.Name)" }
+    Copy-Item -Path "$arm64SourcePath\*" -Destination $newRuntimePath -Recurse -Force
+} else {
+    Write-Error "Error: ARM64 source path not found: $arm64SourcePath. Bailing out to avoid creating a broken package."
+    exit 1
+}
 
 # Step D: Delete the original nupkg file.
 Remove-Item -Path $nupkg.FullName -Force
@@ -78,6 +110,13 @@ Write-Host "Creating new nupkg file at $($nupkg.FullName)..."
 Push-Location $tempDir
 & $sevenZipPath a -tzip "$($nupkg.FullName)" ".\" -r
 Pop-Location
+
+# Debug: Check final nupkg existence
+if (Test-Path $nupkg.FullName) {
+    Write-Host "Final package created successfully: $($nupkg.FullName)"
+    $finalSize = (Get-Item $nupkg.FullName).Length
+    Write-Host "Final package size: $finalSize bytes"
+}
 
 # --- Cleanup and Final Steps ---
 Write-Host "Cleaning up temporary directory $tempDir..."
