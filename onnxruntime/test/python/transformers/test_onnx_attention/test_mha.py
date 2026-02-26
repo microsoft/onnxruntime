@@ -18,7 +18,6 @@ It uses the unfused attention kernel and supports:
   - 2D, 3D, 4D additive masks with broadcasting
 """
 
-import os
 import unittest
 
 import numpy
@@ -28,6 +27,7 @@ from parameterized import parameterized
 
 from test_onnx_attention.common import (
     AttentionConfig,
+    atol,
     attention_past_func,
     attention_prompt_func,
     attention_ref,
@@ -38,9 +38,7 @@ from test_onnx_attention.common import (
     print_diff_statistics,
     quick_build,
     rtol,
-    atol,
 )
-
 
 # #################################################################################################
 #  MHA Parity Check Functions
@@ -95,9 +93,7 @@ def parity_check_mha_prompt(
     if config.has_attn_mask:
         # Create additive mask (0 for valid, -inf for masked)
         # For prompt without padding, create a causal-style or zero mask
-        seqlens = torch.full(
-            (config.batch_size,), config.kv_sequence_length, dtype=torch.int32, device=device
-        )
+        seqlens = torch.full((config.batch_size,), config.kv_sequence_length, dtype=torch.int32, device=device)
         attn_mask = create_additive_mask_from_seqlens(
             seqlens=seqlens,
             total_seq_len=config.kv_sequence_length,
@@ -109,14 +105,10 @@ def parity_check_mha_prompt(
         )
         # For reference: expand to 4D [batch, heads, q_seq, kv_seq]
         if config.attn_mask_dims == 2:
-            attn_bias_ref = attn_mask.unsqueeze(0).unsqueeze(0).expand(
-                config.batch_size, config.q_num_heads, -1, -1
-            )
+            attn_bias_ref = attn_mask.unsqueeze(0).unsqueeze(0).expand(config.batch_size, config.q_num_heads, -1, -1)
         elif config.attn_mask_dims == 3:
             # 3D [heads, q_seq, total_seq]: batch broadcasts
-            attn_bias_ref = attn_mask.unsqueeze(0).expand(
-                config.batch_size, -1, -1, -1
-            )
+            attn_bias_ref = attn_mask.unsqueeze(0).expand(config.batch_size, -1, -1, -1)
         else:
             attn_bias_ref = attn_mask
 
@@ -351,14 +343,12 @@ def parity_check_mha_prompt_with_attn_bias(
     # 3D [heads, q_seq, total_seq] → [1, heads, q_seq, total_seq] → [batch, heads, q_seq, total_seq]
     # 4D [batch, heads, q_seq, total_seq] → as-is
     if config.attn_mask_dims == 2:
-        attn_bias_ref = attn_mask.unsqueeze(0).unsqueeze(0).expand(
-            config.batch_size, config.q_num_heads, -1, -1
-        ).contiguous()
+        attn_bias_ref = (
+            attn_mask.unsqueeze(0).unsqueeze(0).expand(config.batch_size, config.q_num_heads, -1, -1).contiguous()
+        )
     elif config.attn_mask_dims == 3:
         # 3D [heads, q_seq, total_seq]: batch broadcasts, heads per-head
-        attn_bias_ref = attn_mask.unsqueeze(0).expand(
-            config.batch_size, -1, -1, -1
-        ).contiguous()
+        attn_bias_ref = attn_mask.unsqueeze(0).expand(config.batch_size, -1, -1, -1).contiguous()
     else:
         attn_bias_ref = attn_mask
 

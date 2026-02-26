@@ -32,6 +32,7 @@ from parameterized import parameterized
 
 from test_onnx_attention.common import (
     AttentionConfig,
+    atol,
     attention_past_func,
     attention_prompt_func,
     attention_ref,
@@ -44,9 +45,7 @@ from test_onnx_attention.common import (
     print_diff_statistics,
     quick_build,
     rtol,
-    atol,
 )
-
 
 # #################################################################################################
 #  Parity Check (Core Test Logic)

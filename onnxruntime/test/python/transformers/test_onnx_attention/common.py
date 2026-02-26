@@ -21,7 +21,6 @@ import math
 import os
 from dataclasses import dataclass
 
-import numpy
 import torch
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
@@ -133,7 +132,11 @@ def create_attention_node_and_io(
         present_kv_seqlen = config.kv_sequence_length
 
     if not config.kv_cache_type:
-        config.kv_cache_type = {TensorProto.FLOAT16: "float16", TensorProto.BFLOAT16: "bfloat16", TensorProto.FLOAT: "float32"}.get(ort_type, "float16")
+        config.kv_cache_type = {
+            TensorProto.FLOAT16: "float16",
+            TensorProto.BFLOAT16: "bfloat16",
+            TensorProto.FLOAT: "float32",
+        }.get(ort_type, "float16")
 
     # --- Node Definition ---
     outputs = [
@@ -348,7 +351,11 @@ def attention_prompt_func(
         ort_type: ONNX tensor type
     """
     if not config.kv_cache_type:
-        config.kv_cache_type = {TensorProto.FLOAT16: "float16", TensorProto.BFLOAT16: "bfloat16", TensorProto.FLOAT: "float32"}.get(ort_type, "float16")
+        config.kv_cache_type = {
+            TensorProto.FLOAT16: "float16",
+            TensorProto.BFLOAT16: "bfloat16",
+            TensorProto.FLOAT: "float32",
+        }.get(ort_type, "float16")
 
     onnx_model_str = create_attention_graph_prompt(
         config=config,
@@ -430,7 +437,11 @@ def attention_past_func(
         ort_type: ONNX tensor type
     """
     if not config.kv_cache_type:
-        config.kv_cache_type = {TensorProto.FLOAT16: "float16", TensorProto.BFLOAT16: "bfloat16", TensorProto.FLOAT: "float32"}.get(ort_type, "float16")
+        config.kv_cache_type = {
+            TensorProto.FLOAT16: "float16",
+            TensorProto.BFLOAT16: "bfloat16",
+            TensorProto.FLOAT: "float32",
+        }.get(ort_type, "float16")
 
     onnx_model_str = create_attention_graph_past(
         config=config,
