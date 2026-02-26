@@ -1967,7 +1967,7 @@ atol = {
 
 
 def has_quantized_kv_cache():
-    return version.parse(ort_version) >= version.parse("1.24.0")
+    return version.parse(ort_version) >= version.parse("1.25.0")
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
@@ -2069,6 +2069,7 @@ class TestFlashGQABF16(unittest.TestCase):
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestFlashGQABF16QuantizedKV(unittest.TestCase):
     def manual_seed(self):
         # Reset random seeds before each test to ensure test isolation
@@ -2301,6 +2302,7 @@ def gqa_xqa_test_cases():
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestXQAQuantizedParity(unittest.TestCase):
     """Tests that verify fused kernels produce the same results as unfused kernels."""
 
@@ -2330,6 +2332,7 @@ class TestXQAQuantizedParity(unittest.TestCase):
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestGQARegressions(unittest.TestCase):
     """Specific regression tests for historical bugs."""
 

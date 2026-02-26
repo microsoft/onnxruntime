@@ -22,7 +22,7 @@ class GateProgram final : public Program<GateProgram> {
   GateProgram(int k, bool is_fp16) : Program<GateProgram>{"QmoeGate"}, k_{k}, is_fp16_{is_fp16} {};
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("hidden_state", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
     shader.AddOutput("topk_values");
     shader.AddOutput("hiddenstate_for_expert");
     shader.AddOutput("tokencount_for_expert");
@@ -36,6 +36,29 @@ class GateProgram final : public Program<GateProgram> {
       {"rows", ProgramUniformVariableDataType::Uint32},
       {"cols", ProgramUniformVariableDataType::Uint32},
       {"token_offset", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int k_;
+  bool is_fp16_;
+};
+
+class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
+ public:
+  Gate1TokenProgram(int k, bool is_fp16) : Program<Gate1TokenProgram>{"QmoeGate1Token"}, k_{k}, is_fp16_{is_fp16} {};
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    shader.AddOutput("topk_values");
+    shader.AddOutput("indirect_experts");
+
+    return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
+                               WGSL_TEMPLATE_PARAMETER(k, k_));
+  };
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"rows", ProgramUniformVariableDataType::Uint32},
+      {"cols", ProgramUniformVariableDataType::Uint32});
 
  private:
   int k_;
@@ -115,11 +138,30 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"used_by", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
       {"num_experts", ProgramUniformVariableDataType::Uint32},
       {"expert_idx", ProgramUniformVariableDataType::Uint32},
       {"token_offset", ProgramUniformVariableDataType::Uint32});
+
+ private:
+};
+
+class QMoEFinalMix1TokenProgram final : public Program<QMoEFinalMix1TokenProgram> {
+ public:
+  QMoEFinalMix1TokenProgram() : Program<QMoEFinalMix1TokenProgram>{"QMoEFinalMix1TokenProgram"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
+    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+
+    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix_1token.wgsl.template");
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"expert_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
 };
@@ -168,7 +210,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   }
 
   // process tokens in chunks of max_tokens to put some cap on memory usage
-  const int max_tokens = 512;
+  const int max_tokens = 2 * 1024;
 
   const uint32_t num_experts = static_cast<uint32_t>(moe_params.num_experts);
   const uint32_t hidden_size = static_cast<uint32_t>(moe_params.hidden_size);
@@ -197,6 +239,78 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
   ORT_RETURN_IF_ERROR(context.RunProgram(zero));
 
+  if (moe_params.num_rows == 1) {
+    // Optimized code path for 1 token to avoid gpu -> cpu copy
+
+    const int num_tokens = 1;
+    TensorShape gate_value_shape({num_tokens, num_experts});
+    TensorShape indirect_experts_shape({k_});
+
+    Tensor router_values = context.CreateGPUTensor(dtype, gate_value_shape);
+    Tensor indirect_experts = context.CreateGPUTensor(dtype_uint32, indirect_experts_shape);
+
+    Gate1TokenProgram gate{k_, is_fp16};
+    gate
+        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}})
+        .AddOutput({&router_values, ProgramTensorMetadataDependency::None})
+        .AddOutput({&indirect_experts, ProgramTensorMetadataDependency::None})
+        .SetWorkgroupSize(num_experts)
+        .SetDispatchGroupSize(static_cast<uint32_t>(num_tokens))
+        .AddUniformVariables({static_cast<uint32_t>(num_tokens), num_experts})
+        .CacheHint(k_, is_fp16 ? "fp16" : "fp32");
+
+    ORT_RETURN_IF_ERROR(context.RunProgram(gate));
+
+    for (uint32_t expert_idx = 0; expert_idx < static_cast<uint32_t>(k_); expert_idx++) {
+      TensorShape fc1_output_shape({num_tokens, fc1_output_size});
+      Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
+      TensorShape fc1_activated_shape({num_tokens, moe_params.inter_size});
+      Tensor fc1_activated = context.CreateGPUTensor(dtype, fc1_activated_shape);
+      TensorShape fc2_output_shape({num_tokens, N_fc2});
+      Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
+
+      status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
+                                K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
+                                &fc1_outputs, expert_idx, &indirect_experts);
+      ORT_RETURN_IF_ERROR(status);
+
+      if (is_swiglu) {
+        SwigLuProgram swiglu;
+        swiglu
+            .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type, 2}})
+            .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
+            .SetWorkgroupSize(128)
+            .SetDispatchGroupSize(((num_tokens * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
+            .AddUniformVariables({static_cast<uint32_t>(num_tokens),
+                                  static_cast<uint32_t>(moe_params.inter_size),
+                                  activation_alpha_,
+                                  activation_beta_,
+                                  swiglu_limit_});
+        ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
+      } else {
+        ORT_THROW("only swiglu is supported for WebGPU.");
+      }
+
+      status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
+                                K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
+                                &fc2_outputs, expert_idx, &indirect_experts);
+      ORT_RETURN_IF_ERROR(status);
+
+      QMoEFinalMix1TokenProgram final_mix;
+      final_mix
+          .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::Type}})
+          .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
+          .AddInputs({{&indirect_experts, ProgramTensorMetadataDependency::Type}})
+          .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
+          .SetDispatchGroupSize(1)
+          .AddUniformVariables({hidden_size, expert_idx});
+
+      ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
+    }
+    return Status::OK();
+  }
+
+  // path for num_tokens > 1
   // process tokens in chunks of max_tokens to put some cap on memory usage
   for (int token_offset = 0; token_offset < moe_params.num_rows; token_offset += max_tokens) {
     //
@@ -226,9 +340,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
         .AddOutput({&gate_counts, ProgramTensorMetadataDependency::None, ProgramOutput::Atomic})
         .SetWorkgroupSize(num_experts)
         .SetDispatchGroupSize(static_cast<uint32_t>(num_tokens))
-        .AddUniformVariables({static_cast<uint32_t>(num_tokens),
-                              num_experts,
-                              static_cast<uint32_t>(token_offset)})
+        .AddUniformVariables({static_cast<uint32_t>(num_tokens), num_experts, static_cast<uint32_t>(token_offset)})
         .CacheHint(k_, is_fp16 ? "fp16" : "fp32");
 
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
@@ -318,8 +430,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
           .AddInputs({{&expert_tokens, ProgramTensorMetadataDependency::Type}})
           .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize(used_by)
-          .AddUniformVariables({used_by,
-                                hidden_size,
+          .AddUniformVariables({hidden_size,
                                 num_experts,
                                 expert_idx,
                                 static_cast<uint32_t>(token_offset)});

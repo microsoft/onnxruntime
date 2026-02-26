@@ -1,21 +1,17 @@
 //
-// SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2025-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 //
 // SPDX-License-Identifier: MIT
 //
 
-#include <map>
 
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp4x8_qsi8cxp4x8_16x4_neon_i8mm.h"
-#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
-#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.h"
-
-#include "kai_ukernel_interface.h"
-#if defined(ENABLE_QMX_KERNELS)
-#include "kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi8cxp/kai_matmul_clamp_f32_qai8dxp1vlx4_qsi8cxp4vlx4_1vlx4vl_qmx_mopa.h"
-#endif // ENABLE_QMX_KERNELS
 
 #include "mlasi_kleidiai.h"
+
+#include "kai_ukernel_interface.h"
+
+#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_qsi8cxp_qsi8cx_neon.h"
 
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffersQgemm {
@@ -24,7 +20,7 @@ struct KaiTlsBuffersQgemm {
 };
 static thread_local KaiTlsBuffersQgemm g_kai_tls_qgemm;
 
-const kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel qgemm_gemm = GetKleidiAIQGemmUKernel();
+const KaiDynamicQGemmKernel qgemm_gemm = GetKleidiAIQGemmUKernel();
 
 // Matmul with float output of dynamic-quantized A and symmetric-quantized B.
 
@@ -39,9 +35,9 @@ ArmKleidiAI::MlasDynamicQGemmPackBSize(
         return 0;
     }
 
-    auto nr = qgemm_gemm.get_nr();
-    auto kr = qgemm_gemm.get_kr();
-    auto sr = qgemm_gemm.get_sr();
+    auto nr = qgemm_gemm.ukernel.get_nr();
+    auto kr = qgemm_gemm.ukernel.get_kr();
+    auto sr = qgemm_gemm.ukernel.get_sr();
 
     // Regardless of kernel variant, use the NEON packing variant.
     KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_kxn_qsi8cxp_qsi8cx_neon Groups=1"
@@ -64,9 +60,9 @@ ArmKleidiAI::MlasDynamicQGemmPackB(
         return;
     }
 
-    auto nr = qgemm_gemm.get_nr();
-    auto kr = qgemm_gemm.get_kr();
-    auto sr = qgemm_gemm.get_sr();
+    auto nr = qgemm_gemm.ukernel.get_nr();
+    auto kr = qgemm_gemm.ukernel.get_kr();
+    auto sr = qgemm_gemm.ukernel.get_sr();
 
     // y - float output
     // scale_factor_lhs - lhs scaling factor
@@ -87,6 +83,8 @@ ArmKleidiAI::MlasDynamicQGemmPackB(
     };
 
     // Regardless of kernel variant, use the NEON packing variant.
+    KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_kxn_qsi8cxp_qsi8cx_neon Groups=1"
+                        << " N=" << N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr);
     kai_run_rhs_pack_kxn_qsi8cxp_qsi8cx_neon(1, N, K, nr, kr, sr, B,
                                              // N bias values
                                              Bias,
@@ -103,12 +101,12 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 ) {
 
-    const size_t mr = qgemm_gemm.get_mr();
-    const size_t kr = qgemm_gemm.get_kr();
-    const size_t sr = qgemm_gemm.get_sr();
+    const size_t mr = qgemm_gemm.ukernel.get_mr();
+    const size_t kr = qgemm_gemm.ukernel.get_kr();
+    const size_t sr = qgemm_gemm.ukernel.get_sr();
 
-    size_t m_step = qgemm_gemm.get_m_step();
-    size_t n_step = qgemm_gemm.get_n_step();
+    size_t m_step = qgemm_gemm.ukernel.get_m_step();
+    size_t n_step = qgemm_gemm.ukernel.get_n_step();
 
     if (BatchSize == 0 || Shape.M == 0 || Shape.N == 0 || Shape.K == 0) {
         return;
@@ -175,8 +173,8 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
             lhs = &(LhsPackedData[LhsPackedStride * batch_idx]);
         }
         KLEIDIAI_KERNEL_LOG("kai_run_lhs_quant_pack_qai8dxp_f32"
-                            << " M="<< Shape.M << " K=" << Shape.K << " mr=" << mr << " kr=" << kr << " sr=" << sr << " m_idx_start=0");
-        kai_run_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr, 0, DataParams[batch_idx].A, DataParams[batch_idx].lda*sizeof(float), lhs);
+                            << " M=" << Shape.M << " K=" << Shape.K << " mr=" << mr << " kr=" << kr << " sr=" << sr << " m_idx_start=0");
+        kai_run_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr, 0, DataParams[batch_idx].A, DataParams[batch_idx].lda * sizeof(float), lhs);
         tls_lhs_base[batch_idx] = lhs;
     });
 
@@ -209,13 +207,13 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
 
         // Get rhs tile, B
-        const size_t rhs_packed_offset = qgemm_gemm.get_rhs_packed_offset(NIdx * n_step, Shape.K);
+        const size_t rhs_packed_offset = qgemm_gemm.ukernel.get_rhs_packed_offset(NIdx * n_step, Shape.K);
 
         const std::byte* B_base = reinterpret_cast<const std::byte*>(DataParams[BIdx].PackedB);
         auto BTile = reinterpret_cast<const void*>(B_base + rhs_packed_offset);
 
         // Get lhs tile, A
-        const size_t lhs_packed_offset =qgemm_gemm.get_lhs_packed_offset(MIdx * m_step, Shape.K);
+        const size_t lhs_packed_offset =qgemm_gemm.ukernel.get_lhs_packed_offset(MIdx * m_step, Shape.K);
 
         const std::byte* A_base = tls_lhs_base[BIdx]; // LhsPackedData + LhsPackedStride * BIdx; OR DataParams[batch_idx].Workspace;
         auto ATile = reinterpret_cast<const std::byte*>(A_base + lhs_packed_offset);
@@ -229,7 +227,9 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
         NIdx * n_step * sizeof(float)
         );
 
-        qgemm_gemm.run_matmul(
+        KLEIDIAI_KERNEL_LOG(qgemm_gemm.name
+                            << " M=" << TileSizeM << " N=" << TileSizeN << " K=" << Shape.K);
+        qgemm_gemm.ukernel.run_matmul(
                 TileSizeM, TileSizeN, Shape.K, ATile, BTile,
                 dst_tile,
                 DataParams[BIdx].ldc * sizeof(float),

@@ -32,6 +32,8 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
+                             WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, multi_rotary_cache_concat_offset_),
+                             WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, multi_rotary_cache_concat_offset_ > 0),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
                              WGSL_TEMPLATE_VARIABLE(key, key),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
@@ -74,9 +76,10 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
   const auto work_per_head_vec = head_size_vec - half_rotary_embedding_dim_vec;
   auto dispatch_size = static_cast<uint32_t>(params.batch_size_ * params.sequence_length_ * params.num_heads_ * work_per_head_vec);
 
-  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_);
+  const uint32_t multi_rotary_cache_concat_offset = context.MultiRotaryCacheConcatOffset();
+  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_, multi_rotary_cache_concat_offset);
   program
-      .CacheHint(params.rotary_interleaved_)
+      .CacheHint(params.rotary_interleaved_, multi_rotary_cache_concat_offset)
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
           {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
@@ -250,7 +253,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   // Use a sliding window if the total sequence exceeds the window's length.
   bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
   bool will_use_flash_attention = false;
-  if (head_sink == nullptr && !use_smooth_softmax_ && !use_sliding_window) {
+  if (!use_smooth_softmax_ && !use_sliding_window) {
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
@@ -263,7 +266,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
-                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache);
+                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink);
     }
     // Fused: splitQKV + rotary QK
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
@@ -307,7 +310,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
-                               present_value, parameters, context, seqlen_k);
+                               present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink);
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
