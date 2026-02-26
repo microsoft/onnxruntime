@@ -151,8 +151,9 @@ __global__ void ConvertBoolMaskToAttentionBiasKernel(
     T* __restrict__ attention_bias,
     const int64_t num_elements,
     const float mask_filter_value) {
-  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (idx < num_elements) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < num_elements;
+       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
     attention_bias[idx] = attn_mask[idx] ? T(0.0f) : T(mask_filter_value);
   }
 }
@@ -171,8 +172,12 @@ Status LaunchConvertBoolMaskToAttentionBias(
 
   int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), num_elements));
   int64_t blocks = (num_elements + threads - 1) / threads;
+  // Cap grid size to avoid exceeding CUDA gridDim.x limit (2^31 - 1).
+  // The grid-stride loop in the kernel handles the overflow.
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
 
-  ConvertBoolMaskToAttentionBiasKernel<T><<<static_cast<unsigned int>(blocks), threads, 0, stream>>>(
+  ConvertBoolMaskToAttentionBiasKernel<T><<<grid_size, threads, 0, stream>>>(
       attn_mask_bool, attention_bias, num_elements, mask_filter_value);
 
   return CUDA_CALL(cudaGetLastError());
