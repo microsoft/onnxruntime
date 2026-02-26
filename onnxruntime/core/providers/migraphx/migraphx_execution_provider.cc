@@ -157,7 +157,8 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
       external_alloc_{info.external_alloc},
       external_free_{info.external_free},
       external_empty_cache_{info.external_empty_cache},
-      max_dynamic_batch_{info.max_dynamic_batch} {
+      max_dynamic_batch_{info.max_dynamic_batch},
+      max_compiled_models_{info.max_compiled_models} {
   InitProviderOrtApi();
 
   // Set GPU device to be used and read device properties for feature usage.
@@ -182,6 +183,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   GET_ENV_STRING(migraphx_env_vars::kModelCachePath, model_cache_path_);
   GET_ENV_BOOL(migraphx_env_vars::kDumpModelOps, dump_model_ops_);
   GET_ENV_BOOL(migraphx_env_vars::kExhaustiveTune, exhaustive_tune_);
+  GET_ENV(migraphx_env_vars::kMaxCompiledModels, max_compiled_models_, max_compiled_models_ = std::stoul(max_compiled_models_env));
 
   // Verify configuration correctness and adjust accordingly.
 
@@ -1234,37 +1236,78 @@ void save_compiled_model(const migraphx::program& prog, const std::filesystem::p
   }
 }
 
-// Generate a vector of power-of-2 batch sizes from 1 up to the nearest power of 2 >= max_batch_size
-// E.g., max_batch_size=100 returns {1, 2, 4, 8, 16, 32, 64, 128}
-static std::vector<std::size_t> generate_power_of_two_batch_sizes(std::size_t max_batch_size) {
+// Generate a vector of batch sizes to compile based on max_compiled_models setting
+// Batch sizes are evenly spaced between 1 and max_batch_size.
+// max_compiled_models == 1: {max}
+// max_compiled_models == 2: {1, max}
+// max_compiled_models == 3: {1, max/2, max}
+// max_compiled_models == N: N evenly spaced values from 1 to max
+static std::vector<std::size_t> generate_compiled_batch_sizes(std::size_t max_batch_size, std::size_t max_compiled_models) {
   std::vector<std::size_t> batch_sizes;
   if (max_batch_size == 0) {
     return batch_sizes;
   }
-  
-  // Find the nearest power of 2 >= max_batch_size
-  std::size_t target = 1;
-  while (target < max_batch_size) {
-    target *= 2;
+
+  if (max_compiled_models == 0) {
+    LOGS_DEFAULT(WARNING) << "max_compiled_models is 0. Defaulting to 1 (compile max batch size only).";
+    max_compiled_models = 1;
+  } else if (max_compiled_models > max_batch_size) {
+    LOGS_DEFAULT(WARNING) << "max_compiled_models (" << max_compiled_models
+                          << ") exceeds max_batch_size (" << max_batch_size
+                          << "). Setting max_compiled_models to " << max_batch_size << ".";
+    max_compiled_models = max_batch_size;
   }
-  
-  // Generate all powers of 2 up to target
-  for (std::size_t bs = 1; bs <= target; bs *= 2) {
-    batch_sizes.push_back(bs);
+
+  if (max_compiled_models == 1) {
+    batch_sizes.push_back(max_batch_size);
+  } else if (max_compiled_models >= 2) {
+    // Evenly divide the range [1, max_batch_size] into max_compiled_models points
+    std::size_t n = max_compiled_models;
+    for (std::size_t i = 0; i < n; ++i) {
+      std::size_t bs = 1 + (max_batch_size - 1) * i / (n - 1);
+      // Avoid duplicates (can happen when max_batch_size is small relative to n)
+      if (batch_sizes.empty() || bs > batch_sizes.back()) {
+        batch_sizes.push_back(bs);
+      }
+    }
   }
+
+  std::ostringstream oss;
+  oss << "[MIGraphX] max_batch_size=" << max_batch_size
+      << ", max_compiled_models=" << max_compiled_models
+      << ", batch_sizes_to_compile=[";
+  for (std::size_t i = 0; i < batch_sizes.size(); ++i) {
+    if (i > 0) oss << ", ";
+    oss << batch_sizes[i];
+  }
+  oss << "] (count=" << batch_sizes.size() << ")";
+  LOGS_DEFAULT(VERBOSE) << oss.str();
+
   return batch_sizes;
 }
 
-// Find the smallest power-of-two batch size that is >= the requested batch size
-// Returns 0 if no suitable batch size found in the list
-static std::size_t find_nearest_power_of_two_batch(std::size_t requested_batch, 
-                                                    const std::vector<std::size_t>& power_of_two_batches) {
-  for (const auto& bs : power_of_two_batches) {
+// Find the smallest compiled batch size >= requested_batch
+// Uses the same evenly-spaced scheme as generate_compiled_batch_sizes
+static std::size_t find_nearest_compiled_batch_size(std::size_t requested_batch,
+                                                           std::size_t max_batch_size,
+                                                           std::size_t max_compiled_models) {
+  if (max_batch_size == 0) {
+    return 0;
+  }
+
+  if (max_compiled_models == 1) {
+    return max_batch_size;
+  }
+
+  // Walk the evenly-spaced batch sizes and return the first one >= requested_batch
+  std::size_t n = max_compiled_models;
+  for (std::size_t i = 0; i < n; ++i) {
+    std::size_t bs = 1 + (max_batch_size - 1) * i / (n - 1);
     if (bs >= requested_batch) {
       return bs;
     }
   }
-  return 0;  // Not found - should not happen if list is properly generated
+  return max_batch_size;
 }
 
 // Pad input tensor data to a larger batch size
@@ -2308,7 +2351,7 @@ static bool execute_ultra_fast_path(
     }
     
     // For dynamic batch, we check if the current batch needs padding
-    if (mgx_state->has_dynamic_batch && !mgx_state->power_of_two_batch_sizes.empty()) {
+    if (mgx_state->has_dynamic_batch && !mgx_state->compiled_batch_sizes.empty()) {
       // Get batch sizes from first input
       if (is_first) {
         original_batch_size = static_cast<std::size_t>(shape[0]);
@@ -2318,8 +2361,8 @@ static bool execute_ultra_fast_path(
         // Check if the batch size matches (original or padded)
         if (shape[0] != last_shapes[offset]) {
           // Batch size changed - check if we can use padding
-          std::size_t required_padded = find_nearest_power_of_two_batch(
-              original_batch_size, mgx_state->power_of_two_batch_sizes);
+          std::size_t required_padded = find_nearest_compiled_batch_size(
+              original_batch_size, mgx_state->max_dynamic_batch, mgx_state->max_compiled_models);
           
           if (required_padded != padded_batch_size) {
             shapes_match = false;
@@ -2452,7 +2495,7 @@ static bool execute_fast_path(
   bool needs_padding = false;
   
   if (prog_it == cached_programs.end() && mgx_state->has_dynamic_batch && 
-      !mgx_state->power_of_two_batch_sizes.empty()) {
+      !mgx_state->compiled_batch_sizes.empty()) {
     LOGS_DEFAULT(VERBOSE) << "[FAST_PATH][DynamicBatch] Direct hash miss - checking for padded batch";
     // Try to find a padded batch size
     const auto& map_input_name_index = mgx_state->input_name_indexes;
@@ -2463,8 +2506,9 @@ static bool execute_fast_path(
       const auto tensor_shape = tensor_info.GetShape();
       if (!tensor_shape.empty()) {
         original_batch_size = static_cast<std::size_t>(tensor_shape[0]);
-        padded_batch_size = find_nearest_power_of_two_batch(original_batch_size, 
-                                                            mgx_state->power_of_two_batch_sizes);
+        padded_batch_size = find_nearest_compiled_batch_size(original_batch_size,
+                                                                    mgx_state->max_dynamic_batch,
+                                                                    mgx_state->max_compiled_models);
         needs_padding = (padded_batch_size > original_batch_size);
         LOGS_DEFAULT(VERBOSE) << "[FAST_PATH][DynamicBatch] Original batch: " << original_batch_size
                               << ", padded: " << padded_batch_size << ", needs_padding: " << needs_padding;
@@ -2754,7 +2798,7 @@ static InputShapeResult handle_input_shape(
   return {input_shape_match, param_shapes, input_shapes};
 }
 
-// Helper: Compile models for all power-of-two batch sizes and cache them
+// Helper: Compile models for all configured batch sizes and cache them
 static void compile_dynamic_batch_models(
     MIGraphXFuncState* mgx_state,
     const std::filesystem::path& model_cache_path,
@@ -2764,19 +2808,19 @@ static void compile_dynamic_batch_models(
   
   LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] ==== ENTERING compile_dynamic_batch_models ====";
   LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] has_dynamic_batch = " << mgx_state->has_dynamic_batch;
-  LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] power_of_two_batch_sizes.size() = " 
-                     << mgx_state->power_of_two_batch_sizes.size();
+  LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] compiled_batch_sizes.size() = "
+                     << mgx_state->compiled_batch_sizes.size();
   LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] max_dynamic_batch = " << mgx_state->max_dynamic_batch;
   
-  if (!mgx_state->has_dynamic_batch || mgx_state->power_of_two_batch_sizes.empty()) {
+  if (!mgx_state->has_dynamic_batch || mgx_state->compiled_batch_sizes.empty()) {
     LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] Skipping - dynamic batch disabled or no batch sizes";
     return;
   }
   
   LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] Compiling models for " 
-                     << mgx_state->power_of_two_batch_sizes.size() << " power-of-two batch sizes";
+                     << mgx_state->compiled_batch_sizes.size() << " batch sizes";
   LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] Batch sizes: ";
-  for (const auto& bs : mgx_state->power_of_two_batch_sizes) {
+  for (const auto& bs : mgx_state->compiled_batch_sizes) {
     LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE]   - " << bs;
   }
   
@@ -2819,8 +2863,8 @@ static void compile_dynamic_batch_models(
                        }() << "]";
   }
   
-  // Compile a model for each power-of-two batch size
-  for (const auto& batch_size : mgx_state->power_of_two_batch_sizes) {
+  // Compile a model for each configured batch size
+  for (const auto& batch_size : mgx_state->compiled_batch_sizes) {
     LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] ---- Processing batch size: " << batch_size << " ----";
     
     // Build cache key for this batch size
@@ -2896,7 +2940,7 @@ static void compile_dynamic_batch_models(
     }
   }
   
-  LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] ==== All power-of-two batch models compiled and cached ====";
+  LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] ==== All batch models compiled and cached ====";
   LOGS_DEFAULT(VERBOSE) << "[DynamicBatch][COMPILE] Setting max_dynamic_batch to 0 to disable future compilation";
   
   // Disable dynamic batch compilation for subsequent runs (set max_dynamic_batch to 0)
@@ -2939,14 +2983,14 @@ static void execute_standard_path(
     LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] *** RUNTIME COMPILATION REQUIRED ***";
     LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] max_dynamic_batch=" 
                        << mgx_state->max_dynamic_batch;
-    LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] Initiating runtime compilation of power-of-two batch models";
+    LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] Initiating runtime compilation of batch models";
     
-    // Compile all power-of-two batch models at runtime
+    // Compile all batch models at runtime
     compile_dynamic_batch_models(mgx_state, model_cache_path, model_path, mxr_filename_prefix, ctx);
     
     LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] Runtime compilation complete, max_dynamic_batch now = " 
                        << mgx_state->max_dynamic_batch;
-    LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] Proceeding with execution using closest power-of-two batch";
+    LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] Proceeding with execution using closest compiled batch";
   } else if (mgx_state->has_dynamic_batch) {
     LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] Dynamic batch enabled, models already precompiled";
   }
@@ -2956,7 +3000,7 @@ static void execute_standard_path(
   std::size_t padded_batch_size = 0;
   bool needs_padding = false;
   
-  if (mgx_state->has_dynamic_batch && !mgx_state->power_of_two_batch_sizes.empty()) {
+  if (mgx_state->has_dynamic_batch && !mgx_state->compiled_batch_sizes.empty()) {
     LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] Checking for batch padding requirements";
     // Get the batch size from the first input
     for (const auto& [name, index] : map_input_name_index) {
@@ -2965,8 +3009,9 @@ static void execute_standard_path(
       const auto tensor_shape = tensor_info.GetShape();
       if (!tensor_shape.empty()) {
         original_batch_size = static_cast<std::size_t>(tensor_shape[0]);
-        padded_batch_size = find_nearest_power_of_two_batch(original_batch_size, 
-                                                            mgx_state->power_of_two_batch_sizes);
+        padded_batch_size = find_nearest_compiled_batch_size(original_batch_size,
+                                                                    mgx_state->max_dynamic_batch,
+                                                                    mgx_state->max_compiled_models);
         needs_padding = (padded_batch_size > original_batch_size);
         
         LOGS_DEFAULT(VERBOSE) << "[STANDARD_PATH][DynamicBatch] Original batch size: " << original_batch_size;
@@ -3493,12 +3538,12 @@ static inline std::string precompile_model_for_batch(
   return cache_hash;
 }
 
-// Precompile all power-of-two batch models during Compile() phase
+// Precompile all batch models during Compile() phase
 // This moves compilation from compute_func() to initialization time
 // Uses parallel loading to speed up cache loading, but serializes compilation
 // to avoid thread-safety issues in MIGraphX compile()
 static inline void precompile_all_dynamic_batch_models(
-    const std::vector<std::size_t>& power_of_two_batch_sizes,
+    const std::vector<std::size_t>& compiled_batch_sizes,
     const std::vector<std::string>& input_names,
     const std::vector<std::vector<std::int64_t>>& all_input_base_shapes,
     const std::string& onnx_string,
@@ -3517,7 +3562,7 @@ static inline void precompile_all_dynamic_batch_models(
     std::unordered_map<std::string, migraphx::program>& cached_programs)
 {
   LOGS_DEFAULT(INFO) << "[precompile_all_dynamic_batch_models] Processing " 
-                     << power_of_two_batch_sizes.size() << " power-of-two batch models...";
+                     << compiled_batch_sizes.size() << " batch models...";
   
   // Structure to hold batch info for loading/compiling
   struct BatchInfo {
@@ -3528,7 +3573,7 @@ static inline void precompile_all_dynamic_batch_models(
   
   // Build batch info for all batch sizes
   std::vector<BatchInfo> batch_infos;
-  for (const auto& batch_size : power_of_two_batch_sizes) {
+  for (const auto& batch_size : compiled_batch_sizes) {
     BatchInfo info;
     info.batch_size = batch_size;
     
@@ -3826,7 +3871,8 @@ static inline bool handle_precompilation_decision(
     const std::filesystem::path& model_cache_path,
     const std::string& mxr_filename_prefix,
     std::unordered_map<std::string, migraphx::program>& cached_programs,
-    std::size_t max_dynamic_batch)
+    std::size_t max_dynamic_batch,
+    std::size_t max_compiled_models)
 {
   // ═══════════════════════════════════════════════════════════════════════════
   // PRECOMPILATION: Compile models during Compile() phase instead of compute_func()
@@ -3834,7 +3880,7 @@ static inline bool handle_precompilation_decision(
   // 
   // Precompilation rules:
   // 1. max_dynamic_batch > 0 AND all non-batch dims are concrete:
-  //    -> Precompile all power-of-two batch models (symbolic batch dim is OK)
+  //    -> Precompile all batch models (symbolic batch dim is OK)
   // 2. max_dynamic_batch > 0 AND some non-batch dims are symbolic:
   //    -> Defer to runtime (cannot precompile without concrete non-batch shapes)
   // 3. max_dynamic_batch == 0 AND all dims are concrete:
@@ -3873,21 +3919,21 @@ static inline bool handle_precompilation_decision(
       
       if (shapes_valid) {
         
-        // All non-batch dimensions are concrete - precompile all power-of-two batch models
-        auto power_of_two_batch_sizes = generate_power_of_two_batch_sizes(max_dynamic_batch);
+        // All non-batch dimensions are concrete - precompile all batch models
+        auto compiled_batch_sizes = generate_compiled_batch_sizes(max_dynamic_batch, max_compiled_models);
         
         std::ostringstream batch_ss;
         batch_ss << "[";
-        for (std::size_t i = 0; i < power_of_two_batch_sizes.size(); ++i) {
+        for (std::size_t i = 0; i < compiled_batch_sizes.size(); ++i) {
           if (i > 0) batch_ss << ", ";
-          batch_ss << power_of_two_batch_sizes[i];
+          batch_ss << compiled_batch_sizes[i];
         }
         batch_ss << "]";
-        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Power-of-two batch sizes to compile: " << batch_ss.str();
+        LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] Batch sizes to compile: " << batch_ss.str();
         LOGS_DEFAULT(VERBOSE) << "[Compile][PRECOMPILE] >>> STARTING DYNAMIC BATCH PRECOMPILATION <<<";
         
         precompile_all_dynamic_batch_models(
-            power_of_two_batch_sizes,
+            compiled_batch_sizes,
             ordered_names,
             base_shapes,
             onnx_string_buffer,
@@ -4072,7 +4118,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         model_cache_path_,
         mxr_filename_prefix,
         cached_programs_[fused_node.Name()],
-        max_dynamic_batch_);
+        max_dynamic_batch_,
+        max_compiled_models_);
 
     // Create program object (may be empty if precompiled programs are in cache)
     migraphx::program prog;
@@ -4091,15 +4138,16 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
             map_defer_compilation_[context->node_name], fp16_enable_, bf16_enable_, fp8_enable_, int8_enable_,
             int8_calibration_cache_available_, dynamic_range_map_,
             model_cache_path_.string(), dump_model_ops_, exhaustive_tune_, max_dynamic_batch_,
-            std::ref(cached_programs_[context->node_name])};
+            max_compiled_models_, std::ref(cached_programs_[context->node_name])};
       
       // Initialize dynamic batch support if max_dynamic_batch > 0
       if (max_dynamic_batch_ > 0) {
         p->has_dynamic_batch = true;
-        p->power_of_two_batch_sizes = generate_power_of_two_batch_sizes(max_dynamic_batch_);
+        p->compiled_batch_sizes = generate_compiled_batch_sizes(max_dynamic_batch_, max_compiled_models_);
         LOGS_DEFAULT(VERBOSE) << "[Compile][CREATE_STATE] Dynamic batch enabled for node '" << context->node_name 
                               << "' with max_dynamic_batch=" << max_dynamic_batch_
-                              << ", generated " << p->power_of_two_batch_sizes.size() << " power-of-two batch sizes";
+                              << ", max_compiled_models=" << max_compiled_models_
+                              << ", generated " << p->compiled_batch_sizes.size() << " batch sizes to compile";
         LOGS_DEFAULT(VERBOSE) << "[Compile][CREATE_STATE] defer_compilation=" << p->defer_compilation;
       } else {
         LOGS_DEFAULT(VERBOSE) << "[Compile][CREATE_STATE] Static model mode for node '" << context->node_name << "'";
