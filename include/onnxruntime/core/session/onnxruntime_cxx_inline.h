@@ -1180,6 +1180,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetGraphOptimizationLev
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const OrtModel* model) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModel(this->p_, model));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>

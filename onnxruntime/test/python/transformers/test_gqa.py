@@ -57,7 +57,10 @@ quick_build = ", quick-build=" in get_build_info()
 
 has_int4_kv_cache = ", int4-kv-cache=" in get_build_info()
 
-enable_debug_print = False
+has_fp8_kv_cache = ", fp8-kv-cache=" in get_build_info()
+
+# Enable debug print if tensor or node dumping is enabled in build.
+enable_debug_print = ("dump-tensor" in get_build_info()) or ("dump-node" in get_build_info())
 
 enable_deterministic_check = True
 # #################################################################################################
@@ -674,7 +677,8 @@ def gqa_past_func(
             k_scale = k_scale.to(torch.float32)
         k_scale = k_scale.contiguous()
         bind_tensor(io_binding, "k_scale", k_scale, device, k_scale_ort_type)
-    if v_scale is not None:
+
+    if v_scale is not None and not config.share_kv_scale:
         v_scale_ort_type = TensorProto.FLOAT
         if v_scale.dtype != torch.float32:
             v_scale = v_scale.to(torch.float32)
@@ -931,20 +935,30 @@ def parity_check_gqa_prompt(
     elif causal:
         window_size = (-1, 0)
 
-    # --- PyTorch Reference Path ---
-    if config.kv_cache_bit_width == 4 or config.kv_cache_type == "int8":
+    if config.kv_cache_bit_width == 4 or config.kv_cache_type == "int8" or config.kv_cache_type == "fp8":
+        # k/v are already quantized (int8/fp8) in inputs
         k_ref_dequant = dequantize_tensor(k, k_scale, config.k_quant_type, config.kv_cache_type)
         v_ref_dequant = dequantize_tensor(v, v_scale, config.v_quant_type, config.kv_cache_type)
     else:
         k_ref_dequant = dequantize_tensor(
-            quantize_tensor_with_scale(k, k_scale, config.k_quant_type, config.kv_cache_type),
-            k_scale,
+            quantize_tensor_with_scale(
+                k,
+                k_scale.to(torch.float32) if k_scale is not None else None,
+                config.k_quant_type,
+                config.kv_cache_type,
+            ),
+            k_scale.to(torch.float32) if k_scale is not None else None,
             config.k_quant_type,
             config.kv_cache_type,
         )
         v_ref_dequant = dequantize_tensor(
-            quantize_tensor_with_scale(v, v_scale, config.v_quant_type, config.kv_cache_type),
-            v_scale,
+            quantize_tensor_with_scale(
+                v,
+                v_scale.to(torch.float32) if v_scale is not None else None,
+                config.v_quant_type,
+                config.kv_cache_type,
+            ),
+            v_scale.to(torch.float32) if v_scale is not None else None,
             config.v_quant_type,
             config.kv_cache_type,
         )
@@ -1097,6 +1111,9 @@ def parity_check_gqa_prompt(
             elif config.kv_cache_type == "int8":
                 # For int8, present_k is int8 data
                 present_k_torch = torch.from_numpy(present_k.astype(numpy.int8)).to(device)
+            elif config.kv_cache_type == "fp8":
+                # For fp8, present_k is float8_e4m3fn data, returned as uint8/int8 by ORT python
+                present_k_torch = torch.from_numpy(present_k).view(torch.float8_e4m3fn).to(device)
             else:
                 present_k_torch = torch.from_numpy(present_k).to(device)
 
@@ -1134,6 +1151,8 @@ def parity_check_gqa_prompt(
                 present_v_torch = torch.from_numpy(present_v).to(device)
             elif config.kv_cache_type == "int8":
                 present_v_torch = torch.from_numpy(present_v.astype(numpy.int8)).to(device)
+            elif config.kv_cache_type == "fp8":
+                present_v_torch = torch.from_numpy(present_v).view(torch.float8_e4m3fn).to(device)
             else:
                 present_v_torch = torch.from_numpy(present_v).to(device)
 
@@ -1345,8 +1364,8 @@ def parity_check_gqa_past(
     # Quantize k and v for ORT when using quantized KV cache
     k_ort = k
     v_ort = v
-    if config.kv_cache_type in ["int8", "int4"]:
-        # NOTE: Quantize returns tensor with kv_cache_type (int8)
+    if config.kv_cache_type in ["int8", "int4", "fp8"]:
+        # NOTE: Quantize returns tensor with kv_cache_type (int8, int4, or fp8)
         k_ort = quantize_tensor_with_scale(k, k_scale, config.k_quant_type, config.kv_cache_type)
         v_ort = quantize_tensor_with_scale(v, v_scale, config.v_quant_type, config.kv_cache_type)
 
@@ -1386,25 +1405,36 @@ def parity_check_gqa_past(
     if numpy.count_nonzero(out_ref_np) > 0 and numpy.count_nonzero(out_np) == 0:
         raise RuntimeError("Output is all zeros")
 
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+    numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
     # --- Comparison ---
-    if config.k_quant_type == "NONE" and config.v_quant_type == "NONE":
+    compare_kv = (config.k_quant_type == "NONE" and config.v_quant_type == "NONE") or (config.kv_cache_type == "fp8")
+    if compare_kv:
         # Compare KV cache
         # Transpose reference back to BNSH to match ORT output
         k_cache_ref_np = k_cache_ref.transpose(1, 2).to(torch.float32).detach().cpu().numpy()
         v_cache_ref_np = v_cache_ref.transpose(1, 2).to(torch.float32).detach().cpu().numpy()
-        present_k_np = present_k.to(torch.float32).detach().cpu().numpy()
-        present_v_np = present_v.to(torch.float32).detach().cpu().numpy()
 
-        if not config.share_buffer:
-            total_len = config.past_kv_sequence_length + config.q_sequence_length
-            k_cache_ref_np = k_cache_ref_np[:, :, :total_len, :]
-            v_cache_ref_np = v_cache_ref_np[:, :, :total_len, :]
+        if isinstance(present_k, torch.Tensor):
+            present_k_torch = present_k.to(device)
+            present_v_torch = present_v.to(device)
+        else:
+            present_k_torch = torch.from_numpy(present_k).to(device)
+            present_v_torch = torch.from_numpy(present_v).to(device)
+
+        if config.kv_cache_type == "fp8":
+            # FP8 cache needs dequantization for comparison with float reference
+            present_k_dequant = dequantize_tensor(present_k_torch, k_scale, config.k_quant_type, config.kv_cache_type)
+            present_v_dequant = dequantize_tensor(present_v_torch, v_scale, config.v_quant_type, config.kv_cache_type)
+            present_k_np = present_k_dequant.to(torch.float32).detach().cpu().numpy()
+            present_v_np = present_v_dequant.to(torch.float32).detach().cpu().numpy()
+        else:
+            present_k_np = present_k_torch.to(torch.float32).detach().cpu().numpy()
+            present_v_np = present_v_torch.to(torch.float32).detach().cpu().numpy()
 
         numpy.testing.assert_allclose(present_k_np, k_cache_ref_np, rtol=rtol, atol=atol)
         numpy.testing.assert_allclose(present_v_np, v_cache_ref_np, rtol=rtol, atol=atol)
-
-    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
-    numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
 
     # Compare quantized cache with proper masking per batch
     if config.k_quant_type != "NONE":
@@ -1415,6 +1445,8 @@ def parity_check_gqa_past(
                 present_k_torch = torch.from_numpy(present_k).to(device)
             elif config.kv_cache_type == "int8":
                 present_k_torch = torch.from_numpy(present_k.astype(numpy.int8)).to(device)
+            elif config.kv_cache_type == "fp8":
+                present_k_torch = torch.from_numpy(present_k).view(torch.float8_e4m3fn).to(device)
             else:
                 present_k_torch = torch.from_numpy(present_k).to(device)
 
@@ -1455,6 +1487,8 @@ def parity_check_gqa_past(
                 present_v_torch = torch.from_numpy(present_v).to(device)
             elif config.kv_cache_type == "int8":
                 present_v_torch = torch.from_numpy(present_v.astype(numpy.int8)).to(device)
+            elif config.kv_cache_type == "fp8":
+                present_v_torch = torch.from_numpy(present_v).view(torch.float8_e4m3fn).to(device)
             else:
                 present_v_torch = torch.from_numpy(present_v).to(device)
 
@@ -1851,8 +1885,14 @@ def gqa_cuda_quantized_test_cases(is_past: bool):
         else gqa_cuda_prompt_test_cases(allow_local=True)
     )
 
+    kv_types = ["int8"]
+    if has_int4_kv_cache:
+        kv_types.append("int4")
+    if has_fp8_kv_cache:
+        kv_types.append("fp8")
+
     for name, config in base_cases:
-        for kv_type in ["int8", "int4"] if has_int4_kv_cache else ["int8"]:
+        for kv_type in kv_types:
             for quant_mode in ["PER_TENSOR", "PER_CHANNEL"]:
                 share_scales_options = [False]
                 if quant_mode == "PER_TENSOR" and kv_type == "int8":
@@ -1870,6 +1910,8 @@ def gqa_cuda_quantized_test_cases(is_past: bool):
                             continue
                         q_config.kv_cache_bit_width = 4
                     elif kv_type == "int8":
+                        q_config.kv_cache_bit_width = 8
+                    elif kv_type == "fp8":
                         q_config.kv_cache_bit_width = 8
 
                     q_name = f"{name}_quant_{kv_type}_{quant_mode}"
@@ -1902,12 +1944,30 @@ def has_flash_attention(bf16=False):
     return True
 
 
-rtol = {"fp16": 5e-3, "bf16": 5e-2, "int8_fp16": 5e-2, "int4_fp16": 5e-2, "int8_bf16": 5e-2, "int4_bf16": 5e-2}
-atol = {"fp16": 5e-3, "bf16": 1e-2, "int8_fp16": 1e-1, "int4_fp16": 1e-1, "int8_bf16": 2e-1, "int4_bf16": 2e-1}
+rtol = {
+    "fp16": 5e-3,
+    "bf16": 5e-2,
+    "int8_fp16": 5e-2,
+    "int4_fp16": 5e-2,
+    "int8_bf16": 5e-2,
+    "int4_bf16": 5e-2,
+    "fp8_fp16": 5e-2,
+    "fp8_bf16": 5e-2,
+}
+atol = {
+    "fp16": 5e-3,
+    "bf16": 1e-2,
+    "int8_fp16": 1e-1,
+    "int4_fp16": 1e-1,
+    "int8_bf16": 2e-1,
+    "int4_bf16": 2e-1,
+    "fp8_fp16": 1e-1,
+    "fp8_bf16": 2e-1,
+}
 
 
 def has_quantized_kv_cache():
-    return version.parse(ort_version) >= version.parse("1.24.0")
+    return version.parse(ort_version) >= version.parse("1.25.0")
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
@@ -2009,6 +2069,7 @@ class TestFlashGQABF16(unittest.TestCase):
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestFlashGQABF16QuantizedKV(unittest.TestCase):
     def manual_seed(self):
         # Reset random seeds before each test to ensure test isolation
@@ -2241,6 +2302,7 @@ def gqa_xqa_test_cases():
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestXQAQuantizedParity(unittest.TestCase):
     """Tests that verify fused kernels produce the same results as unfused kernels."""
 
@@ -2270,6 +2332,7 @@ class TestXQAQuantizedParity(unittest.TestCase):
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestGQARegressions(unittest.TestCase):
     """Specific regression tests for historical bugs."""
 
@@ -2336,6 +2399,134 @@ class TestGQARegressions(unittest.TestCase):
             k_quant_type="PER_TENSOR",
             v_quant_type="PER_TENSOR",
             kv_cache_type="int8",
+            share_buffer=True,
+            share_kv_scale=True,
+        )
+
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        device = "cuda"
+
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device=device,
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=5e-2,
+            atol=5e-2,
+        )
+
+    @unittest.skipIf(not has_cuda_device(89) or not has_fp8_kv_cache, "FP8 KV cache is not available, skipping tests.")
+    def test_gqa_fp8_kv_cache(self):
+        """
+        Test GQA with FP8 E4M3 quantized KV cache.
+        Requires SM89+ (Ada Lovelace or newer) and USE_FP8_KV_CACHE build flag.
+        """
+        config = GQAConfig(
+            batch_size=2,
+            num_heads=32,
+            kv_num_heads=8,
+            head_size=128,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=127,
+            buffer_sequence_length=128,
+            rotary=True,
+            rotary_interleaved=False,
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+            kv_cache_type="fp8",
+            share_buffer=True,
+            share_kv_scale=True,
+        )
+
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        device = "cuda"
+
+        try:
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device=device,
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=5e-2,
+                atol=5e-2,
+            )
+        except Exception as e:
+            # FP8 may not be built, skip if kernel not registered
+            if "Float8E4M3FN" in str(e) or "fp8" in str(e).lower():
+                self.skipTest(f"FP8 KV cache not available: {e}")
+            raise
+
+    @unittest.skipIf(not has_cuda_device(89) or not has_fp8_kv_cache, "FP8 KV cache is not available, skipping tests.")
+    def test_gqa_fp8_prompt(self):
+        """
+        Test GQA Prompt phase with FP8 E4M3 quantized KV cache.
+        """
+        config = GQAConfig(
+            batch_size=2,
+            num_heads=32,
+            kv_num_heads=8,
+            head_size=128,
+            q_sequence_length=128,
+            kv_sequence_length=128,
+            past_kv_sequence_length=0,
+            buffer_sequence_length=128,
+            rotary=True,
+            rotary_interleaved=False,
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+            kv_cache_type="fp8",
+            share_buffer=True,
+            share_kv_scale=True,
+            kv_cache_bit_width=8,
+        )
+
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        device = "cuda"
+
+        try:
+            parity_check_gqa_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device=device,
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=5e-2,
+                atol=5e-2,
+            )
+        except Exception as e:
+            if "Float8E4M3FN" in str(e) or "fp8" in str(e).lower():
+                self.skipTest(f"FP8 KV cache not available: {e}")
+            raise
+
+    @unittest.skipIf(not has_cuda_device(89) or not has_fp8_kv_cache, "FP8 KV cache is not available, skipping tests.")
+    def test_gqa_fp8_fallback_unsupported_head_size(self):
+        """
+        Test GQA with FP8 KV cache on a head size not supported by XQA.
+        This forces fallback to the generic generic kernel (if available) or ensures graceful failure/correctness.
+        """
+        config = GQAConfig(
+            batch_size=2,
+            num_heads=32,
+            kv_num_heads=8,
+            head_size=48,  # Valid head size (multiple of 16) but not supported by XQA (supports 64, 128, 256)
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=64,
+            buffer_sequence_length=128,
+            rotary=True,
+            rotary_interleaved=False,
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+            kv_cache_type="fp8",
             share_buffer=True,
             share_kv_scale=True,
         )

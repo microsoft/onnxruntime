@@ -530,9 +530,6 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
   // Valid relative path.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin"));
 
-  // Empty base directory.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "data.bin"));
-
   // Empty location.
   // Only validate it is not an absolute path.
   ASSERT_TRUE(utils::ValidateExternalDataPath(base_dir_, "").IsOK());
@@ -555,6 +552,29 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
 
   // Base directory does not exist.
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir", "data.bin"));
+
+  //
+  // Tests for an empty base directory.
+  // The base directory would be empty when 1) the session loads a model from bytes and 2) the application does not
+  // set an external file folder path via the session config option
+  // kOrtSessionOptionsModelExternalInitializersFileFolderPath.
+  //
+
+  // A simple filename is ok (would not escape current working directory).
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "data.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "./data.bin"));
+
+  // A ".." that is not a path component (part of the filename) is ok
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "data..bin"));
+
+  // A path that would escape the current working directory is invalid.
+  ASSERT_FALSE(utils::ValidateExternalDataPath("", "../data.bin").IsOK());
+
+  // A path that uses ".." but would not escape the current working directory should be fine.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("", "a/../data.bin"));
+
+  // A path with multiple internal ".." that would escape current working direction should fail.
+  ASSERT_FALSE(utils::ValidateExternalDataPath("", "a/../../data.bin").IsOK());
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
