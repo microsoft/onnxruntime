@@ -42,7 +42,7 @@ inline std::vector<Ort::ConstNode> GetOutputNodes(gsl::span<Ort::ConstValueInfo 
 // Based on GetCpuPreferredNodes from onnxruntime/core/framework/fallback_cpu_capability.cc
 inline OrtStatus* GetCpuPreferredNodes(const OrtGraph& ort_graph, OrtEpGraphSupportInfo& graph_support_info,
                                        const OrtLogger& logger, gsl::span<const OrtNode* const> tentative_nodes,
-                                       /*out*/ std::unordered_set<const OrtNode*>& cpu_preferred_nodes) {
+                                       /*out*/ std::unordered_set<const OrtNode*>& cpu_preferred_nodes) noexcept {
   try {
     const OrtApi& ort_api = Ort::GetApi();
     const OrtEpApi& ep_api = Ort::GetEpApi();

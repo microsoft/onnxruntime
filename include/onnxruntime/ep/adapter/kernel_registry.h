@@ -51,34 +51,45 @@ struct KernelCreateInfo {
 struct KernelRegistry {
   KernelRegistry() = default;
 
-  static OrtStatus* CreateKernel(void* kernel_create_func_state, const OrtKernelInfo* info, OrtKernelImpl** out) {
-    FuncManager func_mgr;  // not used
-    std::unique_ptr<OpKernel> kernel;
-    KernelCreatePtrFn create_func = reinterpret_cast<KernelCreatePtrFn>(kernel_create_func_state);
-    Status status = create_func(func_mgr, OpKernelInfo(info), kernel);
-    if (!status.IsOK()) {
-      return ToOrtStatus(status);
-    }
-    *out = nullptr;
+  static OrtStatus* CreateKernel(void* kernel_create_func_state, const OrtKernelInfo* info, OrtKernelImpl** out) noexcept {
+    try {
+      FuncManager func_mgr;  // not used
+      std::unique_ptr<OpKernel> kernel;
+      KernelCreatePtrFn create_func = reinterpret_cast<KernelCreatePtrFn>(kernel_create_func_state);
+      Status status = create_func(func_mgr, OpKernelInfo(info), kernel);
+      if (!status.IsOK()) {
+        return ToOrtStatus(status);
+      }
+      *out = nullptr;
 
-    // Try to create a control flow kernel implementation if applicable.
-    // For kernel based plugin EPs, the implementation should create the control flow kernel directly using one of the
-    // following APIs:
-    // - `OrtEpApi::CreateIfKernel`
-    // - `OrtEpApi::CreateLoopKernel`
-    // - `OrtEpApi::CreateScanKernel`
-    //
-    // If the kernel being created is one of the control flow kernels, `CreateControlFlowKernelImpl` should be overriden
-    // to write the value of `out` to the created `OrtKernelImpl`, and the returned status should be OK.
-    status = kernel->CreateControlFlowKernelImpl(info, out);
-    if (!status.IsOK()) {
-      return ToOrtStatus(status);
+      // Try to create a control flow kernel implementation if applicable.
+      // For kernel based plugin EPs, the implementation should create the control flow kernel directly using one of the
+      // following APIs:
+      // - `OrtEpApi::CreateIfKernel`
+      // - `OrtEpApi::CreateLoopKernel`
+      // - `OrtEpApi::CreateScanKernel`
+      //
+      // If the kernel being created is one of the control flow kernels, `CreateControlFlowKernelImpl` should be overriden
+      // to write the value of `out` to the created `OrtKernelImpl`, and the returned status should be OK.
+      status = kernel->CreateControlFlowKernelImpl(info, out);
+      if (!status.IsOK()) {
+        return ToOrtStatus(status);
+      }
+      if (*out == nullptr) {
+        // If the kernel is not a control flow kernel, create a regular kernel implementation.
+        *out = new KernelImpl(std::move(kernel));
+      }
+      return nullptr;
+    } catch (const Ort::Exception& ex) {
+      Ort::Status ort_status(ex);
+      return ort_status.release();
+    } catch (const std::exception& ex) {
+      Ort::Status ort_status(ex.what(), ORT_EP_FAIL);
+      return ort_status.release();
+    } catch (...) {
+      Ort::Status ort_status("Unknown exception in CreateKernel", ORT_EP_FAIL);
+      return ort_status.release();
     }
-    if (*out == nullptr) {
-      // If the kernel is not a control flow kernel, create a regular kernel implementation.
-      *out = new KernelImpl(std::move(kernel));
-    }
-    return nullptr;
   }
 
   Status Register(KernelCreateInfo&& create_info) {
