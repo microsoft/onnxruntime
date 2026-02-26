@@ -3,6 +3,8 @@
 
 #pragma once
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
@@ -86,12 +88,20 @@ class CudaKernel : public OpKernel {
     return stream->cudnn_handle_;
   }
 
+  static inline cudnnHandle_t GetCudnnHandle(onnxruntime::Stream* stream) {
+    return GetCudnnHandle(static_cast<CudaStream*>(stream));
+  }
+
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
     return GetCublasHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
   }
 
   static inline cublasHandle_t GetCublasHandle(onnxruntime::CudaStream* stream) {
     return stream->cublas_handle_;
+  }
+
+  static inline cublasHandle_t GetCublasHandle(onnxruntime::Stream* stream) {
+    return GetCublasHandle(static_cast<CudaStream*>(stream));
   }
 
   bool UseTF32() const {
@@ -209,3 +219,7 @@ class CudaKernel : public OpKernel {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#else
+#include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#endif
