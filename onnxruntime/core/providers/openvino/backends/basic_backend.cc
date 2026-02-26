@@ -207,7 +207,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
   if (!session_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = session_context_.load_config;
-    const bool skip_compilation_params = subgraph_context_.is_ep_ctx_graph;
+    // Only skip compilation params for pre-compiled blob import, not OVIR (which compiles OVIR)
+    const bool skip_compilation_params = subgraph_context_.is_ep_ctx_graph && !subgraph_context_.is_ep_ctx_ovir_encapsulated;
 
     // Extract device names from device string and apply their configs
     // Examples: "GPU" -> ["GPU"], "AUTO:GPU.0,CPU" -> ["AUTO", "GPU", "CPU"]
