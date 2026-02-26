@@ -22,11 +22,14 @@ parameters:
 extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    settings:
+      networkIsolationPolicy: Permissive
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
       binskim:
         enabled: true
+        scanOutputDirectoryOnly: true
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
@@ -35,6 +38,10 @@ extends:
       spotBugs:
         enabled: false
         justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
       tsa:
         enabled: true
       codeSignValidation:
