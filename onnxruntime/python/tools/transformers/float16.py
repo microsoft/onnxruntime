@@ -146,7 +146,7 @@ DEFAULT_OP_BLOCK_LIST = [
 
 # Some operators has data type fixed as float for some inputs. Key is op_type, value is list of input indices
 # Note that DirectML allows float16 gamma and beta in GroupNorm. Use force_fp16_inputs parameter could overwrite this.
-ALWAYS_FLOAT_INPUTS = {"Resize": [2], "GroupNorm": [1, 2], "SkipGroupNorm": [1, 2]}
+ALWAYS_FLOAT_INPUTS = {"Resize": [1, 2], "GroupNorm": [1, 2], "SkipGroupNorm": [1, 2]}
 
 
 class InitializerTracker:
@@ -424,11 +424,11 @@ def convert_float_to_float16(
                     # create new value_info for current node's new input name
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
-                    output_name = node.name + "_input_cast_" + str(i)
+                    output_name = input_name + "_cast_to_fp32"
                     new_value_info.name = output_name
                     new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
                     # add Cast node (from tensor(float16) to tensor(float) before current node
-                    node_name = node.name + "_input_cast" + str(i)
+                    node_name = input_name + "_cast_to_fp32_node"
                     new_node = [helper.make_node("Cast", [input_name], [output_name], to=1, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
@@ -448,11 +448,11 @@ def convert_float_to_float16(
                     # create new value_info for current node's new input name
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
-                    output_name = node.name + "_input_cast_" + str(i)
+                    output_name = input_name + "_cast_to_fp32"
                     new_value_info.name = output_name
                     new_value_info.type.tensor_type.elem_type = accuracy_type
                     # add Cast node (from tensor(float16) to tensor(float) before current node
-                    node_name = node.name + "_input_cast" + str(i)
+                    node_name = input_name + "_cast_to_fp32_node"
                     new_node = [helper.make_node("Cast", [input_name], [output_name], to=accuracy_type, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
@@ -467,15 +467,15 @@ def convert_float_to_float16(
                     # create new value_info for current node's new output
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
-                    input_name = node.name + "_output_cast_" + str(i)
-                    new_value_info.name = input_name
+                    output_cast_name = output + "_cast_to_fp16"
+                    new_value_info.name = output_cast_name
                     new_value_info.type.tensor_type.elem_type = accuracy_type
                     # add Cast node (from tensor(float) to tensor(float16) after current node
-                    node_name = node.name + "_output_cast" + str(i)
-                    new_node = [helper.make_node("Cast", [input_name], [output], to=10, name=node_name)]
+                    node_name = output + "_cast_to_fp16_node"
+                    new_node = [helper.make_node("Cast", [output_cast_name], [output], to=10, name=node_name)]
                     model.graph.node.extend(new_node)
-                    # change current node's input name
-                    node.output[i] = input_name
+                    # change current node's output name
+                    node.output[i] = output_cast_name
                     break
     return model
 
