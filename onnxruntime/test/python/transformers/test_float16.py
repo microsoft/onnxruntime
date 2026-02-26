@@ -24,7 +24,7 @@ def _make_resize_model_opset11(num_resize_nodes=2, use_empty_names=True):
     """Create a minimal ONNX model with multiple Resize nodes (opset 11+).
 
     Resize opset 11+: inputs are [X, roi, scales, sizes].
-    Scales (index 2) and roi (index 1) must stay float32 per ALWAYS_FLOAT_INPUTS.
+    Scales (index 2) must stay float32 per ALWAYS_FLOAT_INPUTS; roi (index 1) allows fp16.
     """
     graph_input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 1, 4, 4])
     graph_output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 1, 8, 8])
@@ -170,6 +170,7 @@ class TestFloat16Conversion(unittest.TestCase):
 
         When scales is an initializer and ALWAYS_FLOAT_INPUTS protects index 2,
         the initializer should not be converted to float16.
+        Roi (index 1) is NOT protected for opset 11+ and may be converted to fp16.
         """
         model = _make_resize_model_opset11(num_resize_nodes=1, use_empty_names=False)
         converted = convert_float_to_float16(model, keep_io_types=True)
@@ -183,13 +184,14 @@ class TestFloat16Conversion(unittest.TestCase):
             "Resize scales initializer should stay float32",
         )
 
-        # The roi initializer should also remain float32 (index 1 is protected)
+        # Roi (index 1) is NOT protected for opset 11+ — the ONNX spec allows fp16 roi.
+        # The initializer may be converted to fp16 (it is not in always_float_inputs).
         roi_init = self._get_initializer(converted, "roi_0")
         self.assertIsNotNone(roi_init, "roi_0 initializer not found")
-        self.assertEqual(
+        self.assertIn(
             roi_init.data_type,
-            TensorProto.FLOAT,
-            "Resize roi initializer should stay float32",
+            (TensorProto.FLOAT, TensorProto.FLOAT16),
+            "Opset 11+ Resize roi is not protected — may be fp32 or fp16",
         )
 
     def test_resize_opset10_scales_initializer_stays_fp32(self):
