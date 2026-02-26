@@ -147,8 +147,8 @@ QuantizeA_Packed_CompInt8(
     std::byte* QuantA
 )
 {
-    const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
-        CountM == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+    const auto& k = (CountM == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+    const auto& ukernel = k.ukernel;
 
     const size_t mr = ukernel.get_mr();
     const size_t kr = ukernel.get_kr();
@@ -2396,8 +2396,8 @@ SQ4BitGemmKernel_Packed_CompInt8(
     const float* Bias
 )
 {
-    const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel ukernel =
-        RangeCountM == 1 && RangeStartM == 0? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+    const auto& k = (RangeCountM == 1 && RangeStartM == 0) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+    const auto& ukernel = k.ukernel;
 
     const size_t dst_stride = ldc * sizeof(float);
 
