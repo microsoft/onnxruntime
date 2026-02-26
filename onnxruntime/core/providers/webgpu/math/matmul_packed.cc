@@ -65,9 +65,9 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
   }
 
   // Handle bias with `MatMulWriteFnSourceForGemm() or MatMulWriteFnSourceForMatMul()`.
-  const uint32_t bias_components = output_components_;
+  //const uint32_t bias_components = output_components_;
   if (is_gemm_) {
-    MatMulWriteFnSourceForGemm(shader, output, bias, bias_components, bias_is_scalar_);
+    MatMulWriteFnSourceForGemm(shader, output, bias, bias_is_scalar_);
   } else {
     // Currently we only support `is_channels_last` to be true and no activation.
     MatMulWriteFnSourceForMatMul(shader, output, bias, /*activation_snippet*/ "", /*is_channels_last*/ true);

@@ -16,7 +16,6 @@ namespace {
 void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 const ShaderVariableHelper* c,
-                                int c_components,
                                 int output_components,
                                 bool c_is_scalar) {
   shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));\n";
@@ -27,7 +26,7 @@ void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
     // There is only one case for c_components_ is not equal output_components.
     // I.g. the former is `1` and the latter is `4`.
     // That means the shape of `c` is either {M,1} or {1,1}
-    if (c_components == output_components) {
+    if (c->NumComponents() == output_components) {
       shader.AdditionalImplementation() << "output_value_t("
                                         << c->GetByOffset(c->BroadcastedIndicesToOffset("vec2(u32(row), u32(colIn))", output)) << ");\n";
     } else if (c_is_scalar) {
@@ -203,10 +202,9 @@ void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
 void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 const ShaderVariableHelper* bias,
-                                int c_components,
                                 bool c_is_scalar) {
   EmitMatMulWriteFnHeader(shader, output);
-  HandleMaybeHaveBiasForGEMM(shader, output, bias, c_components, output.NumComponents(), c_is_scalar);
+  HandleMaybeHaveBiasForGEMM(shader, output, bias, output.NumComponents(), c_is_scalar);
   EmitMatMulWriteFnFooter(shader);
 }
 

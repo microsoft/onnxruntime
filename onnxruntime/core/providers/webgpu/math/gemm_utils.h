@@ -24,7 +24,6 @@ void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
 void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 const ShaderVariableHelper* bias,
-                                int c_components,
                                 bool c_is_scalar);
 
 void MatMulWriteFnSourceWithSplitK(ShaderHelper& shader,

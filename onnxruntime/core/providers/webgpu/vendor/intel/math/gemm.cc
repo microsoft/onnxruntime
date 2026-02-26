@@ -29,7 +29,7 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (need_handle_bias_) {
     c = &shader.AddInput("c", ShaderUsage::UseUniform);
   }
-  MatMulWriteFnSourceForGemm(shader, output, c, c_components_, c_is_scalar_);
+  MatMulWriteFnSourceForGemm(shader, output, c, c_is_scalar_);
 
   return Status::OK();
 }

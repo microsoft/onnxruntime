@@ -255,7 +255,7 @@ Status ComputeMatMul(ComputeContext* context,
       ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
 
       // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
-      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, /*bias_is_scalar*/ false, output_shape_temp);
+      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp);
       ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
 
       // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
@@ -299,9 +299,9 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
     bool is_gemm,
     float beta,
     uint32_t output_components,
-    bool bias_is_scalar,
     const TensorShape& output_shape) {
   const bool has_bias = bias != nullptr;
+  const bool bias_is_scalar = has_bias ? bias->Shape().Size() == 1 : false;
 
   // Currently we only support GEMM and channels last format for MatMul with Split-K.
   MatMulFillBiasOrZeroBeforeSplitKProgram program(is_gemm, has_bias, output_components, bias_is_scalar);
