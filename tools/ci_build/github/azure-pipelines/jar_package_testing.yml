@@ -53,14 +53,14 @@ extends:
 
     - template: templates/final-jar-testing-linux.yml
       parameters:
-        OS: Linux
+        OS: linux
         PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
-    # - template: templates/final-jar-testing-linux.yml
-    #   parameters:
-    #     OS: MacOS
-    #     PoolName: 'AcesShared'
-    #     PoolDemands: 'ImageOverride -equals ACES_VM_SharedPool_Sequoia'
+    - template: templates/final-jar-testing-linux.yml
+      parameters:
+        OS: macOS
+        PoolName: 'AcesShared'
+        PoolDemands: 'ImageOverride -equals ACES_VM_SharedPool_Sequoia'
 
     # - stage: GPU_JAR_Testing
     #   dependsOn: []
