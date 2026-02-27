@@ -40,7 +40,8 @@
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded*",  // webgpu
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
-        "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
+        "^test_attention_4d_diff_heads_mask4d_padded_kv_cpu", // non-expanded model fails CPU: attn_mask last_dim(4) != total_sequence_length(6)
+        "^test_attention_4d_diff_heads_mask4d_padded_kv.*_cuda", // nonpad_kv_seqlen + mask4d not supported in Attention-cuda MHA path
         // TODO: support the following tests in Attention-cuda (softcap, softmax precision and qk_matmul_mode)
         "^test_attention_3d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
         "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
@@ -80,7 +81,6 @@
         "^test_attention_3d_gqa_with_past_and_present_cuda",  // fp32
         "^test_attention_4d_gqa_attn_mask_cuda",  // fp32
         "^test_attention_4d_gqa_causal_cuda",  // fp32
-        "^test_tensorscatter*",  // TensorScatter(24) not implemented
         "^test_castlike_no_saturate_FLOAT_to_FLOAT8*",  // ORT does not support ml_dtypes
         "^test_castlike_UINT4_to*",  // ORT does not support ml_dtypes
         "^test_castlike_INT4_to*",  // ORT does not support ml_dtypes

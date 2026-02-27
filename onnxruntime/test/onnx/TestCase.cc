@@ -1450,7 +1450,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"attention_4d_gqa_with_past_and_present_fp16", "unknown version"});
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "unknown version"});
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "unknown version"});
-    broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "need nonpad_kv_seqlen "});
     broken_tests->insert({"rms_normalization_2d_axis1", "unknown version"});
     broken_tests->insert({"rms_normalization_2d_axis_negative_1", "unknown version"});
     broken_tests->insert({"rms_normalization_3d_axis2_epsilon", "unknown version"});
