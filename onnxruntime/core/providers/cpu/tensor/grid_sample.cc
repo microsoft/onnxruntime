@@ -283,7 +283,7 @@ void TryRunBilinearZerosFastPath2D(const Tensor& input,
   const int64_t plane_in = H_in * W_in;
   const size_t plane_out = H_out * W_out;
   const size_t plane_out_size = onnxruntime::narrow<size_t>(plane_out);
-  sampling_plan.resize(plane_out_size);
+  sampling_plan.resize(plane_out);
 
   const T* grid_data = grid.Data<T>() + n * plane_out * 2;
   PrecomputeBilinearSamplePlan2D(grid_data, H_out, W_out, H_in, W_in, sampling_plan);
