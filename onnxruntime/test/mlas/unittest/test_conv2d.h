@@ -331,5 +331,24 @@ class MlasConv2DTest : public MlasTestBase {
         }
       }
     }
+
+    //
+    // Regression test: exercise a KleidiAI Conv2D path when KleidiAI is enabled.
+    // See https://github.com/microsoft/onnxruntime/issues/26669.
+    //
+    // The KleidiAI implementation uses an internal per-thread padding buffer for out-of-bounds pixels
+    // when constructing the LHS indirection table. Historically, if the buffer was too small for a later
+    // convolution (larger CI), resizing could invalidate cached indirection pointers and lead to
+    // non-deterministic corruption.
+    //
+    // This sequence forces pad-buffer growth by running a smaller-CI convolution followed by a larger-CI
+    // convolution (with padding to ensure pad pointers are used), then runs the smaller-CI convolution again.
+    // Repeat a few times to increase the likelihood of triggering a reallocation and verify the path.
+    //
+    for (int i = 0; i < 4; ++i) {
+      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // smaller CI
+      Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);  // larger CI forces pad buffer growth
+      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // sanity: back to smaller CI after growth
+    }
   }
 };

@@ -146,6 +146,8 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxD
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, LeakyRelu);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 10, ThresholdedRelu);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 20, Gelu);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 21, Softplus);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 22, Softplus);
 
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceMax);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, ReduceMax);
@@ -496,6 +498,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture = fals
       KERNEL_CREATE_INFO(16, LeakyRelu),
       KERNEL_CREATE_INFO(10, ThresholdedRelu),
       KERNEL_CREATE_INFO(20, Gelu),
+      KERNEL_CREATE_INFO_VERSIONED(1, 21, Softplus),
+      KERNEL_CREATE_INFO(22, Softplus),
 
       // // binary - math
       KERNEL_CREATE_INFO_VERSIONED(7, 12, Add),

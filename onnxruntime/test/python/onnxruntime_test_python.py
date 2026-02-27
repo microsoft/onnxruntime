@@ -1444,6 +1444,29 @@ class TestInferenceSession(unittest.TestCase):
         device = ortvalue._ortvalue.__dlpack_device__()
         self.assertEqual((1, 0), device)
 
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack_zero_size(self):
+        # Zero-size tensors are vacuously contiguous; from_dlpack must accept them.
+        # Regression test: OrtValue.from_dlpack was incorrectly rejecting zero-size tensors.
+        zero_size_shapes = [
+            (1, 8, 0, 128),  # zero in the middle (KV-cache use case)
+            (0,),  # 1-D zero-size
+            (0, 4),  # zero leading dimension
+            (4, 0),  # zero trailing dimension
+        ]
+        for shape in zero_size_shapes:
+            with self.subTest(shape=shape):
+                arr = np.zeros(shape, dtype=np.float32)
+                # Test via numpy __dlpack__ protocol
+                dlp = arr.__dlpack__()
+                ortvalue = C.OrtValue.from_dlpack(dlp, False)
+                self.assertEqual(list(shape), list(ortvalue.shape()))
+                # Test round-trip: OrtValue -> dlpack -> OrtValue
+                ort_input = onnxrt.OrtValue.ortvalue_from_numpy(arr)
+                dlp2 = ort_input._ortvalue.to_dlpack()
+                ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
+                self.assertEqual(list(shape), list(ortvalue2.shape()))
+
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         shape = [9, 9]
