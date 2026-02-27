@@ -160,8 +160,8 @@ extends:
         - template: templates/set-version-number-variables-step.yml
 
         - bash: |
-          sudo apt-get install -y msopenjdk-17
-          dpkg -l msopenjdk-17
+            sudo apt-get install -y msopenjdk-17
+            dpkg -l msopenjdk-17
 
         - bash: |
             echo "Downloading and installing Maven $(mavenVersion) for Linux..."
