@@ -119,6 +119,7 @@ stages:
           set -e -x
           mv $(Build.BinariesDirectory)/dist ./dist
           pushd dist
+          find .  # for debugging
           find . -name \*.whl -exec unzip -qq -o {} \;
           rm -rf onnxruntime
           popd
@@ -130,6 +131,7 @@ stages:
             set -e -x
             mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }}
             pushd ${{ parameters.cmake_build_type }}
+            find .  # for debugging
             find . -name \*.whl -exec unzip -qq -o {} \;
             popd
           workingDirectory: '$(Build.ArtifactStagingDirectory)'
