@@ -13,10 +13,25 @@ from onnx_model import OnnxModel
 logger = getLogger(__name__)
 
 
+def _is_broadcast_skip(input_shape, skip_shape):
+    """Check if skip_shape can broadcast to input_shape for SkipLayerNormalization.
+
+    The kernel supports: input 3D (B,S,H) with skip 3D (1,S,H) or skip 2D (S,H).
+    """
+    if len(input_shape) != 3:
+        return False
+    if len(skip_shape) == 3:
+        return skip_shape[0] == 1 and skip_shape[1] == input_shape[1] and skip_shape[2] == input_shape[2]
+    if len(skip_shape) == 2:
+        return skip_shape[0] == input_shape[1] and skip_shape[1] == input_shape[2]
+    return False
+
+
 class FusionSkipLayerNormalization(Fusion):
     """
-    Fuse Add + LayerNormalization into one node: SkipLayerNormalization
-    Note: This fusion does not check the input shape of Add and LayerNormalization.
+    Fuse Add + LayerNormalization into one node: SkipLayerNormalization.
+    Supports broadcasting of the skip input: (1, sequence_length, hidden_size)
+    or (sequence_length, hidden_size) will be broadcast to match the input shape.
     """
 
     def __init__(
@@ -31,8 +46,31 @@ class FusionSkipLayerNormalization(Fusion):
             # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
             self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
             if self.shape_infer_helper is None:
-                # TODO(tianleiwu): support subgraph in shape inference or add broadcasting in SkipLayerNormalization op.
                 logger.warning("symbolic shape inference disabled or failed.")
+
+    def get_skip_index(self, add):
+        """Identify which Add input is the skip tensor (the one that may broadcast).
+
+        Returns (skip_index, broadcast):
+            skip_index: 0 or 1 (which Add input is skip), -1 if incompatible
+            broadcast: True if broadcasting is needed
+        """
+        shape_a = self.shape_infer_helper.get_edge_shape(add.input[0])
+        shape_b = self.shape_infer_helper.get_edge_shape(add.input[1])
+        if shape_a is None or shape_b is None:
+            return -1, False
+
+        if shape_a == shape_b:
+            return (1, False) if len(shape_a) == 3 else (-1, False)
+
+        # Check if b is a broadcastable skip for a
+        if len(shape_a) == 3 and _is_broadcast_skip(shape_a, shape_b):
+            return 1, True
+        # Check if a is a broadcastable skip for b
+        if len(shape_b) == 3 and _is_broadcast_skip(shape_b, shape_a):
+            return 0, True
+
+        return -1, False
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         add = self.model.get_parent(node, 0, output_name_to_node)
@@ -57,19 +95,14 @@ class FusionSkipLayerNormalization(Fusion):
         # Root Mean Square Layer Normalization
         simplified = node.op_type == "SimplifiedLayerNormalization"
 
+        skip_index = 1  # default: add.input[1] is the skip
+
         if hasattr(self, "shape_infer_helper"):
             if self.shape_infer_helper is not None:
-                if (
-                    self.shape_infer_helper.get_edge_shape(add.input[0])
-                    and len(self.shape_infer_helper.get_edge_shape(add.input[0])) != 3
-                ):
-                    logger.debug("skip SkipLayerNormalization fusion since shape of input %s is not 3D", add.input[0])
-                    return
-
-                # TODO(tianleiwu): support broadcasting Skip shape (1, sequence_length, hidden_size) or (sequence_length, hidden_size)
-                if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+                skip_index, _broadcast = self.get_skip_index(add)
+                if skip_index < 0:
                     logger.debug(
-                        "skip SkipLayerNormalization fusion since shape of inputs (%s, %s) are not same",
+                        "skip SkipLayerNormalization fusion since shapes of inputs (%s, %s) are not compatible",
                         add.input[0],
                         add.input[1],
                     )
@@ -106,10 +139,11 @@ class FusionSkipLayerNormalization(Fusion):
         if self.model.is_safe_to_fuse_nodes([add, node], outputs_to_keep, input_name_to_nodes, output_name_to_node):
             self.nodes_to_remove.extend([add, node])
 
+            input_index = 1 - skip_index
             inputs = (
-                [add.input[0], add.input[1], node.input[1], node.input[2]]
+                [add.input[input_index], add.input[skip_index], node.input[1], node.input[2]]
                 if not simplified
-                else [add.input[0], add.input[1], node.input[1]]
+                else [add.input[input_index], add.input[skip_index], node.input[1]]
             )
             normalize_node = helper.make_node(
                 self.fused_op_type,

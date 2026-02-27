@@ -270,6 +270,108 @@ class TestFusion(unittest.TestCase):
         )
         os.remove(model_name)
 
+    def create_broadcast_test_model(
+        self,
+        batch_size: int = 2,
+        sequence_length: int = 3,
+        hidden_size: int = 4,
+        skip_shape: str = "2d",  # "2d" for (seq, hidden), "3d_batch1" for (1, seq, hidden)
+        skip_on_input: int = 1,  # Which Add input index gets the skip (smaller) shape
+    ):
+        """Create a test model where one Add input has a broadcast-compatible shape."""
+        if skip_shape == "2d":
+            skip_dims = [sequence_length, hidden_size]
+        elif skip_shape == "3d_batch1":
+            skip_dims = [1, sequence_length, hidden_size]
+        else:
+            raise ValueError(f"Unknown skip_shape: {skip_shape}")
+
+        full_dims = [batch_size, sequence_length, hidden_size]
+
+        add_before_layer_norm = helper.make_node("Add", ["input_1", "input_2"], ["layernorm_input"], "add_layernorm")
+        layer_norm = helper.make_node(
+            "LayerNormalization",
+            ["layernorm_input", "layer_norm_weight", "layer_norm_bias"],
+            ["output"],
+            "layernorm",
+            axis=-1,
+            epsion=0.000009999999747378752,
+        )
+
+        initializers = [
+            float_tensor("layer_norm_weight", [hidden_size]),
+            float_tensor("layer_norm_bias", [hidden_size]),
+        ]
+
+        input_1_shape = full_dims if skip_on_input != 0 else skip_dims
+        input_2_shape = skip_dims if skip_on_input != 0 else full_dims
+
+        graph = helper.make_graph(
+            [add_before_layer_norm, layer_norm],
+            "SkipLayerNormBroadcastModel",
+            [
+                helper.make_tensor_value_info("input_1", TensorProto.FLOAT, input_1_shape),
+                helper.make_tensor_value_info("input_2", TensorProto.FLOAT, input_2_shape),
+            ],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, full_dims)],
+            initializers,
+        )
+
+        onnx_opset = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
+        return helper.make_model(graph, opset_imports=(onnx_opset,))
+
+    def test_skip_layer_norm_broadcast_2d_skip(self):
+        """2D skip (seq, hidden) on input[1] should fuse with input order preserved."""
+        model = self.create_broadcast_test_model(skip_shape="2d", skip_on_input=1)
+        model_name = "skip_layer_norm_broadcast_2d.onnx"
+        onnx.save(model, model_name)
+        self.verify_skip_layer_norm_fusion(
+            model_name,
+            {"Add": 0, "LayerNormalization": 0, "SkipLayerNormalization": 1, "Cast": 0},
+            ["input_1", "input_2", "layer_norm_weight", "layer_norm_bias"],
+            ["output"],
+        )
+        os.remove(model_name)
+
+    def test_skip_layer_norm_broadcast_2d_skip_swapped(self):
+        """2D skip (seq, hidden) on input[0] should fuse with inputs swapped."""
+        model = self.create_broadcast_test_model(skip_shape="2d", skip_on_input=0)
+        model_name = "skip_layer_norm_broadcast_2d_swapped.onnx"
+        onnx.save(model, model_name)
+        self.verify_skip_layer_norm_fusion(
+            model_name,
+            {"Add": 0, "LayerNormalization": 0, "SkipLayerNormalization": 1, "Cast": 0},
+            ["input_2", "input_1", "layer_norm_weight", "layer_norm_bias"],
+            ["output"],
+        )
+        os.remove(model_name)
+
+    def test_skip_layer_norm_broadcast_3d_batch1(self):
+        """3D skip (1, seq, hidden) on input[1] should fuse with input order preserved."""
+        model = self.create_broadcast_test_model(skip_shape="3d_batch1", skip_on_input=1)
+        model_name = "skip_layer_norm_broadcast_3d_batch1.onnx"
+        onnx.save(model, model_name)
+        self.verify_skip_layer_norm_fusion(
+            model_name,
+            {"Add": 0, "LayerNormalization": 0, "SkipLayerNormalization": 1, "Cast": 0},
+            ["input_1", "input_2", "layer_norm_weight", "layer_norm_bias"],
+            ["output"],
+        )
+        os.remove(model_name)
+
+    def test_skip_layer_norm_broadcast_3d_batch1_swapped(self):
+        """3D skip (1, seq, hidden) on input[0] should fuse with inputs swapped."""
+        model = self.create_broadcast_test_model(skip_shape="3d_batch1", skip_on_input=0)
+        model_name = "skip_layer_norm_broadcast_3d_batch1_swapped.onnx"
+        onnx.save(model, model_name)
+        self.verify_skip_layer_norm_fusion(
+            model_name,
+            {"Add": 0, "LayerNormalization": 0, "SkipLayerNormalization": 1, "Cast": 0},
+            ["input_2", "input_1", "layer_norm_weight", "layer_norm_bias"],
+            ["output"],
+        )
+        os.remove(model_name)
+
 
 if __name__ == "__main__":
     unittest.main()
