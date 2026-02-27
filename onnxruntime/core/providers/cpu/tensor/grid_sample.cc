@@ -229,7 +229,7 @@ void EvaluatePlanForChannel(const T* input_data,
                             T* output_data,
                             int64_t W_in,
                             const BilinearSamplePlan2D<T>* plan_data,
-                            int64_t point_count) {
+                            size_t point_count) {
   for (size_t idx = 0; idx < static_cast<size_t>(point_count); ++idx) {
     const auto& plan = plan_data[idx];
     if (plan.mask == 0) {
