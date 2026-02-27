@@ -103,7 +103,7 @@ stages:
           build_intermediates_artifact_name: linux_gpu_wheel_x86_64
 
     # Merge per-version Linux wheel artifacts into a single combined artifact for downstream consumers
-    - stage: Linux_py_GPU_Wheels_Merge
+    - stage: Linux_py_GPU_Wheels_Merge_Artifacts
       dependsOn:
       - ${{ each config in parameters.LinuxPythonConfigurations }}:
         - Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
