@@ -35,7 +35,6 @@ from parameterized import parameterized
 
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
 
-
 # #################################################################################################
 #  Helper Functions
 # #################################################################################################
@@ -193,12 +192,8 @@ def build_scatter_attention_graph(
     graph_inputs = [
         helper.make_tensor_value_info("key_cache", ort_type, [batch_size, total_kv_seq_len, kv_hidden]),
         helper.make_tensor_value_info("value_cache", ort_type, [batch_size, total_kv_seq_len, kv_hidden]),
-        helper.make_tensor_value_info(
-            "scatter_indices_k", TensorProto.INT64, [batch_size, q_seq_len, kv_hidden]
-        ),
-        helper.make_tensor_value_info(
-            "scatter_indices_v", TensorProto.INT64, [batch_size, q_seq_len, kv_hidden]
-        ),
+        helper.make_tensor_value_info("scatter_indices_k", TensorProto.INT64, [batch_size, q_seq_len, kv_hidden]),
+        helper.make_tensor_value_info("scatter_indices_v", TensorProto.INT64, [batch_size, q_seq_len, kv_hidden]),
         helper.make_tensor_value_info("new_k", ort_type, [batch_size, q_seq_len, kv_hidden]),
         helper.make_tensor_value_info("new_v", ort_type, [batch_size, q_seq_len, kv_hidden]),
         helper.make_tensor_value_info("query", ort_type, [batch_size, q_seq_len, q_hidden]),

@@ -250,9 +250,7 @@ def create_attention_node_and_io(
     # nonpad_kv_seqlen for ONNX Attention op (opset 24+)
     # Shape: [batch_size], dtype: int64
     if config.has_nonpad_kv_seqlen:
-        graph_input.append(
-            helper.make_tensor_value_info("nonpad_kv_seqlen", TensorProto.INT64, [config.batch_size])
-        )
+        graph_input.append(helper.make_tensor_value_info("nonpad_kv_seqlen", TensorProto.INT64, [config.batch_size]))
 
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
