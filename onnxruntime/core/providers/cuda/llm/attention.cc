@@ -650,7 +650,18 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
     data.qkv_format = contribop_parameters.qkv_format;
 
-    // For now, set flags to false and let QkvToContext use the unfused path
+    // TODO(titaiwang): Enable memory-efficient or flash attention for MHA + nonpad_kv_seqlen.
+    //
+    // Currently forces unfused O(n²) attention because:
+    //   - nonpad_kv_seqlen is converted to attention_bias (B, q_seq, total_seq)
+    //   - Flash attention requires attention_bias == nullptr (hard API constraint)
+    //   - Memory-efficient attention supports attention_bias (with alignment) but
+    //     is conservatively disabled pending validation
+    //
+    // This is safe for decode (q_seq=1) where the unfused path is cheap.
+    // WARNING: For prefill with large q_seq, unfused attention may OOM.
+    // Follow-up: enable memory-efficient attention, or add seqlens_k-style masking
+    // to MHA path (like GQA) to bypass attention_bias and enable flash attention.
     data.use_flash_attention = false;
     data.use_memory_efficient_attention = false;
     data.fused_runner = nullptr;

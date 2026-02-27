@@ -65,11 +65,15 @@ Status LaunchConvertBoolMaskToAttentionBias(
 // Convert nonpad_kv_seqlen (int64, per-batch valid KV lengths) to seqlens_k (int32) for GQA.
 // GQA convention: seqlens_k[i] = nonpad_kv_seqlen[i] - 1 (last valid index, not count).
 //
+// IMPORTANT: nonpad_kv_seqlen must be >= 1 for every batch element.
+// A value of 0 would produce seqlens_k=0, which GQA interprets as "1 valid token at
+// position 0" (last-valid-index convention), causing silent attention to garbage data.
+//
 // Parameters:
-//   nonpad_kv_seqlen: Input int64 tensor on GPU, shape [batch_size]
+//   nonpad_kv_seqlen: Input int64 tensor on GPU, shape [batch_size]. All values must be in [1, total_sequence_length].
 //   seqlens_k: Output int32 buffer on GPU, shape [batch_size]
 //   batch_size: Number of batches
-//   total_sequence_length: Max KV sequence length (for bounds clamping)
+//   total_sequence_length: Max KV sequence length (for bounds validation)
 //   stream: CUDA stream
 //   max_threads_per_block: Maximum threads per block
 Status LaunchConvertNonpadKvSeqlenToSeqlensK(

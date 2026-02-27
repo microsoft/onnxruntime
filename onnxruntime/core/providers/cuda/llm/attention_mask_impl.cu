@@ -175,7 +175,15 @@ template Status LaunchConvertBoolMaskToAttentionBias<__nv_bfloat16>(
 
 // CUDA kernel to convert nonpad_kv_seqlen (int64) to seqlens_k (int32) for GQA.
 // GQA convention: seqlens_k = nonpad_kv_seqlen - 1 (last valid index, not count).
-// A value of 0 in seqlens_k represents an empty KV sequence for that batch element.
+//
+// IMPORTANT: nonpad_kv_seqlen must be >= 1 for every batch element.
+// A value of 0 would produce seqlens_k=0, which GQA interprets as "1 valid token at
+// position 0" (last-valid-index convention), causing silent attention to garbage data.
+// Callers must ensure sequences are non-empty before invoking this kernel.
+//
+// Validation (via CUDA_KERNEL_ASSERT, reported asynchronously):
+// - val must be > 0 (nonpad_kv_seqlen=0 would silently corrupt output)
+// - val must be <= total_sequence_length (out of bounds)
 __global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
     const int64_t* __restrict__ nonpad_kv_seqlen,
     int* __restrict__ seqlens_k,
@@ -184,14 +192,11 @@ __global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < batch_size) {
     int64_t val = nonpad_kv_seqlen[idx];
-    // Clamp to valid range [0, total_sequence_length] before int64→int32 cast.
-    val = max(static_cast<int64_t>(0), min(val, static_cast<int64_t>(total_sequence_length)));
-    int seqlen = static_cast<int>(val) - 1;
-    // Clamp to non-negative so that 0 cleanly represents an empty KV sequence.
-    if (seqlen < 0) {
-      seqlen = 0;
-    }
-    seqlens_k[idx] = seqlen;
+    CUDA_KERNEL_ASSERT(val > 0);  // nonpad_kv_seqlen=0 → seqlens_k=0 → attends to garbage at pos 0
+    CUDA_KERNEL_ASSERT(val <= static_cast<int64_t>(total_sequence_length));
+    // Clamp to [1, total_sequence_length] for safety in release builds where asserts are no-ops.
+    val = max(static_cast<int64_t>(1), min(val, static_cast<int64_t>(total_sequence_length)));
+    seqlens_k[idx] = static_cast<int>(val) - 1;
   }
 }
 
@@ -206,6 +211,8 @@ Status LaunchConvertNonpadKvSeqlenToSeqlensK(
     return Status::OK();
   }
 
+  // Note: The kernel uses CUDA_KERNEL_ASSERT for GPU-side validation (debug builds only).
+  // In release builds, the kernel defensively clamps inputs to valid ranges.
   int threads = std::min(batch_size, max_threads_per_block);
   int blocks = (batch_size + threads - 1) / threads;
 
@@ -233,8 +240,12 @@ __global__ void ConvertNonpadKvSeqlenToAttentionBiasKernel(
   for (; idx < total; idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
     int b = static_cast<int>(idx / (static_cast<int64_t>(q_seq_len) * total_seq_len));
     int t = static_cast<int>(idx % total_seq_len);
-    // Clamp nonpad_kv_seqlen to [0, total_seq_len] for safety.
-    int64_t valid_len = max(static_cast<int64_t>(0), min(nonpad_kv_seqlen[b], static_cast<int64_t>(total_seq_len)));
+    int64_t valid_len = nonpad_kv_seqlen[b];
+    // Note: valid_len=0 is allowed here (masks all positions), unlike the seqlens_k kernel
+    // where 0 would be misinterpreted by GQA's last-valid-index convention.
+    CUDA_KERNEL_ASSERT(valid_len >= 0 && valid_len <= static_cast<int64_t>(total_seq_len));
+    // Clamp to [0, total_seq_len] for safety in release builds where asserts are no-ops.
+    valid_len = max(static_cast<int64_t>(0), min(valid_len, static_cast<int64_t>(total_seq_len)));
     attention_bias[idx] = (t < static_cast<int>(valid_len)) ? T(0.0f) : T(mask_filter_value);
   }
 }

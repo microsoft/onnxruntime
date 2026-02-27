@@ -114,7 +114,8 @@ inline Status ComputeOutputShapeForAttention(
     ORT_ENFORCE(past_key == nullptr && past_value == nullptr,
                 "nonpad_kv_seqlen should not be used together with past_key and past_value inputs");
     parameters.has_nonpad_kv_seqlen = true;
-    // Note: This pointer is CPU-accessible only. CUDA path should not dereference this directly.
+    // Warning: On CUDA, this is a device pointer. Do not dereference on host.
+    // See skip_nonpad_data_validation parameter — CUDA callers must set it to true.
     parameters.nonpad_kv_seqlen_data = nonpad_kv_seqlen->Data<int64_t>();
     // Validate each value is in [0, total_sequence_length].
     // Skip per-element validation when data is on GPU (CUDA provider).
