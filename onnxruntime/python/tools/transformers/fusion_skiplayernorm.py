@@ -46,6 +46,7 @@ class FusionSkipLayerNormalization(Fusion):
             # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
             self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
             if self.shape_infer_helper is None:
+                # TODO(tianleiwu): support subgraph in shape inference.
                 logger.warning("symbolic shape inference disabled or failed.")
 
     def get_skip_index(self, add):
@@ -64,10 +65,10 @@ class FusionSkipLayerNormalization(Fusion):
             return (1, False) if len(shape_a) == 3 else (-1, False)
 
         # Check if b is a broadcastable skip for a
-        if len(shape_a) == 3 and _is_broadcast_skip(shape_a, shape_b):
+        if _is_broadcast_skip(shape_a, shape_b):
             return 1, True
         # Check if a is a broadcastable skip for b
-        if len(shape_b) == 3 and _is_broadcast_skip(shape_b, shape_a):
+        if _is_broadcast_skip(shape_b, shape_a):
             return 0, True
 
         return -1, False
