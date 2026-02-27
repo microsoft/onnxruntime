@@ -145,5 +145,50 @@ Status LaunchConvertMaskToSeqlensK(
   return CUDA_CALL(cudaGetLastError());
 }
 
+template <typename T>
+__global__ void ConvertBoolMaskToAttentionBiasKernel(
+    const bool* __restrict__ attn_mask,
+    T* __restrict__ attention_bias,
+    const int64_t num_elements,
+    const float mask_filter_value) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < num_elements;
+       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    attention_bias[idx] = attn_mask[idx] ? T(0.0f) : T(mask_filter_value);
+  }
+}
+
+template <typename T>
+Status LaunchConvertBoolMaskToAttentionBias(
+    const bool* attn_mask_bool,
+    T* attention_bias,
+    int64_t num_elements,
+    float mask_filter_value,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  if (num_elements == 0) {
+    return Status::OK();
+  }
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), num_elements));
+  int64_t blocks = (num_elements + threads - 1) / threads;
+  // Cap grid size to avoid exceeding CUDA gridDim.x limit (2^31 - 1).
+  // The grid-stride loop in the kernel handles the overflow.
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  ConvertBoolMaskToAttentionBiasKernel<T><<<grid_size, threads, 0, stream>>>(
+      attn_mask_bool, attention_bias, num_elements, mask_filter_value);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchConvertBoolMaskToAttentionBias<float>(
+    const bool*, float*, int64_t, float, cudaStream_t, int);
+template Status LaunchConvertBoolMaskToAttentionBias<__half>(
+    const bool*, __half*, int64_t, float, cudaStream_t, int);
+template Status LaunchConvertBoolMaskToAttentionBias<__nv_bfloat16>(
+    const bool*, __nv_bfloat16*, int64_t, float, cudaStream_t, int);
+
 }  // namespace cuda
 }  // namespace onnxruntime

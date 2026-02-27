@@ -8,6 +8,7 @@ import os
 import unittest
 
 import onnx
+from bart_model_generator import create_bart_attention_sdpa
 from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
 from gpt2_model_generator import create_gpt2_attention
 from model_loader import get_test_data_path
@@ -191,6 +192,52 @@ class TestFusion(unittest.TestCase):
 
                 model_name = f"gpt2_attention_{model_suffix}.onnx"
                 self.verify_fusion(optimized_model, model_name)
+
+    def test_bart_attention_sdpa_fusion(self):
+        hidden_size = 16
+        num_heads = 4
+        for with_mask in [True, False]:
+            model = create_bart_attention_sdpa(
+                hidden_size=hidden_size,
+                num_heads=num_heads,
+                with_mask=with_mask,
+            )
+
+            options = FusionOptions("bart")
+            # Disable SkipLayerNorm fusion to match real SDPA BART behaviour,
+            # where symbolic shape inference fails and the attention fusion
+            # anchor is a plain LayerNormalization node.
+            options.enable_skip_layer_norm = False
+
+            optimized_model = optimize_by_fusion(
+                model,
+                model_type="bart",
+                num_heads=num_heads,
+                hidden_size=hidden_size,
+                optimization_options=options,
+            )
+
+            attn_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+            self.assertEqual(
+                len(attn_nodes),
+                1,
+                f"Expected 1 Attention node for with_mask={with_mask}, got {len(attn_nodes)}",
+            )
+
+            attn = attn_nodes[0]
+            num_heads_attr = next((a for a in attn.attribute if a.name == "num_heads"), None)
+            self.assertIsNotNone(num_heads_attr)
+            self.assertEqual(num_heads_attr.i, num_heads)
+
+            unidirectional_attr = next((a for a in attn.attribute if a.name == "unidirectional"), None)
+            if with_mask:
+                # With mask → decoder self-attention → unidirectional=1
+                self.assertIsNotNone(unidirectional_attr)
+                self.assertEqual(unidirectional_attr.i, 1)
+            else:
+                # No mask → encoder attention → unidirectional=0
+                if unidirectional_attr is not None:
+                    self.assertEqual(unidirectional_attr.i, 0)
 
     def test_megatron_gpt2_attention_fusion(self):
         for enable_skip_layer_norm_fusion in [False, True]:
