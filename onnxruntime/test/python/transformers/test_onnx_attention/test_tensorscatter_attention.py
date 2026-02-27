@@ -8,21 +8,38 @@
 Tests for TensorScatter(opset 24) + Attention(opset 24) pattern.
 
 Demonstrates a decode step where new KV entries are scattered into a
-pre-allocated cache via ScatterElements, then Attention uses the updated
+pre-allocated cache via TensorScatter, then Attention uses the updated
 KV cache with nonpad_kv_seqlen to mask out padding positions.
+
+Uses IO Binding for in-place KV cache updates, matching the real-world LLM
+inference pattern where KV cache buffers are pre-allocated on the device
+and reused across decode steps.
 
 The graph looks like:
 
-  kv_cache (B, S, kv_num_heads*head_size)  ─┐
-  scatter_indices (B, 1, kv_num_heads*head_size) ─┤
-  new_kv (B, 1, kv_num_heads*head_size)      ─┤
-                                                ├─ ScatterElements(axis=1) ─→ updated_kv
-                                                                               │
-  Q (B, 1, q_num_heads*head_size) ────────────┬─ Attention(opset 24)  ←────────┘
-  nonpad_kv_seqlen (B,)  ────────────────────┘          │
-                                                        ├─ output
-                                                        ├─ present_key
-                                                        └─ present_value
+  key_cache (B, S, kv_hidden)  ──────────┐
+  new_k (B, q_seq, kv_hidden)  ──────────┤
+  write_indices (B,)  ───────────────────┤
+                                          ├─ TensorScatter(axis=1) ─→ updated_key_cache ─┐
+                                                                                          │
+  value_cache (B, S, kv_hidden)  ────────┐                                                │
+  new_v (B, q_seq, kv_hidden)  ──────────┤                                                │
+  write_indices (B,)  ──────────────────┤                                                 │
+                                          ├─ TensorScatter(axis=1) ─→ updated_value_cache ┤
+                                                                                           │
+  Q (B, q_seq, q_hidden) ──────────────┬─ Attention(opset 24)  ←──────────────────────────┘
+  nonpad_kv_seqlen (B,)  ──────────────┘          │
+                                                   ├─ output
+                                                   ├─ present_key
+                                                   └─ present_value
+
+IO Binding enables in-place cache updates: the same OrtValue buffer is bound as
+both TensorScatter input (key_cache/value_cache) and output
+(updated_key_cache/updated_value_cache), avoiding unnecessary copies.
+
+CUDA limitations:
+  - GQA path (kv_num_heads != q_num_heads) requires is_causal=1 and float16
+  - MHA path (kv_num_heads == q_num_heads) supports float32 and non-causal
 """
 
 import math
@@ -33,7 +50,7 @@ import torch
 from onnx import TensorProto, helper
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, SessionOptions, get_available_providers
+from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers
 
 # #################################################################################################
 #  Helper Functions
@@ -77,7 +94,6 @@ def numpy_attention_ref(q, k, v, nonpad_kv_seqlen, is_causal=False):
     scale = 1.0 / math.sqrt(head_size)
 
     # scores: [batch, num_heads, q_seq, kv_seq]
-    # q: [b,s,h,d] -> [b,h,s,d];  k: [b,s,h,d] -> [b,h,d,s]
     q_t = numpy.transpose(q, (0, 2, 1, 3))
     k_t = numpy.transpose(k, (0, 2, 3, 1))
     scores = numpy.matmul(q_t, k_t) * scale
@@ -115,7 +131,7 @@ def numpy_attention_ref(q, k, v, nonpad_kv_seqlen, is_causal=False):
     return output
 
 
-def build_scatter_attention_graph(
+def build_tensorscatter_attention_graph(
     batch_size,
     total_kv_seq_len,
     q_seq_len,
@@ -123,46 +139,52 @@ def build_scatter_attention_graph(
     kv_num_heads,
     head_size,
     ort_type,
+    is_causal=0,
 ):
     """
-    Build ONNX graph: ScatterElements → Attention (opset 24).
+    Build ONNX graph: TensorScatter(opset 24) → Attention(opset 24).
 
-    ScatterElements updates KV cache in-place at specific positions.
-    Attention uses updated cache with nonpad_kv_seqlen to mask padding.
+    TensorScatter uses write_indices [B] to scatter new KV entries into cache
+    at per-batch positions. Attention uses updated cache with nonpad_kv_seqlen
+    to mask padding.
+
+    The graph exposes updated_key_cache and updated_value_cache as graph outputs
+    to enable in-place buffer binding via IO Binding.
 
     Inputs:
-      0: key_cache   [B, total_kv_seq_len, kv_hidden]
-      1: value_cache  [B, total_kv_seq_len, kv_hidden]
-      2: scatter_indices_k [B, q_seq_len, kv_hidden]
-      3: scatter_indices_v [B, q_seq_len, kv_hidden]
-      4: new_k        [B, q_seq_len, kv_hidden]
-      5: new_v        [B, q_seq_len, kv_hidden]
-      6: query        [B, q_seq_len, q_hidden]
-      7: nonpad_kv_seqlen [B]
+      0: key_cache        [B, total_kv_seq_len, kv_hidden]
+      1: value_cache      [B, total_kv_seq_len, kv_hidden]
+      2: new_k            [B, q_seq_len, kv_hidden]
+      3: new_v            [B, q_seq_len, kv_hidden]
+      4: write_indices    [B]   (int64 — per-batch write position)
+      5: query            [B, q_seq_len, q_hidden]
+      6: nonpad_kv_seqlen [B]   (int64 — valid KV length after scatter)
 
     Outputs:
-      0: output       [B, q_seq_len, q_hidden]
-      1: present_key  [B, kv_num_heads, total_kv_seq_len, head_size]
-      2: present_value [B, kv_num_heads, total_kv_seq_len, head_size]
+      0: output              [B, q_seq_len, q_hidden]
+      1: present_key         [B, kv_num_heads, total_kv_seq_len, head_size]
+      2: present_value       [B, kv_num_heads, total_kv_seq_len, head_size]
+      3: updated_key_cache   [B, total_kv_seq_len, kv_hidden]
+      4: updated_value_cache [B, total_kv_seq_len, kv_hidden]
     """
     kv_hidden = kv_num_heads * head_size
     q_hidden = q_num_heads * head_size
 
-    # ScatterElements for key cache update (axis=1, scatter along seq dim)
+    # TensorScatter for key cache update (axis=1: sequence dim in [B, S, H])
     scatter_k_node = helper.make_node(
-        "ScatterElements",
-        inputs=["key_cache", "scatter_indices_k", "new_k"],
+        "TensorScatter",
+        inputs=["key_cache", "new_k", "write_indices"],
         outputs=["updated_key_cache"],
-        name="ScatterKey",
+        name="TensorScatterKey",
         axis=1,
     )
 
-    # ScatterElements for value cache update
+    # TensorScatter for value cache update
     scatter_v_node = helper.make_node(
-        "ScatterElements",
-        inputs=["value_cache", "scatter_indices_v", "new_v"],
+        "TensorScatter",
+        inputs=["value_cache", "new_v", "write_indices"],
         outputs=["updated_value_cache"],
-        name="ScatterValue",
+        name="TensorScatterValue",
         axis=1,
     )
 
@@ -180,7 +202,7 @@ def build_scatter_attention_graph(
         ],
         outputs=["output", "present_key", "present_value"],
         name="Attention_0",
-        is_causal=0,
+        is_causal=is_causal,
         kv_num_heads=kv_num_heads,
         q_num_heads=q_num_heads,
         softcap=0.0,
@@ -189,28 +211,30 @@ def build_scatter_attention_graph(
     )
 
     # Graph inputs
+    cache_shape = [batch_size, total_kv_seq_len, kv_hidden]
     graph_inputs = [
-        helper.make_tensor_value_info("key_cache", ort_type, [batch_size, total_kv_seq_len, kv_hidden]),
-        helper.make_tensor_value_info("value_cache", ort_type, [batch_size, total_kv_seq_len, kv_hidden]),
-        helper.make_tensor_value_info("scatter_indices_k", TensorProto.INT64, [batch_size, q_seq_len, kv_hidden]),
-        helper.make_tensor_value_info("scatter_indices_v", TensorProto.INT64, [batch_size, q_seq_len, kv_hidden]),
+        helper.make_tensor_value_info("key_cache", ort_type, cache_shape),
+        helper.make_tensor_value_info("value_cache", ort_type, cache_shape),
         helper.make_tensor_value_info("new_k", ort_type, [batch_size, q_seq_len, kv_hidden]),
         helper.make_tensor_value_info("new_v", ort_type, [batch_size, q_seq_len, kv_hidden]),
+        helper.make_tensor_value_info("write_indices", TensorProto.INT64, [batch_size]),
         helper.make_tensor_value_info("query", ort_type, [batch_size, q_seq_len, q_hidden]),
         helper.make_tensor_value_info("nonpad_kv_seqlen", TensorProto.INT64, [batch_size]),
     ]
 
-    # Graph outputs
+    # Graph outputs: Attention outputs + TensorScatter outputs for in-place binding
     present_shape = [batch_size, kv_num_heads, total_kv_seq_len, head_size]
     graph_outputs = [
         helper.make_tensor_value_info("output", ort_type, [batch_size, q_seq_len, q_hidden]),
         helper.make_tensor_value_info("present_key", ort_type, present_shape),
         helper.make_tensor_value_info("present_value", ort_type, present_shape),
+        helper.make_tensor_value_info("updated_key_cache", ort_type, cache_shape),
+        helper.make_tensor_value_info("updated_value_cache", ort_type, cache_shape),
     ]
 
     graph = helper.make_graph(
         [scatter_k_node, scatter_v_node, attention_node],
-        "ScatterAttention_Graph",
+        "TensorScatterAttention_Graph",
         graph_inputs,
         graph_outputs,
     )
@@ -219,7 +243,7 @@ def build_scatter_attention_graph(
     return model.SerializeToString()
 
 
-def run_scatter_attention(
+def run_tensorscatter_attention(
     batch_size,
     total_kv_seq_len,
     q_seq_len,
@@ -232,74 +256,68 @@ def run_scatter_attention(
     device,
     torch_type,
     ort_type,
+    is_causal=0,
     std=0.2,
 ):
     """
-    Run TensorScatter + Attention test and compare against NumPy reference.
+    Run TensorScatter + Attention test with IO Binding and compare against NumPy reference.
+
+    Uses IO Binding to:
+    1. Pre-allocate KV cache as OrtValues on the target device
+    2. Bind the same OrtValue as both TensorScatter input and output (in-place update)
+    3. Feed the updated cache to Attention
+    4. Pre-allocate output buffers on the target device
 
     Args:
-        scatter_positions: list of ints per batch — the seq position(s) to scatter new KV into.
-            For a single decode step, this is one position per batch.
+        scatter_positions: list of ints per batch — the write index for TensorScatter.
         nonpad_seqlens: list of ints per batch — valid KV length AFTER scatter.
+        is_causal: 1 for causal attention, 0 for non-causal.
     """
     torch.manual_seed(42)
     kv_hidden = kv_num_heads * head_size
     q_hidden = q_num_heads * head_size
+    np_type = numpy.float16 if torch_type == torch.float16 else numpy.float32
 
-    # Pre-allocated KV cache (partially filled with valid data, rest is padding/zeros)
-    key_cache = torch.randn(batch_size, total_kv_seq_len, kv_hidden, dtype=torch_type, device=device) * std
-    value_cache = torch.randn(batch_size, total_kv_seq_len, kv_hidden, dtype=torch_type, device=device) * std
+    # Generate test data as numpy arrays via torch for reproducible seeding
+    key_cache_np = (torch.randn(batch_size, total_kv_seq_len, kv_hidden, dtype=torch_type) * std).numpy()
+    value_cache_np = (torch.randn(batch_size, total_kv_seq_len, kv_hidden, dtype=torch_type) * std).numpy()
 
     # Zero out padding positions in cache
     for b in range(batch_size):
         old_valid = max(0, nonpad_seqlens[b] - q_seq_len)
         if old_valid < total_kv_seq_len:
-            key_cache[b, old_valid:, :] = 0
-            value_cache[b, old_valid:, :] = 0
+            key_cache_np[b, old_valid:, :] = 0
+            value_cache_np[b, old_valid:, :] = 0
 
-    # New KV entries to scatter
-    new_k = torch.randn(batch_size, q_seq_len, kv_hidden, dtype=torch_type, device=device) * std
-    new_v = torch.randn(batch_size, q_seq_len, kv_hidden, dtype=torch_type, device=device) * std
-
-    # Build scatter indices: for each batch, scatter new_k[b, t, :] into key_cache[b, pos, :]
-    # ScatterElements with axis=1 needs indices of shape [B, q_seq_len, kv_hidden]
-    # where each element along dim=1 is the target seq position, broadcast across hidden dim
-    scatter_indices_k = torch.zeros(batch_size, q_seq_len, kv_hidden, dtype=torch.int64, device=device)
-    scatter_indices_v = torch.zeros(batch_size, q_seq_len, kv_hidden, dtype=torch.int64, device=device)
-    for b in range(batch_size):
-        for t in range(q_seq_len):
-            pos = scatter_positions[b] + t
-            scatter_indices_k[b, t, :] = pos
-            scatter_indices_v[b, t, :] = pos
-
-    # Query
-    query = torch.randn(batch_size, q_seq_len, q_hidden, dtype=torch_type, device=device) * std
-
-    nonpad_kv_seqlen = torch.tensor(nonpad_seqlens, dtype=torch.int64, device=device)
+    new_k_np = (torch.randn(batch_size, q_seq_len, kv_hidden, dtype=torch_type) * std).numpy()
+    new_v_np = (torch.randn(batch_size, q_seq_len, kv_hidden, dtype=torch_type) * std).numpy()
+    query_np = (torch.randn(batch_size, q_seq_len, q_hidden, dtype=torch_type) * std).numpy()
+    write_indices_np = numpy.array(scatter_positions, dtype=numpy.int64)
+    nonpad_kv_seqlen_np = numpy.array(nonpad_seqlens, dtype=numpy.int64)
 
     # --- NumPy reference ---
-    # Apply scatter manually
-    key_cache_np = key_cache.float().cpu().numpy().copy()
-    value_cache_np = value_cache.float().cpu().numpy().copy()
-    new_k_np = new_k.float().cpu().numpy()
-    new_v_np = new_v.float().cpu().numpy()
+    # Compute reference in float32 for accuracy
+    key_cache_ref = key_cache_np.astype(numpy.float32).copy()
+    value_cache_ref = value_cache_np.astype(numpy.float32).copy()
+    new_k_ref = new_k_np.astype(numpy.float32)
+    new_v_ref = new_v_np.astype(numpy.float32)
 
     for b in range(batch_size):
+        pos = scatter_positions[b]
         for t in range(q_seq_len):
-            pos = scatter_positions[b] + t
-            key_cache_np[b, pos, :] = new_k_np[b, t, :]
-            value_cache_np[b, pos, :] = new_v_np[b, t, :]
+            key_cache_ref[b, pos + t, :] = new_k_ref[b, t, :]
+            value_cache_ref[b, pos + t, :] = new_v_ref[b, t, :]
 
-    # Reshape to BSNH for reference
-    q_ref = query.float().cpu().numpy().reshape(batch_size, q_seq_len, q_num_heads, head_size)
-    k_ref = key_cache_np.reshape(batch_size, total_kv_seq_len, kv_num_heads, head_size)
-    v_ref = value_cache_np.reshape(batch_size, total_kv_seq_len, kv_num_heads, head_size)
+    # Reshape to BSNH for reference attention
+    q_ref = query_np.astype(numpy.float32).reshape(batch_size, q_seq_len, q_num_heads, head_size)
+    k_ref = key_cache_ref.reshape(batch_size, total_kv_seq_len, kv_num_heads, head_size)
+    v_ref = value_cache_ref.reshape(batch_size, total_kv_seq_len, kv_num_heads, head_size)
 
-    ref_output = numpy_attention_ref(q_ref, k_ref, v_ref, nonpad_seqlens, is_causal=False)
+    ref_output = numpy_attention_ref(q_ref, k_ref, v_ref, nonpad_seqlens, is_causal=bool(is_causal))
     ref_output_3d = ref_output.reshape(batch_size, q_seq_len, q_hidden)
 
-    # --- ORT execution ---
-    onnx_model_str = build_scatter_attention_graph(
+    # --- ORT execution with IO Binding ---
+    onnx_model_str = build_tensorscatter_attention_graph(
         batch_size=batch_size,
         total_kv_seq_len=total_kv_seq_len,
         q_seq_len=q_seq_len,
@@ -307,65 +325,126 @@ def run_scatter_attention(
         kv_num_heads=kv_num_heads,
         head_size=head_size,
         ort_type=ort_type,
+        is_causal=is_causal,
     )
 
     sess_options = SessionOptions()
     session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
 
-    feed = {
-        "key_cache": key_cache.cpu().numpy(),
-        "value_cache": value_cache.cpu().numpy(),
-        "scatter_indices_k": scatter_indices_k.cpu().numpy(),
-        "scatter_indices_v": scatter_indices_v.cpu().numpy(),
-        "new_k": new_k.cpu().numpy(),
-        "new_v": new_v.cpu().numpy(),
-        "query": query.cpu().numpy(),
-        "nonpad_kv_seqlen": nonpad_kv_seqlen.cpu().numpy(),
-    }
+    # Determine device for OrtValue allocation
+    ort_device = "cuda" if "CUDA" in ep else "cpu"
+    device_id = 0
 
-    output, present_k, present_v = session.run(None, feed)
+    # Create OrtValues for inputs on target device
+    key_cache_ort = OrtValue.ortvalue_from_numpy(key_cache_np, ort_device, device_id)
+    value_cache_ort = OrtValue.ortvalue_from_numpy(value_cache_np, ort_device, device_id)
+    new_k_ort = OrtValue.ortvalue_from_numpy(new_k_np, ort_device, device_id)
+    new_v_ort = OrtValue.ortvalue_from_numpy(new_v_np, ort_device, device_id)
+    write_indices_ort = OrtValue.ortvalue_from_numpy(write_indices_np, ort_device, device_id)
+    query_ort = OrtValue.ortvalue_from_numpy(query_np, ort_device, device_id)
+    nonpad_ort = OrtValue.ortvalue_from_numpy(nonpad_kv_seqlen_np, ort_device, device_id)
 
-    return output, ref_output_3d, present_k, present_v
+    # Pre-allocate output buffers on target device
+    present_shape = [batch_size, kv_num_heads, total_kv_seq_len, head_size]
+    output_ort = OrtValue.ortvalue_from_shape_and_type(
+        [batch_size, q_seq_len, q_hidden], np_type, ort_device, device_id
+    )
+    present_k_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, np_type, ort_device, device_id)
+    present_v_ort = OrtValue.ortvalue_from_shape_and_type(present_shape, np_type, ort_device, device_id)
+
+    # Set up IO binding
+    io_binding = session.io_binding()
+
+    # Bind all inputs
+    io_binding.bind_ortvalue_input("key_cache", key_cache_ort)
+    io_binding.bind_ortvalue_input("value_cache", value_cache_ort)
+    io_binding.bind_ortvalue_input("new_k", new_k_ort)
+    io_binding.bind_ortvalue_input("new_v", new_v_ort)
+    io_binding.bind_ortvalue_input("write_indices", write_indices_ort)
+    io_binding.bind_ortvalue_input("query", query_ort)
+    io_binding.bind_ortvalue_input("nonpad_kv_seqlen", nonpad_ort)
+
+    # Bind Attention outputs to pre-allocated buffers
+    io_binding.bind_ortvalue_output("output", output_ort)
+    io_binding.bind_ortvalue_output("present_key", present_k_ort)
+    io_binding.bind_ortvalue_output("present_value", present_v_ort)
+
+    # Bind TensorScatter outputs to the SAME OrtValues as inputs (in-place update).
+    # TensorScatter declares MayInplace(0, 0), so ORT will skip the copy when
+    # input and output share the same buffer.
+    io_binding.bind_ortvalue_output("updated_key_cache", key_cache_ort)
+    io_binding.bind_ortvalue_output("updated_value_cache", value_cache_ort)
+
+    # Execute with IO binding
+    io_binding.synchronize_inputs()
+    session.run_with_iobinding(io_binding)
+    io_binding.synchronize_outputs()
+
+    # Read results from pre-bound OrtValues
+    output_result = output_ort.numpy()
+    present_k_result = present_k_ort.numpy()
+    present_v_result = present_v_ort.numpy()
+
+    return output_result, ref_output_3d, present_k_result, present_v_result
 
 
 # #################################################################################################
 #  Test Case Generator
 # #################################################################################################
 
+# Shared test dimensions
+_HEAD_SIZE = 64
+_TOTAL_KV_SEQ_LEN = 8
 
-def scatter_attention_test_cases():
-    """
-    Generate test cases for ScatterElements + Attention pattern.
-
-    Simulates decode steps: new KV entries scattered into cache,
-    then attention computed with nonpad_kv_seqlen masking.
-    """
-    head_size = 64
-    total_kv_seq_len = 8
-
+_GQA_CASES = [
     # (batch, q_seq, q_heads, kv_heads, scatter_positions, nonpad_seqlens, label)
-    cases = [
-        # GQA mode: different valid lengths per batch
-        (2, 1, 8, 2, [2, 4], [3, 5], "gqa_diff_lens"),
-        # GQA mode: same valid length
-        (2, 1, 8, 2, [4, 4], [5, 5], "gqa_same_lens"),
-        # GQA mode: one batch empty, scatter into position 0
-        (2, 1, 8, 2, [0, 3], [1, 4], "gqa_one_empty"),
-        # GQA mode: full length
-        (2, 1, 8, 2, [7, 7], [8, 8], "gqa_full_len"),
-        # MHA mode: different valid lengths
-        (2, 1, 4, 4, [2, 4], [3, 5], "mha_diff_lens"),
-        # MHA mode: same valid length
-        (2, 1, 4, 4, [4, 4], [5, 5], "mha_same_lens"),
-        # MHA mode: one batch empty
-        (2, 1, 4, 4, [0, 3], [1, 4], "mha_one_empty"),
-        # MHA mode: full length
-        (2, 1, 4, 4, [7, 7], [8, 8], "mha_full_len"),
-    ]
+    (2, 1, 8, 2, [2, 4], [3, 5], "gqa_diff_lens"),
+    (2, 1, 8, 2, [4, 4], [5, 5], "gqa_same_lens"),
+    (2, 1, 8, 2, [0, 3], [1, 4], "gqa_one_empty"),
+    (2, 1, 8, 2, [7, 7], [8, 8], "gqa_full_len"),
+]
 
+_MHA_CASES = [
+    (2, 1, 4, 4, [2, 4], [3, 5], "mha_diff_lens"),
+    (2, 1, 4, 4, [4, 4], [5, 5], "mha_same_lens"),
+    (2, 1, 4, 4, [0, 3], [1, 4], "mha_one_empty"),
+    (2, 1, 4, 4, [7, 7], [8, 8], "mha_full_len"),
+]
+
+
+def _make_test_params(cases, is_causal):
+    """Convert raw case tuples into parameterized test parameter tuples."""
+    causal_str = "causal" if is_causal else "noncausal"
     for batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, label in cases:
-        name = f"b{batch}_qs{q_seq}_qh{q_heads}_kvh{kv_heads}_h{head_size}_{label}"
-        yield (name, batch, q_seq, q_heads, kv_heads, head_size, total_kv_seq_len, scatter_pos, seqlens)
+        name = f"b{batch}_qs{q_seq}_qh{q_heads}_kvh{kv_heads}_h{_HEAD_SIZE}_{label}_{causal_str}"
+        yield (
+            name,
+            batch,
+            q_seq,
+            q_heads,
+            kv_heads,
+            _HEAD_SIZE,
+            _TOTAL_KV_SEQ_LEN,
+            scatter_pos,
+            seqlens,
+            is_causal,
+        )
+
+
+def cpu_test_cases():
+    """CPU: all modes, non-causal (both GQA and MHA work without restrictions)."""
+    yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=0)
+
+
+def cuda_fp16_test_cases():
+    """CUDA fp16: MHA only. CUDA GQA path requires self-attention (kv_seq == q_seq)
+    which is incompatible with the decode-step TensorScatter pattern."""
+    yield from _make_test_params(_MHA_CASES, is_causal=0)
+
+
+def cuda_fp32_test_cases():
+    """CUDA fp32: MHA only (CUDA GQA path requires float16)."""
+    yield from _make_test_params(_MHA_CASES, is_causal=0)
 
 
 # #################################################################################################
@@ -378,13 +457,23 @@ atol = {"fp16": 5e-3, "fp32": 5e-3}
 
 
 class TestTensorScatterAttentionCPU(unittest.TestCase):
-    """Test ScatterElements + Attention (opset 24) on CPU with float32."""
+    """Test TensorScatter + Attention (opset 24) on CPU with float32 and IO Binding."""
 
-    @parameterized.expand(scatter_attention_test_cases())
-    def test_scatter_attention_cpu_fp32(
-        self, name, batch, q_seq, q_heads, kv_heads, head_size, total_kv, scatter_pos, seqlens
+    @parameterized.expand(cpu_test_cases())
+    def test_tensorscatter_attention_cpu_fp32(
+        self,
+        name,
+        batch,
+        q_seq,
+        q_heads,
+        kv_heads,
+        head_size,
+        total_kv,
+        scatter_pos,
+        seqlens,
+        is_causal,
     ):
-        output, ref_output, _, _ = run_scatter_attention(
+        output, ref_output, _, _ = run_tensorscatter_attention(
             batch_size=batch,
             total_kv_seq_len=total_kv,
             q_seq_len=q_seq,
@@ -397,19 +486,30 @@ class TestTensorScatterAttentionCPU(unittest.TestCase):
             device="cpu",
             torch_type=torch.float32,
             ort_type=TensorProto.FLOAT,
+            is_causal=is_causal,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp32"], atol=atol["fp32"])
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
 class TestTensorScatterAttentionCUDAFP16(unittest.TestCase):
-    """Test ScatterElements + Attention (opset 24) on CUDA with float16."""
+    """Test TensorScatter + Attention (opset 24) on CUDA with float16 and IO Binding."""
 
-    @parameterized.expand(scatter_attention_test_cases())
-    def test_scatter_attention_cuda_fp16(
-        self, name, batch, q_seq, q_heads, kv_heads, head_size, total_kv, scatter_pos, seqlens
+    @parameterized.expand(cuda_fp16_test_cases())
+    def test_tensorscatter_attention_cuda_fp16(
+        self,
+        name,
+        batch,
+        q_seq,
+        q_heads,
+        kv_heads,
+        head_size,
+        total_kv,
+        scatter_pos,
+        seqlens,
+        is_causal,
     ):
-        output, ref_output, _, _ = run_scatter_attention(
+        output, ref_output, _, _ = run_tensorscatter_attention(
             batch_size=batch,
             total_kv_seq_len=total_kv,
             q_seq_len=q_seq,
@@ -422,19 +522,33 @@ class TestTensorScatterAttentionCUDAFP16(unittest.TestCase):
             device="cuda",
             torch_type=torch.float16,
             ort_type=TensorProto.FLOAT16,
+            is_causal=is_causal,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
 class TestTensorScatterAttentionCUDAFP32(unittest.TestCase):
-    """Test ScatterElements + Attention (opset 24) on CUDA with float32."""
+    """Test TensorScatter + Attention (opset 24) on CUDA with float32 and IO Binding.
 
-    @parameterized.expand(scatter_attention_test_cases())
-    def test_scatter_attention_cuda_fp32(
-        self, name, batch, q_seq, q_heads, kv_heads, head_size, total_kv, scatter_pos, seqlens
+    Only MHA cases: CUDA GQA path requires float16.
+    """
+
+    @parameterized.expand(cuda_fp32_test_cases())
+    def test_tensorscatter_attention_cuda_fp32(
+        self,
+        name,
+        batch,
+        q_seq,
+        q_heads,
+        kv_heads,
+        head_size,
+        total_kv,
+        scatter_pos,
+        seqlens,
+        is_causal,
     ):
-        output, ref_output, _, _ = run_scatter_attention(
+        output, ref_output, _, _ = run_tensorscatter_attention(
             batch_size=batch,
             total_kv_seq_len=total_kv,
             q_seq_len=q_seq,
@@ -447,6 +561,7 @@ class TestTensorScatterAttentionCUDAFP32(unittest.TestCase):
             device="cuda",
             torch_type=torch.float32,
             ort_type=TensorProto.FLOAT,
+            is_causal=is_causal,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp32"], atol=atol["fp32"])
 

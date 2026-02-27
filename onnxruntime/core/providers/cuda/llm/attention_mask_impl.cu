@@ -175,6 +175,7 @@ template Status LaunchConvertBoolMaskToAttentionBias<__nv_bfloat16>(
 
 // CUDA kernel to convert nonpad_kv_seqlen (int64) to seqlens_k (int32) for GQA.
 // GQA convention: seqlens_k = nonpad_kv_seqlen - 1 (last valid index, not count).
+// A value of 0 in seqlens_k represents an empty KV sequence for that batch element.
 __global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
     const int64_t* __restrict__ nonpad_kv_seqlen,
     int* __restrict__ seqlens_k,
@@ -185,7 +186,12 @@ __global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
     int64_t val = nonpad_kv_seqlen[idx];
     // Clamp to valid range [0, total_sequence_length] before int64→int32 cast.
     val = max(static_cast<int64_t>(0), min(val, static_cast<int64_t>(total_sequence_length)));
-    seqlens_k[idx] = static_cast<int>(val) - 1;
+    int seqlen = static_cast<int>(val) - 1;
+    // Clamp to non-negative so that 0 cleanly represents an empty KV sequence.
+    if (seqlen < 0) {
+      seqlen = 0;
+    }
+    seqlens_k[idx] = seqlen;
   }
 }
 
