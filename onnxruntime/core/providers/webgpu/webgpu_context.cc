@@ -510,8 +510,10 @@ std::vector<const char*> WebGpuContext::GetEnabledAdapterToggles() const {
   constexpr const char* toggles[] = {
       "use_dxc",
       "allow_unsafe_apis",
+      "decompose_uniform_buffers",
 #if defined(DAWN_ENABLE_VULKAN)
       "use_vulkan_memory_model",
+      "vulkan_enable_f16_on_nvidia",
 #endif
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
