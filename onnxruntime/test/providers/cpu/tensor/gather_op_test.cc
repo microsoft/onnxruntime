@@ -342,6 +342,12 @@ TEST(GatherOpTest, Gather_axis1_indices2d_string) {
 }
 
 TEST(GatherOpTest, Gather_overflow_check) {
+// Skip on 32-bit platforms where allocating the full reference tensor is infeasible due
+// to std::vector::max_size being limited to the size of ptrdiff_t (INT32_MAX on 32-bit).
+#if SIZE_MAX <= UINT32_MAX
+  GTEST_SKIP() << "Gather_overflow_check skipped on 32-bit platforms.";
+#endif
+
   // The test uses dimensions (46341, 2) and indices of length 46341, which produce an output
   // shape of (46341, 46341).
   //
