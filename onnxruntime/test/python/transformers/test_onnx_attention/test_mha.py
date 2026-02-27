@@ -920,5 +920,204 @@ class TestONNXAttentionMHABoolMask(unittest.TestCase):
         )
 
 
+# #################################################################################################
+#  Parity Check with nonpad_kv_seqlen (Opset 24)
+# #################################################################################################
+
+
+def parity_check_mha_prompt_with_nonpad_kv_seqlen(
+    config: AttentionConfig,
+    nonpad_seqlens: torch.Tensor,
+    ep,
+    device,
+    torch_type,
+    ort_type,
+    rtol,
+    atol,
+    std=0.2,
+):
+    """
+    Parity check for ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen.
+
+    nonpad_kv_seqlen tells the op how many KV positions per batch are valid.
+    Positions beyond the valid length are treated as padding and masked out.
+    Cannot be used together with past_key/past_value.
+    """
+    torch.manual_seed(0)
+
+    q = (
+        torch.randn(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    k = (
+        torch.randn(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    v = torch.randn_like(k) * std
+
+    # Zero out padded positions in K, V for proper comparison
+    for b in range(config.batch_size):
+        valid_len = nonpad_seqlens[b].item()
+        if valid_len < config.kv_sequence_length:
+            k[b, valid_len:, :, :] = 0
+            v[b, valid_len:, :, :] = 0
+
+    # Reference: use key_padding_mask [batch, kv_seq]
+    key_padding_mask = create_boolean_mask_from_seqlens(
+        seqlens=nonpad_seqlens.to(torch.int32),
+        total_seq_len=config.kv_sequence_length,
+        mask_dims=2,
+        device=device,
+    )
+
+    out_ref, _ = attention_ref(
+        q=q,
+        k=k,
+        v=v,
+        key_padding_mask=key_padding_mask,
+        causal=config.is_causal == 1,
+    )
+
+    # ORT path: use nonpad_kv_seqlen (int64 tensor)
+    nonpad_kv_seqlen_tensor = nonpad_seqlens.to(torch.int64).to(device)
+
+    out, present_k, present_v = attention_prompt_func(
+        q=q,
+        k=k,
+        v=v,
+        config=config,
+        attn_mask=None,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+        nonpad_kv_seqlen=nonpad_kv_seqlen_tensor,
+    )
+
+    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+
+    # Zero out padded query positions for comparison
+    for b in range(config.batch_size):
+        valid_len = nonpad_seqlens[b].item()
+        if valid_len < config.q_sequence_length:
+            out[b, valid_len:, :, :] = 0
+            out_ref[b, valid_len:, :, :] = 0
+
+    out_np = out.to(torch.float32).detach().cpu().numpy()
+    out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+    numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
+
+def mha_nonpad_kv_seqlen_test_cases():
+    """
+    Generate test cases for ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen.
+
+    Scenarios:
+    - Different valid lengths per batch
+    - All same length (degenerate case)
+    - Length = 0 for some batches (empty KV)
+    - Full length (no padding — should match existing behavior)
+    """
+    h = 128
+    sq = 16
+    skv = 16
+    n = 8
+
+    # (batch_size, nonpad_seqlens_list)
+    seqlen_scenarios = [
+        (2, [3, 5], "diff_lens"),
+        (2, [8, 8], "same_lens"),
+        (2, [0, 5], "zero_len"),
+        (2, [16, 16], "full_len"),
+    ]
+
+    for batch_size, seqlens, label in seqlen_scenarios:
+        config = AttentionConfig(
+            batch_size=batch_size,
+            q_sequence_length=sq,
+            kv_sequence_length=skv,
+            past_kv_sequence_length=0,
+            q_num_heads=n,
+            kv_num_heads=n,
+            head_size=h,
+            is_causal=0,
+            has_nonpad_kv_seqlen=True,
+            attn_mask_type="additive",
+        )
+        name = f"b{batch_size}_sq{sq}_skv{skv}_nh{n}_h{h}_{label}"
+        yield name, config, seqlens
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping MHA tests.")
+class TestONNXAttentionMHANonpadKVSeqlen(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen on CUDA."""
+
+    @parameterized.expand(mha_nonpad_kv_seqlen_test_cases())
+    def test_mha_nonpad_kv_seqlen_fp16(self, name, config, seqlens):
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
+
+        parity_check_mha_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(mha_nonpad_kv_seqlen_test_cases())
+    def test_mha_nonpad_kv_seqlen_fp32(self, name, config, seqlens):
+        config.kv_cache_type = "float32"
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
+
+        parity_check_mha_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+
+class TestONNXAttentionMHANonpadKVSeqlenCPU(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen on CPU."""
+
+    @parameterized.expand(mha_nonpad_kv_seqlen_test_cases())
+    def test_mha_nonpad_kv_seqlen_cpu(self, name, config, seqlens):
+        config.kv_cache_type = "float32"
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cpu")
+
+        parity_check_mha_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

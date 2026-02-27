@@ -11,10 +11,15 @@
 # -------------------------------------------------------------------------
 
 """
-Shared utilities for ONNX Attention op (opset 23) tests.
+Shared utilities for ONNX Attention op (opset 23 and 24) tests.
 
 Contains configuration, ONNX graph builders, reference implementation,
 and parity check helpers used by both GQA and MHA test modules.
+
+Opset 24 adds an optional `nonpad_kv_seqlen` input (input index 6) to the
+Attention op.  This 1D int64 tensor of shape [batch_size] specifies the
+number of valid (non-padding) KV tokens per batch element.  It cannot be
+used together with past_key / past_value (prompt-only).
 """
 
 import math
@@ -95,6 +100,7 @@ class AttentionConfig:
     has_attn_mask: bool = False
     attn_mask_dims: int = 2  # 2D, 3D, or 4D boolean mask
     attn_mask_type: str = "bool"  # "bool" for GQA path, "additive" for MHA path
+    has_nonpad_kv_seqlen: bool = False  # Opset 24: per-batch valid KV lengths
 
 
 # #################################################################################################
@@ -111,13 +117,14 @@ def create_attention_node_and_io(
     """
     Create ONNX Attention op node and I/O definitions for testing.
 
-    ONNX Attention op (opset 23) inputs:
+    ONNX Attention op inputs:
     - 0: Q (query) - required
     - 1: K (key) - required
     - 2: V (value) - required
     - 3: attn_mask - optional
     - 4: past_key - optional
     - 5: past_value - optional
+    - 6: nonpad_kv_seqlen - optional (opset 24+)
 
     ONNX Attention op outputs:
     - 0: Y (output)
@@ -148,7 +155,7 @@ def create_attention_node_and_io(
     if output_qk > 0:
         outputs.append("output_qk")
 
-    # ONNX Attention op inputs: Q, K, V, attn_mask, past_key, past_value
+    # ONNX Attention op inputs: Q, K, V, attn_mask, past_key, past_value, nonpad_kv_seqlen
     # attn_mask is used as padding mask (additive bias: 0.0 for valid, -inf for masked)
     inputs = [
         "query",
@@ -157,6 +164,7 @@ def create_attention_node_and_io(
         "attn_mask" if config.has_attn_mask else "",
         "past_key" if is_past else "",
         "past_value" if is_past else "",
+        "nonpad_kv_seqlen" if config.has_nonpad_kv_seqlen else "",
     ]
 
     # Remove trailing empty strings
@@ -239,6 +247,13 @@ def create_attention_node_and_io(
             ]
         )
 
+    # nonpad_kv_seqlen for ONNX Attention op (opset 24+)
+    # Shape: [batch_size], dtype: int64
+    if config.has_nonpad_kv_seqlen:
+        graph_input.append(
+            helper.make_tensor_value_info("nonpad_kv_seqlen", TensorProto.INT64, [config.batch_size])
+        )
+
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
 
@@ -262,11 +277,17 @@ def create_attention_node_and_io(
     return node, graph_input, graph_output
 
 
+def _get_opset_version(config: AttentionConfig):
+    """Return 24 when nonpad_kv_seqlen is used, otherwise 23."""
+    return 24 if config.has_nonpad_kv_seqlen else 23
+
+
 def create_attention_graph_prompt(config: AttentionConfig, ort_type):
     """Create ONNX graph for prompt phase (no past KV cache)."""
     node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False)
     graph = helper.make_graph([node], "Attention_Graph", graph_input, graph_output)
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 23)])
+    opset = _get_opset_version(config)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
     return model.SerializeToString()
 
 
@@ -274,7 +295,8 @@ def create_attention_graph_past(config: AttentionConfig, ort_type):
     """Create ONNX graph for decoding phase (with past KV cache)."""
     node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=True)
     graph = helper.make_graph([node], "Attention_Graph", graph_input, graph_output)
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 23)])
+    opset = _get_opset_version(config)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
     return model.SerializeToString()
 
 
@@ -338,6 +360,7 @@ def attention_prompt_func(
     ep,
     device,
     ort_type=TensorProto.FLOAT16,
+    nonpad_kv_seqlen=None,
 ):
     """
     Run ONNX Attention op for prompt phase (no past KV cache).
@@ -351,6 +374,7 @@ def attention_prompt_func(
         ep: Execution provider (e.g., "CUDAExecutionProvider")
         device: Device string (e.g., "cuda")
         ort_type: ONNX tensor type
+        nonpad_kv_seqlen: Optional int64 tensor [batch_size] for opset 24
     """
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -382,6 +406,10 @@ def attention_prompt_func(
     if config.has_attn_mask and attn_mask is not None:
         mask_ort_type = _get_mask_ort_type(config, ort_type)
         bind_tensor(io_binding, "attn_mask", attn_mask, device, mask_ort_type)
+
+    # Bind optional nonpad_kv_seqlen (opset 24+)
+    if config.has_nonpad_kv_seqlen and nonpad_kv_seqlen is not None:
+        bind_tensor(io_binding, "nonpad_kv_seqlen", nonpad_kv_seqlen, device, TensorProto.INT64)
 
     # Bind Outputs
     hidden_size = config.q_num_heads * config.head_size
