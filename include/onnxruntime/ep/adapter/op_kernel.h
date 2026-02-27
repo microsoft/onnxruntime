@@ -90,7 +90,7 @@ struct OpKernelContext {
       return nullptr;
     }
 
-    input_tensors_[index] = CreateTensorFromApiValue(input);
+    input_tensors_[index] = CreateTensorFromApiValue(const_cast<OrtValue*>(static_cast<const OrtValue*>(input)));
     return &input_tensors_[index];
   }
   Tensor* Output(int index, const TensorShape& shape) {
@@ -191,7 +191,7 @@ struct KernelImpl : OrtKernelImpl {
     Status status;
     ORT_TRY {
       auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
-      const auto tensor = CreateTensorFromApiValue(weight);
+      const auto tensor = CreateTensorFromApiValue(const_cast<OrtValue*>(weight));
       status = kernel_impl->PrePack(tensor, input_index, AllocatorPtr{}, *is_packed, nullptr);
     }
     ORT_CATCH(const std::exception& ex) {

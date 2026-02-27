@@ -19,8 +19,8 @@ namespace adapter {
 /// <summary>
 /// Create an unowned onnxruntime::Tensor from a tensor OrtValue from C API.
 /// </summary>
-inline onnxruntime::Tensor CreateTensorFromApiValue(const OrtValue* ort_value) {
-  Ort::ConstValue value{ort_value};
+inline onnxruntime::Tensor CreateTensorFromApiValue(OrtValue* ort_value) {
+  Ort::UnownedValue value{ort_value};
   EP_ENFORCE(value.IsTensor(), "Only tensor OrtValue is supported.");
 
   ONNXTensorElementDataType element_type;
@@ -43,7 +43,7 @@ inline onnxruntime::Tensor CreateTensorFromApiValue(const OrtValue* ort_value) {
 
   return Tensor(data_type,
                 TensorShape{shape.shape, shape.shape_len},
-                const_cast<void*>(value.GetTensorRawData()),
+                value.GetTensorMutableRawData(),
                 tensor_memory_info);
 }
 
