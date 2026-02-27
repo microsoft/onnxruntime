@@ -381,10 +381,10 @@ TEST(GatherOpTest, Gather_overflow_check) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
-  // Note: peak memory usage will be at least ~6GiB (3 x 2GiB):
+  // Note: peak memory usage will be in the order of multiple GiB:
   //  - OpTester holds expected outputs buffer of size ~2GiB
   //  - The session state allocates a buffer for the output of size ~2GiB
-  //  - OpTester holds a `fetches_` buffer into which the Run() output is copied
+  //  - Other overhead and bookkeeping.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
