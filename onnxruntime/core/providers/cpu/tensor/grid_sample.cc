@@ -372,10 +372,10 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
     if (mode_ == Linear && padding_mode_ == Zeros && !align_corners_) {
       std::vector<BilinearSamplePlan2D<T>> sampling_plan;
       for (int64_t n = 0; n < N; n++) {
-        // Choose fast path when all 4 neighbors are within the image and use zero for out-of-boundary neighbors.
-        // This fast path can be 2-3x faster than the generic path with boundary check and supports Neon optimization.
-        // sampling_plan helps precomputing a separate plan entry per output pixel when bilinear interpolation is used
-        // with zero padding and no align_corners set.
+        // Fast path for bilinear interpolation with zero padding when align_corners is false.
+        // Out-of-bounds neighbors are handled via masked loads and implicitly treated as zeros,
+        // and sampling_plan precomputes a separate plan entry per output pixel to avoid per-pixel
+        // boundary checks in the main loop.
         TryRunBilinearZerosFastPath2D(*input, *grid, Y, n, C, H_in, W_in, H_out, W_out, tp, sampling_plan);
       }
     } else {
