@@ -382,9 +382,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // the MHA path below, where 2D masks follow ONNX broadcasting: [A, B] → [1, 1, A, B], so
     // 2D = (q_seq_len, total_seq_len) with both batch and heads broadcast.
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
-      // Allocate validation result buffer on GPU
-      auto validation_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
-
       // Get mask dimensions for broadcasting
       // attn_mask can be 2D, 3D, or 4D and broadcasts to (batch_size, num_heads, q_seq_len, total_seq_len)
       const auto& mask_shape = attn_mask->Shape();
@@ -411,11 +408,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                "Boolean attn_mask must be 2D, 3D, or 4D. Got ", mask_dims, "D.");
       }
 
-      // Launch CUDA kernel to convert mask to seqlens_k and validate
+      // Launch CUDA kernel to convert mask to seqlens_k.
+      // Mask validity (right-padding, contiguous) is checked asynchronously via CUDA_KERNEL_ASSERT.
       ORT_RETURN_IF_ERROR(LaunchConvertMaskToSeqlensK(
           attn_mask->Data<bool>(),
           seqlens_k_buffer.get(),
-          validation_buffer.get(),
           parameters.batch_size,
           parameters.total_sequence_length,
           mask_dims,
@@ -424,28 +421,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           mask_dim2,
           cuda_stream,
           device_prop.maxThreadsPerBlock));
-
-      // Copy validation results to CPU and check for errors
-      std::vector<int> validation_host(parameters.batch_size);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(validation_host.data(), validation_buffer.get(),
-                                           sizeof(int) * parameters.batch_size,
-                                           cudaMemcpyDeviceToHost, cuda_stream));
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-
-      for (int b = 0; b < parameters.batch_size; ++b) {
-        if (validation_host[b] == 1) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Boolean attn_mask for batch ", b,
-                                 " does not start with True. "
-                                 "GQA path only supports right-padding masks where valid tokens come first.");
-        } else if (validation_host[b] == 2) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Boolean attn_mask for batch ", b,
-                                 " is not contiguous. "
-                                 "GQA path only supports right-padding masks with contiguous True values "
-                                 "followed by contiguous False values (no interleaving).");
-        }
-      }
     } else if (attn_mask != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Non-boolean attn_mask is not supported yet in GQA path of Attention op (CUDA).");

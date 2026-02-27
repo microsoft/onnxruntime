@@ -34,15 +34,13 @@ namespace cuda {
 //
 // Returns:
 //   Status::OK() on success
-//   Error status if mask is invalid (not right-padding, doesn't start with True, etc.)
 //
-// Note: This function validates the mask on GPU and will return an error if:
-//   - The mask doesn't start with True for any batch
-//   - The True/False values are not contiguous (e.g., True, False, True pattern)
+// Note: Mask validity (right-padding convention, starts with True, contiguous True/False)
+//   is checked asynchronously via CUDA_KERNEL_ASSERT inside the kernel. Invalid masks will
+//   trigger a device-side assertion failure.
 Status LaunchConvertMaskToSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,
-    int* validation_result,  // GPU buffer for validation, size = batch_size
     int batch_size,
     int total_seq_len,
     int mask_dims,

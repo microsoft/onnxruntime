@@ -7,19 +7,14 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Validation error codes (stored in validation_result buffer)
-constexpr int kValidationOK = 0;
-constexpr int kValidationErrorNotStartWithTrue = 1;
-constexpr int kValidationErrorNotContiguous = 2;
-
 // CUDA kernel to convert boolean attention mask to sequence lengths.
-// Also validates that the mask follows right-padding convention.
+// Also validates that the mask follows right-padding convention via CUDA_KERNEL_ASSERT.
 //
 // The kernel processes one batch per thread.
 // For each batch, it finds the first False in the mask row, which indicates
 // where padding starts. The sequence length is the index of first False.
 //
-// Validation:
+// Validation (via CUDA_KERNEL_ASSERT, reported asynchronously):
 // - The mask must start with True (first element must be True)
 // - After the first False, all remaining elements must be False (contiguous padding)
 //
@@ -31,7 +26,6 @@ constexpr int kValidationErrorNotContiguous = 2;
 __global__ void ConvertMaskToSeqlensKernel(
     const bool* __restrict__ attn_mask,
     int* __restrict__ seqlens_k,
-    int* __restrict__ validation_result,
     const int batch_size,
     const int total_seq_len,
     const int mask_dims,
@@ -78,15 +72,8 @@ __global__ void ConvertMaskToSeqlensKernel(
     mask_row = attn_mask + effective_batch * batch_stride + h_idx * head_stride + q_idx * q_stride;
   }
 
-  // Initialize validation result for this batch
-  validation_result[batch_idx] = kValidationOK;
-
-  // Check that mask starts with True
-  if (!mask_row[0]) {
-    validation_result[batch_idx] = kValidationErrorNotStartWithTrue;
-    seqlens_k[batch_idx] = -1;  // Invalid
-    return;
-  }
+  // Validate that mask starts with True (right-padding convention)
+  CUDA_KERNEL_ASSERT(mask_row[0]);  // mask must start with True
 
   // Find the first False (where padding starts)
   // All elements before this should be True, all after should be False
@@ -101,10 +88,8 @@ __global__ void ConvertMaskToSeqlensKernel(
       seq_len = i;
       found_first_false = true;
     } else if (found_first_false && current) {
-      // Found True after False - this is invalid (not contiguous)
-      validation_result[batch_idx] = kValidationErrorNotContiguous;
-      seqlens_k[batch_idx] = -1;  // Invalid
-      return;
+      // Found True after False - mask is not contiguous (invalid)
+      CUDA_KERNEL_ASSERT(false);  // mask must be contiguous (no True after False)
     }
   }
 
@@ -115,7 +100,6 @@ __global__ void ConvertMaskToSeqlensKernel(
 Status LaunchConvertMaskToSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,
-    int* validation_result,
     int batch_size,
     int total_seq_len,
     int mask_dims,
@@ -134,7 +118,6 @@ Status LaunchConvertMaskToSeqlensK(
   ConvertMaskToSeqlensKernel<<<blocks, threads, 0, stream>>>(
       attn_mask_bool,
       seqlens_k,
-      validation_result,
       batch_size,
       total_seq_len,
       mask_dims,

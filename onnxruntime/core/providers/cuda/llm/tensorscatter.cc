@@ -72,24 +72,8 @@ Status TensorScatter::ComputeInternal(OpKernelContext* context) const {
                     write_indices_tensor->Shape()[0] == batch_size,
                 "TensorScatter: write_indices must have shape [batch_size]");
     write_indices = write_indices_tensor->Data<int64_t>();
-
-    // Copy write_indices to host for validation (batch_size elements, negligible overhead).
-    std::vector<int64_t> host_write_indices(static_cast<size_t>(batch_size));
-    CUDA_RETURN_IF_ERROR(
-        cudaMemcpyAsync(host_write_indices.data(), write_indices,
-                        static_cast<size_t>(batch_size) * sizeof(int64_t),
-                        cudaMemcpyDeviceToHost, Stream(context)));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
-
-    for (int64_t b = 0; b < batch_size; ++b) {
-      int64_t wi = host_write_indices[static_cast<size_t>(b)];
-      ORT_ENFORCE(wi >= 0, "TensorScatter: write_indices[", b, "] = ", wi, " is negative");
-      if (!circular_) {
-        ORT_ENFORCE(wi + sequence_length <= max_sequence_length,
-                    "TensorScatter linear mode: write_indices[", b, "] + sequence_length (",
-                    wi, " + ", sequence_length, ") exceeds max_sequence_length (", max_sequence_length, ")");
-      }
-    }
+    // write_indices values (non-negative, in-bounds) are validated asynchronously
+    // inside the CUDA kernel via CUDA_KERNEL_ASSERT to avoid cudaStreamSynchronize.
   }
 
   // Allocate output with the same shape as past_cache.

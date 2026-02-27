@@ -28,12 +28,13 @@ __global__ void _TensorScatterKernel(
 
   int64_t batch_idx = prefix_idx / prefix_stride_for_batch;
   int64_t wi = (write_indices != nullptr) ? write_indices[batch_idx] : 0;
-  // write_indices are validated on the host before kernel launch.
+  CUDA_KERNEL_ASSERT(wi >= 0);
   int64_t cache_pos;
   if (circular) {
     cache_pos = (wi + seq_idx) % max_seq_len;
   } else {
     cache_pos = wi + seq_idx;
+    CUDA_KERNEL_ASSERT(cache_pos < max_seq_len);
   }
 
   int64_t out_offset = prefix_idx * (max_seq_len * suffix_count) + cache_pos * suffix_count + suffix_idx;
