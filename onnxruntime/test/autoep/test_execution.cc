@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <string_view>
 #include <vector>
 // #include <absl/base/config.h>
 #include <gsl/gsl>
@@ -409,30 +410,26 @@ TEST(OrtEpLibrary, PluginEp_ErrorWhenLoadEPContextModel_WithoutRequiredEp) {
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
 
   // Create a compiled model for the example EP.
-  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_mul_1_ctx.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_compiled_test_errorwhenloadwithoutep.onnx");
   {
     const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
     std::filesystem::remove(compiled_model_file);
 
-    // Create session with example plugin EP
     Ort::SessionOptions session_options;
     std::unordered_map<std::string, std::string> ep_options;
 
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-    // Create model compilation options from the session options.
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
     compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(compiled_model_file);
 
-    // Compile the model.
     ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
-    // Make sure the compiled model was generated.
     ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
   }
 
-  // Create a session and expect an error.
+  // Create a session without the plugin EP and expect an error.
   {
     Ort::SessionOptions session_options;
 
