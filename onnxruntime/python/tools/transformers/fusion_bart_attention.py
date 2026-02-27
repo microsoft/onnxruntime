@@ -348,6 +348,9 @@ class FusionBartAttention(FusionAttention):
         # 3) Decoder cross attention with two_root_inputs=True and no mask
         # 4) Decoder self attention with past with one_root_input=True and has mask and past_k and past_v
         # 5) Decoder cross attention with past with three_root_inputs=True and no mask
+        # Derive mask presence from which QK pattern matched rather than re-walking the graph.
+        # This reuses the result of match_parent_paths above, which already tried both masked and
+        # unmasked variants and returned the first successful match.
         has_mask = qk_nodes in (qk_nodes_with_mask, qk_nodes_sdpa_with_mask)
         no_mask = not has_mask
         encoder_attention = one_root_input and no_mask
@@ -406,6 +409,14 @@ class FusionBartAttention(FusionAttention):
             # Fall back to user-specified values when detected values are invalid
             # (e.g., SDPA models use -1 in reshape shapes for dynamic dimensions).
             if (num_heads <= 0 or hidden_size <= 0) and self.num_heads > 0 and self.hidden_size > 0:
+                logger.debug(
+                    "fuse_attention: reshape dims invalid (num_heads=%d, hidden_size=%d), "
+                    "falling back to user-specified num_heads=%d, hidden_size=%d",
+                    num_heads,
+                    hidden_size,
+                    self.num_heads,
+                    self.hidden_size,
+                )
                 num_heads = self.num_heads
                 hidden_size = self.hidden_size
 
