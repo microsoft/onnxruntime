@@ -170,7 +170,7 @@ struct BilinearSamplePlan2D {
   uint8_t mask = 0;
 };
 // PrecomputeBilinearSamplePlan2D, the loop runs across all H_out * W_out points, using the right nx/ny for each (oy, ox) and
-// storing that point’s four indices, four weights, and mask in plans[idx]. This operation takes place only when bilinear interpolation
+// storing that point's four indices, four weights, and mask in plans[idx]. This operation takes place only when bilinear interpolation
 // is used with zero padding and no align_corners set, and it helps to speed up the sampling by precomputing the plan for each output pixel.
 template <typename T>
 void PrecomputeBilinearSamplePlan2D(const T* grid_data,
