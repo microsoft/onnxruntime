@@ -237,7 +237,19 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::WEBGPU_BUFFER) == 0 ||
-             strcmp(name1, onnxruntime::WEBNN_TENSOR) == 0) {
+             strcmp(name1, onnxruntime::WEBNN_TENSOR) == 0 ||
+             // PR #27207 (merged to main/1.25.x, not in 1.24.x) shortened the WebGPU/WebNN
+             // memory info names from "WebGPU_Buffer"/"WebNN_Tensor" to "WebGPU_Buf"/"WebNN_Ten"
+             // to enable Small String Optimization (SSO) on wasm32 (emscripten), where strings
+             // must be <= 10 chars for SSO.
+             //
+             // A WebGPU/WebNN plugin EP built against 1.25.x will use the new short names.
+             // Accept both old and new names here so that plugin EPs targeting either 1.24.x
+             // or 1.25.x can work with this 1.24.x runtime.
+             //
+             // See: https://github.com/microsoft/onnxruntime/pull/27207
+             strcmp(name1, "WebGPU_Buf") == 0 ||
+             strcmp(name1, "WebNN_Ten") == 0) {
     *out = new OrtMemoryInfo(
         name1, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, device_id),
