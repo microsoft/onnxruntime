@@ -150,7 +150,9 @@ class WebGpuContextFactory {
   // Use pointers to heap-allocated objects so that their destructors do NOT run
   // during static destruction at process exit. This avoids crashes when dependent
   // DLLs (e.g. dxcompiler.dll) have already been unloaded by the OS.
-  // Cleanup() explicitly deletes them during normal unload via ReleaseEpFactory.
+  // Cleanup() explicitly deletes them during normal unload. In the shared-library
+  // build this is reached via ReleaseEpFactory, and in the WebGPU static-lib build
+  // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
   // On abnormal/process termination they simply leak, which is safe.
   static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
   static std::mutex mutex_;
