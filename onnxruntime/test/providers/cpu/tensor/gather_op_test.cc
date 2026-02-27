@@ -342,8 +342,9 @@ TEST(GatherOpTest, Gather_axis1_indices2d_string) {
 }
 
 TEST(GatherOpTest, Gather_overflow_check) {
-// Skip on 32-bit platforms where allocating the full reference tensor is infeasible due
-// to std::vector::max_size being limited to the size of ptrdiff_t (INT32_MAX on 32-bit).
+  // Skip on 32-bit platforms where allocating the full reference tensor is infeasible due
+  // to std::vector::max_size being limited to the size of ptrdiff_t (INT32_MAX on 32-bit).
+  // Also, peak memory usage for this test would be greater than what is addressable.
 #if SIZE_MAX <= UINT32_MAX
   GTEST_SKIP() << "Gather_overflow_check skipped on 32-bit platforms.";
 #endif
@@ -356,23 +357,34 @@ TEST(GatherOpTest, Gather_overflow_check) {
   // This test is to verify CPU implementation of the Gather operator doesn't overflow when calculating
   // the output shape and generating the output tensor.
 
+  constexpr int64_t dim_val = 46341;
+
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 1LL);
 
-  // Inputs
-  const std::vector<int64_t> data_dims{46341, 2};
-  const std::vector<int64_t> indices_dims{46341};
-  std::vector<uint8_t> data_values(static_cast<size_t>(data_dims[0] * data_dims[1]), 1);
-  std::vector<int64_t> indices_values(static_cast<size_t>(indices_dims[0]), 1);
-  std::vector<uint8_t> expected_output_values(static_cast<size_t>(46341) * static_cast<size_t>(46341), 1);
+  // Setup test inputs and outputs in a separate scope to ensure the large `expected_output_values` array
+  // is destroyed before we run the test via `test.Run()`.
+  {
+    const std::vector<int64_t> data_dims{dim_val, 2};
+    const std::vector<int64_t> indices_dims{dim_val};
+    std::vector<uint8_t> data_values(static_cast<size_t>(data_dims[0] * data_dims[1]), 1);
+    std::vector<int64_t> indices_values(static_cast<size_t>(indices_dims[0]), 1);
+    std::vector<uint8_t> expected_output_values(static_cast<size_t>(dim_val) * static_cast<size_t>(dim_val), 1);
 
-  test.AddInput<uint8_t>("data", {46341, 2}, data_values);
-  test.AddInput<int64_t>("indices", {46341}, indices_values);
-  test.AddOutput<uint8_t>("output", {46341, 46341}, expected_output_values);
+    test.AddInput<uint8_t>("data", {dim_val, 2}, data_values);
+    test.AddInput<int64_t>("indices", {dim_val}, indices_values);
+
+    // Note: the large ~2GiB `expected_output_values` array is copied into the OpTester.
+    test.AddOutput<uint8_t>("output", {dim_val, dim_val}, expected_output_values);
+  }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
+  // Note: peak memory usage will be at least ~6GiB (3 x 2GiB):
+  //  - OpTester holds expected outputs buffer of size ~2GiB
+  //  - The session state allocates a buffer for the output of size ~2GiB
+  //  - OpTester holds a `fetches_` buffer into which the Run() output is copied
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
