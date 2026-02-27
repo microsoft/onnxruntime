@@ -140,7 +140,7 @@ stages:
 
       # Now all the jars are in the $(Pipeline.Workspace)/build folder
 
-      - template: templates/get-docker-image-steps.yml
+      - template: get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
           Context: tools/ci_build/github/linux/docker/
