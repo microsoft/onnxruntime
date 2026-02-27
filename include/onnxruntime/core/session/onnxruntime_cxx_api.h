@@ -1612,6 +1612,8 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetFlags(uint32_t flags);                                    ///< Wraps OrtApi::ModelCompilationOptions_SetFlags
 
   ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
+
+  ModelCompilationOptions& SetInputModel(const OrtModel* model);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.

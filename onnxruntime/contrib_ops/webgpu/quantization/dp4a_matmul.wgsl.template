@@ -7,6 +7,7 @@
 #param has_zero_points
 #param is_qualcomm
 #param has_weight_idx
+#param has_weight_idx_indirect
 
 #use .getByOffset .setByOffset
 
@@ -78,9 +79,15 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             return;
         }
 #if has_weight_idx
-        let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K16;
+#if has_weight_idx_indirect
+        let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+        let actual_weight_idx = uniforms.weight_idx;
+#endif
+        let b_weight_offset = actual_weight_idx * uniforms.N * uniforms.K16;
         let b_value = b.getByOffset(b_weight_offset + b_global * uniforms.K16 + kidx_v + col);
 #else
+        const actual_weight_idx : u32 = 0;
         let b_value = b.getByOffset(b_global * uniforms.K16+kidx_v + col);
 #endif
         let block_idx = kidx_v/(block_size/16);
@@ -89,7 +96,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         if (col == 0)
         {
             // kidx_v - each kidx_v covers 16 values of k
-            let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K/block_size);
+            let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
             scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
         }
     }
@@ -105,9 +112,15 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         }
 
 #if has_weight_idx
-        let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K16;
+#if has_weight_idx_indirect
+        let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+        let actual_weight_idx = uniforms.weight_idx;
+#endif
+        let b_weight_offset = actual_weight_idx * uniforms.N * uniforms.K16;
         let b_value = b.getByOffset(b_weight_offset + b_global * uniforms.K16 + kidx_v + col);
 #else
+        const actual_weight_idx : u32 = 0;
         const b_weight_offset : u32 = 0;
         let b_value = b.getByOffset(b_global * uniforms.K16 + kidx_v + col);
 #endif
@@ -116,7 +129,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         {
             // kidx_v - each kidx_v covers 16 values of k
             let block_idx = kidx_v/(block_size/16);
-            let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K/block_size);
+            let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
             scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
 #if has_zero_points
             zeroes[row] = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
@@ -134,9 +147,15 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             return;
         }
 #if has_weight_idx
-        let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K16;
+#if has_weight_idx_indirect
+        let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+        let actual_weight_idx = uniforms.weight_idx;
+#endif
+        let b_weight_offset = actual_weight_idx * uniforms.N * uniforms.K16;
         let b_value = b.getByOffset(b_weight_offset + b_global * uniforms.K16 + kidx_v + col);
 #else
+        const actual_weight_idx : u32 = 0;
         const b_weight_offset : u32 = 0;
         let b_value = b.getByOffset(b_global * uniforms.K16 + kidx_v + col);
 #endif
@@ -147,7 +166,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
 #else
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);
 #endif
-        let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K/block_size);
+        let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
         scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
     }
 #endif
@@ -397,7 +416,12 @@ $MAIN {
     let output_idx = (batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global)/4;
 #if has_bias
 #if has_weight_idx
-    let b_bias_offset = uniforms.weight_idx * uniforms.N;
+#if has_weight_idx_indirect
+    let actual_weight_idx_bias = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx_bias = uniforms.weight_idx;
+#endif
+    let b_bias_offset = actual_weight_idx_bias * uniforms.N;
 #else
     const b_bias_offset : u32 = 0;
 #endif

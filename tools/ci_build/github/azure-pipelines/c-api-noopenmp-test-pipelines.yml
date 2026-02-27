@@ -160,7 +160,61 @@ stages:
     NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
     CudaVersion: 12.8
 
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-linux-aarch64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: linux-aarch64
+    agentPool: onnxruntime-linux-ARM64-CPU-2019
 
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-linux-x64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: linux-x64
+    agentPool: onnxruntime-Ubuntu2204-AMD-CPU
+
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-osx-arm64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: osx-arm64
+    agentPool:
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+    agentSetupSteps:
+    - template: templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
+
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-win-arm64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: win-arm64
+    agentPool: onnxruntime-qnn-windows-vs-2022-arm64
+
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-win-arm64x
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: win-arm64x
+    agentPool: onnxruntime-qnn-windows-vs-2022-arm64
+
+- template: templates/test-binary-archive-stage.yml
+  parameters:
+    artifactName: onnxruntime-win-x64
+    artifactPipelineResource: build
+    previousStageName: Setup
+    platform: win-x64
+    agentPool: onnxruntime-Win-CPU-VS2022-Latest
 
 # Run GPU tests.
 - stage: Windows_Packaging_cuda_Testing
