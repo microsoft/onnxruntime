@@ -22,7 +22,10 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: ${{ parameters.machine_pool }}
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+      hostArchitecture: Arm64
     steps:
     - checkout: self
       clean: true
