@@ -892,98 +892,114 @@ namespace Microsoft.ML.OnnxRuntime
         /// On Windows, it explicitly loads the library with a lowercase .dll extension to handle
         /// case-sensitive filesystems.
         /// </summary>
+#if NET5_0_OR_GREATER
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000:Avoid accessing Assembly file path when publishing as a single file", Justification = "We also check AppContext.BaseDirectory as a fallback")]
+#endif
         private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
-            if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
+            try
             {
-                string mappedName = null;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                if (libraryName == NativeLib.DllName || libraryName == OrtExtensionsNativeMethods.ExtensionsDllName)
                 {
-                    // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
-                    mappedName = libraryName + ".dll";
-                }
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                {
-                    // Explicitly load with .so extension and lib prefix
-                    mappedName = "lib" + libraryName + ".so";
-                }
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                {
-                    // Explicitly load with .dylib extension and lib prefix
-                    mappedName = "lib" + libraryName + ".dylib";
-                }
-
-                if (mappedName != null)
-                {
-                    // 1. Try default loading (name only)
-                    if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
+                    string mappedName = null;
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     {
-                        return handle;
+                        // Explicitly load with .dll extension to avoid issues where the OS might try .DLL
+                        mappedName = libraryName + ".dll";
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    {
+                        // Explicitly load with .so extension and lib prefix
+                        mappedName = "lib" + libraryName + ".so";
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                    {
+                        // Explicitly load with .dylib extension and lib prefix
+                        mappedName = "lib" + libraryName + ".dylib";
                     }
 
-                    // 2. Try relative to assembly location (look into runtimes subfolders)
-                    string assemblyLocation = null;
-                    try { assemblyLocation = assembly.Location; } catch { }
-                    if (!string.IsNullOrEmpty(assemblyLocation))
+                    if (mappedName != null)
                     {
-                        string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
-                        string rid = RuntimeInformation.RuntimeIdentifier;
-
-                        // Probe the specific RID first, then common fallbacks for the current OS
-                        string[] ridsToTry;
-                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                        // 1. Try default loading (name only)
+                        if (NativeLibrary.TryLoad(mappedName, assembly, searchPath, out IntPtr handle))
                         {
-                            ridsToTry = new[] { rid, "win-x64", "win-arm64" };
-                        }
-                        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                        {
-                            ridsToTry = new[] { rid, "linux-x64", "linux-arm64" };
-                        }
-                        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                        {
-                            // We no longer provide osx-x64 in official package since 1.24.
-                            // However, we keep it in the list for build-from-source users.
-                            ridsToTry = new[] { rid, "osx-arm64", "osx-x64" };
-                        }
-                        else
-                        {
-                            ridsToTry = new[] { rid };
+                            return handle;
                         }
 
-                        foreach (var tryRid in ridsToTry)
+                        // 2. Try relative to assembly location (look into runtimes subfolders)
+                        string assemblyLocation = null;
+                        try { assemblyLocation = assembly.Location; } catch { }
+                        if (!string.IsNullOrEmpty(assemblyLocation))
                         {
-                            string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
-                            if (System.IO.File.Exists(probePath) && NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                            string assemblyDir = System.IO.Path.GetDirectoryName(assemblyLocation);
+                            string rid = RuntimeInformation.RuntimeIdentifier;
+
+                            // Probe the specific RID first, then common fallbacks for the current OS
+                            string[] ridsToTry;
+                            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                             {
-                                LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
-                                return handle;
+                                ridsToTry = new[] { rid, "win-x64", "win-arm64" };
+                            }
+                            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                            {
+                                ridsToTry = new[] { rid, "linux-x64", "linux-arm64" };
+                            }
+                            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                            {
+                                // We no longer provide osx-x64 in official package since 1.24.
+                                // However, we keep it in the list for build-from-source users.
+                                ridsToTry = new[] { rid, "osx-arm64", "osx-x64" };
+                            }
+                            else
+                            {
+                                ridsToTry = new[] { rid };
+                            }
+
+                            foreach (var tryRid in ridsToTry)
+                            {
+                                string probePath = System.IO.Path.Combine(assemblyDir, "runtimes", tryRid, "native", mappedName);
+                                if (System.IO.File.Exists(probePath) && NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
                             }
                         }
-                    }
 
-                    // 3. Try AppContext.BaseDirectory as a fallback
-                    string baseDir = AppContext.BaseDirectory;
-                    if (!string.IsNullOrEmpty(baseDir))
-                    {
-                        string probePath = System.IO.Path.Combine(baseDir, mappedName);
-                        if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                        // 3. Try AppContext.BaseDirectory as a fallback
+                        try
                         {
-                            LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
-                            return handle;
-                        }
+                            string baseDir = AppContext.BaseDirectory;
+                            if (!string.IsNullOrEmpty(baseDir))
+                            {
+                                string probePath = System.IO.Path.Combine(baseDir, mappedName);
+                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
 
-                        string rid = RuntimeInformation.RuntimeIdentifier;
-                        probePath = System.IO.Path.Combine(baseDir, "runtimes", rid, "native", mappedName);
-                        if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
-                        {
-                            LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
-                            return handle;
+                                string rid = RuntimeInformation.RuntimeIdentifier;
+                                probePath = System.IO.Path.Combine(baseDir, "runtimes", rid, "native", mappedName);
+                                if (NativeLibrary.TryLoad(probePath, assembly, searchPath, out handle))
+                                {
+                                    LogLibLoad($"[DllImportResolver] Loaded {mappedName} from: {probePath}");
+                                    return handle;
+                                }
+                            }
                         }
+                        catch { } // Ignore AppDomainUnloadedException or similar from AppContext.BaseDirectory
+
+                        LogLibLoad($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
+
                     }
-
-                    LogLibLoad($"[DllImportResolver] Failed loading {mappedName} (RID: {RuntimeInformation.RuntimeIdentifier}, Assembly: {assemblyLocation})");
-
                 }
+            }
+            catch (Exception ex)
+            {
+                // Unhandled exceptions inside DllImportResolver can result in TypeInitializationException.
+                // Log and swallow the error, returning IntPtr.Zero to fall back to default CLR logic.
+                try { System.Diagnostics.Trace.WriteLine($"[DllImportResolver] Exception during resolution: {ex}"); } catch { }
             }
 
             // Fall back to default resolution

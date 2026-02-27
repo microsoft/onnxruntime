@@ -1112,11 +1112,11 @@ class FusionAttention(Fusion):
             if (
                 (mul_val is None)
                 or not (isinstance(mul_val, np.ndarray) and mul_val.size == 1)
-                or (float(mul_val) >= 0)
+                or (mul_val.item() >= 0)
             ):
                 return
-            if float(mul_val) != -10000:
-                self.mask_filter_value = float(mul_val)
+            if mul_val.item() != -10000:
+                self.mask_filter_value = mul_val.item()
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0]) if not is_no_mask_attention else None

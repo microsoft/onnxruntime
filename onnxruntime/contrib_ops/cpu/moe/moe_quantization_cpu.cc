@@ -13,6 +13,7 @@
 #include "core/common/narrow.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/util/math.h"
+#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/moe/moe_utils.h"
 #include "contrib_ops/cpu/moe/moe_helper.h"
 
@@ -69,13 +70,13 @@ bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
     out_qtype = BlkQ4Sym64;
   } else if (block_size == 128) {
     out_qtype = BlkQ4Sym128;
-  } else if (block_size == 0) {
+  } else if (block_size == 0 || block_size == 32) {
     out_qtype = BlkQ4Sym;
   } else {
     return false;
   }
 
-  size_t expected_size = MlasQ4GemmPackBSize(out_qtype, static_cast<size_t>(cols), static_cast<size_t>(rows));
+  size_t expected_size = MlasQ4GemmPackBSize(out_qtype, static_cast<size_t>(rows), static_cast<size_t>(cols));
   return expected_size > 0;
 }
 
@@ -83,6 +84,8 @@ bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
 
 namespace onnxruntime {
 namespace contrib {
+
+constexpr const char* kUseMlasQ4GemmMoe = "ORT_USE_MLAS_Q4_GEMM_MOE";
 
 template <typename TScale>
 void DequantizeBlockWithMlas(const uint8_t* quantized_data,
@@ -118,13 +121,23 @@ Status ConvertToMlasQ4Format(const uint8_t* quantized_data,
 
   DequantizeBlockWithMlas(quantized_data, scales, zero_points, block_size, num_bits, rows, cols, temp_float, nullptr);
 
-  size_t packed_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(cols), static_cast<size_t>(rows));
+  // Transpose from N x K (weights) to K x N.
+  // DirectQ4Gemm expects weights to be packed in a specific layout ([K, N] logically)
+  auto transposed_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(rows * cols));
+  float* transposed_float = transposed_float_buffer.get();
+  for (int64_t r = 0; r < rows; ++r) {
+    for (int64_t c = 0; c < cols; ++c) {
+      transposed_float[c * rows + r] = temp_float[r * cols + c];
+    }
+  }
+
+  size_t packed_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols));
   if (packed_size == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MLAS Q4 packing not supported for this configuration");
   }
 
   mlas_packed_buffer = IAllocator::MakeUniquePtr<uint8_t>(allocator, packed_size);
-  MlasQ4GemmPackB(qtype, mlas_packed_buffer.get(), temp_float, static_cast<size_t>(cols), static_cast<size_t>(rows), static_cast<size_t>(cols));
+  MlasQ4GemmPackB(qtype, mlas_packed_buffer.get(), transposed_float, static_cast<size_t>(rows), static_cast<size_t>(cols), static_cast<size_t>(rows));
 
   return Status::OK();
 }
@@ -354,6 +367,257 @@ void DequantizeBlock(const uint8_t* quantized_data,
   DequantizeBlockWithMlas(quantized_data, scales, zero_points, block_size, num_bits, rows, cols, dequantized_data, thread_pool);
 }
 
+template <typename TScale>
+void DequantizePrePacked(const uint8_t* prepacked_data,
+                         const TScale* scales,
+                         const uint8_t* zero_points,
+                         int64_t block_size,
+                         int64_t rows,
+                         int64_t cols,
+                         float* dequantized_data,
+                         const gsl::span<const int64_t>& scale_dims) {
+  // prepacked_data is [cols, rows] (transposed, unpacked)
+  // dequantized_data is [cols, rows] (transposed)
+  // scales, zero_points correspond to original [rows, cols] layout
+
+  const float default_zp_4bit = 8.0f;
+  const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
+  const int64_t zp_pack_size = 2;  // Always 2 for 4-bit
+
+  // Iterate over Columns (K) then Rows (N) because prepacked_data is [K, N]
+  for (int64_t c = 0; c < cols; ++c) {
+    for (int64_t r = 0; r < rows; ++r) {
+      uint8_t val = prepacked_data[c * rows + r];
+
+      int64_t block_idx = (block_size > 0) ? (c / block_size) : 0;
+      if (block_size > 0) block_idx = std::min(block_idx, blocks_per_row - 1);
+
+      int64_t scale_idx;
+      if (scale_dims.size() == 3 && scale_dims[2] > 1) {  // block-wise
+        scale_idx = r * blocks_per_row + block_idx;
+      } else {  // per-channel
+        scale_idx = r;
+      }
+
+      float scale = static_cast<float>(scales[scale_idx]);
+      float zp = default_zp_4bit;
+
+      if (zero_points != nullptr) {
+        int64_t zp_idx;
+        bool is_lower_nibble;
+
+        if (scale_dims.size() == 3 && scale_dims[2] > 1) {  // block-wise
+          int64_t zp_blocks_packed = (blocks_per_row + zp_pack_size - 1) / zp_pack_size;
+          zp_idx = r * zp_blocks_packed + block_idx / 2;
+          is_lower_nibble = (block_idx % 2 == 0);
+        } else {
+          zp_idx = r / 2;
+          is_lower_nibble = (r % 2 == 0);
+        }
+
+        uint8_t packed_zp = zero_points[zp_idx];
+        zp = is_lower_nibble ? static_cast<float>(packed_zp & 0x0F) : static_cast<float>(packed_zp >> 4);
+      }
+
+      dequantized_data[c * rows + r] = scale * (static_cast<float>(val) - zp);
+    }
+  }
+}
+
+template <typename TScale>
+Status BuildDirectQ4PackedBCache(const uint8_t* prepacked_weights,
+                                 const TScale* scales_data,
+                                 int64_t num_experts,
+                                 int64_t rows,
+                                 int64_t cols,
+                                 int64_t block_size,
+                                 const gsl::span<const int64_t>& scales_dims,
+                                 MLAS_BLK_QUANT_TYPE qtype,
+                                 AllocatorPtr allocator,
+                                 IAllocatorUniquePtr<void>& packed_b) {
+  const size_t packed_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols));
+  if (packed_size == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to compute MLAS Q4 packed size for cache");
+  }
+
+  const bool is_block_wise = (scales_dims.size() == 3 && scales_dims[2] > 1);
+  const int64_t scales_expert_stride = is_block_wise ? (rows * scales_dims[2]) : rows;
+  const size_t prepacked_expert_stride = static_cast<size_t>(rows * cols);
+  const size_t total_packed_size = packed_size * static_cast<size_t>(num_experts);
+
+  packed_b = IAllocator::MakeUniquePtr<void>(allocator, total_packed_size, true);
+  uint8_t* packed_b_ptr = static_cast<uint8_t*>(packed_b.get());
+
+  std::vector<float> dequantized_transposed(static_cast<size_t>(rows * cols));
+  for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+    const uint8_t* expert_prepacked = prepacked_weights + static_cast<size_t>(expert_idx) * prepacked_expert_stride;
+    const TScale* expert_scales = scales_data + expert_idx * scales_expert_stride;
+
+    DequantizePrePacked(expert_prepacked, expert_scales, nullptr, block_size, rows, cols,
+                        dequantized_transposed.data(), scales_dims);
+
+    MlasQ4GemmPackB(qtype, packed_b_ptr + expert_idx * packed_size, dequantized_transposed.data(),
+                    static_cast<size_t>(rows), static_cast<size_t>(cols), static_cast<size_t>(rows));
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
+Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                           /*out*/ bool& is_packed,
+                           /*out*/ PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+
+  // If scales are prepacked, they are constant initializers.
+  if (input_idx == 3) {
+    return Status::OK();
+  }
+  if (input_idx == 6) {
+    return Status::OK();
+  }
+
+  // Only support PrePack for FC1 (2) and FC2 (5) weights
+  // and only if expert_weight_bits_ == 4 (since we unpack to uint8)
+  if (expert_weight_bits_ != 4) {
+    return Status::OK();
+  }
+
+  if (input_idx == 2 || input_idx == 5) {
+    const auto& shape = tensor.Shape();
+    const int64_t num_experts = shape[0];
+    const int64_t rows = shape[1];
+    const int64_t cols_packed = shape[2];
+    const int64_t cols = cols_packed * 2;
+
+    size_t packed_size = static_cast<size_t>(num_experts * rows * cols);
+    auto packed_buffer = IAllocator::MakeUniquePtr<void>(alloc, packed_size, true);
+    uint8_t* dst_base = static_cast<uint8_t*>(packed_buffer.get());
+    const uint8_t* src_base = static_cast<const uint8_t*>(tensor.DataRaw());
+
+    for (int64_t i = 0; i < num_experts; ++i) {
+      const uint8_t* src = src_base + i * rows * cols_packed;
+      uint8_t* dst = dst_base + i * rows * cols;
+
+      for (int64_t r = 0; r < rows; ++r) {
+        for (int64_t c = 0; c < cols; ++c) {
+          uint8_t packed_val = src[r * cols_packed + (c / 2)];
+          uint8_t val = (c % 2 == 0) ? (packed_val & 0x0F) : (packed_val >> 4);
+
+          dst[c * rows + r] = val;
+        }
+      }
+    }
+
+    if (input_idx == 2) {
+      fc1_shape_ = shape;
+    } else if (input_idx == 5) {
+      fc2_shape_ = shape;
+    }
+
+    if (prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_buffer));
+      prepacked_weights->buffer_sizes_.push_back(packed_size);
+      is_packed = true;
+
+      // Pack Shape (Buffer 1)
+      auto dims = shape.GetDims();
+      size_t rank_bytes = sizeof(int64_t);
+      size_t dims_bytes = dims.size() * sizeof(int64_t);
+      size_t shape_size = rank_bytes + dims_bytes;
+
+      auto shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, shape_size);
+      int64_t* buffer_data = static_cast<int64_t*>(shape_buffer.get());
+      *buffer_data = static_cast<int64_t>(dims.size());
+      memcpy(buffer_data + 1, dims.data(), dims_bytes);
+
+      prepacked_weights->buffers_.push_back(std::move(shape_buffer));
+      prepacked_weights->buffer_sizes_.push_back(shape_size);
+
+      // Try build MLAS Q4 cache if scales are available
+      if (use_mlas_q4_gemm_) {
+        const Tensor* scales_tensor = nullptr;
+        MLAS_BLK_QUANT_TYPE qtype = BlkQ4Sym;
+        int scales_idx = -1;
+        int zp_idx = -1;
+
+        if (input_idx == 2) {  // FC1
+          scales_idx = 3;
+          zp_idx = 11;
+        } else if (input_idx == 5) {  // FC2
+          scales_idx = 6;
+          zp_idx = 12;
+        }
+
+        if (scales_idx != -1 &&
+            (zp_idx >= static_cast<int>(Info().node().InputDefs().size()) || !Info().node().InputDefs()[zp_idx]->Exists()) &&
+            Info().TryGetConstantInput(scales_idx, &scales_tensor) &&
+            scales_tensor != nullptr &&
+            CanUseMlasQ4Gemm(expert_weight_bits_, block_size_, rows, cols, qtype)) {
+          IAllocatorUniquePtr<void> cache_buffer;
+          const auto& scales_dims = scales_tensor->Shape().GetDims();
+          const T* scales_data = scales_tensor->Data<T>();
+          // Use the simple packed buffer we just created (buffer 0) as input
+          const uint8_t* simple_packed = dst_base;
+
+          if (BuildDirectQ4PackedBCache(simple_packed, scales_data, num_experts, rows, cols,
+                                        block_size_, scales_dims, qtype,
+                                        alloc, cache_buffer)
+                  .IsOK()) {
+            // Store the MLAS Q4 cache as buffer 2 (after unpacked weights and shape).
+            size_t cache_size = MlasQ4GemmPackBSize(qtype, static_cast<size_t>(rows), static_cast<size_t>(cols)) * static_cast<size_t>(num_experts);
+            prepacked_weights->buffers_.push_back(std::move(cache_buffer));
+            prepacked_weights->buffer_sizes_.push_back(cache_size);
+          }
+        }
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
+Status QMoECPU<T>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (expert_weight_bits_ != 4) {
+    return Status::OK();
+  }
+
+  if ((input_idx == 2 || input_idx == 5) && !prepacked_buffers.empty()) {
+    auto parse_shape = [&](TensorShape& shape) {
+      if (prepacked_buffers.size() > 1) {
+        int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
+        int64_t rank = buffer_data[0];
+        std::vector<int64_t> dims(static_cast<size_t>(rank));
+        memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
+        shape = TensorShape(dims);
+      }
+    };
+
+    if (input_idx == 2) {
+      packed_fc1_ = std::move(prepacked_buffers[0]);
+      parse_shape(fc1_shape_);
+      if (prepacked_buffers.size() > 2) {
+        packed_fc1_mlas_cache_ = std::move(prepacked_buffers[2]);
+      }
+    } else if (input_idx == 5) {
+      packed_fc2_ = std::move(prepacked_buffers[0]);
+      parse_shape(fc2_shape_);
+      if (prepacked_buffers.size() > 2) {
+        packed_fc2_mlas_cache_ = std::move(prepacked_buffers[2]);
+      }
+    }
+    used_shared_buffers = true;
+  }
+
+  return Status::OK();
+}
+
 template <typename T>
 QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
@@ -362,10 +626,21 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 4 or 8.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
+  ORT_ENFORCE(block_size_ >= 0);
 
   if (block_size_ > 0) {
     ORT_ENFORCE(block_size_ >= 16, "block_size must be >= 16 when provided.");
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
+  }
+
+  const auto use_mlas_q4_gemm = ParseEnvironmentVariable<bool>(kUseMlasQ4GemmMoe);
+  if (use_mlas_q4_gemm.has_value()) {
+    use_mlas_q4_gemm_ = *use_mlas_q4_gemm;
+    use_mlas_q4_gemm_overridden_ = true;
+  } else {
+    // Default policy: enable fast path unless this run hits a known accuracy-loss configuration.
+    use_mlas_q4_gemm_ = true;
+    use_mlas_q4_gemm_overridden_ = false;
   }
 }
 
@@ -373,10 +648,10 @@ template <typename T>
 Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const auto* input = context->Input<Tensor>(0);
   const auto* router_probs = context->Input<Tensor>(1);
-  const auto* fc1_experts_weights = context->Input<Tensor>(2);
+  const auto* fc1_experts_weights = packed_fc1_ ? nullptr : context->Input<Tensor>(2);
   const auto* fc1_scales = context->Input<Tensor>(3);
   const auto* fc1_experts_bias = context->Input<Tensor>(4);
-  const auto* fc2_experts_weights = context->Input<Tensor>(5);
+  const auto* fc2_experts_weights = packed_fc2_ ? nullptr : context->Input<Tensor>(5);
   const auto* fc2_scales = context->Input<Tensor>(6);
   const auto* fc2_experts_bias = context->Input<Tensor>(7);
   const auto* fc3_experts_weights = context->Input<Tensor>(8);
@@ -386,17 +661,21 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const auto* fc2_zero_points = context->Input<Tensor>(12);
   const auto* fc3_zero_points = context->Input<Tensor>(13);
 
+  const TensorShape* fc1_shape_ptr = packed_fc1_ ? &fc1_shape_ : (fc1_experts_weights ? &fc1_experts_weights->Shape() : nullptr);
+  const TensorShape* fc2_shape_ptr = packed_fc2_ ? &fc2_shape_ : (fc2_experts_weights ? &fc2_experts_weights->Shape() : nullptr);
+  const TensorShape* fc3_shape_ptr = fc3_experts_weights ? &fc3_experts_weights->Shape() : nullptr;
+
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias, fc1_scales, fc1_zero_points,
-      fc2_experts_weights, fc2_experts_bias, fc2_scales, fc2_zero_points,
-      fc3_experts_weights, fc3_experts_bias, fc3_scales, fc3_zero_points,
+      fc1_shape_ptr, fc1_experts_bias, fc1_scales, fc1_zero_points,
+      fc2_shape_ptr, fc2_experts_bias, fc2_scales, fc2_zero_points,
+      fc3_shape_ptr, fc3_experts_bias, fc3_scales, fc3_zero_points,
       expert_weight_bits_ == 4 ? 2 : 1,
-      true,
+      activation_type_ == ActivationType::SwiGLU,
       block_size_));
 
-  if (fc3_experts_weights || fc3_experts_bias || fc3_scales || fc3_zero_points) {
+  if (fc3_shape_ptr || fc3_experts_bias || fc3_scales || fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
   }
 
@@ -559,14 +838,21 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const bool is_fc1_block_wise = (fc1_scales_dims.size() == 3 && fc1_scales_dims[2] > 1);
   const bool is_fc2_block_wise = (fc2_scales_dims.size() == 3 && fc2_scales_dims[2] > 1);
 
-  const uint8_t* fc1_weights_data = fc1_experts_weights->Data<uint8_t>();
-  const uint8_t* fc2_weights_data = fc2_experts_weights->Data<uint8_t>();
+  const uint8_t* fc1_weights_data = (packed_fc1_ != nullptr) ? nullptr : fc1_experts_weights->template Data<uint8_t>();
+  const uint8_t* fc2_weights_data = (packed_fc2_ != nullptr) ? nullptr : fc2_experts_weights->template Data<uint8_t>();
   const T* fc1_scales_data = fc1_scales->Data<T>();
   const T* fc2_scales_data = fc2_scales->Data<T>();
   const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->Data<T>() : nullptr;
   const T* fc2_bias_data = fc2_experts_bias ? fc2_experts_bias->Data<T>() : nullptr;
   const uint8_t* fc1_zp_data = fc1_zero_points ? fc1_zero_points->Data<uint8_t>() : nullptr;
   const uint8_t* fc2_zp_data = fc2_zero_points ? fc2_zero_points->Data<uint8_t>() : nullptr;
+
+  // Known loss-prone case from parity testing: 4-bit symmetric path (row-wise and block-wise).
+  const bool known_accuracy_loss_case = (expert_weight_bits_ == 4) &&
+                                        (fc1_zp_data == nullptr) && (fc2_zp_data == nullptr);
+  const bool use_mlas_q4_gemm_effective = use_mlas_q4_gemm_overridden_
+                                              ? use_mlas_q4_gemm_
+                                              : (use_mlas_q4_gemm_ && !known_accuracy_loss_case);
 
   const int64_t pack_unit = (8 / expert_weight_bits_);
   const int64_t fc1_packed_cols = (hidden_size + pack_unit - 1) / pack_unit;
@@ -593,6 +879,22 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     fc2_zp_expert_stride = hidden_size * fc2_zp_blocks_packed;
   } else {
     fc2_zp_expert_stride = (hidden_size + zp_pack_size - 1) / zp_pack_size;
+  }
+
+  MLAS_BLK_QUANT_TYPE fc1_direct_qtype = BlkQ4Sym;
+  MLAS_BLK_QUANT_TYPE fc2_direct_qtype = BlkQ4Sym;
+
+  // Use pre-packed MLAS cache if available
+  const void* fc1_direct_q4_cache_ptr = nullptr;
+  if (use_mlas_q4_gemm_effective && packed_fc1_mlas_cache_ && fc1_zp_data == nullptr &&
+      CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0, fc1_out_features, hidden_size, fc1_direct_qtype)) {
+    fc1_direct_q4_cache_ptr = packed_fc1_mlas_cache_.get();
+  }
+
+  const void* fc2_direct_q4_cache_ptr = nullptr;
+  if (use_mlas_q4_gemm_effective && packed_fc2_mlas_cache_ && fc2_zp_data == nullptr &&
+      CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0, hidden_size, inter_size, fc2_direct_qtype)) {
+    fc2_direct_q4_cache_ptr = packed_fc2_mlas_cache_.get();
   }
 
   std::vector<std::pair<int64_t, size_t>> expert_workload;
@@ -634,6 +936,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     float* thread_bias2_buffer = thread_bias1_buffer + static_cast<size_t>(fc1_out_features);
 
     for (int64_t expert_idx : expert_batch) {
+      bool fc2_bias_added_by_mlas = false;
       const auto& routes = expert_token_map[static_cast<size_t>(expert_idx)];
       if (routes.empty()) {
         continue;
@@ -707,12 +1010,57 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const size_t k = static_cast<size_t>(hidden_size);
 
       MLAS_BLK_QUANT_TYPE q_type = BlkQ4Sym;  // Initialize to default
-      // Direct Q4 GEMM only supports symmetric quantization, so we disable it if zero_points are provided.
-      bool use_direct_q4_gemm = (fc1_zp_data == nullptr) &&
-                                CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
-                                                 fc1_out_features, hidden_size, q_type);
-      bool fc1_used_direct_q4 = false;
-      bool fc1_bias_handled_by_q4_gemm = false;
+      bool use_direct_q4_gemm = use_mlas_q4_gemm_effective &&
+                                ((fc1_direct_q4_cache_ptr != nullptr) ||
+                                 ((packed_fc1_ == nullptr) && (fc1_zp_data == nullptr) &&
+                                  CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
+                                                   fc1_out_features, hidden_size, q_type)));
+
+      if (packed_fc1_ != nullptr) {
+        if (use_mlas_q4_gemm_effective && fc1_zp_data == nullptr &&
+            CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
+                             fc1_out_features, hidden_size, q_type)) {
+          if (fc1_direct_q4_cache_ptr != nullptr) {
+            float* fc1_bias_float = nullptr;
+            if (has_fc1_bias) {
+              const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
+              if constexpr (std::is_same_v<T, MLFloat16>) {
+                MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), thread_bias1_buffer, static_cast<size_t>(fc1_out_features));
+              } else {
+                std::memcpy(thread_bias1_buffer, B1_bias, static_cast<size_t>(fc1_out_features) * sizeof(float));
+              }
+              fc1_bias_float = thread_bias1_buffer;
+            }
+
+            size_t packed_size = MlasQ4GemmPackBSize(q_type, static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size));
+            const uint8_t* packed_b = static_cast<const uint8_t*>(fc1_direct_q4_cache_ptr) + expert_idx * packed_size;
+
+            Status gemm_status = DirectQ4Gemm(A1, packed_b, fc1_bias_float, C1,
+                                              num_expert_tokens, fc1_out_features, hidden_size, fc1_direct_qtype, tp);
+            if (gemm_status.IsOK()) {
+              goto fc1_gemm_done;
+            }
+          }
+        }
+
+        // Fallback: Dequantize from PrePacked (transposed, unpacked) -> MlasGemm
+        const uint8_t* current_packed_ptr = static_cast<const uint8_t*>(packed_fc1_.get()) + expert_idx * fc1_out_features * hidden_size;
+
+        DequantizePrePacked(current_packed_ptr, fc1_scales_ptr, fc1_zp_ptr,
+                            is_fc1_block_wise ? block_size_ : 0,
+                            fc1_out_features, hidden_size,
+                            B1_dequant, fc1_scales_dims);
+
+        // Use MlasGemm with B1_dequant (which is already float transposed)
+        MlasGemm(CblasNoTrans, CblasNoTrans,
+                 m, n, k,
+                 1.0f, A1, k,
+                 B1_dequant, n,
+                 0.0f, C1, n,
+                 tp);
+
+        goto fc1_bias_handling;
+      }
 
       if (use_direct_q4_gemm) {
         IAllocatorUniquePtr<uint8_t> mlas_packed_fc1;
@@ -730,12 +1078,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
         if (convert_status.IsOK()) {
           float* fc1_bias_float = nullptr;
-          IAllocatorUniquePtr<float> fc1_bias_buffer;
 
           if (has_fc1_bias) {
             const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
-            fc1_bias_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(fc1_out_features));
-            fc1_bias_float = fc1_bias_buffer.get();
+            fc1_bias_float = thread_bias1_buffer;
 
             if constexpr (std::is_same_v<T, MLFloat16>) {
               MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), fc1_bias_float, static_cast<size_t>(fc1_out_features));
@@ -750,7 +1096,6 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                                             num_expert_tokens, fc1_out_features, hidden_size, q_type, tp);
 
           if (gemm_status.IsOK()) {
-            fc1_used_direct_q4 = true;
             goto fc1_gemm_done;
           }
         }
@@ -797,8 +1142,9 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                0.0f, C1, n,
                tp);
 
-      fc1_bias_handled_by_q4_gemm = fc1_used_direct_q4 && has_fc1_bias;
-      if (has_fc1_bias && !fc1_bias_handled_by_q4_gemm) {
+    fc1_bias_handling:
+
+      if (has_fc1_bias) {
         const T* B1_bias = fc1_bias_data + expert_idx * fc1_out_features;
         if constexpr (std::is_same_v<T, MLFloat16>) {
           MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B1_bias), thread_bias1_buffer, static_cast<size_t>(fc1_out_features));
@@ -837,22 +1183,30 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
     fc1_gemm_done:
 
-      const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
-      if (num_expert_tokens >= activation_threshold && tp != nullptr) {
-        const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
-        const int64_t num_activation_blocks = (num_expert_tokens + activation_block_size - 1) / activation_block_size;
+      if (activation_type_ == ActivationType::SwiGLU) {
+        const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
+        if (num_expert_tokens >= activation_threshold && tp != nullptr) {
+          const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
+          const int64_t num_activation_blocks = (num_expert_tokens + activation_block_size - 1) / activation_block_size;
 
-        if (num_activation_blocks > 1) {
-          concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_activation_blocks), [&](std::ptrdiff_t block_idx) {
-            const int64_t start_token = block_idx * activation_block_size;
-            const int64_t end_token = std::min(start_token + activation_block_size, num_expert_tokens);
+          if (num_activation_blocks > 1) {
+            concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_activation_blocks), [&](std::ptrdiff_t block_idx) {
+              const int64_t start_token = block_idx * activation_block_size;
+              const int64_t end_token = std::min(start_token + activation_block_size, num_expert_tokens);
 
-            for (int64_t i = start_token; i < end_token; ++i) {
+              for (int64_t i = start_token; i < end_token; ++i) {
+                const float* C1_token = C1 + i * fc1_out_features;
+                float* A2_token = A2 + i * inter_size;
+                ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+              }
+            });
+          } else {
+            for (int64_t i = 0; i < num_expert_tokens; ++i) {
               const float* C1_token = C1 + i * fc1_out_features;
               float* A2_token = A2 + i * inter_size;
               ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
             }
-          });
+          }
         } else {
           for (int64_t i = 0; i < num_expert_tokens; ++i) {
             const float* C1_token = C1 + i * fc1_out_features;
@@ -861,11 +1215,8 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
           }
         }
       } else {
-        for (int64_t i = 0; i < num_expert_tokens; ++i) {
-          const float* C1_token = C1 + i * fc1_out_features;
-          float* A2_token = A2 + i * inter_size;
-          ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
-        }
+        ApplyActivationVectorized(C1, num_expert_tokens * fc1_out_features);
+        std::copy(C1, C1 + (num_expert_tokens * fc1_out_features), A2);
       }
 
       const T* fc2_scales_ptr;
@@ -888,10 +1239,58 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       const size_t k2 = static_cast<size_t>(inter_size);
 
       MLAS_BLK_QUANT_TYPE q_type2 = BlkQ4Sym;  // Initialize to default
-      bool use_direct_q4_gemm_fc2 = (fc2_zp_data == nullptr) &&
-                                    CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
-                                                     hidden_size, inter_size, q_type2);
-      bool fc2_used_direct_q4 = false;
+      bool use_direct_q4_gemm_fc2 = use_mlas_q4_gemm_effective &&
+                                    ((fc2_direct_q4_cache_ptr != nullptr) ||
+                                     ((packed_fc2_ == nullptr) && (fc2_zp_data == nullptr) &&
+                                      CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
+                                                       hidden_size, inter_size, q_type2)));
+
+      if (packed_fc2_ != nullptr) {
+        if (use_mlas_q4_gemm_effective && fc2_zp_data == nullptr &&
+            CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
+                             hidden_size, inter_size, q_type2)) {
+          if (fc2_direct_q4_cache_ptr != nullptr) {
+            float* fc2_bias_float = nullptr;
+            if (has_fc2_bias) {
+              const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
+              if constexpr (std::is_same_v<T, MLFloat16>) {
+                MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), thread_bias2_buffer, static_cast<size_t>(hidden_size));
+              } else {
+                std::memcpy(thread_bias2_buffer, B2_bias, static_cast<size_t>(hidden_size) * sizeof(float));
+              }
+              fc2_bias_float = thread_bias2_buffer;
+            }
+
+            size_t packed_size = MlasQ4GemmPackBSize(q_type2, static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size));
+            const uint8_t* packed_b = static_cast<const uint8_t*>(fc2_direct_q4_cache_ptr) + expert_idx * packed_size;
+
+            Status gemm_status = DirectQ4Gemm(A2, packed_b, fc2_bias_float, C2,
+                                              num_expert_tokens, hidden_size, inter_size, fc2_direct_qtype, tp);
+            if (gemm_status.IsOK()) {
+              fc2_bias_added_by_mlas = true;
+              goto fc2_gemm_done;
+            }
+          }
+        }
+
+        // Dequantize from PrePacked (transposed, unpacked)
+        const uint8_t* current_packed_ptr = static_cast<const uint8_t*>(packed_fc2_.get()) + expert_idx * hidden_size * inter_size;
+
+        DequantizePrePacked(current_packed_ptr, fc2_scales_ptr, fc2_zp_ptr,
+                            is_fc2_block_wise ? block_size_ : 0,
+                            hidden_size, inter_size,
+                            B2_dequant, fc2_scales_dims);
+
+        // Fallback
+        MlasGemm(CblasNoTrans, CblasNoTrans,
+                 m2, n2, k2,
+                 1.0f, A2, k2,
+                 B2_dequant, n2,
+                 0.0f, C2, n2,
+                 tp);
+
+        goto fc2_gemm_done;
+      }
 
       if (use_direct_q4_gemm_fc2) {
         IAllocatorUniquePtr<uint8_t> mlas_packed_fc2;
@@ -909,12 +1308,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
         if (convert_status.IsOK()) {
           float* fc2_bias_float = nullptr;
-          IAllocatorUniquePtr<float> fc2_bias_buffer;
 
           if (has_fc2_bias) {
             const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
-            fc2_bias_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(hidden_size));
-            fc2_bias_float = fc2_bias_buffer.get();
+            fc2_bias_float = thread_bias2_buffer;
 
             if constexpr (std::is_same_v<T, MLFloat16>) {
               MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), fc2_bias_float, static_cast<size_t>(hidden_size));
@@ -929,7 +1326,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                                             num_expert_tokens, hidden_size, inter_size, q_type2, tp);
 
           if (gemm_status.IsOK()) {
-            fc2_used_direct_q4 = true;
+            fc2_bias_added_by_mlas = true;
             goto fc2_gemm_done;
           }
         }
@@ -979,8 +1376,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
     fc2_gemm_done:
 
-      bool fc2_bias_handled_by_q4_gemm = fc2_used_direct_q4 && has_fc2_bias;
-      if (has_fc2_bias && !fc2_bias_handled_by_q4_gemm) {
+      if (has_fc2_bias && !fc2_bias_added_by_mlas) {
         const T* B2_bias = fc2_bias_data + expert_idx * hidden_size;
         if constexpr (std::is_same_v<T, MLFloat16>) {
           MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(B2_bias), thread_bias2_buffer, static_cast<size_t>(hidden_size));
@@ -1015,7 +1411,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
         float* dest = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size + buffer_offset;
         const float* src = C2 + i * hidden_size;
 
-        if (has_fc2_bias && !fc2_bias_handled_by_q4_gemm) {
+        if (has_fc2_bias && !fc2_bias_added_by_mlas) {
           const size_t unroll_factor = narrow<size_t>(GetUnrollFactor(hidden_size));
           size_t j = 0;
           for (; j + unroll_factor <= narrow<size_t>(hidden_size); j += unroll_factor) {
@@ -1109,10 +1505,22 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+template <typename T>
+void QMoECPU<T>::ApplyActivationVectorized(float* data, int64_t size) const {
+  for (int64_t i = 0; i < size; ++i) {
+    data[i] = ApplyActivation(data[i], activation_type_);
+  }
+}
+
 template QMoECPU<float>::QMoECPU(const OpKernelInfo& op_kernel_info);
+
 template Status QMoECPU<float>::Compute(OpKernelContext* context) const;
+template Status QMoECPU<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
+template Status QMoECPU<float>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 template QMoECPU<MLFloat16>::QMoECPU(const OpKernelInfo& op_kernel_info);
 template Status QMoECPU<MLFloat16>::Compute(OpKernelContext* context) const;
+template Status QMoECPU<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
+template Status QMoECPU<MLFloat16>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 
 // Kernel Registration
 ONNX_OPERATOR_TYPED_KERNEL_EX(
