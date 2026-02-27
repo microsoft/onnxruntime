@@ -1297,6 +1297,7 @@ struct Env : detail::Base<OrtEnv> {
   Env& SetDefaultThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
                                      OrtThreadPoolWorkStartFn on_start,
                                      OrtThreadPoolWorkStopFn on_stop,
+                                     OrtThreadPoolWorkAbandonFn on_abandon,
                                      void* user_context);
 };
 

@@ -986,12 +986,22 @@ typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ v
  * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
  */
 typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+
+/** \brief Thread pool work abandon callback
+ *
+ * Called when enqueued work is abandoned (revoked or rejected) without execution.
+ * This allows the caller to free any resources associated with enqueue_data.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
+ */
+typedef void (*OrtThreadPoolWorkAbandonFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 #else
 // Typedefs must exist unconditionally because the OrtApi struct references them.
 // The implementation returns ORT_NOT_IMPLEMENTED when the flag is not defined.
 typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context) NO_EXCEPTION;
 typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+typedef void (*OrtThreadPoolWorkAbandonFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
 #endif
 
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
@@ -7291,6 +7301,7 @@ struct OrtApi {
    * \param[in] on_enqueue Callback invoked when work is enqueued (on submitting thread). May be NULL.
    * \param[in] on_start Callback invoked when work starts (on worker thread). May be NULL.
    * \param[in] on_stop Callback invoked when work completes (on worker thread). May be NULL.
+   * \param[in] on_abandon Callback invoked when enqueued work is abandoned without execution. May be NULL.
    * \param[in] user_context User-provided context passed to all callbacks. May be NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -7301,6 +7312,7 @@ struct OrtApi {
                   _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
                   _In_opt_ OrtThreadPoolWorkStartFn on_start,
                   _In_opt_ OrtThreadPoolWorkStopFn on_stop,
+                  _In_opt_ OrtThreadPoolWorkAbandonFn on_abandon,
                   _In_opt_ void* user_context);
 };
 

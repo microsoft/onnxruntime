@@ -196,6 +196,7 @@ class Environment {
   Status SetDefaultSessionWorkCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
                                         OrtThreadPoolWorkStartFn on_start,
                                         OrtThreadPoolWorkStopFn on_stop,
+                                        OrtThreadPoolWorkAbandonFn on_abandon,
                                         void* user_context);
 #endif
 

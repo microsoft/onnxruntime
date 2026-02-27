@@ -75,6 +75,10 @@ struct ThreadPoolWorkCallbacks {
   /// Guaranteed to be called even if the work throws an exception.
   OrtThreadPoolWorkStopFn on_stop_work = nullptr;
 
+  /// Called when enqueued work is abandoned (revoked or rejected) without execution.
+  /// Allows the caller to free any resources associated with enqueue_data.
+  OrtThreadPoolWorkAbandonFn on_abandon = nullptr;
+
   /// User-provided context passed to all callbacks.
   void* user_context = nullptr;
 };

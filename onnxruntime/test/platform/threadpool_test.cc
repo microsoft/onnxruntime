@@ -681,6 +681,7 @@ struct WorkCallbackTestContext {
   std::atomic<int> enqueue_count{0};
   std::atomic<int> start_count{0};
   std::atomic<int> stop_count{0};
+  std::atomic<int> abandon_count{0};
 };
 
 void* TestOnEnqueue(void* user_context) noexcept {
@@ -701,6 +702,12 @@ void TestOnStop(void* user_context, void* callback_data) noexcept {
   EXPECT_EQ(callback_data, reinterpret_cast<void*>(static_cast<uintptr_t>(0xCB00CB00)));
 }
 
+void TestOnAbandon(void* user_context, void* callback_data) noexcept {
+  auto* ctx = static_cast<WorkCallbackTestContext*>(user_context);
+  ctx->abandon_count++;
+  EXPECT_EQ(callback_data, reinterpret_cast<void*>(static_cast<uintptr_t>(0xCB00CB00)));
+}
+
 // Helper to create a thread pool with work callbacks and run a test
 void CreateThreadPoolWithCallbacksAndTest(
     int num_threads,
@@ -711,6 +718,7 @@ void CreateThreadPoolWithCallbacksAndTest(
   callbacks.on_enqueue = TestOnEnqueue;
   callbacks.on_start_work = enable_start_stop ? TestOnStart : nullptr;
   callbacks.on_stop_work = enable_start_stop ? TestOnStop : nullptr;
+  callbacks.on_abandon = enable_start_stop ? TestOnAbandon : nullptr;
   callbacks.user_context = &ctx;
 
   onnxruntime::ThreadOptions thread_options;
@@ -792,8 +800,10 @@ TEST(ThreadPoolTest, TestWorkCallbacks_ParallelFor) {
   // Worker threads get callbacks; main thread's fn(0) does not.
   // Some enqueued tasks may be revoked before execution (work completed by other threads),
   // so enqueue_count >= start_count. Start/stop must always be balanced.
+  // Every enqueued item must end with either start+stop or abandon.
   ASSERT_GE(ctx.enqueue_count.load(), ctx.start_count.load());
   ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
+  ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load() + ctx.abandon_count.load());
 }
 
 TEST(ThreadPoolTest, TestWorkCallbacks_ParallelSection) {
@@ -814,8 +824,10 @@ TEST(ThreadPoolTest, TestWorkCallbacks_ParallelSection) {
   ASSERT_EQ(tasks_completed.load(), num_tasks * num_loops);
   // Some enqueued tasks may be revoked before execution (work completed by other threads),
   // so enqueue_count >= start_count. Start/stop must always be balanced.
+  // Every enqueued item must end with either start+stop or abandon.
   ASSERT_GE(ctx.enqueue_count.load(), ctx.start_count.load());
   ASSERT_EQ(ctx.start_count.load(), ctx.stop_count.load());
+  ASSERT_EQ(ctx.enqueue_count.load(), ctx.start_count.load() + ctx.abandon_count.load());
 }
 
 TEST(ThreadPoolTest, TestWorkCallbacks_EnqueueReturnsNull) {

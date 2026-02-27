@@ -473,6 +473,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
             to.work_enqueue_fn = env_cbs->on_enqueue;
             to.work_start_fn = env_cbs->on_start_work;
             to.work_stop_fn = env_cbs->on_stop_work;
+            to.work_abandon_fn = env_cbs->on_abandon;
             to.work_callbacks_user_context = env_cbs->user_context;
           }
         }
@@ -521,6 +522,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
             to.work_enqueue_fn = env_cbs->on_enqueue;
             to.work_start_fn = env_cbs->on_start_work;
             to.work_stop_fn = env_cbs->on_stop_work;
+            to.work_abandon_fn = env_cbs->on_abandon;
             to.work_callbacks_user_context = env_cbs->user_context;
           }
         }

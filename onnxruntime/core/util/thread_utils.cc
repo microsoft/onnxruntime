@@ -159,10 +159,11 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   // Set up work callbacks if configured.
   // Create a local struct and pass its address - ThreadPool will copy it.
   ThreadPoolWorkCallbacks work_callbacks;
-  if (options.work_enqueue_fn || options.work_start_fn || options.work_stop_fn) {
+  if (options.work_enqueue_fn || options.work_start_fn || options.work_stop_fn || options.work_abandon_fn) {
     work_callbacks.on_enqueue = options.work_enqueue_fn;
     work_callbacks.on_start_work = options.work_start_fn;
     work_callbacks.on_stop_work = options.work_stop_fn;
+    work_callbacks.on_abandon = options.work_abandon_fn;
     work_callbacks.user_context = options.work_callbacks_user_context;
     to.work_callbacks = &work_callbacks;
   }

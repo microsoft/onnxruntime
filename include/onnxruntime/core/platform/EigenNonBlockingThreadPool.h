@@ -558,7 +558,11 @@ class RunQueue {
   // the caller must assume that it may still execute, for instance because it
   // has been pop'd from the queue concurrent with the revocation request.
 
-  bool RevokeWithTag(Tag tag, unsigned w_idx) {
+  bool RevokeWithTag(Tag tag, unsigned w_idx
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+                     , void** out_enqueue_data = nullptr
+#endif
+                     ) {
     bool revoked = false;
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
@@ -577,6 +581,11 @@ class RunQueue {
       if (e.tag == tag) {
         unsigned back = back_.load(std::memory_order_relaxed);
         unsigned back_idx = back & kMask;
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+        if (out_enqueue_data) {
+          *out_enqueue_data = e.w.enqueue_data_;
+        }
+#endif
         if (back_idx != w_idx) {
           // Item is not at the back of the queue, mark it in-place as revoked
           e.tag = Tag();
@@ -927,7 +936,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // then it cannot have pushed tasks.
     if (ps.dispatch_q_idx != -1) {
       Queue& q = worker_data_[ps.dispatch_q_idx].queue;
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+      void* abandoned_data = nullptr;
+      if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx, &abandoned_data)) {
+        InvokeOnAbandon(abandoned_data);
+#else
       if (q.RevokeWithTag(pt.tag, ps.dispatch_w_idx)) {
+#endif
         if (!ps.dispatch_started.load(std::memory_order_acquire)) {
           // We successfully revoked a task, and saw the dispatch task
           // not started.  Hence we know we revoked the dispatch task.
@@ -963,7 +978,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     while (!ps.tasks.empty()) {
       const auto& item = ps.tasks.back();
       Queue& q = worker_data_[item.first].queue;
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+      void* abandoned_data = nullptr;
+      if (q.RevokeWithTag(pt.tag, item.second, &abandoned_data)) {
+        InvokeOnAbandon(abandoned_data);
+#else
       if (q.RevokeWithTag(pt.tag, item.second)) {
+#endif
         ps.tasks_revoked++;
       }
       ps.tasks.pop_back();
@@ -1171,6 +1192,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
         }
       }
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+      else {
+        InvokeOnAbandon(enqueue_data);
+      }
+#endif
     }
   }
 
@@ -1286,6 +1312,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           }
         } else {
           ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
+#ifdef ORT_SESSION_THREADPOOL_CALLBACKS
+          InvokeOnAbandon(enqueue_data);
+#endif
         }
         profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
       } else {
@@ -1443,6 +1472,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     if (work_callbacks_.on_stop_work) {
       work_callbacks_.on_stop_work(work_callbacks_.user_context, enqueue_data);
+    }
+  }
+
+  // Called when enqueued work is abandoned (revoked or rejected) without execution.
+  // Allows the on_abandon callback to free resources associated with enqueue_data.
+  void InvokeOnAbandon(void* enqueue_data) {
+    if (enqueue_data && work_callbacks_.on_abandon) {
+      work_callbacks_.on_abandon(work_callbacks_.user_context, enqueue_data);
     }
   }
 #endif

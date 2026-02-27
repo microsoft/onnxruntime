@@ -447,11 +447,13 @@ Status Environment::SetDefaultSessionWorkCallbacks(
     OrtThreadPoolWorkEnqueueFn on_enqueue,
     OrtThreadPoolWorkStartFn on_start,
     OrtThreadPoolWorkStopFn on_stop,
+    OrtThreadPoolWorkAbandonFn on_abandon,
     void* user_context) {
   ThreadPoolWorkCallbacks cbs;
   cbs.on_enqueue = on_enqueue;
   cbs.on_start_work = on_start;
   cbs.on_stop_work = on_stop;
+  cbs.on_abandon = on_abandon;
   cbs.user_context = user_context;
   default_session_work_callbacks_ = cbs;
   return Status::OK();

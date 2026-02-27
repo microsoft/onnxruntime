@@ -4264,17 +4264,19 @@ ORT_API_STATUS_IMPL(OrtApis::SetDefaultThreadPoolCallbacks, _Inout_ OrtEnv* ort_
                     _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
                     _In_opt_ OrtThreadPoolWorkStartFn on_start,
                     _In_opt_ OrtThreadPoolWorkStopFn on_stop,
+                    _In_opt_ OrtThreadPoolWorkAbandonFn on_abandon,
                     _In_opt_ void* user_context) {
   API_IMPL_BEGIN
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   auto& env = ort_env->GetEnvironment();
   return onnxruntime::ToOrtStatus(
-      env.SetDefaultSessionWorkCallbacks(on_enqueue, on_start, on_stop, user_context));
+      env.SetDefaultSessionWorkCallbacks(on_enqueue, on_start, on_stop, on_abandon, user_context));
 #else
   ORT_UNUSED_PARAMETER(ort_env);
   ORT_UNUSED_PARAMETER(on_enqueue);
   ORT_UNUSED_PARAMETER(on_start);
   ORT_UNUSED_PARAMETER(on_stop);
+  ORT_UNUSED_PARAMETER(on_abandon);
   ORT_UNUSED_PARAMETER(user_context);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
       "SetDefaultThreadPoolCallbacks requires ORT built with --session_threadpool_callbacks");

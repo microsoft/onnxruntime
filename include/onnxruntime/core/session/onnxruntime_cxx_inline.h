@@ -907,8 +907,9 @@ inline Env& Env::UnregisterExecutionProviderLibrary(const char* registration_nam
 inline Env& Env::SetDefaultThreadPoolCallbacks(OrtThreadPoolWorkEnqueueFn on_enqueue,
                                                OrtThreadPoolWorkStartFn on_start,
                                                OrtThreadPoolWorkStopFn on_stop,
+                                               OrtThreadPoolWorkAbandonFn on_abandon,
                                                void* user_context) {
-  ThrowOnError(GetApi().SetDefaultThreadPoolCallbacks(p_, on_enqueue, on_start, on_stop, user_context));
+  ThrowOnError(GetApi().SetDefaultThreadPoolCallbacks(p_, on_enqueue, on_start, on_stop, on_abandon, user_context));
   return *this;
 }
 

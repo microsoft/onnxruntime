@@ -428,6 +428,7 @@ ORT_API_STATUS_IMPL(SetDefaultThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
                     _In_opt_ OrtThreadPoolWorkEnqueueFn on_enqueue,
                     _In_opt_ OrtThreadPoolWorkStartFn on_start,
                     _In_opt_ OrtThreadPoolWorkStopFn on_stop,
+                    _In_opt_ OrtThreadPoolWorkAbandonFn on_abandon,
                     _In_opt_ void* user_context);
 
 ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
