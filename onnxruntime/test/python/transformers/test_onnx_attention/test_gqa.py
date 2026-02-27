@@ -1051,12 +1051,12 @@ def parity_check_gqa_prompt_with_nonpad_kv_seqlen(
 
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
 
-    # Zero out padded query positions for comparison
+    # When nonpad_kv_seqlen=0 for a batch, all KV positions are masked → softmax yields NaN.
+    # Zero out those batches in both ORT and reference for comparison.
     for b in range(config.batch_size):
-        valid_len = nonpad_seqlens[b].item()
-        if valid_len < config.q_sequence_length:
-            out[b, valid_len:, :, :] = 0
-            out_ref[b, valid_len:, :, :] = 0
+        if nonpad_seqlens[b].item() == 0:
+            out[b, :, :, :] = 0
+            out_ref[b, :, :, :] = 0
 
     out_np = out.to(torch.float32).detach().cpu().numpy()
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
@@ -1103,6 +1103,20 @@ def gqa_nonpad_kv_seqlen_test_cases():
         )
         name = f"b{batch_size}_sq{sq}_skv{skv}_nh{n}_{n2}_h{h}_{label}"
         yield name, config, seqlens
+
+    # Non-causal variation
+    config_nc = AttentionConfig(
+        batch_size=2,
+        q_sequence_length=sq,
+        kv_sequence_length=skv,
+        past_kv_sequence_length=0,
+        q_num_heads=n,
+        kv_num_heads=n2,
+        head_size=h,
+        is_causal=0,
+        has_nonpad_kv_seqlen=True,
+    )
+    yield f"b2_sq{sq}_skv{skv}_nh{n}_{n2}_h{h}_noncausal", config_nc, [3, 5]
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")

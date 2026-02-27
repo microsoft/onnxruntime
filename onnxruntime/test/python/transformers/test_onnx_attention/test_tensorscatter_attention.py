@@ -184,6 +184,8 @@ def build_scatter_attention_graph(
         is_causal=0,
         kv_num_heads=kv_num_heads,
         q_num_heads=q_num_heads,
+        softcap=0.0,
+        qk_matmul_output_mode=0,
         domain="",
     )
 
@@ -316,8 +318,8 @@ def run_scatter_attention(
     session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
 
     feed = {
-        "key_cache": key_cache.cpu().numpy() if device == "cpu" else key_cache.cpu().numpy(),
-        "value_cache": value_cache.cpu().numpy() if device == "cpu" else value_cache.cpu().numpy(),
+        "key_cache": key_cache.cpu().numpy(),
+        "value_cache": value_cache.cpu().numpy(),
         "scatter_indices_k": scatter_indices_k.cpu().numpy(),
         "scatter_indices_v": scatter_indices_v.cpu().numpy(),
         "new_k": new_k.cpu().numpy(),
