@@ -26,7 +26,8 @@ TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorDefaultsToKleidiAiEnable
 TEST(CPUExecutionProviderTest, MlasBackendKernelSelectorCanDisableKleidiAi) {
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
   ConfigOptions config_options;
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(kOrtSessionOptionsMlasDisableKleidiAi, "1"));
+  const Status add_config_status = config_options.AddConfigEntry(kOrtSessionOptionsMlasDisableKleidiAi, "1");
+  ASSERT_TRUE(add_config_status.IsOK()) << add_config_status.ErrorMessage();
 
   SetupMlasBackendKernelSelectorFromConfigOptions(config, config_options);
 

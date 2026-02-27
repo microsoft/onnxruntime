@@ -4,7 +4,7 @@
 #pragma once
 
 #include "orttraining/training_ops/cpu/rnn/lstm_io_utils.h"
-#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime::lstm {
 
