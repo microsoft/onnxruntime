@@ -23,6 +23,26 @@ namespace cuda {
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       Attention,                                                      \
       kOnnxDomain,                                                    \
+      24,                                                             \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("U", BuildKernelDefConstraints<bool, T>()), \
+      Attention<T>);
+
+REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
+
+#undef REGISTER_KERNEL_TYPED
+
+#define REGISTER_KERNEL_TYPED(T)                                      \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
+      Attention,                                                      \
+      kOnnxDomain,                                                    \
+      23,                                                             \
       23,                                                             \
       T,                                                              \
       kCudaExecutionProvider,                                         \
@@ -95,7 +115,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                   y_shape,
                   present_key_shape,
                   present_value_shape,
-                  output_qk_shape)
+                  output_qk_shape,
+                  true /* skip_nonpad_data_validation: data is on GPU */)
                   .IsOK(),
               "Output shapes for Attention could not be computed.");
 
@@ -381,7 +402,17 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // masks to seqlens_k directly (bypassing ONNX right-aligned broadcasting). This differs from
     // the MHA path below, where 2D masks follow ONNX broadcasting: [A, B] → [1, 1, A, B], so
     // 2D = (q_seq_len, total_seq_len) with both batch and heads broadcast.
-    if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
+    if (parameters.has_nonpad_kv_seqlen) {
+      // Convert nonpad_kv_seqlen (int64, GPU) to seqlens_k (int32, GPU).
+      // GQA convention: seqlens_k[i] = nonpad_kv_seqlen[i] - 1 (last valid index, not count).
+      ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToSeqlensK(
+          nonpad_kv_seqlen->Data<int64_t>(),
+          seqlens_k_buffer.get(),
+          parameters.batch_size,
+          parameters.total_sequence_length,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock));
+    } else if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
       // Get mask dimensions for broadcasting
       // attn_mask can be 2D, 3D, or 4D and broadcasts to (batch_size, num_heads, q_seq_len, total_seq_len)
       const auto& mask_shape = attn_mask->Shape();
@@ -568,7 +599,35 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // Set additional fields
     data.bias = nullptr;  // New Attention op doesn't have bias
     IAllocatorUniquePtr<void> converted_mask_buffer;
-    if (nullptr != attn_mask) {
+    IAllocatorUniquePtr<void> nonpad_kv_bias_buffer;
+    if (parameters.has_nonpad_kv_seqlen) {
+      if (attn_mask != nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "Using both nonpad_kv_seqlen and attn_mask simultaneously is not yet supported "
+                               "in MHA path of Attention op (CUDA).");
+      }
+      // Generate attention_bias from nonpad_kv_seqlen: (B, q_seq, T) where
+      // position t < nonpad_kv_seqlen[b] → 0.0, position t >= nonpad_kv_seqlen[b] → -inf.
+      // Broadcasts over heads (broadcast_attn_bias_dim_1 = true).
+      using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+      int64_t bias_elements = static_cast<int64_t>(parameters.batch_size) *
+                              parameters.q_sequence_length *
+                              parameters.total_sequence_length;
+      nonpad_kv_bias_buffer = GetScratchBuffer<void>(bias_elements * sizeof(NativeCudaT), context->GetComputeStream());
+      auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+      ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToAttentionBias<NativeCudaT>(
+          nonpad_kv_seqlen->Data<int64_t>(),
+          reinterpret_cast<NativeCudaT*>(nonpad_kv_bias_buffer.get()),
+          parameters.batch_size,
+          parameters.q_sequence_length,
+          parameters.total_sequence_length,
+          contribop_parameters.mask_filter_value,
+          cuda_stream,
+          GetDeviceProp().maxThreadsPerBlock));
+      data.attention_bias = reinterpret_cast<const CudaT*>(nonpad_kv_bias_buffer.get());
+      contribop_parameters.broadcast_attn_bias_dim_0 = false;
+      contribop_parameters.broadcast_attn_bias_dim_1 = true;
+    } else if (nullptr != attn_mask) {
       if (attn_mask->IsDataType<bool>()) {
         // Convert boolean mask to additive attention bias: true -> 0.0, false -> mask_filter_value.
         // The conversion is element-wise and preserves the original shape, so the broadcast flags

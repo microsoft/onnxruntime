@@ -27,7 +27,8 @@ inline Status ComputeOutputShapeForAttention(
     TensorShape& y_shape,
     TensorShape& present_key_shape,
     TensorShape& present_value_shape,
-    TensorShape& output_qk_shape) {
+    TensorShape& output_qk_shape,
+    bool skip_nonpad_data_validation = false) {
   ORT_ENFORCE(Q != nullptr && K != nullptr && V != nullptr,
               "Q, K, and V inputs must not be null");
   int q_dims = onnxruntime::narrow<int>(Q->Shape().NumDimensions());
@@ -113,13 +114,17 @@ inline Status ComputeOutputShapeForAttention(
     ORT_ENFORCE(past_key == nullptr && past_value == nullptr,
                 "nonpad_kv_seqlen should not be used together with past_key and past_value inputs");
     parameters.has_nonpad_kv_seqlen = true;
+    // Note: This pointer is CPU-accessible only. CUDA path should not dereference this directly.
     parameters.nonpad_kv_seqlen_data = nonpad_kv_seqlen->Data<int64_t>();
     // Validate each value is in [0, total_sequence_length].
-    for (int i = 0; i < parameters.batch_size; ++i) {
-      ORT_ENFORCE(parameters.nonpad_kv_seqlen_data[i] >= 0 &&
-                      parameters.nonpad_kv_seqlen_data[i] <= parameters.total_sequence_length,
-                  "nonpad_kv_seqlen[", i, "] = ", parameters.nonpad_kv_seqlen_data[i],
-                  " is out of range [0, ", parameters.total_sequence_length, "]");
+    // Skip per-element validation when data is on GPU (CUDA provider).
+    if (!skip_nonpad_data_validation) {
+      for (int i = 0; i < parameters.batch_size; ++i) {
+        ORT_ENFORCE(parameters.nonpad_kv_seqlen_data[i] >= 0 &&
+                        parameters.nonpad_kv_seqlen_data[i] <= parameters.total_sequence_length,
+                    "nonpad_kv_seqlen[", i, "] = ", parameters.nonpad_kv_seqlen_data[i],
+                    " is out of range [0, ", parameters.total_sequence_length, "]");
+      }
     }
   } else {
     parameters.has_nonpad_kv_seqlen = false;

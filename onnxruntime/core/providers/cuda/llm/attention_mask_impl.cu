@@ -173,5 +173,98 @@ template Status LaunchConvertBoolMaskToAttentionBias<__half>(
 template Status LaunchConvertBoolMaskToAttentionBias<__nv_bfloat16>(
     const bool*, __nv_bfloat16*, int64_t, float, cudaStream_t, int);
 
+// CUDA kernel to convert nonpad_kv_seqlen (int64) to seqlens_k (int32) for GQA.
+// GQA convention: seqlens_k = nonpad_kv_seqlen - 1 (last valid index, not count).
+__global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
+    const int64_t* __restrict__ nonpad_kv_seqlen,
+    int* __restrict__ seqlens_k,
+    const int batch_size,
+    const int total_sequence_length) {
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < batch_size) {
+    int64_t val = nonpad_kv_seqlen[idx];
+    // Clamp to valid range [0, total_sequence_length] before int64→int32 cast.
+    val = max(static_cast<int64_t>(0), min(val, static_cast<int64_t>(total_sequence_length)));
+    seqlens_k[idx] = static_cast<int>(val) - 1;
+  }
+}
+
+Status LaunchConvertNonpadKvSeqlenToSeqlensK(
+    const int64_t* nonpad_kv_seqlen,
+    int* seqlens_k,
+    int batch_size,
+    int total_sequence_length,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  if (batch_size == 0) {
+    return Status::OK();
+  }
+
+  int threads = std::min(batch_size, max_threads_per_block);
+  int blocks = (batch_size + threads - 1) / threads;
+
+  ConvertNonpadKvSeqlenToSeqlensKKernel<<<blocks, threads, 0, stream>>>(
+      nonpad_kv_seqlen, seqlens_k, batch_size, total_sequence_length);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// CUDA kernel to convert nonpad_kv_seqlen to an additive attention bias.
+// Generates (batch_size, q_seq_len, total_seq_len) output where:
+//   position t < nonpad_kv_seqlen[b] → 0.0 (attend)
+//   position t >= nonpad_kv_seqlen[b] → mask_filter_value (mask out)
+// The same mask row is repeated for each query position within a batch.
+template <typename T>
+__global__ void ConvertNonpadKvSeqlenToAttentionBiasKernel(
+    const int64_t* __restrict__ nonpad_kv_seqlen,
+    T* __restrict__ attention_bias,
+    const int batch_size,
+    const int q_seq_len,
+    const int total_seq_len,
+    const float mask_filter_value) {
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  int64_t total = static_cast<int64_t>(batch_size) * q_seq_len * total_seq_len;
+  for (; idx < total; idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    int b = static_cast<int>(idx / (static_cast<int64_t>(q_seq_len) * total_seq_len));
+    int t = static_cast<int>(idx % total_seq_len);
+    // Clamp nonpad_kv_seqlen to [0, total_seq_len] for safety.
+    int64_t valid_len = max(static_cast<int64_t>(0), min(nonpad_kv_seqlen[b], static_cast<int64_t>(total_seq_len)));
+    attention_bias[idx] = (t < static_cast<int>(valid_len)) ? T(0.0f) : T(mask_filter_value);
+  }
+}
+
+template <typename T>
+Status LaunchConvertNonpadKvSeqlenToAttentionBias(
+    const int64_t* nonpad_kv_seqlen,
+    T* attention_bias,
+    int batch_size,
+    int q_seq_len,
+    int total_seq_len,
+    float mask_filter_value,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  int64_t total = static_cast<int64_t>(batch_size) * q_seq_len * total_seq_len;
+  if (total == 0) {
+    return Status::OK();
+  }
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), total));
+  int64_t blocks = (total + threads - 1) / threads;
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  ConvertNonpadKvSeqlenToAttentionBiasKernel<T><<<grid_size, threads, 0, stream>>>(
+      nonpad_kv_seqlen, attention_bias, batch_size, q_seq_len, total_seq_len, mask_filter_value);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchConvertNonpadKvSeqlenToAttentionBias<float>(
+    const int64_t*, float*, int, int, int, float, cudaStream_t, int);
+template Status LaunchConvertNonpadKvSeqlenToAttentionBias<__half>(
+    const int64_t*, __half*, int, int, int, float, cudaStream_t, int);
+template Status LaunchConvertNonpadKvSeqlenToAttentionBias<__nv_bfloat16>(
+    const int64_t*, __nv_bfloat16*, int, int, int, float, cudaStream_t, int);
+
 }  // namespace cuda
 }  // namespace onnxruntime

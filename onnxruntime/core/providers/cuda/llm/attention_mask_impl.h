@@ -62,5 +62,51 @@ Status LaunchConvertBoolMaskToAttentionBias(
     cudaStream_t stream,
     int max_threads_per_block);
 
+// Convert nonpad_kv_seqlen (int64, per-batch valid KV lengths) to seqlens_k (int32) for GQA.
+// GQA convention: seqlens_k[i] = nonpad_kv_seqlen[i] - 1 (last valid index, not count).
+//
+// Parameters:
+//   nonpad_kv_seqlen: Input int64 tensor on GPU, shape [batch_size]
+//   seqlens_k: Output int32 buffer on GPU, shape [batch_size]
+//   batch_size: Number of batches
+//   total_sequence_length: Max KV sequence length (for bounds clamping)
+//   stream: CUDA stream
+//   max_threads_per_block: Maximum threads per block
+Status LaunchConvertNonpadKvSeqlenToSeqlensK(
+    const int64_t* nonpad_kv_seqlen,
+    int* seqlens_k,
+    int batch_size,
+    int total_sequence_length,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+// Convert nonpad_kv_seqlen to an additive attention bias for the MHA unfused path.
+// Generates a (batch_size, q_seq_len, total_seq_len) tensor where:
+//   position t < nonpad_kv_seqlen[b] → 0.0 (attend)
+//   position t >= nonpad_kv_seqlen[b] → mask_filter_value (mask out)
+//
+// The output is used as attention_bias with broadcast_attn_bias_dim_0=false,
+// broadcast_attn_bias_dim_1=true (broadcasts over heads).
+//
+// Parameters:
+//   nonpad_kv_seqlen: Input int64 tensor on GPU, shape [batch_size]
+//   attention_bias: Output buffer on GPU, shape [batch_size * q_seq_len * total_seq_len]
+//   batch_size: Number of batches
+//   q_seq_len: Query sequence length
+//   total_seq_len: Total KV sequence length
+//   mask_filter_value: Value for masked positions (typically -inf)
+//   stream: CUDA stream
+//   max_threads_per_block: Maximum threads per block
+template <typename T>
+Status LaunchConvertNonpadKvSeqlenToAttentionBias(
+    const int64_t* nonpad_kv_seqlen,
+    T* attention_bias,
+    int batch_size,
+    int q_seq_len,
+    int total_seq_len,
+    float mask_filter_value,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 }  // namespace cuda
 }  // namespace onnxruntime
