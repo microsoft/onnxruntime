@@ -24,6 +24,7 @@ Requirements:
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -120,6 +121,31 @@ def get_changed_files(oid):
     return []
 
 
+def get_pr_number_from_subject(subject):
+    """Extract PR number from a commit subject like 'Some title (#12345)'."""
+    match = re.search(r"\(#(\d+)\)$", subject.strip())
+    if match:
+        return match.group(1)
+    return None
+
+
+def get_existing_pr_numbers(branch):
+    """Get the set of PR numbers already present in the target branch."""
+    output = run_command(["git", "log", branch, "--oneline", "-n", "500"], silent=True)
+    if not output:
+        return set()
+    pr_numbers = set()
+    for line in output.strip().splitlines():
+        parts = line.split(" ", 1)
+        if len(parts) < 2:
+            continue
+        subject = parts[1]
+        pr_num = get_pr_number_from_subject(subject)
+        if pr_num:
+            pr_numbers.add(int(pr_num))
+    return pr_numbers
+
+
 def check_missing_dependencies(prs, branch):
     """Check for potential missing dependencies (conflicts)."""
     print("\nChecking for potential missing dependencies (conflicts)...")
@@ -179,7 +205,9 @@ def check_missing_dependencies(prs, branch):
 def main():
     parser = argparse.ArgumentParser(description="Generate cherry-pick script from PRs with a specific label.")
     parser.add_argument("--label", required=True, help="Label to filter PRs")
-    parser.add_argument("--output", required=True, help="Output cmd file path")
+    parser.add_argument(
+        "--output", required=True, help="Output script file path (.sh for bash, .cmd for Windows batch)"
+    )
     parser.add_argument("--repo", default="microsoft/onnxruntime", help="Repository (default: microsoft/onnxruntime)")
     parser.add_argument(
         "--branch", default="HEAD", help="Target branch to compare against for dependency checks (default: HEAD)"
@@ -201,12 +229,27 @@ def main():
     # Sort by mergedAt (ISO 8601 strings sort correctly in chronological order)
     prs.sort(key=lambda x: x["mergedAt"])
 
+    # 1.5. Check which PRs are already in the target branch
+    existing_prs = get_existing_pr_numbers(args.branch)
+    if existing_prs:
+        print(f"Found {len(existing_prs)} PRs already in branch '{args.branch}'.")
+
+    # Determine output format based on file extension
+    is_shell = args.output.endswith(".sh")
+
     # 2. Write Output Script
     commit_count = 0
+    skipped_count = 0
     with open(args.output, "w", encoding="utf-8") as f:
-        f.write("@echo off\n")
-        f.write(f"rem Cherry-pick {args.label} commits\n")
-        f.write("rem Sorted by merge time (oldest first)\n\n")
+        if is_shell:
+            f.write("#!/bin/bash\n")
+            f.write(f"# Cherry-pick {args.label} commits\n")
+            f.write("# Sorted by merge time (oldest first)\n")
+            f.write("set -e\n\n")
+        else:
+            f.write("@echo off\n")
+            f.write(f"rem Cherry-pick {args.label} commits\n")
+            f.write("rem Sorted by merge time (oldest first)\n\n")
 
         for pr in prs:
             number = pr["number"]
@@ -217,24 +260,35 @@ def main():
                 print(f"Warning: PR #{number} has no merge commit OID. Skipping.", file=sys.stderr)
                 continue
 
+            if number in existing_prs:
+                print(f"Skipping PR #{number} (already in branch '{args.branch}'): {safe_title}")
+                skipped_count += 1
+                continue
+
             oid = pr["mergeCommit"]["oid"]
-            f.write(f"rem PR {number}: {safe_title}\n")
+            comment = "#" if is_shell else "rem"
+            f.write(f"{comment} PR {number}: {safe_title}\n")
             f.write(f"git cherry-pick {oid}\n\n")
             commit_count += 1
 
-    print(f"Generated {args.output} with {commit_count} commits.")
+    print(f"Generated {args.output} with {commit_count} commits ({skipped_count} skipped, already in branch).")
 
-    # 3. Write PR Description Markdown
+    # 3. Write PR Description Markdown (table format)
     md_output = "cherry_pick_pr_description.md"
     with open(md_output, "w", encoding="utf-8") as f:
-        f.write("This cherry-picks the following commits for the release:\n")
+        f.write("This cherry-picks the following commits for the release:\n\n")
+        f.write("| Commit ID | PR Number | Commit Title |\n")
+        f.write("|-----------|-----------|-------------|\n")
         for pr in prs:
             if not pr.get("mergeCommit"):
                 continue
             number = pr["number"]
-            title = pr["title"]
-            # Markdown link format: - #123 Title
-            f.write(f"- #{number} {title}\n")
+            if number in existing_prs:
+                continue
+            title = pr["title"].replace("\n", " ")
+            oid = pr["mergeCommit"]["oid"]
+            short_oid = oid[:10]
+            f.write(f"| {short_oid} | #{number} | {title} |\n")
 
     print(f"Generated {md_output} with {commit_count} commits.")
 

@@ -214,14 +214,17 @@ def extract_pr_numbers(text, strict=False):
         return []
 
     if strict:
-        # Strict mode: Only look for (#123) with closing paren or full onnxruntime URLs
+        # Strict mode: Only look for (#123) with closing paren, full onnxruntime URLs,
+        # or PR numbers in markdown table cells (| #123 |), or standalone #123 with clear boundaries.
         # This avoids noise from version numbers or external repo PRs
         # And it avoids matching truncated headlines like (#25... as PR #25
         patterns = [
             r"\(#(\d+)\)",  # (#123)
-            r"(?:^|\s|-)#(\d+)(?:\s|$)",  # #123 at start, or preceded by space/dash, and followed by space or end
             r"microsoft/onnxruntime/pull/(\d+)",
+            r"(?:^|\s|-)#(\d+)(?:\s|$)",  # #123 at start, or preceded by space/dash, and followed by space or end
+            r"\|\s*#(\d+)\s*\|",  # | #123 | (markdown table cell)
         ]
+
         results = []
         for p in patterns:
             results.extend(re.findall(p, text))
