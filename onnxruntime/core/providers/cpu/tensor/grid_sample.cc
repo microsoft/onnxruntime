@@ -179,13 +179,12 @@ void PrecomputeBilinearSamplePlan2D(const T* grid_data,
                                     int64_t H_in,
                                     int64_t W_in,
                                     std::vector<BilinearSamplePlan2D<T>>& plans) {
-  const int64_t point_count = H_out * W_out;
+  const size_t point_count = static_cast<size_t>(H_out) * static_cast<size_t>(W_out);
 
-  for (int64_t idx = 0; idx < point_count; ++idx) {
-    const auto sidx = onnxruntime::narrow<size_t>(idx);
-    auto& plan = plans[sidx];
-    const T nx = grid_data[sidx * 2];
-    const T ny = grid_data[sidx * 2 + 1];
+  for (size_t idx = 0; idx < point_count; ++idx) {
+    auto& plan = plans[idx];
+    const T nx = grid_data[idx * 2];
+    const T ny = grid_data[idx * 2 + 1];
     const T x = GsDenormalize<T>(nx, W_in, false);
     const T y = GsDenormalize<T>(ny, H_in, false);
 
@@ -231,8 +230,7 @@ void EvaluatePlanForChannel(const T* input_data,
                             int64_t W_in,
                             const BilinearSamplePlan2D<T>* plan_data,
                             int64_t point_count) {
-  ORT_ENFORCE(input_data != nullptr, "EvaluatePlanForChannel requires non-null input_data.");
-  for (int64_t idx = 0; idx < point_count; ++idx) {
+  for (size_t idx = 0; idx < static_cast<size_t>(point_count); ++idx) {
     const auto& plan = plan_data[idx];
     if (plan.mask == 0) {
       output_data[idx] = T{};
@@ -284,7 +282,8 @@ void TryRunBilinearZerosFastPath2D(const Tensor& input,
                                    std::vector<BilinearSamplePlan2D<T>>& sampling_plan) {
   const int64_t plane_in = H_in * W_in;
   const int64_t plane_out = H_out * W_out;
-  sampling_plan.resize(onnxruntime::narrow<size_t>(plane_out));
+  const size_t plane_out_size = onnxruntime::narrow<size_t>(plane_out);
+  sampling_plan.resize(plane_out_size);
 
   const T* grid_data = grid.Data<T>() + n * plane_out * 2;
   PrecomputeBilinearSamplePlan2D(grid_data, H_out, W_out, H_in, W_in, sampling_plan);
