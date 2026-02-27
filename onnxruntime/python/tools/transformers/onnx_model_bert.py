@@ -5,6 +5,7 @@
 
 from logging import getLogger
 
+import numpy as np
 from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_bart_attention import FusionBartAttention
@@ -28,7 +29,7 @@ from fusion_shape import FusionShape
 from fusion_simplified_layernorm import FusionSimplifiedLayerNormalization, FusionSkipSimplifiedLayerNormalization
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 from fusion_utils import FusionUtils
-from onnx import ModelProto, TensorProto, helper
+from onnx import ModelProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -267,8 +268,7 @@ class BertOnnxModel(OnnxModel):
             #          |                                                     v
             #          +----> Shape --> Gather(indices=1) --> Unsqueeze--->  Concat --> ConstantOfShape -->Cast --> EmbedLayerNormaliation/ReduceSum
             # After:
-            #  input_ids --> Shape                                                  --> ConstantOfShape -->Cast --> EmbedLayerNormaliation/ReduceSum
-            # TODO: merge ConstantOfShape -->Cast to ConstantOfShape (need update the data type of value)
+            #  input_ids --> Shape --> ConstantOfShape --> EmbedLayerNormalization/ReduceSum
             op_input_id = {"EmbedLayerNormalization": 1, "ReduceSum": 0, "Attention": 3}
             if node.op_type in op_input_id:
                 i = op_input_id[node.op_type]
@@ -288,14 +288,27 @@ class BertOnnxModel(OnnxModel):
                 if parent_nodes is not None:
                     (
                         cast,
-                        constantOfShape,  # noqa: N806
+                        constant_of_shape,
                         concat,
                         unsqueeze,
                         gather,
                         shape,
                     ) = parent_nodes
                     if shape.input[0] == self.graph().input[0].name:
-                        constantOfShape.input[0] = shape.output[0]
+                        constant_of_shape.input[0] = shape.output[0]
+
+                        # Merge ConstantOfShape → Cast: update the value attribute dtype
+                        # so ConstantOfShape directly produces the target type.
+                        cast_to_type = OnnxModel.get_node_attribute(cast, "to")
+                        if cast_to_type is not None:
+                            cos_value = constant_of_shape.attribute[0].t
+                            fill_val = numpy_helper.to_array(cos_value).flat[0]
+                            np_dtype = helper.tensor_dtype_to_np_dtype(cast_to_type)
+                            new_val = numpy_helper.from_array(np.array([fill_val], dtype=np_dtype))
+                            constant_of_shape.attribute[0].t.CopyFrom(new_val)
+                            self.replace_input_of_all_nodes(cast.output[0], constant_of_shape.output[0])
+                            nodes_to_remove.append(cast)
+
                         output_name_to_node = self.output_name_to_node()
 
             if node.op_type == "Attention":
