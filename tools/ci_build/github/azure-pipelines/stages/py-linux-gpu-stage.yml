@@ -118,10 +118,6 @@ stages:
       - script: |
           set -e -x
           mv $(Build.BinariesDirectory)/dist ./dist
-          pushd dist
-          find . -name \*.whl -exec unzip -qq -o {} \;
-          rm -rf onnxruntime
-          popd
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'Move wheel files'
 
@@ -129,8 +125,5 @@ stages:
         - script: |
             set -e -x
             mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }}
-            pushd ${{ parameters.cmake_build_type }}
-            find . -name \*.whl -exec unzip -qq -o {} \;
-            popd
           workingDirectory: '$(Build.ArtifactStagingDirectory)'
           displayName: 'Move build intermediates'
