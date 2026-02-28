@@ -762,13 +762,15 @@ class OptimizeCommand(BaseOliveCLICommand):
 
     def _get_openvino_encapsulation_pass_config(self) -> dict[str, Any]:
         """Return pass dictionary for OpenVINOEncapsulation pass."""
-        return {
+        config = {
             "type": "OpenVINOEncapsulation",
-            "target_device": self.args.device,
             "keep_ov_dynamic_shapes": True,
             "op_version": "2025.1",
             "reuse_cache": True,
         }
+        if self.args.device is not None:
+            config["target_device"] = self.args.device
+        return config
 
     def _enable_onnx_io_datatype_converter_pass(self) -> bool:
         """Return true if condition to add OnnxIODataTypeConverter pass is met."""
