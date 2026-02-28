@@ -7269,6 +7269,32 @@ struct OrtApi {
                   _In_reads_opt_(num_tensors) const size_t* sizes,
                   _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
+
+  /** \brief Create a tensor backed by a user supplied buffer, starting at a byte offset into that buffer
+   *
+   * Equivalent to CreateTensorWithDataAsOrtValue but the tensor's data pointer is advanced by
+   * \p p_data_byte_offset bytes before being stored.  This allows creating a zero-copy sub-buffer
+   * view without any pointer arithmetic in the caller.
+   *
+   * p_data is owned by the caller. ReleaseValue will not release p_data.
+   *
+   * \param[in] info Memory description of where the p_data buffer resides (CPU vs GPU etc).
+   * \param[in] p_data Pointer to the start of the data buffer.
+   * \param[in] p_data_byte_count The number of bytes in the view (i.e. the tensor size, not the full buffer size).
+   * \param[in] p_data_byte_offset Byte offset from p_data at which the tensor data begins.
+   * \param[in] shape Pointer to the tensor shape dimensions.
+   * \param[in] shape_len The number of tensor shape dimensions.
+   * \param[in] type The data type.
+   * \param[out] out Returns newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(CreateTensorWithDataAsOrtValueWithByteOffset, _In_ const OrtMemoryInfo* info,
+                  _Inout_ void* p_data, size_t p_data_byte_count, size_t p_data_byte_offset,
+                  _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
+                  _Outptr_ OrtValue** out);
 };
 
 /*

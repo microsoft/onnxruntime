@@ -790,6 +790,11 @@ ORT_API_STATUS_IMPL(CopyTensorsEx, _In_ const OrtEnv* env,
                     _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors);
 
+ORT_API_STATUS_IMPL(CreateTensorWithDataAsOrtValueWithByteOffset, _In_ const OrtMemoryInfo* info,
+                    _Inout_ void* p_data, size_t p_data_byte_count, size_t p_data_byte_offset,
+                    _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
+                    _Outptr_ OrtValue** out);
+
 ORT_API_STATUS_IMPL(KernelInfo_GetConfigEntries, _In_ const OrtKernelInfo* info, _Outptr_ OrtKeyValuePairs** out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOperatorDomain, _In_ const OrtKernelInfo* info, _Out_opt_ char* out,
                     _Inout_ size_t* size);

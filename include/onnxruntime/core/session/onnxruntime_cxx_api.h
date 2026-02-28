@@ -2418,6 +2418,22 @@ struct Value : detail::ValueImpl<OrtValue> {
   static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count,
                             const int64_t* shape, size_t shape_len);
 
+  /** \brief Creates a tensor that views a sub-region of an existing typed buffer at an element offset.
+   *         The pointer is advanced by `p_data_element_offset` elements before creating the tensor view.
+   * \tparam T The numeric datatype. This API is not suitable for strings.
+   * \param info Memory description of where the p_data buffer resides (CPU vs GPU etc).
+   * \param p_data Pointer to the start of the underlying data buffer.
+   * \param p_data_element_count The number of elements available in the tensor view (i.e. the
+   *                             product of `shape` dimensions, not the size of the whole buffer).
+   * \param p_data_element_offset The number of elements to skip from `p_data` before creating the view.
+   * \param shape Pointer to the tensor shape dimensions.
+   * \param shape_len The number of tensor shape dimensions.
+   */
+  template <typename T>
+  static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count,
+                            size_t p_data_element_offset,
+                            const int64_t* shape, size_t shape_len);
+
   /** \brief Creates a tensor with a user supplied buffer. Wraps OrtApi::CreateTensorWithDataAsOrtValue.
    *
    * \param info Memory description of where the p_data buffer resides (CPU vs GPU etc).
@@ -2428,6 +2444,22 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param type The data type.
    */
   static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count,
+                            const int64_t* shape, size_t shape_len,
+                            ONNXTensorElementDataType type);
+
+  /** \brief Creates a tensor that views a sub-region of an existing raw buffer at a byte offset.
+   *         Wraps OrtApi::CreateTensorWithDataAsOrtValueWithByteOffset.
+   *
+   * \param info Memory description of where the p_data buffer resides (CPU vs GPU etc).
+   * \param p_data Pointer to the start of the underlying data buffer.
+   * \param p_data_byte_count The number of bytes available in the tensor view.
+   * \param p_data_byte_offset The byte offset from `p_data` at which the tensor view starts.
+   * \param shape Pointer to the tensor shape dimensions.
+   * \param shape_len The number of tensor shape dimensions.
+   * \param type The data type.
+   */
+  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count,
+                            size_t p_data_byte_offset,
                             const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
 
