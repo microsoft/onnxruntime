@@ -280,7 +280,7 @@ void TryRunBilinearZerosFastPath2D(const Tensor& input,
                                    int64_t W_out,
                                    concurrency::ThreadPool* tp,
                                    std::vector<BilinearSamplePlan2D<T>>& sampling_plan) {
-  const int64_t plane_in = H_in * W_in;
+  const size_t plane_in = static_cast<size_t>(H_in) * static_cast<size_t>(W_in);
   const size_t plane_out = static_cast<size_t>(H_out) * static_cast<size_t>(W_out);
   sampling_plan.resize(plane_out);
 
