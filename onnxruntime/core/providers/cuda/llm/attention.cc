@@ -120,6 +120,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                   .IsOK(),
               "Output shapes for Attention could not be computed.");
 
+  // Note: parameters.nonpad_kv_seqlen_data is set by ComputeOutputShapeForAttention but is a
+  // device pointer on CUDA — it must not be dereferenced on host. The CUDA path reads the tensor
+  // directly via nonpad_kv_seqlen->Data<int64_t>() when launching GPU kernels.
+  // Only the CPU path uses parameters.nonpad_kv_seqlen_data for per-element masking.
+
   Tensor* Y = context->Output(0, y_shape);
   Tensor* present_key = context->Output(1, present_key_shape);
   Tensor* present_value = context->Output(2, present_value_shape);
@@ -175,6 +180,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
     // GQA kernel expects K/V input sequence length == Q sequence length (self-attention only)
     // Cross-attention (kv_sequence_length != q_sequence_length) is not supported
+    // TODO(titaiwang): This self-attention constraint prevents the TensorScatter external KV
+    // cache pattern from using the GQA path on CUDA, since TensorScatter provides full KV
+    // (kv_seq = total_seq > q_seq). Requests with nonpad_kv_seqlen and kv_seq != q_seq
+    // must go through the MHA path instead. Relaxing this would enable flash/memory-efficient
+    // attention for the external KV cache use case.
     if (parameters.kv_sequence_length != parameters.q_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Cross-attention (kv_sequence_length != q_sequence_length) is not supported in "

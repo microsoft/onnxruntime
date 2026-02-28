@@ -454,9 +454,12 @@ def cuda_fp32_test_cases():
 #  Test Classes
 # #################################################################################################
 
-# Default tolerances
+# Default tolerances (CUDA fp16/fp32 need looser tolerances due to TF32 and reduced precision)
 rtol = {"fp16": 5e-3, "fp32": 5e-3}
 atol = {"fp16": 5e-3, "fp32": 5e-3}
+# CPU fp32 has no TF32 — use tighter tolerance
+cpu_fp32_rtol = 1e-5
+cpu_fp32_atol = 1e-5
 
 
 class TestTensorScatterAttentionCPU(unittest.TestCase):
@@ -491,7 +494,7 @@ class TestTensorScatterAttentionCPU(unittest.TestCase):
             ort_type=TensorProto.FLOAT,
             is_causal=is_causal,
         )
-        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp32"], atol=atol["fp32"])
+        numpy.testing.assert_allclose(output, ref_output, rtol=cpu_fp32_rtol, atol=cpu_fp32_atol)
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
