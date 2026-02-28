@@ -432,19 +432,22 @@ def _make_test_params(cases, is_causal):
 
 
 def cpu_test_cases():
-    """CPU: all modes, non-causal (both GQA and MHA work without restrictions)."""
+    """CPU: all modes, non-causal and causal (both GQA and MHA work without restrictions)."""
     yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=0)
+    yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=1)
 
 
 def cuda_fp16_test_cases():
     """CUDA fp16: MHA only. CUDA GQA path requires self-attention (kv_seq == q_seq)
     which is incompatible with the decode-step TensorScatter pattern."""
     yield from _make_test_params(_MHA_CASES, is_causal=0)
+    yield from _make_test_params(_MHA_CASES, is_causal=1)
 
 
 def cuda_fp32_test_cases():
     """CUDA fp32: MHA only (CUDA GQA path requires float16)."""
     yield from _make_test_params(_MHA_CASES, is_causal=0)
+    yield from _make_test_params(_MHA_CASES, is_causal=1)
 
 
 # #################################################################################################
