@@ -30,8 +30,12 @@ import datetime
 import json
 import os
 import re
-import subprocess
-
+from cherry_pick_utils import (
+    run_command,
+    check_preflight,
+    get_pr_number_from_subject as get_pr_number,
+    extract_pr_numbers,
+)
 
 def log_event(message, log_file=None):
     """Log a message to the console and an optional log file."""
@@ -40,100 +44,9 @@ def log_event(message, log_file=None):
     print(message)  # Clean print for console UI
     if log_file:
         log_file.write(full_message + "\n")
-
-
-def run_command(command_list, cwd=".", silent=False):
-    """Run a command using a list of arguments for security (no shell=True)."""
-    result = subprocess.run(command_list, check=False, capture_output=True, text=True, cwd=cwd, encoding="utf-8")
-    if result.returncode != 0:
-        if not silent:
-            log_str = " ".join(command_list)
-            print(f"Error running command: {log_str}")
-            if result.stderr:
-                print(f"Stderr: {result.stderr.strip()}")
-        return None
-    return result.stdout
-
-
-def check_preflight():
-    """Verify gh CLI and git repository early."""
-    # Check git
-    git_check = run_command(["git", "rev-parse", "--is-inside-work-tree"], silent=True)
-    if not git_check:
-        print("Error: This script must be run inside a git repository.")
-        return False
-
-    # Check gh
-    gh_check = run_command(["gh", "--version"], silent=True)
-    if not gh_check:
-        print("Error: GitHub CLI (gh) not found or not in PATH.")
-        return False
-
-    gh_auth = run_command(["gh", "auth", "status"], silent=True)
-    if not gh_auth:
-        print("Error: GitHub CLI not authenticated. Please run 'gh auth login'.")
-        return False
-
-    return True
-
-
-# Constants
-PR_CACHE = {}  # Cache for PR details to speed up multiple rounds referencing same PRs
 NAME_TO_LOGIN = {}  # Map full names to GitHub logins for consolidation
 VERIFIED_LOGINS = set()  # Track IDs known to be valid GitHub logins (vs free-form names)
-
-# Bots to exclude from contributor lists
-BOT_NAMES = {
-    "Copilot",
-    "dependabot[bot]",
-    "app/dependabot",
-    "github-actions[bot]",
-    "app/copilot-swe-agent",
-    "CI Bot",
-    "github-advanced-security[bot]",
-    "GitHub Actions",
-    "dependabot",
-    "github-actions",
-    "Gemini",
-    "CI",
-}
-
-
-def is_bot(name):
-    if not name:
-        return True
-    name_clean = name.strip().lstrip("@")
-    # Known bots and patterns
-    if name_clean in BOT_NAMES:
-        return True
-    if "[bot]" in name_clean.lower():
-        return True
-    if name_clean.lower().startswith("app/"):
-        return True
-    return False
-
-
-def is_invalid(name):
-    if not name:
-        return True
-    # If it's a bot, it's considered a valid identity for the CSV
-    if is_bot(name):
-        return False
-
-    name_clean = name.strip().lstrip("@")
-    # Paths, brackets, and code extensions
-    if "/" in name_clean or "\\" in name_clean or "[" in name_clean or "]" in name_clean:
-        return True
-    if any(name_clean.lower().endswith(ext) for ext in [".cmake", ".py", ".h", ".cc", ".cpp", ".txt", ".md"]):
-        return True
-    return False
-
-
-def get_pr_number(subject):
-    match = re.search(r"\(#(\d+)\)$", subject.strip())
-    if match:
-        return match.group(1)
-    return None
+PR_CACHE = {}  # Cache for PR details to speed up multiple rounds referencing same PRs
 
 
 def get_pr_details(pr_number):
@@ -149,7 +62,6 @@ def get_pr_details(pr_number):
 
     PR_CACHE[pr_number] = None
     return None
-
 
 def extract_authors_from_pr(details):
     authors = set()
@@ -208,32 +120,51 @@ def extract_authors_from_commit(commit_id):
 
     return authors
 
+# Bots to exclude from contributor lists
+BOT_NAMES = {
+    "Copilot",
+    "dependabot[bot]",
+    "app/dependabot",
+    "github-actions[bot]",
+    "app/copilot-swe-agent",
+    "CI Bot",
+    "github-advanced-security[bot]",
+    "GitHub Actions",
+    "dependabot",
+    "github-actions",
+    "Gemini",
+    "CI",
+}
 
-def extract_pr_numbers(text, strict=False):
-    if not text:
-        return []
 
-    if strict:
-        # Strict mode: Only look for (#123) with closing paren, full onnxruntime URLs,
-        # or PR numbers in markdown table cells (| #123 |), or standalone #123 with clear boundaries.
-        # This avoids noise from version numbers or external repo PRs
-        # And it avoids matching truncated headlines like (#25... as PR #25
-        patterns = [
-            r"\(#(\d+)\)",  # (#123)
-            r"microsoft/onnxruntime/pull/(\d+)",
-            r"(?:^|\s|-)#(\d+)(?:\s|$)",  # #123 at start, or preceded by space/dash, and followed by space or end
-            r"\|\s*#(\d+)\s*\|",  # | #123 | (markdown table cell)
-        ]
+def is_bot(name):
+    if not name:
+        return True
+    name_clean = name.strip().lstrip("@")
+    # Known bots and patterns
+    if name_clean in BOT_NAMES:
+        return True
+    if "[bot]" in name_clean.lower():
+        return True
+    if name_clean.lower().startswith("app/"):
+        return True
+    return False
 
-        results = []
-        for p in patterns:
-            results.extend(re.findall(p, text))
-        return [int(x) for x in set(results)]
 
-    # Matches patterns like #123 or https://github.com/microsoft/onnxruntime/pull/123
-    # Also handles ( #123) or similar in titles
-    prs = re.findall(r"(?:#|/pull/)(\d+)", text)
-    return [int(x) for x in set(prs)]
+def is_invalid(name):
+    if not name:
+        return True
+    # If it's a bot, it's considered a valid identity for the CSV
+    if is_bot(name):
+        return False
+
+    name_clean = name.strip().lstrip("@")
+    # Paths, brackets, and code extensions
+    if "/" in name_clean or "\\" in name_clean or "[" in name_clean or "]" in name_clean:
+        return True
+    if any(name_clean.lower().endswith(ext) for ext in [".cmake", ".py", ".h", ".cc", ".cpp", ".txt", ".md"]):
+        return True
+    return False
 
 
 def get_prs_from_log(log_output, prs_base=None, log_file=None, scan_depth=100):

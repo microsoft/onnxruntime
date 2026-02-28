@@ -25,63 +25,14 @@ Requirements:
 import argparse
 import json
 import re
-import subprocess
 import sys
 from collections import defaultdict
-
-
-def run_command(command_list, cwd=None, silent=False):
-    """Run a command using a list of arguments for security (no shell=True)."""
-    try:
-        result = subprocess.run(command_list, check=False, capture_output=True, text=True, cwd=cwd, encoding="utf-8")
-        if result.returncode != 0:
-            if not silent:
-                log_str = " ".join(command_list)
-                print(f"Error running command: {log_str}", file=sys.stderr)
-                if result.stderr:
-                    print(f"Stderr: {result.stderr.strip()}", file=sys.stderr)
-            return None
-        return result.stdout
-    except FileNotFoundError:
-        if not silent:
-            cmd = command_list[0]
-            print(f"Error: '{cmd}' command not found.", file=sys.stderr)
-            if cmd == "gh":
-                print(
-                    "Please install GitHub CLI (https://cli.github.com/) and ensure 'gh' is available on your PATH.",
-                    file=sys.stderr,
-                )
-        return None
-    except Exception as e:
-        if not silent:
-            print(f"Exception running command {' '.join(command_list)}: {e}", file=sys.stderr)
-        return None
-
-
-def check_preflight():
-    """Verify gh CLI and git repository early."""
-    # Check git
-    git_check = run_command(["git", "rev-parse", "--is-inside-work-tree"], silent=True)
-    if not git_check:
-        print("Error: This script must be run inside a git repository.", file=sys.stderr)
-        return False
-
-    # Check gh
-    gh_check = run_command(["gh", "--version"], silent=True)
-    if not gh_check:
-        print("Error: GitHub CLI (gh) not found or not in PATH.", file=sys.stderr)
-        print(
-            "Please install GitHub CLI (https://cli.github.com/) and ensure 'gh' is available on your PATH.",
-            file=sys.stderr,
-        )
-        return False
-
-    gh_auth = run_command(["gh", "auth", "status"], silent=True)
-    if not gh_auth:
-        print("Error: GitHub CLI not authenticated. Please run 'gh auth login'.", file=sys.stderr)
-        return False
-
-    return True
+from cherry_pick_utils import (
+    run_command,
+    check_preflight,
+    get_pr_number_from_subject,
+    extract_pr_numbers,
+)
 
 
 def get_merged_prs(repo, label, limit=200):
@@ -121,28 +72,62 @@ def get_changed_files(oid):
     return []
 
 
-def get_pr_number_from_subject(subject):
-    """Extract PR number from a commit subject like 'Some title (#12345)'."""
-    match = re.search(r"\(#(\d+)\)$", subject.strip())
-    if match:
-        return match.group(1)
-    return None
-
-
 def get_existing_pr_numbers(branch):
     """Get the set of PR numbers already present in the target branch."""
     output = run_command(["git", "log", branch, "--oneline", "-n", "500"], silent=True)
     if not output:
         return set()
     pr_numbers = set()
-    for line in output.strip().splitlines():
+
+    # Pre-fetch PR cache to avoid redundant gh calls
+    pr_cache = {}
+
+    # Process commit log
+    lines = output.strip().splitlines()
+    for line in lines:
         parts = line.split(" ", 1)
         if len(parts) < 2:
             continue
         subject = parts[1]
+
         pr_num = get_pr_number_from_subject(subject)
-        if pr_num:
-            pr_numbers.add(int(pr_num))
+        if not pr_num:
+            continue
+
+        pr_num_int = int(pr_num)
+        pr_numbers.add(pr_num_int)
+
+        # Check if it's a cherry-pick / meta-PR
+        is_meta_pr = (
+            "cherry pick" in subject.lower() or "cherry-pick" in subject.lower() or "cherrypick" in subject.lower()
+        )
+
+        if is_meta_pr:
+            # Query gh to get more details (body/commits) to find squashed sub-PRs
+            if pr_num not in pr_cache:
+                gh_out = run_command(["gh", "pr", "view", pr_num, "--json", "title,body,commits"], silent=True)
+                if gh_out:
+                    try:
+                        pr_cache[pr_num] = json.loads(gh_out)
+                    except json.JSONDecodeError:
+                        pr_cache[pr_num] = None
+                else:
+                    pr_cache[pr_num] = None
+
+            details = pr_cache.get(pr_num)
+            if details:
+                # Collect sub-PRs from title, body, and commits
+                extracted_nums = []
+                extracted_nums.extend(extract_pr_numbers(details.get("title", "")))
+                extracted_nums.extend(extract_pr_numbers(details.get("body", "")))
+
+                for commit in details.get("commits", []):
+                    extracted_nums.extend(extract_pr_numbers(commit.get("messageHeadline", "")))
+
+                for num in set(extracted_nums):
+                    if num != pr_num_int:
+                        pr_numbers.add(num)
+
     return pr_numbers
 
 
