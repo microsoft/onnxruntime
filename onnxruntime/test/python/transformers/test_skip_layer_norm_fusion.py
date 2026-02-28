@@ -403,7 +403,11 @@ class TestFusion(unittest.TestCase):
         os.remove(model_name)
 
     def test_skip_layer_norm_broadcast_incompatible_shapes(self):
-        """Incompatible shapes (different hidden size) should not fuse."""
+        """Incompatible broadcast shapes should not fuse.
+
+        Uses (2,3,4) + (1,1,4): broadcastable for Add but not supported by SkipLayerNorm
+        kernel (which requires skip seq_len == input seq_len).
+        """
         add_node = helper.make_node("Add", ["input_1", "input_2"], ["layernorm_input"], "add_layernorm")
         layer_norm = helper.make_node(
             "LayerNormalization",
@@ -422,7 +426,7 @@ class TestFusion(unittest.TestCase):
             "IncompatibleShapesModel",
             [
                 helper.make_tensor_value_info("input_1", TensorProto.FLOAT, [2, 3, 4]),
-                helper.make_tensor_value_info("input_2", TensorProto.FLOAT, [3, 5]),  # hidden size mismatch
+                helper.make_tensor_value_info("input_2", TensorProto.FLOAT, [1, 1, 4]),  # seq_len mismatch
             ],
             [helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 3, 4])],
             initializers,

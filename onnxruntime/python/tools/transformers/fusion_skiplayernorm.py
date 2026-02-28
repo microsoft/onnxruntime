@@ -97,6 +97,7 @@ class FusionSkipLayerNormalization(Fusion):
         simplified = node.op_type == "SimplifiedLayerNormalization"
 
         skip_index = 1  # default: add.input[1] is the skip
+        _broadcast = False
 
         if hasattr(self, "shape_infer_helper"):
             if self.shape_infer_helper is not None:
@@ -108,14 +109,24 @@ class FusionSkipLayerNormalization(Fusion):
                         add.input[1],
                     )
                     return
-            else:
-                logger.debug("skip SkipLayerNormalization fusion since symbolic shape inference failed")
-                return
 
         gather_path = self.model.match_parent_path(add, ["Gather"], [None])
         if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:
             if self.model.match_parent_path(gather_path[0], ["ConstantOfShape"], [1]) is None:
                 return
+
+        # When broadcasting is needed, check that neither Add input comes from a Gather
+        # (embedding lookup). Embedding Add+LayerNorm should be fused by EmbedLayerNormalization
+        # later in the pipeline, not as SkipLayerNormalization.
+        if _broadcast:
+            for i in range(2):
+                parent = self.model.get_parent(add, i, output_name_to_node)
+                if parent is not None and parent.op_type == "Gather":
+                    logger.debug(
+                        "skip SkipLayerNormalization broadcast fusion since Add input %d comes from Gather (embedding)",
+                        i,
+                    )
+                    return
 
         # This means that the residual Add before the LayerNormalization produces an output
         # that is consumed by some other nodes or graph output other than the LayerNormalization itself
