@@ -118,7 +118,10 @@ stages:
             targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
             artifactName: onnxruntime_gpu
         steps:
-        - checkout: none
+        - checkout: self
+          clean: true
+          submodules: none
+
         - ${{ each config in parameters.LinuxPythonConfigurations }}:
           - task: DownloadPipelineArtifact@2
             displayName: 'Download wheel - Python ${{ config.python_version }}'
