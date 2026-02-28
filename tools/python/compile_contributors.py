@@ -30,12 +30,16 @@ import datetime
 import json
 import os
 import re
+
 from cherry_pick_utils import (
-    run_command,
     check_preflight,
-    get_pr_number_from_subject as get_pr_number,
     extract_pr_numbers,
+    run_command,
 )
+from cherry_pick_utils import (
+    get_pr_number_from_subject as get_pr_number,
+)
+
 
 def log_event(message, log_file=None):
     """Log a message to the console and an optional log file."""
@@ -44,6 +48,8 @@ def log_event(message, log_file=None):
     print(message)  # Clean print for console UI
     if log_file:
         log_file.write(full_message + "\n")
+
+
 NAME_TO_LOGIN = {}  # Map full names to GitHub logins for consolidation
 VERIFIED_LOGINS = set()  # Track IDs known to be valid GitHub logins (vs free-form names)
 PR_CACHE = {}  # Cache for PR details to speed up multiple rounds referencing same PRs
@@ -62,6 +68,7 @@ def get_pr_details(pr_number):
 
     PR_CACHE[pr_number] = None
     return None
+
 
 def extract_authors_from_pr(details):
     authors = set()
@@ -119,6 +126,7 @@ def extract_authors_from_commit(commit_id):
                 authors.add(match.group(1).strip())
 
     return authors
+
 
 # Bots to exclude from contributor lists
 BOT_NAMES = {

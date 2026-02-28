@@ -24,14 +24,14 @@ Requirements:
 
 import argparse
 import json
-import re
 import sys
 from collections import defaultdict
+
 from cherry_pick_utils import (
-    run_command,
     check_preflight,
-    get_pr_number_from_subject,
     extract_pr_numbers,
+    get_pr_number_from_subject,
+    run_command,
 )
 
 

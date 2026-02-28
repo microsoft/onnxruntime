@@ -1,7 +1,10 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+import re
 import subprocess
 import sys
-import re
-import json
+
 
 def run_command(command_list, cwd=None, silent=False):
     """Run a command using a list of arguments for security (no shell=True)."""
