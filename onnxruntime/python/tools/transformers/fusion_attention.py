@@ -893,9 +893,11 @@ class FusionAttention(Fusion):
             if add_before_layernorm is not None:
                 start_node = add_before_layernorm
             elif self.model.find_graph_input(normalize_node.input[0]) is not None:
-                # Pre-LN first block: LayerNormalization fed directly by graph input.
-                # Fusion proceeds from the second LN/SkipLN anchor after the residual Add;
-                # this branch prevents an incorrect early return for the first LN node.
+                # Pre-LN first block: LN fed directly by graph input.  QKV matching will
+                # still fail from this (first) LN anchor because its inputs are weights, not
+                # the QKV projection path.  The real fusion happens when fuse() is called
+                # again from the second LN/SkipLN anchor after the residual Add, where the
+                # other_inputs and root_input changes (#2-#4) take effect.
                 start_node = normalize_node
             else:
                 return
