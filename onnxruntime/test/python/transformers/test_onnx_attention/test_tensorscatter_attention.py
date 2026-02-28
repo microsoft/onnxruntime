@@ -398,6 +398,7 @@ _TOTAL_KV_SEQ_LEN = 8
 
 _GQA_CASES = [
     # (batch, q_seq, q_heads, kv_heads, scatter_positions, nonpad_seqlens, label)
+    (1, 1, 8, 2, [3], [4], "gqa_batch1"),
     (2, 1, 8, 2, [2, 4], [3, 5], "gqa_diff_lens"),
     (2, 1, 8, 2, [4, 4], [5, 5], "gqa_same_lens"),
     (2, 1, 8, 2, [0, 3], [1, 4], "gqa_one_empty"),
@@ -405,6 +406,7 @@ _GQA_CASES = [
 ]
 
 _MHA_CASES = [
+    (1, 1, 4, 4, [3], [4], "mha_batch1"),
     (2, 1, 4, 4, [2, 4], [3, 5], "mha_diff_lens"),
     (2, 1, 4, 4, [4, 4], [5, 5], "mha_same_lens"),
     (2, 1, 4, 4, [0, 3], [1, 4], "mha_one_empty"),
