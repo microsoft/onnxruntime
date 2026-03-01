@@ -149,7 +149,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     const T* offset_block = offset_data + b * (offset_group * 2 * kernel_size * output_image_size);
     const T* mask_block = use_mask ? (mask_data + b * (offset_group * kernel_size * output_image_size)) : nullptr;
 
-    DeformConvIm2ColImpl<T>(
+    ORT_RETURN_IF_ERROR(DeformConvIm2ColImpl<T>(
         stream,
         X_block,
         offset_block,
@@ -170,7 +170,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
         dilation_h,
         dilation_w,
         offset_group,
-        use_mask);
+        use_mask));
 
     for (int64_t g = 0; g < group; ++g) {
       const T* W_g = Wdata + g * (M / group) * kernel_dim;
@@ -217,19 +217,19 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
 
       // The output gemm_output_buffer is now Row-Major [M/group, cur_out_size].
       // We need to copy it to Y_g (NCHW).
-      DeformConvCopyGemmOutputRowMajorToNCHW<T>(
+      ORT_RETURN_IF_ERROR(DeformConvCopyGemmOutputRowMajorToNCHW<T>(
           stream,
           gemm_output_buffer.get(),
           Y_g,
           M,
           M / group,
           output_image_size,
-          cur_parallel);
+          cur_parallel));
     }
   }
 
   if (Bdata != nullptr) {
-    DeformConvAddBiasImpl<T>(stream, Ydata, Bdata, N, M, out_h, out_w);
+    ORT_RETURN_IF_ERROR(DeformConvAddBiasImpl<T>(stream, Ydata, Bdata, N, M, out_h, out_w));
   }
 
   return Status::OK();

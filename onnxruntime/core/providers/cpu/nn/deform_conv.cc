@@ -296,7 +296,8 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
           static_cast<T>(0),                   // beta
           Y_g,                                 // C
           narrow<int>(output_image_size),      // ldc
-          thread_pool);
+          thread_pool,
+          nullptr);  // mlas_backend_kernel_selector_config
     }
   }
 
@@ -324,16 +325,12 @@ template class DeformConv<double>;
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                        \
       DeformConv, 19, 21, T,                                                                       \
       KernelDefBuilder()                                                                           \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                   \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)   /* offset */                                   \
-          .InputMemoryType(OrtMemTypeCPUInput, 4),  /* optional mask */                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                                  \
       DeformConv<T>);                                                                              \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                  \
       DeformConv, 22, T,                                                                           \
       KernelDefBuilder()                                                                           \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                   \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                                                  \
-          .InputMemoryType(OrtMemTypeCPUInput, 4),                                                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                                  \
       DeformConv<T>)
 
 REGISTER_DEFORMCONV_KERNEL_TYPED(float)
