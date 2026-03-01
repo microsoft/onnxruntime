@@ -95,6 +95,7 @@ void RunDeformConvTest(const DeformConvTestParams& params,
                        decltype(DeformConvTestTraits<T>::DefaultAtol()) atol = DeformConvTestTraits<T>::DefaultAtol()) {
   const int64_t kH = params.kernel_shape[0];
   const int64_t kW = params.kernel_shape[1];
+  // ONNX pads format: [pad_top, pad_left, pad_bottom, pad_right] = [pad[0], pad[1], pad[2], pad[3]]
   const int64_t out_h = (params.in_h + params.pad[0] + params.pad[2] -
                          params.dilation[0] * (kH - 1) - 1) / params.stride[0] + 1;
   const int64_t out_w = (params.in_w + params.pad[1] + params.pad[3] -
