@@ -63,7 +63,8 @@ void DeformableIm2col(
     int64_t offset_groups,                    // Number of offset groups
     int64_t height_col, int64_t width_col,    // Output dimensions
     bool use_mask,
-    T* data_col) {                            // Output buffer
+    T* data_col,                              // Output buffer
+    concurrency::ThreadPool* thread_pool) {
 
   const int64_t channel_per_offset_group = channels / offset_groups;
 
@@ -72,62 +73,66 @@ void DeformableIm2col(
   // Inner loop: Spatial locations (c_col)
   // This ensures sequential access to data_col and better locality for data_im.
 
-  for (int64_t c_im = 0; c_im < channels; ++c_im) {
-    const int64_t offset_grp = c_im / channel_per_offset_group;
+  concurrency::ThreadPool::TryParallelFor(
+      thread_pool, channels, 1.0,
+      [&](ptrdiff_t c_im_start, ptrdiff_t c_im_end) {
+        for (int64_t c_im = c_im_start; c_im < c_im_end; ++c_im) {
+          const int64_t offset_grp = c_im / channel_per_offset_group;
 
-    for (int64_t c_col = 0; c_col < height_col * width_col; ++c_col) {
-      const int64_t w_col = c_col % width_col;
-      const int64_t h_col = c_col / width_col;
+          for (int64_t c_col = 0; c_col < height_col * width_col; ++c_col) {
+            const int64_t w_col = c_col % width_col;
+            const int64_t h_col = c_col / width_col;
 
-      // Iterate over kernel window
-      for (int64_t i = 0; i < kernel_h; ++i) {
-        for (int64_t j = 0; j < kernel_w; ++j) {
+            // Iterate over kernel window
+            for (int64_t i = 0; i < kernel_h; ++i) {
+              for (int64_t j = 0; j < kernel_w; ++j) {
 
-          // Calculate the index in the offset/mask tensors.
-          // The offset tensor is organized as: (offset_groups, 2 * kH * kW, H_out, W_out).
-          // Flattened offset channel index relative to the start of the tensor:
-          // base = offset_grp * (2 * kH * kW).
-          // specific = 2 * (i * kW + j).
+                // Calculate the index in the offset/mask tensors.
+                // The offset tensor is organized as: (offset_groups, 2 * kH * kW, H_out, W_out).
+                // Flattened offset channel index relative to the start of the tensor:
+                // base = offset_grp * (2 * kH * kW).
+                // specific = 2 * (i * kW + j).
 
-          const int64_t data_offset_h_ptr =
-              ((offset_grp * (2 * kernel_h * kernel_w) + 2 * (i * kernel_w + j)) * height_col + h_col) * width_col + w_col;
+                const int64_t data_offset_h_ptr =
+                    ((offset_grp * (2 * kernel_h * kernel_w) + 2 * (i * kernel_w + j)) * height_col + h_col) * width_col + w_col;
 
-          const int64_t data_offset_w_ptr =
-              ((offset_grp * (2 * kernel_h * kernel_w) + 2 * (i * kernel_w + j) + 1) * height_col + h_col) * width_col + w_col;
+                const int64_t data_offset_w_ptr =
+                    ((offset_grp * (2 * kernel_h * kernel_w) + 2 * (i * kernel_w + j) + 1) * height_col + h_col) * width_col + w_col;
 
-          const int64_t data_mask_ptr =
-              ((offset_grp * (kernel_h * kernel_w) + (i * kernel_w + j)) * height_col + h_col) * width_col + w_col;
+                const int64_t data_mask_ptr =
+                    ((offset_grp * (kernel_h * kernel_w) + (i * kernel_w + j)) * height_col + h_col) * width_col + w_col;
 
-          const T offset_h = data_offset[data_offset_h_ptr];
-          const T offset_w = data_offset[data_offset_w_ptr];
+                const T offset_h = data_offset[data_offset_h_ptr];
+                const T offset_w = data_offset[data_offset_w_ptr];
 
-          T val = static_cast<T>(0);
-          T mask_val = static_cast<T>(1);
-          if (use_mask) {
-            mask_val = data_mask[data_mask_ptr];
+                T val = static_cast<T>(0);
+                T mask_val = static_cast<T>(1);
+                if (use_mask) {
+                  mask_val = data_mask[data_mask_ptr];
+                }
+
+                // Only compute interpolation if mask is not zero (optimization)
+                if (mask_val != 0) {
+                  const T h_im = h_col * stride_h - pad_h + i * dilation_h + offset_h;
+                  const T w_im = w_col * stride_w - pad_w + j * dilation_w + offset_w;
+
+                  // Map (c_im, h_im, w_im) back to input
+                  // data_im is [C, H, W]
+                  const T* data_im_ptr = data_im + c_im * (height * width);
+                  val = BilinearInterpolate(data_im_ptr, height, width, h_im, w_im);
+                }
+
+                // Assign to data_col
+                // The layout of data_col row is: [Channel, KernelH, KernelW] flattened.
+                // Row index: c_im * (kH * kW) + i * kW + j
+                const int64_t col_row_idx = (c_im * kernel_h * kernel_w) + (i * kernel_w + j);
+
+                data_col[col_row_idx * (height_col * width_col) + c_col] = val * mask_val;
+              }
+            }
           }
-
-          // Only compute interpolation if mask is not zero (optimization)
-          if (mask_val != 0) {
-            const T h_im = h_col * stride_h - pad_h + i * dilation_h + offset_h;
-            const T w_im = w_col * stride_w - pad_w + j * dilation_w + offset_w;
-
-            // Map (c_im, h_im, w_im) back to input
-            // data_im is [C, H, W]
-            const T* data_im_ptr = data_im + c_im * (height * width);
-            val = BilinearInterpolate(data_im_ptr, height, width, h_im, w_im);
-          }
-
-          // Assign to data_col
-          // The layout of data_col row is: [Channel, KernelH, KernelW] flattened.
-          // Row index: c_im * (kH * kW) + i * kW + j
-          const int64_t col_row_idx = (c_im * kernel_h * kernel_w) + (i * kernel_w + j);
-
-          data_col[col_row_idx * (height_col * width_col) + c_col] = val * mask_val;
         }
-      }
-    }
-  }
+      });
 }
 
 }  // namespace
@@ -256,7 +261,8 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
         offset_group,
         out_h, out_w,
         use_mask,
-        col_buffer_ptr);
+        col_buffer_ptr,
+        thread_pool);
 
     // 2. Perform GEMM for each group
     for (int64_t g = 0; g < group; ++g) {
@@ -300,15 +306,20 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   // 3. Add Bias if present
   if (Bdata != nullptr) {
-    for (int64_t n = 0; n < N; ++n) {
-      T* Y_curr = Ydata + n * M * output_image_size;
-      for (int64_t m = 0; m < M; ++m) {
-        T bias_val = Bdata[m];
-        for (int64_t i = 0; i < output_image_size; ++i) {
-          Y_curr[m * output_image_size + i] += bias_val;
-        }
-      }
-    }
+    int64_t total_work = N * M;
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool, total_work, static_cast<double>(output_image_size),
+        [&](ptrdiff_t first, ptrdiff_t last) {
+          for (ptrdiff_t idx = first; idx < last; ++idx) {
+            int64_t n = idx / M;
+            int64_t m = idx % M;
+            T* Y_ptr = Ydata + n * M * output_image_size + m * output_image_size;
+            T bias_val = Bdata[m];
+            for (int64_t i = 0; i < output_image_size; ++i) {
+              Y_ptr[i] += bias_val;
+            }
+          }
+        });
   }
 
   return Status::OK();
