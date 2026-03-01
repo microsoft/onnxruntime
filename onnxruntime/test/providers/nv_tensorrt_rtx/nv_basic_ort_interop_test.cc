@@ -462,15 +462,15 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
     ASSERT_GE(cpuOutputHalf[i], 0) << "Relu output should be >= 0 at index " << i;
   }
 
-  // Cleanup
-  interop_api.DeinitGraphicsInteropForEpDevice(trt_ep_device);
+  // Cleanup: release resources that use the interop context before DeinitGraphicsInteropForEpDevice
   ort_api.ReleaseSyncStream(stream);
-  ort_api.ReleaseMemoryInfo(memory_info_agnostic);
   if (importer != nullptr) {
     interop_api.ReleaseExternalSemaphoreHandle(ort_sem_handle);
     interop_api.ReleaseExternalResourceImporter(importer);
     CloseHandle(sharedFenceHandle);
   }
+  ort_api.ReleaseMemoryInfo(memory_info_agnostic);
+  interop_api.DeinitGraphicsInteropForEpDevice(trt_ep_device);
 }
 
 #endif  // USE_DX_INTEROP && _WIN32

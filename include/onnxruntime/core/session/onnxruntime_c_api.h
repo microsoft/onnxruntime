@@ -8323,15 +8323,20 @@ struct OrtInteropApi {
 
   /** \brief Initialize graphics interop for an execution provider device.
    *
-   * This function enables D3D12/Vulkan interoperability by creating a graphics interop context
-   * bound to the provided graphics command queue. Once initialized, any OrtSyncStream created for this
-   * ep_device via CreateSyncStreamForEpDevice will be created on the interop context, enabling efficient
-   * GPU-side synchronization between ONNX Runtime inference and graphics workloads.
+   * Requests the EP factory to set up graphics interop for the given ep_device using the
+   * provided config. How the factory uses the config (e.g. creating a context, affecting
+   * later stream creation) is implementation-defined. The config (OrtGraphicsInteropConfig)
+   * supplies the graphics API and optional handles; the command_queue member is optional.
+   * Passing command_queue and calling this before CreateSyncStreamForEpDevice for the same
+   * ep_device may allow the factory to enable more efficient GPU-side sync; see the EP
+   * documentation for details.
    *
-   * This must be called BEFORE CreateSyncStreamForEpDevice for the same ep_device.
+   * Initialization is tied to the OrtEpDevice instance and applies across all sessions
+   * that use that ep_device (i.e. it is global per ep_device, not per-session).
    *
    * \param[in] ep_device The OrtEpDevice to initialize graphics interop for.
-   * \param[in] config Configuration specifying the graphics API (D3D12/Vulkan) and required handles.
+   * \param[in] config Configuration (OrtGraphicsInteropConfig): required fields are version (ORT_API_VERSION)
+   *             and graphics_api; optional handles include command_queue and additional_options.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -8344,6 +8349,11 @@ struct OrtInteropApi {
    *
    * This function cleans up the graphics interop context that was created by InitGraphicsInteropForEpDevice.
    * Should be called when graphics interop is no longer needed for the ep_device.
+   *
+   * The caller must release all resources that use the interop context before calling this function:
+   * - OrtSyncStream instances created for this ep_device via CreateSyncStreamForEpDevice
+   * - OrtExternalSemaphoreHandle and OrtExternalResourceImporter instances created for this ep_device
+   * Failure to do so may lead to undefined behavior if the implementation destroys the underlying context.
    *
    * \param[in] ep_device The OrtEpDevice to deinitialize graphics interop for.
    *

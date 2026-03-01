@@ -103,7 +103,8 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
 
   OrtStatus* InitGraphicsInterop(const OrtEpDevice* ep_device,
                                  const OrtGraphicsInteropConfig* config) noexcept override {
-    if (ep_factory_.InitGraphicsInterop == nullptr) {
+    if (ep_factory_.ort_version_supported < 25 ||
+        ep_factory_.InitGraphicsInterop == nullptr) {
       return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
                                    "InitGraphicsInterop is not implemented for this EP factory.");
     }
@@ -111,7 +112,8 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
   }
 
   OrtStatus* DeinitGraphicsInterop(const OrtEpDevice* ep_device) noexcept override {
-    if (ep_factory_.DeinitGraphicsInterop == nullptr) {
+    if (ep_factory_.ort_version_supported < 25 ||
+        ep_factory_.DeinitGraphicsInterop == nullptr) {
       return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
                                    "DeinitGraphicsInterop is not implemented for this EP factory.");
     }
