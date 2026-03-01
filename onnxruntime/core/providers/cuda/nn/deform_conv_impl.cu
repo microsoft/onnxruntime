@@ -186,31 +186,31 @@ __global__ void DeformableIm2ColKernel(
     // Pre-calculate base pointers to reduce integer arithmetic inside the inner loops.
 
     // 1. Input pointer base for this batch and channel.
-    const T* input_ptr = input + out_b * (channels * height * width) + in_c * (height * width);
+    const T* input_ptr = input + static_cast<int64_t>(out_b) * (channels * height * width) + static_cast<int64_t>(in_c) * (height * width);
 
     // 2. Spatial index in the output feature map.
-    const int64_t spatial_idx = out_y * out_w + out_x;
+    const int64_t spatial_idx = static_cast<int64_t>(out_y) * out_w + static_cast<int64_t>(out_x);
 
     // 3. Offset pointer base calculation.
     // Layout: (N, offset_groups, 2*KH*KW, OH, OW)
     // We pre-calculate the pointer to the start of the specific (n, g) block, plus spatial_idx.
     const int64_t offset_group_block_size = 2 * weight_h * weight_w * out_size;
-    const T* offset_ptr_base = offset + (out_b * offset_group + offset_grp) * offset_group_block_size + spatial_idx;
+    const T* offset_ptr_base = offset + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * offset_group_block_size + spatial_idx;
 
     // 4. Mask pointer base calculation (if used).
     // Layout: (N, offset_groups, KH*KW, OH, OW)
     const T* mask_ptr_base = nullptr;
     if (use_mask) {
         const int64_t mask_group_block_size = weight_h * weight_w * out_size;
-        mask_ptr_base = mask + (out_b * offset_group + offset_grp) * mask_group_block_size + spatial_idx;
+        mask_ptr_base = mask + (static_cast<int64_t>(out_b) * offset_group + static_cast<int64_t>(offset_grp)) * mask_group_block_size + spatial_idx;
     }
 
     // 5. Output pointer base calculation.
     // data_col Layout: (C * KH * KW, N * OH * OW)
     // The current thread writes to the column `c_col` = (b * OH * OW) + spatial_idx.
     // The starting row for this channel is `in_c * KH * KW`.
-    const int64_t c_col = out_b * out_size + spatial_idx;
-    T* data_col_ptr_base = data_col + (in_c * weight_h * weight_w) * col_stride + c_col;
+    const int64_t c_col = static_cast<int64_t>(out_b) * out_size + spatial_idx;
+    T* data_col_ptr_base = data_col + (static_cast<int64_t>(in_c) * weight_h * weight_w) * col_stride + c_col;
 
     // 6. Pre-calculate invariant coordinate parts.
     // Use float for coordinate math when T is half or BFloat16 to avoid precision loss.
