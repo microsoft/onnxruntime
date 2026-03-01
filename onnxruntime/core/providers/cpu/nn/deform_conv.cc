@@ -145,67 +145,27 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const auto* B = context->Input<Tensor>(3);    // optional
   const auto* mask = context->Input<Tensor>(4);  // optional
 
-  const auto& X_shape = X->Shape();
-  const auto& W_shape = W->Shape();
-  const auto& offset_shape = offset->Shape();
+  DeformConvParams params;
+  ORT_RETURN_IF_ERROR(DeformConvValidateAndParse(attrs_, X->Shape(), W->Shape(), offset->Shape(), mask ? &mask->Shape() : nullptr, params));
 
-  // Validate Input Shapes
-  const int64_t N = X_shape[0];
-  const int64_t C = X_shape[1];
-  const int64_t H = X_shape[2];
-  const int64_t W_in = X_shape[3];
-
-  const int64_t M = W_shape[0];       // out channels
-  // Handle kernel shape inference
-  const int64_t kH = attrs_.kernel_shape.size() >= 1 ? attrs_.kernel_shape[0] : W_shape[2];
-  const int64_t kW = attrs_.kernel_shape.size() >= 2 ? attrs_.kernel_shape[1] : W_shape[3];
-
-  int64_t pad_h = 0;
-  int64_t pad_w = 0;
-  int64_t pad_h_end = 0;
-  int64_t pad_w_end = 0;
-  if (attrs_.pads.size() >= 4) {
-    pad_h = attrs_.pads[0];
-    pad_w = attrs_.pads[1];
-    pad_h_end = attrs_.pads[2];
-    pad_w_end = attrs_.pads[3];
-  }
-
-  const int64_t stride_h = attrs_.strides.empty() ? 1 : attrs_.strides[0];
-  const int64_t stride_w = attrs_.strides.size() < 2 ? 1 : attrs_.strides[1];
-  const int64_t dilation_h = attrs_.dilations.empty() ? 1 : attrs_.dilations[0];
-  const int64_t dilation_w = attrs_.dilations.size() < 2 ? 1 : attrs_.dilations[1];
-  const int64_t group = attrs_.group;
-  const int64_t offset_group = attrs_.offset_group;
-
-  // Validate input shapes
-  ORT_RETURN_IF_NOT(stride_h > 0 && stride_w > 0, "Strides must be positive.");
-  ORT_RETURN_IF_NOT(dilation_h > 0 && dilation_w > 0, "Dilations must be positive.");
-  ORT_RETURN_IF_NOT(kH > 0 && kW > 0, "Kernel shape must be positive.");
-  ORT_RETURN_IF_NOT(group > 0, "group must be positive");
-  ORT_RETURN_IF_NOT(offset_group > 0, "offset_group must be positive");
-
-  const int64_t out_h = (H + pad_h + pad_h_end - dilation_h * (kH - 1) - 1) / stride_h + 1;
-  const int64_t out_w = (W_in + pad_w + pad_w_end - dilation_w * (kW - 1) - 1) / stride_w + 1;
-
-  // Checks
-  ORT_RETURN_IF_NOT(W_shape.NumDimensions() == 4, "Weight must be 4D.");
-  ORT_RETURN_IF_NOT(offset_shape.NumDimensions() == 4, "Offset must be 4D.");
-  ORT_RETURN_IF_NOT(offset_shape[1] == offset_group * 2 * kH * kW,
-                    "Offset channel count must be offset_group * 2 * kH * kW.");
-  ORT_RETURN_IF_NOT(offset_shape[2] == out_h, "Offset spatial height must match output oH.");
-  ORT_RETURN_IF_NOT(offset_shape[3] == out_w, "Offset spatial width must match output oW.");
-  ORT_RETURN_IF_NOT(C % offset_group == 0, "Input channels must be divisible by offset_group.");
-  ORT_RETURN_IF_NOT(C == W_shape[1] * group, "Input channels must match weight in channels * group.");
-  ORT_RETURN_IF_NOT(M % group == 0, "Output channels must be divisible by group.");
-
-  const bool use_mask = (mask != nullptr);
-  if (use_mask) {
-    ORT_RETURN_IF_NOT(mask->Shape().NumDimensions() == 4, "Mask must be 4D.");
-    ORT_RETURN_IF_NOT(mask->Shape()[1] == offset_group * kH * kW, "Mask channel count must be offset_group * kH * kW.");
-    ORT_RETURN_IF_NOT(mask->Shape()[2] == out_h, "Mask spatial height must match output oH.");
-    ORT_RETURN_IF_NOT(mask->Shape()[3] == out_w, "Mask spatial width must match output oW.");
-  }
+  const int64_t N = params.N;
+  const int64_t C = params.C;
+  const int64_t H = params.H;
+  const int64_t W_in = params.W_in;
+  const int64_t M = params.M;
+  const int64_t kH = params.kH;
+  const int64_t kW = params.kW;
+  const int64_t pad_h = params.pad_h;
+  const int64_t pad_w = params.pad_w;
+  const int64_t stride_h = params.stride_h;
+  const int64_t stride_w = params.stride_w;
+  const int64_t dilation_h = params.dilation_h;
+  const int64_t dilation_w = params.dilation_w;
+  const int64_t group = params.group;
+  const int64_t offset_group = params.offset_group;
+  const int64_t out_h = params.out_h;
+  const int64_t out_w = params.out_w;
+  const bool use_mask = params.use_mask;
 
   // Allocate Output
   const TensorShape Y_shape({N, M, out_h, out_w});
