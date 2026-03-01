@@ -205,14 +205,17 @@ EIGEN_MATMUL_FUNCTION(double)
 template <>
 void GemmEx<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                 double alpha, const double* A, int lda, const double* B, int ldb, double beta, double* C,
-                                int ldc, ThreadPool* threadpool) {
+                                int ldc, ThreadPool* threadpool, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
+  // DGEMM in MLAS has no BackendKernelSelectorConfig parameter
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
 }
 #else
 template <>
 void GemmEx<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                 double alpha, const double* A, int lda, const double* B, int ldb, double beta, double* C,
-                                int ldc, ThreadPool*) {
+                                int ldc, ThreadPool*, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   auto C_mat = EigenMatrixMapWithStrides<double>(C, N, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldc, 1));
   if (beta == 0) {
     C_mat.setZero();
