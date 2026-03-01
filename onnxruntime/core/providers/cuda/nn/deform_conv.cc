@@ -27,6 +27,35 @@ int GetGreatestDivisorBelowBound(int n, int bound) {
   return 1;
 }
 
+// Returns effective max temp memory (bytes) for DeformConv batching.
+// Uses 90% of free GPU memory with tiered cap; fallback 256MB if cudaMemGetInfo fails.
+// Mirrors Conv's approach (conv_8.h); tiered limits avoid OOM on smaller GPUs.
+size_t GetDeformConvEffectiveMaxTempBytes() {
+  constexpr size_t kDefaultFallback = 256ULL * 1024 * 1024;
+  constexpr size_t kMinTempMemSize = 32ULL * 1024 * 1024;
+
+  size_t free_mem = 0, total_mem = 0;
+  if (cudaMemGetInfo(&free_mem, &total_mem) != cudaSuccess || free_mem == 0) {
+    return kDefaultFallback;
+  }
+  free_mem = static_cast<size_t>(static_cast<double>(free_mem) * 0.9);  // 10% fragmentation buffer
+
+  size_t tier_cap;
+  if (free_mem > 16ULL * 1024 * 1024 * 1024) {
+    tier_cap = 2ULL * 1024 * 1024 * 1024;   // 16GB+ free → 2GB
+  } else if (free_mem > 8ULL * 1024 * 1024 * 1024) {
+    tier_cap = 1ULL * 1024 * 1024 * 1024;   // 8-16GB → 1GB
+  } else if (free_mem > 4ULL * 1024 * 1024 * 1024) {
+    tier_cap = 512ULL * 1024 * 1024;        // 4-8GB → 512MB
+  } else if (free_mem > 2ULL * 1024 * 1024 * 1024) {
+    tier_cap = 256ULL * 1024 * 1024;        // 2-4GB → 256MB
+  } else {
+    tier_cap = 128ULL * 1024 * 1024;        // <2GB → 128MB
+  }
+
+  return std::max(kMinTempMemSize, std::min(tier_cap, free_mem));
+}
+
 }  // namespace
 
 template <typename T>
@@ -39,61 +68,27 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   const auto* B = context->Input<Tensor>(3);
   const auto* mask = context->Input<Tensor>(4);
 
-  const auto& X_shape = X->Shape();
-  const auto& W_shape = W->Shape();
-  const auto& offset_shape = offset->Shape();
+  DeformConvParams params;
+  ORT_RETURN_IF_ERROR(DeformConvValidateAndParse(attrs_, X->Shape(), W->Shape(), offset->Shape(), mask ? &mask->Shape() : nullptr, params));
 
-  const int64_t N = X_shape[0];
-  const int64_t C = X_shape[1];
-  const int64_t H = X_shape[2];
-  const int64_t W_in = X_shape[3];
-
-  const int64_t M = W_shape[0];
-  const int64_t kH = attrs_.kernel_shape.size() >= 1 ? attrs_.kernel_shape[0] : W_shape[2];
-  const int64_t kW = attrs_.kernel_shape.size() >= 2 ? attrs_.kernel_shape[1] : W_shape[3];
-
-  int64_t pad_h = 0, pad_w = 0, pad_h_end = 0, pad_w_end = 0;
-  if (attrs_.pads.size() >= 4) {
-    pad_h = attrs_.pads[0];
-    pad_w = attrs_.pads[1];
-    pad_h_end = attrs_.pads[2];
-    pad_w_end = attrs_.pads[3];
-  }
-
-  const int64_t stride_h = attrs_.strides.empty() ? 1 : attrs_.strides[0];
-  const int64_t stride_w = attrs_.strides.size() < 2 ? 1 : attrs_.strides[1];
-  const int64_t dilation_h = attrs_.dilations.empty() ? 1 : attrs_.dilations[0];
-  const int64_t dilation_w = attrs_.dilations.size() < 2 ? 1 : attrs_.dilations[1];
-  const int64_t group = attrs_.group;
-  const int64_t offset_group = attrs_.offset_group;
-
-  // Validate input shapes
-  ORT_RETURN_IF_NOT(stride_h > 0 && stride_w > 0, "Strides must be positive.");
-  ORT_RETURN_IF_NOT(dilation_h > 0 && dilation_w > 0, "Dilations must be positive.");
-  ORT_RETURN_IF_NOT(kH > 0 && kW > 0, "Kernel shape must be positive.");
-  ORT_RETURN_IF_NOT(group > 0, "group must be positive");
-  ORT_RETURN_IF_NOT(offset_group > 0, "offset_group must be positive");
-
-  const int64_t out_h = (H + pad_h + pad_h_end - dilation_h * (kH - 1) - 1) / stride_h + 1;
-  const int64_t out_w = (W_in + pad_w + pad_w_end - dilation_w * (kW - 1) - 1) / stride_w + 1;
-
-  // Checks
-  ORT_RETURN_IF_NOT(W_shape.NumDimensions() == 4, "Weight must be 4D.");
-  ORT_RETURN_IF_NOT(offset_shape.NumDimensions() == 4, "Offset must be 4D.");
-  ORT_RETURN_IF_NOT(offset_shape[1] == offset_group * 2 * kH * kW,
-                    "Offset channel count must be offset_group * 2 * kH * kW.");
-  ORT_RETURN_IF_NOT(offset_shape[2] == out_h && offset_shape[3] == out_w,
-                    "Offset spatial dims must match output.");
-  ORT_RETURN_IF_NOT(C % offset_group == 0, "Input channels must be divisible by offset_group.");
-  ORT_RETURN_IF_NOT(C == W_shape[1] * group, "Input channels must match weight in channels * group.");
-  ORT_RETURN_IF_NOT(M % group == 0, "Output channels must be divisible by group.");
-
-  const bool use_mask = (mask != nullptr);
-  if (use_mask) {
-    ORT_RETURN_IF_NOT(mask->Shape().NumDimensions() == 4, "Mask must be 4D.");
-    ORT_RETURN_IF_NOT(mask->Shape()[1] == offset_group * kH * kW, "Mask channel count invalid.");
-    ORT_RETURN_IF_NOT(mask->Shape()[2] == out_h && mask->Shape()[3] == out_w, "Mask spatial dims must match output.");
-  }
+  const int64_t N = params.N;
+  const int64_t C = params.C;
+  const int64_t H = params.H;
+  const int64_t W_in = params.W_in;
+  const int64_t M = params.M;
+  const int64_t kH = params.kH;
+  const int64_t kW = params.kW;
+  const int64_t pad_h = params.pad_h;
+  const int64_t pad_w = params.pad_w;
+  const int64_t stride_h = params.stride_h;
+  const int64_t stride_w = params.stride_w;
+  const int64_t dilation_h = params.dilation_h;
+  const int64_t dilation_w = params.dilation_w;
+  const int64_t group = params.group;
+  const int64_t offset_group = params.offset_group;
+  const int64_t out_h = params.out_h;
+  const int64_t out_w = params.out_w;
+  const bool use_mask = params.use_mask;
 
   Tensor* Y = context->Output(0, {N, M, out_h, out_w});
   if (Y->Shape().Size() == 0) {
@@ -105,36 +100,9 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t input_image_size = H * W_in;
   const int64_t kernel_dim = (C / group) * kernel_size;
 
-  // Calculate memory usage per image to avoid OOM with large images
-  // col_buffer: C * kernel_size * output_image_size
-  // gemm_output_buffer: (M / group) * output_image_size
-  // We use a safe max(1, ...) for bytes_per_image to avoid division by zero in edge cases
+  // col_buffer: C * kernel_size * output_image_size; gemm_output_buffer: (M/group) * output_image_size
   const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * (C * kernel_size + M / group) * sizeof(T);
-
-  // Heuristic: limit temp memory per chunk to balance parallelism and memory usage.
-  // Mirrors Conv's approach (conv_8.h): use 90% of free memory (10% fragmentation buffer).
-  // Tiered cap based on free memory: larger GPUs get higher limits for better parallelism.
-  size_t effective_max_temp = 256ULL * 1024 * 1024;  // default fallback
-  constexpr size_t kMinTempMemSize = 32ULL * 1024 * 1024;  // 32MB floor
-  {
-    size_t free_mem = 0, total_mem = 0;
-    if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess && free_mem > 0) {
-      free_mem = static_cast<size_t>(static_cast<double>(free_mem) * 0.9);  // 10% fragmentation buffer
-      size_t kMaxTempMemSize;
-      if (free_mem > 16ULL * 1024 * 1024 * 1024) {
-        kMaxTempMemSize = 2ULL * 1024 * 1024 * 1024;    // 16GB+ free → 2GB
-      } else if (free_mem > 8ULL * 1024 * 1024 * 1024) {
-        kMaxTempMemSize = 1ULL * 1024 * 1024 * 1024;    // 8-16GB → 1GB
-      } else if (free_mem > 4ULL * 1024 * 1024 * 1024) {
-        kMaxTempMemSize = 512ULL * 1024 * 1024;         // 4-8GB → 512MB
-      } else if (free_mem > 2ULL * 1024 * 1024 * 1024) {
-        kMaxTempMemSize = 256ULL * 1024 * 1024;         // 2-4GB → 256MB
-      } else {
-        kMaxTempMemSize = 128ULL * 1024 * 1024;         // <2GB → 128MB
-      }
-      effective_max_temp = std::max(kMinTempMemSize, std::min(kMaxTempMemSize, free_mem));
-    }
-  }
+  const size_t effective_max_temp = GetDeformConvEffectiveMaxTempBytes();
   const int max_parallel_imgs_mem = std::max(1, static_cast<int>(effective_max_temp / std::max(size_t(1), bytes_per_image)));
   const int target_parallel_imgs = std::min(kMaxParallelImgs, max_parallel_imgs_mem);
 
