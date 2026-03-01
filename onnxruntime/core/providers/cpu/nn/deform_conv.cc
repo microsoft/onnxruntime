@@ -67,17 +67,17 @@ void DeformableIm2col(
 
   const int64_t channel_per_offset_group = channels / offset_groups;
 
-  // We iterate over the output matrix columns (spatial locations)
-  // and fill the matrix rows (channels * kernels).
-  // Note: Parallelization can be applied here over 'c_col' (spatial index).
+  // Loop order optimized for cache locality:
+  // Outer loop: Channels
+  // Inner loop: Spatial locations (c_col)
+  // This ensures sequential access to data_col and better locality for data_im.
 
-  for (int64_t c_col = 0; c_col < height_col * width_col; ++c_col) {
-    const int64_t w_col = c_col % width_col;
-    const int64_t h_col = c_col / width_col;
+  for (int64_t c_im = 0; c_im < channels; ++c_im) {
+    const int64_t offset_grp = c_im / channel_per_offset_group;
 
-    // For each spatial location (h_col, w_col), we iterate over all input channels
-    for (int64_t c_im = 0; c_im < channels; ++c_im) {
-      const int64_t offset_grp = c_im / channel_per_offset_group;
+    for (int64_t c_col = 0; c_col < height_col * width_col; ++c_col) {
+      const int64_t w_col = c_col % width_col;
+      const int64_t h_col = c_col / width_col;
 
       // Iterate over kernel window
       for (int64_t i = 0; i < kernel_h; ++i) {
