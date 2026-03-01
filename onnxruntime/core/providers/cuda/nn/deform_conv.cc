@@ -111,11 +111,31 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   // We use a safe max(1, ...) for bytes_per_image to avoid division by zero in edge cases
   const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * (C * kernel_size + M / group) * sizeof(T);
 
-  // Heuristic: limit temp memory to 256MB per chunk to balance parallelism and memory usage.
-  // For small images, this allows up to kMaxParallelImgs (32).
-  // For large images (4K/8K), this restricts parallelism to 1 to prevent OOM.
-  constexpr size_t kMaxTempMemSize = 256 * 1024 * 1024;
-  const int max_parallel_imgs_mem = std::max(1, static_cast<int>(kMaxTempMemSize / std::max(size_t(1), bytes_per_image)));
+  // Heuristic: limit temp memory per chunk to balance parallelism and memory usage.
+  // Mirrors Conv's approach (conv_8.h): use 90% of free memory (10% fragmentation buffer).
+  // Tiered cap based on free memory: larger GPUs get higher limits for better parallelism.
+  size_t effective_max_temp = 256ULL * 1024 * 1024;  // default fallback
+  constexpr size_t kMinTempMemSize = 32ULL * 1024 * 1024;  // 32MB floor
+  {
+    size_t free_mem = 0, total_mem = 0;
+    if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess && free_mem > 0) {
+      free_mem = static_cast<size_t>(static_cast<double>(free_mem) * 0.9);  // 10% fragmentation buffer
+      size_t kMaxTempMemSize;
+      if (free_mem > 16ULL * 1024 * 1024 * 1024) {
+        kMaxTempMemSize = 2ULL * 1024 * 1024 * 1024;    // 16GB+ free → 2GB
+      } else if (free_mem > 8ULL * 1024 * 1024 * 1024) {
+        kMaxTempMemSize = 1ULL * 1024 * 1024 * 1024;    // 8-16GB → 1GB
+      } else if (free_mem > 4ULL * 1024 * 1024 * 1024) {
+        kMaxTempMemSize = 512ULL * 1024 * 1024;         // 4-8GB → 512MB
+      } else if (free_mem > 2ULL * 1024 * 1024 * 1024) {
+        kMaxTempMemSize = 256ULL * 1024 * 1024;         // 2-4GB → 256MB
+      } else {
+        kMaxTempMemSize = 128ULL * 1024 * 1024;         // <2GB → 128MB
+      }
+      effective_max_temp = std::max(kMinTempMemSize, std::min(kMaxTempMemSize, free_mem));
+    }
+  }
+  const int max_parallel_imgs_mem = std::max(1, static_cast<int>(effective_max_temp / std::max(size_t(1), bytes_per_image)));
   const int target_parallel_imgs = std::min(kMaxParallelImgs, max_parallel_imgs_mem);
 
   const int n_parallel_imgs = GetGreatestDivisorBelowBound(static_cast<int>(N), target_parallel_imgs);
