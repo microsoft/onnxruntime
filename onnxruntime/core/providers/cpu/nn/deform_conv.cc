@@ -282,7 +282,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
       // W matrix: [M/group, kernel_dim]
       // Col matrix: [kernel_dim, output_image_size]
       // Y matrix: [M/group, output_image_size]
-      math::GemmEx<T>(
+      math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
           narrow<ptrdiff_t>(M / group),        // M
@@ -290,14 +290,11 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
           narrow<ptrdiff_t>(kernel_dim),       // K
           static_cast<T>(1),                   // alpha
           weight_g,                            // A
-          narrow<int>(kernel_dim),             // lda
           col_g,                               // B
-          narrow<int>(output_image_size),      // ldb
           static_cast<T>(0),                   // beta
           Y_g,                                 // C
-          narrow<int>(output_image_size),      // ldc
           thread_pool,
-          nullptr);  // mlas_backend_kernel_selector_config
+          nullptr);                            // mlas_backend_kernel_selector_config
     }
   }
 
