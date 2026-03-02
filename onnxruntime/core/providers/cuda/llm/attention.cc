@@ -106,6 +106,12 @@ Status Attention<T>::FlashAttentionForExternalKVCache(
     bool is_bf16,
     onnxruntime::Stream* ort_stream) const {
 
+  // The full KV cache must be passed as K/V directly (no past_key concatenation).
+  // If past_sequence_length != 0, K/V would be partial and flash would read OOB.
+  ORT_ENFORCE(parameters.past_sequence_length == 0,
+              "FlashAttentionForExternalKVCache requires K/V to be the full cache "
+              "(past_sequence_length must be 0, got ", parameters.past_sequence_length, ").");
+
   // Convert nonpad_kv_seqlen (int64 count) to int32 seqlens_k for flash attention.
   // Flash's mha_fwd_kvcache expects the actual token count, not the GQA count-1 convention.
   auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, ort_stream);
@@ -785,6 +791,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                                "Using both nonpad_kv_seqlen and attn_mask simultaneously is not yet supported "
                                "in MHA path of Attention op (CUDA).");
+      }
+
+      // Flash attention requires BSNH (3D) inputs; 4D BNSH inputs have different strides.
+      if (!parameters.transpose_output) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "4D BNSH inputs with nonpad_kv_seqlen are not supported in the flash path.");
       }
 
       // Try flash attention for external KV cache (fp16/bf16 only)
