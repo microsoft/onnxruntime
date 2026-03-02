@@ -143,7 +143,7 @@ Status ApplyGemmPacked(const Tensor* a,
     }
   }
 
-  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components, is_vec4, split_dim_inner};
+  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, output_components, is_vec4, split_dim_inner};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, components},
