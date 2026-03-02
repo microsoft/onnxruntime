@@ -123,6 +123,7 @@ stages:
         - checkout: self
           clean: true
           submodules: none
+          sparseCheckoutDirectories: .config  # We only need configuration files for some 1ES-injected steps.
 
         - ${{ each config in parameters.LinuxPythonConfigurations }}:
           - task: DownloadPipelineArtifact@2
