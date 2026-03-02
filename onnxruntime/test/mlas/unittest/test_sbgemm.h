@@ -62,13 +62,13 @@ class MlasSBGemmTest : public MlasTestBase {
 
   void* PackB(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, size_t N, size_t K, const BType* B, size_t ldb) {
     const bool BIsfp32 = std::is_same<BType, float>::value;
-    size_t PackedBSize = MlasSBGemmPackBSize(TransA, TransB, BIsfp32, N, K);
+    size_t PackedBSize = MlasSBGemmPackBSize(TransA, TransB, BIsfp32, N, K, nullptr);
     if (PackedBSize == 0) {
       return nullptr;
     }
     void* PackedB = BufferBPacked.GetBuffer(PackedBSize);
     if (std::is_same<BType, float>::value) {
-      MlasSBGemmConvertPackB(TransA, TransB, true, N, K, (const float*)B, ldb, PackedB);
+      MlasSBGemmConvertPackB(TransA, TransB, true, N, K, (const float*)B, ldb, PackedB, nullptr);
     } else {
     }
     return PackedB;
@@ -118,7 +118,7 @@ class MlasSBGemmTest : public MlasTestBase {
       }
     }
 
-    MlasSBGemmBatch(TransA, TransB, M, N, K, BatchSize, GemmParameters.data(), threadpool_);
+    MlasSBGemmBatch(TransA, TransB, M, N, K, BatchSize, GemmParameters.data(), threadpool_, nullptr);
   }
 
   void ReferenceSgemm(size_t M,

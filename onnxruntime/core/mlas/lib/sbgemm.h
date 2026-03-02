@@ -303,14 +303,17 @@ MlasSBGemmPackBSize(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     bool BIsfp32,
-    size_t N, 
-    size_t K)
+    size_t N,
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
 {
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
-    if (GetMlasPlatform().MlasSBGemmPackBSizeOverride != nullptr &&
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSBGemmPackBSizeOverride != nullptr &&
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
         TransB != CBLAS_TRANSPOSE::CblasTrans &&
         BIsfp32) {
@@ -348,11 +351,13 @@ MlasSBGemmConvertPackB(
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
-    if (GetMlasPlatform().MlasSBGemmPackBOverride != nullptr &&
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSBGemmPackBOverride != nullptr &&
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
         TransB != CBLAS_TRANSPOSE::CblasTrans &&
         BIsfp32 &&
@@ -376,11 +381,13 @@ MlasSBGemmBatch(
     const size_t K,
     const size_t BatchN,
     const MLAS_SBGEMM_DATA_PARAMS* Data,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
 #if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
-    if (GetMlasPlatform().MlasSBGemmBatchOverride != nullptr &&
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSBGemmBatchOverride != nullptr &&
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
         TransB != CBLAS_TRANSPOSE::CblasTrans &&
         Data->AIsfp32 &&

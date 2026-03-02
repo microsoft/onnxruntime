@@ -91,7 +91,7 @@ MlasConvPointwiseBf16KernelNeon(
         }
     }
 
-    MlasSBGemmBatch(OutputCount, BlockSize, BlockSize, idx, gemm_params, nullptr);
+    MlasSBGemmBatch(CblasNoTrans, CblasNoTrans, OutputCount, BlockSize, BlockSize, idx, gemm_params, nullptr, nullptr);
 
     if (ReluActivation) {
         const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
