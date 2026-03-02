@@ -92,12 +92,11 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     inputs.push_back(bias);
     input_output_shapes.push_back(bias->Shape());
   }
-  uint32_t auto_pad_adjust = conv_transpose_attrs_.auto_pad == AutoPadType::SAME_LOWER ? 1 : 0;
-  auto pad0 = conv_transpose_attrs_.auto_pad == AutoPadType::NOTSET ? pads[0] : (pads[0] + pads[2] + auto_pad_adjust) / 2;
-  auto pad1 = conv_transpose_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
+  // pads[0] and pads[1] already contain the correct head (beginning) padding values
+  // computed by ComputePadsAndOutputShape() which handles auto_pad correctly.
   Tensor* output = context.Output(0, computed_output_shape);
   input_output_shapes.push_back(output_shape);
-  auto program = CreateConvTranspose2DProgram(inputs, {pad0, pad1}, strides, dilations, output, is_channels_last, input_output_shapes, static_cast<uint32_t>(conv_transpose_attrs_.group));
+  auto program = CreateConvTranspose2DProgram(inputs, {pads[0], pads[1]}, strides, dilations, output, is_channels_last, input_output_shapes, static_cast<uint32_t>(conv_transpose_attrs_.group));
   return context.RunProgram(program);
 }
 

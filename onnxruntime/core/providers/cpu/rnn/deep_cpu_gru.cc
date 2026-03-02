@@ -194,7 +194,7 @@ bool DeepCpuGruOp::TryPackInputWeights(const Tensor& weights, AllocatorPtr& allo
   const size_t N = static_cast<size_t>(shape[1]);
   const size_t K = static_cast<size_t>(shape[2]);
 
-  const size_t packed_weights_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, N, K);
+  const size_t packed_weights_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, N, K, &mlas_backend_kernel_selector_config_);
   if (packed_weights_size == 0) {
     return false;
   }
@@ -215,7 +215,7 @@ bool DeepCpuGruOp::TryPackInputWeights(const Tensor& weights, AllocatorPtr& allo
   const size_t N_x_K = N * K;
   const auto* weights_data = weights.Data<float>();
   for (int64_t dir = 0; dir < num_directions; ++dir) {
-    MlasGemmPackB(CblasNoTrans, CblasTrans, N, K, weights_data, K, packed_weights_data);
+    MlasGemmPackB(CblasNoTrans, CblasTrans, N, K, weights_data, K, packed_weights_data, &mlas_backend_kernel_selector_config_);
     weights_data += N_x_K;
     packed_weights_data += packed_weights_size;
   }
@@ -244,12 +244,12 @@ bool DeepCpuGruOp::TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& 
   const auto hidden_size_x_2 = N - hidden_size_;
 
   // We are making two packed buffers, one for ZR weights and another for H weights.
-  const size_t ZR_packed_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K));
+  const size_t ZR_packed_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), &mlas_backend_kernel_selector_config_);
   if (ZR_packed_size == 0) {
     return false;
   }
 
-  const size_t H_packed_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K));
+  const size_t H_packed_size = MlasGemmPackBSize(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), &mlas_backend_kernel_selector_config_);
   if (H_packed_size == 0) {
     return false;
   }
@@ -275,18 +275,18 @@ bool DeepCpuGruOp::TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& 
   const auto hidden_2_step = hidden_size_x_2 * K;
   const auto hidden_1_step = hidden_size_ * K;  // square
   const auto* weights_data = weights.Data<float>();
-  MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_ZR);
+  MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_ZR, &mlas_backend_kernel_selector_config_);
   weights_data += hidden_2_step;
-  MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H);
+  MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H, &mlas_backend_kernel_selector_config_);
 
   if (num_directions == 2) {
     weights_data += hidden_1_step;
     buffer_ZR = static_cast<uint8_t*>(buffer_ZR) + ZR_packed_size;
-    MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_ZR);
+    MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_x_2), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_ZR, &mlas_backend_kernel_selector_config_);
 
     weights_data += hidden_2_step;
     buffer_H = static_cast<uint8_t*>(buffer_H) + H_packed_size;
-    MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H);
+    MlasGemmPackB(CblasNoTrans, CblasTrans, narrow<size_t>(hidden_size_), narrow<size_t>(K), weights_data, narrow<size_t>(K), buffer_H, &mlas_backend_kernel_selector_config_);
   }
 
   return true;
@@ -496,7 +496,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                     linear_before_reset_ != 0, Direction::kForward, bias_1, initial_hidden_1,
                                     activation_funcs_.Entries()[0],
                                     activation_funcs_.Entries()[1],
-                                    clip_, thread_pool);
+                                    clip_, thread_pool, &mlas_backend_kernel_selector_config_);
     fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_ZR_1, recurrent_weights_H_1,
                output_1, hidden_output_1);
 
@@ -504,7 +504,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                     linear_before_reset_ != 0, Direction::kReverse, bias_2, initial_hidden_2,
                                     activation_funcs_.Entries()[2],
                                     activation_funcs_.Entries()[3],
-                                    clip_, thread_pool);
+                                    clip_, thread_pool, &mlas_backend_kernel_selector_config_);
     bw.Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_ZR_2, recurrent_weights_H_2,
                output_2, hidden_output_2);
   } else {
@@ -512,7 +512,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                        linear_before_reset_ != 0, direction_, bias_1, initial_hidden_1,
                                        activation_funcs_.Entries()[0],
                                        activation_funcs_.Entries()[1],
-                                       clip_, thread_pool);
+                                       clip_, thread_pool, &mlas_backend_kernel_selector_config_);
     gru_p.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_ZR_1, recurrent_weights_H_1,
                   output_1, hidden_output_1);
   }
@@ -542,6 +542,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const ActivationFuncs::Entry& activation_func_f,
                                         const ActivationFuncs::Entry& activation_func_g,
                                         const float clip, onnxruntime::concurrency::ThreadPool* ttp,
+                                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
                                         const bool training_mode)
     : allocator_(std::move(allocator)),
       seq_length_(seq_length),
@@ -553,6 +554,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
       direction_(direction),
       use_bias_(!bias.empty()),
       ttp_(ttp),
+      mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config),
       training_mode_(training_mode) {
   clip_with_bias_ptr_ = use_bias_ ? deepcpu::clip_add_bias : deepcpu::clip_ignore_bias;
 
@@ -712,7 +714,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
                 input_weights.begin(), input_weights.end(),
                 input_size_, 0.f,
                 zrh.begin(), zrh.end(),
-                hidden_size_x3, ttp_);
+                hidden_size_x3, ttp_, mlas_backend_kernel_selector_config_);
   } else {
     MlasGemm(
         CblasNoTrans,
@@ -725,7 +727,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
         input_weights_s.buffer_,
         0.0f,
         &*zrh.begin(),
-        static_cast<size_t>(hidden_size_x3), ttp_);
+        static_cast<size_t>(hidden_size_x3), ttp_, mlas_backend_kernel_selector_config_);
   }
 
   DumpMatrix("inputs with weights applied", zrh.data(), seq_length_ * batch_size_ * 3, hidden_size_);
@@ -797,7 +799,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
                     recurrent_weightsZR.begin(), recurrent_weightsZR.end(),
                     hidden_size_, 1.f,  // beta == 1 so we add existing values in zrh
                     zrh.begin() + out_added_offset, zrh.end(),
-                    hidden_size_x3, ttp_);
+                    hidden_size_x3, ttp_, mlas_backend_kernel_selector_config_);
       } else {
         MlasGemm(
             CblasNoTrans,
@@ -807,7 +809,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
             recurrent_weightsZR_s.buffer_,
             1.f,
             &*(zrh.begin() + out_added_offset),
-            static_cast<size_t>(hidden_size_x3), ttp_);
+            static_cast<size_t>(hidden_size_x3), ttp_, mlas_backend_kernel_selector_config_);
       }
 
       DumpMatrix("Ht-1 * R[zr] + Xt*(W[zr]^T)" + seqno_str,
@@ -831,7 +833,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
                       use_bias_ ? 1.f : 0.f,  // don't add values in linear_output_ if no bias input
                       linear_output_.begin(),
                       linear_output_.end(),  // pre: Rbh if use_bias_, post:output
-                      hidden_size_, ttp_);
+                      hidden_size_, ttp_, mlas_backend_kernel_selector_config_);
         } else {
           MlasGemm(
               CblasNoTrans,
@@ -841,7 +843,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
               recurrent_weightsH_s.buffer_,
               use_bias_ ? 1.f : 0.f,  // don't add values in linear_output_ if no bias input
               &*linear_output_.begin(),
-              static_cast<size_t>(hidden_size_), ttp_);
+              static_cast<size_t>(hidden_size_), ttp_, mlas_backend_kernel_selector_config_);
         }
 
         DumpMatrix("Ht-1 * (Rh^T) + Rbh " + seqno_str, linear_output_.data(), batch_size_, hidden_size_);
@@ -914,7 +916,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
                       recurrent_weightsH.begin(), recurrent_weightsH.end(),  // Rh^T
                       hidden_size_, 1.f,                                     // beta == 1 to add Xt*(Wh^T) from out_H
                       out_H, zrh.end(),
-                      hidden_size_x3, ttp_);
+                      hidden_size_x3, ttp_, mlas_backend_kernel_selector_config_);
         } else {
           MlasGemm(
               CblasNoTrans,
@@ -924,7 +926,7 @@ void UniDirectionalGru<T>::ComputeImpl(gsl::span<const T> inputs_arg,
               recurrent_weightsH_s.buffer_,
               1.f,  // beta == 1 to add Xt*(Wh^T) from out_H
               &*out_H,
-              static_cast<size_t>(hidden_size_x3), ttp_);
+              static_cast<size_t>(hidden_size_x3), ttp_, mlas_backend_kernel_selector_config_);
         }
       }
 

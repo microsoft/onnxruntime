@@ -9,7 +9,7 @@
 
 #include "core/common/cpuid_info.h"
 #include "core/framework/op_kernel.h"
-#include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/providers/common.h"
 #include "core/common/safeint.h"
 #include "core/quantization/quantization.h"
@@ -18,7 +18,9 @@ namespace onnxruntime {
 
 class MatMulIntegerBase : public OpKernel {
  public:
-  MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {}
+  MatMulIntegerBase(const OpKernelInfo& info) : OpKernel(info) {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+  }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
@@ -54,7 +56,7 @@ class MatMulIntegerBase : public OpKernel {
         std::swap(K, N);
         b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, alloc, N, K);
       }
-      const size_t packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed_);
+      const size_t packed_b_size = MlasGemmPackBSize(N, K, a_is_signed, b_is_signed_, &mlas_backend_kernel_selector_config_);
       if (packed_b_size == 0) {
         return Status::OK();
       }
@@ -117,7 +119,13 @@ class MatMulIntegerBase : public OpKernel {
     return false;
   }
 
+  // Flag to indicate if we can use MLAS implementation
+  // This flag is set after all relevant input validations
+  // have been performed
   bool can_use_dynamic_quant_mlas_{false};
+
+  // Instantiate the backend kernel selector config
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
 #if defined(USE_KLEIDIAI)
   struct KleidiaiDynamicPackContext {
@@ -223,7 +231,7 @@ class MatMulIntegerBase : public OpKernel {
 
     is_packed = false;
 
-    const size_t packed_b_size = MlasDynamicQgemmPackBSize(ctx.N, ctx.K);
+    const size_t packed_b_size = MlasDynamicQgemmPackBSize(ctx.N, ctx.K, &mlas_backend_kernel_selector_config_);
     if (packed_b_size == 0) {
       can_use_dynamic_quant_mlas_ = false;
       return false;
@@ -243,7 +251,7 @@ class MatMulIntegerBase : public OpKernel {
                             : std::vector<float>(ctx.N, 0.f);
 
     MlasDynamicQgemmPackB(ctx.N, ctx.K, reinterpret_cast<const int8_t*>(ctx.b_data),
-                          scales.data(), biases.data(), packed_b_.get());
+                          scales.data(), biases.data(), packed_b_.get(), &mlas_backend_kernel_selector_config_);
 
     if (prepacked_weights != nullptr) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));

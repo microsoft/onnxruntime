@@ -42,7 +42,11 @@ struct MlasTMACKernelParams {
     bool one_scale;
 };
 
-const MlasTMACKernelParams&
+/**
+ * Retrieves the T-MAC kernel configuration for a given GEMM problem.
+ * Returns the parameters by value to ensure thread-safety across concurrent calls.
+ */
+MlasTMACKernelParams
 MlasGetLutGemmKernelParams(size_t M, size_t N, size_t nbits, size_t block_size, bool has_zero_point);
 
 typedef void(MLAS_QNBIT_GEMM_LUT_GEN)(
@@ -53,21 +57,58 @@ typedef void(MLAS_QNBIT_GEMM_LUT_GEN)(
     size_t M,
     size_t K,
     size_t N,
-    size_t act_group_size
+    size_t act_group_size,
+    size_t lut_stride        // Stride (in bytes) between consecutive LUT entries along the batch dimension.
 );
 
 typedef void(MLAS_QNBIT_LUT_GEMM_COMPUTE)(
-    const uint8_t* weights,
-    const float* scales,
+    const uint8_t* A,
+    const float* Scales,
     const int8_t* LUT,
     const float* LUT_Scales,
     const float* LUT_Biases,
     float* C,
     int K,
-    int M,  // batch size (number of rows in activation)
-    int N,
+    int M,                  // Batch size (current activation rows).
+    int N,                  // Number of output features to compute in this tile/chunk.
+    int TotalN,             // Total number of output features in the weights (used for parameter mapping).
     size_t BlkLen,
     bool HasZeroPoint
+);
+
+//
+// Function signature for packing quantized B data
+//
+typedef void(MLAS_QNBIT_LUT_PACK_QUANTB_DATA)(
+    size_t N,
+    size_t K,
+    size_t bits,
+    size_t g,
+    size_t ngroups_per_elem,
+    size_t simd_n_in,
+    size_t simd_n_out,
+    size_t bm,
+    size_t kfactor,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+//
+// Function signature for packing scales and zero points
+//
+typedef void(MLAS_QNBIT_LUT_PACK_SCALES_AND_ZP)(
+    size_t N,
+    size_t K,
+    size_t bits,
+    size_t BlkLen,
+    size_t simd_n_out,
+    size_t bm,
+    bool HasZeroPoint,
+    float* PackedScalesBegin,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    MLAS_THREADPOOL* ThreadPool
 );
 
 //
@@ -81,4 +122,8 @@ struct MLAS_QNBIT_LUT_GEMM_DISPATCH {
     MLAS_QNBIT_GEMM_LUT_GEN* GenerateLUT = nullptr;
 
     MLAS_QNBIT_LUT_GEMM_COMPUTE* ComputeGemm = nullptr;
+
+    MLAS_QNBIT_LUT_PACK_QUANTB_DATA* PackQuantBData = nullptr;
+
+    MLAS_QNBIT_LUT_PACK_SCALES_AND_ZP* PackScalesAndZeroPoints = nullptr;
 };

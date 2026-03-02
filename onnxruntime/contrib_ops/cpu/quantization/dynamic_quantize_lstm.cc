@@ -54,7 +54,7 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
   }
 
   is_weight_signed = weights.IsDataType<int8_t>();
-  const size_t packed_weights_size = MlasGemmPackBSize(N, K, false /*AIsSigned*/, is_weight_signed);
+  const size_t packed_weights_size = MlasGemmPackBSize(N, K, false /*AIsSigned*/, is_weight_signed, &mlas_backend_kernel_selector_config_);
   if (packed_weights_size == 0) {
     return Status::OK();
   }

@@ -23,9 +23,11 @@
 # normalization on the selected experts. This provides proper weight distribution
 # while maintaining computational efficiency.
 # --------------------------------------------------------------------------
+import os
 import time
 import unittest
 from collections import OrderedDict
+from contextlib import contextmanager
 
 import numpy
 import torch
@@ -75,6 +77,8 @@ onnxruntime.preload_dlls()
 device = torch.device("cpu")
 
 ort_provider = ["CPUExecutionProvider"]
+
+ORT_USE_MLAS_Q4_GEMM_MOE = "ORT_USE_MLAS_Q4_GEMM_MOE"
 
 torch.manual_seed(42)
 numpy.random.seed(42)
@@ -364,7 +368,7 @@ def create_cpu_moe_onnx_graph(
     use_swiglu=False,
     use_quant=False,
     quant_bits=4,
-    swiglu_interleaved=False,
+    swiglu_fusion=0,
     block_size=0,
 ):
     if not has_onnx:
@@ -400,10 +404,10 @@ def create_cpu_moe_onnx_graph(
             "router_probs",  # 1
             "fc1_experts_weights",  # 2
             "fc1_scales",  # 3
-            "",  # 4: fc1_bias
+            "fc1_experts_bias" if fc1_bias is not None else "",  # 4
             "fc2_experts_weights",  # 5
             "fc2_scales",  # 6
-            "",  # 7: fc2_bias
+            "fc2_experts_bias" if fc2_bias is not None else "",  # 7
             "",  # 8: fc3_weights
             "",  # 9: fc3_scales
             "",  # 10: fc3_bias
@@ -442,11 +446,10 @@ def create_cpu_moe_onnx_graph(
             normalize_routing_weights=normalize_routing,
             activation_type=activation,
             # Add new attributes with backwards-compatible default values
-            swiglu_fusion=1 if use_swiglu else 0,  # 1 if using SwiGLU activation
+            swiglu_fusion=swiglu_fusion,
             swiglu_limit=7.0,
             activation_alpha=1.702,
             activation_beta=1.0,
-            swiglu_interleaved=1 if swiglu_interleaved else 0,  # Enable this attribute
             domain="com.microsoft",
         ),
     ]
@@ -559,6 +562,30 @@ def create_cpu_moe_onnx_graph(
             )
         )
 
+    if fc1_bias is not None:
+        fc1_bias_np = fc1_bias.detach().cpu().numpy().astype(ort_to_numpy_type_map[onnx_dtype])
+        initializers.append(
+            helper.make_tensor(
+                "fc1_experts_bias",
+                onnx_dtype,
+                list(fc1_bias.shape),
+                fc1_bias_np.flatten().tolist(),
+                raw=False,
+            )
+        )
+
+    if fc2_bias is not None:
+        fc2_bias_np = fc2_bias.detach().cpu().numpy().astype(ort_to_numpy_type_map[onnx_dtype])
+        initializers.append(
+            helper.make_tensor(
+                "fc2_experts_bias",
+                onnx_dtype,
+                list(fc2_bias.shape),
+                fc2_bias_np.flatten().tolist(),
+                raw=False,
+            )
+        )
+
     graph_inputs = [
         helper.make_tensor_value_info("input", onnx_dtype, [sequence_length, hidden_size]),
     ]
@@ -626,7 +653,7 @@ class SwigluMoeConfig:
         self.num_experts_per_token = num_experts_per_token
 
 
-def swiglu(x: torch.Tensor, alpha: float = 1.702, limit: float = 7.0):
+def swiglu(x: torch.Tensor, alpha: float = 1.702, beta: float = 1.0, limit: float = 7.0):
     dim = x.shape[-1]
     x = x.view(-1, dim // 2, 2)
     x_glu, x_linear = x[..., 0], x[..., 1]
@@ -635,8 +662,8 @@ def swiglu(x: torch.Tensor, alpha: float = 1.702, limit: float = 7.0):
         x_glu = x_glu.clamp(max=limit)
         x_linear = x_linear.clamp(min=-limit, max=limit)
 
-    y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + 1)
-    return y
+    y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + beta)
+    return y.view(-1, dim // 2)
 
 
 class MoEBlockSparseTop2MLP(nn.Module):
@@ -855,7 +882,7 @@ class SparseMoeBlockORTHelper(nn.Module):
                 e = time.time()
                 time_ms = (e - s) / repeat * 1000
                 is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
-                is_interleaved = hasattr(self, "swiglu_interleaved") and self.swiglu_interleaved
+                is_interleaved = hasattr(self, "swiglu_fusion") and self.swiglu_fusion == 1
                 act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
                 print(f"ORT Performance - {act_type} {self.quant_bits}-bit: {time_ms:.3f} ms/inference")
 
@@ -868,62 +895,80 @@ class SparseMoeBlockORTHelper(nn.Module):
         """Recreate the ONNX model with the current weights to reflect any changes to the quantization code."""
 
         w1_list, w2_list = [], []
+        w1_bias_list, w2_bias_list = [], []
         w1_scale_list, w2_scale_list = [], []
         w1_zp_list, w2_zp_list = [], []
 
         is_4_bit = self.quant_bits == 4
         for i in range(self.num_experts):
-            if self.block_size > 0:
-                # Use block-wise quantization
-                w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant_blockwise(
-                    self.experts[i].w1.weight, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
-                )
-                w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant_blockwise(
-                    self.experts[i].w2.weight, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
-                )
+            if hasattr(self.experts[i], "w3"):
+                w1, w3 = self.experts[i].w1.weight, self.experts[i].w3.weight
+                w2 = self.experts[i].w2.weight
+                w1_bias = self.experts[i].w1.bias
+                w3_bias = getattr(self.experts[i].w3, "bias", None)
+
+                # Combine and interleave w1 and w3 for the fused kernel
+                w1_combined = torch.cat([w1, w3], dim=0)  # [2*inter, hidden]
+                if getattr(self, "swiglu_fusion", 0) == 1:
+                    w1_combined = w1_combined.view(2, -1, self.hidden_dim).transpose(0, 1).reshape(-1, self.hidden_dim)
+
+                if self.block_size > 0:
+                    w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant_blockwise(
+                        w1_combined, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                    )
+                    w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant_blockwise(
+                        w2, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                    )
+                else:
+                    w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant(
+                        w1_combined, is_4_bit, asymmetric=self.use_asymmetric_quant
+                    )
+                    w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant(
+                        w2, is_4_bit, asymmetric=self.use_asymmetric_quant
+                    )
+
+                if w1_bias is not None and w3_bias is not None:
+                    b1_combined = torch.cat([w1_bias, w3_bias], dim=0)
+                    if getattr(self, "swiglu_fusion", 0) == 1:
+                        b1_combined = b1_combined.view(2, -1).transpose(0, 1).reshape(-1)
+                    w1_bias_list.append(b1_combined.detach().cpu())
+                elif w1_bias is not None:
+                    w1_bias_list.append(w1_bias.detach().cpu())
             else:
-                # Use row-wise quantization
-                w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant(
-                    self.experts[i].w1.weight, is_4_bit, asymmetric=self.use_asymmetric_quant
-                )
-                w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant(
-                    self.experts[i].w2.weight, is_4_bit, asymmetric=self.use_asymmetric_quant
-                )
+                # PhiMoESwiGLUMLP already has interleaved weights in w1
+                w1 = self.experts[i].w1.weight
+                w2 = self.experts[i].w2.weight
+                w1_bias = self.experts[i].w1.bias
+
+                if self.block_size > 0:
+                    w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant_blockwise(
+                        w1, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                    )
+                    w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant_blockwise(
+                        w2, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                    )
+                else:
+                    w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant(
+                        w1, is_4_bit, asymmetric=self.use_asymmetric_quant
+                    )
+                    w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant(
+                        w2, is_4_bit, asymmetric=self.use_asymmetric_quant
+                    )
+                if w1_bias is not None:
+                    w1_bias_list.append(w1_bias.detach().cpu())
 
             if self.use_swiglu:
-                if self.swiglu_interleaved:
-                    pass
-                else:
-                    if self.block_size > 0:
-                        w3_scale, pre_qweight3, w3_qdq, w3_zp = quant_dequant_blockwise(
-                            self.experts[i].w3.weight, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
-                        )
-                    else:
-                        w3_scale, pre_qweight3, w3_qdq, w3_zp = quant_dequant(
-                            self.experts[i].w3.weight, is_4_bit, asymmetric=self.use_asymmetric_quant
-                        )
-
-                    gate_weights = pre_qweight1
-                    value_weights = pre_qweight3
-                    gate_scales = w1_scale
-                    value_scales = w3_scale
-                    gate_zp = w1_zp
-                    value_zp = w3_zp
-
-                    pre_qweight1 = torch.cat([gate_weights, value_weights], dim=0)
-                    w1_scale = torch.cat([gate_scales, value_scales], dim=0)
-                    if w1_zp is not None and w3_zp is not None:
-                        w1_zp = torch.cat([gate_zp, value_zp], dim=0)
-
-                if self.swiglu_interleaved:
+                if getattr(self, "swiglu_fusion", 0) == 1:
                     self.experts[i].w1.weight = nn.Parameter(w1_qdq.contiguous().clone())
-
                 else:
                     intermediate_size = self.experts[i].w1.weight.shape[0]
                     gate_dequant = w1_qdq[:intermediate_size].contiguous().clone()
                     value_dequant = w1_qdq[intermediate_size:].contiguous().clone()
-                    self.experts[i].w1.weight.data = gate_dequant
-                    self.experts[i].w3.weight.data = value_dequant
+                    if hasattr(self.experts[i], "w3"):
+                        self.experts[i].w1.weight.data = gate_dequant
+                        self.experts[i].w3.weight.data = value_dequant
+                    else:
+                        self.experts[i].w1.weight.data = w1_qdq.contiguous().clone()
             else:
                 self.experts[i].w1.weight.data = w1_qdq.contiguous().clone()
 
@@ -931,6 +976,9 @@ class SparseMoeBlockORTHelper(nn.Module):
 
             w1_list.append(pre_qweight1)
             w2_list.append(pre_qweight2)
+
+            if self.experts[i].w2.bias is not None:
+                w2_bias_list.append(self.experts[i].w2.bias)
             w1_scale_list.append(w1_scale)
             w2_scale_list.append(w2_scale)
             if w1_zp is not None:
@@ -963,9 +1011,9 @@ class SparseMoeBlockORTHelper(nn.Module):
                 onnx_dtype=self.onnx_dtype,
                 fc1_experts_weights=self.moe_experts_weight1,
                 fc2_experts_weights=self.moe_experts_weight2,
-                # Biases are not used in QMoE
-                fc1_bias=None,
-                fc2_bias=None,
+                # Pass collected biases
+                fc1_bias=torch.stack(w1_bias_list, dim=0) if w1_bias_list else None,
+                fc2_bias=torch.stack(w2_bias_list, dim=0) if w2_bias_list else None,
                 # Scales are used for dequantization
                 fc1_scales=moe_experts_weight_scale1,
                 fc2_scales=moe_experts_weight_scale2,
@@ -975,7 +1023,7 @@ class SparseMoeBlockORTHelper(nn.Module):
                 use_swiglu=self.use_swiglu,
                 use_quant=True,  # Always use QMoE
                 quant_bits=self.quant_bits,
-                swiglu_interleaved=self.swiglu_interleaved if hasattr(self, "swiglu_interleaved") else False,
+                swiglu_fusion=getattr(self, "swiglu_fusion", 0),
                 block_size=self.block_size,  # Add block_size for block-wise quantization
             )
         except Exception:
@@ -1020,7 +1068,7 @@ class SparseMoeBlockORTHelper(nn.Module):
             max_diff = (torch_output.cpu() - ort_output.cpu()).abs().max()
 
         is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
-        is_interleaved = hasattr(self, "swiglu_interleaved") and self.swiglu_interleaved
+        is_interleaved = getattr(self, "swiglu_fusion", 0) == 1
         act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
         quant_type = "Asymmetric" if self.use_asymmetric_quant else "Symmetric"
         block_type = f"Block({self.block_size})" if self.block_size > 0 else "Row"
@@ -1047,24 +1095,6 @@ class SparseMoeBlockORTHelper(nn.Module):
             )
             print("Torch sample:", torch_output.cpu().reshape(-1, hidden_dim)[i, k].item())
             print("ORT  sample:", ort_output.cpu().reshape(-1, hidden_dim)[i, k].item())
-            # Print routing and per-expert contributions for this token from the PyTorch reference
-            try:
-                hidden_states_flat = hidden_state.view(-1, hidden_dim)
-                token_vec = hidden_states_flat[i : i + 1]
-                gate_logits = self.gate(token_vec)
-                topk_vals, topk_experts = torch.topk(gate_logits, self.top_k, dim=-1)
-                topk_soft = F.softmax(topk_vals, dim=1)
-                print("Gate logits:", gate_logits.detach().cpu().numpy())
-                print("Selected experts:", topk_experts.detach().cpu().numpy())
-                print("Routing weights:", topk_soft.detach().cpu().numpy())
-                # Compute per-expert contributions for selected experts
-                for idx_e, e in enumerate(topk_experts[0].tolist()):
-                    expert_layer = self.experts[e]
-                    expert_out = expert_layer(token_vec)
-                    contrib = expert_out[0, k].item() * topk_soft[0, idx_e].item()
-                    print(f"Expert {e} contrib at hidden {k}: {contrib}")
-            except Exception as _:
-                pass
 
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
@@ -1111,6 +1141,43 @@ def small_test_cases():
             yield batch_size, sequence_length
 
 
+def with_mlas_q4_mode(test_cases):
+    expanded_cases = []
+    for case in test_cases:
+        quant_bits = case[2]
+        if quant_bits == 4:
+            expanded_cases.append((*case, None))
+            expanded_cases.append((*case, False))
+            expanded_cases.append((*case, True))
+        else:
+            expanded_cases.append((*case, None))
+    return expanded_cases
+
+
+@contextmanager
+def scoped_env_var(name: str, value: str):
+    previous = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = previous
+
+
+def run_parity_with_mlas_q4_mode(test_runner, enable_mlas_q4_gemm: bool | None):
+    if enable_mlas_q4_gemm is None:  # No env var
+        test_runner()
+    else:
+        env_value = "1" if enable_mlas_q4_gemm else "0"
+        mode = "enabled" if enable_mlas_q4_gemm else "disabled"
+        print(f"DirectQ4 mode ({ORT_USE_MLAS_Q4_GEMM_MOE}) is {mode}")
+        with scoped_env_var(ORT_USE_MLAS_Q4_GEMM_MOE, env_value):
+            test_runner()
+
+
 class SwigluMoEBlock(SparseMoeBlockORTHelper):
     def __init__(
         self,
@@ -1128,7 +1195,7 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_token
         self.use_swiglu = True
-        self.swiglu_interleaved = True
+        self.swiglu_fusion = 1
         self.block_size = block_size
         use_quant = self.quant_bits > 0
 
@@ -1232,7 +1299,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         self.top_k = config.num_experts_per_tok
         self.router_jitter_noise = config.router_jitter_noise
         self.use_swiglu = True
-        self.swiglu_interleaved = True
+        self.swiglu_fusion = 1
         self.block_size = block_size
         use_quant = self.quant_bits > 0
 
@@ -1314,7 +1381,8 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
             use_swiglu=self.use_swiglu,
             use_quant=use_quant,
             quant_bits=self.quant_bits,
-            swiglu_interleaved=self.swiglu_interleaved,
+            # swiglu_fusion=1 means fused and interleaved, which is the standard for QMoE.
+            swiglu_fusion=getattr(self, "swiglu_fusion", 0),
             block_size=self.block_size,
         )
 
@@ -1354,8 +1422,6 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         return final_hidden_states
 
 
-disable_cpu_qmoe_tests = False
-
 # Define test cases for different MoE types
 phi3_test_cases = [
     (1, 32, 4),
@@ -1373,10 +1439,9 @@ phi3_blockwise_test_cases = [
 ]
 
 
-@unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestPhiQMoECPU(unittest.TestCase):
-    @parameterized.expand(phi3_test_cases)
-    def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(with_mlas_q4_mode(phi3_test_cases))
+    def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         # Create unique seed based on test parameters to ensure different inputs for each test
         base_seed = 2000  # Different base seed from other tests
         param_hash = hash((batch_size, sequence_length, quant_bits))
@@ -1411,10 +1476,10 @@ class TestPhiQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        phi3_moe.parity_check()
+        run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(phi3_test_cases)
-    def test_phi3_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(with_mlas_q4_mode(phi3_test_cases))
+    def test_phi3_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         base_seed = 3000
         param_hash = hash((batch_size, sequence_length, quant_bits))
         unique_seed = base_seed + abs(param_hash) % 1000
@@ -1436,10 +1501,12 @@ class TestPhiQMoECPU(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT,
             use_asymmetric_quant=True,
         )
-        phi3_moe.parity_check()
+        run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(phi3_blockwise_test_cases)
-    def test_phi3_qmoe_blockwise_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+    @parameterized.expand(with_mlas_q4_mode(phi3_blockwise_test_cases))
+    def test_phi3_qmoe_blockwise_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
         torch.manual_seed(42)
         numpy.random.seed(42)
 
@@ -1468,10 +1535,12 @@ class TestPhiQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        phi3_moe.parity_check()
+        run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(phi3_blockwise_test_cases)
-    def test_phi3_qmoe_blockwise_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+    @parameterized.expand(with_mlas_q4_mode(phi3_blockwise_test_cases))
+    def test_phi3_qmoe_blockwise_asymmetric_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
         torch.manual_seed(43)
         numpy.random.seed(43)
 
@@ -1489,10 +1558,8 @@ class TestPhiQMoECPU(unittest.TestCase):
             block_size=block_size,
             use_asymmetric_quant=True,
         )
-        phi3_moe.parity_check()
+        run_parity_with_mlas_q4_mode(phi3_moe.parity_check, enable_mlas_q4_gemm)
 
-
-disable_cpu_qmoe_tests = False
 
 swiglu_test_cases = [
     (1, 32, 4),
@@ -1510,10 +1577,9 @@ swiglu_blockwise_test_cases = [
 ]
 
 
-@unittest.skipIf(disable_cpu_qmoe_tests, "Skipping qMoE cpu tests")
 class TestSwigluQMoECPU(unittest.TestCase):
-    @parameterized.expand(swiglu_test_cases)
-    def test_swiglu_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(with_mlas_q4_mode(swiglu_test_cases))
+    def test_swiglu_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         # Create unique seed based on test parameters to ensure different inputs for each test
         base_seed = 1000  # Different base seed from regular MoE tests
         param_hash = hash((batch_size, sequence_length, quant_bits))
@@ -1547,10 +1613,10 @@ class TestSwigluQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        swiglu_moe.parity_check()
+        run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(swiglu_test_cases)
-    def test_swiglu_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits):
+    @parameterized.expand(with_mlas_q4_mode(swiglu_test_cases))
+    def test_swiglu_qmoe_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         base_seed = 1100
         param_hash = hash((batch_size, sequence_length, quant_bits))
         unique_seed = base_seed + abs(param_hash) % 1000
@@ -1572,10 +1638,12 @@ class TestSwigluQMoECPU(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT,
             use_asymmetric_quant=True,
         )
-        swiglu_moe.parity_check()
+        run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(swiglu_blockwise_test_cases)
-    def test_swiglu_qmoe_blockwise_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+    @parameterized.expand(with_mlas_q4_mode(swiglu_blockwise_test_cases))
+    def test_swiglu_qmoe_blockwise_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
         torch.manual_seed(42)
         numpy.random.seed(42)
 
@@ -1603,10 +1671,12 @@ class TestSwigluQMoECPU(unittest.TestCase):
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
 
-        swiglu_moe.parity_check()
+        run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
 
-    @parameterized.expand(swiglu_blockwise_test_cases)
-    def test_swiglu_qmoe_blockwise_asymmetric_parity_cpu(self, batch_size, sequence_length, quant_bits, block_size):
+    @parameterized.expand(with_mlas_q4_mode(swiglu_blockwise_test_cases))
+    def test_swiglu_qmoe_blockwise_asymmetric_parity_cpu(
+        self, batch_size, sequence_length, quant_bits, block_size, enable_mlas_q4_gemm
+    ):
         torch.manual_seed(43)
         numpy.random.seed(43)
 
@@ -1624,7 +1694,7 @@ class TestSwigluQMoECPU(unittest.TestCase):
             block_size=block_size,
             use_asymmetric_quant=True,
         )
-        swiglu_moe.parity_check()
+        run_parity_with_mlas_q4_mode(swiglu_moe.parity_check, enable_mlas_q4_gemm)
 
 
 @unittest.skipIf(True, "Skipping QMoE CPU benchmark tests")
@@ -1633,9 +1703,6 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
 
     def test_qmoe_swiglu_throughput_benchmark(self):
         """Comprehensive throughput benchmark for QMoE SwiGLU across different configurations."""
-        if disable_cpu_qmoe_tests:
-            self.skipTest("QMoE CPU tests disabled")
-
         print("\n=== QMoE SwiGLU Throughput Benchmark ===")
 
         # Test configurations: (name, hidden_size, intermediate_size, num_experts, top_k, quant_bits)

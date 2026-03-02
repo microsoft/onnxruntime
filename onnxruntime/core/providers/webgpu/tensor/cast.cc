@@ -6,33 +6,10 @@
 #include "core/providers/webgpu/tensor/cast.h"
 
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
-
-namespace {
-const std::vector<MLDataType>& CastOpTypeConstraints(bool enable_graph_capture) {
-  // Base types that are always supported - boolean, integer and float types that explicitly allowed in WGSL:
-  // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
-  static std::vector<MLDataType> base_types{
-      DataTypeImpl::GetTensorType<MLFloat16>(),
-      DataTypeImpl::GetTensorType<float>(),
-      DataTypeImpl::GetTensorType<int32_t>(),
-      DataTypeImpl::GetTensorType<uint32_t>(),
-      DataTypeImpl::GetTensorType<bool>()};
-
-  if (enable_graph_capture) {
-    static std::vector<MLDataType> types_with_int64 = []() {
-      auto types = base_types;
-      types.push_back(DataTypeImpl::GetTensorType<int64_t>());
-      return types;
-    }();
-    return types_with_int64;
-  } else {
-    return base_types;
-  }
-}
-}  // namespace
 
 Status Cast::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
@@ -111,7 +88,7 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
 
 template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateCastKernelInfo(bool enable_int64) {
-  const auto& type_constraints = CastOpTypeConstraints(enable_int64);
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
   KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Cast>(info);

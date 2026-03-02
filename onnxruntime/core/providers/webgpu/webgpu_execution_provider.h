@@ -31,10 +31,11 @@ struct CapturedCommandInfo;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
-  DataLayout data_layout{DataLayout::NHWC};  // preferred layout is NHWC by default
-  bool enable_graph_capture{false};          // graph capture feature is disabled by default
-  bool enable_pix_capture{false};            // PIX capture is disabled by default
-  bool enable_int64{false};                  // int64 ops are not enabled by default
+  DataLayout data_layout{DataLayout::NHWC};      // preferred layout is NHWC by default
+  bool enable_graph_capture{false};              // graph capture feature is disabled by default
+  bool enable_pix_capture{false};                // PIX capture is disabled by default
+  bool enable_int64{false};                      // int64 ops are not enabled by default
+  uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -82,6 +83,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   Status ReplayGraph(int graph_annotation_id) override;
   webgpu::BufferManager& BufferManager() const;
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
+  uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
 
  private:
   bool IsGraphCaptureAllowed() const;
@@ -94,6 +96,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
   bool enable_int64_ = false;
+  uint32_t multi_rotary_cache_concat_offset_ = 0;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.

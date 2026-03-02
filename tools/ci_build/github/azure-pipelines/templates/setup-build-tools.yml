@@ -8,7 +8,7 @@ parameters:
 - name: python_version
   type: string
   default: '3.12'
-  
+
 - name: action_version
   type: string
   default: 'v0.0.9'
@@ -17,17 +17,9 @@ steps:
 - template: telemetry-steps.yml
 
 - task: UsePythonVersion@0
-  displayName: 'Use Python ${{ parameters.host_cpu_arch }} (macOS)'
-  condition: and(succeeded(), eq(variables['Agent.OS'], 'Darwin'))
+  displayName: 'Use Python ${{ parameters.python_version }} ${{ parameters.host_cpu_arch }}'
   inputs:
-    versionSpec: ${{ parameters.python_version }}    
-    architecture: ${{ parameters.host_cpu_arch }}
-    
-- task: UsePythonVersion@0
-  displayName: 'Use Python ${{ parameters.host_cpu_arch }} (non-macOS)'
-  condition: and(succeeded(), ne(variables['Agent.OS'], 'Darwin'))
-  inputs:
-    versionSpec: ${{ parameters.python_version }}    
+    versionSpec: ${{ parameters.python_version }}
     architecture: ${{ parameters.host_cpu_arch }}
 
 - task: PipAuthenticate@1
@@ -45,17 +37,18 @@ steps:
   displayName: 'Setup Latest Node.js v20 (Win)'
   condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
   inputs:
-    filePath: '$(System.DefaultWorkingDirectory)\tools\ci_build\github\windows\setup_nodejs.ps1' 
+    filePath: '$(System.DefaultWorkingDirectory)\tools\ci_build\github\windows\setup_nodejs.ps1'
     arguments: '-MajorVersion 22'
 
 - script: |
     node -v
     npm -v
-
   condition: and(succeeded(), eq(variables['Agent.OS'], 'Windows_NT'))
-  displayName: 'Verify Node.js Version'
+  displayName: 'Display Node.js Version'
 
-- script: python3 -m pip install requests
+- script: |
+    python3 -m pip install requests
+  displayName: 'Install Python requests package'
 
 - task: PythonScript@0
   displayName: 'Run GitHub Action via Python Wrapper'

@@ -16,7 +16,8 @@ namespace onnxruntime {
 /// For details, refer to http://aka.ms/dl-optimization/.
 class DeepCpuLstmOp final : public OpKernel, public LSTMBase {
  public:
-  DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {}
+  DeepCpuLstmOp(const OpKernelInfo& info) : OpKernel(info), LSTMBase(info) {
+  }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
