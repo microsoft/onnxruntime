@@ -38,10 +38,10 @@ Status DeformConvCopyGemmOutputRowMajorToNCHW(
 template <typename T>
 Status DeformConvIm2ColImpl(
     cudaStream_t stream,
-    const T* input,      // [parallel_imgs, C, H, W]
-    const T* offset,     // [parallel_imgs, offset_group*2*kH*kW, out_h, out_w]
-    const T* mask,       // [parallel_imgs, offset_group*kH*kW, out_h, out_w] or nullptr
-    T* col_buffer,       // [C*kH*kW, parallel_imgs*out_h*out_w]
+    const T* input,   // [parallel_imgs, C, H, W]
+    const T* offset,  // [parallel_imgs, offset_group*2*kH*kW, out_h, out_w]
+    const T* mask,    // [parallel_imgs, offset_group*kH*kW, out_h, out_w] or nullptr
+    T* col_buffer,    // [C*kH*kW, parallel_imgs*out_h*out_w]
     int64_t parallel_imgs,
     int64_t C,
     int64_t H,

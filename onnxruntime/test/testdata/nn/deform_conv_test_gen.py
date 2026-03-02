@@ -18,13 +18,19 @@ Outputs:
   - deform_conv_test_data.npz (X, W, offset, B, mask, expected_Y)
   - deform_conv_test_data.inc (C++ arrays for op test)
 """
+
 from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
+
+try:
+    import onnxruntime as ort
+except ImportError:
+    ort = None
 import torch
 import torchvision.ops
+from onnx import TensorProto, helper
 
 # Config: groups=2, offset_group=2, 2x2 kernel (from deform_conv_expected_gen Case 3)
 BATCH = 1
@@ -53,8 +59,14 @@ def _generate_reference():
     bias = torch.randn(N_OUT, dtype=torch.float32)
 
     out = torchvision.ops.deform_conv2d(
-        x, offset, weight, bias=bias,
-        stride=(STRIDE_H, STRIDE_W), padding=(PAD_H, PAD_W), dilation=(DIL_H, DIL_W), mask=mask
+        x,
+        offset,
+        weight,
+        bias=bias,
+        stride=(STRIDE_H, STRIDE_W),
+        padding=(PAD_H, PAD_W),
+        dilation=(DIL_H, DIL_W),
+        mask=mask,
     )
 
     return {
@@ -90,11 +102,11 @@ def _build_onnx_model():
         [
             helper.make_tensor_value_info("X", TensorProto.FLOAT, [BATCH, N_IN, IN_H, IN_W]),
             helper.make_tensor_value_info("W", TensorProto.FLOAT, [N_OUT, N_IN // N_WEIGHT_GRPS, KH, KW]),
-            helper.make_tensor_value_info("offset", TensorProto.FLOAT,
-                                         [BATCH, N_OFFSET_GRPS * 2 * KH * KW, OUT_H, OUT_W]),
+            helper.make_tensor_value_info(
+                "offset", TensorProto.FLOAT, [BATCH, N_OFFSET_GRPS * 2 * KH * KW, OUT_H, OUT_W]
+            ),
             helper.make_tensor_value_info("B", TensorProto.FLOAT, [N_OUT]),
-            helper.make_tensor_value_info("mask", TensorProto.FLOAT,
-                                         [BATCH, N_OFFSET_GRPS * KH * KW, OUT_H, OUT_W]),
+            helper.make_tensor_value_info("mask", TensorProto.FLOAT, [BATCH, N_OFFSET_GRPS * KH * KW, OUT_H, OUT_W]),
         ],
         [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [BATCH, N_OUT, OUT_H, OUT_W])],
     )
@@ -153,9 +165,7 @@ def main():
     print(f"  Saved {inc_path}")
 
     # Validate with onnxruntime if available
-    try:
-        import onnxruntime as ort
-
+    if ort is not None:
         print("Validating with ONNX Runtime...")
         sess = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
         ort_out = sess.run(
@@ -175,7 +185,7 @@ def main():
         else:
             diff = np.abs(ort_out.astype(np.float64) - data["expected_Y"].astype(np.float64))
             print(f"  FAIL: max |diff|={diff.max()}, mean={diff.mean()}")
-    except ImportError:
+    else:
         print("  (onnxruntime not installed; skip validation)")
 
 
