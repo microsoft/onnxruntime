@@ -98,9 +98,13 @@ void RunDeformConvTest(const DeformConvTestParams& params,
   const int64_t kW = params.kernel_shape[1];
   // ONNX pads format: [pad_top, pad_left, pad_bottom, pad_right] = [pad[0], pad[1], pad[2], pad[3]]
   const int64_t out_h = (params.in_h + params.pad[0] + params.pad[2] -
-                         params.dilation[0] * (kH - 1) - 1) / params.stride[0] + 1;
+                         params.dilation[0] * (kH - 1) - 1) /
+                            params.stride[0] +
+                        1;
   const int64_t out_w = (params.in_w + params.pad[1] + params.pad[3] -
-                         params.dilation[1] * (kW - 1) - 1) / params.stride[1] + 1;
+                         params.dilation[1] * (kW - 1) - 1) /
+                            params.stride[1] +
+                        1;
 
   OpTester test("DeformConv", opset);
   test.AddAttribute("kernel_shape", params.kernel_shape);
@@ -161,9 +165,8 @@ TEST(DeformConvTest, MinimalBilinear) {
   // Layout: offset[n,c,oh,ow]. Flattened (NCHW): [ch0@00, ch0@01, ch0@10, ch0@11, ch1@00, ch1@01, ch1@10, ch1@11]
   // (0,0): (0.5, 0.5)->center of [1,2;3,4]->2.5; (0,1): (0,-1)->(0,0)->1; (1,0): (0,0)->3; (1,1): (0,0)->4
   std::vector<float> offset = {
-    0.5f, 0.f, 0.f, 0.f,
-    0.5f, -1.0f, 0.f, 0.f
-  };
+      0.5f, 0.f, 0.f, 0.f,
+      0.5f, -1.0f, 0.f, 0.f};
   std::vector<float> B = {0.f};
   std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};  // (1,1,2,2)
   std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
@@ -190,9 +193,8 @@ TEST(DeformConvTest, MinimalBilinearFP16) {
   std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
   std::vector<float> W = {1.f};
   std::vector<float> offset = {
-    0.5f, 0.f, 0.f, 0.f,
-    0.5f, -1.0f, 0.f, 0.f
-  };
+      0.5f, 0.f, 0.f, 0.f,
+      0.5f, -1.0f, 0.f, 0.f};
   std::vector<float> B = {0.f};
   std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
   std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
@@ -225,9 +227,8 @@ TEST(DeformConvTest, MinimalBilinearBFloat16) {
   std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
   std::vector<float> W = {1.f};
   std::vector<float> offset = {
-    0.5f, 0.f, 0.f, 0.f,
-    0.5f, -1.0f, 0.f, 0.f
-  };
+      0.5f, 0.f, 0.f, 0.f,
+      0.5f, -1.0f, 0.f, 0.f};
   std::vector<float> B = {0.f};
   std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
   std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
@@ -254,9 +255,8 @@ TEST(DeformConvTest, MinimalBilinearDouble) {
   std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
   std::vector<float> W = {1.f};
   std::vector<float> offset = {
-    0.5f, 0.f, 0.f, 0.f,
-    0.5f, -1.0f, 0.f, 0.f
-  };
+      0.5f, 0.f, 0.f, 0.f,
+      0.5f, -1.0f, 0.f, 0.f};
   std::vector<float> B = {0.f};
   std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
   std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
@@ -397,7 +397,7 @@ TEST(DeformConvTest, ForwardNoMask) {
   test.AddOptionalInputEdge<float>();  // no mask
   test.AddOutput<float>("Y", Y_shape, expected_Y, false, 1e-4f, 1e-4f);
   std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider,
-                                               kOpenVINOExecutionProvider, kQnnExecutionProvider};
+                                              kOpenVINOExecutionProvider, kQnnExecutionProvider};
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
 }
 
@@ -443,7 +443,7 @@ TEST(DeformConvTest, EmptyBatch) {
   test.AddOptionalInputEdge<float>();
   test.AddOutput<float>("Y", Y_shape, expected_Y);
   std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider,
-                                               kOpenVINOExecutionProvider, kQnnExecutionProvider};
+                                              kOpenVINOExecutionProvider, kQnnExecutionProvider};
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
 }
 
@@ -582,7 +582,7 @@ TEST(DeformConvTest, NonSquareKernel) {
   const size_t x_size = static_cast<size_t>(1 * 1 * 4 * 5);
   const size_t w_size = static_cast<size_t>(1 * 1 * 2 * 3);
   const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 2 * 3 * out_h * out_w);  // n_offset_grps * 2 * kH * kW * out_h * out_w
-  const size_t mask_size = static_cast<size_t>(1 * 1 * 2 * 3 * out_h * out_w);          // n_offset_grps * kH * kW * out_h * out_w
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 2 * 3 * out_h * out_w);        // n_offset_grps * kH * kW * out_h * out_w
 
   std::vector<float> X(x_size, 0.1f);
   std::vector<float> W(w_size, 0.1f);
@@ -822,8 +822,7 @@ TEST(DeformConvTest, OffsetAtPixelCenters) {
   std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
   std::vector<float> W = {0.25f, 0.25f, 0.25f, 0.25f};
   std::vector<float> offset = {
-      0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f
-  };
+      0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f};
   std::vector<float> B = {0.f};
   std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
   std::vector<float> expected_Y = {1.6875f};  // op output: one center sample 2.5 + boundary samples
@@ -868,7 +867,7 @@ TEST(DeformConvTest, LargeBatchSize) {
 TEST(DeformConvTest, Group1OffsetGroup2) {
   DeformConvTestParams p = {};
   p.batch_sz = 1;
-  p.n_in_channels = 4;   // C must be divisible by offset_group
+  p.n_in_channels = 4;  // C must be divisible by offset_group
   p.n_out_channels = 2;
   p.n_weight_grps = 1;
   p.n_offset_grps = 2;

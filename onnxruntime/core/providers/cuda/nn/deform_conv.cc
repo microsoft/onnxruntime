@@ -60,15 +60,15 @@ size_t GetDeformConvEffectiveMaxTempBytes() {
 
   size_t tier_cap;
   if (free_mem > 16ULL * 1024 * 1024 * 1024) {
-    tier_cap = 2ULL * 1024 * 1024 * 1024;   // 16GB+ free → 2GB
+    tier_cap = 2ULL * 1024 * 1024 * 1024;  // 16GB+ free → 2GB
   } else if (free_mem > 8ULL * 1024 * 1024 * 1024) {
-    tier_cap = 1ULL * 1024 * 1024 * 1024;   // 8-16GB → 1GB
+    tier_cap = 1ULL * 1024 * 1024 * 1024;  // 8-16GB → 1GB
   } else if (free_mem > 4ULL * 1024 * 1024 * 1024) {
-    tier_cap = 512ULL * 1024 * 1024;        // 4-8GB → 512MB
+    tier_cap = 512ULL * 1024 * 1024;  // 4-8GB → 512MB
   } else if (free_mem > 2ULL * 1024 * 1024 * 1024) {
-    tier_cap = 256ULL * 1024 * 1024;        // 2-4GB → 256MB
+    tier_cap = 256ULL * 1024 * 1024;  // 2-4GB → 256MB
   } else {
-    tier_cap = 128ULL * 1024 * 1024;        // <2GB → 128MB
+    tier_cap = 128ULL * 1024 * 1024;  // <2GB → 128MB
   }
 
   return std::max(kMinTempMemSize, std::min(tier_cap, free_mem));
@@ -246,23 +246,23 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REGISTER_DEFORMCONV_KERNEL_TYPED(T)                                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                        \
-      DeformConv,                                                                                 \
-      kOnnxDomain,                                                                                \
-      19,                                                                                         \
-      21,                                                                                         \
-      T,                                                                                          \
-      kCudaExecutionProvider,                                                                     \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),        \
-      DeformConv<T>);                                                                             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                  \
-      DeformConv,                                                                                 \
-      kOnnxDomain,                                                                                \
-      22,                                                                                         \
-      T,                                                                                          \
-      kCudaExecutionProvider,                                                                     \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),        \
+#define REGISTER_DEFORMCONV_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      DeformConv,                                                                          \
+      kOnnxDomain,                                                                         \
+      19,                                                                                  \
+      21,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      DeformConv<T>);                                                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      DeformConv,                                                                          \
+      kOnnxDomain,                                                                         \
+      22,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DeformConv<T>);
 
 REGISTER_DEFORMCONV_KERNEL_TYPED(float)

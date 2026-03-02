@@ -37,15 +37,15 @@ struct DeformConvAttributes {
 // Field names align with ONNX DeformConv spec: https://onnx.ai/onnx/operators/onnx__DeformConv.html
 struct DeformConvParams {
   // Input X shape (N, C, H, W)
-  int64_t N{0};             // Batch size
-  int64_t C{0};             // Number of input channels
-  int64_t H{0};             // Input height
-  int64_t W_in{0};          // Input width (W_in to avoid collision with weight W)
+  int64_t N{0};     // Batch size
+  int64_t C{0};     // Number of input channels
+  int64_t H{0};     // Input height
+  int64_t W_in{0};  // Input width (W_in to avoid collision with weight W)
 
   // Weight W shape (oC, C/group, kH, kW)
-  int64_t M{0};             // Number of output channels (oC)
-  int64_t kH{0};            // Kernel height
-  int64_t kW{0};            // Kernel width
+  int64_t M{0};   // Number of output channels (oC)
+  int64_t kH{0};  // Kernel height
+  int64_t kW{0};  // Kernel width
 
   // Pads [x1_begin, x2_begin, x1_end, x2_end] for spatial axes H, W
   int64_t pad_h{0};
@@ -64,10 +64,10 @@ struct DeformConvParams {
   int64_t offset_group{1};  // Number of groups of offset
 
   // Output Y shape (N, oC, oH, oW)
-  int64_t out_h{0};         // Output height (oH)
-  int64_t out_w{0};         // Output width (oW)
+  int64_t out_h{0};  // Output height (oH)
+  int64_t out_w{0};  // Output width (oW)
 
-  bool use_mask{false};     // Whether optional mask input is provided
+  bool use_mask{false};  // Whether optional mask input is provided
 };
 
 // Validates inputs and parses attributes into params.
