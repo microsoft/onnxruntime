@@ -6,6 +6,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/testdata/deform_conv_test_data.inc"
 #include "test/unittest_util/conversion.h"
 
 #if defined(USE_CUDA)
@@ -156,7 +157,9 @@ TEST(DeformConvTest, MinimalBilinear) {
 
   std::vector<float> X = {1.f, 2.f, 3.f, 4.f};  // NCHW
   std::vector<float> W = {1.f};
-  // offset (1, 2, 2, 2): ch0=offset_h, ch1=offset_w per output position. (0,0):(0.5,0)->2.5, (0,1):(0.5,-1)->1
+  // offset shape [N, 2*kH*kW, out_h, out_w] = [1, 2, 2, 2]: ch0=offset_h, ch1=offset_w (for kernel pt 0)
+  // Layout: offset[n,c,oh,ow]. Flattened (NCHW): [ch0@00, ch0@01, ch0@10, ch0@11, ch1@00, ch1@01, ch1@10, ch1@11]
+  // (0,0): (0.5, 0.5)->center of [1,2;3,4]->2.5; (0,1): (0,-1)->(0,0)->1; (1,0): (0,0)->3; (1,1): (0,0)->4
   std::vector<float> offset = {
     0.5f, 0.f, 0.f, 0.f,
     0.5f, -1.0f, 0.f, 0.f
@@ -952,6 +955,29 @@ TEST(DeformConvTest, ExtremeAspectRatio) {
   std::vector<float> expected_Y(static_cast<size_t>(out_h * out_w), 0.03f);
 
   RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// ONNX model data test: fixed inputs from deform_conv_test_gen.py (torchvision ref, seed=123).
+// Validates output matches torch reference. The .onnx/.npz can be used for standalone model zoo validation.
+TEST(DeformConvTest, OnnxModelTest) {
+  OpTester test("DeformConv", 19);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+  test.AddAttribute("group", static_cast<int64_t>(2));
+  test.AddAttribute("offset_group", static_cast<int64_t>(2));
+
+  test.AddInput<float>("X", {1, 4, 3, 3}, kDeformConvOnnxTest_X);
+  test.AddInput<float>("W", {2, 2, 2, 2}, kDeformConvOnnxTest_W);
+  test.AddInput<float>("offset", {1, 16, 2, 2}, kDeformConvOnnxTest_offset);
+  test.AddInput<float>("B", {2}, kDeformConvOnnxTest_B);
+  test.AddInput<float>("mask", {1, 8, 2, 2}, kDeformConvOnnxTest_mask);
+  test.AddReferenceOutputs("testdata/deform_conv_test.onnx", 1e-4f);
+
+  std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider,
+                                              kQnnExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
 }
 
 }  // namespace test
