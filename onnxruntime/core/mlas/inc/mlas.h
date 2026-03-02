@@ -200,6 +200,12 @@ MlasActivation(
     size_t ldc
     );
 
+// Struct to host backend kernel selection configuration options for MLAS
+
+struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
+    bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+};
+
 //
 // Matrix/matrix multiply routines.
 // C := alpha * op(A) * op(B) + beta * C
@@ -224,16 +230,19 @@ struct MLAS_SGEMM_DATA_PARAMS {
 /**
  * @brief  Batched single precision matrix/matrix multiply operation (SGEMM)
  *
- * @param TransA     Supplies the transpose operation for matrix A.
- * @param TransB     Supplies the transpose operation for matrix B.
- * @param M          Supplies the number of rows of matrix A and matrix C.
- * @param N          Supplies the number of columns of matrix B and matrix C.
- * @param K          Supplies the number of columns of matrix A and the number
-                     of rows of matrix B.
- * @param Data       A array of matrices data parameters
- * @param BatchSize  Supplies number of multiplications in this batch
- * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
-                     base library threading support should be used.
+ * @param TransA                      Supplies the transpose operation for matrix A.
+ * @param TransB                      Supplies the transpose operation for matrix B.
+ * @param M                           Supplies the number of rows of matrix A and matrix C.
+ * @param N                           Supplies the number of columns of matrix B and matrix C.
+ * @param K                           Supplies the number of columns of matrix A and the number
+                                      of rows of matrix B.
+ * @param Data                        A array of matrices data parameters
+ * @param BatchSize                   Supplies number of multiplications in this batch
+ * @param ThreadPool                  Supplies the thread pool object to use, else nullptr if the
+                                      base library threading support should be used.
+ * @param BackendKernelSelectorConfig Supplies the backend kernel selector
+                                      configuration options, else nullptr if the
+                                      default configuration should be used.
  */
 void
 MLASCALL
@@ -245,21 +254,26 @@ MlasGemmBatch(
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
 /**
  * @brief  Single precision matrix/matrix multiply operation (SGEMM)
  *
- * @param TransA  Supplies the transpose operation for matrix A.
- * @param TransB  Supplies the transpose operation for matrix B.
- * @param M       Supplies the number of rows of matrix A and matrix C.
- * @param N       Supplies the number of columns of matrix B and matrix C.
- * @param K       Supplies the number of columns of matrix A and the number
-                  of rows of matrix B.
- * @param Data    Supplies the matrices data parameters
- * @param ThreadPool  Supplies the thread pool object to use, else nullptr if the
-                      base library threading support should be used.
+ * @param TransA                      Supplies the transpose operation for matrix A.
+ * @param TransB                      Supplies the transpose operation for matrix B.
+ * @param M                           Supplies the number of rows of matrix A and matrix C.
+ * @param N                           Supplies the number of columns of matrix B and matrix C.
+ * @param K                           Supplies the number of columns of matrix A and the number
+                                      of rows of matrix B.
+ * @param Data                        Supplies the matrices data parameters
+ * @param ThreadPool                  Supplies the thread pool object to use, else nullptr if the
+                                      base library threading support should be used.
+ * @param BackendKernelSelectorConfig Supplies the backend kernel selector
+                                      configuration options, else nullptr if the
+                                      default configuration should be used.
+
  */
 inline
 void
@@ -270,31 +284,35 @@ MlasGemm(
     size_t N,
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS& Data,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
-    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool, BackendKernelSelectorConfig);
 }
 
 /**
  * @brief  Single precision matrix/matrix multiply operation (SGEMM)
  *
- * @param TransA  Supplies the transpose operation for matrix A.
- * @param TransB  Supplies the transpose operation for matrix B.
- * @param M       Supplies the number of rows of matrix A and matrix C.
- * @param N       Supplies the number of columns of matrix B and matrix C.
- * @param K       Supplies the number of columns of matrix A and the number
-                  of rows of matrix B.
- * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
- * @param A       Supplies the address of matrix A
- * @param lda     Supplies the first dimension of matrix A.
- * @param B       Supplies the address of matrix B
- * @param ldb     Supplies the first dimension of matrix B.
- * @param beta    Supplies the scalar beta multiplier (see SGEMM definition)
- * @param C       Supplies the address of matrix C
- * @param ldc     Supplies the first dimension of matrix C.
- * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
-                      base library threading support should be used.
+ * @param TransA                      Supplies the transpose operation for matrix A.
+ * @param TransB                      Supplies the transpose operation for matrix B.
+ * @param M                           Supplies the number of rows of matrix A and matrix C.
+ * @param N                           Supplies the number of columns of matrix B and matrix C.
+ * @param K                           Supplies the number of columns of matrix A and the number
+                                      of rows of matrix B.
+ * @param alpha                       Supplies the scalar alpha multiplier (see SGEMM definition)
+ * @param A                           Supplies the address of matrix A
+ * @param lda                         Supplies the first dimension of matrix A.
+ * @param B                           Supplies the address of matrix B
+ * @param ldb                         Supplies the first dimension of matrix B.
+ * @param beta                        Supplies the scalar beta multiplier (see SGEMM definition)
+ * @param C                           Supplies the address of matrix C
+ * @param ldc                         Supplies the first dimension of matrix C.
+ * @param ThreadPool                  Supplies the thread pool object to use, else nullptr if the
+                                      base library threading support should be used.
+ * @param BackendKernelSelectorConfig Supplies the backend kernel selector
+                                      configuration options, else nullptr if the
+                                      default configuration should be used.
  */
 inline
 void
@@ -312,7 +330,8 @@ MlasGemm(
     float beta,
     float* C,
     size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
     MLAS_SGEMM_DATA_PARAMS Data;
@@ -325,26 +344,31 @@ MlasGemm(
     Data.C = C;
     Data.ldc = ldc;
 
-    MlasGemm(TransA, TransB, M, N, K, Data, ThreadPool);
+    MlasGemm(TransA, TransB, M, N, K, Data, ThreadPool, BackendKernelSelectorConfig);
 }
 
 /**
- * @brief the single precision matrix/matrix multiply operation (SGEMM) with pre-packed B
+ * @brief The single precision matrix/matrix multiply operation (SGEMM) with pre-packed B
+          The pre-packed weights `B` MUST be in accordance with the specified backend kernel selector configuration.
+          The caller is responsible for ensuring this.
  *
- * @param TransA      - Supplies the transpose operation for matrix A.
- * @param M           - Supplies the number of rows of matrix A and matrix C.
- * @param N           - Supplies the number of columns of matrix B and matrix C.
- * @param K           - Supplies the number of columns of matrix A and the number
-                        of rows of matrix B.
- * @param alpha       - Supplies the scalar alpha multiplier (see SGEMM definition).
- * @param A           - Supplies the address of matrix A.
- * @param lda         - Supplies the first dimension of matrix A.
- * @param PackedB     - Supplies the address of packed matrix B.
- * @param beta        - Supplies the scalar beta multiplier (see SGEMM definition).
- * @param C           - Supplies the address of matrix C.
- * @param ldc         - Supplies the first dimension of matrix C.
- * @param ThreadPool  - Supplies the thread pool object to use, else nullptr if the
-                        base library threading support should be used.
+ * @param TransA                      - Supplies the transpose operation for matrix A.
+ * @param M                           - Supplies the number of rows of matrix A and matrix C.
+ * @param N                           - Supplies the number of columns of matrix B and matrix C.
+ * @param K                           - Supplies the number of columns of matrix A and the number
+                                        of rows of matrix B.
+ * @param alpha                       - Supplies the scalar alpha multiplier (see SGEMM definition).
+ * @param A                           - Supplies the address of matrix A.
+ * @param lda                         - Supplies the first dimension of matrix A.
+ * @param PackedB                     - Supplies the address of packed matrix B.
+ * @param beta                        - Supplies the scalar beta multiplier (see SGEMM definition).
+ * @param C                           - Supplies the address of matrix C.
+ * @param ldc                         - Supplies the first dimension of matrix C.
+ * @param ThreadPool                  - Supplies the thread pool object to use, else nullptr if the
+                                        base library threading support should be used.
+ * @param BackendKernelSelectorConfig - Supplies the backend kernel selector
+                                        configuration options, else nullptr if the
+                                        default configuration should be used.
  */
 inline
 void
@@ -360,7 +384,8 @@ MlasGemm(
     float beta,
     float* C,
     size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
     MLAS_SGEMM_DATA_PARAMS DataParams;
@@ -375,8 +400,8 @@ MlasGemm(
     DataParams.BIsPacked = true;
 
     MlasGemmBatch(TransA,
-                  CblasTrans,  // deos not matter when B is packed
-                  M, N, K, &DataParams, 1, ThreadPool);
+                  CblasTrans,  // does not matter when B is packed
+                  M, N, K, &DataParams, 1, ThreadPool, BackendKernelSelectorConfig);
 }
 
 /**
@@ -670,26 +695,33 @@ MlasDynamicQGemmBatch (
     const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 inline void
 MlasDynamicQGemm (
     const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool
-) {
-    MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool);
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
+{
+    MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool, BackendKernelSelectorConfig);
 }
 
 /**
  * @brief Determines whether a dynamic quantized GEMM implementation is available on the current platform.
  *
  * MlasDynamicQGemm() and MlasDynamicQGemmBatch() should only be called if this function returns true.
+
+ * @param BackendKernelSelectorConfig Supplies the backend kernel selector
+                                      configuration options, else nullptr if the
+                                      default configuration should be used.
  */
 bool
 MLASCALL
-MlasIsDynamicQGemmAvailable();
+MlasIsDynamicQGemmAvailable(const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 //
 // Symmetric QGEMM has limited buffer overrun.
@@ -747,7 +779,8 @@ MlasGemmPackBSize(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
-    size_t K
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
 void
@@ -759,7 +792,8 @@ MlasGemmPackB(
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
 size_t
@@ -768,7 +802,8 @@ MlasGemmPackBSize(
     size_t N,
     size_t K,
     bool AIsSigned,
-    bool BIsSigned
+    bool BIsSigned,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
 void
@@ -817,7 +852,8 @@ size_t
 MLASCALL
 MlasDynamicQgemmPackBSize(
     size_t N,
-    size_t K
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 void
@@ -828,7 +864,8 @@ MlasDynamicQgemmPackB(
     const int8_t* B,
     const float* Scales,
     const float* Bias,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 
@@ -864,6 +901,7 @@ struct MLAS_CONV_PARAMETERS {
     float Beta;
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -1243,6 +1281,7 @@ MlasNchwcConv(
     const MLAS_ACTIVATION* Activation,
     bool ZeroMode,
     MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
     bool UseBf16
     );
 

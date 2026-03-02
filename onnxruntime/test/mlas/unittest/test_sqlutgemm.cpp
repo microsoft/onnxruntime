@@ -175,7 +175,7 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
       return 0;
     }
 
-    if (M < BlkLen || N < BlkLen) {
+    if (N < BlkLen) {
       return 0;
     }
 
@@ -212,6 +212,9 @@ class SQLutGemmShortExecuteTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBi
 
         count += RegisterSingleTest(64, 128, 128, with_threadpool, symmetric);
         count += RegisterSingleTest(128, 256, 256, with_threadpool, symmetric);
+
+        count += RegisterSingleTest(1, 128, 128, with_threadpool, symmetric);
+        count += RegisterSingleTest(1, 1024, 1024, with_threadpool, symmetric);
       }
     }
     return count;

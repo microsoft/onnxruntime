@@ -6,6 +6,9 @@ parameters:
   type: boolean
 - name: buildNodejs
   type: boolean
+- name: IsReleaseBuild
+  type: boolean
+  default: false
 
 stages:
 - stage: Linux_C_API_Packaging_GPU
@@ -202,6 +205,7 @@ stages:
         ScriptPath: '$(Build.SourcesDirectory)/onnxruntime/tools/nuget/validate_package.py'
         PlatformsSupported: 'linux-x64'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
 

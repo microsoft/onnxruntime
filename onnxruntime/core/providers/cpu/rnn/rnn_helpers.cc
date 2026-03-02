@@ -220,7 +220,8 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* /* quantized_A_buffer */,
                  int32_t* /* quantize_agg_C_buffer */,
-                 concurrency::ThreadPool* thread_pool) {
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(A + (M * K) <= A_end);
@@ -232,14 +233,14 @@ void ComputeGemm(const int M,
         M, N, K, alpha,
         A, K,
         weights.buffer_, beta,
-        C, ldc, thread_pool);
+        C, ldc, thread_pool, mlas_backend_kernel_selector_config);
   } else {
     ::onnxruntime::math::GemmEx<float>(
         CblasNoTrans, CblasTrans,
         M, N, K, alpha,
         A, K,
         static_cast<const float*>(weights.buffer_), K, beta,
-        C, ldc, thread_pool);
+        C, ldc, thread_pool, mlas_backend_kernel_selector_config);
   }
 }
 
@@ -256,7 +257,10 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* quantized_A_buffer,
                  int32_t* quantize_agg_C_buffer,
-                 concurrency::ThreadPool* thread_pool) {
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
+
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(A + (M * K) <= A_end);

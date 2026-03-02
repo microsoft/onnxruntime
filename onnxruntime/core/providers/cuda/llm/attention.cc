@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cpu/llm/attention.h"
 #include "core/providers/cpu/llm/attention_helper.h"
 #include "core/providers/cuda/llm/attention.h"
 #include "core/providers/cuda/llm/attention_mask_impl.h"
@@ -376,10 +377,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
       // GQA only supports masking, not additive bias.
       // For bool mask, we need to convert it to sequence lengths on GPU.
+      // Note: The GQA path interprets 2D bool masks as (batch_size, total_seq_len) since it converts
+      // masks to seqlens_k directly (bypassing ONNX right-aligned broadcasting). This differs from
+      // the MHA path below, where 2D masks follow ONNX broadcasting: [A, B] → [1, 1, A, B], so
+      // 2D = (q_seq_len, total_seq_len) with both batch and heads broadcast.
       if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
-        // Allocate validation result buffer on GPU
-        auto validation_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
-
+      // Allocate validation result buffer on GPU
         // Get mask dimensions for broadcasting
         // attn_mask can be 2D, 3D, or 4D and broadcasts to (batch_size, num_heads, q_seq_len, total_seq_len)
         const auto& mask_shape = attn_mask->Shape();
@@ -406,11 +409,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                  "Boolean attn_mask must be 2D, 3D, or 4D. Got ", mask_dims, "D.");
         }
 
-        // Launch CUDA kernel to convert mask to seqlens_k and validate
+      // Launch CUDA kernel to convert mask to seqlens_k and validate
+      // Mask validity (right-padding, contiguous) is checked asynchronously via CUDA_KERNEL_ASSERT.
         ORT_RETURN_IF_ERROR(LaunchConvertMaskToSeqlensK(
             attn_mask->Data<bool>(),
             seqlens_k_buffer.get(),
-            validation_buffer.get(),
             parameters.batch_size,
             parameters.total_sequence_length,
             mask_dims,
@@ -419,28 +422,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
             mask_dim2,
             cuda_stream,
             device_prop.maxThreadsPerBlock));
-
-        // Copy validation results to CPU and check for errors
-        std::vector<int> validation_host(parameters.batch_size);
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(validation_host.data(), validation_buffer.get(),
-                                             sizeof(int) * parameters.batch_size,
-                                             cudaMemcpyDeviceToHost, cuda_stream));
-        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-
-        for (int b = 0; b < parameters.batch_size; ++b) {
-          if (validation_host[b] == 1) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Boolean attn_mask for batch ", b,
-                                   " does not start with True. "
-                                   "GQA path only supports right-padding masks where valid tokens come first.");
-          } else if (validation_host[b] == 2) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Boolean attn_mask for batch ", b,
-                                   " is not contiguous. "
-                                   "GQA path only supports right-padding masks with contiguous True values "
-                                   "followed by contiguous False values (no interleaving).");
-          }
-        }
       } else if (attn_mask != nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                                "Non-boolean attn_mask is not supported yet in GQA path of Attention op (CUDA).");
@@ -512,19 +493,22 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     contribop_parameters.mask_type = onnxruntime::contrib::AttentionMaskType::MASK_NONE;
 
     // Determine broadcast flags for attention_bias (if it exists)
-    // Note: The new Attention op uses attn_mask as attention_bias
-    // The attention_bias should be broadcastable to (batch_size, kv_num_heads, q_sequence_length, total_sequence_length)
-    // attn_mask can be 2D, 3D, or 4D. Broadcasting aligns from the right (trailing dimensions).
+    // The MHA path uses attn_mask as attention_bias (additive bias added before softmax).
+    // Bool masks are element-wise converted to additive bias (true → 0.0, false → -inf),
+    // preserving the original shape, so the same broadcasting rules apply to both types.
+    //
+    // ONNX broadcasting is right-aligned to target shape (batch, heads, q_seq, total_seq):
+    //   2D [A, B]       → [1, 1, A, B]    : A = q_seq_len, B = total_seq_len
+    //   3D [A, B, C]    → [1, A, B, C]    : A = heads, B = q_seq_len, C = total_seq_len
+    //   4D [A, B, C, D] → [A, B, C, D]    : A = batch, B = heads, C = q_seq_len, D = total_seq_len
+    //
+    // Note: A 2D mask cannot represent per-batch padding because the batch dimension is broadcast.
+    // For per-batch boolean padding masks, use 4D shape (batch, 1, 1, total_seq_len).
     if (attn_mask != nullptr) {
-      // TODO(titaiwang, xadupre): attn_mask bool is not supported yet
-      if (attn_mask->IsDataType<bool>()) {
-        ORT_THROW("Boolean attn_mask is not supported yet in Attention op (CUDA).");
-      }
-
       size_t attn_mask_dims_size = attn_mask->Shape().NumDimensions();
       auto attn_mask_dims = attn_mask->Shape().GetDims();
       // For 2D mask (q_seq_len, total_seq_len): both batch and heads dimensions need broadcasting
-      // For 3D mask (X, q_seq_len, total_seq_len): batch needs broadcasting if X==1, heads always needs broadcasting
+      // For 3D mask (heads_or_1, q_seq_len, total_seq_len): batch always broadcasts, heads broadcasts if dim[0]==1
       // For 4D mask (B, H, q_seq_len, total_seq_len): check if B==1 and H==1
 
       if (attn_mask_dims_size == 2) {
@@ -532,9 +516,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         contribop_parameters.broadcast_attn_bias_dim_0 = true;
         contribop_parameters.broadcast_attn_bias_dim_1 = true;
       } else if (attn_mask_dims_size == 3) {
-        // 3D mask: dim 0 broadcasts if it's 1, dim 1 (heads) always broadcasts
-        contribop_parameters.broadcast_attn_bias_dim_0 = attn_mask_dims[0] == 1;
-        contribop_parameters.broadcast_attn_bias_dim_1 = true;
+        // 3D mask [A, q_seq_len, total_seq_len]: right-aligned to [_, A, q_seq, total_seq]
+        // A maps to heads dimension (validated to be 1 or q_num_heads by attention_helper.h)
+        // Batch dimension is missing, so always broadcasts
+        contribop_parameters.broadcast_attn_bias_dim_0 = true;
+        contribop_parameters.broadcast_attn_bias_dim_1 = attn_mask_dims[0] == 1;
       } else {
         // 4D mask: check both dim 0 and dim 1 explicitly
         contribop_parameters.broadcast_attn_bias_dim_0 = attn_mask_dims[0] == 1;
@@ -545,7 +531,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       contribop_parameters.broadcast_attn_bias_dim_1 = false;
     }
 
-    contribop_parameters.mask_filter_value = -10000.0f;
+    contribop_parameters.mask_filter_value = static_cast<float>(std::numeric_limits<T>::lowest());
     contribop_parameters.scale = parameters.scale;
     contribop_parameters.use_tf32 = UseTF32();
     // TODO(titaiwang, xadupre): qk_matmul_output_mode only supports kNone and kQK for now
@@ -583,8 +569,27 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
     // Set additional fields
     data.bias = nullptr;  // New Attention op doesn't have bias
+    IAllocatorUniquePtr<void> converted_mask_buffer;
     if (nullptr != attn_mask) {
-      data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
+      if (attn_mask->IsDataType<bool>()) {
+        // Convert boolean mask to additive attention bias: true -> 0.0, false -> mask_filter_value.
+        // The conversion is element-wise and preserves the original shape, so the broadcast flags
+        // set above apply identically to the converted float buffer.
+        using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+        int64_t num_elements = attn_mask->Shape().Size();
+        converted_mask_buffer = GetScratchBuffer<void>(num_elements * sizeof(NativeCudaT), context->GetComputeStream());
+        auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+        ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
+            attn_mask->Data<bool>(),
+            reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
+            num_elements,
+            contribop_parameters.mask_filter_value,
+            cuda_stream,
+            GetDeviceProp().maxThreadsPerBlock));
+        data.attention_bias = reinterpret_cast<const CudaT*>(converted_mask_buffer.get());
+      } else {
+        data.attention_bias = reinterpret_cast<const CudaT*>(attn_mask->Data<T>());
+      }
     }
     data.qkv_format = contribop_parameters.qkv_format;
 

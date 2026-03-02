@@ -79,9 +79,9 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     }
   }
 
-  auto lambda = [&](int64_t index) {
-    int64_t batch = index / N;
-    int64_t i = index % N;
+  auto lambda = [&](ptrdiff_t index) {
+    const int64_t batch = static_cast<int64_t>(index / N);
+    const int64_t i = static_cast<int64_t>(index % N);
 
     const int64_t src_offset_batch = batch * data_batch_bytes;
     const int64_t dst_offset_batch = batch * gathered_batch_bytes;
@@ -97,12 +97,14 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
       memcpy(dst_base + dst_offset, src_base + src_offset, narrow<size_t>(block_size));
     }
   };
-  concurrency::ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(M) * N, static_cast<double>(block_size),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
-                                              lambda(index);
-                                            }
-                                          });
+
+  concurrency::ThreadPool::TryParallelFor(
+      tp, SafeInt<ptrdiff_t>(M) * N, static_cast<double>(block_size),
+      [&lambda](ptrdiff_t first, ptrdiff_t last) {
+        for (ptrdiff_t index = first; index < last; ++index) {
+          lambda(index);
+        }
+      });
 
   return Status::OK();
 }

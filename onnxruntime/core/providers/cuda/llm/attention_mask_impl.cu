@@ -7,19 +7,14 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Validation error codes (stored in validation_result buffer)
-constexpr int kValidationOK = 0;
-constexpr int kValidationErrorNotStartWithTrue = 1;
-constexpr int kValidationErrorNotContiguous = 2;
-
 // CUDA kernel to convert boolean attention mask to sequence lengths.
-// Also validates that the mask follows right-padding convention.
+// Also validates that the mask follows right-padding convention via CUDA_KERNEL_ASSERT.
 //
 // The kernel processes one batch per thread.
 // For each batch, it finds the first False in the mask row, which indicates
 // where padding starts. The sequence length is the index of first False.
 //
-// Validation:
+// Validation (via CUDA_KERNEL_ASSERT, reported asynchronously):
 // - The mask must start with True (first element must be True)
 // - After the first False, all remaining elements must be False (contiguous padding)
 //
@@ -31,7 +26,6 @@ constexpr int kValidationErrorNotContiguous = 2;
 __global__ void ConvertMaskToSeqlensKernel(
     const bool* __restrict__ attn_mask,
     int* __restrict__ seqlens_k,
-    int* __restrict__ validation_result,
     const int batch_size,
     const int total_seq_len,
     const int mask_dims,
@@ -78,15 +72,8 @@ __global__ void ConvertMaskToSeqlensKernel(
     mask_row = attn_mask + effective_batch * batch_stride + h_idx * head_stride + q_idx * q_stride;
   }
 
-  // Initialize validation result for this batch
-  validation_result[batch_idx] = kValidationOK;
-
-  // Check that mask starts with True
-  if (!mask_row[0]) {
-    validation_result[batch_idx] = kValidationErrorNotStartWithTrue;
-    seqlens_k[batch_idx] = -1;  // Invalid
-    return;
-  }
+  // Validate that mask starts with True (right-padding convention)
+  CUDA_KERNEL_ASSERT(mask_row[0]);  // mask must start with True
 
   // Find the first False (where padding starts)
   // All elements before this should be True, all after should be False
@@ -101,10 +88,8 @@ __global__ void ConvertMaskToSeqlensKernel(
       seq_len = i;
       found_first_false = true;
     } else if (found_first_false && current) {
-      // Found True after False - this is invalid (not contiguous)
-      validation_result[batch_idx] = kValidationErrorNotContiguous;
-      seqlens_k[batch_idx] = -1;  // Invalid
-      return;
+      // Found True after False - mask is not contiguous (invalid)
+      CUDA_KERNEL_ASSERT(false);  // mask must be contiguous (no True after False)
     }
   }
 
@@ -115,7 +100,6 @@ __global__ void ConvertMaskToSeqlensKernel(
 Status LaunchConvertMaskToSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,
-    int* validation_result,
     int batch_size,
     int total_seq_len,
     int mask_dims,
@@ -134,7 +118,6 @@ Status LaunchConvertMaskToSeqlensK(
   ConvertMaskToSeqlensKernel<<<blocks, threads, 0, stream>>>(
       attn_mask_bool,
       seqlens_k,
-      validation_result,
       batch_size,
       total_seq_len,
       mask_dims,
@@ -144,6 +127,51 @@ Status LaunchConvertMaskToSeqlensK(
 
   return CUDA_CALL(cudaGetLastError());
 }
+
+template <typename T>
+__global__ void ConvertBoolMaskToAttentionBiasKernel(
+    const bool* __restrict__ attn_mask,
+    T* __restrict__ attention_bias,
+    const int64_t num_elements,
+    const float mask_filter_value) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < num_elements;
+       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    attention_bias[idx] = attn_mask[idx] ? T(0.0f) : T(mask_filter_value);
+  }
+}
+
+template <typename T>
+Status LaunchConvertBoolMaskToAttentionBias(
+    const bool* attn_mask_bool,
+    T* attention_bias,
+    int64_t num_elements,
+    float mask_filter_value,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  if (num_elements == 0) {
+    return Status::OK();
+  }
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), num_elements));
+  int64_t blocks = (num_elements + threads - 1) / threads;
+  // Cap grid size to avoid exceeding CUDA gridDim.x limit (2^31 - 1).
+  // The grid-stride loop in the kernel handles the overflow.
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  ConvertBoolMaskToAttentionBiasKernel<T><<<grid_size, threads, 0, stream>>>(
+      attn_mask_bool, attention_bias, num_elements, mask_filter_value);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchConvertBoolMaskToAttentionBias<float>(
+    const bool*, float*, int64_t, float, cudaStream_t, int);
+template Status LaunchConvertBoolMaskToAttentionBias<__half>(
+    const bool*, __half*, int64_t, float, cudaStream_t, int);
+template Status LaunchConvertBoolMaskToAttentionBias<__nv_bfloat16>(
+    const bool*, __nv_bfloat16*, int64_t, float, cudaStream_t, int);
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -9,7 +9,7 @@ template <bool Packed, bool Threaded>
 class MlasQgemmTestBase : public MlasTestBase {
  private:
   void* PackB(size_t N, size_t K, const uint8_t* B, size_t ldb, bool AIsSigned, bool BIsSigned) {
-    size_t PackedBSize = MlasGemmPackBSize(N, K, AIsSigned, BIsSigned);
+    size_t PackedBSize = MlasGemmPackBSize(N, K, AIsSigned, BIsSigned, nullptr);
     void* PackedB = BufferBPacked.GetBuffer(PackedBSize);
     MlasGemmPackB(N, K, B, ldb, AIsSigned, BIsSigned, PackedB);
     return PackedB;
@@ -453,7 +453,7 @@ class MlasQgemmTest<AType, BType, float, Packed, Threaded> : public MlasQgemmTes
                AFloat + K * M * b, lda,
                BFloat + N * K * b, ldb, 0.0f,
                CReference + N * M * b, ldc,
-               MlasQgemmTestBase<Packed, Threaded>::threadpool_);
+               MlasQgemmTestBase<Packed, Threaded>::threadpool_, nullptr);
     }
 
     if (Bias != nullptr) {

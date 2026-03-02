@@ -474,7 +474,10 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
             q, k, v, std::vector<float>(), m, std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            // Note: all-false bool mask (every position masked) is a degenerate case. It works because
+            // mask_filter_value (~-3.4e38) is so extreme that float precision loses QK differences,
+            // producing uniform softmax weights matching CPU behavior.
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -617,7 +620,7 @@ TEST(AttentionTest, Attention4DAttnMaskBool) {
             q, k, v, std::vector<float>(), m, std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
