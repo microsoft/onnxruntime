@@ -141,7 +141,8 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
                        bool trans_b,
                        IAllocatorUniquePtr<void>& packed_b,
                        size_t& packed_b_size,
-                       TensorShape& b_shape) {
+                       TensorShape& b_shape,
+                       const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // Only handle the common case of a 2D weight matrix. Additional matrices
   // could be handled by stacking the packed buffers.
   if (tensor_b.Shape().NumDimensions() != 2) {
@@ -157,7 +158,8 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
                                       trans_b ? CBLAS_TRANSPOSE::CblasTrans : CBLAS_TRANSPOSE::CblasNoTrans,
                                       true,
                                       N,
-                                      K);
+                                      K,
+                                      mlas_backend_kernel_selector_config);
   if (packed_b_size == 0) {
     return false;
   }
@@ -176,7 +178,8 @@ bool GemmPackBBfloat16(AllocatorPtr& alloc,
                          K,
                          tensor_b.Data<float>(),
                          trans_b ? K : N,
-                         packed_b_data);
+                         packed_b_data,
+                         mlas_backend_kernel_selector_config);
   return true;
 }
 #endif
@@ -200,7 +203,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
     }
 
     if (use_fastmath_mode_ && (trans_b_attr_ == 0) && ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold)) {
-      is_packed = GemmPackBBfloat16(alloc, tensor, trans_a_attr_ != 0, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+      is_packed = GemmPackBBfloat16(alloc, tensor, trans_a_attr_ != 0, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, &mlas_backend_kernel_selector_config_);
     } else
 #endif
     {
@@ -284,7 +287,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
       data[i].BIsPacked = static_cast<bool>(packed_b_);
     }
     MlasSBGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
-                    M, N, K, max_len, data.data(), thread_pool);
+                    M, N, K, max_len, data.data(), thread_pool, &mlas_backend_kernel_selector_config_);
   } else
 #endif
   {

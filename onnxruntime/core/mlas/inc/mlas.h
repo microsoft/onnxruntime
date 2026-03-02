@@ -2016,14 +2016,17 @@ struct MLAS_SBGEMM_DATA_PARAMS {
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
  *
- * @param[in]  TransA  Supplies the transpose operation for matrix A.
- * @param[in]  TransB  Supplies the transpose operation for matrix B.
- * @param[in]  M       row size of matrix A and C
- * @param[in]  N       column size of matrix B and C
- * @param[in]  K       column size of matrix A and row size of matrix B
- * @param[in]  BatchN  number of batches
- * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
+ * @param[in]  TransA                       Supplies the transpose operation for matrix A.
+ * @param[in]  TransB                       Supplies the transpose operation for matrix B.
+ * @param[in]  M                            row size of matrix A and C
+ * @param[in]  N                            column size of matrix B and C
+ * @param[in]  K                            column size of matrix A and row size of matrix B
+ * @param[in]  BatchN                       number of batches
+ * @param[inout]  DataParams                An array (size BatchN) of parameter blocks
  * @param[in]  ThreadPool
+ * @param[in]  BackendKernelSelectorConfig  Supplies the backend kernel selector
+                                            configuration options, else nullptr if the
+                                            default configuration should be used.
  * @return
  */
 void MLASCALL
@@ -2035,19 +2038,23 @@ MlasSBGemmBatch(
     const size_t K,
     const size_t BatchN,
     const MLAS_SBGEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool = nullptr
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 /**
  * @brief For bfloat16 precision GEMM, returns size of the
  *        packing buffer needed for right hand side
- * @param[in] TransA     Supplies the transpose operation for matrix A.
- * @param[in] TransB     Supplies the transpose operation for matrix B.
- * @param[in] BIsfp32    Is matrix B datatype FP32
- * @param[in] N          Number of columns
- * @param[in] K          Number of rows
- * @return  size of the packing buffer,
- *          0 if operation not supported
+ * @param[in] TransA                       Supplies the transpose operation for matrix A.
+ * @param[in] TransB                       Supplies the transpose operation for matrix B.
+ * @param[in] BIsfp32                      Is matrix B datatype FP32
+ * @param[in] N                            Number of columns
+ * @param[in] K                            Number of rows
+ * @param[in] BackendKernelSelectorConfig  Supplies the backend kernel selector
+                                           configuration options, else nullptr if the
+                                           default configuration should be used.
+ * @return                                 size of the packing buffer,
+ *                                         0 if operation not supported
  */
 size_t MLASCALL
 MlasSBGemmPackBSize(
@@ -2055,21 +2062,25 @@ MlasSBGemmPackBSize(
     CBLAS_TRANSPOSE TransB,
     bool BIsfp32,
     size_t N,
-    size_t K
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 /**
  * @brief For bfloat16 precision GEMM, convert the float matrix B
  *        to blfoat16 precision and pack it into a packing buffer
  *
- * @param[in]  TransA    Supplies the transpose operation for matrix A.
- * @param[in]  TransB    Supplies the transpose operation for matrix B.
- * @param[in]  BIsfp32   Is matrix B datatype FP32
- * @param[in]  N        Number of columns
- * @param[in]  K        Number of rows
- * @param[in]  B        Address of matrix B
- * @param[in]  ldb      leading dimension of input matrix B
- * @param[out] PackedB  Address of the packed matrix
+ * @param[in]  TransA                      Supplies the transpose operation for matrix A.
+ * @param[in]  TransB                      Supplies the transpose operation for matrix B.
+ * @param[in]  BIsfp32                     Is matrix B datatype FP32
+ * @param[in]  N                           Number of columns
+ * @param[in]  K                           Number of rows
+ * @param[in]  B                           Address of matrix B
+ * @param[in]  ldb                         leading dimension of input matrix B
+ * @param[out] PackedB                     Address of the packed matrix
+ * @param[in]  BackendKernelSelectorConfig  Supplies the backend kernel selector
+                                           configuration options, else nullptr if the
+                                           default configuration should be used.
  */
 void MLASCALL
 MlasSBGemmConvertPackB(
@@ -2080,7 +2091,8 @@ MlasSBGemmConvertPackB(
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 #endif
 

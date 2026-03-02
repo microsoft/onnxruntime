@@ -141,13 +141,13 @@ static size_t SBGemmRegistLongExecute() {
   size_t count = 0;
 
   count += MlasLongExecuteTests<MlasSBGemmTest<float, float, false, false>>::RegisterLongExecute();
-  if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128) > 0) {
+  if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128, nullptr) > 0) {
     count += MlasLongExecuteTests<MlasSBGemmTest<float, float, true, false>>::RegisterLongExecute();
   }
 
   if (GetMlasThreadPool() != nullptr) {
     count += MlasLongExecuteTests<MlasSBGemmTest<float, float, false, true>>::RegisterLongExecute();
-    if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128) > 0) {
+    if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128, nullptr) > 0) {
       count += MlasLongExecuteTests<MlasSBGemmTest<float, float, true, true>>::RegisterLongExecute();
     }
   }
@@ -160,7 +160,7 @@ static size_t SBGemmRegistShortExecute() {
 
   count += SBGemmShortExecuteTest<float, float, false, false>::RegisterShortExecuteTests();
   count += SBGemmAccumulateExecuteTest<float, float, false, false>::RegisterAccumulateTests();
-  if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128) > 0) {
+  if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128, nullptr) > 0) {
     count += SBGemmShortExecuteTest<float, float, true, false>::RegisterShortExecuteTests();
     count += SBGemmAccumulateExecuteTest<float, float, true, false>::RegisterAccumulateTests();
   }
@@ -168,7 +168,7 @@ static size_t SBGemmRegistShortExecute() {
   if (GetMlasThreadPool() != nullptr) {
     count += SBGemmShortExecuteTest<float, float, false, true>::RegisterShortExecuteTests();
     count += SBGemmAccumulateExecuteTest<float, float, false, true>::RegisterAccumulateTests();
-    if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128) > 0) {
+    if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128, nullptr) > 0) {
       count += SBGemmShortExecuteTest<float, float, true, true>::RegisterShortExecuteTests();
       count += SBGemmAccumulateExecuteTest<float, float, true, true>::RegisterAccumulateTests();
     }
