@@ -19,6 +19,7 @@ class Attention final : public CudaKernel {
  private:
   // Runs flash attention directly on an external KV cache (e.g., assembled by TensorScatter).
   // Returns early from ComputeInternal on success. Called from both GQA and MHA paths.
+  // Only available when USE_FLASH_ATTENTION is enabled at build time.
   Status FlashAttentionForExternalKVCache(
       const cudaDeviceProp& device_prop,
       cudaStream_t cuda_stream,
@@ -28,7 +29,7 @@ class Attention final : public CudaKernel {
       Tensor* Y,
       Tensor* present_key,
       Tensor* present_value,
-      const int* seqlens_k,
+      const Tensor* nonpad_kv_seqlen,
       const attention_helper::AttentionParameters& parameters,
       bool is_bf16,
       onnxruntime::Stream* ort_stream) const;
