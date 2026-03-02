@@ -9,6 +9,7 @@
 #param has_zero_points
 #param has_bias
 #param has_weight_idx
+#param has_weight_idx_indirect
 
 #use .getByOffset .setByOffset
 
@@ -73,7 +74,12 @@ $MAIN {
 
 #if has_bias
 #if has_weight_idx
-    let b_bias_offset = uniforms.weight_idx * uniforms.N;
+#if has_weight_idx_indirect
+    let actual_weight_idx_bias = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx_bias = uniforms.weight_idx;
+#endif
+    let b_bias_offset = actual_weight_idx_bias * uniforms.N;
 #else
     const b_bias_offset : u32 = 0;
 #endif
@@ -100,7 +106,11 @@ $MAIN {
 #if single_scale_weights
     let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #if has_weight_idx
+#if has_weight_idx_indirect
+    let own_scale_b = scales_b.getByOffset(weight_index_indirect[uniforms.weight_idx]);
+#else
     let own_scale_b = scales_b.getByOffset(uniforms.weight_idx);
+#endif
 #else
     let own_scale_b = scales_b.getByOffset(0);
 #endif
@@ -126,9 +136,14 @@ $MAIN {
             if (b_global < uniforms.N && k_offset < uniforms.K32)
             {
 #if has_weight_idx
-                let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K32;
+#if has_weight_idx_indirect
+                let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+                let actual_weight_idx = uniforms.weight_idx;
+#endif
+                let b_weight_offset = actual_weight_idx * uniforms.N * uniforms.K32;
                 let b_offset = b_weight_offset + b_global * uniforms.K32 + k_offset;
-                let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / uniforms.block_size);
+                let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / uniforms.block_size);
                 let own_scale_b = scales_b.getByOffset(b_scale_offset + b_global * uniforms.K / uniforms.block_size + block_idx);
 #else
                 let b_offset = b_global * uniforms.K32 + k_offset;

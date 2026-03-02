@@ -9,6 +9,10 @@
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
+#ifdef USE_WEBGPU
+#include "test/util/include/default_providers.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -121,6 +125,68 @@ TEST(ExpandOpTest, Expand_3x1x3x1_int64) {
                            1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9});
   test.Run();
 }
+
+#ifdef USE_WEBGPU
+TEST(ExpandOpTest, Expand_3x3_int64_webgpu) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {1}, {1});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           1, 1, 1,
+                           1, 1, 1});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(ExpandOpTest, Expand_3x1_int64_webgpu) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {3}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {3, 1});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 2, 3,
+                           1, 2, 3,
+                           1, 2, 3});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(ExpandOpTest, Expand_1x3_int64_webgpu) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {3, 1}, {1, 2, 3});
+  test.AddInput<int64_t>("data_1", {2}, {1, 3});
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           2, 2, 2,
+                           3, 3, 3});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(ExpandOpTest, Expand_3x1x3x1_int64_webgpu) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {1, 3, 1, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddInput<int64_t>("data_1", {4}, {3, 1, 3, 1});
+  test.AddOutput<int64_t>("result", {3, 3, 3, 3},
+                          {1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+                           1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+                           1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
 
 TEST(ExpandOpTest, Expand_3x3_float16) {
   OpTester test("Expand", 8);

@@ -54,6 +54,7 @@ struct MLAS_NCHWC_CONV_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     size_t GroupCount;
     bool ZeroMode;
     bool UseBf16;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig;
 };
 
 //
@@ -75,6 +76,7 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
 #define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         0x00000002
 #define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       0x00000004
 #define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
+#define MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI      0x00000010
 
 size_t
 MLASCALL
@@ -438,6 +440,12 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
             } else if (ActivationKind != MlasIdentityActivation) {
                 KernelFlags |= MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION;
             }
+        }
+
+        if (WorkBlock != nullptr &&
+            (WorkBlock->BackendKernelSelectorConfig == nullptr ||
+             WorkBlock->BackendKernelSelectorConfig->use_kleidiai)) {
+            KernelFlags |= MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI;
         }
 
         return KernelFlags;
@@ -1253,6 +1261,7 @@ MlasNchwcConv(
     const MLAS_ACTIVATION* Activation,
     bool ZeroMode,
     MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
     const bool UseBf16
     )
 /*++
@@ -1320,6 +1329,7 @@ Return Value:
     WorkBlock.Activation = Activation;
     WorkBlock.ZeroMode = ZeroMode;
     WorkBlock.UseBf16 = UseBf16;
+    WorkBlock.BackendKernelSelectorConfig = BackendKernelSelectorConfig;
 
     //
     // Capture the generic shape parameters to the work block.
