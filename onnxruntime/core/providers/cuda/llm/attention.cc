@@ -108,9 +108,11 @@ Status Attention<T>::FlashAttentionForExternalKVCache(
 
   // The full KV cache must be passed as K/V directly (no past_key concatenation).
   // If past_sequence_length != 0, K/V would be partial and flash would read OOB.
-  ORT_ENFORCE(parameters.past_sequence_length == 0,
-              "FlashAttentionForExternalKVCache requires K/V to be the full cache "
-              "(past_sequence_length must be 0, got ", parameters.past_sequence_length, ").");
+  if (parameters.past_sequence_length != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "FlashAttentionForExternalKVCache requires K/V to be the full cache "
+                           "(past_sequence_length must be 0, got ", parameters.past_sequence_length, ").");
+  }
 
   // Convert nonpad_kv_seqlen (int64 count) to int32 seqlens_k for flash attention.
   // Flash's mha_fwd_kvcache expects the actual token count, not the GQA count-1 convention.
@@ -827,14 +829,16 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                               parameters.total_sequence_length;
       constexpr int64_t kMaxUnfusedBiasBytes = static_cast<int64_t>(128) * 1024 * 1024;
       int64_t bias_bytes = bias_elements * static_cast<int64_t>(sizeof(NativeCudaT));
-      ORT_ENFORCE(bias_bytes <= kMaxUnfusedBiasBytes,
-                  "Unfused attention fallback for nonpad_kv_seqlen would allocate ", bias_bytes,
-                  " bytes for the attention bias (batch=", parameters.batch_size,
-                  ", q_seq=", parameters.q_sequence_length,
-                  ", total_seq=", parameters.total_sequence_length,
-                  "). This exceeds the ", kMaxUnfusedBiasBytes,
-                  "-byte limit and would likely cause OOM. "
-                  "Use float16 or bfloat16 to enable flash attention for this workload.");
+      if (bias_bytes > kMaxUnfusedBiasBytes) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Unfused attention fallback for nonpad_kv_seqlen would allocate ", bias_bytes,
+                               " bytes for the attention bias (batch=", parameters.batch_size,
+                               ", q_seq=", parameters.q_sequence_length,
+                               ", total_seq=", parameters.total_sequence_length,
+                               "). This exceeds the ", kMaxUnfusedBiasBytes,
+                               "-byte limit and would likely cause OOM. "
+                               "Use float16 or bfloat16 to enable flash attention for this workload.");
+      }
 
       nonpad_kv_bias_buffer = GetScratchBuffer<void>(bias_bytes, context->GetComputeStream());
       auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
