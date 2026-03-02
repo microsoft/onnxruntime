@@ -109,6 +109,8 @@ stages:
         - Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
       jobs:
       - job: Linux_py_GPU_Wheels_Merge_Artifacts
+        workspace:
+          clean: all
         pool:
           name: 'onnxruntime-Ubuntu2404-AMD-CPU'
           os: linux
