@@ -99,8 +99,8 @@ stages:
           docker_python_exe_path: ${{ config.docker_python_exe_path }}
           wheel_artifact_name: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
           # Only publish the large build intermediates artifact for Python 3.12. That's the only version we test now.
-          publish_build_intermediates: ${{ eq(config.python_version, '3.12') }}
-          build_intermediates_artifact_name: linux_gpu_wheel_x86_64
+          ${{ eq(config.python_version, '3.12') }}:
+            build_intermediates_artifact_name: linux_gpu_wheel_x86_64
 
     # Merge per-version Linux wheel artifacts into a single combined artifact for downstream consumers
     - stage: Linux_py_GPU_Wheels_Merge_Artifacts
