@@ -6,6 +6,10 @@ Based on ONNX DeformConv spec (opset 19+): https://onnx.ai/onnx/operators/onnx__
 Uses a moderately complex config: groups=2, offset_group=2, 2x2 kernel, non-zero offsets.
 Reference output from torchvision.ops.deform_conv2d.
 
+Limitation: Uses symmetric padding only. PyTorch padding=(pad_h, pad_w) and ONNX pads
+[pad_top, pad_left, pad_bottom, pad_right] = [pad_h, pad_w, pad_h, pad_w]. Asymmetric
+pads (e.g. pad_top != pad_bottom) would require PyTorch API support and are not generated.
+
 Run from repo root:
   python onnxruntime/test/testdata/nn/deform_conv_test_gen.py
 
@@ -65,6 +69,7 @@ def _generate_reference():
 
 def _build_onnx_model():
     """Build DeformConv ONNX model. ONNX pads = [pad_top, pad_left, pad_bottom, pad_right]."""
+    # Symmetric padding only: (pad_h, pad_w) -> [pad_h, pad_w, pad_h, pad_w]
     pads = [PAD_H, PAD_W, PAD_H, PAD_W]
 
     node = helper.make_node(
