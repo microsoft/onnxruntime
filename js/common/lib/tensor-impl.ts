@@ -542,6 +542,10 @@ export class Tensor implements TensorInterface {
     this.dataLocation = 'none';
   }
 
+  [Symbol.dispose](): void {
+    this.dispose();
+  }
+
   // #endregion
 
   // #region tensor utilities

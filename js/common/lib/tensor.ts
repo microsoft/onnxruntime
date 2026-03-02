@@ -11,7 +11,7 @@ import { TryGetGlobalType } from './type-helper.js';
 /**
  * represent a basic tensor with specified dimensions and data type.
  */
-interface TypedTensorBase<T extends Tensor.Type> {
+interface TypedTensorBase<T extends Tensor.Type> extends Disposable {
   /**
    * Get the dimensions of the tensor.
    */
