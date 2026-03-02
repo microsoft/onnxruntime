@@ -28,16 +28,16 @@ namespace NAMESPACE_NAME {
 // exists. CUDA 13+ then fails to generate a host stub, producing C2129 / LNK2001.
 #undef XQA_HAS_SM80_TARGET
 #ifdef __CUDA_ARCH__
-  #if __CUDA_ARCH__ >= 800
-    #define XQA_HAS_SM80_TARGET 1
-  #endif
+#if __CUDA_ARCH__ >= 800
+#define XQA_HAS_SM80_TARGET 1
+#endif
 #elif defined(__CUDA_ARCH_LIST__)
-  #if __CUDA_ARCH_LIST__ >= 800
-    #define XQA_HAS_SM80_TARGET 1
-  #endif
+#if __CUDA_ARCH_LIST__ >= 800
+#define XQA_HAS_SM80_TARGET 1
+#endif
 #else
-  // Non-nvcc fallback: assume supported (IDE parsers, etc.)
-  #define XQA_HAS_SM80_TARGET 1
+// Non-nvcc fallback: assume supported (IDE parsers, etc.)
+#define XQA_HAS_SM80_TARGET 1
 #endif
 
 // Include implementation (re-compiles kernel for this group size)
