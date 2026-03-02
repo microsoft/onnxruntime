@@ -51,21 +51,20 @@ T BilinearInterpolate(const T* in, int64_t height, int64_t width, T h, T w) {
 // Output 'data_col' shape: [C_in * kH * kW, H_out * W_out]
 template <typename T>
 void DeformableIm2col(
-    const T* data_im,       // Input image [C, H, W]
-    const T* data_offset,   // Offset [offset_groups * 2 * kH * kW, H_out, W_out]
-    const T* data_mask,     // Mask [offset_groups * kH * kW, H_out, W_out] (optional)
-    int64_t height, int64_t width,            // Input dimensions
-    int64_t kernel_h, int64_t kernel_w,       // Kernel dimensions
-    int64_t pad_h, int64_t pad_w,             // Padding
-    int64_t stride_h, int64_t stride_w,       // Stride
-    int64_t dilation_h, int64_t dilation_w,   // Dilation
-    int64_t channels,                         // Input channels
-    int64_t offset_groups,                    // Number of offset groups
-    int64_t height_col, int64_t width_col,    // Output dimensions
-    bool use_mask,
-    T* data_col,                              // Output buffer
+    const T* data_im,                        // Input image [C, H, W]
+    const T* data_offset,                    // Offset [offset_groups * 2 * kH * kW, H_out, W_out]
+    const T* data_mask,                      // Mask [offset_groups * kH * kW, H_out, W_out] (optional)
+    int64_t height, int64_t width,           // Input dimensions
+    int64_t kernel_h, int64_t kernel_w,      // Kernel dimensions
+    int64_t pad_h, int64_t pad_w,            // Padding
+    int64_t stride_h, int64_t stride_w,      // Stride
+    int64_t dilation_h, int64_t dilation_w,  // Dilation
+    int64_t channels,                        // Input channels
+    int64_t offset_groups,                   // Number of offset groups
+    int64_t height_col, int64_t width_col,   // Output dimensions
+    bool use_mask,                           // Use mask
+    T* data_col,                             // Output buffer
     concurrency::ThreadPool* thread_pool) {
-
   const int64_t channel_per_offset_group = channels / offset_groups;
 
   // Loop order optimized for cache locality:
@@ -86,7 +85,6 @@ void DeformableIm2col(
             // Iterate over kernel window
             for (int64_t i = 0; i < kernel_h; ++i) {
               for (int64_t j = 0; j < kernel_w; ++j) {
-
                 // Calculate the index in the offset/mask tensors.
                 // The offset tensor is organized as: (offset_groups, 2 * kH * kW, H_out, W_out).
                 // Flattened offset channel index relative to the start of the tensor:
@@ -142,7 +140,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
   const auto* offset = context->Input<Tensor>(2);
-  const auto* B = context->Input<Tensor>(3);    // optional
+  const auto* B = context->Input<Tensor>(3);     // optional
   const auto* mask = context->Input<Tensor>(4);  // optional
 
   DeformConvParams params;
@@ -178,7 +176,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   const int64_t kernel_size = kH * kW;
   const int64_t output_image_size = out_h * out_w;
   const int64_t input_image_size = H * W_in;
-  const int64_t kernel_dim = C / group * kernel_size; // The "K" dimension for GEMM (per group)
+  const int64_t kernel_dim = C / group * kernel_size;  // The "K" dimension for GEMM (per group)
 
   // Total col buffer size: (C * kH * kW) * (out_h * out_w)
   // We allocate this per image to save memory compared to batch allocation if N is large,
@@ -200,7 +198,6 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 
   // Main Loop: Iterate over Batch
   for (int64_t n = 0; n < N; ++n) {
-
     // 1. Perform Im2Col for the current image n
     // Pointers for current image
     const T* X_curr = Xdata + n * (C * input_image_size);
@@ -251,16 +248,16 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
       math::Gemm<T>(
           CblasNoTrans,
           CblasNoTrans,
-          narrow<ptrdiff_t>(M / group),        // M
-          narrow<ptrdiff_t>(output_image_size),// N
-          narrow<ptrdiff_t>(kernel_dim),       // K
-          static_cast<T>(1),                   // alpha
-          weight_g,                            // A
-          col_g,                               // B
-          static_cast<T>(0),                   // beta
-          Y_g,                                 // C
+          narrow<ptrdiff_t>(M / group),          // M
+          narrow<ptrdiff_t>(output_image_size),  // N
+          narrow<ptrdiff_t>(kernel_dim),         // K
+          static_cast<T>(1),                     // alpha
+          weight_g,                              // A
+          col_g,                                 // B
+          static_cast<T>(0),                     // beta
+          Y_g,                                   // C
           thread_pool,
-          nullptr);                            // mlas_backend_kernel_selector_config
+          nullptr);  // mlas_backend_kernel_selector_config
     }
   }
 
@@ -289,16 +286,16 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
 template class DeformConv<float>;
 template class DeformConv<double>;
 
-#define REGISTER_DEFORMCONV_KERNEL_TYPED(T)                                                        \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                        \
-      DeformConv, 19, 21, T,                                                                       \
-      KernelDefBuilder()                                                                           \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                                  \
-      DeformConv<T>);                                                                              \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                  \
-      DeformConv, 22, T,                                                                           \
-      KernelDefBuilder()                                                                           \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                                  \
+#define REGISTER_DEFORMCONV_KERNEL_TYPED(T)                       \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                       \
+      DeformConv, 19, 21, T,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      DeformConv<T>);                                             \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                 \
+      DeformConv, 22, T,                                          \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DeformConv<T>)
 
 REGISTER_DEFORMCONV_KERNEL_TYPED(float)
