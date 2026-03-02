@@ -128,7 +128,8 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
         a_data + helper.LeftOffsets()[i],
         b_data + helper.RightOffsets()[i],
         y_data + helper.OutputOffsets()[i],
-        thread_pool);
+        thread_pool,
+        &mlas_backend_kernel_selector_config_);
   }
 
   return Status::OK();
@@ -195,7 +196,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
     } else
 #endif
     {
-      is_packed = GemmPackBFp32(alloc, tensor, trans_a_attr_, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+      is_packed = GemmPackBFp32(alloc, tensor, trans_a_attr_, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, &mlas_backend_kernel_selector_config_);
     }
 
     bool share_prepacked_weights = (prepacked_weights != nullptr);
@@ -290,7 +291,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
       data[i].beta = 0.0f;
     }
     MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
-                  M, N, K, data.data(), max_len, thread_pool);
+                  M, N, K, data.data(), max_len, thread_pool, &mlas_backend_kernel_selector_config_);
   }
   return Status::OK();
 }

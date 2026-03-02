@@ -5,11 +5,12 @@
 # --------------------------------------------------------------------------
 
 import os
+import tempfile
 import unittest
 
 import onnx
 from bart_model_generator import create_bart_attention_sdpa
-from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
+from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
 from gpt2_model_generator import create_gpt2_attention
 from model_loader import get_test_data_path
 from parity_utilities import find_transformers_source
@@ -151,6 +152,67 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "bert_3d_attention_opt.onnx")
+
+    def test_attention_fusion_pre_ln(self):
+        """Test attention fusion for pre-layer-norm first block.
+
+        In a pre-LN model the first block has no Add before the first
+        LayerNormalization — the graph input feeds LN directly.
+        """
+        model = create_bert_attention_pre_ln()
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
+
+    def test_attention_fusion_pre_ln_reverse_add_order(self):
+        """Pre-LN fusion with reversed Add input ordering."""
+        model = create_bert_attention_pre_ln(switch_add_inputs=True)
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention_reverse.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
+
+    def test_attention_fusion_pre_ln_with_skiplayernorm(self):
+        """Pre-LN fusion when SkipLayerNorm fusion runs first (exercises Change 3).
+
+        The optimizer runs fuse_skip_layer_norm before fuse_attention.  When enabled,
+        the Add + LayerNorm after the residual becomes a SkipLayerNormalization node,
+        and attention fusion must handle that anchor type.
+        """
+        model = create_bert_attention_pre_ln()
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention_skiplayernorm.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        options.enable_skip_layer_norm = True
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node with SkipLN anchor")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
 
     def test_gpt2_attention_fusion(self):
         hidden_size = 64

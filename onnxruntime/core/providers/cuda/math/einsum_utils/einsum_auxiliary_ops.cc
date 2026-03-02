@@ -51,7 +51,8 @@ Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
-              size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* /*tp*/,
+              size_t num_batches, size_t M, size_t K, size_t N,
+              concurrency::ThreadPool* /*tp*/, const void* /*mlas_backend_config*/,
               void* einsum_cuda_assets) {
   typedef typename cuda::ToCudaType<T>::MappedType CudaT;
 
@@ -160,7 +161,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<float>(
     const float* input_1_data, const float* input_2_data, float* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const void* mlas_backend_config, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,
@@ -173,7 +174,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
     const double* input_1_data, const double* input_2_data, double* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const void* mlas_backend_config, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,
@@ -186,7 +187,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
     const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const void* mlas_backend_config, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,

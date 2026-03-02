@@ -7,6 +7,7 @@
 
 #include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
 namespace onnxruntime {
@@ -54,6 +55,8 @@ class DeepCpuGruOp final : public OpKernel {
     layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
     ORT_ENFORCE(layout_ == 0,
                 "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -93,6 +96,8 @@ class DeepCpuGruOp final : public OpKernel {
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 namespace detail {
@@ -105,6 +110,7 @@ class UniDirectionalGru {
                     gsl::span<const T> initial_hidden_state, const rnn::detail::ActivationFuncs::Entry& activation_func_f,
                     const rnn::detail::ActivationFuncs::Entry& activation_func_g, float clip,
                     onnxruntime::concurrency::ThreadPool* ttp,
+                    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
                     const bool training_mode = false);
 
   void Compute(gsl::span<const T> inputs, gsl::span<const int> sequence_lengths, int num_directions,
@@ -192,6 +198,8 @@ class UniDirectionalGru {
   void AllocateBuffers();
 
   onnxruntime::concurrency::ThreadPool* ttp_;
+
+  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config_;
 
   const bool training_mode_ = false;
 };

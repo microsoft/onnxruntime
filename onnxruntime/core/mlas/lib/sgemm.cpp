@@ -1569,11 +1569,13 @@ MlasGemmBatch(
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
     // Override
-    if(GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
         GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
@@ -1646,7 +1648,8 @@ MlasGemmPackBSize(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
-    size_t K
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1660,6 +1663,9 @@ Arguments:
 
     K - Supplies the number of rows of matrix B.
 
+    BackendKernelSelectorConfig - Supplies the backend kernel selector
+                                  configuration options, else nullptr if the
+                                  default configuration should be used.
 Return Value:
 
     Returns the size in bytes for the packed matrix B buffer.
@@ -1671,7 +1677,8 @@ Return Value:
     //
     // KleidiAI or other override
     #if defined(USE_KLEIDIAI)
-    if (GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans) {
         size_t bytes_required;
@@ -1684,6 +1691,8 @@ Return Value:
     #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
 
 
     const size_t AlignedN =
@@ -1706,7 +1715,8 @@ MlasGemmPackB(
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1738,7 +1748,8 @@ Return Value:
 --*/
 {
 #if defined(USE_KLEIDIAI)
-    if (GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans    &&
         GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
@@ -1746,6 +1757,7 @@ Return Value:
     }
 #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
 
     const size_t AlignedN =

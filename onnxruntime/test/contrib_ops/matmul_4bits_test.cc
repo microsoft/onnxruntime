@@ -500,8 +500,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   // which is added to cover a specific failure case in the past.
   // 6144, 2048
 
-  // Since K is larger (more change of larger error),
-  // and N is larger (more chance of havinga value with larger error),
+  // Since K is larger (more chance of larger error),
+  // and N is larger (more chance of having a value with larger error),
   // we set a higher tolerance for this case to avoid false positives
   // and flaky failures.
   TestMatMulNBitsTyped<MLFloat16, 369, 6144, 2048, 32, 4>(0.2f, 0.03f);

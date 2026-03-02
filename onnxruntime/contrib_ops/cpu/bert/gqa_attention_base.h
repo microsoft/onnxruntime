@@ -11,12 +11,15 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 class GQAAttentionBase {
  protected:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
   GQAAttentionBase(const OpKernelInfo& info, bool has_local) {
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
@@ -37,6 +40,8 @@ class GQAAttentionBase {
     local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
 
     qk_output_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)));
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -258,7 +263,7 @@ class GQAAttentionBase {
         if constexpr (std::is_same<T, float>::value) {
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q,
                                           static_cast<int>(head_size), k, static_cast<int>(head_size), 0.0f /*bata*/,
-                                          output, static_cast<int>(present_buffer_sequence_length), nullptr);
+                                          output, static_cast<int>(present_buffer_sequence_length), nullptr, &mlas_backend_kernel_selector_config_);
         } else if constexpr (std::is_same<U, MLFloat16>::value) {
           MlasGemm(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size,
                    q, static_cast<int>(head_size), k, static_cast<int>(head_size), output,
@@ -277,7 +282,7 @@ class GQAAttentionBase {
 
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q_fp32,
                                           static_cast<int>(head_size), k_fp32, static_cast<int>(head_size), 0.0f /*bata*/,
-                                          output, static_cast<int>(present_buffer_sequence_length), nullptr);
+                                          output, static_cast<int>(present_buffer_sequence_length), nullptr, &mlas_backend_kernel_selector_config_);
         }
 
         // Pre-allocate buffer for attention mask to avoid allocating it for every processed token
@@ -459,7 +464,7 @@ class GQAAttentionBase {
                                           1.f, /*alpha*/ attention_probs + attention_probs_offset,
                                           static_cast<int>(present_buffer_sequence_length), v,
                                           static_cast<int>(head_size), 0.0f /*beta*/, output_current,
-                                          static_cast<int>(hidden_size), nullptr);
+                                          static_cast<int>(hidden_size), nullptr, &mlas_backend_kernel_selector_config_);
         } else if constexpr (std::is_same<U, MLFloat16>::value) {
           T* output_current = output + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
           MlasGemm(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen,
@@ -480,7 +485,7 @@ class GQAAttentionBase {
                                           1.f, /*alpha*/ attention_probs + attention_probs_offset,
                                           static_cast<int>(present_buffer_sequence_length), v_fp32_ptr,
                                           static_cast<int>(head_size), 0.0f /*beta*/, output_fp32_current,
-                                          static_cast<int>(hidden_size), nullptr);
+                                          static_cast<int>(hidden_size), nullptr, &mlas_backend_kernel_selector_config_);
         }
       }
     });

@@ -132,9 +132,9 @@ QuantizeBlock(
 }  // namespace
 
 bool
-UsePacked_CompInt8(size_t K, size_t BlkLen, bool HasZp)
+UsePacked_CompInt8(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
 {
-    return UseKleidiAI(K, BlkLen, HasZp);
+    return UseKleidiAI(K, BlkLen, HasZp, BackendKernelSelectorConfig);
 }
 
 #ifdef USE_KLEIDIAI
@@ -144,9 +144,14 @@ QuantizeA_Packed_CompInt8(
     const float* A,
     size_t CountM,
     size_t CountK,
-    std::byte* QuantA
+    std::byte* QuantA,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
+    // Currently this routine only supports KleidiAI packed quantization of A
+    assert(BackendKernelSelectorConfig == nullptr || BackendKernelSelectorConfig->use_kleidiai);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
     const auto& k = (CountM == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
     const auto& ukernel = k.ukernel;
 

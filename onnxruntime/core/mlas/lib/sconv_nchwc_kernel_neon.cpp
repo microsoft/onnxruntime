@@ -434,6 +434,9 @@ void
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
     const float firstBeta = (AccumulateOutput || BiasAddition) ? 1.0f : 0.0f;
 
+    MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config;
+    mlas_backend_kernel_selector_config.use_kleidiai = ((KernelFlags & MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI) != 0);
+
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t InputStrideElements = InputStride / sizeof(float);
     const size_t FilterStrideElements = FilterStride / sizeof(float);
@@ -492,7 +495,7 @@ void
     }
 
     MlasGemmBatch(CblasNoTrans, CblasNoTrans, OutputCount, BlockSize, BlockSize,
-                  gemm_params, idx, nullptr);
+                  gemm_params, idx, nullptr, &mlas_backend_kernel_selector_config);
 
     if (ReluActivation) {
         const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);

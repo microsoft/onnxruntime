@@ -380,6 +380,12 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // - "1": Use LUT based GEMM when available.
 static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 
+// Use KleidiAI kernels in MLAS if available.
+// Option values:
+// - "0": Use KleidiAI kernels when available. [DEFAULT]
+// - "1": Disable KleidiAI kernels even if available.
+static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
