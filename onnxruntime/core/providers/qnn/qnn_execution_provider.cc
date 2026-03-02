@@ -570,8 +570,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   enable_htp_shared_mem_allocator_ = ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map);
   if (enable_htp_shared_mem_allocator_) {
     // Initialize rpcmem_library_.
-    // This library is only necessary for the inference, if we are in context generation stage, there is no need to load it
-    // as no allocations will be made.
+    // This library is only necessary for the inference (for the shared memory allocator), if we are in context
+    // generation stage, there is no need to load it as no allocations will be made.
     if (!context_cache_enabled_) {
       rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
     }
