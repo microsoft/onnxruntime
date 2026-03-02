@@ -135,9 +135,11 @@ inline void AttentionGemm(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
                           const T* A, int lda,
                           const T* B, int ldb,
                           float beta,
-                          T* C, int ldc) {
+                          T* C, int ldc,
+                          const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   if constexpr (std::is_same<T, float>::value) {
-    math::GemmEx<T, ThreadPool>(transA, transB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
+    math::GemmEx<T, ThreadPool>(transA, transB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr,
+                                mlas_backend_kernel_selector_config);
   } else if constexpr (std::is_same<T, MLFloat16>::value) {
     if (MlasHGemmSupported(transA, transB)) {
       MlasGemm(transA, transB, M, N, K, A, lda, B, ldb, C, ldc,
@@ -180,7 +182,8 @@ inline void AttentionGemm(CBLAS_TRANSPOSE transA, CBLAS_TRANSPOSE transB,
       math::GemmEx<float, ThreadPool>(transA, transB, M, N, K,
                                       alpha, a_fp32.data(), lda,
                                       b_fp32.data(), ldb,
-                                      beta, c_fp32.data(), ldc, nullptr);
+                                      beta, c_fp32.data(), ldc, nullptr,
+                                      mlas_backend_kernel_selector_config);
 
       // Downcast result back to fp16.
       // Same ldc == N check: bulk conversion when contiguous, row-by-row when
@@ -463,7 +466,8 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
       AttentionGemm(CblasNoTrans, CblasTrans,
                     parameters.q_sequence_length, parameters.total_sequence_length, parameters.head_size,
-                    alpha, q_ptr, q_lda, k_ptr, k_ldb, beta, output, parameters.total_sequence_length);
+                    alpha, q_ptr, q_lda, k_ptr, k_ldb, beta, output, parameters.total_sequence_length,
+                    &mlas_backend_kernel_selector_config_);
       if (out_qk != nullptr &&
           (parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKMask ||
            parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK)) {
@@ -647,7 +651,8 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                  // bu
           AttentionGemm(CblasNoTrans, CblasNoTrans,
                         sequence_length, v_head_size, total_sequence_length,
                         1.0f, attention_probs + attention_probs_offset, total_sequence_length,
-                        gemm_B, gemm_ldb, 0.0f, gemm_C, gemm_ldc);
+                        gemm_B, gemm_ldb, 0.0f, gemm_C, gemm_ldc,
+                        &mlas_backend_kernel_selector_config_);
         }
       });
 }

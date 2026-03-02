@@ -148,7 +148,7 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
     math::Gemm<float>(CblasNoTrans, CblasNoTrans, n, d, 1, -1,
                       scaledata, sum_multiplier_.data(), 1,
-                      dXdata, tp);
+                      dXdata, tp, &mlas_backend_kernel_selector_config_);
 
     math::Mul<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dXdata, Ydata, dXdata, nullptr);
   }

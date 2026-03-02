@@ -6,6 +6,7 @@
 #include <vector>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 
@@ -32,6 +33,8 @@ class AttentionBase {
                      int& past_sequence_length) const;
 
  protected:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
   template <typename KernelInfoType>
   AttentionBase(const KernelInfoType& info, bool require_same_hidden_size) {
     int64_t num_heads = 0;
@@ -50,6 +53,8 @@ class AttentionBase {
     past_present_share_buffer_ = info.template GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
 
     require_same_hidden_size_ = require_same_hidden_size;
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status CheckMask(const Tensor* mask_index,

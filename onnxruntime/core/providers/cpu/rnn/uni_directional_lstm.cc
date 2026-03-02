@@ -50,6 +50,7 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
     const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
     const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
     const ActivationFuncs::Entry& activation_func_h, const float clip, concurrency::ThreadPool* thread_pool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
     const bool training_mode)
     : allocator_(allocator),
       logger_(logger),
@@ -63,6 +64,7 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
       use_bias_(!bias.empty()),
       use_peepholes_(!peephole_weights.empty()),
       thread_pool_(thread_pool),
+      mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config),
       training_mode_(training_mode) {
   activation_f_ = {deepcpu::ActivationFuncByName(activation_func_f.name), activation_func_f.alpha,
                    activation_func_f.beta};
@@ -288,7 +290,8 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
               beta, output_iofc, hidden_size_x4,
               quantized_input_or_a_.data(),
               nullptr,
-              thread_pool_);
+              thread_pool_,
+              mlas_backend_kernel_selector_config_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc.data(), total_rows, hidden_size_x4);
 
@@ -309,6 +312,8 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
   }
 
   // lambda to do all processing on num_seq_to_compute sequences
+  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config_local = mlas_backend_kernel_selector_config_;
+
   auto sequences_calculator = [&](int seq_start, onnxruntime::concurrency::ThreadPool* ttp) {
     auto previous_state_end = batched_hidden_state_one_step.end();
 
@@ -342,7 +347,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
                   hidden_size_x4,
                   quantized_input_or_a_.data() + (seq_start * hidden_size_),
                   quantized_C_buffer_.data() + (seq_start * hidden_size_x4),
-                  ttp);
+                  ttp, mlas_backend_kernel_selector_config_local);
 
       DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, num_seq_to_compute_adjusted, hidden_size_x4);
 

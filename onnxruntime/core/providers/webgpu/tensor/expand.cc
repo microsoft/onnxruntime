@@ -38,10 +38,12 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), input_shape, output_dims, output_shape));
 
   auto* output_tensor = context.Output(0, output_shape);
-  const int components_i = input_shape.IsScalar() ? 1 : input_shape[input_shape.NumDimensions() - 1] % 4 == 0 ? 4
-                                                                                                              : 1;
-  const int components_o = output_shape.IsScalar() ? 1 : output_shape[output_shape.NumDimensions() - 1] % 4 == 0 ? 4
-                                                                                                                 : 1;
+
+  bool is_int64 = input_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
+  const int components_i = (input_shape.IsScalar() || is_int64) ? 1 : input_shape[input_shape.NumDimensions() - 1] % 4 == 0 ? 4
+                                                                                                                            : 1;
+  const int components_o = (output_shape.IsScalar() || is_int64) ? 1 : output_shape[output_shape.NumDimensions() - 1] % 4 == 0 ? 4
+                                                                                                                               : 1;
   uint32_t data_size = onnxruntime::narrow<uint32_t>(output_shape.Size() / components_o);
   if (data_size == 0) {
     return Status::OK();
@@ -60,20 +62,51 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-#define WEBGPU_EXPAND_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS, TYPE)                    \
-  ONNX_OPERATOR_KERNEL_EX(                                                            \
-      OP_TYPE, kOnnxDomain, VERSION, kWebGpuExecutionProvider,                        \
-      KernelDefBuilder().TypeConstraint("T", TYPE).InputMemoryType(OrtMemTypeCPU, 1), \
-      KERNEL_CLASS);
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateExpandVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
 
-#define WEBGPU_EXPAND_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                          \
-      OP_TYPE, kOnnxDomain, VERSION_FROM, VERSION_TO, kWebGpuExecutionProvider,               \
-      KernelDefBuilder().TypeConstraint("T", TYPE).InputMemoryType(OrtMemTypeCPU, 1),         \
-      KERNEL_CLASS);
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Expand>(info);
+    return Status::OK();
+  };
 
-WEBGPU_EXPAND_VERSIONED_KERNEL(Expand, 8, 12, Expand, WebGpuSupportedNumberTypes())
-WEBGPU_EXPAND_KERNEL(Expand, 13, Expand, WebGpuSupportedNumberTypes())
+  return {
+      KernelDefBuilder()
+          .SetName("Expand")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(StartVersion, EndVersion)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
+}
+
+template <int SinceVersion>
+KernelCreateInfo CreateExpandKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Expand>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Expand")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(SinceVersion)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
+}
+
+// Explicit template instantiations
+template KernelCreateInfo CreateExpandVersionedKernelInfo<8, 12>(bool);
+template KernelCreateInfo CreateExpandKernelInfo<13>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -18,11 +18,13 @@ class EinsumTypedComputeProcessor {
  public:
   explicit EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
                                        concurrency::ThreadPool* tp,
+                                       const void* mlas_backend_config,
                                        EinsumComputePreprocessor& einsum_compute_preprocessor,
                                        void* einsum_cuda_assets)
       : context_(context),
         allocator_(allocator),
         tp_(tp),
+        mlas_backend_config_(mlas_backend_config),
         einsum_compute_preprocessor_(einsum_compute_preprocessor),
         einsum_ep_assets_(einsum_cuda_assets) {}
 
@@ -58,7 +60,8 @@ class EinsumTypedComputeProcessor {
   // Private members -
   OpKernelContext* context_;
   AllocatorPtr allocator_;
-  concurrency::ThreadPool* tp_;
+  concurrency::ThreadPool* tp_;      // CPU only: Thread pool for parallelism
+  const void* mlas_backend_config_;  // CPU only: MLAS backend kernel selector config
   EinsumComputePreprocessor& einsum_compute_preprocessor_;
 
   EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
