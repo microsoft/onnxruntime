@@ -222,6 +222,44 @@ Status LaunchConvertNonpadKvSeqlenToSeqlensK(
   return CUDA_CALL(cudaGetLastError());
 }
 
+// Like ConvertNonpadKvSeqlenToSeqlensKKernel but produces the actual count (no -1 offset).
+// Flash attention's mha_fwd_kvcache expects seqlens_k_ = number of valid tokens,
+// not the last-valid-index convention used by the GQA kernel.
+__global__ void ConvertNonpadKvSeqlenToFlashSeqlensKKernel(
+    const int64_t* __restrict__ nonpad_kv_seqlen,
+    int* __restrict__ seqlens_k,
+    const int batch_size,
+    const int total_sequence_length) {
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < batch_size) {
+    int64_t val = nonpad_kv_seqlen[idx];
+    CUDA_KERNEL_ASSERT(val > 0);
+    CUDA_KERNEL_ASSERT(val <= static_cast<int64_t>(total_sequence_length));
+    val = max(static_cast<int64_t>(1), min(val, static_cast<int64_t>(total_sequence_length)));
+    seqlens_k[idx] = static_cast<int>(val);  // count, not index
+  }
+}
+
+Status LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
+    const int64_t* nonpad_kv_seqlen,
+    int* seqlens_k,
+    int batch_size,
+    int total_sequence_length,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  if (batch_size == 0) {
+    return Status::OK();
+  }
+
+  int threads = std::min(batch_size, max_threads_per_block);
+  int blocks = (batch_size + threads - 1) / threads;
+
+  ConvertNonpadKvSeqlenToFlashSeqlensKKernel<<<blocks, threads, 0, stream>>>(
+      nonpad_kv_seqlen, seqlens_k, batch_size, total_sequence_length);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
 // CUDA kernel to convert nonpad_kv_seqlen to an additive attention bias.
 // Generates (batch_size, q_seq_len, total_seq_len) output where:
 //   position t < nonpad_kv_seqlen[b] → 0.0 (attend)

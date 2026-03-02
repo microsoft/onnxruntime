@@ -80,6 +80,140 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(scale_ > 0 || std::isnan(scale_), "scale must be greater than 0 if specified");
 }
 
+#if USE_FLASH_ATTENTION
+// Runs flash attention directly on an external KV cache (e.g., assembled by TensorScatter).
+// Bypasses the contrib GQA kernel's PrepareQKV/ConcatNewToPastKV since the cache is already
+// fully assembled. Uses seqlens_k for per-batch masking instead of attention_bias.
+//
+// Prerequisites:
+//   - K/V are the full cache in BSNH format: [B, total_kv_seq, kv_heads, head_size]
+//   - seqlens_k contains the actual number of valid tokens per batch (int32, GPU)
+//   - Flash attention is supported on this GPU (SM >= 8.0, fp16/bf16)
+//   - T is NOT float (flash attention requires fp16/bf16)
+template <typename T>
+Status Attention<T>::FlashAttentionForExternalKVCache(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t cuda_stream,
+    const Tensor* Q,
+    const Tensor* K,
+    const Tensor* V,
+    Tensor* Y,
+    Tensor* present_key,
+    Tensor* present_value,
+    const int* seqlens_k,
+    const attention_helper::AttentionParameters& parameters,
+    bool is_bf16,
+    onnxruntime::Stream* ort_stream) const {
+
+  // Allocate softmax_lse buffer (required by flash attention)
+  size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(
+      parameters.q_sequence_length, parameters.batch_size, parameters.q_num_heads);
+
+  // Compute num_splits and accumulation buffer sizes
+  auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
+      onnxruntime::flash::get_num_splits_and_buffer_sizes(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.kv_sequence_length,
+          parameters.q_num_heads, parameters.head_size,
+          device_prop.multiProcessorCount);
+
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, ort_stream);
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, ort_stream);
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, ort_stream);
+
+  if (softmax_lse_accum_bytes > 0) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0,
+                                         softmax_lse_accum_bytes, cuda_stream));
+  }
+  if (out_accum_bytes > 0) {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum_buffer.get(), 0,
+                                         out_accum_bytes, cuda_stream));
+  }
+
+  // Call mha_fwd_kvcache with the full external KV cache.
+  // K/V are BSNH: [B, total_kv_seq, kv_heads, head_size]
+  // Q is BSNH: [B, q_seq, q_heads, head_size]
+  // No new tokens to append (k=nullptr, v=nullptr) since the cache is fully assembled.
+  ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
+      device_prop,
+      cuda_stream,
+      const_cast<void*>(static_cast<const void*>(Q->Data<T>())),
+      const_cast<void*>(static_cast<const void*>(K->Data<T>())),
+      const_cast<void*>(static_cast<const void*>(V->Data<T>())),
+      /*k=*/nullptr,
+      /*v=*/nullptr,
+      static_cast<void*>(Y->MutableData<T>()),
+      /*softmax_lse=*/softmax_lse_buffer.get(),
+      /*seqlens_k=*/const_cast<void*>(static_cast<const void*>(seqlens_k)),
+      /*rotary_cos=*/nullptr,
+      /*rotary_sin=*/nullptr,
+      /*cache_batch_idx=*/nullptr,
+      /*leftpad_k=*/nullptr,
+      /*head_sink=*/nullptr,
+      /*block_table=*/nullptr,
+      parameters.batch_size,
+      parameters.q_num_heads,
+      parameters.kv_num_heads,
+      parameters.head_size,
+      /*seqlen_q=*/parameters.q_sequence_length,
+      /*seqlen_k=*/parameters.kv_sequence_length,
+      /*seqlen_k_new=*/0,
+      /*rotary_dim=*/0,
+      /*softmax_scale=*/parameters.scale,
+      /*softcap=*/parameters.softcap,
+      parameters.is_causal,
+      is_bf16,
+      /*use_smooth_softmax=*/false,
+      /*past_bsnh=*/true,
+      static_cast<int>(num_splits),
+      softmax_lse_accum_buffer.get(),
+      out_accum_buffer.get(),
+      /*local_window_size=*/-1,
+      /*is_rotary_interleaved=*/false,
+      /*is_packed_qkv=*/false));
+
+  // Populate present_key/present_value outputs if requested.
+  // K/V are BSNH: [B, S, kv_heads, head_size]
+  // present_key/value are BNSH: [B, kv_heads, S, head_size]
+  if (present_key != nullptr) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.kv_sequence_length,
+          parameters.kv_num_heads, parameters.head_size,
+          reinterpret_cast<const half*>(K->Data<T>()),
+          reinterpret_cast<half*>(present_key->MutableData<T>()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.kv_sequence_length,
+          parameters.kv_num_heads, parameters.head_size,
+          K->Data<BFloat16>(),
+          present_key->MutableData<BFloat16>(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    }
+  }
+  if (present_value != nullptr) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.kv_sequence_length,
+          parameters.kv_num_heads, parameters.v_head_size,
+          reinterpret_cast<const half*>(V->Data<T>()),
+          reinterpret_cast<half*>(present_value->MutableData<T>()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.kv_sequence_length,
+          parameters.kv_num_heads, parameters.v_head_size,
+          V->Data<BFloat16>(),
+          present_value->MutableData<BFloat16>(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    }
+  }
+
+  return Status::OK();
+}
+#endif  // USE_FLASH_ATTENTION
+
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* Q = context->Input<Tensor>(0);
@@ -163,6 +297,52 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                              "4D QKV inputs (BNSH format) are not supported yet in GQA path of Attention op (CUDA). "
                              "Please use 3D inputs (B, S, hidden_size) instead.");
     }
+
+    // External KV cache path: when nonpad_kv_seqlen is provided and kv_seq > q_seq,
+    // the full KV cache is passed directly (e.g., from TensorScatter).
+    // Bypass the GQA kernel's ConcatNewToPastKV and call flash attention directly.
+    // This check is before the is_causal/qk_matmul_output_mode/softmax_precision guards
+    // because our flash path supports non-causal attention and doesn't use those features.
+    if (parameters.kv_sequence_length != parameters.q_sequence_length) {
+      if (!parameters.has_nonpad_kv_seqlen) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "Cross-attention (kv_sequence_length != q_sequence_length) without "
+                               "nonpad_kv_seqlen is not supported in GQA path of Attention op (CUDA). "
+                               "kv_sequence_length=", parameters.kv_sequence_length,
+                               ", q_sequence_length=", parameters.q_sequence_length);
+      }
+#if USE_FLASH_ATTENTION
+      auto& device_prop_ext = GetDeviceProp();
+      if (!onnxruntime::flash::is_supported<T>(device_prop_ext, parameters.head_size,
+                                                parameters.q_num_heads, parameters.kv_num_heads)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "Flash attention is not supported on this device for the external KV cache "
+                               "GQA path. Requires SM >= 8.0, fp16/bf16, head_size <= 256.");
+      }
+
+      auto seqlens_k_flash = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+      auto cuda_stream_ext = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+      ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
+          nonpad_kv_seqlen->Data<int64_t>(),
+          seqlens_k_flash.get(),
+          parameters.batch_size,
+          parameters.total_sequence_length,
+          cuda_stream_ext,
+          device_prop_ext.maxThreadsPerBlock));
+
+      bool is_bf16 = std::is_same<T, BFloat16>::value;
+      return FlashAttentionForExternalKVCache(
+          device_prop_ext, cuda_stream_ext,
+          Q, K, V, Y, present_key, present_value,
+          seqlens_k_flash.get(), parameters, is_bf16,
+          context->GetComputeStream());
+#else
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Flash attention is required for external KV cache GQA path but is not available.");
+#endif
+    }
+
+    // Standard GQA path (self-attention: kv_seq == q_seq) requires these constraints
     // For now, GQA doesn't support qk_matmul_output_mode other than kNone
     if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -177,19 +357,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (!parameters.is_causal) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Non-causal attention is not supported yet in GQA path of Attention op (CUDA).");
-    }
-    // GQA kernel expects K/V input sequence length == Q sequence length (self-attention only)
-    // Cross-attention (kv_sequence_length != q_sequence_length) is not supported
-    // TODO(titaiwang): This self-attention constraint prevents the TensorScatter external KV
-    // cache pattern from using the GQA path on CUDA, since TensorScatter provides full KV
-    // (kv_seq = total_seq > q_seq). Requests with nonpad_kv_seqlen and kv_seq != q_seq
-    // must go through the MHA path instead. Relaxing this would enable flash/memory-efficient
-    // attention for the external KV cache use case.
-    if (parameters.kv_sequence_length != parameters.q_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Cross-attention (kv_sequence_length != q_sequence_length) is not supported in "
-                             "GQA path of Attention op (CUDA). kv_sequence_length=",
-                             parameters.kv_sequence_length, ", q_sequence_length=", parameters.q_sequence_length);
     }
 
     auto& device_prop = GetDeviceProp();
@@ -616,14 +783,54 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                "Using both nonpad_kv_seqlen and attn_mask simultaneously is not yet supported "
                                "in MHA path of Attention op (CUDA).");
       }
-      // Generate attention_bias from nonpad_kv_seqlen: (B, q_seq, T) where
-      // position t < nonpad_kv_seqlen[b] → 0.0, position t >= nonpad_kv_seqlen[b] → -inf.
-      // Broadcasts over heads (broadcast_attn_bias_dim_1 = true).
+
+      // Try flash attention for external KV cache (fp16/bf16 only)
+#if USE_FLASH_ATTENTION
+      if (!std::is_same<T, float>::value) {
+        auto& device_prop_mha = GetDeviceProp();
+        bool flash_supported = onnxruntime::flash::is_supported<T>(
+            device_prop_mha, parameters.head_size,
+            parameters.q_num_heads, parameters.kv_num_heads);
+
+        if (flash_supported) {
+          auto seqlens_k_flash = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+          auto cuda_stream_mha = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+          ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
+              nonpad_kv_seqlen->Data<int64_t>(),
+              seqlens_k_flash.get(),
+              parameters.batch_size,
+              parameters.total_sequence_length,
+              cuda_stream_mha,
+              device_prop_mha.maxThreadsPerBlock));
+
+          bool is_bf16 = std::is_same<T, BFloat16>::value;
+          return FlashAttentionForExternalKVCache(
+              device_prop_mha, cuda_stream_mha,
+              Q, K, V, Y, present_key, present_value,
+              seqlens_k_flash.get(), parameters, is_bf16,
+              context->GetComputeStream());
+        }
+      }
+#endif
+
+      // Fallback: fp32 or flash not available — use attention_bias + unfused path.
+      // Guard against excessive memory usage in unfused O(n²) attention.
       using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
       int64_t bias_elements = static_cast<int64_t>(parameters.batch_size) *
                               parameters.q_sequence_length *
                               parameters.total_sequence_length;
-      nonpad_kv_bias_buffer = GetScratchBuffer<void>(bias_elements * sizeof(NativeCudaT), context->GetComputeStream());
+      constexpr int64_t kMaxUnfusedBiasBytes = static_cast<int64_t>(128) * 1024 * 1024;
+      int64_t bias_bytes = bias_elements * static_cast<int64_t>(sizeof(NativeCudaT));
+      ORT_ENFORCE(bias_bytes <= kMaxUnfusedBiasBytes,
+                  "Unfused attention fallback for nonpad_kv_seqlen would allocate ", bias_bytes,
+                  " bytes for the attention bias (batch=", parameters.batch_size,
+                  ", q_seq=", parameters.q_sequence_length,
+                  ", total_seq=", parameters.total_sequence_length,
+                  "). This exceeds the ", kMaxUnfusedBiasBytes,
+                  "-byte limit and would likely cause OOM. "
+                  "Use float16 or bfloat16 to enable flash attention for this workload.");
+
+      nonpad_kv_bias_buffer = GetScratchBuffer<void>(bias_bytes, context->GetComputeStream());
       auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
       ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToAttentionBias<NativeCudaT>(
           nonpad_kv_seqlen->Data<int64_t>(),
@@ -660,18 +867,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
     data.qkv_format = contribop_parameters.qkv_format;
 
-    // TODO(titaiwang): Enable memory-efficient or flash attention for MHA + nonpad_kv_seqlen.
-    //
-    // Currently forces unfused O(n²) attention because:
-    //   - nonpad_kv_seqlen is converted to attention_bias (B, q_seq, total_seq)
-    //   - Flash attention requires attention_bias == nullptr (hard API constraint)
-    //   - Memory-efficient attention supports attention_bias (with alignment) but
-    //     is conservatively disabled pending validation
-    //
-    // This is safe for decode (q_seq=1) where the unfused path is cheap.
-    // WARNING: For prefill with large q_seq, unfused attention may OOM.
-    // Follow-up: enable memory-efficient attention, or add seqlens_k-style masking
-    // to MHA path (like GQA) to bypass attention_bias and enable flash attention.
+    // The MHA path uses unfused O(n²) attention for all remaining cases:
+    //   - fp32 with nonpad_kv_seqlen (attention_bias fallback; flash requires fp16/bf16)
+    //   - All cases without nonpad_kv_seqlen
+    // The nonpad fp16/bf16 case now uses flash attention (dispatched above via early return).
     data.use_flash_attention = false;
     data.use_memory_efficient_attention = false;
     data.fused_runner = nullptr;

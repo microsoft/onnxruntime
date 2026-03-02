@@ -84,6 +84,17 @@ Status LaunchConvertNonpadKvSeqlenToSeqlensK(
     cudaStream_t stream,
     int max_threads_per_block);
 
+// Like LaunchConvertNonpadKvSeqlenToSeqlensK but produces the actual count (no -1 offset).
+// Flash attention's mha_fwd_kvcache expects seqlens_k_ = number of valid tokens,
+// not the last-valid-index convention used by the GQA kernel.
+Status LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
+    const int64_t* nonpad_kv_seqlen,
+    int* seqlens_k,
+    int batch_size,
+    int total_sequence_length,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 // Convert nonpad_kv_seqlen to an additive attention bias for the MHA unfused path.
 // Generates a (batch_size, q_seq_len, total_seq_len) tensor where:
 //   position t < nonpad_kv_seqlen[b] → 0.0 (attend)
