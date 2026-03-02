@@ -181,6 +181,16 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   GET_ENV(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable, int8_use_native_migraphx_calibration_table_);
   GET_ENV_STRING(migraphx_env_vars::kCachePath, calibration_cache_path_);
   GET_ENV_STRING(migraphx_env_vars::kModelCachePath, model_cache_path_);
+
+  // Strip surrounding quotes from cache path.
+  {
+    std::string cache_path_str = model_cache_path_.string();
+    auto trimmed = Trim(cache_path_str, +[](int ch) -> int {
+      return ch != '"' && ch != '\'';
+    });
+    model_cache_path_ = std::filesystem::path{std::string{trimmed}};
+  }
+
   GET_ENV_BOOL(migraphx_env_vars::kDumpModelOps, dump_model_ops_);
   GET_ENV_BOOL(migraphx_env_vars::kExhaustiveTune, exhaustive_tune_);
   GET_ENV(migraphx_env_vars::kMaxCompiledModels, max_compiled_models_, max_compiled_models_ = std::stoul(max_compiled_models_env));
