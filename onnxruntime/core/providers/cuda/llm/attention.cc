@@ -409,8 +409,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                  "Boolean attn_mask must be 2D, 3D, or 4D. Got ", mask_dims, "D.");
         }
 
-      // Launch CUDA kernel to convert mask to seqlens_k and validate
-      // Mask validity (right-padding, contiguous) is checked asynchronously via CUDA_KERNEL_ASSERT.
+        // Launch CUDA kernel to convert mask to seqlens_k and validate
+        // Mask validity (right-padding, contiguous) is checked asynchronously via CUDA_KERNEL_ASSERT.
         ORT_RETURN_IF_ERROR(LaunchConvertMaskToSeqlensK(
             attn_mask->Data<bool>(),
             seqlens_k_buffer.get(),
