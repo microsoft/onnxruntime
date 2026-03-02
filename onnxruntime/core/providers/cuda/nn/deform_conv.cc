@@ -18,11 +18,29 @@ namespace {
 
 constexpr int kMaxParallelImgs = 32;
 
+// Returns the greatest divisor of n that is <= bound. Used to choose uniform batch chunk sizes.
+// Fast path: if n % bound == 0 (common for batch 32/64/128), return immediately.
+// When n >= bound^2, linear scan from bound down is O(bound). Otherwise divisor enumeration
+// from 1 to sqrt(n) is O(sqrt(n)). Uses integer comparison (no sqrt) for branch decision.
 int GetGreatestDivisorBelowBound(int n, int bound) {
-  for (int k = bound; k > 1; --k) {
-    if (n % k == 0) {
-      return k;
+  if (bound <= 0 || n <= 0) return 1;
+  if (n % bound == 0) return bound;  // Fast path: batch is multiple of target
+
+  // n >= bound^2 <=> bound <= sqrt(n) => linear scan is cheaper
+  if (static_cast<int64_t>(n) >= static_cast<int64_t>(bound) * bound) {
+    for (int k = bound - 1; k > 1; --k) {
+      if (n % k == 0) return k;
     }
+  } else {
+    // n < bound^2 <=> bound > sqrt(n) => divisor enumeration is cheaper
+    int best = 1;
+    for (int i = 1; static_cast<int64_t>(i) * i <= static_cast<int64_t>(n); ++i) {
+      if (n % i != 0) continue;
+      const int q = n / i;
+      if (q <= bound && q > best) best = q;
+      if (i <= bound && i > best) best = i;
+    }
+    return best;
   }
   return 1;
 }
