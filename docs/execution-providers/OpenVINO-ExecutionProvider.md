@@ -30,7 +30,7 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three latest rele
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---| 
-|1.24.0|2025.4.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.9)|
+|1.24.1|2025.4.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.9)|
 |1.23.0|2025.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.8)|
 |1.22.0|2025.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.7)|
 
