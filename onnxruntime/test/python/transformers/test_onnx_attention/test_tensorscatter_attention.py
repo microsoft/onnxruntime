@@ -37,9 +37,10 @@ IO Binding enables in-place cache updates: the same OrtValue buffer is bound as
 both TensorScatter input (key_cache/value_cache) and output
 (updated_key_cache/updated_value_cache), avoiding unnecessary copies.
 
-CUDA limitations:
-  - GQA path (kv_num_heads != q_num_heads) requires is_causal=1 and float16
-  - MHA path (kv_num_heads == q_num_heads) supports float32 and non-causal
+CUDA support:
+  - GQA path (kv_num_heads != q_num_heads) uses flash attention for external KV cache (fp16/bf16)
+  - MHA path (kv_num_heads == q_num_heads) uses flash attention for fp16/bf16,
+    unfused attention_bias fallback for fp32
 """
 
 import math
@@ -403,6 +404,9 @@ _GQA_CASES = [
     (2, 1, 8, 2, [4, 4], [5, 5], "gqa_same_lens"),
     (2, 1, 8, 2, [0, 3], [1, 4], "gqa_one_empty"),
     (2, 1, 8, 2, [7, 7], [8, 8], "gqa_full_len"),
+    # Additional GQA ratios
+    (2, 1, 16, 4, [2, 5], [3, 6], "gqa_16h_4kvh"),
+    (2, 1, 6, 3, [3, 3], [4, 4], "gqa_6h_3kvh"),
 ]
 
 _MHA_CASES = [
@@ -440,14 +444,14 @@ def cpu_test_cases():
 
 
 def cuda_fp16_test_cases():
-    """CUDA fp16: MHA only. CUDA GQA path requires self-attention (kv_seq == q_seq)
-    which is incompatible with the decode-step TensorScatter pattern."""
-    yield from _make_test_params(_MHA_CASES, is_causal=0)
-    yield from _make_test_params(_MHA_CASES, is_causal=1)
+    """CUDA fp16: both GQA and MHA cases. Flash attention handles external KV cache directly."""
+    yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=0)
+    yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=1)
 
 
 def cuda_fp32_test_cases():
-    """CUDA fp32: MHA only (CUDA GQA path requires float16)."""
+    """CUDA fp32: MHA only. GQA requires fp16/bf16, and flash attention requires fp16/bf16.
+    fp32 MHA uses the unfused attention_bias fallback path."""
     yield from _make_test_params(_MHA_CASES, is_causal=0)
     yield from _make_test_params(_MHA_CASES, is_causal=1)
 
