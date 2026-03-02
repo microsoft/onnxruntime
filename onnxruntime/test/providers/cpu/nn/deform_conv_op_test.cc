@@ -176,7 +176,15 @@ TEST(DeformConvTest, MinimalBilinear) {
 
 // Minimal case FP16: Same as MinimalBilinear but in FP16.
 // Validates CUDA FP16 implementation (specifically coordinate precision logic).
+// DeformConv FP16 is CUDA-only; skip when CUDA is not available (e.g., Linux x64/arm64 CPU-only builds).
+#if defined(USE_CUDA)
 TEST(DeformConvTest, MinimalBilinearFP16) {
+  int min_cuda_architecture = 530;  // FP16 requires SM 5.3+
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "DeformConv FP16: CUDA not available, skipping.";
+    return;
+  }
+
   DeformConvTestParams p = {};
   p.batch_sz = 1;
   p.n_in_channels = 1;
@@ -203,7 +211,6 @@ TEST(DeformConvTest, MinimalBilinearFP16) {
 }
 
 // Minimal case BFloat16: Same as MinimalBilinear but in BFloat16 (CUDA BFloat16 coordinate precision).
-#if defined(USE_CUDA)
 TEST(DeformConvTest, MinimalBilinearBFloat16) {
   int min_cuda_architecture = 800;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
@@ -235,7 +242,7 @@ TEST(DeformConvTest, MinimalBilinearBFloat16) {
 
   RunDeformConvTest<BFloat16>(p, X, W, offset, B, &mask, expected_Y, 22);
 }
-#endif
+#endif  // defined(USE_CUDA)
 
 // Minimal case Double (FP64): Same as MinimalBilinear in double precision.
 TEST(DeformConvTest, MinimalBilinearDouble) {
@@ -264,8 +271,15 @@ TEST(DeformConvTest, MinimalBilinearDouble) {
   RunDeformConvTest<double>(p, X, W, offset, B, &mask, expected_Y);
 }
 
-// Forward with mask and bias FP16
+// Forward with mask and bias FP16 (CUDA-only; skip when CUDA not available).
+#if defined(USE_CUDA)
 TEST(DeformConvTest, ForwardWithMaskAndBiasFP16) {
+  int min_cuda_architecture = 530;  // FP16 requires SM 5.3+
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "DeformConv FP16: CUDA not available, skipping.";
+    return;
+  }
+
   DeformConvTestParams p = {};
   p.batch_sz = 2;
   p.n_in_channels = 4;
@@ -305,6 +319,8 @@ TEST(DeformConvTest, ForwardWithMaskAndBiasFP16) {
 
   RunDeformConvTest<MLFloat16>(p, X, W, offset, B, &mask, expected_Y);
 }
+#endif  // defined(USE_CUDA)
+
 // With offset=0 and mask=1, Y = Conv(X,W) + B. Use small inputs and compute expected.
 TEST(DeformConvTest, ForwardWithMaskAndBias) {
   DeformConvTestParams p = {};
