@@ -382,7 +382,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       // the MHA path below, where 2D masks follow ONNX broadcasting: [A, B] → [1, 1, A, B], so
       // 2D = (q_seq_len, total_seq_len) with both batch and heads broadcast.
       if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
-      // Allocate validation result buffer on GPU
+        // Allocate validation result buffer on GPU
         // Get mask dimensions for broadcasting
         // attn_mask can be 2D, 3D, or 4D and broadcasts to (batch_size, num_heads, q_seq_len, total_seq_len)
         const auto& mask_shape = attn_mask->Shape();
