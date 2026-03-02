@@ -472,7 +472,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
     bind_buffers_byte_offsets.push_back(0);  // uniform buffer has no byte offset
-    bind_buffers_segments.push_back(1);  // uniform buffer defaults to 1 segment
+    bind_buffers_segments.push_back(1);      // uniform buffer defaults to 1 segment
   }
 
   LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_byte_offsets, bind_buffers_segments, *program_artifact, x, y, z, program.IndirectDispatchTensor());

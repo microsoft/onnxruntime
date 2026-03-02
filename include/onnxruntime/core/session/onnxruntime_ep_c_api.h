@@ -127,9 +127,6 @@ struct OrtDataTransferImpl {
    * \param[in] this_ptr Pointer to the OrtDataTransferImpl instance.
    * \param[in] src_tensors Array of source OrtValue pointers to copy from.
    * \param[in] dst_tensors Array of destination OrtValue pointers to copy to.
-   * \param[in] source_offsets Optional array of source offsets in bytes. May be nullptr for all zeros.
-   * \param[in] destination_offsets Optional array of destination offsets in bytes. May be nullptr for all zeros.
-   * \param[in] sizes Optional array of sizes in bytes to copy. May be nullptr to copy entire tensors.
    * \param[in] streams Array of OrtSyncStream pointers for the copy operations, if the execution provider is stream
    *                    aware. nullptr if it is not.
    * \param[in] num_tensors Number of tensors to copy.
@@ -141,9 +138,6 @@ struct OrtDataTransferImpl {
   ORT_API2_STATUS(CopyTensors, _In_ OrtDataTransferImpl* this_ptr,
                   _In_reads_(num_tensors) const OrtValue** src_tensors,
                   _In_reads_(num_tensors) OrtValue** dst_tensors,
-                  _In_reads_opt_(num_tensors) const size_t* source_offsets,
-                  _In_reads_opt_(num_tensors) const size_t* destination_offsets,
-                  _In_reads_opt_(num_tensors) const size_t* sizes,
                   _In_reads_(num_tensors) OrtSyncStream** streams,
                   _In_ size_t num_tensors);
 };

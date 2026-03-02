@@ -57,9 +57,6 @@ void CopyImpl(const void* src_data, void* dst_data, size_t bytes, OrtSyncStream*
 OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
                                                              const OrtValue** src_tensors_ptr,
                                                              OrtValue** dst_tensors_ptr,
-                                                             const size_t* src_offsets,
-                                                             const size_t* dst_offsets,
-                                                             const size_t* sizes,
                                                              OrtSyncStream** streams_ptr,
                                                              size_t num_tensors) noexcept {
   auto& impl = *static_cast<ExampleDataTransfer*>(this_ptr);
@@ -89,14 +86,6 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(OrtDataTransferImpl
     RETURN_IF_ERROR(impl.ort_api_.GetTensorMutableData(dst_tensors[i], &dst_data));
     RETURN_IF_ERROR(impl.ort_api_.GetTensorSizeInBytes(src_tensors[i], &bytes));
 
-    // Apply offsets if provided
-    size_t src_offset = src_offsets ? src_offsets[i] : 0;
-    size_t dst_offset = dst_offsets ? dst_offsets[i] : 0;
-    size_t copy_size = sizes ? sizes[i] : bytes;
-
-    const void* actual_src = static_cast<const uint8_t*>(src_data) + src_offset;
-    void* actual_dst = static_cast<uint8_t*>(dst_data) + dst_offset;
-
     if (dst_device_type == OrtMemoryInfoDeviceType_GPU) {
       if (src_device_type == OrtMemoryInfoDeviceType_GPU) {
         // GPU -> GPU
@@ -110,7 +99,7 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(OrtDataTransferImpl
     }
 
     // but in our example EP it's simpler as it's really a (fake) CPU to CPU copy
-    CopyImpl(actual_src, actual_dst, copy_size, streams_ptr ? streams_ptr[i] : nullptr);
+    CopyImpl(src_data, dst_data, bytes, streams_ptr ? streams_ptr[i] : nullptr);
   }
 
   return nullptr;
