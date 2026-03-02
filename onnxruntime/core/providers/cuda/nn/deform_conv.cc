@@ -202,6 +202,11 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
       // lda = cur_out_size.
       // ldb = kernel_dim.
       // ldc = cur_out_size.
+      //
+      // When cur_parallel == 1: cur_out_size == output_image_size, so C layout (pos, channel) matches
+      // NCHW Y_g[0, channel, pos] exactly. Write directly to Y_g and skip the copy kernel.
+      // When cur_parallel > 1: layouts differ, must copy via DeformConvCopyGemmOutputRowMajorToNCHW.
+      const bool gemm_writes_directly = (cur_parallel == 1);
 
       CUBLAS_RETURN_IF_ERROR((cublasGemmHelper(
           cublas,
@@ -216,21 +221,21 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<const CudaT*>(W_g),
           narrow<int>(kernel_dim),
           &beta,
-          reinterpret_cast<CudaT*>(gemm_output_buffer.get()),
-          narrow<int>(cur_out_size),
+          (gemm_writes_directly ? reinterpret_cast<CudaT*>(Y_g) : reinterpret_cast<CudaT*>(gemm_output_buffer.get())),
+          narrow<int>(gemm_writes_directly ? output_image_size : cur_out_size),
           device_prop,
           UseTF32())));
 
-      // The output gemm_output_buffer is now Row-Major [M/group, cur_out_size].
-      // We need to copy it to Y_g (NCHW).
-      ORT_RETURN_IF_ERROR(DeformConvCopyGemmOutputRowMajorToNCHW<T>(
-          stream,
-          gemm_output_buffer.get(),
-          Y_g,
-          M,
-          M / group,
-          output_image_size,
-          cur_parallel));
+      if (!gemm_writes_directly) {
+        ORT_RETURN_IF_ERROR(DeformConvCopyGemmOutputRowMajorToNCHW<T>(
+            stream,
+            gemm_output_buffer.get(),
+            Y_g,
+            M,
+            M / group,
+            output_image_size,
+            cur_parallel));
+      }
     }
   }
 
