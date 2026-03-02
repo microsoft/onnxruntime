@@ -3,6 +3,10 @@
 Generate expected outputs for DeformConv tests using torchvision.ops.deform_conv2d.
 Run with: .venv/bin/python onnxruntime/test/providers/cpu/nn/deform_conv_expected_gen.py
 Outputs C++-friendly std::vector<float> initializer lists for pasting into deform_conv_op_test.cc
+
+Limitation: Uses symmetric padding only. PyTorch padding=(pad_h, pad_w) and ONNX pads
+[pad_h, pad_w, pad_h, pad_w] are derived from a single (pad_h, pad_w) pair. Asymmetric
+pads (e.g. pad_top != pad_bottom) would require PyTorch API support and are not generated.
 """
 import torch
 import torchvision.ops
@@ -41,7 +45,7 @@ def run_case(name: str, batch_sz: int, n_in: int, n_out: int, n_weight_grps: int
         stride=(stride_h, stride_w), padding=(pad_h, pad_w), dilation=(dil_h, dil_w), mask=mask
     )
 
-    # ONNX pads = [top, left, bottom, right]
+    # ONNX pads = [top, left, bottom, right] (symmetric: single pad_h, pad_w expanded)
     pads_onnx = [pad_h, pad_w, pad_h, pad_w]
 
     print(f"// --- {name} (seed={seed}) ---")
