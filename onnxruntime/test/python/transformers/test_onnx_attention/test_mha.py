@@ -1028,19 +1028,20 @@ def mha_nonpad_kv_seqlen_test_cases():
     """
     Generate test cases for ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen.
 
-    In prompt mode (q_seq == kv_seq), the real TensorScatter workflow always has all tokens
-    valid, so nonpad_kv_seqlen = total_kv_sequence_length (mask nothing). Partial masking
-    (nonpad < kv_sequence_length) is only used for decode (q_seq != kv_seq).
+    Unlike GQA, the MHA path routes ALL nonpad_kv_seqlen cases (prompt and decode) to
+    FlashAttentionForExternalKVCache, which correctly handles partial masking.
+    Full-length tests verify the no-masking case; partial-length tests verify actual masking.
     """
     h = 128
     sq = 16
     skv = 16
     n = 8
 
-    # In prompt mode, nonpad_kv_seqlen should equal total_kv_sequence_length (all tokens valid).
+    # MHA supports partial masking in prompt mode via FlashAttentionForExternalKVCache.
     seqlen_scenarios = [
         (1, [16], "single_batch"),
         (2, [16, 16], "full_len"),
+        (2, [3, 5], "partial_mask"),
         (4, [16, 16, 16, 16], "multi_batch"),
     ]
 
@@ -1060,7 +1061,7 @@ def mha_nonpad_kv_seqlen_test_cases():
         name = f"b{batch_size}_sq{sq}_skv{skv}_nh{n}_h{h}_{label}"
         yield name, config, seqlens
 
-    # Causal variation (all tokens valid in prompt mode)
+    # Causal variation with full length (causal + partial masking interaction is unsupported)
     config_c = AttentionConfig(
         batch_size=2,
         q_sequence_length=sq,
