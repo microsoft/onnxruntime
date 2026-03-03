@@ -174,6 +174,20 @@ struct TestDataType {
   }
 };
 
+// Helper that wraps a single Parameter offset into a finished Adapter flatbuffer
+// and returns a pointer to the deserialized Parameter.
+// The FlatBufferBuilder must outlive the returned pointer.
+const adapters::Parameter* BuildAdapterAndGetParam(flatbuffers::FlatBufferBuilder& fbb,
+                                                   flatbuffers::Offset<adapters::Parameter> param_offset) {
+  auto params_offset = fbb.CreateVector(&param_offset, 1);
+  auto adapter_offset = adapters::CreateAdapter(
+      fbb, adapters::kAdapterFormatVersion, kAdapterVersion, kModelVersion, params_offset);
+  adapters::FinishAdapterBuffer(fbb, adapter_offset);
+
+  const auto* adapter = adapters::GetAdapter(fbb.GetBufferPointer());
+  return adapter->parameters()->Get(0);
+}
+
 }  // namespace
 
 TEST(LoraAdapterTest, Load) {
@@ -339,6 +353,93 @@ TEST(LoraAdapterTest, Load_RawDataSizeMismatch) {
 
   lora::LoraAdapter adapter;
   ASSERT_THROW(adapter.Load(std::move(buffer)), OnnxRuntimeException);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_MissingName) {
+  // Parameter with null name should throw gracefully.
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> dims = {2, 2};
+  std::vector<uint8_t> raw_data(16, 0);  // 2*2 floats = 16 bytes
+
+  // name is nullptr, all other fields are valid
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, /*name=*/nullptr, &dims, adapters::TensorDataType::FLOAT, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->name(), nullptr);
+
+  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_MissingDims) {
+  // Parameter with null dims should throw gracefully.
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<uint8_t> raw_data(16, 0);
+
+  // dims is nullptr
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "no_dims_param", /*dims=*/nullptr, adapters::TensorDataType::FLOAT, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->dims(), nullptr);
+
+  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_EmptyDims) {
+  // Parameter with an empty dims vector should throw gracefully.
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> empty_dims;
+  std::vector<uint8_t> raw_data(16, 0);
+
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "empty_dims_param", &empty_dims, adapters::TensorDataType::FLOAT, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->dims()->size(), 0u);
+
+  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_MissingRawData) {
+  // Parameter with null raw_data should throw gracefully.
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> dims = {2, 2};
+
+  // raw_data is nullptr
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "no_data_param", &dims, adapters::TensorDataType::FLOAT, /*raw_data=*/nullptr);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->raw_data(), nullptr);
+
+  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndefinedDataType) {
+  // Parameter with UNDEFINED data_type should throw gracefully.
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> dims = {2, 2};
+  std::vector<uint8_t> raw_data(16, 0);
+
+  // data_type defaults to UNDEFINED when not set
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "undef_type_param", &dims, adapters::TensorDataType::UNDEFINED, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->data_type(), adapters::TensorDataType::UNDEFINED);
+
+  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
 }
 
 #ifdef USE_CUDA

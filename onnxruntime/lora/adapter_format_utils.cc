@@ -150,18 +150,32 @@ struct ReadDataForBigEndian {
 std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter& param) {
   OrtValue result;
 
+  const auto* param_name = param.name();
+  ORT_ENFORCE(param_name != nullptr, "Lora Parameter: name is missing");
+
   std::string name;
-  LoadStringFromLoraFormat(name, param.name());
+  LoadStringFromLoraFormat(name, param_name);
 
   const auto data_type = param.data_type();
+  ORT_ENFORCE(data_type != TensorDataType::UNDEFINED,
+              "Lora Param '", name, "': data_type is UNDEFINED");
+
+  const auto* dims = param.dims();
+  ORT_ENFORCE(dims != nullptr && dims->size() > 0,
+              "Lora Param '", name, "': dims is missing or empty");
+
+  const auto* raw_data = param.raw_data();
+  ORT_ENFORCE(raw_data != nullptr,
+              "Lora Param '", name, "': raw_data is missing");
+
   // Copying shape takes care of endianess using flatbuffers accessors
-  TensorShapeVector shape(param.dims()->begin(), param.dims()->end());
+  TensorShapeVector shape(dims->begin(), dims->end());
   TensorShape tensor_shape(shape);
   const auto elem_type = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int32_t>(data_type))->GetElementType();
   const size_t expected_raw_data_size = SafeInt<size_t>(tensor_shape.Size()) * elem_type->Size();
-  if (param.raw_data()->size() != expected_raw_data_size) {
+  if (raw_data->size() != expected_raw_data_size) {
     ORT_THROW("Lora Param '", name,
-              "': raw_data size (", param.raw_data()->size(),
+              "': raw_data size (", raw_data->size(),
               ") does not match expected size (", expected_raw_data_size,
               ") calculated from tensor shape and element type");
   }
@@ -177,7 +191,7 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
       // const_cast is necessary due to Tensor class API
       Tensor::InitOrtValue(elem_type,
                            tensor_shape,
-                           const_cast<uint8_t*>(param.raw_data()->data()),
+                           const_cast<uint8_t*>(raw_data->data()),
                            cpu_meminfo,
                            result);
     }
@@ -185,7 +199,7 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
     // const_cast is necessary due to Tensor class API
     Tensor::InitOrtValue(elem_type,
                          tensor_shape,
-                         const_cast<uint8_t*>(param.raw_data()->data()),
+                         const_cast<uint8_t*>(raw_data->data()),
                          cpu_meminfo,
                          result);
   }
