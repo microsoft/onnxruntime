@@ -97,3 +97,6 @@ target_link_libraries(
   ${log-lib} # <-- Logcat logger
   android # <-- Android JNI core
 )
+
+# 16KB page size support (Android 15+ requirement)
+target_link_options(onnxruntimejsi PRIVATE "-Wl,-z,max-page-size=16384")
