@@ -36,7 +36,6 @@ static OpKernelTypeStrMap::const_iterator LookUpOpId(const OpIdentifier& op_id,
     }
   }
 
-#ifdef USE_KLEIDIAI
   // KleidiAI specific block for NhwcFusedConvolutions
   if (op_it == map.end() && op_id.domain == kMSDomain && op_id.op_type == "NhwcFusedConv") {
     const auto fused_conv_op_id = OpIdentifier{std::string{kMSDomain}, "FusedConv", op_id.since_version};
@@ -46,7 +45,6 @@ static OpKernelTypeStrMap::const_iterator LookUpOpId(const OpIdentifier& op_id,
       op_it = map.find(conv_op_id);
     }
   }
-#endif
 
   return op_it;
 }

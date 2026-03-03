@@ -9,7 +9,10 @@
 #include "gtest/gtest.h"
 
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/graph/constants.h"
+#include "core/graph/model.h"
 #include "core/graph/schema_registry.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime::test {
@@ -48,6 +51,37 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
   }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromFusedConvSchema) {
+  SchemaRegistryManager schema_registry;
+  const auto* fused_conv_schema = schema_registry.GetSchema("FusedConv", 1, kMSDomain);
+  ASSERT_NE(fused_conv_schema, nullptr);
+
+  KernelTypeStrResolver resolver;
+  ASSERT_STATUS_OK(resolver.RegisterOpSchema(*fused_conv_schema));
+
+  Model model("nhwc_fused_conv_resolver_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  auto* tensor_type = float_tensor.mutable_tensor_type();
+  tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& x = graph.GetOrCreateNodeArg("x", &float_tensor);
+  auto& w = graph.GetOrCreateNodeArg("w", &float_tensor);
+  auto& y = graph.GetOrCreateNodeArg("y", &float_tensor);
+
+  auto& nhwc_fused_conv = graph.AddNode(
+      "nhwc_fused_conv", "NhwcFusedConv", "test node", {&x, &w}, {&y}, nullptr, kMSDomain);
+  nhwc_fused_conv.SetSinceVersion(1);
+
+  gsl::span<const ArgTypeAndIndex> resolved_args;
+  ASSERT_STATUS_OK(resolver.ResolveKernelTypeStr(nhwc_fused_conv, "T", resolved_args));
+  ASSERT_FALSE(resolved_args.empty());
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 // run this test manually to output a hard-coded byte array.
 // update AddLayoutTransformationRequiredOpsToKernelTypeStrResolver in
