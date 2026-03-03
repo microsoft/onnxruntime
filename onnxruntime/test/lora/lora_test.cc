@@ -415,7 +415,7 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndefinedDataType) {
   ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
 }
 
-#endif  //
+#endif  // ORT_NO_EXCEPTIONS
 
 #ifdef USE_CUDA
 TEST(LoraAdapterTest, VerifyDeviceCopy) {
