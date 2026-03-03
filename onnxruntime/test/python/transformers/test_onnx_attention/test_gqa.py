@@ -1105,64 +1105,6 @@ def gqa_nonpad_kv_seqlen_test_cases():
         yield name, config, seqlens
 
 
-@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
-class TestONNXAttentionGQANonpadKVSeqlen(unittest.TestCase):
-    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen."""
-
-    @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
-    def test_gqa_nonpad_kv_seqlen_flash(self, name, config, seqlens):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
-
-        parity_check_gqa_prompt_with_nonpad_kv_seqlen(
-            config=config,
-            nonpad_seqlens=nonpad_seqlens,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
-
-
-@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
-class TestONNXAttentionGQANonpadKVSeqlenMEA(unittest.TestCase):
-    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen using Memory Efficient Attention."""
-
-    @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
-    def test_gqa_nonpad_kv_seqlen_mea(self, name, config, seqlens):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
-
-        parity_check_gqa_prompt_with_nonpad_kv_seqlen(
-            config=config,
-            nonpad_seqlens=nonpad_seqlens,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
-
-
-@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
-class TestONNXAttentionGQANonpadKVSeqlenPartialMaskUnsupported(unittest.TestCase):
-    """Document that partial nonpad_kv_seqlen masking is unsupported in GQA prompt mode."""
-
-    @unittest.skip(
-        "GQA kernel uses padded_seq_lens (hardcoded to sequence_length) in prompt mode, "
-        "ignoring partial seqlens_k masking. Partial masking only works for decode "
-        "(q_seq != kv_seq) via FlashAttentionForExternalKVCache."
-    )
-    def test_partial_mask_prompt_unsupported(self):
-        # nonpad_kv_seqlen = [3, 5] with kv_sequence_length = 16
-        # This would require the GQA kernel to mask positions 3-15 and 5-15,
-        # but is_first_prompt=true causes padded_seq_lens = sequence_length.
-        pass
-
-
 class TestONNXAttentionGQANonpadKVSeqlenCPU(unittest.TestCase):
     """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen on CPU."""
 

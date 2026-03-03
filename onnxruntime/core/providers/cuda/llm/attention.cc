@@ -592,19 +592,15 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // 2D = (q_seq_len, total_seq_len) with both batch and heads broadcast.
     if (parameters.has_nonpad_kv_seqlen) {
       if (gqa_parameters.is_first_prompt) {
-        // In prompt mode (is_first_prompt=true), the GQA flash/efficient attention kernels use
-        // padded_seq_lens (hardcoded to sequence_length) instead of total_seq_lens, so seqlens_k
-        // doesn't affect masking. nonpad_kv_seqlen masking is only meaningful for decode
-        // (q_seq != kv_seq), which routes to FlashAttentionForExternalKVCache above.
-        // Fill seqlens_k with total_sequence_length - 1 (all tokens valid) so it masks nothing.
-        LOGS_DEFAULT(VERBOSE) << "GQA prompt mode does not support partial KV masking via "
-                              << "nonpad_kv_seqlen; all tokens treated as valid. "
-                              << "Use MHA (q_num_heads == kv_num_heads) for partial masking "
-                              << "in prompt mode.";
-        std::vector<int> seqlens_k_host(parameters.batch_size, parameters.total_sequence_length - 1);
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seqlens_k_buffer.get(), seqlens_k_host.data(),
-                                             sizeof(int) * parameters.batch_size,
-                                             cudaMemcpyHostToDevice, cuda_stream));
+        // GQA prompt mode does not support nonpad_kv_seqlen masking. The GQA flash/efficient
+        // attention kernels use padded_seq_lens (hardcoded to sequence_length) instead of
+        // total_seq_lens in prompt mode, so seqlens_k doesn't affect masking.
+        // Reject this combination to prevent silent incorrect behavior.
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "GQA prompt mode (q_sequence_length == kv_sequence_length) does not support "
+                               "partial KV masking via nonpad_kv_seqlen on CUDA. The GQA kernel ignores "
+                               "seqlens_k in prompt mode. Use MHA (set q_num_heads == kv_num_heads) for "
+                               "partial masking, or ensure nonpad_kv_seqlen is not passed in GQA prompt mode.");
       } else {
         // Convert nonpad_kv_seqlen (int64, GPU) to seqlens_k (int32, GPU).
         // GQA convention: seqlens_k[i] = nonpad_kv_seqlen[i] - 1 (last valid index, not count).
