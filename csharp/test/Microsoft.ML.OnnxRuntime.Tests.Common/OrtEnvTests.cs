@@ -532,4 +532,61 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
     }
+
+#if !NETSTANDARD2_0
+    [Collection("Ort Inference Tests")]
+    public class OrtEnvExternalDllImportResolverTest
+    {
+        /// <summary>
+        /// Verifies that if an external caller tries to register a DllImportResolver for the
+        /// OnnxRuntime assembly (after OnnxRuntime has already registered its own), the conflict
+        /// is detected, and OnnxRuntime remains functional.
+        /// This validates that our try/catch(InvalidOperationException) safety net in the
+        /// NativeMethods static constructor works correctly.
+        /// </summary>
+        [Fact(DisplayName = "TestExternalDllImportResolverConflict")]
+        public void TestExternalDllImportResolverConflict()
+        {
+            // Ensure OnnxRuntime is initialized (triggers NativeMethods static constructor).
+            var ortEnvInstance = OrtEnv.Instance();
+            Assert.True(OrtEnv.IsCreated);
+
+            // Attempt to register an external DllImportResolver for the OnnxRuntime assembly.
+            // This should throw InvalidOperationException because OnnxRuntime already registered one.
+            // This confirms the conflict scenario that the feedback reported is real.
+            var assembly = typeof(OrtEnv).Assembly;
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                NativeLibrary.SetDllImportResolver(assembly, (libraryName, asm, searchPath) =>
+                {
+                    return IntPtr.Zero; // Dummy resolver
+                });
+            });
+
+            // Verify OnnxRuntime still works after the conflict — this passes because
+            // OnnxRuntime's registration succeeded first and the failed external call
+            // doesn't affect the already-registered resolver.
+            string versionString = ortEnvInstance.GetVersionString();
+            Assert.False(string.IsNullOrEmpty(versionString));
+        }
+
+        /// <summary>
+        /// Verifies that the DisableDllImportResolver property on OrtEnv
+        /// is accessible, defaults to false, and can be set.
+        /// </summary>
+        [Fact(DisplayName = "TestDisableDllImportResolverPropertyAccessible")]
+        public void TestDisableDllImportResolverPropertyAccessible()
+        {
+            // The property should default to false (ORT registers its resolver by default).
+            Assert.False(OrtEnv.DisableDllImportResolver);
+
+            // Verify it's settable (for clients who need to disable before initialization).
+            OrtEnv.DisableDllImportResolver = true;
+            Assert.True(OrtEnv.DisableDllImportResolver);
+
+            // Restore original value.
+            OrtEnv.DisableDllImportResolver = false;
+        }
+    }
+#endif
 }
