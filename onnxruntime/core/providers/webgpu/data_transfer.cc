@@ -13,31 +13,44 @@ bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_dev
          (dst_device.Type() == OrtDevice::CPU && src_device.Type() == OrtDevice::GPU);
 }
 
-common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
-  size_t bytes = src.SizeInBytes();
+common::Status DataTransfer::CopyTensorImpl(void const* src_data,
+                                            bool src_is_gpu,
+                                            void* dst_data,
+                                            bool dst_is_gpu,
+                                            size_t bytes) const {
   if (bytes > 0) {
-    void const* src_data = src.DataRaw();
-    void* dst_data = dst.MutableDataRaw();
-
-    auto& src_device = src.Location().device;
-    auto& dst_device = dst.Location().device;
-
-    if (dst_device.Type() == OrtDevice::GPU) {
-      if (src_device.Type() == OrtDevice::GPU) {
+    if (dst_is_gpu) {
+      if (src_is_gpu) {
         // copy from GPU to GPU
         buffer_manager_.MemCpy(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                               static_cast<WGPUBuffer>(dst_data), bytes);
+                               static_cast<WGPUBuffer>(dst_data),
+                               bytes);
       } else {
         // copy from CPU to GPU
-        buffer_manager_.Upload(const_cast<void*>(src_data), static_cast<WGPUBuffer>(dst_data), bytes);
+        buffer_manager_.Upload(const_cast<void*>(src_data),
+                               static_cast<WGPUBuffer>(dst_data),
+                               bytes);
       }
-    } else /* if (src_device.Type() == OrtDevice::GPU) */ {
+    } else {
       // copy from GPU to CPU
-      buffer_manager_.Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)), dst_data, bytes);
+      buffer_manager_.Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
+                               dst_data,
+                               bytes);
     }
   }
 
   return Status::OK();
+}
+
+common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+  void const* src_data = src.DataRaw();
+  void* dst_data = dst.MutableDataRaw();
+
+  return CopyTensorImpl(src_data,
+                        src.Location().device.Type() == OrtDevice::GPU,
+                        dst_data,
+                        dst.Location().device.Type() == OrtDevice::GPU,
+                        src.SizeInBytes());
 }
 
 }  // namespace webgpu

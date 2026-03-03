@@ -14,8 +14,13 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
+#if defined(USE_WEBGPU)
+#include "core/graph/constants.h"
+#include "core/session/abi_session_options_impl.h"
+#endif
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/providers.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 
 namespace onnxruntime {
 
@@ -275,17 +280,28 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
   ConfigOptions config_options{};
+#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+  size_t config_entry_key_offset = 0;
+#else
+  // used to remove the EP prefix from the config entry keys
+  size_t config_entry_key_offset = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider).length();
+#endif
+
   // Disable storage buffer cache
-  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode + config_entry_key_offset,
                                             webgpu::options::kBufferCacheMode_Disabled)
                   .IsOK());
   if (!is_nhwc) {
     // Enable NCHW support
-    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout,
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout + config_entry_key_offset,
                                               webgpu::options::kPreferredLayout_NCHW)
                     .IsOK());
   }
+#if defined(ORT_EP_API_ADAPTER)
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
+#else
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#endif
 #else
   ORT_UNUSED_PARAMETER(is_nhwc);
   return nullptr;
@@ -293,8 +309,12 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
 }
 
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
-#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#if defined(USE_WEBGPU)
+#if defined(ORT_EP_API_ADAPTER)
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
+#else
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#endif
 #else
   ORT_UNUSED_PARAMETER(config_options);
   return nullptr;
