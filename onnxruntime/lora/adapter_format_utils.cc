@@ -7,8 +7,9 @@
 #include "core/framework/allocator.h"
 #include "core/common/common.h"
 #include "core/common/endian.h"
-#include "core/framework/endian_utils.h"
+#include "core/common/safeint.h"
 #include "core/common/span_utils.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/ort_value.h"
@@ -155,7 +156,14 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   const auto data_type = param.data_type();
   // Copying shape takes care of endianess using flatbuffers accessors
   TensorShapeVector shape(param.dims()->begin(), param.dims()->end());
+  TensorShape tensor_shape(shape);
   const auto elem_type = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int32_t>(data_type))->GetElementType();
+  const size_t expected_raw_data_size = SafeInt<size_t>(tensor_shape.Size()) * elem_type->Size();
+  if (param.raw_data()->size() != expected_raw_data_size) {
+    ORT_THROW("Lora Param:", param.name(),
+              "Raw data size does not match the expected size calculated from tensor shape and element type");
+  }
+
   static const OrtMemoryInfo cpu_meminfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
 
   if constexpr (endian::native == endian::big) {
@@ -166,7 +174,7 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
       // of raw data
       // const_cast is necessary due to Tensor class API
       Tensor::InitOrtValue(elem_type,
-                           TensorShape(shape),
+                           tensor_shape,
                            const_cast<uint8_t*>(param.raw_data()->data()),
                            cpu_meminfo,
                            result);
@@ -174,7 +182,7 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   } else {
     // const_cast is necessary due to Tensor class API
     Tensor::InitOrtValue(elem_type,
-                         TensorShape(shape),
+                         tensor_shape,
                          const_cast<uint8_t*>(param.raw_data()->data()),
                          cpu_meminfo,
                          result);
