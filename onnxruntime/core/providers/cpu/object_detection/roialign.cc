@@ -294,6 +294,19 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "First dimension (num_rois) of batch_indices and rois don't match");
   }
+
+  const int64_t batch_size = X_ptr->Shape()[0];
+  const int64_t* batch_indices_data = batch_indices_ptr->Data<int64_t>();
+  const int64_t num_rois = batch_indices_dims[0];
+  for (int64_t i = 0; i < num_rois; ++i) {
+    if (batch_indices_data[i] < 0 || batch_indices_data[i] >= batch_size) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "batch_indices value " + std::to_string(batch_indices_data[i]) +
+                        " at index " + std::to_string(i) +
+                        " is out of range [0, " + std::to_string(batch_size) + ")");
+    }
+  }
+
   return Status::OK();
 }
 
