@@ -20,6 +20,7 @@ class EpLibrary {
   EpLibrary() = default;
 
   virtual const char* RegistrationName() const = 0;
+  virtual const std::filesystem::path* LibraryPath() const { return nullptr; }
   virtual Status Load() { return Status::OK(); }
   virtual const std::vector<OrtEpFactory*>& GetFactories() = 0;  // valid after Load()
   virtual Status Unload() { return Status::OK(); }
