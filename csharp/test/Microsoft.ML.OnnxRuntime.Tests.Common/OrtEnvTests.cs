@@ -537,55 +537,94 @@ namespace Microsoft.ML.OnnxRuntime.Tests
     [Collection("Ort Inference Tests")]
     public class OrtEnvExternalDllImportResolverTest
     {
-        /// <summary>
-        /// Verifies that if an external caller tries to register a DllImportResolver for the
-        /// OnnxRuntime assembly (after OnnxRuntime has already registered its own), the conflict
-        /// is detected, and OnnxRuntime remains functional.
-        /// This validates that our try/catch(InvalidOperationException) safety net in the
-        /// NativeMethods static constructor works correctly.
-        /// </summary>
-        [Fact(DisplayName = "TestExternalDllImportResolverConflict")]
-        public void TestExternalDllImportResolverConflict()
+        private System.Reflection.Assembly LoadIsolatedOnnxRuntimeAssembly(out System.Runtime.Loader.AssemblyLoadContext alc)
         {
-            // Ensure OnnxRuntime is initialized (triggers NativeMethods static constructor).
-            var ortEnvInstance = OrtEnv.Instance();
-            Assert.True(OrtEnv.IsCreated);
-
-            // Attempt to register an external DllImportResolver for the OnnxRuntime assembly.
-            // This should throw InvalidOperationException because OnnxRuntime already registered one.
-            // This confirms the conflict scenario that the feedback reported is real.
-            var assembly = typeof(OrtEnv).Assembly;
-            Assert.Throws<InvalidOperationException>(() =>
-            {
-                NativeLibrary.SetDllImportResolver(assembly, (libraryName, asm, searchPath) =>
-                {
-                    return IntPtr.Zero; // Dummy resolver
-                });
-            });
-
-            // Verify OnnxRuntime still works after the conflict — this passes because
-            // OnnxRuntime's registration succeeded first and the failed external call
-            // doesn't affect the already-registered resolver.
-            string versionString = ortEnvInstance.GetVersionString();
-            Assert.False(string.IsNullOrEmpty(versionString));
+            // Load a fresh copy of the ONNX Runtime assembly into a new AssemblyLoadContext.
+            // This guarantees we get a clean slate for static fields/constructors, avoiding
+            // interference from other xUnit tests that may have already initialized OrtEnv
+            // in the default context.
+            //
+            // Native library resolution (e.g., onnxruntime.dll) falls through to the default
+            // ALC when the isolated context cannot resolve it, so P/Invoke calls still work.
+            alc = new System.Runtime.Loader.AssemblyLoadContext("IsolatedORT_" + Guid.NewGuid(), isCollectible: true);
+            string asmPath = typeof(OrtEnv).Assembly.Location;
+            return alc.LoadFromAssemblyPath(asmPath);
         }
 
         /// <summary>
-        /// Verifies that the DisableDllImportResolver property on OrtEnv
-        /// is accessible, defaults to false, and can be set.
+        /// Verifies the scenario where an external caller registers a DllImportResolver FIRST,
+        /// and then OrtEnv is initialized. ORT's try/catch should handle the conflict gracefully.
         /// </summary>
-        [Fact(DisplayName = "TestDisableDllImportResolverPropertyAccessible")]
-        public void TestDisableDllImportResolverPropertyAccessible()
+        [Fact(DisplayName = "TestExternalResolverRegisteredFirst")]
+        public void TestExternalResolverRegisteredFirst()
         {
-            // The property should default to false (ORT registers its resolver by default).
-            Assert.False(OrtEnv.DisableDllImportResolver);
+            var asm = LoadIsolatedOnnxRuntimeAssembly(out var alc);
+            try
+            {
+                // 1. External application registers its own resolver FIRST.
+                // Returning IntPtr.Zero means "not handled" — the runtime falls back to
+                // its default resolution logic, so native libraries still load normally.
+                NativeLibrary.SetDllImportResolver(asm, (libraryName, a, searchPath) => IntPtr.Zero);
 
-            // Verify it's settable (for clients who need to disable before initialization).
-            OrtEnv.DisableDllImportResolver = true;
-            Assert.True(OrtEnv.DisableDllImportResolver);
+                // 2. ORT initializes (triggers NativeMethods static constructor).
+                // It will attempt to register its own resolver, which will throw
+                // InvalidOperationException internally, but the try/catch safety net
+                // prevents an unhandled TypeInitializationException.
+                var ortEnvType = asm.GetType("Microsoft.ML.OnnxRuntime.OrtEnv");
+                var instanceMethod = ortEnvType.GetMethod("Instance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                var ortEnvInstance = instanceMethod.Invoke(null, null);
+                Assert.NotNull(ortEnvInstance);
 
-            // Restore original value.
-            OrtEnv.DisableDllImportResolver = false;
+                // Verify ORT is fully functional despite the resolver conflict.
+                var getVersionMethod = ortEnvType.GetMethod("GetVersionString", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                var version = (string)getVersionMethod.Invoke(ortEnvInstance, null);
+                Assert.False(string.IsNullOrEmpty(version));
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+
+        /// <summary>
+        /// Verifies that setting DisableDllImportResolver = true BEFORE ORT initializes
+        /// successfully prevents ORT from registering its own resolver, leaving the assembly
+        /// free for the external application to register theirs LATER without throwing.
+        /// </summary>
+        [Fact(DisplayName = "TestDisableDllImportResolverWorks")]
+        public void TestDisableDllImportResolverWorks()
+        {
+            var asm = LoadIsolatedOnnxRuntimeAssembly(out var alc);
+            try
+            {
+                var ortEnvType = asm.GetType("Microsoft.ML.OnnxRuntime.OrtEnv");
+
+                // 1. Set OrtEnv.DisableDllImportResolver = true FIRST.
+                var disableProp = ortEnvType.GetProperty("DisableDllImportResolver", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                Assert.NotNull(disableProp);
+                disableProp.SetValue(null, true);
+
+                // 2. ORT initializes (triggers NativeMethods static constructor).
+                // It should respect the flag and SKIP calling NativeLibrary.SetDllImportResolver.
+                var instanceMethod = ortEnvType.GetMethod("Instance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                var ortEnvInstance = instanceMethod.Invoke(null, null);
+                Assert.NotNull(ortEnvInstance);
+
+                // 3. External application registers its own resolver AFTER ORT initialized.
+                // If the flag works correctly, ORT skipped its own SetDllImportResolver call,
+                // so this registration should succeed without throwing InvalidOperationException.
+                // Returning IntPtr.Zero means "not handled" — falls back to default resolution.
+                var ex = Record.Exception(() =>
+                {
+                    NativeLibrary.SetDllImportResolver(asm, (libraryName, a, searchPath) => IntPtr.Zero);
+                });
+
+                Assert.Null(ex); // No InvalidOperationException = ORT correctly skipped registration
+            }
+            finally
+            {
+                alc.Unload();
+            }
         }
     }
 #endif
