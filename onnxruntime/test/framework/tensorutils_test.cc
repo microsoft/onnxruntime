@@ -644,6 +644,15 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkOutsid
   std::filesystem::create_directories(sub_dir);
   AddDirToCleanUp(sub_dir);
 
+  // Check if we can actually make a file outside of the current working directory (i.e., in a temp dir).
+  // This is only possible if the current working directory is NOT the same as the temp directory.
+  // Otherwise, we need to skip this test. This happens in Android CI.
+  auto [cwd_end, outside_end] = std::mismatch(cwd.begin(), cwd.end(), outside_dir_.begin(), outside_dir_.end());
+  if (cwd_end == cwd.end()) {
+    GTEST_SKIP() << "Skipping test that needs to create a symlink outside of the cwd because the cwd is the same as "
+                 << "the temp dir. cwd: " << cwd << " outside_dir_: " << outside_dir_;
+  }
+
   try {
     std::filesystem::path outside_target = outside_dir_ / "outside_for_empty_basedir.bin";
     std::filesystem::path symlink = sub_dir / "outside_link.bin";
