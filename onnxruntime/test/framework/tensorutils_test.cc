@@ -655,7 +655,8 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkOutsid
   }
 
   Status status = utils::ValidateExternalDataPath("", "./symlink_test_subdir2/outside_link.bin");
-  ASSERT_FALSE(status.IsOK());
+  ASSERT_FALSE(status.IsOK()) << "Expected validation to fail. cwd: " << cwd << " sub_dir: " << sub_dir
+                              << " outside_dir: " << outside_dir_;
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
 #endif  // !defined(__wasm__)
