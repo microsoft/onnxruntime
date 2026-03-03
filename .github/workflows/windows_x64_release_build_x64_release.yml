@@ -87,7 +87,9 @@ jobs:
       - uses: actions/cache@v5
         id: onnx-node-tests-cache
         with:
-          path: ${{ github.workspace }}/js/test/
+          path: |
+            ${{ github.workspace }}/build/RelWithDebInfo/
+            ${{ github.workspace }}/js/test/
           key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
 
       - name: Build and Test

@@ -1746,8 +1746,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_reduced_ops_build(args) or args.minimal_build is not None:
                 return
 
-            if is_windows():
-                cwd = os.path.join(cwd, config)
+            # if is_windows():
+            #     cwd = os.path.join(cwd, config)
 
             if not args.skip_pip_install and args.enable_transformers_tool_test and not args.disable_contrib_ops:
                 # PyTorch is required for transformers tests, and optional for some python tests.
