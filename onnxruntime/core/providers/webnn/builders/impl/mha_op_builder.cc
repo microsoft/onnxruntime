@@ -290,7 +290,7 @@ bool MultiHeadAttentionOpBuilder::HasSupportedOutputsImpl(const Node& node, cons
 
   int32_t output_type = 0;
   if (!GetType(*output_defs[0], output_type, logger)) {
-    LOGS(logger, VERBOSE) << "Could not get output data type.";
+    LOGS(logger, VERBOSE) << "Could not get output 0's data type.";
     return false;
   }
   if (has_present_k && has_present_v) {
@@ -298,7 +298,7 @@ bool MultiHeadAttentionOpBuilder::HasSupportedOutputsImpl(const Node& node, cons
     int32_t present_v_type = 0;
     if (!GetType(*output_defs[1], present_k_type, logger) ||
         !GetType(*output_defs[2], present_v_type, logger)) {
-      LOGS(logger, VERBOSE) << "Could not get output data type.";
+      LOGS(logger, VERBOSE) << "Could not get output 1 or 2's data type.";
       return false;
     }
 
