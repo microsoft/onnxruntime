@@ -160,8 +160,10 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   const auto elem_type = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int32_t>(data_type))->GetElementType();
   const size_t expected_raw_data_size = SafeInt<size_t>(tensor_shape.Size()) * elem_type->Size();
   if (param.raw_data()->size() != expected_raw_data_size) {
-    ORT_THROW("Lora Param:", param.name(),
-              "Raw data size does not match the expected size calculated from tensor shape and element type");
+    ORT_THROW("Lora Param '", name,
+              "': raw_data size (", param.raw_data()->size(),
+              ") does not match expected size (", expected_raw_data_size,
+              ") calculated from tensor shape and element type");
   }
 
   static const OrtMemoryInfo cpu_meminfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
