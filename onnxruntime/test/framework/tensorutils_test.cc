@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <limits>
 #include <fstream>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -519,10 +520,19 @@ class PathValidationTest : public ::testing::Test {
     // Clean up the temporary directory.
     std::filesystem::remove_all(base_dir_);
     std::filesystem::remove_all(outside_dir_);
+
+    for (const auto& other_dir : other_dirs_) {
+      std::filesystem::remove_all(other_dir);
+    }
+  }
+
+  void AddDirToCleanUp(std::filesystem::path other_dir) {
+    other_dirs_.push_back(std::move(other_dir));
   }
 
   std::filesystem::path base_dir_;
   std::filesystem::path outside_dir_;
+  std::vector<std::filesystem::path> other_dirs_;
 };
 
 // Test cases for ValidateExternalDataPath.
@@ -605,6 +615,50 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   }
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
 }
+
+#if !defined(__wasm__)
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkInside) {
+  // Symbolic link within the current working directory pointing to a file still within CWD.
+  std::filesystem::path cwd = std::filesystem::current_path();
+  std::filesystem::path sub_dir = cwd / "symlink_test_subdir";
+  std::filesystem::create_directories(sub_dir);
+  AddDirToCleanUp(sub_dir);
+
+  try {
+    std::filesystem::path target = sub_dir / "target_inside.bin";
+    std::filesystem::path symlink = sub_dir / "link_inside.bin";
+    std::ofstream{target};
+    std::filesystem::create_symlink(target, symlink);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
+                 << e.what();
+  }
+
+  EXPECT_STATUS_OK(utils::ValidateExternalDataPath("", "./symlink_test_subdir/link_inside.bin"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkOutside) {
+  // Symbolic link within the current working directory pointing to a file outside CWD.
+  std::filesystem::path cwd = std::filesystem::current_path();
+  std::filesystem::path sub_dir = cwd / "symlink_test_subdir2";
+  std::filesystem::create_directories(sub_dir);
+  AddDirToCleanUp(sub_dir);
+
+  try {
+    std::filesystem::path outside_target = outside_dir_ / "outside_for_empty_basedir.bin";
+    std::filesystem::path symlink = sub_dir / "outside_link.bin";
+    std::ofstream{outside_target};
+    std::filesystem::create_symlink(outside_target, symlink);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
+                 << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath("", "./symlink_test_subdir2/outside_link.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
+}
+#endif  // !defined(__wasm__)
 
 }  // namespace test
 }  // namespace onnxruntime

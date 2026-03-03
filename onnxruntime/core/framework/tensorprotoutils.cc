@@ -376,6 +376,7 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
     // set an external file folder path via the session config option
     // `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
 
+#if defined(__wasm__)
     // We conservatively check that the normalized relative path does not contain ".." path components that would allow
     // access to arbitrary files outside of the current working directory. Based on ONNX checker validation.
     auto norm_location = location.lexically_normal();
@@ -386,6 +387,25 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
                                " (model loaded from bytes) escapes working directory");
       }
     }
+#else
+    // Use weakly_canonical to resolve symlinks, then verify that the path stays within the current working directory.
+    // This catches scenarios where a seemingly correct path actually points outside the working directory
+    // (e.g., ./a/symlink.bin -> /outside/data.bin).
+    auto cwd = std::filesystem::current_path();
+    auto cwd_canonical = std::filesystem::weakly_canonical(cwd);
+    auto resolved = std::filesystem::weakly_canonical(cwd / location);
+
+    auto [base_end, resolved_it] = std::mismatch(
+        cwd_canonical.begin(), cwd_canonical.end(),
+        resolved.begin(), resolved.end());
+
+    if (base_end != cwd_canonical.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "External data path for model loaded from bytes escapes working directory. ",
+                             "External data path: ", location, " resolved path: ", resolved, " ",
+                             "working directory: ", cwd);
+    }
+#endif  // !defined(__wasm__)
   }
   return Status::OK();
 }

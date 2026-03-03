@@ -529,7 +529,9 @@ Status TensorProtoWithExternalDataToTensorProto(
 /// Validates if the external data path is under the model directory.
 /// If the model is a symlink, it checks against both the logical model directory (base_dir)
 /// and the real/canonical directory of the model.
-/// If the `base_dir` is empty, the function only ensures that `location` is not an absolute path.
+/// If the `base_dir` is empty (model loaded from bytes), the function ensures that `location` is not
+/// an absolute path, does not contain ".." components that escape the current working directory, and
+/// resolves symlinks to verify the target stays within the current working directory.
 /// </summary>
 /// <param name="base_dir">Logical model location directory</param>
 /// <param name="location">Location string retrieved from TensorProto external data</param>
