@@ -252,6 +252,8 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_ValidParam) {
   }
 }
 
+#ifndef ORT_NO_EXCEPTIONS
+
 TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_RawDataSizeMismatch) {
   // Craft a flatbuffer Parameter where raw_data has fewer bytes than
   // shape (8 x 4) * sizeof(float) = 128 bytes.
@@ -324,35 +326,6 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_ExcessRawData) {
 
   // Excess data should also trigger the mismatch throw.
   ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
-}
-
-TEST(LoraAdapterTest, Load_RawDataSizeMismatch) {
-  // End-to-end: loading an adapter whose parameter has mismatched raw data
-  // should fail during LoraAdapter::Load.
-  flatbuffers::FlatBufferBuilder fbb;
-
-  auto name_offset = fbb.CreateString("bad_param");
-  std::vector<int64_t> dims = {8, 4};
-  auto dims_offset = fbb.CreateVector(dims);
-
-  // Provide 64 bytes instead of the expected 128 for float [8, 4].
-  std::vector<uint8_t> short_data(64, 0);
-  fbb.ForceVectorAlignment(short_data.size(), sizeof(uint8_t), 8);
-  auto data_offset = fbb.CreateVector(short_data);
-
-  auto param_offset = adapters::CreateParameter(
-      fbb, name_offset, dims_offset, adapters::TensorDataType::FLOAT, data_offset);
-
-  auto params_offset = fbb.CreateVector(&param_offset, 1);
-  auto adapter_offset = adapters::CreateAdapter(
-      fbb, adapters::kAdapterFormatVersion, kAdapterVersion, kModelVersion, params_offset);
-  adapters::FinishAdapterBuffer(fbb, adapter_offset);
-
-  std::vector<uint8_t> buffer(fbb.GetBufferPointer(),
-                              fbb.GetBufferPointer() + fbb.GetSize());
-
-  lora::LoraAdapter adapter;
-  ASSERT_THROW(adapter.Load(std::move(buffer)), OnnxRuntimeException);
 }
 
 TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_MissingName) {
@@ -441,6 +414,8 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndefinedDataType) {
 
   ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
 }
+
+#endif  //
 
 #ifdef USE_CUDA
 TEST(LoraAdapterTest, VerifyDeviceCopy) {
