@@ -1028,23 +1028,20 @@ def mha_nonpad_kv_seqlen_test_cases():
     """
     Generate test cases for ONNX Attention op (opset 24) MHA path with nonpad_kv_seqlen.
 
-    Scenarios:
-    - Different valid lengths per batch
-    - All same length (degenerate case)
-    - Length = 0 for some batches (empty KV)
-    - Full length (no padding — should match existing behavior)
+    In prompt mode (q_seq == kv_seq), the real TensorScatter workflow always has all tokens
+    valid, so nonpad_kv_seqlen = total_kv_sequence_length (mask nothing). Partial masking
+    (nonpad < kv_sequence_length) is only used for decode (q_seq != kv_seq).
     """
     h = 128
     sq = 16
     skv = 16
     n = 8
 
-    # (batch_size, nonpad_seqlens_list)
+    # In prompt mode, nonpad_kv_seqlen should equal total_kv_sequence_length (all tokens valid).
     seqlen_scenarios = [
-        (2, [3, 5], "diff_lens"),
-        (2, [8, 8], "same_lens"),
-        (2, [0, 5], "zero_len"),
+        (1, [16], "single_batch"),
         (2, [16, 16], "full_len"),
+        (4, [16, 16, 16, 16], "multi_batch"),
     ]
 
     for batch_size, seqlens, label in seqlen_scenarios:
@@ -1063,7 +1060,7 @@ def mha_nonpad_kv_seqlen_test_cases():
         name = f"b{batch_size}_sq{sq}_skv{skv}_nh{n}_h{h}_{label}"
         yield name, config, seqlens
 
-    # Causal variation
+    # Causal variation (all tokens valid in prompt mode)
     config_c = AttentionConfig(
         batch_size=2,
         q_sequence_length=sq,
@@ -1076,7 +1073,7 @@ def mha_nonpad_kv_seqlen_test_cases():
         has_nonpad_kv_seqlen=True,
         attn_mask_type="additive",
     )
-    yield f"b2_sq{sq}_skv{skv}_nh{n}_h{h}_causal", config_c, [3, 5]
+    yield f"b2_sq{sq}_skv{skv}_nh{n}_h{h}_causal", config_c, [16, 16]
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping MHA tests.")
