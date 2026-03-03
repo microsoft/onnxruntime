@@ -25,7 +25,7 @@ TEST(CApiTest, session_options_deterministic_compute) {
 
 TEST(CApiTest, session_options_oversized_affinity_string) {
   Ort::SessionOptions options;
-  std::string long_affinity_str(onnxruntime::kMaxStrLen + 1, '0');
+  std::string long_affinity_str(onnxruntime::kMaxStrLen * 2 + 1, '0');
   try {
     options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, long_affinity_str.c_str());
     ASSERT_TRUE(false) << "Creation of config should have thrown exception";
