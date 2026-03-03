@@ -3,7 +3,7 @@
 
 #include "core/providers/webgpu/controlflow/if.h"
 
-#if !defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(ORT_USE_EP_API_ADAPTERS)
 #include "core/framework/error_code_helper.h"
 #endif
 
@@ -72,7 +72,7 @@ ONNX_OPERATOR_KERNEL_EX(If,
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         If);
 
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if !defined(ORT_USE_EP_API_ADAPTERS)
 Status If::Compute(OpKernelContext* ctx) const {
   // call the base CPU version.
   return onnxruntime::If::Compute(ctx);
@@ -82,7 +82,7 @@ Status If::CreateControlFlowKernelImpl(const OrtKernelInfo* info, OrtKernelImpl*
   return ToStatusAndRelease(ep::Api().ep.CreateIfKernel(info, impl));
 }
 
-Status If::Compute(OpKernelContext* ctx) const {
+Status If::Compute(OpKernelContext* /*ctx*/) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "If operator should be handled by ORT core.");
 }
 #endif

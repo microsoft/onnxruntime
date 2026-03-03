@@ -229,7 +229,7 @@ OrtStatus* ORT_API_CALL Ep::OnRunStartImpl(_In_ OrtEp* this_ptr,
 }
 
 OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
-                                         _In_ const OrtRunOptions* run_options,
+                                         _In_ const OrtRunOptions* /*run_options*/,
                                          _In_ bool sync_stream) noexcept {
   auto* ep = static_cast<Ep*>(this_ptr);
   auto status = ep->EpImpl()->OnRunEnd(sync_stream, {});

@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if !defined(ORT_USE_EP_API_ADAPTERS)
 
 // Use the CPU implementation for the logic
 class If final : public onnxruntime::If {

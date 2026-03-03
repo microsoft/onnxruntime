@@ -107,10 +107,10 @@ class ComputeContextBase {
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
-    return *ep_.GetLogger();
-#else
+#if defined(ORT_USE_EP_API_ADAPTERS)
     return ep_.GetEpLogger();
+#else
+    return *ep_.GetLogger();
 #endif
   }
 

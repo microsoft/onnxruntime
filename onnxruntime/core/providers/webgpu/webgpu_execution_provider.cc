@@ -827,7 +827,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   return kernel_registry;
 }
 
-#if !defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(ORT_USE_EP_API_ADAPTERS)
 
 namespace {
 std::shared_ptr<KernelRegistry> g_kernel_registry;
@@ -852,7 +852,7 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
   // - When building as a shared library, use global variables. The cleanup will be performed
   //   when `ReleaseEpFactory` is called.
   if (enable_graph_capture) {
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if !defined(ORT_USE_EP_API_ADAPTERS)
     static std::shared_ptr<KernelRegistry> registry = RegisterKernels(true, true);
     return registry;
 #else
@@ -862,24 +862,24 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
     return g_graph_capture_kernel_registry;
 #endif
   } else if (enable_int64) {
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
-    static std::shared_ptr<KernelRegistry> registry = RegisterKernels(false, true);
-    return registry;
-#else
+#if defined(ORT_USE_EP_API_ADAPTERS)
     if (g_int64_kernel_registry == nullptr) {
       g_int64_kernel_registry = RegisterKernels(false, true);
     }
     return g_int64_kernel_registry;
+#else
+    static std::shared_ptr<KernelRegistry> registry = RegisterKernels(false, true);
+    return registry;
 #endif
   } else {
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
-    static std::shared_ptr<KernelRegistry> registry = RegisterKernels(false, false);
-    return registry;
-#else
+#if defined(ORT_USE_EP_API_ADAPTERS)
     if (g_kernel_registry == nullptr) {
       g_kernel_registry = RegisterKernels(false, false);
     }
     return g_kernel_registry;
+#else
+    static std::shared_ptr<KernelRegistry> registry = RegisterKernels(false, false);
+    return registry;
 #endif
   }
 }
@@ -929,7 +929,7 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   };
 }
 
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if !defined(ORT_USE_EP_API_ADAPTERS)
 std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup,
@@ -1021,7 +1021,7 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
   return result;
 }
 
-#endif  // defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
   return std::make_unique<webgpu::DataTransfer>(BufferManager());

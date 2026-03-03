@@ -372,16 +372,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 
     // Now perform the actual tensor copy
     for (size_t idx = 0; idx < num_tensors; ++idx) {
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
-      const Tensor& src_tensor = src_tensors[idx]->Get<Tensor>();
-      const void* src_data = src_tensor.DataRaw();
-      size_t size = src_tensor.SizeInBytes();
-      bool src_is_gpu = src_tensor.Location().device.Type() == OrtDevice::GPU;
-
-      Tensor& dst_tensor = *dst_tensors[idx]->GetMutable<Tensor>();
-      void* dst_data = dst_tensor.MutableDataRaw();
-      bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
-#else
+#if defined(ORT_USE_EP_API_ADAPTERS)
       Ort::ConstValue src_value{src_tensors[idx]};
       const void* src_data = src_value.GetTensorRawData();
       size_t size = src_value.GetTensorSizeInBytes();
@@ -390,6 +381,15 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       Ort::UnownedValue dst_value{dst_tensors[idx]};
       void* dst_data = dst_value.GetTensorMutableRawData();
       bool dst_is_gpu = dst_value.GetTensorMemoryInfo().GetDeviceType() == OrtMemoryInfoDeviceType_GPU;
+#else
+      const Tensor& src_tensor = src_tensors[idx]->Get<Tensor>();
+      const void* src_data = src_tensor.DataRaw();
+      size_t size = src_tensor.SizeInBytes();
+      bool src_is_gpu = src_tensor.Location().device.Type() == OrtDevice::GPU;
+
+      Tensor& dst_tensor = *dst_tensors[idx]->GetMutable<Tensor>();
+      void* dst_data = dst_tensor.MutableDataRaw();
+      bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
 #endif
       auto status = impl.data_transfer_->CopyTensorImpl(src_data,
                                                         src_is_gpu,
@@ -425,7 +425,9 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
 };
 
 OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort, context_id);
+#else
   // Validate API version is supported
   const OrtApi* api = OrtApis::GetApi(ORT_API_VERSION);
   if (!api) {
@@ -433,8 +435,6 @@ OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
     return nullptr;
   }
   return new WebGpuDataTransferImpl(*api, context_id);
-#else
-  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort, context_id);
 #endif
 }
 

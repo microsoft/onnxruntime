@@ -56,7 +56,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
     return webgpu::GetKernelRegistry(enable_graph_capture_, enable_int64_);
   }
 
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if !defined(ORT_USE_EP_API_ADAPTERS)
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph_viewer,
       const IKernelLookup& /*kernel_lookup*/,
@@ -102,7 +102,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
 
-#if !defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(ORT_USE_EP_API_ADAPTERS)
   inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
     return *ep_logger_;
   }
@@ -141,7 +141,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   // Allocator for prepacked weights (uses buffers without mapping)
   AllocatorPtr prepack_allocator_;
 
-#if !defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(ORT_USE_EP_API_ADAPTERS)
   std::unique_ptr<onnxruntime::ep::adapter::Logger> ep_logger_;
 #endif
 };

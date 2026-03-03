@@ -278,13 +278,13 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
-#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#if defined(USE_WEBGPU)
   ConfigOptions config_options{};
-#if defined(BUILD_WEBGPU_EP_STATIC_LIB)
-  size_t config_entry_key_offset = 0;
-#else
+#if defined(ORT_USE_EP_API_ADAPTERS)
   // used to remove the EP prefix from the config entry keys
   size_t config_entry_key_offset = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider).length();
+#else
+  size_t config_entry_key_offset = 0;
 #endif
 
   // Disable storage buffer cache
@@ -297,7 +297,7 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
                                               webgpu::options::kPreferredLayout_NCHW)
                     .IsOK());
   }
-#if defined(ORT_EP_API_ADAPTER)
+#if defined(ORT_USE_EP_API_ADAPTERS)
   return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
 #else
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
@@ -310,7 +310,7 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
 
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
 #if defined(USE_WEBGPU)
-#if defined(ORT_EP_API_ADAPTER)
+#if defined(ORT_USE_EP_API_ADAPTERS)
   return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
 #else
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();

@@ -56,19 +56,19 @@ Factory::Factory() : OrtEpFactory{},
 
 // Static C API implementations
 
-const char* ORT_API_CALL Factory::GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
+const char* ORT_API_CALL Factory::GetNameImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
   return kWebGpuExecutionProvider;
 }
 
-const char* ORT_API_CALL Factory::GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
+const char* ORT_API_CALL Factory::GetVendorImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
   return "Microsoft";
 }
 
-uint32_t ORT_API_CALL Factory::GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
+uint32_t ORT_API_CALL Factory::GetVendorIdImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
   return 0;
 }
 
-const char* ORT_API_CALL Factory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+const char* ORT_API_CALL Factory::GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
   return "0.1.0";
 }
 
@@ -103,8 +103,8 @@ OrtStatus* ORT_API_CALL Factory::GetSupportedDevicesImpl(
 
 OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     OrtEpFactory* this_ptr,
-    const OrtHardwareDevice* const* devices,
-    const OrtKeyValuePairs* const* ep_metadata,
+    const OrtHardwareDevice* const* /*devices*/,
+    const OrtKeyValuePairs* const* /*ep_metadata*/,
     size_t num_devices,
     const OrtSessionOptions* session_options,
     const OrtLogger* logger,
@@ -142,14 +142,14 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   }
 }
 
-void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
+void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
   delete static_cast<Ep*>(ep);
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
     OrtEpFactory* this_ptr,
     const OrtMemoryInfo* memory_info,
-    const OrtKeyValuePairs* allocator_options,
+    const OrtKeyValuePairs* /*allocator_options*/,
     OrtAllocator** allocator) noexcept {
   auto factory = static_cast<Factory*>(this_ptr);
   Ort::ConstMemoryInfo ort_memory_info{memory_info};
@@ -161,13 +161,13 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
   return nullptr;
 }
 
-void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* this_ptr, OrtAllocator* allocator) noexcept {
+void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* allocator) noexcept {
   onnxruntime::ep::adapter::Allocator* ptr = static_cast<onnxruntime::ep::adapter::Allocator*>(allocator);
   delete ptr;
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
-    OrtEpFactory* this_ptr,
+    OrtEpFactory* /*this_ptr*/,
     OrtDataTransferImpl** data_transfer) noexcept {
   try {
     *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
@@ -178,14 +178,14 @@ OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
   }
 }
 
-bool ORT_API_CALL Factory::IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept {
+bool ORT_API_CALL Factory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
   return false;  // Default: not stream aware
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateSyncStreamForDeviceImpl(
-    OrtEpFactory* this_ptr,
-    const OrtMemoryDevice* memory_device,
-    const OrtKeyValuePairs* stream_options,
+    OrtEpFactory* /*this_ptr*/,
+    const OrtMemoryDevice* /*memory_device*/,
+    const OrtKeyValuePairs* /*stream_options*/,
     OrtSyncStreamImpl** stream) noexcept {
   *stream = nullptr;
   return Api().ort.CreateStatus(ORT_NOT_IMPLEMENTED,
@@ -193,18 +193,18 @@ OrtStatus* ORT_API_CALL Factory::CreateSyncStreamForDeviceImpl(
 }
 
 OrtStatus* ORT_API_CALL Factory::ValidateCompiledModelCompatibilityInfoImpl(
-    OrtEpFactory* this_ptr,
-    const OrtHardwareDevice* const* devices,
-    size_t num_devices,
-    const char* compatibility_info,
+    OrtEpFactory* /*this_ptr*/,
+    const OrtHardwareDevice* const* /*devices*/,
+    size_t /*num_devices*/,
+    const char* /*compatibility_info*/,
     OrtCompiledModelCompatibility* model_compatibility) noexcept {
   *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
   return nullptr;
 }
 
 OrtStatus* ORT_API_CALL Factory::SetEnvironmentOptionsImpl(
-    OrtEpFactory* this_ptr,
-    const OrtKeyValuePairs* options) noexcept {
+    OrtEpFactory* /*this_ptr*/,
+    const OrtKeyValuePairs* /*options*/) noexcept {
   return nullptr;  // Default implementation does nothing
 }
 
