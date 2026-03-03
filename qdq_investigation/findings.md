@@ -1,133 +1,188 @@
-# CPU Performance Feature Crew Findings 
+# CPU Performance Feature Crew Findings
 
-## 1. MatMulNBits 
+## 1. MatMulNBits
 
-### A. DQ -> MatMul fusion Rules 
+### A. DQ → MatMul Fusion Rules
 
-#### Findings: 
-- Currently, only 4-bit block-quantized models are fused;  
-- there are no fusion rules for 2-bit, 8-bit. 
-- Fp16 models add cast ops around MatMul which block the MatMulNBits fusion 
+#### Findings
 
-#### Recommendation: 
-- Matmulnbits already supports 2-bit and 4-bit operations. Update the fusion rules to enable support for fusion in 2-bit and 8-bit quantized models.  
-= Enable MatMulNBits fusion for fp16 models. 
+* Only 4-bit block-quantized models are currently fused.
+* There are no fusion rules for 2-bit or 8-bit models.
+* FP16 models introduce Cast ops around MatMul, which block MatMulNBits fusion.
 
- 
-### B. Arm 8 bit MNB kernel fp16 
+#### Recommendations
 
-#### Findings: 
-- 8 bit for fp16 scales does not implement accuracy_level=4 kernel 
+* Update fusion rules to support 2-bit and 8-bit quantized models.
+* Enable MatMulNBits fusion for FP16 models.
 
-#### Recommendation:  
-- Implement kernel if fp16 cpu models are a priority 
+---
 
- 
-### C. Arm:  KleidiAI support for 4 bit asymmetric quantized model
+### B. Arm 8-bit MatMulNBits Kernel (FP16 scales)
 
-####  Findings:
-- KleidiAI's optimized packed kernel (SDOT/I8MM, tiled) is disabled for asymmetric. Asym falls back to generic NEON CompInt8 (~30–46% penalty for ≥1.5b  param models). 
-- Fix requires KleidiAI to support per-block zero-points in its `qsi4c32p` packing format (currently hardcodes `rhs_zero_point = 8`). 
+#### Findings
 
-#### Recommendation:  
-- This is not a top priority. Additional investigation is needed to determine the necessary effort and anticipated performance improvements if support is added. 
+* The 8-bit kernel for FP16 scales does not implement the `accuracy_level=4` variant.
 
-## 2. Dequantize Linear (Per-channel, Blockwise) 
+#### Recommendation
 
-### A. Common 
+* Implement this kernel if FP16 CPU models are a priority.
 
-####  Findings 
-- 8 bits is faster than 4 bits in general 
-- There are separate kernels for 8 bits and sub-byte data types 
-- Sub-byte requires nibble extraction leading to overheads 
-- Multithreaded/SIMD is not implemented 
-  - Per-channel has it for 8bit per-channel but it is not enabled by default 
-- DQ kernel does all intermediate compute in fp32 by casting to/from fp16.  
+---
 
-#### Suggestions: 
-- Implement Multithreaded/SIMD 
-  - Mlas has dequantize blockwise kernels 
-- Check if fp16 casts can be avoided. This might not give gains since CPU doesn’t have native fp16 data type and all fp16 compute might do implicit casts to/from fp32 anyways. But it is worth looking at to be sure. 
- 
+### C. Arm: KleidiAI Support for 4-bit Asymmetric Quantization
 
-### B. Blockwise Quantization 
+#### Findings
 
-#### Findings 
-- 4 bit fp32 DQ->MatMul get fused to MatMulNBits 
-- These can be expanded to include 2 and 8 bits, so priority of standalone DQ improvements depends on whether fusion to MatMulNBits is enough. 
+* KleidiAI’s optimized packed kernel (SDOT/I8MM, tiled) is disabled for asymmetric models.
+* Asymmetric models fall back to generic NEON CompInt8, with a 30 to 46 percent penalty for models ≥1.5B parameters.
+* Supporting asymmetric quantization requires adding per-block zero-points to the `qsi4c32p` packing format. It currently hardcodes `rhs_zero_point = 8`.
 
-#### Suggestions: 
-- We should also consider the weight layout. MatMulNBits has NxK layout while DQ has KxN layout. For standalone blockwise dequantization, KxN layout is probably better. 
+#### Recommendation
 
- 
+* Not a top priority. Further investigation is needed to estimate effort and performance gains.
 
-### C. Per-channel Quantization 
+---
 
-#### Findings 
-- Per-channel slower than blockwise even though it can be faster ideally 
-- Incorrect graph transformation gets applied for signed, symmetric models 
+## 2. DequantizeLinear (Per-channel, Blockwise)
 
-####  Suggestions: 
-- We should also consider weight layout. DQ has KxN but NxK is probably better for per-channel quantization. 
-- Fix broken graph transformation for signed, symmetric models 
+### A. Common
 
- 
+#### Findings
 
-## 3. FP16 Model 
+* 8-bit is generally faster than 4-bit.
+* Separate kernels exist for 8-bit and sub-byte data types.
+* Sub-byte kernels require nibble extraction, which adds overhead.
+* Multithreading and SIMD are not implemented.
 
-### Findings 
-- FP16 support is available for DQ and Q operators and contrib operators such as MatMulNBits, GQA, etc. 
-- However, basic operators such as MatMul, Mul, Add, etc do not have fp16 support. 
-- This leads addition of cast operators in the graph as well as blocking of some operator fusion rules 
+  * Per-channel has 8-bit multithreading support, but it is not enabled by default.
+* The DQ kernel performs intermediate computation in FP32, casting to and from FP16.
 
-### Suggestions 
-- Consider extending compute operator support for fp16 
-- This requires some investigation into the cost of the cast operators since we might still incur cast cost implicitly in the operator implementation if there are no native fp16 kernels. 
+#### Suggestions
 
- 
+* Implement multithreading and SIMD support.
 
-## 4. Full QDQ Model (per-tensor, activation + weight) 
+  * MLAS includes blockwise dequantization kernels that may be leveraged.
+* Evaluate whether FP16 casts can be avoided. CPU lacks native FP16 arithmetic, so implicit casts may still occur. Verification is required.
 
-### A. uint16 activation, uint8 weight 
+---
 
-#### Findings 
-- Onnx spec doesn’t have QLinear operators for this combination. It only supports uint8/int8 weight and activation. 
-- This combination is commonly used in non-llm models such as stable diffusion and ASG’s perception shell models 
-- Without the QLinear operator, there is no operator fusion so the DQ and Q nodes add additional compute overhead to the base operators that still compute in float precision 
-- ASG is proposing adding a set of operators that support this combination. 
+### B. Blockwise Quantization
 
-#### Suggestion 
-- Work with ASG to implement QLinear operators for 16-bit activation and 8-bit weights 
-- Update ONNX spec as needed. Otherwise, would need to use a contrib op for this 
+#### Findings
 
- 
-### B. CPU EP’s handling of QDQ models 
+* 4-bit FP32 DQ → MatMul patterns are fused into MatMulNBits.
+* Fusion could be extended to 2-bit and 8-bit models.
+* The priority of standalone DQ improvements depends on whether expanded fusion is sufficient.
 
-#### Findings 
-- We have many fully QDQ models that we would like to use as shared models across different EPs. 
-- However, fully QDQ models are meant to target EPs such as QNN EP that have integer kernels which fuse the DQ->Op->Q node groups into IntegerOps for native quantized computation 
-- CPU EP doesn’t have a limited set of efficient integer operators that only support a limited set of datatypes. 
-- The QDQ nodes also block operator fusions for patterns such as MatMulNBits, layer normalizations, etc. 
-- These QDQ nodes add computational overhead since they don’t get fused. 
+#### Suggestions
 
-#### Suggestions 
-- CPU EP could handle the QDQ models specially 
- - Keep the DQs on the weights 
- - Only keep activation QDQ nodes if they can be fused with the operator. 
-- There are some open questions about mismatch between the QDQ eleminated model and the original model 
-    - Output mismatch is expected 
-    - But overall quality would probably improve unless the model weights were trained to be activation quantization aware. For standard static quantization of activations, this is not a concern. 
+* Revisit weight layout.
 
-## 5. Vision models (float)
+  * MatMulNBits uses NxK layout.
+  * DQ uses KxN layout.
+  * For standalone blockwise dequantization, KxN is likely preferable.
 
-### Findings 
-- ARM64 can do with optimizations to its NCHWc Conv kernel suite 
-- Most Conv models are textbook candidates for NCHWc data-layout based Conv operation acceleration on CPUs but it needs to be backed by optimized and tuned vectorized NCHWc kernels which ARM64 is currently lacking 
-- On some platforms, some models (based on various Conv parameters) show slowdowns whilst using the NCHWc data layout (when compared with the default NCHW data layout). Expose a session option for users to opt-out of NCHWc data layout (current turned on by default with the default graph optimization) and cook this logic into OLIVE recipes while presenting the most optimal setting for user workload for their target platform 
-- The NCHWc layout transformer doesn’t handle elementwise ops properly (missing coverage) (i.e.) it inserts Reorder nodes (transposes) before and after some elementwise ops when the ops are inherently data layout agnostic (i.e.) we incur transpose costs unnecessarily. These show up in cheap Conv models. 
+---
 
-### Suggestions: 
-- Look into compute optimal Conv algorithms (e.g.) Winograd that does well for “vanilla” 3x3 Conv operations. Many other frameworks support this implementation -  https://github.com/microsoft/onnxruntime/issues/12834  
-- Explore more activation fusions into the MLAS Conv micro-kernels. Currently, only “ReLU” activation is fused into the assembly micro-kernels. Explore adding more commonly occurring ones (Gelu, SIlu, etc.) but this comes with considerable dev cost as fusions come with more register budget requirement which may lead to re-work of other parts of these micro-kernels 
-- For customers who are reporting 2x perf slowdowns of CPU EP when compared with the OpenVINO EP, it is important to understand if we are comparing apple-to-apple. OpenVINO has certain performance hints which may mean that they drop to mixed precision mode whereas the CPU EP honors the provided model as is 
-- Explore the threading model in the NCHWc Conv kernel suite (especially for unbatched ungrouped Conv operations (B=1 G=1)) 
+### C. Per-channel Quantization
+
+#### Findings
+
+* Per-channel is slower than blockwise, although it could be faster in principle.
+* Incorrect graph transformations are applied for signed symmetric models.
+
+#### Suggestions
+
+* Reevaluate weight layout.
+
+  * DQ uses KxN, but NxK may be better for per-channel quantization.
+* Fix the incorrect graph transformation for signed symmetric models.
+
+---
+
+## 3. FP16 Models
+
+### Findings
+
+* FP16 support exists for DQ, Q, and contrib operators such as MatMulNBits and GQA.
+* Core operators such as MatMul, Mul, and Add do not support FP16.
+* This introduces Cast ops and blocks some fusion patterns.
+
+### Suggestions
+
+* Consider extending FP16 support to core compute operators.
+* Investigate the cost of Cast ops. Even with FP16 support, implicit FP32 casts may still occur due to lack of native FP16 compute.
+
+---
+
+## 4. Full QDQ Models (Per-tensor, Activation + Weight)
+
+### A. uint16 Activation, uint8 Weight
+
+#### Findings
+
+* ONNX does not define QLinear operators for this combination. It only supports uint8/int8 activation and weight.
+* This configuration is common in non-LLM models such as Stable Diffusion and ASG perception models.
+* Without QLinear operators, DQ and Q nodes remain unfused and add compute overhead to float operators.
+* ASG is proposing new operators to support this combination.
+
+#### Suggestions
+
+* Collaborate with ASG to implement QLinear operators for 16-bit activations and 8-bit weights.
+* Update the ONNX spec if possible. Otherwise, use contrib operators.
+
+---
+
+### B. CPU EP Handling of QDQ Models
+
+#### Findings
+
+* Fully QDQ models are used as shared artifacts across EPs.
+* These models target EPs such as QNN EP, which fuse DQ → Op → Q patterns into integer kernels.
+* CPU EP does not have a broad set of efficient integer kernels.
+* QDQ nodes block fusion patterns such as MatMulNBits and LayerNorm.
+* Unfused QDQ nodes add computational overhead.
+
+#### Suggestions
+
+* Consider specialized handling of QDQ models in CPU EP:
+
+  * Retain DQ nodes for weights.
+  * Retain activation QDQ nodes only if they can be fused.
+* There are open questions about output mismatches:
+
+  * Output differences are expected.
+  * Overall quality may improve unless the model was trained with activation quantization awareness. For standard static activation quantization, this is not a concern.
+
+---
+
+## 5. Vision Models (Float)
+
+### Findings
+
+* ARM64 could benefit from improvements to the NCHWc Conv kernel suite.
+* Conv-heavy models are well suited for NCHWc acceleration but require optimized vectorized kernels, which ARM64 currently lacks.
+* On some platforms, certain Conv parameter configurations result in slowdowns under NCHWc compared to default NCHW.
+
+  * NCHWc is enabled by default through graph optimization.
+  * Users should be able to opt out via a session option.
+  * OLIVE recipes should reflect the optimal configuration for the target platform.
+* The NCHWc layout transformer does not fully handle elementwise ops.
+
+  * It inserts Reorder nodes around layout-agnostic ops.
+  * This introduces unnecessary transpose overhead, particularly in lightweight Conv models.
+
+### Suggestions
+
+* Evaluate alternative Conv algorithms such as Winograd for standard 3×3 Conv.
+
+  * Reference: [https://github.com/microsoft/onnxruntime/issues/12834](https://github.com/microsoft/onnxruntime/issues/12834)
+* Explore additional activation fusions in MLAS Conv micro-kernels.
+
+  * Currently only ReLU is fused.
+  * Adding Gelu, SiLU, etc., requires significant development effort due to register pressure constraints.
+* When customers report CPU EP being 2× slower than OpenVINO EP, confirm configuration parity.
+
+  * OpenVINO may use mixed precision via performance hints.
+  * CPU EP runs the model as provided.
+* Investigate the threading model in the NCHWc Conv kernel suite, particularly for unbatched, ungrouped Conv (B=1, G=1).
