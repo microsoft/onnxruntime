@@ -27,7 +27,7 @@ auto initialize_matrix = [](int64_t rows, int64_t cols) {
   std::vector<float> data;
   data.reserve(rows * cols);
   for (int64_t i = 0; i < rows * cols; ++i) {
-    data.push_back(((i % 7) + 1));
+    data.push_back(static_cast<float>((i % 7) + 1));
   }
   return data;
 };
@@ -50,7 +50,7 @@ auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
     case BiasType::MBias:
       shape = {M, 1};
       for (int64_t i = 0; i < M; ++i) {
-        data.push_back(((i % 7) + 1));
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
     case BiasType::ScalarBias:
@@ -60,13 +60,13 @@ auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
     case BiasType::MNBias:
       shape = {M, N};
       for (int64_t i = 0; i < M * N; ++i) {
-        data.push_back(((i % 7) + 1));
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
     case BiasType::NBias:
       shape = {N};
       for (int64_t i = 0; i < N; ++i) {
-        data.push_back((i % 7) + 1);
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
   }

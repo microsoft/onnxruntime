@@ -314,7 +314,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   // Multiply the mutated inputs
   auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size},
                                     current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size},
-                                    allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
+                                    allocator_, tp_, mlas_backend_config_, einsum_ep_assets_, device_matmul_func_);
 
   output->Reshape(output_dims);
 

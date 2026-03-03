@@ -6,6 +6,7 @@
 #include <vector>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 
@@ -32,24 +33,28 @@ class AttentionBase {
                      int& past_sequence_length) const;
 
  protected:
-  AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
+  template <typename KernelInfoType>
+  AttentionBase(const KernelInfoType& info, bool require_same_hidden_size) {
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
     num_heads_ = static_cast<int>(num_heads);
 
-    is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
-    do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
-    rotary_embedding_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
-    mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
-    scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-
-    if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
+    is_unidirectional_ = info.template GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+    do_rotary_ = info.template GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
+    rotary_embedding_ = static_cast<int>(info.template GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
+    mask_filter_value_ = info.template GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
+    scale_ = info.template GetAttrOrDefault<float>("scale", 0.0f);
+    if (!info.template GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
       qkv_hidden_sizes_.clear();
     }
 
-    past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
+    past_present_share_buffer_ = info.template GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
 
     require_same_hidden_size_ = require_same_hidden_size;
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status CheckMask(const Tensor* mask_index,

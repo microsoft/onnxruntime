@@ -17,6 +17,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_env_config_keys.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/plugin_ep/ep_factory_internal.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
@@ -896,8 +897,15 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
         factory.GetSupportedDevices(&factory, sorted_devices.data(), sorted_devices.size(),
                                     ep_devices.data(), ep_devices.size(), &num_ep_devices)));
 
+    const auto* library_path = instance.library->LibraryPath();
     for (size_t i = 0; i < num_ep_devices; ++i) {
-      if (ep_devices[i] != nullptr) {                            // should never happen but just in case...
+      if (ep_devices[i] != nullptr) {  // should never happen but just in case...
+        if (library_path != nullptr) {
+          // Add library path to EP metadata if available.
+          // This is used by GenAI for custom library loading so we want to consistently set it.
+          ep_devices[i]->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_LibraryPath, library_path->string());
+        }
+
         instance.execution_devices.emplace_back(ep_devices[i]);  // take ownership
       }
     }
