@@ -78,7 +78,7 @@ class WindowsTelemetry : public Telemetry {
                        const char* function, uint32_t line) const override;
 
   void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
-                      const std::unordered_map<int64_t, long long>& duration_per_batch_size) const override;
+                      const InlinedHashMap<int64_t, long long>& duration_per_batch_size) const override;
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
 
