@@ -3,12 +3,14 @@
 
 #pragma once
 
-#include "api.h"
-#include "common.h"
-
-// This header is only used when building WebGPU/CUDA EP as a shared library.
+// This header is only used when building WebGPU/CUDA EP as a plugin EP library.
 //
 // This header file is used as a precompiled header so it is always included first.
+
+#define ORT_EP_API_ADAPTER
+
+#include "api.h"
+#include "common.h"
 
 #pragma push_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
 #undef ORT_EP_API_ADAPTER_HEADER_INCLUDED

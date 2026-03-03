@@ -6,9 +6,6 @@
   endif()
 
   add_compile_definitions(USE_WEBGPU=1)
-  if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
-    add_compile_definitions(BUILD_WEBGPU_EP_STATIC_LIB=1)
-  endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)

@@ -158,7 +158,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         },
         {
             kWebGpuExecutionProvider,
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU) && !defined(ORT_EP_API_ADAPTER)
             true,
 #else
             false,
