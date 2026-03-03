@@ -7,7 +7,7 @@
 //
 // This header file is used as a precompiled header so it is always included first.
 
-#define ORT_EP_API_ADAPTER
+#define ORT_USE_EP_API_ADAPTERS
 
 #include "api.h"
 #include "common.h"

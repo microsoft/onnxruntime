@@ -676,7 +676,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
-#if defined(USE_WEBGPU) && !defined(ORT_EP_API_ADAPTER)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
           kWebGpuExecutionProvider,
 #endif
       };
@@ -750,7 +750,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
-#if !defined(USE_WEBGPU) || !defined(ORT_EP_API_ADAPTER)
+#if !defined(USE_WEBGPU) || !defined(ORT_USE_EP_API_ADAPTERS)
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();
 #endif
