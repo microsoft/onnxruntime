@@ -8,6 +8,7 @@
 #include "core/framework/op_kernel.h"
 #include "ml_common.h"
 #include "tree_ensemble_helper.h"
+#include <algorithm>
 #include <unordered_map>
 #include <stack>
 #include <vector>
