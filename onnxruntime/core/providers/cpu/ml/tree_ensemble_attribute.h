@@ -66,8 +66,9 @@ struct TreeEnsembleAttributesV3 {
       ORT_ENFORCE(classlabels_int64s.size() == 0 || classlabels_strings.size() == 0);
       auto max_class = classlabels_int64s.size() > 0 ? classlabels_int64s.size() : classlabels_strings.size();
       ORT_ENFORCE(target_class_ids.size() > 0);
-      ORT_ENFORCE(static_cast<int64_t>(max_class) > *std::max_element(target_class_ids.begin(), target_class_ids.end()));
-      ORT_ENFORCE(*std::min_element(target_class_ids.begin(), target_class_ids.end()) >= 0);
+      auto max_target_class_id = *std::max_element(target_class_ids.begin(), target_class_ids.end());
+      ORT_ENFORCE(max_target_class_id >= 0);
+      ORT_ENFORCE(static_cast<size_t>(max_target_class_id) < max_class);
     } else {
       n_targets_or_classes = info.GetAttrOrDefault<int64_t>("n_targets", 0);
       target_class_ids = info.GetAttrsOrDefault<int64_t>("target_ids");
