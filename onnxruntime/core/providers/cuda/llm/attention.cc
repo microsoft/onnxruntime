@@ -597,6 +597,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // doesn't affect masking. nonpad_kv_seqlen masking is only meaningful for decode
         // (q_seq != kv_seq), which routes to FlashAttentionForExternalKVCache above.
         // Fill seqlens_k with total_sequence_length - 1 (all tokens valid) so it masks nothing.
+        LOGS_DEFAULT(WARNING) << "GQA prompt mode does not support partial KV masking via "
+                              << "nonpad_kv_seqlen; all tokens treated as valid. "
+                              << "Use MHA (q_num_heads == kv_num_heads) for partial masking "
+                              << "in prompt mode.";
         std::vector<int> seqlens_k_host(parameters.batch_size, parameters.total_sequence_length - 1);
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seqlens_k_buffer.get(), seqlens_k_host.data(),
                                              sizeof(int) * parameters.batch_size,
