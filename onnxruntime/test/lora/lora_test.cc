@@ -173,21 +173,6 @@ struct TestDataType {
     verify_load(lora_adapter);
   }
 };
-
-// Helper that wraps a single Parameter offset into a finished Adapter flatbuffer
-// and returns a pointer to the deserialized Parameter.
-// The FlatBufferBuilder must outlive the returned pointer.
-const adapters::Parameter* BuildAdapterAndGetParam(flatbuffers::FlatBufferBuilder& fbb,
-                                                   flatbuffers::Offset<adapters::Parameter> param_offset) {
-  auto params_offset = fbb.CreateVector(&param_offset, 1);
-  auto adapter_offset = adapters::CreateAdapter(
-      fbb, adapters::kAdapterFormatVersion, kAdapterVersion, kModelVersion, params_offset);
-  adapters::FinishAdapterBuffer(fbb, adapter_offset);
-
-  const auto* adapter = adapters::GetAdapter(fbb.GetBufferPointer());
-  return adapter->parameters()->Get(0);
-}
-
 }  // namespace
 
 TEST(LoraAdapterTest, Load) {
@@ -253,6 +238,22 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_ValidParam) {
 }
 
 #ifndef ORT_NO_EXCEPTIONS
+
+namespace {
+// Helper that wraps a single Parameter offset into a finished Adapter flatbuffer
+// and returns a pointer to the deserialized Parameter.
+// The FlatBufferBuilder must outlive the returned pointer.
+const adapters::Parameter* BuildAdapterAndGetParam(flatbuffers::FlatBufferBuilder& fbb,
+                                                   flatbuffers::Offset<adapters::Parameter> param_offset) {
+  auto params_offset = fbb.CreateVector(&param_offset, 1);
+  auto adapter_offset = adapters::CreateAdapter(
+      fbb, adapters::kAdapterFormatVersion, kAdapterVersion, kModelVersion, params_offset);
+  adapters::FinishAdapterBuffer(fbb, adapter_offset);
+
+  const auto* adapter = adapters::GetAdapter(fbb.GetBufferPointer());
+  return adapter->parameters()->Get(0);
+}
+}  // namespace
 
 TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_RawDataSizeMismatch) {
   // Craft a flatbuffer Parameter where raw_data has fewer bytes than
