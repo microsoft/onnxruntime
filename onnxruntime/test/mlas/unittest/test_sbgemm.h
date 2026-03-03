@@ -193,12 +193,14 @@ class MlasSBGemmTest : public MlasTestBase {
     ReferenceSgemm(M, N, K, BatchSize, A, B, Bias, CReference);
     const float cosine_similarity_threshold = 0.98;
 
-    for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
+    for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++, f++) {
+        for (size_t n = 0; n < N; n++) {
+          // Compute flat index to avoid desync if we break
+          const size_t f = batch * M * N + m * N + n;
           if (!(CloseEnough(float(C[f]), CReference[f]))) {
             float cos_sim = cosine_similarity(C, CReference, (BatchSize * M * N));
-            if (abs(cos_sim) < cosine_similarity_threshold) {
+            if (std::abs(cos_sim) < cosine_similarity_threshold) {
               ASSERT_TRUE(false) << "cosine similarity check failed" << cos_sim;
             } else {
               break;
@@ -239,12 +241,14 @@ class MlasSBGemmTest : public MlasTestBase {
     ReferenceSgemm(M, N, K, BatchSize, A, B, Bias, CReference);
 
     const float cosine_similarity_threshold = 0.98;
-    for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
+    for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++, f++) {
+        for (size_t n = 0; n < N; n++) {
+          // Compute flat index to avoid desync if we break
+          const size_t f = batch * M * N + m * N + n;
           if (!(CloseEnough(float(C[f]), CReference[f]))) {
             float cos_sim = cosine_similarity(C, CReference, (BatchSize * M * N));
-            if (abs(cos_sim) < cosine_similarity_threshold) {
+            if (std::abs(cos_sim) < cosine_similarity_threshold) {
               ASSERT_TRUE(false) << "cosine similarity check failed" << cos_sim;
             } else {
               break;
@@ -266,12 +270,14 @@ class MlasSBGemmTest : public MlasTestBase {
 
     this->CallSBGemm(M, N, K, BatchSize, A, K, B, N, Bias, C, N, false);
 
-    for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
+    for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++, f++) {
+        for (size_t n = 0; n < N; n++) {
+          // Compute flat index to avoid desync if we break
+          const size_t f = batch * M * N + m * N + n;
           if (!(CloseEnough(float(C[f]), CReference[f]))) {
             float cos_sim = cosine_similarity(C, CReference, (BatchSize * M * N));
-            if (abs(cos_sim) < cosine_similarity_threshold) {
+            if (std::abs(cos_sim) < cosine_similarity_threshold) {
               ASSERT_TRUE(false) << "cosine similarity check failed" << cos_sim;
             } else {
               break;

@@ -311,11 +311,11 @@ MlasSBGemmPackBSize(
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+#if defined(USE_KLEIDIAI) && !defined(MLAS_USE_ARM_NEON_NCHWC)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSBGemmPackBSizeOverride != nullptr &&
-        TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        TransB != CBLAS_TRANSPOSE::CblasTrans &&
+        TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
+        TransB == CBLAS_TRANSPOSE::CblasNoTrans &&
         BIsfp32) {
         size_t bytes_required;
         bytes_required = GetMlasPlatform().MlasSBGemmPackBSizeOverride(TransA, TransB, N, K);
@@ -355,11 +355,11 @@ MlasSBGemmConvertPackB(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+#if defined(USE_KLEIDIAI) && !defined(MLAS_USE_ARM_NEON_NCHWC)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSBGemmPackBOverride != nullptr &&
-        TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        TransB != CBLAS_TRANSPOSE::CblasTrans &&
+        TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
+        TransB == CBLAS_TRANSPOSE::CblasNoTrans &&
         BIsfp32 &&
         GetMlasPlatform().MlasSBGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
         return;
@@ -385,11 +385,11 @@ MlasSBGemmBatch(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER) && !defined(MLAS_USE_ARM_NEON_NCHWC)
+#if defined(USE_KLEIDIAI) && !defined(MLAS_USE_ARM_NEON_NCHWC)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasSBGemmBatchOverride != nullptr &&
-        TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        TransB != CBLAS_TRANSPOSE::CblasTrans &&
+        TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
+        TransB == CBLAS_TRANSPOSE::CblasNoTrans &&
         Data->AIsfp32 &&
         (Data->BIsPacked || Data->BIsfp32) &&
         GetMlasPlatform().MlasSBGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchN, ThreadPool)){

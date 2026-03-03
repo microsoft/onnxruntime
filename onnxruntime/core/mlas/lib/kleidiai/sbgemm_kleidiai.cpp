@@ -6,6 +6,11 @@
 
 #if defined(__aarch64__) && defined(__linux__)
 
+#include <vector>
+#include <cstring>
+#include <cstddef>
+#include <array>
+
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_bf16p2vlx2_f32_sme.h"
 
@@ -248,11 +253,11 @@ Return Value:
 
 --*/
 {
-    if (TransA != CblasNoTrans || TransB != CblasNoTrans) {
+    if (TransA != CblasNoTrans || TransB != CblasNoTrans || K == 0) {
         return false;
     }
 
-    if (M == 0 || N == 0) {
+    if (M == 0 || N == 0 || BatchSize == 0) {
         return true;
     }
 

@@ -202,7 +202,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
       dim2 = static_cast<size_t>(b_shape[1]);
     }
 
-    if (use_fastmath_mode_ && (trans_b_attr_ == 0) && ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold)) {
+    if (use_fastmath_mode_ && (trans_a_attr_ == 0) && (trans_b_attr_ == 0) && ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold)) {
       is_packed = GemmPackBBfloat16(alloc, tensor, trans_a_attr_ != 0, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, &mlas_backend_kernel_selector_config_);
     } else
 #endif
@@ -271,7 +271,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const size_t lda = helper.Lda(trans_a);
   const size_t ldb = helper.Ldb(trans_b);
 #if defined(__aarch64__) && defined(__linux__)
-  if (use_fastmath_mode_ && !trans_b && ((N * K) >= kFastMathModeKernelsizeThreshold)) {
+  if (use_fastmath_mode_ && !trans_a && !trans_b && ((N * K) >= kFastMathModeKernelsizeThreshold)) {
     std::vector<MLAS_SBGEMM_DATA_PARAMS> data(max_len);
     for (size_t i = 0; i < max_len; i++) {
       data[i].BIsfp32 = !(bool(packed_b_));

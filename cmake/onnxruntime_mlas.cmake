@@ -551,23 +551,6 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
         endif()
 
-        #
-        # Mac arm64 (M-series) supports BF16 instructions, and ORT's SBGEMM
-        # entrypoints (MlasSBGemm*) are provided by the AArch64 SBGEMM sources.
-        # Add minimal changes required to enable sbgemm on this platform
-        #
-        if (APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
-          set(mlas_platform_srcs
-            ${mlas_platform_srcs}
-            ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
-            ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
-            ${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp
-          )
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
-        endif()
-
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})
             set_target_properties(onnxruntime_mlas_arm64 PROPERTIES OSX_ARCHITECTURES "arm64")
