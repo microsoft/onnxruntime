@@ -5283,6 +5283,177 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQsCleanup) {
 #endif
 }
 
+// test removal of Q->DQ or DQ->Q pair where the second node has multiple downstream nodes
+// by QDQFinalCleanupTransformer
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_QDQMultipleDownstream) {
+  // is_q_dq=true:  float Input -> Q -> DQ -> Transpose1 -> Output1
+  //                                       -> Transpose2 -> Output2
+  // is_q_dq=false: uint8 Input -> DQ -> Q -> Transpose1 -> Output1
+  //                                       -> Transpose2 -> Output2
+  // After cleanup, the Q->DQ or DQ->Q pair should be removed.
+  auto test_case = [&](bool is_q_dq, bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* pair_input = nullptr;
+      if (is_q_dq) {
+        pair_input = builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f);
+      } else {
+        pair_input = builder.MakeInput<uint8_t>({1, 2, 4},
+                                                std::numeric_limits<uint8_t>::min(),
+                                                std::numeric_limits<uint8_t>::max());
+      }
+
+      // Build Q->DQ or DQ->Q pair; pair_output is the output of the second node.
+      NodeArg* pair_output = nullptr;
+      if (is_q_dq) {
+        auto* q_output = builder.MakeIntermediate();
+        builder.AddQuantizeLinearNode<uint8_t>(pair_input, 0.05f, 128, q_output, use_contrib_qdq);
+        auto* dq_output = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output, use_contrib_qdq);
+        pair_output = dq_output;
+      } else {
+        auto* dq_output = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<uint8_t>(pair_input, 0.05f, 128, dq_output, use_contrib_qdq);
+        auto* q_output = builder.MakeIntermediate();
+        builder.AddQuantizeLinearNode<uint8_t>(dq_output, 0.05f, 128, q_output, use_contrib_qdq);
+        pair_output = q_output;
+      }
+
+      auto* output1 = builder.MakeOutput();
+      builder.AddNode("Transpose", {pair_output}, {output1});
+      auto* output2 = builder.MakeOutput();
+      builder.AddNode("Transpose", {pair_output}, {output2});
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    auto add_session_options = [is_q_dq](SessionOptions& so) {
+      if (!is_q_dq) {
+        // The function EnsureUniqueDQForEachExplicitOutputEdge does not account for this particular case. Disable it
+        // to prevent test failures.
+        ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+      }
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+  };
+
+  test_case(true, false);
+  test_case(false, false);
+
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true, true);
+  test_case(false, true);
+#endif
+}
+
+// test removal when second_node produces graph output AND has downstream nodes
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_QDQMultipleDownstreamWithGraphOutput) {
+  auto test_case = [](bool is_q_dq, bool use_contrib_qdq) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      NodeArg* pair_input = is_q_dq ? builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f)
+                                    : builder.MakeInput<uint8_t>({1, 2, 4}, 0, 255);
+
+      auto* q_or_dq_output = builder.MakeIntermediate();
+      auto* pair_output = builder.MakeOutput();
+
+      if (is_q_dq) {
+        builder.AddQuantizeLinearNode<uint8_t>(pair_input, 0.05f, 128, q_or_dq_output, use_contrib_qdq);
+        builder.AddDequantizeLinearNode<uint8_t>(q_or_dq_output, 0.05f, 128, pair_output, use_contrib_qdq);
+      } else {
+        builder.AddDequantizeLinearNode<uint8_t>(pair_input, 0.05f, 128, q_or_dq_output, use_contrib_qdq);
+        builder.AddQuantizeLinearNode<uint8_t>(q_or_dq_output, 0.05f, 128, pair_output, use_contrib_qdq);
+      }
+
+      auto* downstream_output = builder.MakeOutput();
+      builder.AddNode("Transpose", {pair_output}, {downstream_output});
+    };
+
+    auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+      EXPECT_EQ(op_to_count["Identity"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 1);
+    };
+
+    auto add_session_options = [is_q_dq](SessionOptions& so) {
+      if (!is_q_dq) {
+        ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+      }
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+  };
+
+  test_case(true, false);
+  test_case(false, false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(true, true);
+  test_case(false, true);
+#endif
+}
+
 // test removal when we have graph input -> Q/DQ pair -> graph output
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
   auto test_case = [](bool is_q_dq, bool use_contrib_qdq) {
