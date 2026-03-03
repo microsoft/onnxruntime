@@ -265,7 +265,6 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_RawDataSizeMismatch) {
   adapters::FinishAdapterBuffer(fbb, adapter_offset);
 
   auto* buf = fbb.GetBufferPointer();
-  auto size = fbb.GetSize();
 
   // Retrieve the Parameter from the Adapter
   const auto* adapter = adapters::GetAdapter(buf);
