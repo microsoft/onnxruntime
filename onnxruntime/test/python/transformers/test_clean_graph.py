@@ -43,21 +43,31 @@ def _make_constantofshape_cast_model():
 
     # Gather indices=0 (batch dim)
     gather_0_idx = numpy_helper.from_array(np.array(0, dtype=np.int64), name="gather_0_idx")
-    gather_0 = helper.make_node("Gather", inputs=["shape_out", "gather_0_idx"], outputs=["gather_0_out"], name="gather_0", axis=0)
+    gather_0 = helper.make_node(
+        "Gather", inputs=["shape_out", "gather_0_idx"], outputs=["gather_0_out"], name="gather_0", axis=0
+    )
 
     # Gather indices=1 (seq dim)
     gather_1_idx = numpy_helper.from_array(np.array(1, dtype=np.int64), name="gather_1_idx")
-    gather_1 = helper.make_node("Gather", inputs=["shape_out", "gather_1_idx"], outputs=["gather_1_out"], name="gather_1", axis=0)
+    gather_1 = helper.make_node(
+        "Gather", inputs=["shape_out", "gather_1_idx"], outputs=["gather_1_out"], name="gather_1", axis=0
+    )
 
     # Unsqueeze both
     unsqueeze_0_axes = numpy_helper.from_array(np.array([0], dtype=np.int64), name="unsqueeze_0_axes")
-    unsqueeze_0 = helper.make_node("Unsqueeze", inputs=["gather_0_out", "unsqueeze_0_axes"], outputs=["unsqueeze_0_out"], name="unsqueeze_0")
+    unsqueeze_0 = helper.make_node(
+        "Unsqueeze", inputs=["gather_0_out", "unsqueeze_0_axes"], outputs=["unsqueeze_0_out"], name="unsqueeze_0"
+    )
 
     unsqueeze_1_axes = numpy_helper.from_array(np.array([0], dtype=np.int64), name="unsqueeze_1_axes")
-    unsqueeze_1 = helper.make_node("Unsqueeze", inputs=["gather_1_out", "unsqueeze_1_axes"], outputs=["unsqueeze_1_out"], name="unsqueeze_1")
+    unsqueeze_1 = helper.make_node(
+        "Unsqueeze", inputs=["gather_1_out", "unsqueeze_1_axes"], outputs=["unsqueeze_1_out"], name="unsqueeze_1"
+    )
 
     # Concat
-    concat = helper.make_node("Concat", inputs=["unsqueeze_0_out", "unsqueeze_1_out"], outputs=["concat_out"], name="concat_0", axis=0)
+    concat = helper.make_node(
+        "Concat", inputs=["unsqueeze_0_out", "unsqueeze_1_out"], outputs=["concat_out"], name="concat_0", axis=0
+    )
 
     # ConstantOfShape with float value
     cos_value = numpy_helper.from_array(np.array([1.0], dtype=np.float32))
@@ -164,6 +174,119 @@ class TestCleanGraph(unittest.TestCase):
 
         cos_nodes = self._get_node_by_op(cleaned, "ConstantOfShape")
         self.assertEqual(len(cos_nodes), 1, "ConstantOfShape should remain")
+
+    def test_attention_mask_cleanup_after_cast_merge(self):
+        """Attention mask_index path should be removed even after Cast is merged.
+
+        When an Attention node consumes ReduceSum → Cast → ConstantOfShape → Shape
+        on input[3], the Cast merge fires first (folding Cast into ConstantOfShape).
+        The Attention cleanup must still match the post-merge pattern
+        (ReduceSum → ConstantOfShape → Shape) and remove the mask_index input.
+        """
+        batch_size = 2
+        seq_len = 8
+        hidden_size = 16
+
+        input_ids = helper.make_tensor_value_info("input_ids", TensorProto.INT64, [batch_size, seq_len])
+        attn_output = helper.make_tensor_value_info("attn_output", TensorProto.FLOAT, None)
+
+        # Shape → Gather → Unsqueeze → Concat → ConstantOfShape → Cast → ReduceSum
+        # (same mask path as _make_constantofshape_cast_model)
+        shape_node = helper.make_node("Shape", inputs=["input_ids"], outputs=["shape_out"], name="shape_0")
+
+        gather_0_idx = numpy_helper.from_array(np.array(0, dtype=np.int64), name="gather_0_idx")
+        gather_0 = helper.make_node(
+            "Gather", inputs=["shape_out", "gather_0_idx"], outputs=["gather_0_out"], name="gather_0", axis=0
+        )
+        gather_1_idx = numpy_helper.from_array(np.array(1, dtype=np.int64), name="gather_1_idx")
+        gather_1 = helper.make_node(
+            "Gather", inputs=["shape_out", "gather_1_idx"], outputs=["gather_1_out"], name="gather_1", axis=0
+        )
+
+        unsqueeze_0_axes = numpy_helper.from_array(np.array([0], dtype=np.int64), name="unsqueeze_0_axes")
+        unsqueeze_0 = helper.make_node(
+            "Unsqueeze", inputs=["gather_0_out", "unsqueeze_0_axes"], outputs=["unsqueeze_0_out"], name="unsqueeze_0"
+        )
+        unsqueeze_1_axes = numpy_helper.from_array(np.array([0], dtype=np.int64), name="unsqueeze_1_axes")
+        unsqueeze_1 = helper.make_node(
+            "Unsqueeze", inputs=["gather_1_out", "unsqueeze_1_axes"], outputs=["unsqueeze_1_out"], name="unsqueeze_1"
+        )
+
+        concat = helper.make_node(
+            "Concat", inputs=["unsqueeze_0_out", "unsqueeze_1_out"], outputs=["concat_out"], name="concat_0", axis=0
+        )
+
+        cos_value = numpy_helper.from_array(np.array([1.0], dtype=np.float32))
+        constant_of_shape = helper.make_node(
+            "ConstantOfShape", inputs=["concat_out"], outputs=["cos_out"], name="cos_0", value=cos_value
+        )
+        cast = helper.make_node("Cast", inputs=["cos_out"], outputs=["cast_out"], name="cast_0", to=TensorProto.INT64)
+        reduce_sum = helper.make_node(
+            "ReduceSum", inputs=["cast_out"], outputs=["reduce_sum_out"], name="reduce_sum_0", keepdims=0
+        )
+
+        # Dummy QKV initializers for Attention inputs[0:3]
+        qkv_data = numpy_helper.from_array(
+            np.zeros([batch_size, seq_len, hidden_size], dtype=np.float32), name="qkv_input"
+        )
+        weight_data = numpy_helper.from_array(np.zeros([hidden_size, hidden_size], dtype=np.float32), name="weight")
+        bias_data = numpy_helper.from_array(np.zeros([hidden_size], dtype=np.float32), name="bias")
+
+        # Attention node with mask_index at input[3]
+        attention = helper.make_node(
+            "Attention",
+            inputs=["qkv_input", "weight", "bias", "reduce_sum_out"],
+            outputs=["attn_output"],
+            name="attention_0",
+            num_heads=2,
+        )
+        attention.domain = "com.microsoft"
+
+        nodes = [
+            shape_node,
+            gather_0,
+            gather_1,
+            unsqueeze_0,
+            unsqueeze_1,
+            concat,
+            constant_of_shape,
+            cast,
+            reduce_sum,
+            attention,
+        ]
+        initializers = [
+            gather_0_idx,
+            gather_1_idx,
+            unsqueeze_0_axes,
+            unsqueeze_1_axes,
+            qkv_data,
+            weight_data,
+            bias_data,
+        ]
+
+        graph = helper.make_graph(nodes, "attention_mask_test", [input_ids], [attn_output], initializer=initializers)
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 16), helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        bert_model = BertOnnxModel(model, num_heads=2, hidden_size=hidden_size)
+        bert_model.clean_graph()
+        bert_model.prune_graph()
+        cleaned = bert_model.model
+
+        # Cast should be merged
+        cast_nodes = self._get_node_by_op(cleaned, "Cast")
+        self.assertEqual(len(cast_nodes), 0, "Cast node should be removed after merge")
+
+        # Attention node should have mask_index removed (3 inputs instead of 4)
+        attn_nodes = self._get_node_by_op(cleaned, "Attention")
+        self.assertEqual(len(attn_nodes), 1, "Should have exactly 1 Attention node")
+        self.assertEqual(
+            len(attn_nodes[0].input),
+            3,
+            f"Attention should have 3 inputs (mask removed), got {len(attn_nodes[0].input)}",
+        )
 
 
 if __name__ == "__main__":

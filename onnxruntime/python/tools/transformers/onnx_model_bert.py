@@ -267,7 +267,7 @@ class BertOnnxModel(OnnxModel):
             #          |                                                     |
             #          |                                                     v
             #          +----> Shape --> Gather(indices=1) --> Unsqueeze--->  Concat --> ConstantOfShape -->Cast --> EmbedLayerNormaliation/ReduceSum
-            # After:
+            # After (Concat path simplified, Cast merged into ConstantOfShape):
             #  input_ids --> Shape --> ConstantOfShape --> EmbedLayerNormalization/ReduceSum
             op_input_id = {"EmbedLayerNormalization": 1, "ReduceSum": 0, "Attention": 3}
             if node.op_type in op_input_id:
@@ -300,20 +300,23 @@ class BertOnnxModel(OnnxModel):
                         # Merge ConstantOfShape → Cast: update the value attribute dtype
                         # so ConstantOfShape directly produces the target type.
                         cast_to_type = OnnxModel.get_node_attribute(cast, "to")
-                        if cast_to_type is not None:
-                            cos_value = constant_of_shape.attribute[0].t
-                            fill_val = numpy_helper.to_array(cos_value).flat[0]
+                        cos_tensor = OnnxModel.get_node_attribute(constant_of_shape, "value")
+                        if cast_to_type is not None and cos_tensor is not None:
+                            fill_val = numpy_helper.to_array(cos_tensor).flat[0]
                             np_dtype = helper.tensor_dtype_to_np_dtype(cast_to_type)
                             new_val = numpy_helper.from_array(np.array([fill_val], dtype=np_dtype))
-                            constant_of_shape.attribute[0].t.CopyFrom(new_val)
+                            for i, attr in enumerate(constant_of_shape.attribute):
+                                if attr.name == "value":
+                                    constant_of_shape.attribute[i].CopyFrom(helper.make_attribute("value", new_val))
+                                    break
                             self.replace_input_of_all_nodes(cast.output[0], constant_of_shape.output[0])
                             nodes_to_remove.append(cast)
 
                         output_name_to_node = self.output_name_to_node()
 
             if node.op_type == "Attention":
-                # Before:
-                #   input_ids --> Shape -->ConstantOfShape -->Cast --> ReduceSum --> Attention
+                # Before (Cast present or already merged into ConstantOfShape):
+                #   input_ids --> Shape --> ConstantOfShape [--> Cast] --> ReduceSum --> Attention
                 # After:
                 #   remove this path, and remove the optional mask_index input of Attention node.
                 parent_nodes = self.match_parent_path(
@@ -322,6 +325,14 @@ class BertOnnxModel(OnnxModel):
                     [3, 0, 0, 0],
                     output_name_to_node,
                 )
+                if parent_nodes is None:
+                    # Also try merged pattern (Cast already folded into ConstantOfShape).
+                    parent_nodes = self.match_parent_path(
+                        node,
+                        ["ReduceSum", "ConstantOfShape", "Shape"],
+                        [3, 0, 0],
+                        output_name_to_node,
+                    )
                 if parent_nodes is not None:
                     if parent_nodes[-1].input[0] == self.graph().input[0].name:
                         attention_node = helper.make_node(
@@ -332,7 +343,7 @@ class BertOnnxModel(OnnxModel):
                         )
                         attention_node.domain = "com.microsoft"
                         attention_node.attribute.extend([helper.make_attribute("num_heads", self.num_heads)])
-                        self.add_node(attention_node, self.get_graph_by_node(attention_node).name)
+                        self.add_node(attention_node, self.get_graph_by_node(node).name)
                         nodes_to_remove.append(node)
         self.remove_nodes(nodes_to_remove)
 
