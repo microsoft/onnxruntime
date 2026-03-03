@@ -7,7 +7,6 @@
 #include <vector>
 #include <unordered_map>
 
-#include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/common/common.h"
 
@@ -86,7 +85,7 @@ class Telemetry {
                                const char* function, uint32_t line) const;
 
   virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
-                              const InlinedHashMap<int64_t, long long>& duration_per_batch_size) const;
+                              const std::unordered_map<int64_t, long long>& duration_per_batch_size) const;
 
   virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
 
