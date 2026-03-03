@@ -201,6 +201,8 @@ __global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
       CUDA_KERNEL_ASSERT(val >= static_cast<int64_t>(min_expected_seqlen));
     }
     // Clamp to [1, total_sequence_length] for safety in release builds where asserts are no-ops.
+    // Note: In GQA prompt mode, Flash and MEA kernels use padded_seq_lens (not total_seq_lens/seqlens_k)
+    // for masking, so even if the assert is a no-op in release, partial masking won't produce wrong output.
     val = max(static_cast<int64_t>(1), min(val, static_cast<int64_t>(total_sequence_length)));
     seqlens_k[idx] = static_cast<int>(val) - 1;
   }
