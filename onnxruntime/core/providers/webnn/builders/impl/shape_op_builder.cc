@@ -18,12 +18,18 @@ class ShapeOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+
+  // Operator support related.
+ private:
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                              const Node& node,
                                              const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+  ORT_RETURN_IF_NOT(!HasDynamicShape(*input_defs[0], logger), "Dynamic shape is not supported");
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   const auto rank = static_cast<int32_t>(input_shape.size());
@@ -71,6 +77,16 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
+}
+
+bool ShapeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
+                                       const WebnnDeviceType /* device_type */, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  if (HasDynamicShape(*input_defs[0], logger)) {
+    LOGS(logger, VERBOSE) << "Dynamic shape is not supported for Shape op.";
+    return false;
+  }
+  return true;
 }
 
 void CreateShapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

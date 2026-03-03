@@ -50,12 +50,33 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
     return false;
   }
 
-  // We already checked the shape has no dynamic dimension.
+  // For dynamic dimensions, use 0 as placeholder.
   for (const auto& dim : shape_proto->dim()) {
-    shape.push_back(dim.dim_value());
+    if (dim.has_dim_value()) {
+      shape.push_back(dim.dim_value());
+    } else {
+      LOGS(logger, VERBOSE) << "NodeArg [" << node_arg.Name() << "] has dynamic dimension: " << dim.dim_param();
+      shape.push_back(0);
+    }
   }
 
   return true;
+}
+
+bool HasDynamicShape(const NodeArg& node_arg, const logging::Logger& logger) {
+  const auto* shape_proto = node_arg.Shape();
+  if (!shape_proto) {
+    LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no shape info";
+    return false;
+  }
+
+  for (const auto& dim : shape_proto->dim()) {
+    if (!dim.has_dim_value()) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 bool IsNodeSupported(const GraphViewer& graph_viewer, const Node& node, const WebnnDeviceType device_type,
@@ -84,13 +105,11 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
   }
 
   for (const auto& dim : shape_proto->dim()) {
-    // WebNN doesn't support dynamic shape - use sessionOptions.freeDimensionOverrides to fix the shape.
+    // Dynamic dimensions are supported for graph inputs/outputs.
     if (!dim.has_dim_value()) {
-      LOGS(logger, VERBOSE) << "Dynamic shape is not supported, "
-                            << "use sessionOptions.FreeDimensionOverrides to set a fixed shape: " << node_arg_name;
-      return false;
-    }
-    if (dim.dim_value() == 0 && !allow_empty_input) {
+      LOGS(logger, VERBOSE) << "Dynamic shape is detected, dim_param: " << dim.dim_param()
+                            << " for node arg: " << node_arg_name;
+    } else if (dim.dim_value() == 0 && !allow_empty_input) {
       LOGS(logger, VERBOSE) << "The shape of [" << node_arg_name << "] has 0 dimension which is not supported by WebNN";
       return false;
     }

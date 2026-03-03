@@ -196,6 +196,58 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       }
       model->SetOutputMap(std::move(output_map));
     }
+
+    // Build mapping from symbolic dim (dim_param) to fused node input position/dimension.
+    InlinedHashMap<std::string, std::pair<size_t, size_t>> dim_param_to_input_dim;
+    {
+      const auto& input_defs = fused_node.InputDefs();
+      for (size_t input_idx = 0; input_idx < input_defs.size(); ++input_idx) {
+        const auto* input_def = input_defs[input_idx];
+        if (!input_def) {
+          continue;
+        }
+
+        const auto* shape_proto = input_def->Shape();
+        if (!shape_proto) {
+          continue;
+        }
+
+        const auto& dims = shape_proto->dim();
+        for (int dim_idx = 0; dim_idx < dims.size(); ++dim_idx) {
+          const auto& dim = dims[dim_idx];
+          if (!dim.has_dim_value() && dim.has_dim_param() && !dim.dim_param().empty()) {
+            dim_param_to_input_dim.emplace(dim.dim_param(), std::make_pair(input_idx, static_cast<size_t>(dim_idx)));
+          }
+        }
+      }
+    }
+
+    // Record output shapes and symbolic dimensions in fused-node output order.
+    std::vector<std::vector<int64_t>> fused_output_shapes;
+    std::vector<std::vector<std::string>> output_dim_params;
+    {
+      const auto& output_defs = fused_node.OutputDefs();
+      fused_output_shapes.reserve(output_defs.size());
+      output_dim_params.reserve(output_defs.size());
+      for (const auto* output_def : output_defs) {
+        std::vector<int64_t> shape;
+        std::vector<std::string> params;
+        if (output_def) {
+          const auto* shape_proto = output_def->Shape();
+          if (shape_proto) {
+            const auto& dims = shape_proto->dim();
+            shape.reserve(dims.size());
+            params.reserve(dims.size());
+            for (const auto& dim : dims) {
+              shape.push_back(dim.has_dim_value() ? dim.dim_value() : 0);
+              params.push_back((!dim.has_dim_value() && dim.has_dim_param()) ? dim.dim_param() : "");
+            }
+          }
+        }
+        fused_output_shapes.push_back(std::move(shape));
+        output_dim_params.push_back(std::move(params));
+      }
+    }
     models_.emplace(fused_node.Name(), std::move(model));
 
     NodeComputeInfo compute_info;
@@ -209,7 +261,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [dim_param_to_input_dim, fused_output_shapes, output_dim_params](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
 
       const size_t num_inputs = ctx.GetInputCount();
@@ -225,12 +277,14 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
       InlinedHashMap<std::string, webnn::OnnxTensorData> inputs;
       inputs.reserve(model_inputs.size());
+      std::vector<std::vector<int64_t>> runtime_input_shapes(num_inputs);
       for (size_t i = 0; i < model_inputs.size(); i++) {
         const auto& input_name = model_inputs[i];
         auto input_idx = model->GetMappedInputIdx(input_name);
         auto input_tensor = ctx.GetInput(input_idx);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
+        runtime_input_shapes[input_idx] = shape;
         const void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
@@ -250,10 +304,71 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         for (size_t i = 0; i < model_outputs.size(); i++) {
           const auto& output_name = model_outputs[i];
           const auto& output_info = model->GetInputOutputInfo(output_name);
-          auto output_shape = output_info.shape;
           auto output_type = output_info.data_type;
+          const auto output_idx = model->GetMappedOutputIdx(output_name);
+
+          // Use fused-node output shape metadata as allocation baseline.
+          std::vector<int64_t> output_shape = output_info.shape;
+          if (output_idx < fused_output_shapes.size() && !fused_output_shapes[output_idx].empty()) {
+            output_shape = fused_output_shapes[output_idx];
+          }
+
+          // Resolve dynamic output dimensions from current runtime input shapes via dim_param.
+          if (output_idx < output_dim_params.size()) {
+            const auto& dim_params = output_dim_params[output_idx];
+            const size_t dims_to_resolve = output_shape.size() < dim_params.size() ? output_shape.size() : dim_params.size();
+
+            for (size_t dim_idx = 0; dim_idx < dims_to_resolve; ++dim_idx) {
+              if (output_shape[dim_idx] != 0) {
+                continue;
+              }
+
+              const auto& dim_param = dim_params[dim_idx];
+              if (dim_param.empty()) {
+                continue;
+              }
+
+              const auto it = dim_param_to_input_dim.find(dim_param);
+              if (it == dim_param_to_input_dim.end()) {
+                continue;
+              }
+
+              const size_t source_input_idx = it->second.first;
+              const size_t source_dim_idx = it->second.second;
+              if (source_input_idx >= runtime_input_shapes.size()) {
+                continue;
+              }
+
+              const auto& source_shape = runtime_input_shapes[source_input_idx];
+              if (source_dim_idx >= source_shape.size()) {
+                continue;
+              }
+
+              output_shape[dim_idx] = source_shape[source_dim_idx];
+            }
+          }
+
+          // Hard fail if dynamic dimensions remain unresolved.
+          for (size_t dim_idx = 0; dim_idx < output_shape.size(); ++dim_idx) {
+            if (output_shape[dim_idx] == 0) {
+              std::string unresolved_dim_param;
+              if (output_idx < output_dim_params.size() && dim_idx < output_dim_params[output_idx].size()) {
+                unresolved_dim_param = output_dim_params[output_idx][dim_idx];
+              }
+
+              LOGS_DEFAULT(ERROR) << "[WebNN] Failed to resolve dynamic output dimension for output ["
+                                  << output_name << "] at dim index [" << dim_idx
+                                  << "], dim_param: [" << unresolved_dim_param
+                                  << "]. Please ensure this dim_param can be inferred from graph inputs.";
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                     "[WebNN] Failed to resolve dynamic output dimension for output: ", output_name,
+                                     " at dim index: ", dim_idx,
+                                     ". dim_param: ", unresolved_dim_param);
+            }
+          }
+
           auto output_tensor =
-              ctx.GetOutput(i, output_shape.data(), output_shape.size());
+              ctx.GetOutput(output_idx, output_shape.data(), output_shape.size());
           void* output_buffer = output_tensor.GetTensorMutableRawData();
           outputs.emplace(output_name,
                           webnn::OnnxTensorData{

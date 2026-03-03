@@ -247,6 +247,7 @@ Status ModelBuilder::RegisterInitializers() {
 Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_input) {
   const auto& name = node_arg.Name();
   const std::string input_output_type = is_input ? "input" : "output";
+  constexpr int32_t kDefaultDynamicDimensionMaxSize = 128;
 
   if (is_input) {
     // Input should not be an initializer.
@@ -258,26 +259,33 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       return Status::OK();
   }
 
-  std::vector<int32_t> dims;
+  emscripten::val shape_array = emscripten::val::array();
   {  // input_output shape.
     const auto* shape_proto = node_arg.Shape();
     ORT_RETURN_IF(shape_proto == nullptr,
                   "shape_proto cannot be null for ", input_output_type, ": ", name);
     const auto& shape = shape_proto->dim();
-    if (!shape.empty()) {
-      dims.reserve(shape.size());
-      for (const auto& dim : shape) {
-        // dim_param free dimensions should have already been excluded by IsTensorShapeSupported().
-        assert(dim.has_dim_value());
-        dims.push_back(SafeInt<int32_t>(dim.dim_value()));
+    for (const auto& dim : shape) {
+      if (dim.has_dim_value()) {
+        // Static dimension: use the concrete value.
+        int32_t dim_value = SafeInt<int32_t>(dim.dim_value());
+        shape_array.call<void>("push", dim_value);
+      } else {
+        // Dynamic dimension: create an object {name, maxSize} for WebNN.
+        emscripten::val dim_obj = emscripten::val::object();
+        dim_obj.set("name", emscripten::val(dim.dim_param()));
+        // WebNN requires maxSize. Use a default value since ONNX doesn't provide this information.
+        // TODO: Allow configuring maxSize via session options or dimension overrides.
+        dim_obj.set("maxSize", kDefaultDynamicDimensionMaxSize);
+        shape_array.call<void>("push", dim_obj);
       }
     }
   }
 
   emscripten::val desc = emscripten::val::object();
 
-  desc.set("dimensions", emscripten::val::array(dims));
-  desc.set("shape", emscripten::val::array(dims));
+  desc.set("dimensions", shape_array);
+  desc.set("shape", shape_array);
 
   int32_t data_type;
   {  // type
@@ -343,10 +351,15 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     output_names_.push_back(name);
   }
 
+  // Build shape vector for input_output_info.
   std::vector<int64_t> shape;
-  std::transform(dims.cbegin(), dims.cend(),
-                 std::back_inserter(shape),
-                 [](int32_t dim) -> int64_t { return SafeInt<int64_t>(dim); });
+  const auto* shape_proto = node_arg.Shape();
+  if (shape_proto) {
+    for (const auto& dim : shape_proto->dim()) {
+      // For dynamic dimensions, store the default max size to avoid zero-sized runtime tensors.
+      shape.push_back(dim.has_dim_value() ? dim.dim_value() : kDefaultDynamicDimensionMaxSize);
+    }
+  }
   input_output_info_.emplace(name, OnnxTensorInfo{data_type, shape});
 
   return Status::OK();

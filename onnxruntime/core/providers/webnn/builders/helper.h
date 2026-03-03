@@ -51,6 +51,7 @@ inline std::vector<int64_t> GetResolvedAxes(const NodeAttrHelper& helper, size_t
 }
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
+bool HasDynamicShape(const NodeArg& node_arg, const logging::Logger& logger);
 
 template <typename T>
 std::string GetShapeString(std::vector<T>& shape) {
