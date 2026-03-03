@@ -57,8 +57,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& execution_provider /*required by constant folding*/,
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {},
-    concurrency::ThreadPool* intra_op_thread_pool = nullptr,
-    bool enable_dq_matmulnbits_fusion = false);
+    concurrency::ThreadPool* intra_op_thread_pool = nullptr);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

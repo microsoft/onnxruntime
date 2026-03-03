@@ -3,7 +3,10 @@
 
 #include "core/optimizer/dq_matmulnbits_fusion.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_utils.h"
@@ -51,7 +54,9 @@ bool HasRank2Shape(const ONNX_NAMESPACE::TensorProto& tp, int64_t dim0, int64_t 
   return tp.dims_size() == 2 && tp.dims(0) == dim0 && tp.dims(1) == dim1;
 }
 
-uint8_t GetPackedUint4Element(const uint8_t* packed, size_t index) {
+uint8_t GetPackedUint4Element(const uint8_t* packed, size_t index, size_t num_elements) {
+  ORT_ENFORCE(index < num_elements, "GetPackedUint4Element: index ", index,
+              " out of bounds (num_elements=", num_elements, ")");
   const uint8_t packed_byte = packed[index / 2];
   return (index % 2 == 0) ? static_cast<uint8_t>(packed_byte & 0x0F)
                           : static_cast<uint8_t>((packed_byte >> 4) & 0x0F);
@@ -59,15 +64,17 @@ uint8_t GetPackedUint4Element(const uint8_t* packed, size_t index) {
 
 void PackUint4Rows(const Initializer& src, int64_t rows, int64_t cols, uint8_t* dst) {
   const int64_t row_bytes = (cols + 1) / 2;
-  memset(dst, 0, static_cast<size_t>(rows * row_bytes));
+  const size_t dst_bytes = SafeInt<size_t>(rows) * row_bytes;
+  const size_t total_elements = SafeInt<size_t>(rows) * cols;
+  memset(dst, 0, dst_bytes);
 
   const auto src_packed = src.DataAsByteSpan();
   for (int64_t r = 0; r < rows; ++r) {
     for (int64_t c = 0; c < cols; ++c) {
-      const size_t src_index = static_cast<size_t>(r * cols + c);
-      const uint8_t value = GetPackedUint4Element(src_packed.data(), src_index);
+      const size_t src_index = SafeInt<size_t>(r) * cols + c;
+      const uint8_t value = GetPackedUint4Element(src_packed.data(), src_index, total_elements);
 
-      const size_t dst_index = static_cast<size_t>(r * row_bytes + c / 2);
+      const size_t dst_index = SafeInt<size_t>(r) * row_bytes + c / 2;
       if ((c & 1) == 0) {
         dst[dst_index] = value;
       } else {
@@ -79,21 +86,26 @@ void PackUint4Rows(const Initializer& src, int64_t rows, int64_t cols, uint8_t* 
 
 // Transpose and pack UINT4 weights from DQ axis=0 layout [K, N] to MatMulNBits layout [N, k_blocks, blob_size].
 // Source: row-major UINT4 with quantization along K (axis=0), shape [K, N].
+// The nibble ordering follows ONNX UINT4 convention: even indices in the low nibble,
+// odd indices in the high nibble of each byte.
 // Dest: UINT8 [N, k_blocks, block_size/2] where each byte packs two 4-bit weights.
 void TransposePackWeightsAxis0(
     const uint8_t* src_packed, int64_t K, int64_t N, int64_t block_size,
     uint8_t* dst) {
   const int64_t k_blocks = (K + block_size - 1) / block_size;
   const int64_t blob_size = block_size / 2;
-  memset(dst, 0, static_cast<size_t>(N * k_blocks * blob_size));
+  const size_t dst_bytes = SafeInt<size_t>(N) * k_blocks * blob_size;
+  const size_t total_elements = SafeInt<size_t>(K) * N;
+  memset(dst, 0, dst_bytes);
 
   for (int64_t n = 0; n < N; ++n) {
     for (int64_t k = 0; k < K; ++k) {
-      const uint8_t val = GetPackedUint4Element(src_packed, static_cast<size_t>(k * N + n));
+      const size_t src_index = SafeInt<size_t>(k) * N + n;
+      const uint8_t val = GetPackedUint4Element(src_packed, src_index, total_elements);
 
       const int64_t kb = k / block_size;
       const int64_t off = k % block_size;
-      const size_t dst_byte = static_cast<size_t>(n * k_blocks * blob_size + kb * blob_size + off / 2);
+      const size_t dst_byte = SafeInt<size_t>(n) * k_blocks * blob_size + kb * blob_size + off / 2;
       if (off % 2 == 0) {
         dst[dst_byte] = static_cast<uint8_t>((dst[dst_byte] & 0xF0) | val);
       } else {
@@ -109,13 +121,16 @@ void TransposePackZPAxis0(
     const uint8_t* src_packed, int64_t k_blocks, int64_t N,
     uint8_t* dst) {
   const int64_t zp_bytes_per_n = (k_blocks + 1) / 2;
-  memset(dst, 0, static_cast<size_t>(N * zp_bytes_per_n));
+  const size_t dst_bytes = SafeInt<size_t>(N) * zp_bytes_per_n;
+  const size_t total_elements = SafeInt<size_t>(k_blocks) * N;
+  memset(dst, 0, dst_bytes);
 
   for (int64_t n = 0; n < N; ++n) {
     for (int64_t kb = 0; kb < k_blocks; ++kb) {
-      const uint8_t val = GetPackedUint4Element(src_packed, static_cast<size_t>(kb * N + n));
+      const size_t src_index = SafeInt<size_t>(kb) * N + n;
+      const uint8_t val = GetPackedUint4Element(src_packed, src_index, total_elements);
 
-      const size_t dst_byte = static_cast<size_t>(n * zp_bytes_per_n + kb / 2);
+      const size_t dst_byte = SafeInt<size_t>(n) * zp_bytes_per_n + kb / 2;
       if (kb % 2 == 0) {
         dst[dst_byte] = static_cast<uint8_t>((dst[dst_byte] & 0xF0) | val);
       } else {
@@ -239,7 +254,7 @@ std::vector<FusionMatch> CollectReshapeTransposeMatches(
     const int64_t bs_dim = weight_const_tp->dims(2);
     if (N <= 0 || blocks <= 0 || bs_dim <= 0) continue;
     if (bs_dim != block_size) continue;
-    const int64_t K = blocks * bs_dim;
+    const int64_t K = SafeInt<int64_t>(blocks) * bs_dim;
 
     const auto* scale_arg = dq_node->InputDefs()[1];
     if (!scale_arg || !scale_arg->Exists()) continue;
@@ -297,8 +312,8 @@ std::vector<FusionMatch> CollectReshapeTransposeMatches(
     }
 
     if (const auto* b_shape = mm_inputs[1]->Shape(); b_shape && b_shape->dim_size() == 2 &&
-        utils::HasDimValue(b_shape->dim(0)) && utils::HasDimValue(b_shape->dim(1)) &&
-        (b_shape->dim(0).dim_value() != K || b_shape->dim(1).dim_value() != N)) {
+                                                     utils::HasDimValue(b_shape->dim(0)) && utils::HasDimValue(b_shape->dim(1)) &&
+                                                     (b_shape->dim(0).dim_value() != K || b_shape->dim(1).dim_value() != N)) {
       continue;
     }
 
@@ -479,7 +494,7 @@ void ApplyReshapeTransposeFusions(
     const int64_t quant_num = weight_tp->dims(1);
     const int64_t bs_dim = weight_tp->dims(2);
     if (N <= 0 || quant_num <= 0 || bs_dim <= 0 || bs_dim != block_size) continue;
-    const int64_t K = quant_num * bs_dim;
+    const int64_t K = SafeInt<int64_t>(quant_num) * bs_dim;
     const int64_t blob_bytes = (block_size + 1) / 2;
 
     Initializer weight_src(graph, *weight_tp, graph.ModelPath());
@@ -490,9 +505,11 @@ void ApplyReshapeTransposeFusions(
     }
 
     auto uint8_type = DataTypeImpl::TensorTypeFromONNXEnum(
-                          ONNX_NAMESPACE::TensorProto_DataType_UINT8)->GetElementType();
+                          ONNX_NAMESPACE::TensorProto_DataType_UINT8)
+                          ->GetElementType();
     auto scale_type = DataTypeImpl::TensorTypeFromONNXEnum(
-                          scale_src.data_type())->GetElementType();
+                          scale_src.data_type())
+                          ->GetElementType();
 
     auto cpu_allocator = CPUAllocator::DefaultInstance();
 
@@ -540,7 +557,7 @@ void ApplyReshapeTransposeFusions(
     } else {
       // DequantizeLinear default zero-point for uint4 is 0, while MatMulNBits
       // default is 8. Emit explicit zeros to preserve semantics.
-      zp_dst_name = graph.GenerateNodeArgName("webnn_fused_DQ_zp_mnb");
+      zp_dst_name = graph.GenerateNodeArgName("fused_DQ_zp_mnb");
       zp_dst = Tensor(uint8_type, TensorShape{zp_size}, cpu_allocator);
       memset(zp_dst->MutableDataRaw(), 0, zp_dst->SizeInBytes());
     }
@@ -585,9 +602,9 @@ void ApplyReshapeTransposeFusions(
     mnb_outputs.push_back(const_cast<NodeArg*>(mm_node->OutputDefs()[0]));
 
     auto& mnb_node = graph.AddNode(
-        graph.GenerateNodeName("WebNNFusedMatMulNBits"),
+        graph.GenerateNodeName("DQFusedMatMulNBits"),
         "MatMulNBits",
-        "Fused from WebNN DQ+Reshape+Transpose+MatMul",
+        "Fused from DQ+Reshape+Transpose+MatMul",
         mnb_inputs, mnb_outputs, &mnb_attrs, kMSDomain);
     mnb_node.SetExecutionProviderType(mm_node->GetExecutionProviderType());
 
@@ -661,16 +678,18 @@ void ApplyDirectDQFusions(
     if (zp_tp && !HasRank2Shape(*zp_tp, k_blocks, N)) continue;
 
     Initializer weight_src(graph, *weight_tp, graph.ModelPath());
-    const size_t required_weight_bytes = static_cast<size_t>(N * k_blocks * blob_bytes);
+    const size_t required_weight_bytes = SafeInt<size_t>(N) * k_blocks * blob_bytes;
     if (weight_src.DataAsByteSpan().size() < required_weight_bytes) continue;
     Initializer scale_src(graph, *scale_tp, graph.ModelPath());
     if (scale_src.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
         scale_src.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) continue;
 
     auto uint8_type = DataTypeImpl::TensorTypeFromONNXEnum(
-                          ONNX_NAMESPACE::TensorProto_DataType_UINT8)->GetElementType();
+                          ONNX_NAMESPACE::TensorProto_DataType_UINT8)
+                          ->GetElementType();
     auto scale_type = DataTypeImpl::TensorTypeFromONNXEnum(
-                          scale_src.data_type())->GetElementType();
+                          scale_src.data_type())
+                          ->GetElementType();
     auto cpu_allocator = CPUAllocator::DefaultInstance();
 
     auto weight_dst_name = graph.GenerateNodeArgName(weight_arg->Name() + "_mnb");
@@ -679,7 +698,7 @@ void ApplyDirectDQFusions(
                               weight_dst.MutableData<uint8_t>());
 
     auto scale_dst_name = graph.GenerateNodeArgName(scale_arg->Name() + "_mnb");
-    const int64_t scale_count = N * k_blocks;
+    const int64_t scale_count = SafeInt<int64_t>(N) * k_blocks;
     if (scale_src.size() != static_cast<size_t>(scale_count)) continue;
     auto scale_dst = Tensor(scale_type, TensorShape{scale_count}, cpu_allocator);
 
@@ -699,7 +718,7 @@ void ApplyDirectDQFusions(
 
     std::string zp_dst_name;
     std::optional<Tensor> zp_dst;
-    const int64_t zp_bytes_total = N * ((k_blocks + 1) / 2);
+    const int64_t zp_bytes_total = SafeInt<int64_t>(N) * ((k_blocks + 1) / 2);
 
     bool elide_zp = false;
 
@@ -790,11 +809,9 @@ void ApplyDirectDQFusions(
 
 DQMatMulNBitsFusion::DQMatMulNBitsFusion(
     int64_t accuracy_level,
-    concurrency::ThreadPool* intra_op_thread_pool,
     const InlinedHashSet<std::string_view>& compatible_eps)
     : GraphTransformer("DQMatMulNBitsFusion", compatible_eps),
-      accuracy_level_(accuracy_level),
-      intra_op_thread_pool_(intra_op_thread_pool) {
+      accuracy_level_(accuracy_level) {
   ORT_ENFORCE(accuracy_level_ >= 0 && accuracy_level_ <= 4,
               "MatMulNBits accuracy level must be between 0 and 4");
 }
@@ -827,3 +844,5 @@ Status DQMatMulNBitsFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

@@ -2279,6 +2279,13 @@ common::Status InferenceSession::Initialize() {
         return Status::OK();
       };
 
+      // Enable DQ->MatMulNBits fusion if NvTensorRTRTX EP is registered.
+      if (execution_providers_.Get(onnxruntime::kNvTensorRTRTXExecutionProvider) != nullptr) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(
+            session_options_.config_options.AddConfigEntry(
+                kOrtSessionOptionsEnableDQMatMulNBitsFusion, "1"));
+      }
+
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
                                                                session_options_.graph_optimization_level,
@@ -3938,8 +3945,6 @@ common::Status InferenceSession::AddPredefinedTransformers(
     RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
     const logging::Logger& logger) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-  const bool enable_dq_matmulnbits_fusion =
-      execution_providers_.Get(onnxruntime::kNvTensorRTRTXExecutionProvider) != nullptr;
   for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
     std::function<onnxruntime::InlinedVector<std::unique_ptr<GraphTransformer>>()> transformers_to_register;
@@ -3951,8 +3956,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
         transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
-                                                       GetIntraOpThreadPoolToUse(),
-                                                       enable_dq_matmulnbits_fusion);
+                                                       GetIntraOpThreadPoolToUse());
         };
       }
     } else {
@@ -3966,8 +3970,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
           if (use_full_build_optimizations) {
             return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                          optimizers_to_disable_,
-                                                         GetIntraOpThreadPoolToUse(),
-                                                         enable_dq_matmulnbits_fusion);
+                                                         GetIntraOpThreadPoolToUse());
           } else {
             const auto sat_context =
                 minimal_build_optimization_handling ==
