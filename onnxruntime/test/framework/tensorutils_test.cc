@@ -616,7 +616,6 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
 }
 
-#if !defined(__wasm__)
 TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkInside) {
   // Symbolic link within the current working directory pointing to a file still within CWD.
   std::filesystem::path cwd = std::filesystem::current_path();
@@ -668,7 +667,6 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyBasedirWithSymlinkOutsid
                               << " outside_dir: " << outside_dir_;
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
-#endif  // !defined(__wasm__)
 
 }  // namespace test
 }  // namespace onnxruntime
