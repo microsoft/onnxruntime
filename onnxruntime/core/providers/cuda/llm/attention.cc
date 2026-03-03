@@ -592,9 +592,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // 2D = (q_seq_len, total_seq_len) with both batch and heads broadcast.
     if (parameters.has_nonpad_kv_seqlen) {
       if (gqa_parameters.is_first_prompt) {
-        // In prompt mode (is_first_prompt=true), the GQA kernel ignores seqlens_k and uses
-        // padded_seq_lens = sequence_length unconditionally. nonpad_kv_seqlen masking is only
-        // meaningful for decode (q_seq != kv_seq), which routes to FlashAttentionForExternalKVCache above.
+        // In prompt mode (is_first_prompt=true), the GQA flash/efficient attention kernels use
+        // padded_seq_lens (hardcoded to sequence_length) instead of total_seq_lens, so seqlens_k
+        // doesn't affect masking. nonpad_kv_seqlen masking is only meaningful for decode
+        // (q_seq != kv_seq), which routes to FlashAttentionForExternalKVCache above.
         // Fill seqlens_k with total_sequence_length - 1 (all tokens valid) so it masks nothing.
         std::vector<int> seqlens_k_host(parameters.batch_size, parameters.total_sequence_length - 1);
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seqlens_k_buffer.get(), seqlens_k_host.data(),

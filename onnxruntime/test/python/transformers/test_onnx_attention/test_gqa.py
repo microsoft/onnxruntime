@@ -1147,6 +1147,22 @@ class TestONNXAttentionGQANonpadKVSeqlenMEA(unittest.TestCase):
         )
 
 
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestONNXAttentionGQANonpadKVSeqlenPartialMaskUnsupported(unittest.TestCase):
+    """Document that partial nonpad_kv_seqlen masking is unsupported in GQA prompt mode."""
+
+    @unittest.skip(
+        "GQA kernel uses padded_seq_lens (hardcoded to sequence_length) in prompt mode, "
+        "ignoring partial seqlens_k masking. Partial masking only works for decode "
+        "(q_seq != kv_seq) via FlashAttentionForExternalKVCache."
+    )
+    def test_partial_mask_prompt_unsupported(self):
+        # nonpad_kv_seqlen = [3, 5] with kv_sequence_length = 16
+        # This would require the GQA kernel to mask positions 3-15 and 5-15,
+        # but is_first_prompt=true causes padded_seq_lens = sequence_length.
+        pass
+
+
 class TestONNXAttentionGQANonpadKVSeqlenCPU(unittest.TestCase):
     """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen on CPU."""
 
