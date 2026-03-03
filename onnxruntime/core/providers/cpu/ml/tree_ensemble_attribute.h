@@ -147,6 +147,7 @@ struct TreeEnsembleAttributesV5 {
     post_transform = info.GetAttrOrDefault<int64_t>("post_transform", 0);
     tree_roots = info.GetAttrsOrDefault<int64_t>("tree_roots");
 #else
+    ORT_UNUSED_PARAMETER(info);
     // GetVectorAttrsOrDefault is not part of the minimal build.
     // As a result, TreeEnsemble v5 cannot be available in this build.
     ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.");
