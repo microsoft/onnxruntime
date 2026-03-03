@@ -82,7 +82,8 @@ Status LaunchConvertNonpadKvSeqlenToSeqlensK(
     int batch_size,
     int total_sequence_length,
     cudaStream_t stream,
-    int max_threads_per_block);
+    int max_threads_per_block,
+    int min_expected_seqlen = 0);
 
 // Like LaunchConvertNonpadKvSeqlenToSeqlensK but produces the actual count (no -1 offset).
 // Flash attention's mha_fwd_kvcache expects seqlens_k_ = number of valid tokens,

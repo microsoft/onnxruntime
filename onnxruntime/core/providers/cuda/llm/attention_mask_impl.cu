@@ -188,12 +188,18 @@ __global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
     const int64_t* __restrict__ nonpad_kv_seqlen,
     int* __restrict__ seqlens_k,
     const int batch_size,
-    const int total_sequence_length) {
+    const int total_sequence_length,
+    const int min_expected_seqlen) {
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < batch_size) {
     int64_t val = nonpad_kv_seqlen[idx];
     CUDA_KERNEL_ASSERT(val > 0);  // nonpad_kv_seqlen=0 → seqlens_k=0 → attends to garbage at pos 0
     CUDA_KERNEL_ASSERT(val <= static_cast<int64_t>(total_sequence_length));
+    // When min_expected_seqlen > 0 (GQA prompt mode), assert no partial masking.
+    // The GQA kernel ignores seqlens_k in prompt mode, so partial masking silently fails.
+    if (min_expected_seqlen > 0) {
+      CUDA_KERNEL_ASSERT(val >= static_cast<int64_t>(min_expected_seqlen));
+    }
     // Clamp to [1, total_sequence_length] for safety in release builds where asserts are no-ops.
     val = max(static_cast<int64_t>(1), min(val, static_cast<int64_t>(total_sequence_length)));
     seqlens_k[idx] = static_cast<int>(val) - 1;
@@ -206,7 +212,8 @@ Status LaunchConvertNonpadKvSeqlenToSeqlensK(
     int batch_size,
     int total_sequence_length,
     cudaStream_t stream,
-    int max_threads_per_block) {
+    int max_threads_per_block,
+    int min_expected_seqlen) {
   if (batch_size == 0) {
     return Status::OK();
   }
@@ -217,7 +224,7 @@ Status LaunchConvertNonpadKvSeqlenToSeqlensK(
   int blocks = (batch_size + threads - 1) / threads;
 
   ConvertNonpadKvSeqlenToSeqlensKKernel<<<blocks, threads, 0, stream>>>(
-      nonpad_kv_seqlen, seqlens_k, batch_size, total_sequence_length);
+      nonpad_kv_seqlen, seqlens_k, batch_size, total_sequence_length, min_expected_seqlen);
 
   return CUDA_CALL(cudaGetLastError());
 }

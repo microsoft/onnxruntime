@@ -1105,6 +1105,48 @@ def gqa_nonpad_kv_seqlen_test_cases():
         yield name, config, seqlens
 
 
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestONNXAttentionGQANonpadKVSeqlen(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen (Flash Attention)."""
+
+    @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
+    def test_gqa_nonpad_kv_seqlen_flash(self, name, config, seqlens):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
+
+        parity_check_gqa_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
+class TestONNXAttentionGQANonpadKVSeqlenMEA(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen (Memory Efficient Attention)."""
+
+    @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
+    def test_gqa_nonpad_kv_seqlen_mea(self, name, config, seqlens):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
+
+        parity_check_gqa_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
 class TestONNXAttentionGQANonpadKVSeqlenCPU(unittest.TestCase):
     """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen on CPU."""
 

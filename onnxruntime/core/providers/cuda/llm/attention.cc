@@ -591,27 +591,20 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // the MHA path below, where 2D masks follow ONNX broadcasting: [A, B] → [1, 1, A, B], so
     // 2D = (q_seq_len, total_seq_len) with both batch and heads broadcast.
     if (parameters.has_nonpad_kv_seqlen) {
-      if (gqa_parameters.is_first_prompt) {
-        // GQA prompt mode does not support nonpad_kv_seqlen masking. The GQA flash/efficient
-        // attention kernels use padded_seq_lens (hardcoded to sequence_length) instead of
-        // total_seq_lens in prompt mode, so seqlens_k doesn't affect masking.
-        // Reject this combination to prevent silent incorrect behavior.
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "GQA prompt mode (q_sequence_length == kv_sequence_length) does not support "
-                               "partial KV masking via nonpad_kv_seqlen on CUDA. The GQA kernel ignores "
-                               "seqlens_k in prompt mode. Use MHA (set q_num_heads == kv_num_heads) for "
-                               "partial masking, or ensure nonpad_kv_seqlen is not passed in GQA prompt mode.");
-      } else {
-        // Convert nonpad_kv_seqlen (int64, GPU) to seqlens_k (int32, GPU).
-        // GQA convention: seqlens_k[i] = nonpad_kv_seqlen[i] - 1 (last valid index, not count).
-        ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToSeqlensK(
-            nonpad_kv_seqlen->Data<int64_t>(),
-            seqlens_k_buffer.get(),
-            parameters.batch_size,
-            parameters.total_sequence_length,
-            cuda_stream,
-            device_prop.maxThreadsPerBlock));
-      }
+      // Convert nonpad_kv_seqlen (int64, GPU) to seqlens_k (int32, GPU).
+      // GQA convention: seqlens_k[i] = nonpad_kv_seqlen[i] - 1 (last valid index, not count).
+      // In GQA prompt mode (is_first_prompt=true), the kernel ignores seqlens_k for masking
+      // (padded_seq_lens is hardcoded to sequence_length). Pass kv_sequence_length as
+      // min_expected_seqlen so CUDA_KERNEL_ASSERT catches partial masking attempts in debug builds.
+      int min_expected = gqa_parameters.is_first_prompt ? parameters.kv_sequence_length : 0;
+      ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToSeqlensK(
+          nonpad_kv_seqlen->Data<int64_t>(),
+          seqlens_k_buffer.get(),
+          parameters.batch_size,
+          parameters.total_sequence_length,
+          cuda_stream,
+          device_prop.maxThreadsPerBlock,
+          min_expected));
     } else if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
       // Get mask dimensions for broadcasting
       // attn_mask can be 2D, 3D, or 4D and broadcasts to (batch_size, num_heads, q_seq_len, total_seq_len)
