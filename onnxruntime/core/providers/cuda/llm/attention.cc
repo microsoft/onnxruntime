@@ -1103,6 +1103,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   if (is_gqa) {
+    // TODO: Support GQA in unfused attention path for fp32/old-GPU fallback.
+    // Requires ~160 lines: ExpandKVHeads kernel to replicate KV heads, wiring in unfused dispatch.
+    // See issue #27516 for tracking.
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "GQA (q_num_heads != kv_num_heads) requires flash or memory efficient attention, "
                            "but neither is eligible. Ensure fp16/bf16 on Ampere+ GPU, or check head_size constraints.");
