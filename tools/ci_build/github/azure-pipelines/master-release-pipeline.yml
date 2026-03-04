@@ -11,41 +11,62 @@ parameters:
   type: boolean
   default: false
 
-pool:
-  vmImage: 'ubuntu-latest'
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 
-jobs:
-- job: TriggerSubPipelines
-  displayName: 'Trigger and wait for sub-pipelines'
-  timeoutInMinutes: 600
+extends:
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.BinariesDirectory)'
+      tsa:
+        enabled: true
 
-  steps:
-  - checkout: self
+    stages:
+    - stage: TriggerSubPipelines
+      displayName: 'Trigger and wait for sub-pipelines'
+      jobs:
+      - job: TriggerAndWait
+        displayName: 'Trigger and wait for sub-pipelines'
+        timeoutInMinutes: 600
+        pool:
+          vmImage: 'ubuntu-latest'
 
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.12'
-    displayName: 'Use Python 3.12'
+        steps:
+        - checkout: self
 
-  - script: |
-      pip install requests
-    displayName: 'Install Python dependencies'
+        - task: UsePythonVersion@0
+          inputs:
+            versionSpec: '3.12'
+          displayName: 'Use Python 3.12'
 
-  - task: AzureCLI@2
-    displayName: 'Run master orchestrator'
-    inputs:
-      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      scriptType: 'bash'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        set -euo pipefail
+        - script: |
+            pip install requests
+          displayName: 'Install Python dependencies'
 
-        CMD="python tools/python/trigger_and_wait_pipelines.py"
-        CMD="$CMD --branch ${{ parameters.branch }}"
+        - task: AzureCLI@2
+          displayName: 'Run master orchestrator'
+          inputs:
+            azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set -euo pipefail
 
-        if [ "${{ parameters.dry_run }}" = "True" ]; then
-          CMD="$CMD --dry-run"
-        fi
+              CMD="python tools/python/trigger_and_wait_pipelines.py"
+              CMD="$CMD --branch ${{ parameters.branch }}"
 
-        echo "Running: $CMD"
-        eval $CMD
+              if [ "${{ parameters.dry_run }}" = "True" ]; then
+                CMD="$CMD --dry-run"
+              fi
+
+              echo "Running: $CMD"
+              eval $CMD
