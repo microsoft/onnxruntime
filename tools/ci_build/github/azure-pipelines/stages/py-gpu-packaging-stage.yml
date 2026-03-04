@@ -37,6 +37,23 @@ parameters:
     - '3.13'
     - '3.14'
 
+- name: LinuxPythonConfigurations
+  type: object
+  displayName: 'Linux Python build configurations'
+  default:
+  - python_version: '3.11'
+    docker_python_exe_path: '/opt/python/cp311-cp311/bin/python3.11'
+  - python_version: '3.12'
+    docker_python_exe_path: '/opt/python/cp312-cp312/bin/python3.12'
+  - python_version: '3.13'
+    docker_python_exe_path: '/opt/python/cp313-cp313/bin/python3.13'
+  - python_version: '3.13t'
+    docker_python_exe_path: '/opt/python/cp313-cp313t/bin/python3.13'
+  - python_version: '3.14'
+    docker_python_exe_path: '/opt/python/cp314-cp314/bin/python3.14'
+  - python_version: '3.14t'
+    docker_python_exe_path: '/opt/python/cp314-cp314t/bin/python3.14'
+
 - name: cmake_cuda_archs
   type: string
   displayName: 'CMAKE_CUDA_ARCHITECTURES for Windows'
@@ -67,11 +84,49 @@ stages:
             EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
             use_tensorrt: True
 
-    - template: py-linux-gpu-stage.yml
-      parameters:
+    # Linux: one parallel stage per Python version
+    - ${{ each config in parameters.LinuxPythonConfigurations }}:
+      - template: py-linux-gpu-stage.yml
+        parameters:
+          stage_name: Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
           docker_base_image: ${{ parameters.docker_base_image }}
+          python_version: ${{ config.python_version }}
+          docker_python_exe_path: ${{ config.docker_python_exe_path }}
+          wheel_artifact_name: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
+          # Only publish the large build intermediates artifact for Python 3.12. That's the only version we test now.
+          ${{ if eq(config.python_version, '3.12') }}:
+            build_intermediates_artifact_name: linux_gpu_wheel_x86_64
+
+    # Merge per-version Linux wheel artifacts into a single combined artifact for downstream consumers
+    - stage: Linux_py_GPU_Wheels_Merge_Artifacts
+      dependsOn:
+      - ${{ each config in parameters.LinuxPythonConfigurations }}:
+        - Linux_py_GPU_Wheels_x86_64_${{ replace(config.python_version, '.', '_') }}
+      jobs:
+      - job: Linux_py_GPU_Wheels_Merge_Artifacts
+        workspace:
+          clean: all
+        pool:
+          name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          os: linux
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu
+            artifactName: onnxruntime_gpu
+        steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - ${{ each config in parameters.LinuxPythonConfigurations }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download wheel - Python ${{ config.python_version }}'
+            inputs:
+              artifact: onnxruntime_gpu_${{ replace(config.python_version, '.', '_') }}
+              targetPath: $(Build.ArtifactStagingDirectory)/onnxruntime_gpu

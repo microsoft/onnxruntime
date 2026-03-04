@@ -198,7 +198,7 @@
       endif()
 
       if (MSVC)
-          target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
       endif()
     endif()
 
@@ -217,6 +217,10 @@
         # be used due to `&& not_a_const`. This affects too many places for it to be reasonable to disable at a finer
         # granularity.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
+
+        # Warning C4211: nonstandard extension used: redefined extern to static
+        # non_max_suppression_impl.cu
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>")
       endif()
     endif()
 

@@ -94,7 +94,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   auto const& input_shape = input_tensor.Shape();
-  const size_t dimension_count = input_shape.NumDimensions();
+  const int32_t dimension_count = narrow<int32_t>(input_shape.NumDimensions());
 
   const PadsVector* p_pads = &pads_;
   const PadsVector* p_slices = &slices_;
@@ -139,7 +139,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   // Calculate output dimensions, and handle any negative padding
   TArray<int64_t> lower_pads(dimension_count);
   TArray<int64_t> upper_pads(dimension_count);
-  for (size_t i = 0; i < dimension_count; i++) {
+  for (int32_t i = 0; i < dimension_count; i++) {
     lower_pads[i] = SafeInt<int64_t>((*p_pads)[i]) + (*p_slices)[i];
     upper_pads[i] = SafeInt<int64_t>((*p_pads)[i + dimension_count]) + (*p_slices)[i + dimension_count];
     output_dims[i] += SafeInt<int64_t>(lower_pads[i]) + upper_pads[i];
@@ -147,7 +147,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   TensorShapeVector effective_input_extents;
   effective_input_extents.reserve(dimension_count);
-  for (size_t i = 0; i < dimension_count; i++) {
+  for (int32_t i = 0; i < dimension_count; i++) {
     int64_t extent = std::max<int64_t>(SafeInt<int64_t>(input_dims[i]) +
                                            (*p_slices)[i] + (*p_slices)[i + dimension_count],
                                        0LL);
@@ -259,7 +259,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   TArray<fast_divmod> fdm_output_strides(dimension_count);
   TensorPitches output_strides(output_dims);
-  for (size_t i = 0; i < dimension_count; i++) {
+  for (int32_t i = 0; i < dimension_count; i++) {
     fdm_output_strides[i] = fast_divmod(static_cast<int>(output_strides[i]));
   }
 

@@ -72,6 +72,7 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
   // if you're on x86 and care about performance try MKL first. if there's a good enough argument for optimizing this
   // we can look into it in the future.
   ORT_UNUSED_PARAMETER(threadpool);
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
 
   // https://eigen.tuxfamily.org/dox/TopicWritingEfficientProductExpression.html
   auto out_map = EigenMatrixMapRowMajor<T>(c_data, SafeInt<size_t>(m), SafeInt<size_t>(n));

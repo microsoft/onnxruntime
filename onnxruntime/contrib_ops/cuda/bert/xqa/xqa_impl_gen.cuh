@@ -14,8 +14,34 @@ namespace NAMESPACE_NAME {
 // We assume mha.h's dependent part relies on this macro
 #define HEAD_GRP_SIZE GRP_SIZE
 
+// XQA kernels require SM80+ (Ampere or newer). We need a guard that works correctly
+// during both host and device compilation passes:
+//   - Device pass: __CUDA_ARCH__ is defined, check it directly.
+//   - Host pass: __CUDA_ARCH__ is NOT defined. Use __CUDA_ARCH_LIST__ (available since
+//     CUDA 11.5), which nvcc defines as a comma-separated ascending list of target
+//     architectures (e.g. 750,800). In #if, the comma operator returns the rightmost
+//     (highest) value, so __CUDA_ARCH_LIST__ >= 800 checks the max target arch.
+//   - Non-nvcc (e.g. IDE parser): cuda_hint.cuh defines __CUDA_ARCH__ 900, which
+//     takes the first branch.
+// Using !defined(__CUDA_ARCH__) here would be WRONG: it always evaluates true during
+// the host pass, causing the kernel to be declared even when no SM80+ device code
+// exists. CUDA 13+ then fails to generate a host stub, producing C2129 / LNK2001.
+#undef XQA_HAS_SM80_TARGET
+#ifdef __CUDA_ARCH__
+#if __CUDA_ARCH__ >= 800
+#define XQA_HAS_SM80_TARGET 1
+#endif
+#elif defined(__CUDA_ARCH_LIST__)
+#if __CUDA_ARCH_LIST__ >= 800
+#define XQA_HAS_SM80_TARGET 1
+#endif
+#else
+// Non-nvcc fallback: assume supported (IDE parsers, etc.)
+#define XQA_HAS_SM80_TARGET 1
+#endif
+
 // Include implementation (re-compiles kernel for this group size)
-#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 800
+#ifdef XQA_HAS_SM80_TARGET
 #include "mha_impl.cuh"
 #endif
 
@@ -40,7 +66,7 @@ inline Status Launch(
     [[maybe_unused]] const float* kv_cache_scale,
     [[maybe_unused]] void* workspace,
     [[maybe_unused]] size_t workspace_size) {
-#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 800
+#ifdef XQA_HAS_SM80_TARGET
   const InputHead* q_ptr = reinterpret_cast<const InputHead*>(query);
   GMemKVCacheHead* k_ptr = reinterpret_cast<GMemKVCacheHead*>(const_cast<void*>(key_cache));
   GMemKVCacheHead* v_ptr = reinterpret_cast<GMemKVCacheHead*>(const_cast<void*>(value_cache));
@@ -94,4 +120,5 @@ inline Status Launch(
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA is only supported on Ampere (SM80) or newer GPUs.");
 #endif
 }
+#undef XQA_HAS_SM80_TARGET
 }  // namespace NAMESPACE_NAME
