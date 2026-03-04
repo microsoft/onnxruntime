@@ -7,6 +7,10 @@
 #include <thread>
 #include <vector>
 #include <sstream>
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <mutex>
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
@@ -57,6 +61,27 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 #endif
 
 namespace onnxruntime {
+
+namespace {
+
+bool IsPerOpTimingEnabledFromEnv() {
+  static const bool enabled = []() {
+    std::string value = Env::Default().GetEnvironmentVar("ORT_ENABLE_PER_OP_TIMING");
+    if (value.empty()) {
+      return false;
+    }
+
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+  }();
+
+  return enabled;
+}
+
+}  // namespace
 
 static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
                                       size_t& total_output_sizes, const std::string& node_name,
@@ -225,6 +250,8 @@ class SessionScope {
 
     StopProfilingIfEnabled(profiling::SESSION_EVENT, "SequentialExecutor::Execute", session_start_);
 
+    LogOpLatencyStatsWarning();
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     auto& logger = session_state_.Logger();
     for (auto i : frame_.GetStaticMemorySizeInfo()) {
@@ -251,6 +278,19 @@ class SessionScope {
 
   bool IsRunProfilingEnabled() const {
     return run_profiler_ && run_profiler_->IsEnabled();
+  }
+
+  void RecordOpLatency(const std::string& op_name, uint64_t latency_us) {
+    if (!IsPerOpTimingEnabledFromEnv()) {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(op_latency_stats_mutex_);
+    auto& stats = op_latency_stats_[op_name];
+    stats.count += 1;
+    stats.total_latency_us += latency_us;
+    stats.min_latency_us = std::min(stats.min_latency_us, latency_us);
+    stats.max_latency_us = std::max(stats.max_latency_us, latency_us);
   }
 
   void StopProfilingIfEnabled(profiling::EventCategory category,
@@ -286,9 +326,65 @@ class SessionScope {
   }
 
  private:
+  struct OpLatencyStats {
+    uint64_t count{0};
+    uint64_t total_latency_us{0};
+    uint64_t min_latency_us{std::numeric_limits<uint64_t>::max()};
+    uint64_t max_latency_us{0};
+  };
+
+  void LogOpLatencyStatsWarning() const {
+    if (!IsPerOpTimingEnabledFromEnv()) {
+      return;
+    }
+
+    InlinedVector<std::pair<std::string, OpLatencyStats>> op_stats;
+    uint64_t total_run_latency_us = 0;
+    uint64_t total_kernel_invocations = 0;
+
+    {
+      std::lock_guard<std::mutex> lock(op_latency_stats_mutex_);
+      if (op_latency_stats_.empty()) {
+        return;
+      }
+
+      op_stats.reserve(op_latency_stats_.size());
+      for (const auto& kvp : op_latency_stats_) {
+        op_stats.push_back(kvp);
+        total_run_latency_us += kvp.second.total_latency_us;
+        total_kernel_invocations += kvp.second.count;
+      }
+    }
+
+    std::sort(op_stats.begin(), op_stats.end(),
+              [](const auto& left, const auto& right) {
+                return left.second.total_latency_us > right.second.total_latency_us;
+              });
+
+    auto& logger = session_state_.Logger();
+    LOGS(logger, WARNING) << "[Latency] Per-op kernel latency summary: unique_ops="
+                          << op_stats.size() << ", kernel_invocations="
+                          << total_kernel_invocations << ", total_kernel_time_us="
+                          << total_run_latency_us;
+
+    for (const auto& entry : op_stats) {
+      const auto& op_name = entry.first;
+      const auto& stats = entry.second;
+      const uint64_t avg_latency_us = stats.count == 0 ? 0 : (stats.total_latency_us / stats.count);
+      LOGS(logger, WARNING) << "[Latency] op=" << op_name
+                            << " count=" << stats.count
+                            << " total_us=" << stats.total_latency_us
+                            << " avg_us=" << avg_latency_us
+                            << " min_us=" << stats.min_latency_us
+                            << " max_us=" << stats.max_latency_us;
+    }
+  }
+
   const SessionState& session_state_;
   profiling::Profiler* run_profiler_;
   TimePoint session_start_;
+  mutable std::mutex op_latency_stats_mutex_;
+  InlinedHashMap<std::string, OpLatencyStats> op_latency_stats_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
 #endif
@@ -319,10 +415,11 @@ class KernelScope {
   KernelScope(SessionScope& session_scope,
               OpKernelContextInternal& kernel_context,
               const OpKernel& kernel)
-      : session_scope_(session_scope),
+        : enable_per_op_timing_(IsPerOpTimingEnabledFromEnv()),
+    session_scope_(session_scope),
         session_state_(session_scope_.session_state_),
         kernel_context_(kernel_context),
-        kernel_(kernel)
+    kernel_(kernel)
 #ifdef CONCURRENCY_VISUALIZER
         ,
         span_(session_scope_.series_, "%s.%d", kernel_.Node().OpType().c_str(), kernel_.Node().Index())
@@ -343,6 +440,10 @@ class KernelScope {
             session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
+    if (enable_per_op_timing_) {
+      wall_clock_begin_time_ = std::chrono::steady_clock::now();
+    }
+
 #ifdef CONCURRENCY_VISUALIZER
     session_scope_.series_.write_flag(kernel_.Node().Name().c_str());
 #endif
@@ -377,7 +478,7 @@ class KernelScope {
     const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
     const bool run_profiling_enabled = session_scope_.IsRunProfilingEnabled();
 
-    if (session_profiling_enabled || run_profiling_enabled) {
+    if (enable_per_op_timing_ && (session_profiling_enabled || run_profiling_enabled)) {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
@@ -394,6 +495,17 @@ class KernelScope {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelScope);
 
   ~KernelScope() {
+    if (enable_per_op_timing_) {
+      const auto wall_clock_end_time = std::chrono::steady_clock::now();
+      const auto latency_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                  wall_clock_end_time - wall_clock_begin_time_)
+                                  .count();
+      if (latency_us > 0) {
+        session_scope_.RecordOpLatency(kernel_.KernelDef().OpName(),
+                                       static_cast<uint64_t>(latency_us));
+      }
+    }
+
 #ifdef ENABLE_NVTX_PROFILE
     node_compute_range_.End();
 #endif
@@ -401,7 +513,7 @@ class KernelScope {
     const bool session_profiling_enabled = session_state_.Profiler().IsEnabled();
     const bool run_profiling_enabled = session_scope_.IsRunProfilingEnabled();
 
-    if (session_profiling_enabled || run_profiling_enabled) {
+    if (enable_per_op_timing_ && (session_profiling_enabled || run_profiling_enabled)) {
       std::string output_type_shape_;
       CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
 
@@ -444,6 +556,8 @@ class KernelScope {
   }  //~KernelScope
 
  private:
+  const bool enable_per_op_timing_;
+  std::chrono::steady_clock::time_point wall_clock_begin_time_;
   TimePoint kernel_begin_time_;
   SessionScope& session_scope_;
   const SessionState& session_state_;
