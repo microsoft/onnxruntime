@@ -1,0 +1,51 @@
+trigger: none
+
+parameters:
+- name: branch
+  displayName: 'Target branch (without refs/heads/ prefix)'
+  type: string
+  default: 'main'
+
+- name: dry_run
+  displayName: 'Dry run — show what would be triggered without actually triggering'
+  type: boolean
+  default: false
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+- job: TriggerSubPipelines
+  displayName: 'Trigger and wait for sub-pipelines'
+  timeoutInMinutes: 600
+
+  steps:
+  - checkout: self
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+    displayName: 'Use Python 3.12'
+
+  - script: |
+      pip install requests
+    displayName: 'Install Python dependencies'
+
+  - task: AzureCLI@2
+    displayName: 'Run master orchestrator'
+    inputs:
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        set -euo pipefail
+
+        CMD="python tools/python/trigger_and_wait_pipelines.py"
+        CMD="$CMD --branch ${{ parameters.branch }}"
+
+        if [ "${{ parameters.dry_run }}" = "True" ]; then
+          CMD="$CMD --dry-run"
+        fi
+
+        echo "Running: $CMD"
+        eval $CMD
