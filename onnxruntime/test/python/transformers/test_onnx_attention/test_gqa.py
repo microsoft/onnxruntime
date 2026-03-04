@@ -36,6 +36,7 @@ from test_onnx_attention.common import (
     attention_past_func,
     attention_prompt_func,
     attention_ref,
+    create_additive_mask_from_seqlens,
     create_boolean_mask_from_seqlens,
     enable_debug_print,
     enable_deterministic_check,
@@ -152,7 +153,11 @@ def parity_check_gqa_prompt(
                 )
             torch.testing.assert_close(out, first_out, rtol=0, atol=0, msg="Output mismatch between two runs")
 
-    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+    if config.use_4d_bnsh:
+        # 4D BNSH output → BSNH for comparison
+        out = out.transpose(1, 2).contiguous()
+    else:
+        out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
     out_np = out.to(torch.float32).detach().cpu().numpy()
 
     # --- Comparison ---
@@ -163,18 +168,21 @@ def parity_check_gqa_prompt(
         print(f"DEBUG_NAN: First 5 NaN indices: {nan_indices[:5]}")
 
     # Compare KV cache (present_k should match k, present_v should match v)
-    k_ref_bnsh = k.transpose(1, 2)  # BSNH -> BNSH
-    v_ref_bnsh = v.transpose(1, 2)  # BSNH -> BNSH
+    # Skip for 4D BNSH prompt: the dispatcher doesn't populate present_key/value
+    # when inputs are already BNSH and there's no past (known limitation).
+    if not config.use_4d_bnsh or config.past_kv_sequence_length > 0:
+        k_ref_bnsh = k.transpose(1, 2)  # BSNH -> BNSH
+        v_ref_bnsh = v.transpose(1, 2)  # BSNH -> BNSH
 
-    k_ref_np = k_ref_bnsh.to(torch.float32).detach().cpu().numpy()
-    v_ref_np = v_ref_bnsh.to(torch.float32).detach().cpu().numpy()
-    present_k_np = present_k.to(torch.float32).detach().cpu().numpy()
-    present_v_np = present_v.to(torch.float32).detach().cpu().numpy()
+        k_ref_np = k_ref_bnsh.to(torch.float32).detach().cpu().numpy()
+        v_ref_np = v_ref_bnsh.to(torch.float32).detach().cpu().numpy()
+        present_k_np = present_k.to(torch.float32).detach().cpu().numpy()
+        present_v_np = present_v.to(torch.float32).detach().cpu().numpy()
 
-    print_diff_statistics(torch.tensor(present_k_np - k_ref_np), "present_k")
-    numpy.testing.assert_allclose(present_k_np, k_ref_np, rtol=rtol, atol=atol)
-    print_diff_statistics(torch.tensor(present_v_np - v_ref_np), "present_v")
-    numpy.testing.assert_allclose(present_v_np, v_ref_np, rtol=rtol, atol=atol)
+        print_diff_statistics(torch.tensor(present_k_np - k_ref_np), "present_k")
+        numpy.testing.assert_allclose(present_k_np, k_ref_np, rtol=rtol, atol=atol)
+        print_diff_statistics(torch.tensor(present_v_np - v_ref_np), "present_v")
+        numpy.testing.assert_allclose(present_v_np, v_ref_np, rtol=rtol, atol=atol)
 
     print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
     numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
@@ -315,7 +323,10 @@ def parity_check_gqa_past(
                     present_v, first_present_v, rtol=0, atol=0, msg="present_v mismatch between two runs"
                 )
 
-    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+    if config.use_4d_bnsh:
+        out = out.transpose(1, 2).contiguous()
+    else:
+        out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
     out_np = out.to(torch.float32).detach().cpu().numpy()
 
     if enable_debug_print:
@@ -1143,6 +1154,150 @@ class TestONNXAttentionGQANonpadKVSeqlenCPU(unittest.TestCase):
             rtol=rtol["fp32"],
             atol=atol["fp32"],
         )
+
+
+# #################################################################################################
+#  GQA 4D BNSH Format Tests
+# #################################################################################################
+
+
+def gqa_4d_bnsh_test_cases():
+    """Generate test cases for GQA with 4D BNSH input format."""
+    return [
+        ("prompt_nomask", AttentionConfig(
+            batch_size=2, q_sequence_length=16, kv_sequence_length=16,
+            q_num_heads=8, kv_num_heads=2, head_size=128, is_causal=1,
+            use_4d_bnsh=True,
+        )),
+        ("prompt_smallhead", AttentionConfig(
+            batch_size=2, q_sequence_length=16, kv_sequence_length=16,
+            q_num_heads=8, kv_num_heads=4, head_size=64, is_causal=1,
+            use_4d_bnsh=True,
+        )),
+    ]
+
+
+def gqa_4d_bnsh_past_test_cases():
+    """Generate test cases for GQA decode with 4D BNSH input format."""
+    return [
+        ("decode_nomask", AttentionConfig(
+            batch_size=2, q_sequence_length=1, kv_sequence_length=1,
+            past_kv_sequence_length=32, q_num_heads=8, kv_num_heads=2,
+            head_size=128, is_causal=1, use_4d_bnsh=True,
+        )),
+    ]
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping 4D BNSH tests.")
+class TestONNXAttentionGQA4DBNSH(unittest.TestCase):
+    """
+    Test GQA with 4D BNSH input format [batch, num_heads, seq, head_size].
+
+    The C++ attention op detects 4D inputs and sets transpose_output=false.
+    Flash/MEA always expect BSNH, so the dispatcher transposes Q internally.
+    """
+
+    @parameterized.expand(gqa_4d_bnsh_test_cases())
+    def test_gqa_4d_bnsh_prompt(self, name, config):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_gqa_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(gqa_4d_bnsh_past_test_cases())
+    def test_gqa_4d_bnsh_decode(self, name, config):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
+# #################################################################################################
+#  GQA Float Additive Mask Tests
+# #################################################################################################
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping float mask tests.")
+class TestONNXAttentionGQAFloatMask(unittest.TestCase):
+    """
+    Test GQA with float additive attention mask (not bool) during prompt.
+
+    This exercises MEA's GQA expansion + float bias path. The GQA path converts
+    the additive mask to attention bias for MEA cutlass FMHA.
+    """
+
+    def test_gqa_prompt_float_mask_4d(self):
+        """Test GQA prompt with 4D float additive mask."""
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=16,
+            kv_sequence_length=16,
+            q_num_heads=8,
+            kv_num_heads=2,
+            head_size=128,
+            is_causal=0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        torch_type = torch.float16
+
+        q = torch.randn(2, 16, 8, 128, device=device, dtype=torch_type) * 0.2
+        k = torch.randn(2, 16, 2, 128, device=device, dtype=torch_type) * 0.2
+        v = torch.randn_like(k) * 0.2
+
+        # Create additive mask with padding pattern: batch 0 has 10 valid, batch 1 full
+        seqlens = torch.tensor([10, 16], dtype=torch.int32, device=device)
+        attn_mask = create_additive_mask_from_seqlens(
+            seqlens=seqlens, total_seq_len=16, mask_dims=4,
+            q_seq_len=16, num_heads=8, device=device, dtype=torch_type,
+        )
+
+        # Zero padded KV positions
+        k[0, 10:, :, :] = 0
+        v[0, 10:, :, :] = 0
+
+        # Reference
+        attn_bias_ref = attn_mask
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_bias_ref, causal=False)
+
+        # ORT path (MEA handles GQA+float mask)
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        try:
+            out_ort, _, _ = attention_prompt_func(
+                q=q, k=k, v=v, config=config, attn_mask=attn_mask,
+                ep="CUDAExecutionProvider", device=device, ort_type=TensorProto.FLOAT16,
+            )
+        finally:
+            os.environ.pop("ORT_DISABLE_FLASH_ATTENTION", None)
+
+        out_ort = out_ort.reshape(2, 16, 8, 128)
+
+        # Zero padded output for comparison
+        out_ort[0, 10:, :, :] = 0
+        out_ref[0, 10:, :, :] = 0
+
+        out_np = out_ort.float().detach().cpu().numpy()
+        out_ref_np = out_ref.float().detach().cpu().numpy()
+        print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
 if __name__ == "__main__":

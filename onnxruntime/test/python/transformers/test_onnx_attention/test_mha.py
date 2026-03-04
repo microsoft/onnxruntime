@@ -8,16 +8,22 @@
 Tests for ONNX Attention op (opset 23) — MHA path (kv_num_heads == q_num_heads).
 
 The MHA path in attention.cc is exercised when kv_num_heads == q_num_heads.
-It uses the unfused attention kernel and supports:
+On Ampere+ GPUs with fp16/bf16, the dispatch cascade routes to flash attention
+or memory efficient attention first. The unfused kernel handles fp32 and
+cases where flash/MEA are ineligible. Tests below marked "unfused" explicitly
+disable flash and MEA to verify the unfused kernel.
+
+Supports:
   - float32, float16, bfloat16
-  - 3D inputs (BSNH format)
+  - 3D inputs (BSNH format) and 4D inputs (BNSH format)
   - Causal and non-causal attention
   - Self-attention and cross-attention (kv_seq != q_seq)
-  - Additive attention bias (NOT boolean masks)
+  - Additive attention bias (and boolean masks converted to additive bias)
   - Past KV cache
-  - 2D, 3D, 4D additive masks with broadcasting
+  - 2D, 3D, 4D additive/bool masks with broadcasting
 """
 
+import os
 import unittest
 
 import numpy
@@ -1152,6 +1158,142 @@ class TestONNXAttentionMHANonpadKVSeqlenCPU(unittest.TestCase):
             rtol=rtol["fp32"],
             atol=atol["fp32"],
         )
+
+
+# #################################################################################################
+#  Unfused Kernel Tests
+# #################################################################################################
+
+
+def mha_unfused_test_cases():
+    """
+    Generate test cases that force the unfused attention kernel.
+
+    On Ampere+ GPUs, fp16/bf16 normally route to flash attention. By disabling
+    both flash and MEA, we force the unfused path even for fp16. These tests
+    verify the unfused kernel handles MHA correctly.
+    """
+    cases = [
+        ("prompt_causal", AttentionConfig(
+            batch_size=2, q_sequence_length=16, kv_sequence_length=16,
+            q_num_heads=8, kv_num_heads=8, head_size=64, is_causal=1,
+            attn_mask_type="additive",
+        )),
+        ("prompt_noncausal", AttentionConfig(
+            batch_size=2, q_sequence_length=16, kv_sequence_length=16,
+            q_num_heads=8, kv_num_heads=8, head_size=64, is_causal=0,
+            attn_mask_type="additive",
+        )),
+        ("decode_causal", AttentionConfig(
+            batch_size=2, q_sequence_length=1, kv_sequence_length=1,
+            past_kv_sequence_length=32, q_num_heads=8, kv_num_heads=8,
+            head_size=64, is_causal=1, attn_mask_type="additive",
+        )),
+    ]
+    return cases
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping unfused tests.")
+class TestONNXAttentionMHAUnfused(unittest.TestCase):
+    """
+    Test the unfused attention kernel by disabling flash and MEA.
+
+    On Ampere+ GPUs, fp16 normally routes to flash attention. These tests
+    disable both flash and MEA to exercise the unfused path.
+    """
+
+    @parameterized.expand(mha_unfused_test_cases())
+    def test_mha_unfused_fp16(self, name, config):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        os.environ["ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION"] = "1"
+        try:
+            if "decode" in name:
+                parity_check_mha_past(
+                    config=config,
+                    ep="CUDAExecutionProvider",
+                    device="cuda",
+                    torch_type=torch.float16,
+                    ort_type=TensorProto.FLOAT16,
+                    causal=config.is_causal == 1,
+                    rtol=rtol["fp16"],
+                    atol=atol["fp16"],
+                )
+            else:
+                parity_check_mha_prompt(
+                    config=config,
+                    ep="CUDAExecutionProvider",
+                    device="cuda",
+                    torch_type=torch.float16,
+                    ort_type=TensorProto.FLOAT16,
+                    causal=config.is_causal == 1,
+                    rtol=rtol["fp16"],
+                    atol=atol["fp16"],
+                )
+        finally:
+            os.environ.pop("ORT_DISABLE_FLASH_ATTENTION", None)
+            os.environ.pop("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", None)
+
+
+# #################################################################################################
+#  Broadcast Mask (1,1,q,kv) Tests
+# #################################################################################################
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping broadcast mask tests.")
+class TestONNXAttentionMHABroadcastMask(unittest.TestCase):
+    """
+    Test attention with a (1,1,q_seq,kv_seq) mask that broadcasts across batch and heads.
+
+    This is a 4D mask with dim_0=1 (batch) and dim_1=1 (heads), verifying that
+    the broadcast_attn_bias_dim_0 and broadcast_attn_bias_dim_1 flags work correctly.
+    """
+
+    def test_mha_broadcast_mask_additive(self):
+        """Test broadcast additive mask (1,1,q,kv) with MHA on CUDA."""
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=16,
+            kv_sequence_length=16,
+            q_num_heads=8,
+            kv_num_heads=8,
+            head_size=128,
+            is_causal=0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+            broadcast_mask_batch=True,
+            broadcast_mask_heads=True,
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        torch_type = torch.float16
+
+        q = torch.randn(2, 16, 8, 128, device=device, dtype=torch_type) * 0.2
+        k = torch.randn(2, 16, 8, 128, device=device, dtype=torch_type) * 0.2
+        v = torch.randn_like(k) * 0.2
+
+        # Create (1,1,q,kv) additive mask: lower-triangular causal pattern
+        mask_filter = float(torch.finfo(torch_type).min)
+        mask_2d = torch.zeros(16, 16, device=device, dtype=torch_type)
+        for i in range(16):
+            mask_2d[i, i + 1:] = mask_filter
+        attn_mask = mask_2d.unsqueeze(0).unsqueeze(0)  # (1, 1, 16, 16)
+
+        # Reference: expand to full (B, H, Q, K)
+        attn_bias_ref = attn_mask.expand(2, 8, -1, -1).contiguous()
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_bias_ref, causal=False)
+
+        # ORT path
+        out_ort, _, _ = attention_prompt_func(
+            q=q, k=k, v=v, config=config, attn_mask=attn_mask,
+            ep="CUDAExecutionProvider", device=device, ort_type=TensorProto.FLOAT16,
+        )
+        out_ort = out_ort.reshape(2, 16, 8, 128)
+
+        out_np = out_ort.float().detach().cpu().numpy()
+        out_ref_np = out_ref.float().detach().cpu().numpy()
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
 if __name__ == "__main__":
