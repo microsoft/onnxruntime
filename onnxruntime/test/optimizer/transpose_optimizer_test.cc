@@ -4541,13 +4541,8 @@ TEST(TransposeOptimizerTests, RegressionTest_Permute1DConstantEmptyPerm) {
   InferenceSession session{so, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
 
-  // The critical property is that Initialize() completes without crashing.
-  // It may succeed or return a graceful error — either is acceptable.
-  Status init_status = session.Initialize();
-  // Log the result so CI output is informative, but do not assert IsOK().
-  if (!init_status.IsOK()) {
-    GTEST_LOG_(INFO) << "Session initialization returned (non-crash) error: " << init_status.ErrorMessage();
-  }
+  // The critical property is that Initialize() completes successfully without crashing.
+  ASSERT_STATUS_OK(session.Initialize());
 }
 
 // These tests use the internal testing EP with static kernels which requires a full build and contrib ops,
