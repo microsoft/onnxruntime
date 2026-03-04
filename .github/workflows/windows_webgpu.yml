@@ -233,17 +233,28 @@ jobs:
             --parallel `
             --use_binskim_compliant_compile_flags `
             --cmake_generator "Visual Studio 17 2022" `
-            --build_shared_lib `
             --enable_onnx_tests `
             --use_webgpu shared_lib `
             --wgsl_template static `
             --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
-            --cmake_extra_defines `
-            onnxruntime_BUILD_UNIT_TESTS=ON
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON `
+            --disable_rtti `
+            --enable_lto
+
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+
+      - name: Publish artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: webgpu-plugin-binaries
+          path: |
+            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.dll
+            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.pdb
+            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll
+            ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
     runs-on: [
