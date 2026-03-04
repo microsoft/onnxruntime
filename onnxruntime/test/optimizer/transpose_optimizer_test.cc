@@ -4502,16 +4502,10 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151_NegativeDQAxis) {
 }
 
 // Regression test for a division-by-zero in Permute1DConstant when a Transpose node carries an empty perm
-// attribute (i.e. applied to a rank-0 / scalar tensor). In that case perm.size() == 0, so the expression
-//   size_t bytes_per_val = data.size() / rank;   // rank == 0 → SIGFPE
-// would crash the process. A malicious ONNX model can trigger this path by pairing
-//   Transpose(perm=[]) → Pad(pads=<empty 1D initializer, shape [0]>)
-// because the condition   shape[0] == perm.size()   evaluates to   0 == 0   and Permute1DConstant is called.
-// The fix must guard against the zero-rank (empty-perm) case before performing the division.
+// attribute (rank-0 / scalar tensor). perm.size() == 0 caused a divide-by-zero before the fix.
+// Verifies that session initialization completes without crashing when the optimizer encounters this graph.
 TEST(TransposeOptimizerTests, RegressionTest_Permute1DConstantEmptyPerm) {
-  // Build: scalar_input → Transpose(perm=[]) → Pad(pads=const{}, shape=[0]) → output
-  // For a rank-0 input the required pads tensor has 0 elements (2 * 0 = 0), which satisfies the
-  // Permute1DConstant entry condition and previously caused a SIGFPE.
+  // Graph: scalar_input → Transpose(perm=[]) → Pad(pads const, shape=[0]) → output
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 13;  // opset 13: Pad accepts pads as a named input
   Model model("RegressionTest_Permute1DConstantEmptyPerm", false, ModelMetaData(), PathString(),
@@ -4524,11 +4518,10 @@ TEST(TransposeOptimizerTests, RegressionTest_Permute1DConstantEmptyPerm) {
   auto* scalar_input = MakeInput<float>(builder, std::vector<int64_t>{}, std::vector<int64_t>{}, 0.0f, 1.0f);
 
   // Transpose with empty perm — valid ONNX identity on a scalar
-  auto* transpose_out = builder.MakeIntermediate();
-  auto& transpose_node = builder.AddNode("Transpose", {scalar_input}, {transpose_out});
+  auto* transpose_out = builder.MakeIntermediate();  auto& transpose_node = builder.AddNode("Transpose", {scalar_input}, {transpose_out});
   transpose_node.AddAttribute("perm", std::vector<int64_t>{});
 
-  // Pad: pads initializer has shape [0] (2 * rank == 2 * 0 == 0 elements)
+  // Pad: empty pads for a rank-0 input
   auto* pads_init = builder.MakeInitializer<int64_t>({0}, std::vector<int64_t>{});
   auto* pad_out = builder.MakeOutput();
   builder.AddNode("Pad", {transpose_out, pads_init}, {pad_out});
@@ -4548,7 +4541,7 @@ TEST(TransposeOptimizerTests, RegressionTest_Permute1DConstantEmptyPerm) {
   InferenceSession session{so, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
 
-  // The critical property is that Initialize() does NOT crash with SIGFPE.
+  // The critical property is that Initialize() completes without crashing.
   // It may succeed or return a graceful error — either is acceptable.
   Status init_status = session.Initialize();
   // Log the result so CI output is informative, but do not assert IsOK().
