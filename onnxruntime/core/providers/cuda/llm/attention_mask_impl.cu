@@ -355,5 +355,27 @@ template Status LaunchConvertNonpadKvSeqlenToAttentionBias<__half>(
 template Status LaunchConvertNonpadKvSeqlenToAttentionBias<__nv_bfloat16>(
     const int64_t*, __nv_bfloat16*, int, int, int, float, cudaStream_t, int);
 
+// Simple kernel to fill an int32 buffer with a constant value on device.
+// Used for CUDA-graph-capturable seqlens_k initialization (no host memory).
+__global__ void FillInt32Kernel(int* __restrict__ output, const int value, const int count) {
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < count) {
+    output[idx] = value;
+  }
+}
+
+Status LaunchFillInt32(int* output, int value, int count, cudaStream_t stream, int max_threads_per_block) {
+  if (count == 0) {
+    return Status::OK();
+  }
+
+  int threads = std::min(count, max_threads_per_block);
+  int blocks = (count + threads - 1) / threads;
+
+  FillInt32Kernel<<<blocks, threads, 0, stream>>>(output, value, count);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -116,5 +116,9 @@ Status LaunchConvertNonpadKvSeqlenToAttentionBias(
     cudaStream_t stream,
     int max_threads_per_block);
 
+// Fill an int32 buffer with a constant value entirely on device.
+// CUDA-graph-capturable alternative to host vector + cudaMemcpyAsync.
+Status LaunchFillInt32(int* output, int value, int count, cudaStream_t stream, int max_threads_per_block);
+
 }  // namespace cuda
 }  // namespace onnxruntime

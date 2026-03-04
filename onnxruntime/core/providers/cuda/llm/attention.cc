@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <vector>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/llm/attention.h"
 #include "core/providers/cpu/llm/attention_helper.h"
@@ -227,11 +226,11 @@ Status Attention<T>::RunFlashAttention(
         cudaMemcpyDeviceToDevice, cuda_stream));
 
     // seqlens_k = past_sequence_length (count of cached tokens before new input)
+    // Use device-side fill instead of host vector + cudaMemcpyAsync for CUDA graph capture.
     auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
-    std::vector<int> seqlens_k_host(parameters.batch_size, parameters.past_sequence_length);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seqlens_k_buffer.get(), seqlens_k_host.data(),
-                                         parameters.batch_size * sizeof(int),
-                                         cudaMemcpyHostToDevice, cuda_stream));
+    ORT_RETURN_IF_ERROR(LaunchFillInt32(seqlens_k_buffer.get(), parameters.past_sequence_length,
+                                        parameters.batch_size, cuda_stream,
+                                        device_prop.maxThreadsPerBlock));
 
     // K/V new tokens: mha_fwd_kvcache expects BSNH for k_new/v_new.
     // When !is_bsnh (4D BNSH input), transpose new tokens to BSNH.
