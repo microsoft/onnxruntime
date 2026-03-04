@@ -15,7 +15,6 @@ namespace cuda {
       T,                                                                 \
       kCudaExecutionProvider,                                            \
       (*KernelDefBuilder::Create())                                      \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                        \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
       RoiAlign<T>);
@@ -45,19 +44,8 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t output_size = Y.Shape().Size();
 
   if (output_size > 0) {
-    // batch_indices is on CPU (via InputMemoryType), copy to GPU for the CUDA kernel
-    auto* ort_stream = context->GetComputeStream();
-    auto batch_indices_gpu = GetScratchBuffer<int64_t>(num_rois, ort_stream);
-    cudaStream_t cuda_stream = Stream(context);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-        batch_indices_gpu.get(),
-        batch_indices_ptr->Data<int64_t>(),
-        num_rois * sizeof(int64_t),
-        cudaMemcpyHostToDevice,
-        cuda_stream));
-
     RoiAlignImpl(
-        cuda_stream,
+        Stream(context),
         output_size,  // num threads
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X_ptr->Data<T>()),
         ToCudaType<T>::FromFloat(this->spatial_scale_),
@@ -72,7 +60,7 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y.MutableData<T>()),
         this->mode_ == RoiAlignMode::avg,
         this->half_pixel_,
-        batch_indices_gpu.get());
+        batch_indices_ptr->Data<int64_t>());
   }
 
   return Status::OK();

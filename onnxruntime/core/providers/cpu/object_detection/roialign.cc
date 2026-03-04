@@ -296,17 +296,22 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
   }
 
   // Validate batch_indices values are within [0, batch_size).
-  // batch_indices is always on CPU: for CPU EP natively, and for CUDA EP via
-  // InputMemoryType(OrtMemTypeCPUInput, 2) in the kernel registration.
-  const int64_t batch_size = X_ptr->Shape()[0];
-  const int64_t* batch_indices_data = batch_indices_ptr->Data<int64_t>();
-  const int64_t num_rois = batch_indices_dims[0];
-  for (int64_t i = 0; i < num_rois; ++i) {
-    if (batch_indices_data[i] < 0 || batch_indices_data[i] >= batch_size) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "batch_indices value " + std::to_string(batch_indices_data[i]) +
-                        " at index " + std::to_string(i) +
-                        " is out of range [0, " + std::to_string(batch_size) + ")");
+  // Only check when the tensor data is accessible from the host (CPU).
+  // For GPU tensors (e.g. CUDA EP), Data<T>() returns a device pointer
+  // that cannot be safely dereferenced on the host. A device-side bounds
+  // check for the CUDA path would require passing batch_size into the
+  // CUDA kernel — tracked as a follow-up.
+  if (batch_indices_ptr->Location().device.Type() == OrtDevice::CPU) {
+    const int64_t batch_size = X_ptr->Shape()[0];
+    const int64_t* batch_indices_data = batch_indices_ptr->Data<int64_t>();
+    const int64_t num_rois = batch_indices_dims[0];
+    for (int64_t i = 0; i < num_rois; ++i) {
+      if (batch_indices_data[i] < 0 || batch_indices_data[i] >= batch_size) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                      "batch_indices value " + std::to_string(batch_indices_data[i]) +
+                          " at index " + std::to_string(i) +
+                          " is out of range [0, " + std::to_string(batch_size) + ")");
+      }
     }
   }
 
