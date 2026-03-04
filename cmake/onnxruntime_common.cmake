@@ -216,11 +216,21 @@ endif()
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   if(TARGET mat)
     target_link_libraries(onnxruntime_common PRIVATE mat)
+    # Add 1DS SDK include directories for telemetry.cc
+    FetchContent_GetProperties(cpp_client_telemetry SOURCE_DIR CPP_CLIENT_TELEMETRY_SRC)
+    target_include_directories(onnxruntime_common PRIVATE
+      "${CPP_CLIENT_TELEMETRY_SRC}/lib/include/public"
+      "${CPP_CLIENT_TELEMETRY_SRC}/lib/include"
+      "${CPP_CLIENT_TELEMETRY_SRC}"
+    )
     # Platform-specific system libraries required by the 1DS SDK
     if(APPLE)
       target_link_libraries(onnxruntime_common PRIVATE
         "-framework CoreFoundation"
+        "-framework Foundation"
         "-framework Security"
+        "-framework SystemConfiguration"
+        "-framework Network"
         z
         sqlite3
       )

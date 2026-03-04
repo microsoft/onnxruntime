@@ -119,8 +119,8 @@ class PosixTelemetry : public Telemetry {
   // Mutex for thread-safe access
   mutable std::mutex mutex_;
 
-  // Telemetry SDK logger instance (1DS)
-  std::shared_ptr<::Microsoft::Applications::Events::ILogger> logger_;
+  // Telemetry SDK logger instance (1DS) - raw pointer owned by LogManager
+  ::Microsoft::Applications::Events::ILogger* logger_{nullptr};
 
   // State tracking
   mutable std::atomic<bool> enabled_{true};

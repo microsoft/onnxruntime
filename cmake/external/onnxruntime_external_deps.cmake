@@ -880,9 +880,28 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   set(BUILD_UNIT_TESTS_SAVED "${BUILD_UNIT_TESTS}")
   set(BUILD_FUNC_TESTS_SAVED "${BUILD_FUNC_TESTS}")
   set(BUILD_SAMPLES_SAVED "${BUILD_SAMPLES}")
+  set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
   set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
   set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
   set(BUILD_SAMPLES OFF CACHE BOOL "Disable 1DS SDK samples" FORCE)
+  # Build 1DS SDK as static library
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build 1DS SDK as static library" FORCE)
+  # Disable optional 1DS modules that may not have source in the release archive
+  set(BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
+  set(BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
+  # Disable ObjC and Swift wrappers - we use the C++ API directly
+  set(BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
+  set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
+
+  # The 1DS SDK CMakeLists.txt expects MAC_ARCH on macOS (non-iOS)
+  if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if(NOT DEFINED MAC_ARCH)
+      set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
+      if(NOT MAC_ARCH)
+        set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
+      endif()
+    endif()
+  endif()
 
   onnxruntime_fetchcontent_declare(
     cpp_client_telemetry
@@ -892,9 +911,35 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   )
   onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
 
+  # The 1DS SDK creates imported targets for z and sqlite3 but doesn't set
+  # IMPORTED_LOCATION, causing z-NOTFOUND/sqlite3-NOTFOUND link errors.
+  # Fix by setting the correct library locations on these imported targets.
+  if(TARGET z)
+    find_library(ZLIB_LIBRARY_ACTUAL z)
+    if(ZLIB_LIBRARY_ACTUAL)
+      set_target_properties(z PROPERTIES IMPORTED_LOCATION "${ZLIB_LIBRARY_ACTUAL}")
+    endif()
+  endif()
+  if(TARGET sqlite3 AND NOT TARGET sqlite3::sqlite3)
+    find_library(SQLITE3_LIBRARY_ACTUAL sqlite3)
+    if(SQLITE3_LIBRARY_ACTUAL)
+      set_target_properties(sqlite3 PROPERTIES IMPORTED_LOCATION "${SQLITE3_LIBRARY_ACTUAL}")
+    endif()
+  endif()
+
+  # The 1DS SDK uses include_directories(${CMAKE_SOURCE_DIR}) to find its bundled
+  # nlohmann/json.hpp, sqlite, and zlib headers. When built via FetchContent,
+  # CMAKE_SOURCE_DIR points to ORT's root instead of the SDK source dir.
+  # Fix by adding the SDK source root to the mat target's include directories.
+  if(TARGET mat)
+    FetchContent_GetProperties(cpp_client_telemetry SOURCE_DIR CPP_CLIENT_TELEMETRY_SRC)
+    target_include_directories(mat PRIVATE "${CPP_CLIENT_TELEMETRY_SRC}")
+  endif()
+
   set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
   set(BUILD_FUNC_TESTS "${BUILD_FUNC_TESTS_SAVED}" CACHE BOOL "" FORCE)
   set(BUILD_SAMPLES "${BUILD_SAMPLES_SAVED}" CACHE BOOL "" FORCE)
+  set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}" CACHE BOOL "" FORCE)
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)

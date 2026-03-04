@@ -26,6 +26,9 @@
 
 using namespace Microsoft::Applications::Events;
 
+// Instantiate the LogManager singleton template (required by the 1DS SDK)
+LOGMANAGER_INSTANCE
+
 namespace onnxruntime {
 
 // Static member initialization
@@ -42,10 +45,10 @@ enum class EventPriority {
   CRITICAL = EventLatency_RealTime  // ProcessInfo, SessionCreation
 };
 
-// Transmit profiles
-constexpr const char* PROFILE_REAL_TIME = "REAL_TIME";
-constexpr const char* PROFILE_NEAR_REAL_TIME = "NEAR_REAL_TIME";
-constexpr const char* PROFILE_BEST_EFFORT = "BEST_EFFORT";
+// Transmit profiles (for future use)
+// constexpr const char* PROFILE_REAL_TIME = "REAL_TIME";
+// constexpr const char* PROFILE_NEAR_REAL_TIME = "NEAR_REAL_TIME";
+// constexpr const char* PROFILE_BEST_EFFORT = "BEST_EFFORT";
 
 // Helper class to build events with common properties
 class EventBuilder {
@@ -61,8 +64,7 @@ class EventBuilder {
     // Set schema version for compatibility with Windows
     props_.SetProperty("schemaVersion", static_cast<int64_t>(0));
 
-    // Privacy flags - no PII collection
-    props_.SetPIIKind(PiiKind_None);
+    // Privacy flags - no PII collection (PiiKind_None is the default for all properties)
   }
 
   EventBuilder& AddString(const char* key, const std::string& value) {
@@ -192,7 +194,7 @@ PosixTelemetry::~PosixTelemetry() {
 }
 
 // Safe async event logging with error handling
-void PosixTelemetry::LogEventAsync(microsoft::applications::events::EventProperties&& props) const {
+void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventProperties&& props) const {
   if (!enabled_ || !logger_) {
     return;
   }
@@ -210,7 +212,7 @@ void PosixTelemetry::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
 
   // Configure 1DS SDK for optimal async performance
-  LogConfiguration config;
+  ILogConfiguration& config = LogManager::GetLogConfiguration();
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
@@ -223,16 +225,8 @@ void PosixTelemetry::Initialize() {
   config[CFG_INT_RAM_QUEUE_SIZE] = 512 * 1024;  // 512KB RAM queue
   config[CFG_INT_RAM_QUEUE_BUFFERS] = 3;        // Triple buffering for smooth async operation
 
-  // Sampling configuration (percentage: 100 = 100%, 10 = 10%)
-  // Sample 100% of critical events, 10% of routine events for performance
-  config[CFG_STR_SAMPLING_PERCENTAGE] =
-      "ProcessInfo=100,SessionCreation=100,SessionCreationStart=100,"
-      "RuntimeError=100,EvaluationStart=10,EvaluationStop=10,"
-      "RuntimePerf=10,CompileModelStart=50,CompileModelComplete=50,"
-      "EpAutoSelection=50,ProviderOptions=10";
-
-  // Create logger instance
-  logger_ = LogManager::Initialize(TENANT_TOKEN, config);
+  // Create logger instance (raw pointer owned by LogManager)
+  logger_ = LogManager::Initialize(TENANT_TOKEN);
 
   if (logger_) {
     // Set privacy level - no PII collection
@@ -254,16 +248,11 @@ void PosixTelemetry::Shutdown() {
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (logger_) {
-    // According to cpp_client_telemetry use-after-free docs:
-    // 1. Stop using ILogger before calling FlushAndTeardown
-    // 2. Reset shared_ptr to release reference before teardown
-    // 3. Call FlushAndTeardown only once when count reaches zero
-
     // Disable logging first to prevent new events
     enabled_ = false;
 
-    // Release our reference to the logger
-    logger_.reset();
+    // Clear our pointer (owned by LogManager, not us)
+    logger_ = nullptr;
 
     // Now safely call FlushAndTeardown
     // This will block until all pending events are sent or timeout
