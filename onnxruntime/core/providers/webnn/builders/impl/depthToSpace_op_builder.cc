@@ -54,70 +54,52 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const int64_t new_width = width * blocksize;
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
-  emscripten::val output;
   emscripten::val options = emscripten::val::object();
 
+  // Define mode-specific parameters
+  std::vector<uint32_t> shape1;
+  std::vector<uint32_t> perm;
   if (mode == "DCR") {
-    // Step 1: reshape to [b, blocksize, blocksize, new_channels, h, w]
-    std::vector<uint32_t> shape1{
+    shape1 = {
         SafeInt<uint32_t>(batch),
         SafeInt<uint32_t>(blocksize),
         SafeInt<uint32_t>(blocksize),
         SafeInt<uint32_t>(new_channels),
         SafeInt<uint32_t>(height),
         SafeInt<uint32_t>(width)};
-    options.set("label", node.Name() + "_reshape1");
-    emscripten::val tmp = model_builder.GetBuilder().call<emscripten::val>(
-        "reshape", input, emscripten::val::array(shape1), options);
-
-    // Step 2: transpose to [b, new_channels, h, blocksize, w, blocksize]
-    std::vector<uint32_t> perm{0, 3, 4, 1, 5, 2};
-    options.set("label", node.Name() + "_transpose");
-    options.set("permutation", emscripten::val::array(perm));
-    tmp = model_builder.GetBuilder().call<emscripten::val>("transpose", tmp, options);
-
-    // Step 3: reshape to [b, new_channels, new_height, new_width]
-    std::vector<uint32_t> shape2{
-        SafeInt<uint32_t>(batch),
-        SafeInt<uint32_t>(new_channels),
-        SafeInt<uint32_t>(new_height),
-        SafeInt<uint32_t>(new_width)};
-    options = emscripten::val::object();
-    options.set("label", node.Name());
-    output = model_builder.GetBuilder().call<emscripten::val>(
-        "reshape", tmp, emscripten::val::array(shape2), options);
-
+    perm = {0, 3, 4, 1, 5, 2};
   } else {
-    // CDR mode
-    // Step 1: reshape to [b, new_channels, blocksize, blocksize, h, w]
-    std::vector<uint32_t> shape1{
+    // CRD mode
+    shape1 = {
         SafeInt<uint32_t>(batch),
         SafeInt<uint32_t>(new_channels),
         SafeInt<uint32_t>(blocksize),
         SafeInt<uint32_t>(blocksize),
         SafeInt<uint32_t>(height),
         SafeInt<uint32_t>(width)};
-    options.set("label", node.Name() + "_reshape1");
-    emscripten::val tmp = model_builder.GetBuilder().call<emscripten::val>(
-        "reshape", input, emscripten::val::array(shape1), options);
-
-    // Step 2: transpose to [b, new_channels, h, blocksize, w, blocksize]
-    std::vector<uint32_t> perm{0, 1, 4, 2, 5, 3};
-    options.set("label", node.Name() + "_transpose");
-    options.set("permutation", emscripten::val::array(perm));
-    tmp = model_builder.GetBuilder().call<emscripten::val>("transpose", tmp, options);
-
-    // Step 3: reshape to [b, new_channels, new_height, new_width]
-    std::vector<uint32_t> shape2{
-        SafeInt<uint32_t>(batch),
-        SafeInt<uint32_t>(new_channels),
-        SafeInt<uint32_t>(new_height),
-        SafeInt<uint32_t>(new_width)};
-    options = emscripten::val::object();
-    options.set("label", node.Name());
-    output = model_builder.GetBuilder().call<emscripten::val>(
-        "reshape", tmp, emscripten::val::array(shape2), options);
+    perm = {0, 1, 4, 2, 5, 3};
   }
+
+  // Step 1: Reshape to 6D
+  options.set("label", node.Name() + "_reshape1");
+  emscripten::val tmp = model_builder.GetBuilder().call<emscripten::val>(
+      "reshape", input, emscripten::val::array(shape1), options);
+
+  // Step 2: Transpose
+  options.set("label", node.Name() + "_transpose");
+  options.set("permutation", emscripten::val::array(perm));
+  tmp = model_builder.GetBuilder().call<emscripten::val>("transpose", tmp, options);
+
+  // Step 3: Reshape to output shape [b, new_channels, new_height, new_width]
+  std::vector<uint32_t> shape2{
+      SafeInt<uint32_t>(batch),
+      SafeInt<uint32_t>(new_channels),
+      SafeInt<uint32_t>(new_height),
+      SafeInt<uint32_t>(new_width)};
+  options = emscripten::val::object();
+  options.set("label", node.Name());
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
+      "reshape", tmp, emscripten::val::array(shape2), options);
 
   model_builder.AddOperand(output_defs[0]->Name(), std::move(output));
   return Status::OK();
