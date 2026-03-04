@@ -92,7 +92,7 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
 
   concurrency::ThreadPool::TryParallelFor(tp, grad_size, static_cast<double>(block_size),
                                           [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
+                                            for (ptrdiff_t index = first, end = last; index < end; ++index) {
                                               lambda(index);
                                             }
                                           });
