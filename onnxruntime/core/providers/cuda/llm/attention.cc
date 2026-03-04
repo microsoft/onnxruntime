@@ -1054,6 +1054,23 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         parameters.softmax_precision == 0 &&
         past_key == nullptr;
 
+    // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
+    // "unaligned" kernel path. When an attention mask is present without nonpad_kv_seqlen,
+    // it becomes an additive bias with bias_strideM = total_sequence_length. Skip MEA if
+    // this stride can't satisfy the kernel's minimum alignment requirement.
+    if (mea_eligible && attn_mask != nullptr && nonpad_kv_seqlen == nullptr) {
+      int min_bias_align = 1;
+      if ((std::is_same<T, float>::value && sm >= 80) ||
+          (!std::is_same<T, float>::value && sm >= 75)) {
+        min_bias_align = 4;  // TensorOp on Sm80+ (float) or Sm75+ (fp16/bf16)
+      } else if (!std::is_same<T, float>::value && sm >= 70) {
+        min_bias_align = 2;  // TensorOp on Volta (fp16)
+      }
+      if (parameters.total_sequence_length % min_bias_align != 0) {
+        mea_eligible = false;
+      }
+    }
+
     if (mea_eligible) {
       return RunMemoryEfficientAttention(context, Q, K, V, attn_mask, past_key, past_value,
                                          nonpad_kv_seqlen, Y, present_key, present_value, parameters);

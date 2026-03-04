@@ -258,9 +258,20 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
                     params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
 
-  // Attention bias stride (kv_sequence_length) must also satisfy alignment requirements.
+  // Attention bias strides must also satisfy alignment requirements.
+  // Mirror the checks in AttentionKernel::check_supported to avoid ORT_ENFORCE crashes.
   if (params.attn_bias != nullptr) {
-    is_aligned = is_aligned && params.kv_sequence_length % AlignedAK::kAlignmentQ == 0;
+    int num_keys = params.kv_sequence_length;
+    int num_queries = params.sequence_length;
+    int bias_strideM = num_keys;
+    int bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : num_queries * num_keys;
+    int bias_strideB = params.broadcast_attn_bias_dim_0
+                           ? 0
+                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * num_queries * num_keys);
+    is_aligned = is_aligned &&
+                 bias_strideM % AlignedAK::kAlignmentQ == 0 &&
+                 (params.num_heads <= 1 || bias_strideH % AlignedAK::kAlignmentQ == 0) &&
+                 (params.batch_size <= 1 || bias_strideB % AlignedAK::kAlignmentQ == 0);
   }
 
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
