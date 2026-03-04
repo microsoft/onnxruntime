@@ -29,6 +29,7 @@ __device__ T bilinear_interpolate(
     T y,
     T x,
     const bool is_mode_avg,
+    const bool use_max_bilinear_interp,
     const int index /* index for debug only*/) {
   // deal with cases that inverse elements are out of feature map boundary
   if (y < -1.0 || y > height || x < -1.0 || x > width) {
@@ -72,9 +73,12 @@ __device__ T bilinear_interpolate(
   T v4 = bottom_data[y_high * width + x_high];
   T w1 = hy * hx, w2 = hy * lx, w3 = ly * hx, w4 = ly * lx;
 
-  T val = is_mode_avg
-              ? (w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4)             // mode Avg
-              : max(max(max(w1 * v1, w2 * v2), w3 * v3), w4 * v4);  // mode Max
+  T val;
+  if (is_mode_avg || use_max_bilinear_interp) {
+    val = w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4;
+  } else {
+    val = max(max(max(w1 * v1, w2 * v2), w3 * v3), w4 * v4);
+  }
 
   return val;
 }
@@ -94,6 +98,7 @@ __global__ void RoIAlignForward(
     int64_t roi_cols,
     T* top_data,
     const bool is_mode_avg,
+    const bool use_max_bilinear_interp,
     const bool half_pixel,
     const int64_t* batch_indices_ptr) {
   for (size_t index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads; index += blockDim.x * gridDim.x) {
@@ -116,11 +121,8 @@ __global__ void RoIAlignForward(
 
     T roi_width = roi_end_w - roi_start_w;
     T roi_height = roi_end_h - roi_start_h;
-    if (!half_pixel) {  // backward compatibility
-      // Force malformed ROIs to be 1x1
-      roi_width = max(roi_width, (T)1.);
-      roi_height = max(roi_height, (T)1.);
-    }
+    // Note that 0 size ROI's are legal, meaning they sample a single point in the input.
+
     T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
     T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
@@ -133,6 +135,8 @@ __global__ void RoIAlignForward(
                              : _Ceil(roi_height / pooled_height);  // e.g., = 2
     int roi_bin_grid_w =
         (sampling_ratio > 0) ? sampling_ratio : _Ceil(roi_width / pooled_width);
+    roi_bin_grid_h = max(roi_bin_grid_h, 1);
+    roi_bin_grid_w = max(roi_bin_grid_w, 1);
 
     // We do average (integral) pooling inside a bin
     const T count = roi_bin_grid_h * roi_bin_grid_w;  // e.g. = 4
@@ -150,7 +154,7 @@ __global__ void RoIAlignForward(
                         static_cast<T>(roi_bin_grid_w);
 
         T val = bilinear_interpolate(
-            offset_bottom_data, height, width, y, x, is_mode_avg, index);
+            offset_bottom_data, height, width, y, x, is_mode_avg, use_max_bilinear_interp, index);
 
         if (is_mode_avg) {
           output_val += val;
@@ -188,6 +192,7 @@ void RoiAlignImpl(
     int64_t roi_cols,
     T* top_data,
     const bool is_mode_avg,
+    const bool use_max_bilinear_interp,
     const bool half_pixel,
     const int64_t* batch_indices_ptr) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(nthreads) / GridDim::maxThreadsPerBlock));
@@ -205,6 +210,7 @@ void RoiAlignImpl(
       roi_cols,
       top_data,
       is_mode_avg,
+      use_max_bilinear_interp,
       half_pixel,
       batch_indices_ptr);
 }
@@ -225,6 +231,7 @@ void RoiAlignImpl(
       int64_t roi_cols,             \
       T* top_data,                  \
       const bool is_mode_avg,       \
+      const bool use_max_bilinear_interp, \
       const bool half_pixel,        \
       const int64_t* batch_indices_ptr);
 

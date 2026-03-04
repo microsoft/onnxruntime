@@ -7,14 +7,27 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      RoiAlign,                                                          \
-      kOnnxDomain,                                                       \
-      10,                                                                \
-      T,                                                                 \
-      kCudaExecutionProvider,                                            \
-      (*KernelDefBuilder::Create())                                      \
+#define ADD_VERSIONED_TYPED_ROIALIGN_OP(T)                       \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                       \
+      RoiAlign,                                                  \
+      kOnnxDomain,                                               \
+      10,                                                        \
+      15,                                                        \
+      T,                                                         \
+      kCudaExecutionProvider,                                    \
+      (*KernelDefBuilder::Create())                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
+      RoiAlign<T>);
+
+#define ADD_TYPED_ROIALIGN_OP(T)                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
+      RoiAlign,                                                  \
+      kOnnxDomain,                                               \
+      16,                                                        \
+      T,                                                         \
+      kCudaExecutionProvider,                                    \
+      (*KernelDefBuilder::Create())                              \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
       RoiAlign<T>);
@@ -59,6 +72,7 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
         num_roi_cols,
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y.MutableData<T>()),
         this->mode_ == RoiAlignMode::avg,
+        this->use_max_bilinear_interp_,
         this->half_pixel_,
         batch_indices_ptr->Data<int64_t>());
   }
@@ -67,7 +81,8 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 #define SPECIALIZED_COMPUTE(T) \
-  REGISTER_KERNEL_TYPED(T)     \
+  ADD_VERSIONED_TYPED_ROIALIGN_OP(T)     \
+  ADD_TYPED_ROIALIGN_OP(T)               \
   template Status RoiAlign<T>::ComputeInternal(OpKernelContext* ctx) const;
 
 SPECIALIZED_COMPUTE(float)

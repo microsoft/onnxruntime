@@ -1090,6 +1090,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
 #endif
+      {"mask_rcnn_R_50_FPN_1x", "mask_rcnn generated incorrectly https://github.com/microsoft/onnxruntime/pull/7354. ONNX issue: https://github.com/onnx/onnx/issues/3428.", {}},
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}},
       // ONNX 1.16.0 fix: https://github.com/onnx/onnx/pull/5741
       // ORT pending PR: https://github.com/microsoft/onnxruntime/pull/18377

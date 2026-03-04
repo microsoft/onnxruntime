@@ -157,7 +157,8 @@ static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t wi
 template <typename T>
 void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, float spatial_scale, int64_t height,
                      int64_t width, int64_t sampling_ratio, const T* bottom_rois, int64_t num_roi_cols, T* top_data,
-                     RoiAlignMode mode, bool half_pixel, const int64_t* batch_indices_ptr, ThreadPool* ttp) {
+                     RoiAlignMode mode, bool half_pixel, bool use_max_bilinear_interp,
+                     const int64_t* batch_indices_ptr, ThreadPool* ttp) {
   int64_t n_rois = output_shape[0];
   int64_t channels = output_shape[1];
   int64_t pooled_height = output_shape[2];
@@ -182,11 +183,8 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
 
       T roi_width = roi_end_w - roi_start_w;
       T roi_height = roi_end_h - roi_start_h;
-      if (!half_pixel) {
-        // Force malformed ROIs to be 1x1
-        roi_width = std::max(roi_width, (T)1.);
-        roi_height = std::max(roi_height, (T)1.);
-      }
+      // Note that 0 size ROI's are legal, meaning they sample a single point in the input.
+      // Even inverted ROI's are acceptable, meaning mirrored images.
 
       T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
@@ -195,6 +193,8 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
       int64_t roi_bin_grid_h = (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_height / pooled_height));  // e.g., = 2
       int64_t roi_bin_grid_w =
           (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
+      roi_bin_grid_h = std::max(roi_bin_grid_h, static_cast<int64_t>(1));
+      roi_bin_grid_w = std::max(roi_bin_grid_w, static_cast<int64_t>(1));
 
       // We do average (integral) pooling inside a bin
       const int64_t count = std::max(roi_bin_grid_h * roi_bin_grid_w, static_cast<int64_t>(1));  // e.g. = 4
@@ -233,10 +233,19 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
               for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
                 for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
                   const auto& pc = pre_calc[onnxruntime::narrow<size_t>(pre_calc_index)];
-                  T val = std::max(
-                      std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1], pc.w2 * offset_bottom_data[pc.pos2]),
-                               pc.w3 * offset_bottom_data[pc.pos3]),
-                      pc.w4 * offset_bottom_data[pc.pos4]);
+                  T val;
+                  if (use_max_bilinear_interp) {
+                    // PR 7354 behavior: bilinear interpolation first, then max across sample points.
+                    // Matches PyTorch/Detectron2.
+                    val = pc.w1 * offset_bottom_data[pc.pos1] + pc.w2 * offset_bottom_data[pc.pos2] +
+                          pc.w3 * offset_bottom_data[pc.pos3] + pc.w4 * offset_bottom_data[pc.pos4];
+                  } else {
+                    // ONNX spec behavior: max of individual weighted pixel values.
+                    val = std::max(
+                        std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1], pc.w2 * offset_bottom_data[pc.pos2]),
+                                 pc.w3 * offset_bottom_data[pc.pos3]),
+                        pc.w4 * offset_bottom_data[pc.pos4]);
+                  }
                   if (!max_flag) {
                     output_val = val;
                     max_flag = true;
@@ -322,6 +331,7 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
                      x_dims[2],  // height
                      x_dims[3],  // width
                      this->sampling_ratio_, rois_ptr->Data<T>(), num_roi_cols, Y.template MutableData<T>(), this->mode_, this->half_pixel_,
+                     this->use_max_bilinear_interp_,
                      batch_indices_ptr->Data<int64_t>(), context->GetOperatorThreadPool());
 
   return Status::OK();
