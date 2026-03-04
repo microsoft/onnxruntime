@@ -215,28 +215,30 @@ void RoiAlignImpl(
       batch_indices_ptr);
 }
 
-#define SPECIALIZED_IMPL(T)         \
-  template void RoiAlignImpl<T>(    \
-      cudaStream_t stream,          \
-      const int64_t nthreads,       \
-      const T* bottom_data,         \
-      const T spatial_scale,        \
-      const int64_t channels,       \
-      const int64_t height,         \
-      const int64_t width,          \
-      const int64_t pooled_height,  \
-      const int64_t pooled_width,   \
-      const int64_t sampling_ratio, \
-      const T* bottom_rois,         \
-      int64_t roi_cols,             \
-      T* top_data,                  \
-      const bool is_mode_avg,       \
+#define SPECIALIZED_IMPL(T)               \
+  template void RoiAlignImpl<T>(          \
+      cudaStream_t stream,                \
+      const int64_t nthreads,             \
+      const T* bottom_data,               \
+      const T spatial_scale,              \
+      const int64_t channels,             \
+      const int64_t height,               \
+      const int64_t width,                \
+      const int64_t pooled_height,        \
+      const int64_t pooled_width,         \
+      const int64_t sampling_ratio,       \
+      const T* bottom_rois,               \
+      int64_t roi_cols,                   \
+      T* top_data,                        \
+      const bool is_mode_avg,             \
       const bool use_max_bilinear_interp, \
-      const bool half_pixel,        \
+      const bool half_pixel,              \
       const int64_t* batch_indices_ptr);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)
+SPECIALIZED_IMPL(MLFloat16)
+SPECIALIZED_IMPL(BFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime
