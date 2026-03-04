@@ -13,7 +13,7 @@
  * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 2048
+ * The maximum length of the Config Value is 8192
  */
 
 // Key for disable PrePacking,
