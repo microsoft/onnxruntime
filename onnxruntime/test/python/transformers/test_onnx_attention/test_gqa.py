@@ -961,5 +961,233 @@ class TestONNXAttentionPaddingMaskMemoryEfficientGQA(unittest.TestCase):
         )
 
 
+# #################################################################################################
+#  Parity Check with nonpad_kv_seqlen (Opset 24)
+# #################################################################################################
+
+
+def parity_check_gqa_prompt_with_nonpad_kv_seqlen(
+    config: AttentionConfig,
+    nonpad_seqlens: torch.Tensor,
+    ep,
+    device,
+    torch_type,
+    ort_type,
+    rtol,
+    atol,
+    std=0.2,
+):
+    """
+    Parity check for ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen.
+
+    nonpad_kv_seqlen tells the op how many KV positions per batch are valid.
+    Positions beyond the valid length are treated as padding and masked out.
+    Cannot be used together with past_key/past_value.
+    """
+    torch.manual_seed(0)
+
+    q = (
+        torch.randn(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    k = (
+        torch.randn(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    v = torch.randn_like(k) * std
+
+    # Zero out padded positions in K, V for proper comparison
+    for b in range(config.batch_size):
+        valid_len = nonpad_seqlens[b].item()
+        if valid_len < config.kv_sequence_length:
+            k[b, valid_len:, :, :] = 0
+            v[b, valid_len:, :, :] = 0
+
+    # Reference: use key_padding_mask [batch, kv_seq]
+    key_padding_mask = create_boolean_mask_from_seqlens(
+        seqlens=nonpad_seqlens.to(torch.int32),
+        total_seq_len=config.kv_sequence_length,
+        mask_dims=2,
+        device=device,
+    )
+
+    out_ref, _ = attention_ref(
+        q=q,
+        k=k,
+        v=v,
+        key_padding_mask=key_padding_mask,
+        causal=config.is_causal == 1,
+        softcap=config.softcap,
+    )
+
+    # ORT path: use nonpad_kv_seqlen (int64 tensor)
+    nonpad_kv_seqlen_tensor = nonpad_seqlens.to(torch.int64).to(device)
+
+    out, present_k, present_v = attention_prompt_func(
+        q=q,
+        k=k,
+        v=v,
+        config=config,
+        attn_mask=None,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+        nonpad_kv_seqlen=nonpad_kv_seqlen_tensor,
+    )
+
+    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+
+    # When nonpad_kv_seqlen=0 for a batch, all KV positions are masked → softmax yields NaN.
+    # Zero out those batches in both ORT and reference for comparison.
+    for b in range(config.batch_size):
+        if nonpad_seqlens[b].item() == 0:
+            out[b, :, :, :] = 0
+            out_ref[b, :, :, :] = 0
+
+    out_np = out.to(torch.float32).detach().cpu().numpy()
+    out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+    numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
+
+def gqa_nonpad_kv_seqlen_test_cases():
+    """
+    Generate test cases for ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen.
+
+    In prompt mode (q_seq == kv_seq), the GQA kernel ignores seqlens_k and uses
+    padded_seq_lens = sequence_length unconditionally. nonpad_kv_seqlen masking is only
+    meaningful for decode (q_seq != kv_seq), which routes to FlashAttentionForExternalKVCache.
+    In the real TensorScatter workflow, prompt mode always has all tokens valid, so
+    nonpad_kv_seqlen = total_kv_sequence_length (mask nothing).
+    """
+    h = 128
+    sq = 16
+    skv = 16
+    n = 8
+    n2 = 2
+
+    # In prompt mode, nonpad_kv_seqlen should equal total_kv_sequence_length (all tokens valid).
+    # Partial masking (nonpad < kv_sequence_length) is not supported by the GQA kernel in prompt mode.
+    seqlen_scenarios = [
+        (1, [16], "single_batch"),
+        (2, [16, 16], "full_len"),
+        (4, [16, 16, 16, 16], "multi_batch"),
+    ]
+
+    for batch_size, seqlens, label in seqlen_scenarios:
+        config = AttentionConfig(
+            batch_size=batch_size,
+            q_sequence_length=sq,
+            kv_sequence_length=skv,
+            past_kv_sequence_length=0,
+            q_num_heads=n,
+            kv_num_heads=n2,
+            head_size=h,
+            is_causal=1,
+            has_nonpad_kv_seqlen=True,
+        )
+        name = f"b{batch_size}_sq{sq}_skv{skv}_nh{n}_{n2}_h{h}_{label}"
+        yield name, config, seqlens
+
+
+def gqa_nonpad_kv_seqlen_cpu_test_cases():
+    """CPU-only test cases including zero_seqlen (triggers CUDA_KERNEL_ASSERT in debug builds)."""
+    yield from gqa_nonpad_kv_seqlen_test_cases()
+
+    h = 128
+    sq = 16
+    skv = 16
+    n = 8
+    n2 = 2
+    config = AttentionConfig(
+        batch_size=2,
+        q_sequence_length=sq,
+        kv_sequence_length=skv,
+        past_kv_sequence_length=0,
+        q_num_heads=n,
+        kv_num_heads=n2,
+        head_size=h,
+        is_causal=1,
+        has_nonpad_kv_seqlen=True,
+    )
+    yield f"b2_sq{sq}_skv{skv}_nh{n}_{n2}_h{h}_zero_seqlen", config, [0, 16]
+
+
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestONNXAttentionGQANonpadKVSeqlen(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen (Flash Attention)."""
+
+    @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
+    def test_gqa_nonpad_kv_seqlen_flash(self, name, config, seqlens):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
+
+        parity_check_gqa_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
+class TestONNXAttentionGQANonpadKVSeqlenMEA(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen (Memory Efficient Attention)."""
+
+    @parameterized.expand(gqa_nonpad_kv_seqlen_test_cases())
+    def test_gqa_nonpad_kv_seqlen_mea(self, name, config, seqlens):
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cuda")
+
+        parity_check_gqa_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
+class TestONNXAttentionGQANonpadKVSeqlenCPU(unittest.TestCase):
+    """Test ONNX Attention op (opset 24) GQA path with nonpad_kv_seqlen on CPU (includes zero_seqlen)."""
+
+    @parameterized.expand(gqa_nonpad_kv_seqlen_cpu_test_cases())
+    def test_gqa_nonpad_kv_seqlen_cpu(self, name, config, seqlens):
+        nonpad_seqlens = torch.tensor(seqlens, dtype=torch.int64, device="cpu")
+
+        parity_check_gqa_prompt_with_nonpad_kv_seqlen(
+            config=config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
