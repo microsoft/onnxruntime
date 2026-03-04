@@ -12,7 +12,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     /// <remarks>
     /// This enum is used to determine whether a pre-compiled model can be used with specific execution providers
-    /// and devices, or if recompilation is needed. 
+    /// and devices, or if recompilation is needed.
     /// </remarks>
     public enum OrtCompiledModelCompatibility
     {
@@ -77,14 +77,14 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// The singleton class OrtEnv contains the process-global ONNX Runtime environment.
     /// It sets up logging, creates system wide thread-pools (if Thread Pool options are provided)
-    /// and other necessary things for OnnxRuntime to function. 
-    /// 
+    /// and other necessary things for OnnxRuntime to function.
+    ///
     /// Create or access OrtEnv by calling the Instance() method. Instance() can be called multiple times.
     /// It would return the same instance.
-    /// 
+    ///
     /// CreateInstanceWithOptions() provides a way to create environment with options.
     /// It must be called once before Instance() is called, otherwise it would not have effect.
-    /// 
+    ///
     /// If the environment is not explicitly created, it will be created as needed, e.g.,
     /// when creating a SessionOptions instance.
     /// </summary>
@@ -92,6 +92,28 @@ namespace Microsoft.ML.OnnxRuntime
     {
         #region Static members
         private static readonly int ORT_PROJECTION_CSHARP = 2;
+
+        /// <summary>
+        /// Set this to <c>true</c> before accessing any OnnxRuntime type to prevent OnnxRuntime
+        /// from registering its own <c>DllImportResolver</c> via
+        /// <c>NativeLibrary.SetDllImportResolver</c>.
+        /// This is useful when the host application needs to register its own custom resolver
+        /// for the OnnxRuntime assembly. Must be set before any OnnxRuntime API is used
+        /// (i.e., before the internal NativeMethods static constructor runs).
+        /// </summary>
+        /// <example>
+        /// <code>
+        /// // Disable OnnxRuntime's built-in resolver before any ORT usage
+        /// OrtEnv.DisableDllImportResolver = true;
+        ///
+        /// // Register your own resolver
+        /// NativeLibrary.SetDllImportResolver(typeof(OrtEnv).Assembly, MyCustomResolver);
+        ///
+        /// // Now use OnnxRuntime normally
+        /// var env = OrtEnv.Instance();
+        /// </code>
+        /// </example>
+        public static bool DisableDllImportResolver { get; set; } = false;
 
         private static readonly byte[] _defaultLogId = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(@"CSharpOnnxRuntime");
 
@@ -274,7 +296,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Instantiates (if not already done so) a new OrtEnv instance with the default logging level
         /// and no other options. Otherwise returns the existing instance.
-        /// 
+        ///
         /// It returns the same instance on every call - `OrtEnv` is singleton
         /// </summary>
         /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
@@ -523,7 +545,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// A registered execution provider library can be used by all sessions created with the OrtEnv instance.
         /// Devices the execution provider can utilize are added to the values returned by GetEpDevices() and can
         /// be used in SessionOptions.AppendExecutionProvider to select an execution provider for a device.
-        /// 
+        ///
         /// Coming: A selection policy can be specified and ORT will automatically select the best execution providers
         /// and devices for the model.
         /// </summary>
