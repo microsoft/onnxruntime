@@ -154,7 +154,10 @@
     #   cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type
     #     template argument
     # See https://github.com/NVIDIA/cutlass/issues/3065
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "/permissive")
+    target_compile_options(onnxruntime_providers_cuda PRIVATE
+      "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
+      #"$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+    )
   endif()
 
   if(WIN32)
