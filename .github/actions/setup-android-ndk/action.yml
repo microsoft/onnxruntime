@@ -89,7 +89,7 @@ runs:
           set -e -x
           python3 tools/python/run_android_emulator.py \
             --android-sdk-root "${ANDROID_SDK_ROOT}" \
-            --start --emulator-extra-args="-partition-size 2047" \
+            --start --emulator-extra-args="-partition-size 2047 -memory 5120" \
             --emulator-pid-file ./emulator.pid
           echo "Emulator PID: `cat ./emulator.pid`"
 

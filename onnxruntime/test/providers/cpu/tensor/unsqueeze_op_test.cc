@@ -29,6 +29,21 @@ TEST(UnsqueezeOpTest, Unsqueeze_1_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+#ifdef USE_WEBGPU
+TEST(UnsqueezeOpTest, Unsqueeze_1_int64) {
+  OpTester test("Unsqueeze");
+
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddInput<int64_t>("input", {2, 3, 4}, std::vector<int64_t>(2 * 3 * 4, 1));
+  test.AddOutput<int64_t>("output", {2, 1, 3, 4}, std::vector<int64_t>(2 * 3 * 4, 1));
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
+
 TEST(UnsqueezeOpTest, Unsqueeze_2) {
   OpTester test("Unsqueeze");
 

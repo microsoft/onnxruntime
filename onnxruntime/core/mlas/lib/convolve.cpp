@@ -1159,7 +1159,7 @@ Return Value:
 
                     MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
                              K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb,
-                             Parameters->Beta, Output, OutputSize, ThreadPool);
+                             Parameters->Beta, Output, OutputSize, ThreadPool, Parameters->BackendKernelSelectorConfig);
 
                     //
                     // Apply the activation with optional bias.
@@ -1186,7 +1186,7 @@ Return Value:
 
                     MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
                              K, WorkingBuffer, OutputSize, Parameters->Beta, Output, OutputSize,
-                             ThreadPool);
+                             ThreadPool, Parameters->BackendKernelSelectorConfig);
 
                     //
                     // Apply the activation with optional bias.

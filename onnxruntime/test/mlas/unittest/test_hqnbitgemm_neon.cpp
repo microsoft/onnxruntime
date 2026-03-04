@@ -165,7 +165,7 @@ class MlasNeonFp16PrepackTest : public MlasTestBase {
     auto* ref = ref_.GetBuffer(BufferSize, true);
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::HQNBIT_CompFp16, input, packed,
-        nullptr, false, nullptr, nullptr);
+        nullptr, false, nullptr, nullptr, nullptr);
     Prepack<Ldb, N, K>(input, ref);
     Check<Ldb, N, K>(packed, ref);
   }

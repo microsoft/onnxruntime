@@ -128,7 +128,7 @@ class MlasConv2DTest : public MlasTestBase {
         }
 
         MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
-                 filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, threadpool_);
+                 filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, threadpool_, nullptr);
 
         //
         // Apply the bias.

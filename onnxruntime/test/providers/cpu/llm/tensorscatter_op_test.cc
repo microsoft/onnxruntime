@@ -297,6 +297,7 @@ TEST(TensorScatterTest, InPlace_IOBinding) {
 }
 
 // Negative write_indices should fail validation.
+// Run CPU-only: CUDA validates asynchronously via CUDA_KERNEL_ASSERT.
 TEST(TensorScatterTest, Linear_NegativeWriteIndex) {
   OpTester test("TensorScatter", 24);
   test.AddAttribute<std::string>("mode", "linear");
@@ -308,10 +309,14 @@ TEST(TensorScatterTest, Linear_NegativeWriteIndex) {
   test.AddOutput<float>("present_cache", {1, 4, 3},
                         {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "is negative");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is negative",
+           {}, nullptr, &execution_providers);
 }
 
 // Linear mode: write_indices + sequence_length > max_sequence_length should fail.
+// Run CPU-only: CUDA validates asynchronously via CUDA_KERNEL_ASSERT.
 TEST(TensorScatterTest, Linear_OutOfBoundsWriteIndex) {
   OpTester test("TensorScatter", 24);
   test.AddAttribute<std::string>("mode", "linear");
@@ -324,10 +329,14 @@ TEST(TensorScatterTest, Linear_OutOfBoundsWriteIndex) {
   test.AddOutput<float>("present_cache", {1, 4, 3},
                         {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds max_sequence_length");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds max_sequence_length",
+           {}, nullptr, &execution_providers);
 }
 
 // Circular mode: negative write_indices should still fail.
+// Run CPU-only: CUDA validates asynchronously via CUDA_KERNEL_ASSERT.
 TEST(TensorScatterTest, Circular_NegativeWriteIndex) {
   OpTester test("TensorScatter", 24);
   test.AddAttribute<std::string>("mode", "circular");
@@ -339,7 +348,10 @@ TEST(TensorScatterTest, Circular_NegativeWriteIndex) {
   test.AddOutput<float>("present_cache", {1, 4, 2},
                         {0, 0, 0, 0, 0, 0, 0, 0});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "is negative");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is negative",
+           {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

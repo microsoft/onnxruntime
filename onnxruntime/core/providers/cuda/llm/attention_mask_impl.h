@@ -34,21 +34,31 @@ namespace cuda {
 //
 // Returns:
 //   Status::OK() on success
-//   Error status if mask is invalid (not right-padding, doesn't start with True, etc.)
 //
-// Note: This function validates the mask on GPU and will return an error if:
-//   - The mask doesn't start with True for any batch
-//   - The True/False values are not contiguous (e.g., True, False, True pattern)
+// Note: Mask validity (right-padding convention, starts with True, contiguous True/False)
+//   is checked asynchronously via CUDA_KERNEL_ASSERT inside the kernel. Invalid masks will
+//   trigger a device-side assertion failure.
 Status LaunchConvertMaskToSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,
-    int* validation_result,  // GPU buffer for validation, size = batch_size
     int batch_size,
     int total_seq_len,
     int mask_dims,
     int64_t mask_dim0,
     int64_t mask_dim1,
     int64_t mask_dim2,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+// Convert a boolean attention mask to an additive attention bias for the MHA path.
+// Maps true -> 0.0 (attend) and false -> mask_filter_value (mask out).
+// The output has the same shape as the input mask.
+template <typename T>
+Status LaunchConvertBoolMaskToAttentionBias(
+    const bool* attn_mask_bool,
+    T* attention_bias,
+    int64_t num_elements,
+    float mask_filter_value,
     cudaStream_t stream,
     int max_threads_per_block);
 

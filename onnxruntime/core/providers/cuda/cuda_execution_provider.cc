@@ -2,11 +2,13 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+// provider_api.h must be first to set SHARED_PROVIDER
+#include "core/providers/shared_library/provider_api.h"
+
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
 #include "core/framework/resource_accountant.h"
-#include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -3065,11 +3067,11 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       } else {
         // We break here so we do not have patches of CUDA assigned nodes.
-        auto* node = graph.GetNode(node_index);
         if (node != nullptr) {
           LOGS(logger, WARNING) << "CUDA_EP Halting assignment due to capacity threshold at node: "
                                 << node->Name() << " index: " << node_index;
         }
+
         resource_accountant->SetStopAssignment();
         break;
       }
