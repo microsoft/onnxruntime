@@ -127,9 +127,19 @@ static bool Match_Linear_Subgraph_1(Graph& graph, const Node& concat, const Node
   return true;
 }
 
-static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, const NodeArg& root_input, const logging::Logger& logger) {
+static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, const NodeArg& root_input,
+                        int64_t expected_gather_index, const logging::Logger& logger) {
   const NodeArg& shape_input = *(shape.InputDefs()[0]);
   if (shape_input.Name() == root_input.Name()) {
+    return true;
+  }
+
+  // Allow a narrow passthrough pattern: input -> AveragePool -> Reshape, where shape is taken from
+  // the pre-pool input and only batch dim (index 0) is gathered.
+  const Node* root_input_producer = graph.GetProducerNode(root_input.Name());
+  if (root_input_producer != nullptr && root_input_producer->OpType() == "GlobalAveragePool" &&
+      root_input_producer->InputDefs().size() > 0 && root_input_producer->InputDefs()[0] != nullptr &&
+      root_input_producer->InputDefs()[0]->Name() == shape_input.Name() && expected_gather_index == 0) {
     return true;
   }
 
@@ -171,12 +181,17 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
       const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape, "start");
       const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape, "end");
       if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
+        LOGS(logger, VERBOSE) << "ReshapeFusion: Match_One_Element_Output_Subgraph_1 failed at Shape-15 start/end check. "
+                              << "concat=" << concat.Name() << " input_index=" << index;
         return false;
       }
     }
 
     InlinedVector<int64_t> axes;
     if (!(GetAxesFromUnsqueezeNode(graph, unsqueeze, axes) && axes.size() == 1 && axes[0] == 0)) {
+      LOGS(logger, VERBOSE) << "ReshapeFusion: Match_One_Element_Output_Subgraph_1 failed at Unsqueeze axes check. "
+                            << "concat=" << concat.Name() << " input_index=" << index
+                            << " axes_size=" << axes.size();
       return false;
     }
 
@@ -184,15 +199,24 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
       return true;
     }
 
-    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather.InputDefs()[1]), int64_t(shape_value.size()), false)) {
+    const int64_t expected_gather_index = static_cast<int64_t>(shape_value.size());
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather.InputDefs()[1]), expected_gather_index, false)) {
+      LOGS(logger, VERBOSE) << "ReshapeFusion: Match_One_Element_Output_Subgraph_1 failed at Gather indices check. "
+                            << "concat=" << concat.Name() << " input_index=" << index
+                            << " expected_index=" << shape_value.size();
       return false;
     }
 
-    if (!Match_Shape(graph, concat, shape, root_input, logger)) {
+    if (!Match_Shape(graph, concat, shape, root_input, expected_gather_index, logger)) {
+      LOGS(logger, VERBOSE) << "ReshapeFusion: Match_One_Element_Output_Subgraph_1 failed at Shape input match. "
+                            << "concat=" << concat.Name() << " input_index=" << index;
       return false;
     }
     return true;
   }
+
+  LOGS(logger, VERBOSE) << "ReshapeFusion: Match_One_Element_Output_Subgraph_1 path not found. "
+                        << "concat=" << concat.Name() << " input_index=" << index;
 
   return false;
 }
@@ -363,17 +387,23 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
 
   const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
   if (nullptr == p_concat) {
+    LOGS(logger, VERBOSE) << "ReshapeFusion: Fuse_Subgraph skipped because Reshape shape input is not from a node. "
+                          << "reshape=" << reshape.Name();
     return false;
   }
   const Node& concat = *p_concat;
 
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11, 13}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(concat, "ConcatTraining", {1}, kMSDomain)) {
+    LOGS(logger, VERBOSE) << "ReshapeFusion: Fuse_Subgraph skipped due to unsupported Concat op/version. "
+                          << "concat=" << concat.Name() << " op_type=" << concat.OpType();
     return false;
   }
 
   auto concat_input_count = concat.InputArgCount().front();
   if (!optimizer_utils::CheckOutputEdges(graph, concat, 1)) {
+    LOGS(logger, VERBOSE) << "ReshapeFusion: Fuse_Subgraph skipped because Concat output edge count is not 1. "
+                          << "concat=" << concat.Name();
     return false;
   }
 
@@ -408,6 +438,9 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
       shape_value.push_back(-1);
       continue;
     }
+    LOGS(logger, VERBOSE) << "ReshapeFusion: Fuse_Subgraph failed to match concat input. "
+                          << "reshape=" << reshape.Name() << " concat=" << concat.Name()
+                          << " input_index=" << i;
     return false;
   }
 
@@ -421,6 +454,8 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
     if ((*it) == -1) {
       if (++subgraph_cnt > 1) {
         // If more than one "-1" value is present in shape_value, return false to exit current fusion.
+        LOGS(logger, VERBOSE) << "ReshapeFusion: Fuse_Subgraph aborted because more than one '-1' in fused shape. "
+                              << "reshape=" << reshape.Name() << " concat=" << concat.Name();
         return false;
       }
     }

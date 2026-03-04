@@ -44,7 +44,8 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& initializers(model_builder.GetInitializerTensors());
   const auto& target_shape_tensor = *initializers.at(input_defs[1]->Name());
   const auto& target_shape_tensor_dims = target_shape_tensor.dims();
-  std::vector<uint32_t> new_shape;
+  emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
+  emscripten::val new_shape = emscripten::val::array();
   // Do nothing if target shape is an empty shape, which means converting to a scalar.
   if (!target_shape_tensor_dims.empty()) {
     const int64_t* raw_target_shape = target_shape_tensor.int64_data().empty()
@@ -56,17 +57,29 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::vector<int64_t> input_shape;
     ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
     ReshapeHelper helper(TensorShape(input_shape), target_shape);
-    std::transform(target_shape.cbegin(), target_shape.cend(),
-                   std::back_inserter(new_shape),
-                   [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
+
+    for (size_t axis = 0; axis < static_cast<size_t>(size); ++axis) {
+      if (raw_target_shape[axis] == 0) {
+        // WebNN reshape does not accept literal 0 in new shape.
+        // Follow ONNX allowzero=0 semantics by copying from input shape at the same axis.
+        new_shape.call<void>("push", input["shape"][axis]);
+      } else {
+        uint32_t dim_value = SafeInt<uint32_t>(target_shape[axis]);
+        new_shape.call<void>("push", dim_value);
+      }
+    }
   }
 
-  emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
+
+  emscripten::val console = emscripten::val::global("console");
+  console.call<void>("log", emscripten::val("[WebNN][ReshapeOpBuilder] node=" + node.Name() + " input.shape="), input["shape"]);
+  console.call<void>("log", emscripten::val("[WebNN][ReshapeOpBuilder] node=" + node.Name() + " new_shape="), new_shape);
+
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("reshape",
                                                                             input,
-                                                                            emscripten::val::array(new_shape),
+                                                                            new_shape,
                                                                             options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();

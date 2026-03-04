@@ -226,18 +226,10 @@ bool GemmOpBuilder::IsOpSupportedImpl(const GraphViewer&,
   std::vector<int64_t> a_shape;
   if (!GetShape(*input_defs[a_idx], a_shape, logger))
     return false;
-  if (Product(a_shape) == 0) {
-    LOGS(logger, VERBOSE) << "A must be non-empty";
-    return false;
-  }
 
   std::vector<int64_t> b_shape;
   if (!GetShape(*input_defs[b_idx], b_shape, logger))
     return false;
-  if (Product(b_shape) == 0) {
-    LOGS(logger, VERBOSE) << "B must be non-empty";
-    return false;
-  }
 
   if (op_type == "Gemm") {
     if (a_shape.size() != 2 || b_shape.size() != 2) {
