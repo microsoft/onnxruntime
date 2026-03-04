@@ -767,5 +767,93 @@ TEST(TensorProtoDataSizeShapeValidationTest, NegativeDimsRejected) {
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("out-of-bounds dimensions"));
 }
 
+#if !defined(__wasm__)
+// Tests for external data file size validation in ReadExternalDataForTensor.
+// These verify that the file size is checked before allocating memory for the tensor.
+
+TEST(TensorProtoDataSizeShapeValidationTest, ExternalDataFileTooSmallForDeclaredShape) {
+  // Create a small external data file with 4 floats (16 bytes)
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("ext_small_XXXXXX"));
+  FILE* fp;
+  CreateTestFile(fp, filename);
+  const float small_data[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  ASSERT_EQ(sizeof(small_data), fwrite(small_data, 1, sizeof(small_data), fp));
+  ASSERT_EQ(0, fclose(fp));
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+
+  // Declare a tensor with 1000 floats (4000 bytes) but the file only has 16 bytes
+  TensorProto tensor_proto;
+  tensor_proto.set_name("malicious_external");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(1000);
+  tensor_proto.set_data_location(TensorProto_DataLocation_EXTERNAL);
+  auto* location = tensor_proto.add_external_data();
+  location->set_key("location");
+  location->set_value(ToUTF8String(filename));
+
+  std::vector<uint8_t> unpacked_tensor;
+  auto status = utils::UnpackInitializerData(tensor_proto, std::filesystem::path{}, unpacked_tensor);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("out of bounds"));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, ExternalDataOffsetPushesReadPastEndOfFile) {
+  // Create an external data file with 4 floats (16 bytes)
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("ext_offset_XXXXXX"));
+  FILE* fp;
+  CreateTestFile(fp, filename);
+  const float data[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  ASSERT_EQ(sizeof(data), fwrite(data, 1, sizeof(data), fp));
+  ASSERT_EQ(0, fclose(fp));
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+
+  // Declare a tensor with 4 floats (16 bytes) but at offset 8, so read needs bytes [8..24) but file is only 16 bytes
+  TensorProto tensor_proto;
+  tensor_proto.set_name("offset_external");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(4);
+  tensor_proto.set_data_location(TensorProto_DataLocation_EXTERNAL);
+  auto* location = tensor_proto.add_external_data();
+  location->set_key("location");
+  location->set_value(ToUTF8String(filename));
+  auto* offset = tensor_proto.add_external_data();
+  offset->set_key("offset");
+  offset->set_value("8");
+
+  std::vector<uint8_t> unpacked_tensor;
+  auto status = utils::UnpackInitializerData(tensor_proto, std::filesystem::path{}, unpacked_tensor);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("out of bounds"));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, ExternalDataValidFileSizeSucceeds) {
+  // Create an external data file with exactly 4 floats (16 bytes)
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("ext_valid_XXXXXX"));
+  FILE* fp;
+  CreateTestFile(fp, filename);
+  const float data[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  ASSERT_EQ(sizeof(data), fwrite(data, 1, sizeof(data), fp));
+  ASSERT_EQ(0, fclose(fp));
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+
+  // Declare a tensor with matching shape (4 floats = 16 bytes)
+  TensorProto tensor_proto;
+  tensor_proto.set_name("valid_external");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(4);
+  tensor_proto.set_data_location(TensorProto_DataLocation_EXTERNAL);
+  auto* location = tensor_proto.add_external_data();
+  location->set_key("location");
+  location->set_value(ToUTF8String(filename));
+
+  std::vector<uint8_t> unpacked_tensor;
+  ASSERT_STATUS_OK(utils::UnpackInitializerData(tensor_proto, std::filesystem::path{}, unpacked_tensor));
+  ASSERT_EQ(unpacked_tensor.size(), sizeof(data));
+}
+#endif  // !defined(__wasm__)
+
 }  // namespace test
 }  // namespace onnxruntime

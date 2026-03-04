@@ -207,14 +207,25 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_byte_size));
 
-  unpacked_tensor.resize(tensor_byte_size);
-
   if (external_file_path == kTensorProtoMemoryAddressTag) {
     // The external data is in the same memory as the tensor proto.
     // The offset is the address of the data.
+    unpacked_tensor.resize(tensor_byte_size);
     std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
     return Status::OK();
   }
+
+  // Validate that the external file is large enough before allocating.
+  // This protects against a model with a huge declared shape but a missing/short external file.
+  std::uintmax_t file_length = std::filesystem::file_size(external_file_path);
+  SafeInt<onnxruntime::FileOffsetType> end_of_read(file_offset);
+  end_of_read += tensor_byte_size;
+  ORT_RETURN_IF(file_offset < 0 || static_cast<std::uintmax_t>(end_of_read) > file_length,
+                "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
+                " size to read: ", static_cast<size_t>(tensor_byte_size), " given file_length: ", file_length,
+                " are out of bounds or can not be read in full.");
+
+  unpacked_tensor.resize(tensor_byte_size);
 
   ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
       external_file_path.c_str(),
