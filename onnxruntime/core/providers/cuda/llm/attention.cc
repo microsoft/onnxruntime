@@ -389,6 +389,9 @@ Status Attention<T>::RunFlashAttention(
 
   // --- Populate present_key/value (BNSH) from K/V (BSNH) ---
   // Skip for decode path where mha_fwd_kvcache already populated present buffers.
+  // TODO: 4D (BNSH) inputs don't populate present_key/present_value in prompt paths.
+  // The is_bsnh guard skips population when input is 4D. Need BNSH→BNSH copy.
+  // Only flash decode (Path 2) and unfused currently populate present for 4D.
   if (!present_kv_already_populated) {
     if (present_key != nullptr && is_bsnh) {
       if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -755,6 +758,9 @@ Status Attention<T>::RunMemoryEfficientAttention(
   }
 
   // Populate present_key/present_value (BNSH) if requested
+  // TODO: 4D (BNSH) inputs don't populate present_key/present_value in prompt paths.
+  // The is_bsnh guard skips population when input is 4D. Need BNSH→BNSH copy.
+  // Only flash decode (Path 2) and unfused currently populate present for 4D.
   if (present_key != nullptr && is_bsnh) {
     if constexpr (std::is_same_v<T, MLFloat16>) {
       ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
@@ -1106,6 +1112,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // TODO: Support GQA in unfused attention path for fp32/old-GPU fallback.
     // Requires ~160 lines: ExpandKVHeads kernel to replicate KV heads, wiring in unfused dispatch.
     // See issue #27516 for tracking.
+    //
+    // TODO: GQA + float_mask + decode is not supported by any kernel path.
+    // Flash rejects float masks, MEA rejects past_key, unfused rejects GQA.
+    // Fix options: (a) convert float mask to bool in decode path, or
+    // (b) support float masks in flash decode via mha_fwd_kvcache.
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "GQA (q_num_heads != kv_num_heads) requires flash or memory efficient attention, "
                            "but neither is eligible. Ensure fp16/bf16 on Ampere+ GPU, or check head_size constraints.");
