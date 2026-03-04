@@ -606,5 +606,166 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
 }
 
+// Tests for ValidateEmbeddedTensorProtoDataSizeAndShape and embedded initializer size limits
+
+TEST(TensorProtoDataSizeShapeValidationTest, ValidTensorProtoWithRawData) {
+  // A valid float tensor with 4 elements and matching raw_data
+  TensorProto tensor_proto;
+  tensor_proto.set_name("valid_raw");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.add_dims(2);
+  // 4 floats = 16 bytes
+  std::string raw(16, '\0');
+  tensor_proto.set_raw_data(raw);
+
+  ASSERT_STATUS_OK(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, ValidTensorProtoWithTypedData) {
+  // A valid float tensor with typed float_data
+  TensorProto tensor_proto;
+  tensor_proto.set_name("valid_typed");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(3);
+  tensor_proto.add_float_data(1.0f);
+  tensor_proto.add_float_data(2.0f);
+  tensor_proto.add_float_data(3.0f);
+
+  ASSERT_STATUS_OK(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, ValidZeroElementTensor) {
+  // A valid zero-element tensor (one dim is 0)
+  TensorProto tensor_proto;
+  tensor_proto.set_name("zero_elem");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(0);
+  tensor_proto.add_dims(5);
+
+  ASSERT_STATUS_OK(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, LargeDimsNoDataRejected) {
+  // Malicious: large dims but no data at all
+  TensorProto tensor_proto;
+  tensor_proto.set_name("malicious_no_data");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(10000);
+  tensor_proto.add_dims(10000);
+  // No raw_data or float_data set
+
+  auto status = utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("does not match expected count from shape"));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, LargeDimsSmallRawDataRejected) {
+  // Malicious: large dims with tiny raw_data
+  TensorProto tensor_proto;
+  tensor_proto.set_name("malicious_small_raw");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(10000);
+  tensor_proto.add_dims(10000);
+  // Only 4 bytes of raw data (1 float), but shape says 100M elements
+  std::string raw(4, '\0');
+  tensor_proto.set_raw_data(raw);
+
+  auto status = utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("does not match expected size from shape and data type"));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, LargeDimsSmallTypedDataRejected) {
+  // Malicious: large dims with just a few typed data elements
+  TensorProto tensor_proto;
+  tensor_proto.set_name("malicious_small_typed");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(10000);
+  tensor_proto.add_dims(10000);
+  tensor_proto.add_float_data(1.0f);
+
+  auto status = utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("does not match expected count from shape"));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, ExternalDataSkipsConsistencyCheck) {
+  // External data should skip the consistency check
+  TensorProto tensor_proto;
+  tensor_proto.set_name("external");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(10000);
+  tensor_proto.add_dims(10000);
+  tensor_proto.set_data_location(TensorProto_DataLocation_EXTERNAL);
+
+  ASSERT_STATUS_OK(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, EmbeddedInitializerExceeding2GiBRejected) {
+  // A tensor whose declared shape exceeds 2 GiB should be rejected by TensorProtoToOrtValue and
+  // CreateTensorFromTensorProto.
+  TensorProto tensor_proto;
+  tensor_proto.set_name("too_large");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  // 536870913 floats * 4 bytes = 2147483652 bytes > 2 GiB
+  tensor_proto.add_dims(536870913);
+  // No data — the 2 GiB check should trigger before the consistency check
+
+  // Test call to TensorProtoToOrtValue
+  {
+    OrtValue ort_value;
+    auto status = utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path{},
+                                               tensor_proto, CPUAllocator::DefaultInstance(), ort_value);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the 2 GiB limit"));
+  }
+
+  // Test call to CreateTensorFromTensorProto
+  {
+    Tensor tensor;
+    auto status = utils::CreateTensorFromTensorProto(Env::Default(), std::filesystem::path{},
+                                                     tensor_proto, tensor);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the 2 GiB limit"));
+  }
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, ValidStringTensorProto) {
+  // A valid string tensor with matching string_data
+  TensorProto tensor_proto;
+  tensor_proto.set_name("valid_string");
+  tensor_proto.set_data_type(TensorProto_DataType_STRING);
+  tensor_proto.add_dims(2);
+  tensor_proto.add_string_data("hello");
+  tensor_proto.add_string_data("world");
+
+  ASSERT_STATUS_OK(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, StringTensorWithMismatchedCountRejected) {
+  TensorProto tensor_proto;
+  tensor_proto.set_name("bad_string");
+  tensor_proto.set_data_type(TensorProto_DataType_STRING);
+  tensor_proto.add_dims(100);
+  tensor_proto.add_string_data("only_one");
+
+  auto status = utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("does not match expected count from shape"));
+}
+
+TEST(TensorProtoDataSizeShapeValidationTest, NegativeDimsRejected) {
+  TensorProto tensor_proto;
+  tensor_proto.set_name("negative_dims");
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(-1);
+  tensor_proto.add_dims(10);
+
+  auto status = utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Out of bounds dimensions"));
+}
+
 }  // namespace test
 }  // namespace onnxruntime

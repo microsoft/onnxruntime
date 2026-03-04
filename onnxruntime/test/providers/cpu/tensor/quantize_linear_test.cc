@@ -60,6 +60,20 @@ TEST(DequantizeLinearOpTest, Int8_Large) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
+TEST(DequantizeLinearOpTest, Int4_LargeInitializerInput) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> dims{1024};
+
+  std::vector<Int4x2> x_vals(Int4x2::CalcNumInt4Pairs(static_cast<size_t>(dims[0])), Int4x2{});
+  std::vector<float> expected_y_vals(static_cast<size_t>(dims[0]), 0.f);
+
+  test.AddInput<Int4x2>("x", dims, x_vals, true);
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<Int4x2>("x_zero_point", {}, {Int4x2(0, 0)});
+  test.AddOutput<float>("y", dims, expected_y_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // scalar zero & scale with int4
 TEST(DequantizeLinearOpTest, Int4) {
   OpTester test("DequantizeLinear", 21);
@@ -128,6 +142,18 @@ TEST(DequantizeLinearOpTest, Int2) {
   test.AddInput<Int2x4>("x_zero_point", {}, {Int2x4(-1, unused_val, unused_val, unused_val)});
   // y = (x - zp) * scale = ([-2, 1, 0, -1, 1] - (-1)) * 2 = [-1, 2, 1, 0, 2] * 2 = [-2, 4, 2, 0, 4]
   test.AddOutput<float>("y", dims, {-2.0f, 4.0f, 2.0f, 0.0f, 4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(DequantizeLinearOpTest, Int2_LargeInitializerInput) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{4096};
+  std::vector<Int2x4> x_vals(Int2x4::CalcNumInt2Quads(static_cast<size_t>(dims[0])), Int2x4());
+
+  test.AddInput<Int2x4>("x", dims, x_vals, true);
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<Int2x4>("x_zero_point", {}, {Int2x4()});
+  test.AddOutput<float>("y", dims, std::vector<float>(static_cast<size_t>(dims[0]), 0.0f));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 

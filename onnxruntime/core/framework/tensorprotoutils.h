@@ -166,6 +166,10 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
 /// in shape inferencing, it is cheaper to inline them.
 constexpr const size_t kSmallTensorExternalDataThreshold = 127;  // 127 bytes
 
+/// Max size in bytes for embedded (non-external) initializer data.
+/// Matches protobuf's 2 GiB message size limit — embedded data physically cannot exceed this in a valid protobuf.
+constexpr const size_t kMaxEmbeddedInitializerSizeInBytes = size_t{2} * 1024 * 1024 * 1024;  // 2 GiB
+
 /**
  * @brief Creates a TensorProto from a Tensor.
  * @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
@@ -197,6 +201,12 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
 
 template <size_t alignment>
 Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out);
+
+/// Validates that the size of the actual data content in a non-external TensorProto is consistent with its
+/// declared shape and data type. This prevents allocating memory based on a maliciously large
+/// declared shape when the actual data is absent or much smaller.
+/// Skips validation for external data TensorProtos.
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**
 Special marker used to indicate an existing memory buffer contains the TensorProto external data.
