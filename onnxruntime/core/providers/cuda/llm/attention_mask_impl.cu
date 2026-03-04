@@ -31,7 +31,8 @@ __global__ void ConvertMaskToSeqlensKernel(
     const int mask_dims,
     const int64_t mask_dim0,
     const int64_t mask_dim1,
-    const int64_t mask_dim2) {
+    const int64_t mask_dim2,
+    const int seqlen_offset) {
   int batch_idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (batch_idx >= batch_size) {
     return;
@@ -93,8 +94,10 @@ __global__ void ConvertMaskToSeqlensKernel(
     }
   }
 
-  // seqlens_k is total_sequence_length - 1 for GQA convention
-  seqlens_k[batch_idx] = seq_len - 1;
+  // seqlens_k output: seq_len + seqlen_offset
+  // GQA convention (seqlen_offset=-1): stores last valid index (count - 1)
+  // Flash convention (seqlen_offset=0): stores actual count
+  seqlens_k[batch_idx] = seq_len + seqlen_offset;
 }
 
 Status LaunchConvertMaskToSeqlensK(
@@ -123,7 +126,43 @@ Status LaunchConvertMaskToSeqlensK(
       mask_dims,
       mask_dim0,
       mask_dim1,
-      mask_dim2);
+      mask_dim2,
+      /*seqlen_offset=*/-1);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// Like LaunchConvertMaskToSeqlensK but stores actual token count (no -1 offset).
+// Flash attention's mha_fwd_kvcache and MEA's has_custom_right_padding expect
+// seqlens_k = number of valid tokens, not last-valid-index.
+Status LaunchConvertMaskToFlashSeqlensK(
+    const bool* attn_mask_bool,
+    int* seqlens_k,
+    int batch_size,
+    int total_seq_len,
+    int mask_dims,
+    int64_t mask_dim0,
+    int64_t mask_dim1,
+    int64_t mask_dim2,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  if (batch_size == 0 || total_seq_len == 0) {
+    return Status::OK();
+  }
+
+  int threads = std::min(batch_size, max_threads_per_block);
+  int blocks = (batch_size + threads - 1) / threads;
+
+  ConvertMaskToSeqlensKernel<<<blocks, threads, 0, stream>>>(
+      attn_mask_bool,
+      seqlens_k,
+      batch_size,
+      total_seq_len,
+      mask_dims,
+      mask_dim0,
+      mask_dim1,
+      mask_dim2,
+      /*seqlen_offset=*/0);
 
   return CUDA_CALL(cudaGetLastError());
 }

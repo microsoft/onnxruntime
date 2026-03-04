@@ -87,15 +87,12 @@ Status Attention<T>::RunFlashAttention(
     Tensor* Y, Tensor* present_key, Tensor* present_value,
     const attention_helper::AttentionParameters& parameters) const {
 #if USE_FLASH_ATTENTION
-  ORT_UNUSED_PARAMETER(attn_mask);
-  ORT_UNUSED_PARAMETER(past_key);
-  ORT_UNUSED_PARAMETER(past_value);
   auto& device_prop = GetDeviceProp();
   auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
   const bool is_bf16 = std::is_same<T, BFloat16>::value;
   const bool is_bsnh = parameters.transpose_output;  // 3D inputs → BSNH
 
-  // Allocate softmax_lse and accumulation buffers
+  // --- Common buffer allocation ---
   size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(
       parameters.q_sequence_length, parameters.batch_size, parameters.q_num_heads);
 
@@ -118,7 +115,49 @@ Status Attention<T>::RunFlashAttention(
                                          out_accum_bytes, cuda_stream));
   }
 
-  // Handle nonpad_kv_seqlen: external KV cache path (opset 24)
+  // --- Fix 3: Prepare Q in BSNH format (flash always expects Q as BSNH) ---
+  const void* q_data = Q->Data<T>();
+  IAllocatorUniquePtr<void> q_bsnh_buffer;
+  if (!is_bsnh) {
+    size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
+                     parameters.q_num_heads * parameters.head_size;
+    q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, context->GetComputeStream());
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.head_size,
+          reinterpret_cast<const half*>(Q->Data<T>()),
+          reinterpret_cast<half*>(q_bsnh_buffer.get()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.head_size,
+          Q->Data<BFloat16>(), reinterpret_cast<BFloat16*>(q_bsnh_buffer.get()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.head_size,
+          Q->Data<float>(), reinterpret_cast<float*>(q_bsnh_buffer.get()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    }
+    q_data = q_bsnh_buffer.get();
+  }
+
+  // Flash outputs BSNH. If Y expects BNSH, write to scratch then transpose.
+  void* out_data = Y->MutableData<T>();
+  IAllocatorUniquePtr<void> out_bsnh_buffer;
+  if (!is_bsnh) {
+    size_t out_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
+                       parameters.q_num_heads * parameters.v_head_size;
+    out_bsnh_buffer = GetScratchBuffer<void>(out_bytes, context->GetComputeStream());
+    out_data = out_bsnh_buffer.get();
+  }
+
+  bool present_kv_already_populated = false;
+
+  // --- Path 1: nonpad_kv_seqlen (opset 24 external KV cache) ---
   if (nonpad_kv_seqlen != nullptr) {
     ORT_ENFORCE(parameters.past_sequence_length == 0,
                 "RunFlashAttention with nonpad_kv_seqlen requires K/V to be the full cache "
@@ -134,14 +173,13 @@ Status Attention<T>::RunFlashAttention(
         cuda_stream,
         device_prop.maxThreadsPerBlock));
 
-    // K/V are the full cache in BSNH. No new tokens to append (k=nullptr, v=nullptr).
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
         device_prop, cuda_stream,
-        const_cast<void*>(static_cast<const void*>(Q->Data<T>())),
+        const_cast<void*>(q_data),
         const_cast<void*>(static_cast<const void*>(K->Data<T>())),
         const_cast<void*>(static_cast<const void*>(V->Data<T>())),
         /*k=*/nullptr, /*v=*/nullptr,
-        static_cast<void*>(Y->MutableData<T>()),
+        out_data,
         softmax_lse_buffer.get(),
         const_cast<void*>(static_cast<const void*>(seqlens_k_buffer.get())),
         /*rotary_cos=*/nullptr, /*rotary_sin=*/nullptr,
@@ -158,8 +196,212 @@ Status Attention<T>::RunFlashAttention(
         softmax_lse_accum_buffer.get(), out_accum_buffer.get(),
         /*local_window_size=*/-1, /*is_rotary_interleaved=*/false,
         /*is_packed_qkv=*/false));
+  }
+  // --- Path 2 (Fix 1): Decode with past KV cache ---
+  else if (past_key != nullptr) {
+    ORT_ENFORCE(past_value != nullptr, "past_key requires past_value.");
+    ORT_ENFORCE(present_key != nullptr && present_value != nullptr,
+                "present_key/value outputs are required when past_key is provided.");
 
-    // Populate present_key/value (BNSH) from external cache K/V (BSNH)
+    // Copy past KV (BNSH) into present buffers (BNSH). Strided copy because
+    // past has [B, N_kv, past_seq, H] and present has [B, N_kv, total_seq, H].
+    const size_t num_kv_rows = static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads;
+    const size_t past_k_row_bytes = static_cast<size_t>(parameters.past_sequence_length) *
+                                    parameters.head_size * sizeof(T);
+    const size_t present_k_row_bytes = static_cast<size_t>(parameters.total_sequence_length) *
+                                       parameters.head_size * sizeof(T);
+    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(
+        present_key->MutableData<T>(), present_k_row_bytes,
+        past_key->Data<T>(), past_k_row_bytes,
+        past_k_row_bytes, num_kv_rows,
+        cudaMemcpyDeviceToDevice, cuda_stream));
+
+    const size_t past_v_row_bytes = static_cast<size_t>(parameters.past_sequence_length) *
+                                    parameters.v_head_size * sizeof(T);
+    const size_t present_v_row_bytes = static_cast<size_t>(parameters.total_sequence_length) *
+                                       parameters.v_head_size * sizeof(T);
+    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(
+        present_value->MutableData<T>(), present_v_row_bytes,
+        past_value->Data<T>(), past_v_row_bytes,
+        past_v_row_bytes, num_kv_rows,
+        cudaMemcpyDeviceToDevice, cuda_stream));
+
+    // seqlens_k = past_sequence_length (count of cached tokens before new input)
+    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    std::vector<int> seqlens_k_host(parameters.batch_size, parameters.past_sequence_length);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(seqlens_k_buffer.get(), seqlens_k_host.data(),
+                                         parameters.batch_size * sizeof(int),
+                                         cudaMemcpyHostToDevice, cuda_stream));
+
+    // K/V new tokens: mha_fwd_kvcache expects BSNH for k_new/v_new.
+    // When !is_bsnh (4D BNSH input), transpose new tokens to BSNH.
+    const void* k_new = K->Data<T>();
+    const void* v_new = V->Data<T>();
+    IAllocatorUniquePtr<void> k_bsnh_buffer;
+    IAllocatorUniquePtr<void> v_bsnh_buffer;
+    if (!is_bsnh) {
+      size_t k_bytes = sizeof(T) * parameters.batch_size * parameters.kv_sequence_length *
+                       parameters.kv_num_heads * parameters.head_size;
+      size_t v_bytes = sizeof(T) * parameters.batch_size * parameters.kv_sequence_length *
+                       parameters.kv_num_heads * parameters.v_head_size;
+      k_bsnh_buffer = GetScratchBuffer<void>(k_bytes, context->GetComputeStream());
+      v_bsnh_buffer = GetScratchBuffer<void>(v_bytes, context->GetComputeStream());
+      if constexpr (std::is_same_v<T, MLFloat16>) {
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+            parameters.batch_size, parameters.kv_sequence_length,
+            parameters.kv_num_heads, parameters.head_size,
+            reinterpret_cast<const half*>(K->Data<T>()),
+            reinterpret_cast<half*>(k_bsnh_buffer.get()),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+            parameters.batch_size, parameters.kv_sequence_length,
+            parameters.kv_num_heads, parameters.v_head_size,
+            reinterpret_cast<const half*>(V->Data<T>()),
+            reinterpret_cast<half*>(v_bsnh_buffer.get()),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+      } else if constexpr (std::is_same_v<T, BFloat16>) {
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+            parameters.batch_size, parameters.kv_sequence_length,
+            parameters.kv_num_heads, parameters.head_size,
+            K->Data<BFloat16>(), reinterpret_cast<BFloat16*>(k_bsnh_buffer.get()),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+            parameters.batch_size, parameters.kv_sequence_length,
+            parameters.kv_num_heads, parameters.v_head_size,
+            V->Data<BFloat16>(), reinterpret_cast<BFloat16*>(v_bsnh_buffer.get()),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+      } else {
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+            parameters.batch_size, parameters.kv_sequence_length,
+            parameters.kv_num_heads, parameters.head_size,
+            K->Data<float>(), reinterpret_cast<float*>(k_bsnh_buffer.get()),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+            parameters.batch_size, parameters.kv_sequence_length,
+            parameters.kv_num_heads, parameters.v_head_size,
+            V->Data<float>(), reinterpret_cast<float*>(v_bsnh_buffer.get()),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+      }
+      k_new = k_bsnh_buffer.get();
+      v_new = v_bsnh_buffer.get();
+    }
+
+    // mha_fwd_kvcache: present_key/value as cache (BNSH), K/V as new tokens (BSNH).
+    // The kernel appends new tokens at position seqlens_k[b] and attends to all.
+    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
+        device_prop, cuda_stream,
+        const_cast<void*>(q_data),
+        static_cast<void*>(present_key->MutableData<T>()),
+        static_cast<void*>(present_value->MutableData<T>()),
+        const_cast<void*>(k_new), const_cast<void*>(v_new),
+        out_data,
+        softmax_lse_buffer.get(),
+        static_cast<void*>(seqlens_k_buffer.get()),
+        /*rotary_cos=*/nullptr, /*rotary_sin=*/nullptr,
+        /*cache_batch_idx=*/nullptr, /*leftpad_k=*/nullptr,
+        /*head_sink=*/nullptr, /*block_table=*/nullptr,
+        parameters.batch_size, parameters.q_num_heads, parameters.kv_num_heads,
+        parameters.head_size,
+        parameters.q_sequence_length, parameters.total_sequence_length,
+        parameters.kv_sequence_length, /*rotary_dim=*/0,
+        parameters.scale, parameters.softcap,
+        parameters.is_causal, is_bf16, /*use_smooth_softmax=*/false,
+        /*past_bsnh=*/false,  // present cache is BNSH
+        static_cast<int>(num_splits),
+        softmax_lse_accum_buffer.get(), out_accum_buffer.get(),
+        /*local_window_size=*/-1, /*is_rotary_interleaved=*/false,
+        /*is_packed_qkv=*/false));
+
+    present_kv_already_populated = true;
+  }
+  // --- Path 3 (Fix 2): Bool attention mask (right-padding) ---
+  else if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
+    // Convert bool padding mask → seqlens_k (token count per batch).
+    // Use mha_fwd_kvcache with seqlens_k for variable-length attention.
+    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    size_t mask_dims = attn_mask->Shape().NumDimensions();
+    auto dims = attn_mask->Shape().GetDims();
+    int64_t mask_dim0 = dims[0];
+    int64_t mask_dim1 = mask_dims >= 3 ? dims[1] : 0;
+    int64_t mask_dim2 = mask_dims >= 4 ? dims[2] : 0;
+    ORT_RETURN_IF_ERROR(LaunchConvertMaskToFlashSeqlensK(
+        attn_mask->Data<bool>(), seqlens_k_buffer.get(),
+        parameters.batch_size, parameters.total_sequence_length,
+        static_cast<int>(mask_dims), mask_dim0, mask_dim1, mask_dim2,
+        cuda_stream, device_prop.maxThreadsPerBlock));
+
+    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
+        device_prop, cuda_stream,
+        const_cast<void*>(q_data),
+        const_cast<void*>(static_cast<const void*>(K->Data<T>())),
+        const_cast<void*>(static_cast<const void*>(V->Data<T>())),
+        /*k=*/nullptr, /*v=*/nullptr,
+        out_data,
+        softmax_lse_buffer.get(),
+        static_cast<void*>(seqlens_k_buffer.get()),
+        /*rotary_cos=*/nullptr, /*rotary_sin=*/nullptr,
+        /*cache_batch_idx=*/nullptr, /*leftpad_k=*/nullptr,
+        /*head_sink=*/nullptr, /*block_table=*/nullptr,
+        parameters.batch_size, parameters.q_num_heads, parameters.kv_num_heads,
+        parameters.head_size,
+        parameters.q_sequence_length, parameters.kv_sequence_length,
+        /*seqlen_k_new=*/0, /*rotary_dim=*/0,
+        parameters.scale, parameters.softcap,
+        parameters.is_causal, is_bf16, /*use_smooth_softmax=*/false,
+        /*past_bsnh=*/is_bsnh,
+        static_cast<int>(num_splits),
+        softmax_lse_accum_buffer.get(), out_accum_buffer.get(),
+        /*local_window_size=*/-1, /*is_rotary_interleaved=*/false,
+        /*is_packed_qkv=*/false));
+  }
+  // --- Path 4: Prompt flash (no past, no mask) ---
+  else {
+    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
+        device_prop, cuda_stream,
+        const_cast<void*>(q_data),
+        const_cast<void*>(static_cast<const void*>(K->Data<T>())),
+        const_cast<void*>(static_cast<const void*>(V->Data<T>())),
+        out_data,
+        softmax_lse_buffer.get(),
+        parameters.batch_size, parameters.q_num_heads, parameters.kv_num_heads,
+        parameters.head_size,
+        parameters.q_sequence_length, parameters.kv_sequence_length,
+        parameters.scale, parameters.softcap,
+        parameters.is_causal, is_bf16, /*use_smooth_softmax=*/false,
+        static_cast<int>(num_splits),
+        softmax_lse_accum_buffer.get(), out_accum_buffer.get(),
+        is_bsnh));
+  }
+
+  // --- Fix 3: Transpose output BSNH → BNSH if input was 4D (BNSH) ---
+  if (!is_bsnh && out_bsnh_buffer != nullptr) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.v_head_size,
+          reinterpret_cast<const half*>(out_bsnh_buffer.get()),
+          reinterpret_cast<half*>(Y->MutableData<T>()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.v_head_size,
+          reinterpret_cast<const BFloat16*>(out_bsnh_buffer.get()),
+          Y->MutableData<BFloat16>(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.v_head_size,
+          reinterpret_cast<const float*>(out_bsnh_buffer.get()),
+          Y->MutableData<float>(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    }
+  }
+
+  // --- Populate present_key/value (BNSH) from K/V (BSNH) ---
+  // Skip for decode path where mha_fwd_kvcache already populated present buffers.
+  if (!present_kv_already_populated) {
     if (present_key != nullptr && is_bsnh) {
       if constexpr (std::is_same_v<T, MLFloat16>) {
         ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
@@ -173,6 +415,12 @@ Status Attention<T>::RunFlashAttention(
             parameters.batch_size, parameters.kv_sequence_length,
             parameters.kv_num_heads, parameters.head_size,
             K->Data<BFloat16>(), present_key->MutableData<BFloat16>(),
+            cuda_stream, device_prop.maxThreadsPerBlock));
+      } else {
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+            parameters.batch_size, parameters.kv_sequence_length,
+            parameters.kv_num_heads, parameters.head_size,
+            K->Data<float>(), present_key->MutableData<float>(),
             cuda_stream, device_prop.maxThreadsPerBlock));
       }
     }
@@ -190,62 +438,13 @@ Status Attention<T>::RunFlashAttention(
             parameters.kv_num_heads, parameters.v_head_size,
             V->Data<BFloat16>(), present_value->MutableData<BFloat16>(),
             cuda_stream, device_prop.maxThreadsPerBlock));
+      } else {
+        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+            parameters.batch_size, parameters.kv_sequence_length,
+            parameters.kv_num_heads, parameters.v_head_size,
+            V->Data<float>(), present_value->MutableData<float>(),
+            cuda_stream, device_prop.maxThreadsPerBlock));
       }
-    }
-    return Status::OK();
-  }
-
-  // Note: Flash with past_key is excluded by flash_eligible (requires past_key == nullptr).
-  // Those cases fall through to unfused attention which handles past concatenation.
-
-  // No past, no nonpad: prompt-only flash attention
-  ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
-      device_prop, cuda_stream,
-      const_cast<void*>(static_cast<const void*>(Q->Data<T>())),
-      const_cast<void*>(static_cast<const void*>(K->Data<T>())),
-      const_cast<void*>(static_cast<const void*>(V->Data<T>())),
-      static_cast<void*>(Y->MutableData<T>()),
-      softmax_lse_buffer.get(),
-      parameters.batch_size, parameters.q_num_heads, parameters.kv_num_heads,
-      parameters.head_size,
-      parameters.q_sequence_length, parameters.kv_sequence_length,
-      parameters.scale, parameters.softcap,
-      parameters.is_causal, is_bf16, /*use_smooth_softmax=*/false,
-      static_cast<int>(num_splits),
-      softmax_lse_accum_buffer.get(), out_accum_buffer.get(),
-      is_bsnh));
-
-  // Populate present_key/present_value (BNSH) from K/V (BSNH) for no-past case
-  if (present_key != nullptr && is_bsnh) {
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.head_size,
-          reinterpret_cast<const half*>(K->Data<T>()),
-          reinterpret_cast<half*>(present_key->MutableData<T>()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.head_size,
-          K->Data<BFloat16>(), present_key->MutableData<BFloat16>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    }
-  }
-  if (present_value != nullptr && is_bsnh) {
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.v_head_size,
-          reinterpret_cast<const half*>(V->Data<T>()),
-          reinterpret_cast<half*>(present_value->MutableData<T>()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.v_head_size,
-          V->Data<BFloat16>(), present_value->MutableData<BFloat16>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
     }
   }
 
@@ -287,10 +486,49 @@ Status Attention<T>::RunMemoryEfficientAttention(
   const bool is_bsnh = parameters.transpose_output;
   const int sm = device_prop.major * 10 + device_prop.minor;
 
-  // Q/K/V pointers — MEA expects BSNH format
+  // Q/K/V pointers — MEA expects BSNH format for Q
   const void* q_data = Q->Data<T>();
   const void* k_data = K->Data<T>();
   const void* v_data = V->Data<T>();
+
+  // --- Fix 3: Transpose Q from BNSH to BSNH if 4D input ---
+  IAllocatorUniquePtr<void> q_bsnh_buffer;
+  if (!is_bsnh) {
+    size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
+                     parameters.q_num_heads * parameters.head_size;
+    q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, context->GetComputeStream());
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.head_size,
+          reinterpret_cast<const half*>(Q->Data<T>()),
+          reinterpret_cast<half*>(q_bsnh_buffer.get()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.head_size,
+          Q->Data<BFloat16>(), reinterpret_cast<BFloat16*>(q_bsnh_buffer.get()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.head_size,
+          Q->Data<float>(), reinterpret_cast<float*>(q_bsnh_buffer.get()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    }
+    q_data = q_bsnh_buffer.get();
+  }
+
+  // MEA output is BSNH. If Y expects BNSH, write to scratch then transpose.
+  void* out_data = Y->MutableData<T>();
+  IAllocatorUniquePtr<void> out_bsnh_buffer;
+  if (!is_bsnh) {
+    size_t out_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
+                       parameters.q_num_heads * parameters.v_head_size;
+    out_bsnh_buffer = GetScratchBuffer<void>(out_bytes, context->GetComputeStream());
+    out_data = out_bsnh_buffer.get();
+  }
 
   // GQA head expansion: MEA requires matching num_heads for Q/K/V.
   // When q_num_heads != kv_num_heads, expand K/V via LaunchUngroup.
@@ -384,7 +622,56 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.value = v_data;
     p.attn_bias = nullptr;
     p.stream = cuda_stream;
-    p.output = Y->MutableData<T>();
+    p.output = out_data;
+
+    IAllocatorUniquePtr<void> workspace_buffer;
+    if (onnxruntime::contrib::cuda::MemoryEfficientAttentionParams::need_workspace(
+            parameters.v_head_size, sizeof(T) == sizeof(float))) {
+      size_t workspace_bytes = sizeof(float) * parameters.batch_size * parameters.q_sequence_length *
+                               parameters.q_num_heads * parameters.v_head_size;
+      workspace_buffer = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+      p.workspace = workspace_buffer.get();
+    } else {
+      p.workspace = nullptr;
+    }
+    onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
+  }
+  // --- Fix 2: Bool attention mask → seqlens_k with custom right padding ---
+  else if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
+    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
+    size_t mask_dims = attn_mask->Shape().NumDimensions();
+    auto dims = attn_mask->Shape().GetDims();
+    int64_t mask_dim0 = dims[0];
+    int64_t mask_dim1 = mask_dims >= 3 ? dims[1] : 0;
+    int64_t mask_dim2 = mask_dims >= 4 ? dims[2] : 0;
+    ORT_RETURN_IF_ERROR(LaunchConvertMaskToFlashSeqlensK(
+        attn_mask->Data<bool>(), seqlens_k_buffer.get(),
+        parameters.batch_size, parameters.total_sequence_length,
+        static_cast<int>(mask_dims), mask_dim0, mask_dim1, mask_dim2,
+        cuda_stream, device_prop.maxThreadsPerBlock));
+
+    onnxruntime::contrib::cuda::MemoryEfficientAttentionParams p;
+    p.sm = sm;
+    p.is_half = std::is_same<T, MLFloat16>::value;
+    p.is_bf16 = std::is_same<T, BFloat16>::value;
+    p.is_kv_bsnh = is_bsnh;
+    p.batch_size = parameters.batch_size;
+    p.num_heads = parameters.q_num_heads;
+    p.sequence_length = parameters.q_sequence_length;
+    p.kv_sequence_length = parameters.total_sequence_length;
+    p.max_sequence_length = parameters.total_sequence_length;
+    p.qk_head_size = parameters.head_size;
+    p.v_head_size = parameters.v_head_size;
+    p.causal = parameters.is_causal;
+    p.scale = parameters.scale;
+    p.seqlen_k_ptr = seqlens_k_buffer.get();
+    p.has_custom_right_padding = true;
+    p.query = q_data;
+    p.key = k_data;
+    p.value = v_data;
+    p.attn_bias = nullptr;
+    p.stream = cuda_stream;
+    p.output = out_data;
 
     IAllocatorUniquePtr<void> workspace_buffer;
     if (onnxruntime::contrib::cuda::MemoryEfficientAttentionParams::need_workspace(
@@ -398,9 +685,10 @@ Status Attention<T>::RunMemoryEfficientAttention(
     }
     onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
   } else {
-    // Standard MEA path (no nonpad)
+    // Standard MEA path (no nonpad, no bool mask — float attention bias or no mask)
     if (attn_mask != nullptr) {
       if (attn_mask->IsDataType<bool>()) {
+        // This shouldn't be reached (bool masks are handled above) but keep as fallback
         using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
         int64_t num_elements = attn_mask->Shape().Size();
         converted_mask_buffer = GetScratchBuffer<void>(
@@ -452,7 +740,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.value = v_data;
     p.attn_bias = attn_bias_data;
     p.stream = cuda_stream;
-    p.output = Y->MutableData<T>();
+    p.output = out_data;
 
     if (onnxruntime::contrib::cuda::MemoryEfficientAttentionParams::need_workspace(
             parameters.v_head_size, sizeof(T) == sizeof(float))) {
@@ -464,6 +752,32 @@ Status Attention<T>::RunMemoryEfficientAttention(
     } else {
       p.workspace = nullptr;
       onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
+    }
+  }
+
+  // --- Fix 3: Transpose output BSNH → BNSH if input was 4D (BNSH) ---
+  if (!is_bsnh && out_bsnh_buffer != nullptr) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.v_head_size,
+          reinterpret_cast<const half*>(out_bsnh_buffer.get()),
+          reinterpret_cast<half*>(Y->MutableData<T>()),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else if constexpr (std::is_same_v<T, BFloat16>) {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.v_head_size,
+          reinterpret_cast<const BFloat16*>(out_bsnh_buffer.get()),
+          Y->MutableData<BFloat16>(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else {
+      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+          parameters.batch_size, parameters.q_sequence_length,
+          parameters.q_num_heads, parameters.v_head_size,
+          reinterpret_cast<const float*>(out_bsnh_buffer.get()),
+          Y->MutableData<float>(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
     }
   }
 
@@ -749,8 +1063,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         !has_output_qk &&
         parameters.softcap == 0.0f &&
         parameters.softmax_precision == 0 &&
-        past_key == nullptr &&  // Flash with past requires buffer management; use unfused
-        attn_mask == nullptr;   // Flash prompt path does not support attention mask
+        (attn_mask == nullptr || attn_mask->IsDataType<bool>());  // bool masks handled via seqlens_k
 
     if (flash_eligible) {
       return RunFlashAttention(context, Q, K, V, attn_mask, past_key, past_value,
