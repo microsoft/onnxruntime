@@ -258,6 +258,11 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
                     params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
 
+  // Attention bias stride (kv_sequence_length) must also satisfy alignment requirements.
+  if (params.attn_bias != nullptr) {
+    is_aligned = is_aligned && params.kv_sequence_length % AlignedAK::kAlignmentQ == 0;
+  }
+
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
                   LaunchCutlassFmha<T, ArchTag, kIsAligned::value, queries_per_block, keys_per_block, max_head_size>(params);
                 }));
