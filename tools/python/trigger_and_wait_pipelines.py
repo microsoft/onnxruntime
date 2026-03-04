@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -64,7 +65,12 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
 ]
 
 
-def get_azure_cli_token() -> str:
+def get_token() -> str:
+    env_token = os.environ.get("SYSTEM_ACCESSTOKEN", "").strip()
+    if env_token:
+        logger.info("Using token from SYSTEM_ACCESSTOKEN environment variable.")
+        return env_token
+
     ado_resource_id = "499b84ac-1321-427f-aa17-267ca6975798"
     command = [
         "az.cmd" if sys.platform == "win32" else "az",
@@ -221,7 +227,7 @@ def main() -> int:
         logger.info("DRY RUN — no pipelines were triggered.")
         return 0
 
-    token = get_azure_cli_token()
+    token = get_token()
 
     triggered: list[TriggeredRun] = []
     for cfg in configs:

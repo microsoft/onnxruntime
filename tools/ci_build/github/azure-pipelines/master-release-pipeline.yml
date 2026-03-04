@@ -53,21 +53,18 @@ extends:
             pip install requests
           displayName: 'Install Python dependencies'
 
-        - task: AzureCLI@2
+        - script: |
+            set -euo pipefail
+
+            CMD="python tools/python/trigger_and_wait_pipelines.py"
+            CMD="$CMD --branch ${{ parameters.branch }}"
+
+            if [ "${{ parameters.dry_run }}" = "True" ]; then
+              CMD="$CMD --dry-run"
+            fi
+
+            echo "Running: $CMD"
+            eval $CMD
           displayName: 'Run master orchestrator'
-          inputs:
-            azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-            scriptType: 'bash'
-            scriptLocation: 'inlineScript'
-            inlineScript: |
-              set -euo pipefail
-
-              CMD="python tools/python/trigger_and_wait_pipelines.py"
-              CMD="$CMD --branch ${{ parameters.branch }}"
-
-              if [ "${{ parameters.dry_run }}" = "True" ]; then
-                CMD="$CMD --dry-run"
-              fi
-
-              echo "Running: $CMD"
-              eval $CMD
+          env:
+            SYSTEM_ACCESSTOKEN: $(System.AccessToken)
