@@ -14,7 +14,6 @@ import threading
 import unittest
 
 import numpy as np
-import onnx
 from helper import get_name
 
 import onnxruntime as onnxrt
@@ -2038,6 +2037,11 @@ class TestInferenceSession(unittest.TestCase):
         )
 
     def test_tree_ensemble_logistic(self):
+        try:
+            import onnx
+        except ImportError:
+            # onnx is not installed on ARM build.
+            self.skipTest("onnx is not installed")
         # issue https://github.com/microsoft/onnxruntime/issues/27533
         x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [None, 3])
         label_out = onnx.helper.make_tensor_value_info("label", onnx.TensorProto.INT64, [None])
