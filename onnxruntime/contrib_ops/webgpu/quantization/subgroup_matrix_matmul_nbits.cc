@@ -52,23 +52,51 @@ static const std::tuple<std::string_view, wgpu::BackendType, wgpu::SubgroupMatri
         {"xe-2lpg", wgpu::BackendType::Vulkan, wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 16, 32},
         {"xe-2lpg", wgpu::BackendType::Vulkan, wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F32, 8, 16, 16, 16, 32}};
 
-bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext& context, int32_t& config_index) {
+bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext& context, SubgroupMatrixConfig& config) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& subgroup_matrix_configs = context.SubgroupMatrixConfigs();
-  int32_t index = 0;
   for (auto& supported_config : intel_supported_subgroup_matrix_configs) {
     for (size_t i = 0; i < subgroup_matrix_configs.configCount; i++) {
       auto& subgroup_matrix_config = subgroup_matrix_configs.configs[i];
-      auto&& config = std::make_tuple(adapter_info.architecture, adapter_info.backendType,
+      auto&& cfg = std::make_tuple(adapter_info.architecture, adapter_info.backendType,
                                       subgroup_matrix_config.componentType, subgroup_matrix_config.resultComponentType,
                                       subgroup_matrix_config.M, subgroup_matrix_config.N, subgroup_matrix_config.K,
                                       adapter_info.subgroupMinSize, adapter_info.subgroupMaxSize);
-      if (config == supported_config) {
-        config_index = index;
+      if (cfg == supported_config) {
+        config = {subgroup_matrix_config.componentType, subgroup_matrix_config.resultComponentType,
+                  subgroup_matrix_config.M, subgroup_matrix_config.N, subgroup_matrix_config.K};
         return true;
       }
     }
-    index++;
+  }
+  return false;
+}
+
+// Dynamically find a suitable F16 subgroup matrix config from the device's reported configurations.
+// This is used for vendors (like NVIDIA) where we don't maintain a hardcoded config table.
+bool FindSubgroupMatrixConfig(onnxruntime::webgpu::ComputeContext& context, SubgroupMatrixConfig& config) {
+  const wgpu::AdapterPropertiesSubgroupMatrixConfigs& subgroup_matrix_configs = context.SubgroupMatrixConfigs();
+  // Prefer F16->F16 config
+  for (size_t i = 0; i < subgroup_matrix_configs.configCount; i++) {
+    auto& c = subgroup_matrix_configs.configs[i];
+    if (c.componentType == wgpu::SubgroupMatrixComponentType::F16 &&
+        c.resultComponentType == wgpu::SubgroupMatrixComponentType::F16 &&
+        c.M > 0 && c.N > 0 && c.K > 0 &&
+        32 % c.K == 0 && 64 % c.N == 0) {
+      config = {c.componentType, c.resultComponentType, c.M, c.N, c.K};
+      return true;
+    }
+  }
+  // Fallback: F16->F32
+  for (size_t i = 0; i < subgroup_matrix_configs.configCount; i++) {
+    auto& c = subgroup_matrix_configs.configs[i];
+    if (c.componentType == wgpu::SubgroupMatrixComponentType::F16 &&
+        c.resultComponentType == wgpu::SubgroupMatrixComponentType::F32 &&
+        c.M > 0 && c.N > 0 && c.K > 0 &&
+        32 % c.K == 0 && 64 % c.N == 0) {
+      config = {c.componentType, c.resultComponentType, c.M, c.N, c.K};
+      return true;
+    }
   }
   return false;
 }
@@ -134,23 +162,26 @@ Status PrepackProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 Status GenerateShaderCodeOnIntel(ShaderHelper& shader, const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
-                                 uint32_t nbits, int32_t config_index, bool has_zero_points) {
-  auto& config = intel_supported_subgroup_matrix_configs[config_index];
-  shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))] << ";\n"
-                                    << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<3>(config))] << ";\n"
-                                    << "const m_dim: u32 = " << std::get<4>(config) << ";\n"
-                                    << "const n_dim: u32 = " << std::get<5>(config) << ";\n"
-                                    << "const k_dim: u32 = " << std::get<6>(config) << ";\n";
+                                 uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points) {
+  // Compute tile_rows from config: 256 threads / 32 sg_size = 8 subgroups, each handles m rows.
+  constexpr uint32_t kNumSubgroups = 8;  // 256 workgroup threads / 32 subgroup size
+  const uint32_t tile_rows = kNumSubgroups * config.m;
+
+  shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(config.componentType)] << ";\n"
+                                    << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(config.resultComponentType)] << ";\n"
+                                    << "const m_dim: u32 = " << config.m << ";\n"
+                                    << "const n_dim: u32 = " << config.n << ";\n"
+                                    << "const k_dim: u32 = " << config.k << ";\n";
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
   const tile_cols: u32 = 64;
-  const tile_rows: u32 = 64;
   const tile_k: u32 = 32;
-  const subtile_rows: u32 = 8;
   const quantization_block_size: u32 = 32;
 
   var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
-  )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
+  )ADDNL_FN"
+                                    << "const tile_rows: u32 = " << tile_rows << ";\n"
+                                    << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
   if (nbits == 4) {
     shader.AdditionalImplementation() << R"ADDNL_FN_PART(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
@@ -312,8 +343,8 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   // TODO: add support for bias to the shader for Intel. In the meantime, use the shader for Metal
   if (!vendor_.compare("apple") || has_bias_) {
     return GenerateShaderCodeOnApple(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
-  } else if (!vendor_.compare("intel")) {
-    return GenerateShaderCodeOnIntel(shader, b, scales_b, nbits_, config_index_, has_zero_points_);
+  } else if (!vendor_.compare("intel") || !vendor_.compare("nvidia")) {
+    return GenerateShaderCodeOnIntel(shader, b, scales_b, nbits_, config_, has_zero_points_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");
@@ -327,18 +358,19 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       uint32_t K,
                                       uint32_t nbits,
                                       uint32_t zero_blocks_per_col,
-                                      int32_t config_index,
+                                      const SubgroupMatrixConfig& config,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y,
                                       const uint32_t weight_index,
                                       const Tensor* weight_index_indirect) {
   // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
   Tensor a_prepack;
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    const auto& config = intel_supported_subgroup_matrix_configs[config_index];
-    const auto component_type = ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))];
-    const auto m = std::get<4>(config);
-    const auto k = std::get<6>(config);
+  const bool uses_prepack = context.AdapterInfo().vendor == std::string_view{"intel"} ||
+                            context.AdapterInfo().vendor == std::string_view{"nvidia"};
+  if (uses_prepack) {
+    const auto component_type = ComponentTypeName[static_cast<uint32_t>(config.componentType)];
+    const auto m = config.m;
+    const auto k = config.k;
 
     // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
     PrepackProgram prepack_program{m, k, component_type};
@@ -370,10 +402,13 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx = weight_index > 0;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    tile_size_a = 64;
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config, context.AdapterInfo().vendor, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
+  if (uses_prepack) {
+    // Intel and NVIDIA use 256-thread workgroups with prepacked A.
+    // tile_size_a = num_subgroups * m_dim = (256/32) * m
+    constexpr uint32_t kNumSubgroups = 8;  // 256 / 32
     work_group_size = 256;
+    tile_size_a = kNumSubgroups * config.m;
   }
   mul_program.SetWorkgroupSize(work_group_size);
   mul_program.SetDispatchGroupSize(
@@ -403,7 +438,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t batch_count,
                                        uint32_t N,
                                        uint32_t K,
-                                       int32_t& config_index) {
+                                       SubgroupMatrixConfig& config) {
   bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
   if (has_subgroup_matrix) {
     if (context.AdapterInfo().vendor == std::string_view{"apple"}) {
@@ -412,8 +447,12 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
       // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
       // FP32 is around 7s.
       has_subgroup_matrix = accuracy_level == 4;
+      config = {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 8, 8};
+    } else if (context.AdapterInfo().vendor == std::string_view{"nvidia"}) {
+      // NVIDIA uses dynamic config discovery from the device's reported subgroup matrix configurations.
+      has_subgroup_matrix = accuracy_level == 4 && FindSubgroupMatrixConfig(context, config);
     } else if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-      has_subgroup_matrix = IsSubgroupMatrixConfigSupportedOnIntel(context, config_index);
+      has_subgroup_matrix = IsSubgroupMatrixConfigSupportedOnIntel(context, config);
     }
   }
 

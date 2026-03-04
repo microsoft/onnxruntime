@@ -19,12 +19,21 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
+// Holds the subgroup matrix configuration discovered from the device.
+struct SubgroupMatrixConfig {
+  wgpu::SubgroupMatrixComponentType componentType = wgpu::SubgroupMatrixComponentType::F16;
+  wgpu::SubgroupMatrixComponentType resultComponentType = wgpu::SubgroupMatrixComponentType::F16;
+  uint32_t m = 0;
+  uint32_t n = 0;
+  uint32_t k = 0;
+};
+
 class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatMulNBitsProgram> {
  public:
-  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, int32_t config_index, const wgpu::StringView& vendor, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect)
+  SubgroupMatrixMatMulNBitsProgram(uint32_t nbits, const SubgroupMatrixConfig& config, const wgpu::StringView& vendor, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect)
       : Program{"SubgroupMatrixMatMulNBits"},
         nbits_(nbits),
-        config_index_(config_index),
+        config_(config),
         vendor_(vendor),
         has_zero_points_(has_zero_points),
         has_bias_(has_bias),
@@ -40,7 +49,7 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
 
  private:
   uint32_t nbits_;
-  int32_t config_index_;
+  SubgroupMatrixConfig config_;
   std::string vendor_;
   bool has_zero_points_;
   bool has_bias_;
@@ -55,7 +64,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       uint32_t K,
                                       uint32_t nbits,
                                       uint32_t zero_blocks_per_col,
-                                      int32_t config_index,
+                                      const SubgroupMatrixConfig& config,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y,
                                       const uint32_t weight_index,
@@ -67,7 +76,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t batch_count,
                                        uint32_t N,
                                        uint32_t K,
-                                       int32_t& config_index);
+                                       SubgroupMatrixConfig& config);
 
 }  // namespace webgpu
 }  // namespace contrib
