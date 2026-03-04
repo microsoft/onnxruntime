@@ -690,18 +690,6 @@ TEST(TensorProtoDataSizeShapeValidationTest, LargeDimsSmallTypedDataRejected) {
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("does not match expected count from shape"));
 }
 
-TEST(TensorProtoDataSizeShapeValidationTest, ExternalDataSkipsConsistencyCheck) {
-  // External data should skip the consistency check
-  TensorProto tensor_proto;
-  tensor_proto.set_name("external");
-  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
-  tensor_proto.add_dims(10000);
-  tensor_proto.add_dims(10000);
-  tensor_proto.set_data_location(TensorProto_DataLocation_EXTERNAL);
-
-  ASSERT_STATUS_OK(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto));
-}
-
 TEST(TensorProtoDataSizeShapeValidationTest, EmbeddedInitializerExceeding2GiBRejected) {
   // A tensor whose declared shape exceeds 2 GiB should be rejected by TensorProtoToOrtValue and
   // CreateTensorFromTensorProto.
