@@ -1093,6 +1093,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   // Fallback: unfused attention
+  // TODO: Support softcap and softmax_precision on CUDA kernels.
+  // Currently rejected by all three kernel paths (flash, MEA, unfused).
   if (parameters.softcap != 0.0f) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "softcap is not supported yet in Attention op (CUDA).");
@@ -1101,6 +1103,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "softmax_precision is not supported yet in Attention op (CUDA).");
   }
+  // TODO: Support additional output_qk modes beyond kNone and kQK.
+  // Currently only unfused handles output_qk, and only kNone/kQK modes.
   if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
       qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kQK) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
