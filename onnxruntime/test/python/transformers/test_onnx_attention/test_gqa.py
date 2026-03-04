@@ -388,9 +388,17 @@ def parity_check_gqa_prompt_with_padding(
     )
     v = torch.randn_like(k) * std
 
+    # 3D masks broadcast across batches (no batch dimension), so they can only
+    # represent one padding pattern. The mask uses batch 0's seqlen for all batches.
+    # Adjust effective_seqlens so the reference comparison matches the actual mask.
+    if config.attn_mask_dims == 3:
+        effective_seqlens = torch.full_like(seqlens, seqlens[0].item())
+    else:
+        effective_seqlens = seqlens
+
     # Zero out padded positions in K, V for proper comparison
     for b in range(config.batch_size):
-        valid_len = seqlens[b].item()
+        valid_len = effective_seqlens[b].item()
         if valid_len < config.kv_sequence_length:
             k[b, valid_len:, :, :] = 0
             v[b, valid_len:, :, :] = 0
@@ -405,7 +413,7 @@ def parity_check_gqa_prompt_with_padding(
     )
 
     key_padding_mask = create_boolean_mask_from_seqlens(
-        seqlens=seqlens,
+        seqlens=effective_seqlens,
         total_seq_len=config.kv_sequence_length,
         mask_dims=2,
         device=device,
@@ -437,7 +445,7 @@ def parity_check_gqa_prompt_with_padding(
 
     # --- Comparison ---
     for b in range(config.batch_size):
-        valid_len = seqlens[b].item()
+        valid_len = effective_seqlens[b].item()
         if valid_len < config.q_sequence_length:
             out[b, valid_len:, :, :] = 0
             out_ref[b, valid_len:, :, :] = 0
