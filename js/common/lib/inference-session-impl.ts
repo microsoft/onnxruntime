@@ -126,8 +126,12 @@ export class InferenceSession implements InferenceSessionInterface {
     return returnValue;
   }
 
-  async release(): Promise<void> {
+  release(): Promise<void> {
     return this.handler.dispose();
+  }
+
+  [Symbol.asyncDispose](): Promise<void> {
+    return this.release();
   }
 
   static create(path: string, options?: SessionOptions): Promise<InferenceSessionInterface>;
