@@ -829,7 +829,9 @@ TEST(RoiAlignTest, BatchIndicesOutOfRange) {
   test.AddInput<int64_t>("batch_indices", {1}, {1});  // <-- failure condition
   test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value 1 at index 0 is out of range [0, 1)");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value 1 at index 0 is out of range [0, 1)", {}, nullptr, &execution_providers);
 }
 
 TEST(RoiAlignTest, BatchIndicesNegative) {
@@ -848,7 +850,9 @@ TEST(RoiAlignTest, BatchIndicesNegative) {
   test.AddInput<int64_t>("batch_indices", {1}, {-1});  // <-- failure condition
   test.AddOutput<float>("Y", {1, 1, 2, 2}, {0.f, 0.f, 0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value -1 at index 0 is out of range [0, 1)");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "batch_indices value -1 at index 0 is out of range [0, 1)", {}, nullptr, &execution_providers);
 }
 }  // namespace test
 }  // namespace onnxruntime
