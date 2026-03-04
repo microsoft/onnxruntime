@@ -303,15 +303,29 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
   // CUDA kernel — tracked as a follow-up.
   if (batch_indices_ptr->Location().device.Type() == OrtDevice::CPU) {
     const int64_t batch_size = X_ptr->Shape()[0];
-    const int64_t* batch_indices_data = batch_indices_ptr->Data<int64_t>();
     const int64_t num_rois = batch_indices_dims[0];
-    for (int64_t i = 0; i < num_rois; ++i) {
-      if (batch_indices_data[i] < 0 || batch_indices_data[i] >= batch_size) {
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "batch_indices value " + std::to_string(batch_indices_data[i]) +
-                          " at index " + std::to_string(i) +
-                          " is out of range [0, " + std::to_string(batch_size) + ")");
+
+    auto check_bounds = [batch_size, num_rois](const auto* batch_indices_data) -> Status {
+      for (int64_t i = 0; i < num_rois; ++i) {
+        if (batch_indices_data[i] < 0 || batch_indices_data[i] >= batch_size) {
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "batch_indices value " + std::to_string(batch_indices_data[i]) +
+                            " at index " + std::to_string(i) +
+                            " is out of range [0, " + std::to_string(batch_size) + ")");
+        }
       }
+      return Status::OK();
+    };
+
+    if (batch_indices_ptr->IsDataType<int64_t>()) {
+      auto status = check_bounds(batch_indices_ptr->Data<int64_t>());
+      if (!status.IsOK()) return status;
+    } else if (batch_indices_ptr->IsDataType<int32_t>()) {
+      auto status = check_bounds(batch_indices_ptr->Data<int32_t>());
+      if (!status.IsOK()) return status;
+    } else {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                    "batch_indices must be of type int64_t or int32_t");
     }
   }
 
