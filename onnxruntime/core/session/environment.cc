@@ -540,8 +540,13 @@ bool AreVirtualDevicesAllowed(std::string_view lib_registration_name) {
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
+
   if (ep_libraries_.count(registration_name) > 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
+    auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
+    env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
+    return status;
   }
 
   auto status = Status::OK();
@@ -593,6 +598,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     });
   }
 
+  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
   return status;
 }
 
@@ -611,6 +617,9 @@ Status Environment::CreateAndRegisterInternalEps() {
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
   std::lock_guard<std::mutex> lock{mutex_};
+
+  std::string lib_file_name = std::filesystem::path(lib_path).filename().string();
+  Env::Default().GetTelemetryProvider().LogRegisterEpLibraryWithLibPath(registration_name, lib_file_name);
 
   std::vector<EpFactoryInternal*> internal_factories = {};
   std::unique_ptr<EpLibrary> ep_library;
