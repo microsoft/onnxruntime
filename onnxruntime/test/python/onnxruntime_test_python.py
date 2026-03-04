@@ -2081,10 +2081,11 @@ class TestInferenceSession(unittest.TestCase):
             )
             graph = onnx.helper.make_graph([node], "test", [x], [label_out, prob_out])
             return onnx.helper.make_model(
-                graph, opset_imports=[
+                graph,
+                opset_imports=[
                     onnx.helper.make_opsetid("", 15),
                     onnx.helper.make_opsetid("ai.onnx.ml", 3),
-                ]
+                ],
             )
 
         test_input = {"X": np.array([[0.1, 0.0, 0.0]], dtype=np.float32)}
