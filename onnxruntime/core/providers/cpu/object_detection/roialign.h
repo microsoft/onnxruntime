@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
+#include "core/platform/env_var_utils.h"
 #include <cctype>
 
 namespace onnxruntime {
@@ -64,11 +65,17 @@ class RoiAlignBase {
         half_pixel_ = false;
     }
 
-    if (mode_ == RoiAlignMode::max && sampling_ratio_ != 1) {
-      // TODO(fdwr): Issue #6146. ORT 1.13 will correct the incorrect summation of max mode with PR #7354.
-      LOGS_DEFAULT(WARNING) << "The existing summation for max mode and sampling ratios besides 1 is incorrect "
-                            << "and will be fixed in the next ORT 1.13 release. Thus the results of RoiAlign "
-                            << "will be different.";
+    // Check environment variable to enable bilinear interpolation for max mode.
+    // Default (ONNX spec): max(w1*d1, w2*d2, w3*d3, w4*d4) per sample point.
+    // When enabled: bilinear interpolation (w1*d1 + w2*d2 + w3*d3 + w4*d4) then max across sample points.
+    // The bilinear interpolation approach matches PyTorch/Detectron2 behavior.
+    constexpr const char* kRoiAlignMaxUseBilinearInterp = "ORT_ROIALIGN_MAX_USE_BILINEAR_INTERPOLATION";
+    use_max_bilinear_interp_ = ParseEnvironmentVariableWithDefault<bool>(kRoiAlignMaxUseBilinearInterp, false);
+
+    if (mode_ == RoiAlignMode::max && !use_max_bilinear_interp_) {
+      LOGS_DEFAULT(WARNING) << "RoiAlign max mode uses the ONNX spec behavior (max of weighted values). "
+                            << "To use bilinear interpolation then max across sample points, set env variable "
+                            << "ORT_ROIALIGN_MAX_USE_BILINEAR_INTERPOLATION=1.";
     }
   }
 
@@ -79,6 +86,7 @@ class RoiAlignBase {
   int64_t sampling_ratio_{0};
   float spatial_scale_{1.0f};
   bool half_pixel_{false};
+  bool use_max_bilinear_interp_{false};
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoiAlignBase);
