@@ -225,12 +225,26 @@ Status Attention<T>::RunFlashAttention(
         past_v_row_bytes, num_kv_rows,
         cudaMemcpyDeviceToDevice, cuda_stream));
 
-    // seqlens_k = past_sequence_length (count of cached tokens before new input)
-    // Use device-side fill instead of host vector + cudaMemcpyAsync for CUDA graph capture.
+    // seqlens_k: derive per-batch sequence lengths for the KV cache.
+    // When a bool mask is present, use it to get per-batch lengths (handles variable padding).
+    // Otherwise, fill uniformly with past_sequence_length.
     auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
-    ORT_RETURN_IF_ERROR(LaunchFillInt32(seqlens_k_buffer.get(), parameters.past_sequence_length,
-                                        parameters.batch_size, cuda_stream,
-                                        device_prop.maxThreadsPerBlock));
+    if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
+      size_t mask_dims = attn_mask->Shape().NumDimensions();
+      auto dims = attn_mask->Shape().GetDims();
+      int64_t mask_dim0 = dims[0];
+      int64_t mask_dim1 = mask_dims >= 3 ? dims[1] : 0;
+      int64_t mask_dim2 = mask_dims >= 4 ? dims[2] : 0;
+      ORT_RETURN_IF_ERROR(LaunchConvertMaskToFlashSeqlensK(
+          attn_mask->Data<bool>(), seqlens_k_buffer.get(),
+          parameters.batch_size, parameters.total_sequence_length,
+          static_cast<int>(mask_dims), mask_dim0, mask_dim1, mask_dim2,
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    } else {
+      ORT_RETURN_IF_ERROR(LaunchFillInt32(seqlens_k_buffer.get(), parameters.past_sequence_length,
+                                          parameters.batch_size, cuda_stream,
+                                          device_prop.maxThreadsPerBlock));
+    }
 
     // K/V new tokens: mha_fwd_kvcache expects BSNH for k_new/v_new.
     // When !is_bsnh (4D BNSH input), transpose new tokens to BSNH.
