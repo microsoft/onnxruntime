@@ -16,10 +16,10 @@ import unittest
 import numpy as np
 import onnx
 from helper import get_name
-from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 import onnxruntime as onnxrt
+from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -2043,9 +2043,16 @@ class TestInferenceSession(unittest.TestCase):
         label_out = onnx.helper.make_tensor_value_info("label", onnx.TensorProto.INT64, [None])
         prob_out = onnx.helper.make_tensor_value_info("probs", onnx.TensorProto.FLOAT, [None, 2])
 
-
-        def make_model(nodes_modes, nodes_values, nodes_truenodeids, nodes_falsenodeids,
-                    class_treeids, class_nodeids, class_weights, **node_kwargs):
+        def make_model(
+            nodes_modes,
+            nodes_values,
+            nodes_truenodeids,
+            nodes_falsenodeids,
+            class_treeids,
+            class_nodeids,
+            class_weights,
+            **node_kwargs,
+        ):
             """Build a minimal TreeEnsembleClassifier ONNX model."""
             n_nodes = len(nodes_modes)
             if "base_values" not in node_kwargs:
@@ -2073,11 +2080,12 @@ class TestInferenceSession(unittest.TestCase):
                 **node_kwargs,
             )
             graph = onnx.helper.make_graph([node], "test", [x], [label_out, prob_out])
-            return onnx.helper.make_model(graph, opset_imports=[
-                onnx.helper.make_opsetid("", 15),
-                onnx.helper.make_opsetid("ai.onnx.ml", 3),
-            ])
-
+            return onnx.helper.make_model(
+                graph, opset_imports=[
+                    onnx.helper.make_opsetid("", 15),
+                    onnx.helper.make_opsetid("ai.onnx.ml", 3),
+                ]
+            )
 
         test_input = {"X": np.array([[0.1, 0.0, 0.0]], dtype=np.float32)}
 
@@ -2124,12 +2132,13 @@ class TestInferenceSession(unittest.TestCase):
             class_treeids=[0],
             class_nodeids=[0],
             class_weights=[-0.405],  # negative weight (move base_values into weight)
-            base_values=[0.0],       # zero base
+            base_values=[0.0],  # zero base
         )
         sess_leaf_neg = onnxrt.InferenceSession(model_leaf_neg.SerializeToString())
         result_leaf_neg = sess_leaf_neg.run(None, test_input)
         with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
             np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
