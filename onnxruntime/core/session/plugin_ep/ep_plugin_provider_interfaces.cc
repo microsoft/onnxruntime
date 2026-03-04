@@ -61,8 +61,7 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   Status status = CreatePluginExecutionProvider(session_options, session_logger, plugin_ep);
 
   if (!status.IsOK()) {
-    LOGS(*session_logger.ToInternal(), ERROR) << "Error creating execution provider: " << status.ToString();
-    return nullptr;
+    ORT_THROW("Error creating execution provider: ", status.ToString());
   }
 
   return plugin_ep;
@@ -209,7 +208,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   const logging::Logger& logger = GetLogger() != nullptr ? *GetLogger() : logging::LoggingManager::DefaultLogger();
 
   std::unique_ptr<EpGraph> ep_graph = nullptr;
-  if (Status status = EpGraph::Create(graph_viewer, ep_graph); !status.IsOK()) {
+  if (Status status = EpGraph::Create(graph_viewer, ep_graph, true); !status.IsOK()) {
     LOGS(logger, ERROR) << "Failed to create OrtGraph for " << Type() << ": " << status.ToString();
     return {};
   }

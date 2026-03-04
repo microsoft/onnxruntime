@@ -54,6 +54,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 
   if (onnx_shape_disagreement) {
     excluded_providers.insert(kCoreMLExecutionProvider);
+    excluded_providers.insert(kOpenVINOExecutionProvider);
   }
 
   if (!v10_only) {

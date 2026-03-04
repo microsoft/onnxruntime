@@ -1,0 +1,28 @@
+# Runs a Windows ARM64X build in `buildDirectory`.
+
+parameters:
+  buildDirectory: '$(Build.BinariesDirectory)'
+  additionalBuildPyArgs: ''
+
+steps:
+- task: PythonScript@0
+  displayName: 'Build arm64 project for arm64x - generate the def & lib file for next build'
+  inputs:
+    scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+    arguments: >
+      ${{ parameters.additionalBuildPyArgs }}
+      --build_shared_lib
+      --arm64
+      --buildasx
+      --build_dir="${{ parameters.buildDirectory }}/arm64"
+
+- task: PythonScript@0
+  displayName: 'Build arm64ec project for arm64x - the real arm64x'
+  inputs:
+    scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+    arguments: >
+      ${{ parameters.additionalBuildPyArgs }}
+      --build_shared_lib
+      --arm64ec
+      --buildasx
+      --build_dir="${{ parameters.buildDirectory }}"

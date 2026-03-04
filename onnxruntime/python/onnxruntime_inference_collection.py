@@ -219,6 +219,15 @@ class Session:
         "Return registered execution providers' configurations."
         return self._provider_options
 
+    def get_provider_graph_assignment_info(self) -> Sequence[onnxruntime.OrtEpAssignedSubgraph]:
+        """
+        Get information about the subgraphs assigned to each execution provider and the nodes within.
+
+        Application must enable the recording of graph assignment information by setting the session configuration
+        for the key "session.record_ep_graph_assignment_info" to "1".
+        """
+        return self._sess.get_provider_graph_assignment_info()
+
     def set_providers(self, providers=None, provider_options=None) -> None:
         """
         Register the input list of execution providers. The underlying session is re-created.
@@ -512,24 +521,24 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
-        # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
-        if "TensorrtExecutionProvider" in available_providers:
-            if (
-                providers
-                and any(
-                    provider == "CUDAExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
-                    for provider in providers
+        # Validate that TensorrtExecutionProvider and NvTensorRTRTXExecutionProvider are not both specified
+        if providers:
+            has_tensorrt = any(
+                provider == "TensorrtExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
+                for provider in providers
+            )
+            has_tensorrt_rtx = any(
+                provider == "NvTensorRTRTXExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
+                for provider in providers
+            )
+            if has_tensorrt and has_tensorrt_rtx:
+                raise ValueError(
+                    "Cannot enable both 'TensorrtExecutionProvider' and 'NvTensorRTRTXExecutionProvider' "
+                    "in the same session."
                 )
-                and any(
-                    provider == "TensorrtExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
-                    for provider in providers
-                )
-            ):
-                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
+        # Tensorrt and TensorRT RTX can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
         if "NvTensorRTRTXExecutionProvider" in available_providers:
             if (
                 providers
@@ -540,7 +549,24 @@ class InferenceSession(Session):
                 )
                 and any(
                     provider == "NvTensorRTRTXExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "NvExecutionProvider")
+                    or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
+                    for provider in providers
+                )
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
+        elif "TensorrtExecutionProvider" in available_providers:
+            if (
+                providers
+                and any(
+                    provider == "CUDAExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                    for provider in providers
+                )
+                and any(
+                    provider == "TensorrtExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
                     for provider in providers
                 )
             ):

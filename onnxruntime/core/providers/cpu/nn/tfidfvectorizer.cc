@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "tfidfvectorizer.h"
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
@@ -430,3 +432,5 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)

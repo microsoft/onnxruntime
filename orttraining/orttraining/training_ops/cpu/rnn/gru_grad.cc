@@ -36,6 +36,7 @@ Status GRUGrad<T>::Compute(OpKernelContext* context) const {
                                grugrad_inputs.shape.input_size,
                                attributes_.linear_before_reset,
                                context->GetOperatorThreadPool(),
+                               &mlas_backend_kernel_selector_config_,
                                alloc);
 
   gru_cell.ComputeGradient(grugrad_inputs, grugrad_outputs);

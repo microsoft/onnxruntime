@@ -959,8 +959,6 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
       device_id_(info.device_id) {
   InitProviderOrtApi();
 
-  // TODO(maximlianm) remove this since we should be able to compile an AOT context file without GPU
-
   if (!info.has_user_compute_stream) {
     // If the app is passing in a compute stream, it already has initialized cuda and created a context.
     // Calling cudaSetDevice() will set the default context in the current thread
@@ -2578,6 +2576,84 @@ const InlinedVector<const Node*> NvExecutionProvider::GetEpContextNodes() const 
   return ep_context_nodes;
 }
 
+std::string NvExecutionProvider::GetCompiledModelCompatibilityInfo(
+    const onnxruntime::GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+
+  // Protect read access to engine_headers_ for thread safety
+  auto lock = GetApiLock();
+
+  // Compatibility info is only supported when there is exactly one engine.
+  // If multiple EPContext nodes/engines exist, return empty so validation is not applicable.
+  if (engine_headers_.size() > 1) {
+    return std::string();
+  }
+
+  // If we have stored engine headers, return the first one found
+  // (typically there's only one per EP context)
+  if (!engine_headers_.empty()) {
+    return engine_headers_.begin()->second;
+  }
+
+  // No headers available - validation not supported for this model
+  return std::string();
+}
+
+common::Status NvExecutionProvider::ValidateCompiledModelCompatibilityInfo(
+    const std::string& compatibility_info,
+    OrtCompiledModelCompatibility& model_compatibility) const {
+  // If no compatibility info provided, validation not applicable
+  if (compatibility_info.empty()) {
+    model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return Status::OK();
+  }
+
+  // Decode hex string to binary
+  std::vector<uint8_t> engine_header;
+  try {
+    engine_header = HexStringToBinary(compatibility_info);
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to decode engine header: " << ex.what();
+    model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+    return Status::OK();
+  }
+
+  // Use TensorRT RTX's getEngineValidity to check compatibility
+  uint64_t diagnostics = 0;
+  nvinfer1::EngineValidity validity = runtime_->getEngineValidity(
+      engine_header.data(),
+      engine_header.size(),
+      &diagnostics);
+
+  // Map TensorRT RTX validity to ORT compatibility status
+  switch (validity) {
+    case nvinfer1::EngineValidity::kVALID:
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Engine is fully compatible with this system";
+      model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+      break;
+
+    case nvinfer1::EngineValidity::kSUBOPTIMAL:
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine is compatible but recompilation recommended "
+                            << "(diagnostics: 0x" << std::hex << diagnostics << std::dec << ")";
+      model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+      break;
+
+    case nvinfer1::EngineValidity::kINVALID:
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine is incompatible with this system "
+                            << "(diagnostics: 0x" << std::hex << diagnostics << std::dec << ")";
+      model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+      break;
+
+    default:
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Unknown TensorRT validity status: "
+                            << static_cast<int>(validity);
+      model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+      break;
+  }
+
+  return Status::OK();
+}
+
 Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
                                                            const Node& fused_node,
                                                            std::unordered_map<std::string, size_t>& input_map,
@@ -2654,16 +2730,13 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_SHARED_MEMORY, max_shared_mem_size_);
   }
 
-  // Only set compute capability for Turing
-  const std::string kTuringComputeCapability{"75"};
-
-  if (compute_capability_ == kTuringComputeCapability) {
-    constexpr int kDefaultNumComputeCapabilities = 1;
-    if (trt_config->getNbComputeCapabilities() == 0) {
-      trt_config->setNbComputeCapabilities(kDefaultNumComputeCapabilities);
-      trt_config->setComputeCapability(nvinfer1::ComputeCapability::kSM75, 0);
-    }
+  // Set compute capability to kCURRENT by default
+  // Must set the number of compute capabilities before setting the capability itself
+  constexpr int kDefaultNumComputeCapabilities = 1;
+  if (trt_config->getNbComputeCapabilities() == 0) {
+    trt_config->setNbComputeCapabilities(kDefaultNumComputeCapabilities);
   }
+  trt_config->setComputeCapability(nvinfer1::ComputeCapability::kCURRENT, 0);
 
   int num_inputs = trt_network->getNbInputs();
   int num_outputs = trt_network->getNbOutputs();
@@ -2857,6 +2930,18 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "NvTensorRTRTX EP failed to create engine from network for fused node: " + fused_node.Name());
     }
+
+    // Capture engine header (first 64 bytes) for compatibility validation
+    if (serialized_engine->size() >= kTensorRTEngineHeaderSize) {
+      std::string engine_header_hex = BinaryToHexString(
+          serialized_engine->data(),
+          kTensorRTEngineHeaderSize);
+      engine_headers_[fused_node.Name()] = engine_header_hex;
+    } else {
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine too small to capture header for validation: "
+                            << serialized_engine->size() << " bytes";
+    }
+
     trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -2866,6 +2951,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     trt_runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(trt_engine->createRuntimeConfig());
     if (trt_runtime_config && cuda_graph_enable_) {
       trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
+#if TRT_MAJOR_RTX > 1 || (TRT_MAJOR_RTX == 1 && TRT_MINOR_RTX >= 3)
+      auto cuda_strategy_flag = trt_runtime_config->setCudaGraphStrategy(nvinfer1::CudaGraphStrategy::kWHOLE_GRAPH_CAPTURE);
+      LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] CUDA graph strategy with RTX Graph capture enabled : " << cuda_strategy_flag;
+#else
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] CUDA graph is enabled but RTX Graph capture is not available. "
+                            << "The current TRT RTX version does not support RTX Graph. "
+                            << "Please upgrade to TRT RTX >= 1.3 to use RTX Graph capture feature for optimal CUDA graph performance.";
+#endif
     }
     trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
     if (!runtime_cache_.empty()) {
@@ -3148,22 +3241,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       }
     }
 
-    // Start CUDA graph capture with the correct stream
-    // Note: We need to set the stream and start capture here because this is where we have access to the actual compute stream
-    // Get the graph annotation ID that was stored during OnRunStart
-    CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCurrentGraphAnnotationId();
-    bool graph_replay_on_this_run = false;
-    bool should_start_capture = false;
-
-    HandleCudaGraphStart(stream, require_io_binding, cuda_graph_annotation_id,
-                         graph_replay_on_this_run, should_start_capture);
-
-    if (!graph_replay_on_this_run) {
-      if (!trt_context->enqueueV3(stream)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
-      }
-    } else {
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream_after_enqueue_));
+    if (!trt_context->enqueueV3(stream)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
     }
 
     /*
@@ -3180,11 +3259,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
      * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
      * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
      */
-
-    if (cuda_graph_enable_ && should_start_capture) {
-      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream_after_enqueue_));
-    }
 
     if (sync_stream_after_enqueue_) {
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
@@ -3254,6 +3328,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
   auto trt_runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(trt_engine->createRuntimeConfig());
   if (trt_runtime_config && cuda_graph_enable_) {
     trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
+#if TRT_MAJOR_RTX > 1 || (TRT_MAJOR_RTX == 1 && TRT_MINOR_RTX >= 3)
+    auto cuda_strategy_flag = trt_runtime_config->setCudaGraphStrategy(nvinfer1::CudaGraphStrategy::kWHOLE_GRAPH_CAPTURE);
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] CUDA graph strategy with RTX Graph capture enabled : " << cuda_strategy_flag;
+#else
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] CUDA graph is enabled but RTX Graph capture is not available. "
+                          << "The current TRT RTX version does not support RTX Graph. "
+                          << "Please upgrade to TRT RTX >= 1.3 to use RTX Graph capture feature for optimal CUDA graph performance.";
+#endif
   }
   trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
   std::string runtime_cache_file = "";
@@ -3474,22 +3556,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
       trt_context->setAuxStreams(aux_streams_, (int32_t)auxiliary_streams_);
     }
 
-    // Start CUDA graph capture with the correct stream
-    // Note: We need to set the stream and start capture here because this is where we have access to the actual compute stream
-    // Get the graph annotation ID that was stored during OnRunStart
-    CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCurrentGraphAnnotationId();
-    bool graph_replay_on_this_run = false;
-    bool should_start_capture = false;
-
-    HandleCudaGraphStart(stream, require_io_binding, cuda_graph_annotation_id,
-                         graph_replay_on_this_run, should_start_capture);
-
-    if (!graph_replay_on_this_run) {
-      if (!trt_context->enqueueV3(stream)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
-      }
-    } else {
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream_after_enqueue_));
+    if (!trt_context->enqueueV3(stream)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "NvTensorRTRTX EP execution context enqueue failed.");
     }
 
     /*
@@ -3506,11 +3574,6 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
      * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
      * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
      */
-
-    if (cuda_graph_enable_ && should_start_capture) {
-      GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id, sync_stream_after_enqueue_));
-    }
 
     if (sync_stream_after_enqueue_) {
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));

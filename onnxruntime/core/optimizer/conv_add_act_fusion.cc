@@ -113,7 +113,7 @@ class ConvAddActivationSelector : public NodeSelector {
         return true;
       }
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSigmoid", {6})) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSigmoid", {6, 22})) {
         return true;
       }
       return false;
@@ -288,7 +288,7 @@ void RegisterConvAddActivationFusionRules(SelectorActionRegistry& registry) {
   auto action = std::make_unique<actions::FuseConvAddActivationAction>();
   auto selector = std::make_unique<selectors::ConvAddActivationSelector>();
   std::string msDomainNhwcFusedConv = SelectorActionRegistry::OpVersionsMapKey("NhwcFusedConv", kMSDomain);
-  registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11}}, {msDomainNhwcFusedConv, {1, 11}}},
+  registry.RegisterSelectorAndAction("ConvAddAct", {{"Conv", {1, 11, 22}}, {msDomainNhwcFusedConv, {1, 11, 22}}},
                                      std::move(selector), std::move(action));
 }
 

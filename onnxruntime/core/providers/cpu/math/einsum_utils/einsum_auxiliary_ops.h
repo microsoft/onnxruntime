@@ -27,6 +27,9 @@ namespace DeviceHelpers {
 // Data copy op - Copies raw data from the source tensor's buffer to the destination tensor's buffer
 using DataCopy = std::function<Status(const Tensor& input, Tensor& output, void* einsum_cuda_assets)>;
 
+// Zero buffer op - Sets all bytes in the tensor's buffer to zero
+using ZeroBuffer = std::function<Status(Tensor& input, void* einsum_cuda_assets)>;
+
 // Transpose op - Transposes given input based on data in `permutation`
 using Transpose = std::function<Status(const gsl::span<const size_t>& permutation, const Tensor& input,
                                        Tensor& output, const TensorShape* input_shape_override,
@@ -37,6 +40,7 @@ template <typename T>
 using MatMul = std::function<Status(const T* input_1_data, const T* input_2_data, T* output_data,
                                     size_t left_stride, size_t right_stride, size_t output_stride,
                                     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+                                    const void* mlas_backend_config,
                                     void* einsum_cuda_assets)>;
 
 // ReduceSum op - Reduces along `reduce_axes`
@@ -63,6 +67,8 @@ namespace CpuDeviceHelpers {
 
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
 
+Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets);
+
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
 
@@ -70,6 +76,7 @@ template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+              const void* mlas_backend_config,
               void* einsum_cuda_assets);
 
 template <typename T>
@@ -98,7 +105,8 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const TensorShape& input_
 template <typename T>
 std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const gsl::span<const int64_t>& input_1_shape_override,
                                const Tensor& input_2, const gsl::span<const int64_t>& input_2_shape_override,
-                               AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
+                               AllocatorPtr allocator, concurrency::ThreadPool* tp, const void* mlas_backend_config,
+                               void* einsum_cuda_assets,
                                const DeviceHelpers::MatMul<T>& device_matmul_func);
 
 // Thin wrapper over the ReduceSum op

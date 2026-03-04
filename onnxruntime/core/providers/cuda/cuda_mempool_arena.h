@@ -14,7 +14,7 @@
 
 namespace onnxruntime {
 namespace logging {
-class Logger;
+struct Logger;  // as we're using the provider bridge this is a struct from provider_api.h
 }
 namespace cuda {
 /**

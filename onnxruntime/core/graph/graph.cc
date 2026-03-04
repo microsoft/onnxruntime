@@ -1344,7 +1344,12 @@ Graph::Graph(const Model& owning_model,
       ORT_THROW("This is an invalid model. Tensor does not have type information.");
     }
 
-    if (utils::HasDataType(tensor) && (tensor.data_type() < TensorProto_DataType_DataType_ARRAYSIZE)) {
+    // all initializers must have a valid data type
+    if (!utils::HasDataType(tensor) || !tensor.DataType_IsValid(tensor.data_type())) {
+      ORT_THROW("This is an invalid model. Tensor '", tensor.name(), "' does not have valid data type.");
+    }
+
+    if ((tensor.data_type() < TensorProto_DataType_DataType_ARRAYSIZE)) {
       weight_data_type_freq_[tensor.data_type()]++;
     }
 
@@ -1669,13 +1674,14 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 
 #if !defined(ORT_MINIMAL_BUILD)
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
-Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
+Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed,
+                               bool& removed_node_with_subgraph) {
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
         std::unordered_set<std::string> node_args_consumed;
-        ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed));
+        ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed, removed_node_with_subgraph));
 
         for (auto& node_arg_name : node_args_consumed) {
           auto node_arg = GetNodeArg(node_arg_name);
@@ -1805,6 +1811,10 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
     } else if (node.OutputDefs().empty()) {
       // This is a useless node.
       // It has no input/output.
+      if (node.ContainsSubgraph()) {
+        removed_node_with_subgraph = true;
+      }
+
       RemoveNode(node.Index());
     }
   }
@@ -3683,9 +3693,16 @@ Status Graph::Resolve(const ResolveOptions& options) {
   std::unordered_set<std::string> outer_scope_node_args_consumed;
 
   // recursively build connections between nodes in this graph and all subgraphs
-  ORT_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed));
+  bool removed_node_with_subgraph = false;
+  ORT_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed, removed_node_with_subgraph));
   ORT_ENFORCE(outer_scope_node_args_consumed.empty(),
               "Shouldn't be possible to have NodeArgs that haven't been handled already.");
+
+  // if we removed any nodes with subgraphs, we need to refresh the list of subgraphs.
+  if (removed_node_with_subgraph) {
+    all_subgraphs.clear();
+    FindAllSubgraphs(all_subgraphs);
+  }
 
   // topological sort of this and any subgraphs is non-recursive
   auto topo_sort_func = [](Graph& graph) { return graph.PerformTopologicalSortAndCheckIsAcyclic(); };
@@ -3754,7 +3771,7 @@ Status Graph::ConvertInitializersIntoOrtValues() {
           std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
           ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
           const auto& location = external_data_info->GetRelPath();
-          auto st = utils::ValidateExternalDataPath(model_dir, location);
+          auto st = utils::ValidateExternalDataPath(model_dir, location, model_path);
           if (!st.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                    "External data path validation failed for initializer: ", tensor_proto.name(),
@@ -6466,7 +6483,9 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF(nullptr == fbs_value_info, "NodeArg is missing. Invalid ORT format model.");
       NodeArgInfo node_arg_info;
       ORT_RETURN_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
-      node_args_[fbs_value_info->name()->str()] = std::make_unique<NodeArg>(std::move(node_arg_info));
+      const auto* name = fbs_value_info->name();
+      ORT_RETURN_IF(name == nullptr, "NodeArg name is missing. Invalid ORT format model.");
+      node_args_[name->str()] = std::make_unique<NodeArg>(std::move(node_arg_info));
     }
   }
 

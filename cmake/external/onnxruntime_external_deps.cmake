@@ -739,32 +739,32 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_destroy_buffer_on_destructor.patch &&
 
-          # The dawn_force_enable_f16_nvidia_vulkan.patch contains the following changes:
-          #
-          # - (private) Force enable f16 support for NVIDIA Vulkan
-          #   Dawn disabled f16 support for NVIDIA Vulkan by default because of crashes in f16 CTS tests (crbug.com/tint/2164).
-          #   Since the crashes are limited to specific GPU models, we patched Dawn to remove the restriction.
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_force_enable_f16_nvidia_vulkan.patch &&
-
           # The dawn_binskim.patch contains the following changes:
           #
           # - (private) Fulfill the BinSkim requirements
           #   Some build warnings are not allowed to be disabled in project level.
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch &&
 
-          # The uniform_and_storage_buffer_16_bit_access.patch contains the following changes:
-          #
-          # - (private) Android devices don't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
-          #   in the uniform and converting to fp16 before using.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch &&
-
           # The safari_polyfill.patch contains the following changes:
           #
           # - (private) Fix compatibility issues with Safari. Contains the following changes:
           #   - Polyfill for `device.AdapterInfo` (returns `undefined` in Safari v26.0)
           #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch)
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/safari_polyfill.patch &&
+
+          # The dawn_dxc_output_dir.patch contains the following changes:
+          #
+          # - (private) Fix DXC output directory for RelWithDebInfo and MinSizeRel configs
+          #   Dawn only overrides the DXC output directory for Debug and Release configs. This causes
+          #   build failures when using multi-config generators (like Visual Studio) with RelWithDebInfo
+          #   because dxcompiler.dll ends up in the default output path instead of CMAKE_BINARY_DIR/$<CONFIG>,
+          #   and the copy_dxil_dll target copies dxil.dll to a different location.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
+
+          # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
+          # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.
+          ${CMAKE_COMMAND} -E rm -rf <SOURCE_DIR>/test)
 
       onnxruntime_fetchcontent_declare(
         dawn
@@ -845,18 +845,27 @@ if(onnxruntime_USE_KLEIDIAI)
 
   onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
   onnxruntime_fetchcontent_makeavailable(kleidiai)
+  # Fetch Qualcomm's kleidiai library
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+          onnxruntime_fetchcontent_declare(kleidiai-qmx URL ${DEP_URL_kleidiai-qmx} URL_HASH SHA1=${DEP_SHA1_kleidiai-qmx}
+                  EXCLUDE_FROM_ALL)
+          onnxruntime_fetchcontent_makeavailable(kleidiai-qmx)
+  endif()
 endif()
 
 set(onnxruntime_LINK_DIRS)
 if (onnxruntime_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
 
-  if(onnxruntime_CUDNN_HOME)
-    file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
-    set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
-  endif()
+  # cuDNN is not needed for minimal CUDA builds (e.g., TensorRT-only builds)
+  if(NOT onnxruntime_CUDA_MINIMAL)
+    if(onnxruntime_CUDNN_HOME)
+      file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
+      set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
+    endif()
 
-  include(cuDNN)
+    include(cuDNN)
+  endif()
 endif()
 
 if(onnxruntime_USE_SNPE)

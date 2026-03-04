@@ -134,6 +134,18 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint8_t,
     bool);
 
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 25, Input, 0,
+    float,
+    double,
+    int32_t,
+    int64_t,
+    uint32_t,
+    uint64_t,
+    int8_t,
+    uint8_t,
+    bool);
+
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
@@ -148,6 +160,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 23, Input, 0, int32_t, int64_t);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 24, Input, 0, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 25, Input, 0, int32_t, int64_t);
 
 }  // namespace op_kernel_type_control
 
@@ -168,6 +182,9 @@ using EnabledPad23Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
 
 using EnabledPad24Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 24, Input, 0);
+
+using EnabledPad25Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 25, Input, 0);
 
 using AllEnabledPadTypes =
     utils::TypeSetUnion<
@@ -240,13 +257,22 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
             BuildKernelDefConstraintsFromTypeList<EnabledPad23Types>()),
     Pad);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
-    24,
+    24, 24,
     KernelDefBuilder()
         .TypeConstraint(
             "T",
             BuildKernelDefConstraintsFromTypeList<EnabledPad24Types>()),
+    Pad);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Pad,
+    25,
+    KernelDefBuilder()
+        .TypeConstraint(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<EnabledPad25Types>()),
     Pad);
 
 using PadsVector = PadBase::PadsVector;
@@ -286,58 +312,9 @@ Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_sh
   return Status::OK();
 }
 
-static void ComputePadWithAxes(
-    gsl::span<const int64_t> pads_tensor_raw_data,
-    std::function<int64_t(size_t)> get_axis,
-    size_t axes_size,
-    size_t data_rank,
-    PadsVector& pads) {
-  for (size_t i = 0; i < axes_size; ++i) {
-    const size_t axis = onnxruntime::narrow<size_t>(HandleNegativeAxis(get_axis(i), data_rank));
-    pads[axis] = pads_tensor_raw_data[i];                          // xi_begin
-    pads[data_rank + axis] = pads_tensor_raw_data[axes_size + i];  // xi_end
-  }
-}
-
 void PadBase::ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
                           PadsVector& pads) {
-  pads.reserve(2 * data_rank);
-  const Tensor* axes_tensor = ctx.Input<Tensor>(3);
-  if (axes_tensor) {
-    const size_t num_axes_dims = axes_tensor->Shape().NumDimensions();
-    ORT_ENFORCE(num_axes_dims == 1, "Axes tensor should be a 1D tensor ");
-
-    const int64_t num_axes = axes_tensor->Shape().Size();
-    ORT_ENFORCE(pads_data.size() == narrow<size_t>(2 * num_axes),
-                "Pads tensor size should be equal to twice the number of explicitly provided axes.");
-
-    pads.resize(2 * data_rank, 0);
-    if (axes_tensor->IsDataType<int32_t>()) {
-      auto axes_data = axes_tensor->DataAsSpan<int32_t>();
-      ComputePadWithAxes(
-          pads_data,
-          [axes_data](size_t idx) -> int64_t {
-            return axes_data[idx];
-          },
-          axes_data.size(),
-          data_rank,
-          pads);
-    } else if (axes_tensor->IsDataType<int64_t>()) {
-      auto axes_data = axes_tensor->DataAsSpan<int64_t>();
-      ComputePadWithAxes(
-          pads_data,
-          [axes_data](size_t idx) {
-            return axes_data[idx];
-          },
-          axes_data.size(),
-          data_rank,
-          pads);
-    }
-  } else {
-    ORT_ENFORCE(pads_data.size() == 2 * data_rank,
-                "Pads tensor size should be equal to twice the input dimension count ");
-    pads.assign(pads_data.begin(), pads_data.end());
-  }
+  ComputePadsImpl(ctx, data_rank, pads_data, pads);
 }
 
 // Flatten no padding inner most Axis, so one memcpy cover multiple Axis.

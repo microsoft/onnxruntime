@@ -772,8 +772,9 @@ Status UnfusedAttention(
 
   DUMP_TENSOR_D("Softmax", scratch2, batch_size, num_heads, sequence_length, total_sequence_length);
 
-  // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
-  T* temp_output = data.q;
+  // compute R*V (as V*R), and store in output or temp workspace depending on whether transpose is needed
+  // For 4D input (BNSH), write directly to output. For 3D input (BSNH), write to temp then transpose.
+  T* temp_output = parameters.is_output_bnsh ? data.output : data.q;
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N,
       v_head_size, sequence_length, total_sequence_length,
@@ -781,11 +782,13 @@ Status UnfusedAttention(
       scratch2, total_sequence_length, sequence_length * total_sequence_length,
       &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
 
-  // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
-  Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
-                                 device_prop.maxThreadsPerBlock, false, temp_output, data.output);
+  if (!parameters.is_output_bnsh) {
+    // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
+    ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
+                                       device_prop.maxThreadsPerBlock, false, temp_output, data.output));
+  }
   DUMP_TENSOR_D("Attention Output", data.output, batch_size, sequence_length, num_heads, v_head_size);
-  return result;
+  return Status::OK();
 }
 
 template <typename T>
@@ -960,7 +963,7 @@ Status QkvToContext(
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
-  const int sequence_length = parameters.sequence_length;
+  const int kv_sequence_length = parameters.kv_sequence_length;
   const int total_sequence_length = parameters.total_sequence_length;
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
@@ -981,12 +984,12 @@ Status QkvToContext(
 
   if (!parameters.past_present_share_buffer) {
     ORT_RETURN_IF_ERROR(ConcatPastToPresent<T>(batch_size, num_heads, qk_head_size, v_head_size,
-                                               sequence_length, total_sequence_length,
+                                               kv_sequence_length, total_sequence_length,
                                                stream, max_threads_per_block, data));
 
   } else {  // past_present_share_buffer
     ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, num_heads, qk_head_size, v_head_size,
-                                                  sequence_length, fused_runner,
+                                                  kv_sequence_length, fused_runner,
                                                   parameters, data, stream, max_threads_per_block));
   }
 

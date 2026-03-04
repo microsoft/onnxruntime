@@ -282,35 +282,21 @@ class GraphCacheManager : public IBufferCacheManager {
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    pending_buffers_.emplace_back(buffer);
+    auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+    auto it = buckets_.find(buffer_size);
+    if (it != buckets_.end()) {
+      it->second.emplace_back(buffer);
+    } else {
+      // Insert a new bucket for non-standard buffer sizes
+      buckets_[buffer_size] = std::vector<WGPUBuffer>{buffer};
+    }
   }
 
   void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    // Initialize buckets if they don't exist yet
-    if (buckets_.empty()) {
-      for (const auto& pair : buckets_limit_) {
-        buckets_.emplace(pair.first, std::vector<WGPUBuffer>());
-      }
-    }
-
-    for (auto& buffer : pending_buffers_) {
-      auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-      auto it = buckets_.find(buffer_size);
-      if (it != buckets_.end()) {
-        it->second.emplace_back(buffer);
-      } else {
-        // insert a new bucket if it doesn't exist
-        buckets_[buffer_size] = std::vector<WGPUBuffer>{buffer};
-      }
-    }
-
-    pending_buffers_.clear();
+    // no-op - buffers are already in buckets_
   }
 
   ~GraphCacheManager() {
-    for (auto& buffer : pending_buffers_) {
-      wgpuBufferRelease(buffer);
-    }
     for (auto& pair : buckets_) {
       for (auto& buffer : pair.second) {
         wgpuBufferRelease(buffer);
@@ -321,8 +307,10 @@ class GraphCacheManager : public IBufferCacheManager {
  protected:
   void Initialize() {
     buckets_keys_.reserve(buckets_limit_.size());
+    buckets_.reserve(buckets_limit_.size());
     for (const auto& pair : buckets_limit_) {
       buckets_keys_.push_back(pair.first);
+      buckets_.emplace(pair.first, std::vector<WGPUBuffer>());
     }
     std::sort(buckets_keys_.begin(), buckets_keys_.end());
 
@@ -337,7 +325,6 @@ class GraphCacheManager : public IBufferCacheManager {
   }
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<WGPUBuffer> pending_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 

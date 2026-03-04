@@ -73,7 +73,7 @@ void Dequantize4BitsKernelReOrder(
   }
 }
 
-template <typename inputT, typename zeroT>
+template <typename inputT, typename zeroT, int qbits>
 void DequantizeBlockwise(
     inputT* output,              // dequantized output
     const uint8_t* quant_data,   // quantized input
@@ -102,17 +102,17 @@ void DequantizeBlockwise(
       });
 }
 
-template void DequantizeBlockwise<float, uint8_t>(
+template void DequantizeBlockwise<float, uint8_t, 4>(
     float* output, const uint8_t* quant_data, const float* scales_data,
     const uint8_t* zero_points, const int32_t* reorder_idx, int32_t block_size,
     bool columnwise, int32_t K, int32_t N, onnxruntime::concurrency::ThreadPool* thread_pool);
 
-template void DequantizeBlockwise<float, float>(
+template void DequantizeBlockwise<float, float, 4>(
     float* output, const uint8_t* quant_data, const float* scales_data,
     const float* zero_points, const int32_t* reorder_idx, int32_t block_size,
     bool columnwise, int32_t K, int32_t N, onnxruntime::concurrency::ThreadPool* thread_pool);
 
-template void DequantizeBlockwise<float, MLFloat16>(
+template void DequantizeBlockwise<float, MLFloat16, 4>(
     float* output, const uint8_t* quant_data, const float* scales_data,
     const MLFloat16* zero_points, const int32_t* reorder_idx, int32_t block_size,
     bool columnwise, int32_t K, int32_t N, onnxruntime::concurrency::ThreadPool* thread_pool);

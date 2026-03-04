@@ -18,11 +18,13 @@ class EinsumTypedComputeProcessor {
  public:
   explicit EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
                                        concurrency::ThreadPool* tp,
+                                       const void* mlas_backend_config,
                                        EinsumComputePreprocessor& einsum_compute_preprocessor,
                                        void* einsum_cuda_assets)
       : context_(context),
         allocator_(allocator),
         tp_(tp),
+        mlas_backend_config_(mlas_backend_config),
         einsum_compute_preprocessor_(einsum_compute_preprocessor),
         einsum_ep_assets_(einsum_cuda_assets) {}
 
@@ -31,7 +33,8 @@ class EinsumTypedComputeProcessor {
   void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
                         const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
                         const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
-                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func);
+                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
+                        const EinsumOp::DeviceHelpers::ZeroBuffer& device_zero_buffer_func);
 
   Status Run();
 
@@ -57,13 +60,15 @@ class EinsumTypedComputeProcessor {
   // Private members -
   OpKernelContext* context_;
   AllocatorPtr allocator_;
-  concurrency::ThreadPool* tp_;
+  concurrency::ThreadPool* tp_;      // CPU only: Thread pool for parallelism
+  const void* mlas_backend_config_;  // CPU only: MLAS backend kernel selector config
   EinsumComputePreprocessor& einsum_compute_preprocessor_;
 
   EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
   EinsumOp::DeviceHelpers::MatMul<T> device_matmul_func_;
   EinsumOp::DeviceHelpers::ReduceSum<T> device_reduce_sum_func_;
   EinsumOp::DeviceHelpers::DataCopy device_data_copy_func_;
+  EinsumOp::DeviceHelpers::ZeroBuffer device_zero_buffer_func_;
 
   // Holds EP-specific assets required for (auxiliary) ops that need to be executed on non-CPU EPs
   void* einsum_ep_assets_;

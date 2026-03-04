@@ -77,26 +77,29 @@ void CleanUpCtxFile(std::string context_file_path) {
   ASSERT_EQ(std::remove(context_file_path.c_str()), 0);
 }
 
-// Create a model with FusedMatMul + Add (quantized)
+// Create a model with FusedGemm + Add (quantized)
 // input1 -> Add -> Q -> DQ ----
 //                              |
-//        input2 -> Q -> DQ -> FusedMatMul -> Q -> DQ -> output
+//        input2 -> Q -> DQ -> FusedGemm -> Q -> DQ -> output
 static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   return [single_ep_node](ModelTestBuilder& builder) {
-    // Creat non-quantized FusedMatMul node1
-    std::vector<float> data(200 * 200, 1.0f);
-    NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({200, 200}, false, data));
-    NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
+    // Create non-quantized FusedGemm node1
+    std::vector<float> gemm_input_data(12, 1.0f);
+    std::vector<float> gemm_weight_data(16, 1.0f);  // 4x4 = 16 elements
+    NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({3, 4}, false, gemm_input_data));
+    NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({4, 4}, true, gemm_weight_data));
 
     auto* add1_output = builder.MakeIntermediate();
-    builder.AddNode("FusedMatMul", {input1, add1_ini_input2}, {add1_output}, kMSDomain);
+    Node& fused_gemm_node1 = builder.AddNode("FusedGemm", {input1, add1_ini_input2}, {add1_output}, kMSDomain);
+    fused_gemm_node1.AddAttribute("activation", "Relu");
 
     // Create quantized Add node2
-    gsl::span<float> data_range = gsl::make_span(data);
+    std::vector<float> add_data(12, 1.0f);
+    gsl::span<float> data_range = gsl::make_span(add_data);
     QuantParams<uint8_t> q_parameter = GetDataQuantParams<uint8_t>(data_range);
     auto* add2_input1_qdq = AddQDQNodePair<uint8_t>(builder, add1_output, q_parameter.scale, q_parameter.zero_point);
 
-    NodeArg* add2_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
+    NodeArg* add2_input2 = MakeTestInput(builder, TestInputDef<float>({3, 4}, true, add_data));
     auto* add2_input2_qdq = AddQDQNodePair<uint8_t>(builder, add2_input2, q_parameter.scale, q_parameter.zero_point);
 
     auto* add2_output = builder.MakeIntermediate();
@@ -108,15 +111,16 @@ static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
       AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
     } else {
       auto* add3_input1_qdq = AddQDQNodePair<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
-      NodeArg* add3_ini_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
+      NodeArg* add3_ini_input2 = MakeTestInput(builder, TestInputDef<float>({4, 4}, true, gemm_weight_data));
 
       auto* add3_output = builder.MakeIntermediate();
-      builder.AddNode("FusedMatMul", {add3_input1_qdq, add3_ini_input2}, {add3_output}, kMSDomain);
+      Node& fused_gemm_node2 = builder.AddNode("FusedGemm", {add3_input1_qdq, add3_ini_input2}, {add3_output}, kMSDomain);
+      fused_gemm_node2.AddAttribute("activation", "Relu");
 
       // Create quantized Add node4
       auto* add4_input1_qdq = AddQDQNodePair<uint8_t>(builder, add3_output, q_parameter.scale, q_parameter.zero_point);
 
-      NodeArg* add4_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
+      NodeArg* add4_input2 = MakeTestInput(builder, TestInputDef<float>({3, 4}, true, add_data));
       auto* add4_input2_qdq = AddQDQNodePair<uint8_t>(builder, add4_input2, q_parameter.scale, q_parameter.zero_point);
 
       auto* add4_output = builder.MakeIntermediate();
@@ -752,15 +756,15 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary_OriginalCompileApproach_IgnoreCompil
   }
 }
 
-// Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary
-// The generated Onnx model has 1 FusedMatMul node and 1 EPContext node
+// Test that models with 1 non-quantized FusedGemm node and 1 quantized Add node can still generate the context binary
+// The generated Onnx model has 1 FusedGemm node and 1 EPContext node
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {
   bool single_ep_node = true;
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
 }
 
-// Test that models with 2 non-quantized FusedMatMul nodes and 2 quantized Add nodes can still generate the context binary
-// The generated Onnx model has 2 FusedMatMul nodes and 1 EPContext nodes
+// Test that models with 2 non-quantized FusedGemm nodes and 2 quantized Add nodes can still generate the context binary
+// The generated Onnx model has 2 FusedGemm nodes and 2 EPContext nodes
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
   bool single_ep_node = false;
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
@@ -836,21 +840,21 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file, bool
   CleanUpCtxFile(ep_context_model_file);
 }
 
-// Set the session option "ep.context_model_external_initializers_file_name" so FusedMatMul (which fallback on CPU)
+// Set the session option "ep.context_model_external_initializers_file_name" so FusedGemm (which fallback on CPU)
 // will dump initializer data to external file
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithExternalWeights) {
   EpCtxCpuNodeWithExternalIniFileTestBody(true);
 }
 
 // Without setting the session option "ep.context_model_external_initializers_file_name"
-// so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
+// so FusedGemm (which fallback on CPU) will NOT dump initializer data to external file
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
   EpCtxCpuNodeWithExternalIniFileTestBody(false);
 }
 
 // Load model from memory
 // Without setting the session option "ep.context_model_external_initializers_file_name"
-// so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
+// so FusedGemm (which fallback on CPU) will NOT dump initializer data to external file
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeightsModelFromMemory) {
   EpCtxCpuNodeWithExternalIniFileTestBody(false, true);
 }
@@ -1885,6 +1889,114 @@ TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
   }
 
   auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                   output_names_c.data(), 1);
+#endif
+
+  for (auto model_path : onnx_model_paths) {
+    std::remove(model_path.c_str());
+  }
+  for (auto ctx_model_path : ctx_model_paths) {
+    std::remove(ctx_model_path.c_str());
+  }
+  std::remove(qnn_ctx_binary_file_name1.c_str());
+}
+
+TEST_F(QnnHTPBackendTests, FileMapping_Off) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["disable_file_mapped_weights"] = "1";
+
+  // Create QDQ models
+  std::vector<std::string> onnx_model_paths{"./weight_share1.onnx", "./weight_share2.onnx"};
+  // cleanup in case some failure test doesn't remove them
+  for (auto model_path : onnx_model_paths) {
+    std::remove(model_path.c_str());
+  }
+
+  std::vector<std::string> ctx_model_paths;
+  for (auto model_path : onnx_model_paths) {
+    CreateQdqModel(model_path, DefaultLoggingManager().DefaultLogger());
+    EXPECT_TRUE(std::filesystem::exists(model_path.c_str()));
+    auto pos = model_path.find_last_of(".");
+    if (pos != std::string::npos) {
+      model_path = model_path.substr(0, pos) + "_ctx.onnx";
+    } else {
+      model_path = model_path + "_ctx.onnx";
+    }
+    ctx_model_paths.push_back(model_path);
+  }
+  for (auto ctx_model_path : ctx_model_paths) {
+    std::remove(ctx_model_path.c_str());
+  }
+
+  DumpModelWithSharedCtx(provider_options, onnx_model_paths[0], onnx_model_paths[1]);
+
+  std::string qnn_ctx_binary_file_name1;
+  GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
+                           DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
+
+  std::string qnn_ctx_binary_file_name2;
+  GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
+                           DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
+  // 2 *_ctx.onn point to same .bin file
+  EXPECT_TRUE(qnn_ctx_binary_file_name1 == qnn_ctx_binary_file_name2);
+  auto file_size_1 = std::filesystem::file_size(qnn_ctx_binary_file_name1);
+  EXPECT_TRUE(file_size_1 > 0);
+
+  // only load and run the session on real device
+#if defined(__aarch64__) || defined(_M_ARM64)
+  Ort::SessionOptions so1;
+  so1.SetLogId("so1");
+  so1.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  so1.AppendExecutionProvider("QNN", provider_options);
+  Ort::SessionOptions so2;
+
+  // Test CreateFromBinaryListAsync path
+  provider_options["enable_vtcm_backup_buffer_sharing"] = "1";
+  so2.SetLogId("so2");
+  so2.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  so2.AppendExecutionProvider("QNN", provider_options);
+
+  EXPECT_TRUE(2 == ctx_model_paths.size());
+#ifdef _WIN32
+  std::wstring ctx_model_file1(ctx_model_paths[0].begin(), ctx_model_paths[0].end());
+  std::wstring ctx_model_file2(ctx_model_paths[1].begin(), ctx_model_paths[1].end());
+#else
+  std::string ctx_model_file1(ctx_model_paths[0].begin(), ctx_model_paths[0].end());
+  std::string ctx_model_file2(ctx_model_paths[1].begin(), ctx_model_paths[1].end());
+#endif
+  Ort::Session session1(*ort_env, ctx_model_file1.c_str(), so1);
+  Ort::Session session2(*ort_env, ctx_model_file2.c_str(), so2);
+
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  GetModelInputNames(ctx_model_paths[1], input_names, output_names,
+                     DefaultLoggingManager().DefaultLogger());
+
+  // Run sessions
+  // prepare input
+  std::vector<int64_t> input_dim{2, 3};
+  std::vector<float> input_value(2 * 3, 0.0f);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names_c;
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                                 input_dim.data(), input_dim.size());
+    ort_inputs.push_back(std::move(input_tensor));
+    input_names_c.push_back(input_names[i].c_str());
+  }
+  std::vector<const char*> output_names_c;
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    output_names_c.push_back(output_names[i].c_str());
+  }
+
+  auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                   output_names_c.data(), 1);
+  auto ort_outputs2 = session2.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
                                    output_names_c.data(), 1);
 #endif
 

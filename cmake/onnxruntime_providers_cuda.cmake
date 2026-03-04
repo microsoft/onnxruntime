@@ -198,7 +198,7 @@
       endif()
 
       if (MSVC)
-          target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>")
       endif()
     endif()
 
@@ -217,6 +217,10 @@
         # be used due to `&& not_a_const`. This affects too many places for it to be reasonable to disable at a finer
         # granularity.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
+
+        # Warning C4211: nonstandard extension used: redefined extern to static
+        # non_max_suppression_impl.cu
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>")
       endif()
     endif()
 
@@ -257,6 +261,17 @@
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
     target_link_libraries(${target} PRIVATE Eigen3::Eigen)
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+
+    # Handle CUDA 13.0 CCCL header directory move
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+      foreach(inc_dir ${CUDAToolkit_INCLUDE_DIRS})
+        if (EXISTS "${inc_dir}/cccl")
+          # Add the cccl subdirectory to the include path so <cuda/std/utility> can be found
+          target_include_directories(${target} PRIVATE "${inc_dir}/cccl")
+        endif()
+      endforeach()
+    endif()
+
     # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
     set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)
     set_target_properties(${target} PROPERTIES FOLDER "ONNXRuntime")

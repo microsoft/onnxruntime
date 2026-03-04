@@ -191,6 +191,9 @@ struct EpNode : public OrtNode {
                       const char** opt_attribute_names) const override;
 
   // Gets this node's parent graph, which is the graph that directly contains this node.
+  // Note: This call may return NULL if this node is obtained by calling GetParentNode()
+  // on an EpGraph that is a subgraph of a control-flow op, and the parent graph has not been created yet,
+  // for example during ORT's GetCapability() when processing the innermost subgraph.
   Status GetGraph(const OrtGraph*& parent_graph) const override;
 
   //
@@ -269,8 +272,16 @@ struct EpGraph : public OrtGraph {
   /// </summary>
   /// <param name="graph_viewer"></param>
   /// <param name="result"></param>
+  /// <param name="create_parent_node">If the `graph_viewer` is a subgraph of a control flow op,
+  ///                                  e.g. Loop/If/Scan op, and `create_parent_node` is set to true,
+  ///                                  then `result` EpGraph will create and own parent node's EpNode
+  ///                                  instance. It's mainly used in EP's GetCapability() as it's
+  ///                                  a bottom-up approach where inner-most subgraph will be constructed
+  ///                                  first and by the time its parent node/graph hasn't be constructed yet.</param>
   /// <returns></returns>
-  static Status Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+  static Status Create(const GraphViewer& graph_viewer,
+                       /*out*/ std::unique_ptr<EpGraph>& result,
+                       bool create_parent_node = false);
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
@@ -364,16 +375,26 @@ struct EpGraph : public OrtGraph {
  private:
   /// <summary>
   /// The real implementation of creating an EpGraph instance.
-  /// Please use one of the above 'Create' functions that internally call this function, and avoid calling this function directly.
+  /// Please use one of the above 'Create' functions that internally call this function,
+  /// and avoid calling this function directly.
   /// </summary>
   /// <param name="ep_graph"></param>
   /// <param name="graph_viewer"></param>
   /// <param name="result"></param>
+  /// <param name="create_parent_node"></param>
   /// <returns></returns>
-  static Status CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+  static Status CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer,
+                           /*out*/ std::unique_ptr<EpGraph>& result, bool create_parent_node = false);
 
   const GraphViewer& graph_viewer_;
+
+  // Hold the parent node created and owned by this graph
+  std::unique_ptr<EpNode> parent_node_owned_ = nullptr;
+
+  // Holds either a pointer to a parent node not owned by this graph, a pointer to parent_node_owned_, or nullptr.
   const EpNode* parent_node_ = nullptr;
+
+  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> parent_node_value_infos_map_;
 
   std::unique_ptr<GraphViewer> owned_graph_viewer_ = nullptr;
   std::unique_ptr<IndexedSubGraph> owned_indexed_sub_graph_ = nullptr;

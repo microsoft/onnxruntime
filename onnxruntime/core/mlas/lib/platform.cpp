@@ -19,7 +19,7 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -421,6 +421,8 @@ Return Value:
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
 
+                // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
+                this->LutGenKernel = &MlasLutGenKernelAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -569,10 +571,21 @@ Return Value:
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
+    // Use the AArch64 assembly implementation on non-Windows platforms.
+#if !defined(_WIN32)
+    // Prefer the hand written micro-kernel for the NCHW convolution path. It
+    // offers a tighter schedule and a specialised two-output inner loop that
+    // reduces pressure on the memory system compared to the generic kernel.
+    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeonAsm;
+#else
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
+#endif
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
+#if defined(__aarch64__) && defined(__linux__)
+    this->ConvPointwiseBf16Kernel = MlasConvPointwiseBf16KernelNeon;
+#endif
     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelNeon;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelNeon;
@@ -603,11 +616,14 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
     if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){
-        this->MlasGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
-        this->MlasGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
-        this->MlasGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+        this->MlasSGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
+        this->MlasSGemmPackBSizeOverride = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasSGemmPackBOverride = ArmKleidiAI::MlasGemmPackB;
+        this->MlasDynamicQGemmBatchOverride = ArmKleidiAI::MlasDynamicQGemmBatch;
+        this->MlasDynamicQGemmPackBSizeOverride = ArmKleidiAI::MlasDynamicQGemmPackBSize;
+        this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
     }

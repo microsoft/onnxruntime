@@ -58,6 +58,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   if (inputs[0]->IsDataType<float>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator,
                                                                        tp,
+                                                                       reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
                                                                        einsum_compute_preprocessor,
                                                                        nullptr);
 
@@ -65,12 +66,14 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<float>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<float>,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<int32_t>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<int32_t>(context,
                                                                          allocator,
                                                                          tp,
+                                                                         reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
                                                                          einsum_compute_preprocessor,
                                                                          nullptr);
 
@@ -78,13 +81,15 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<int32_t>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<int32_t>,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer);
 
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<double>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context,
                                                                         allocator,
                                                                         tp,
+                                                                        reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
                                                                         einsum_compute_preprocessor,
                                                                         nullptr);
 
@@ -92,19 +97,22 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<double>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<double>,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<int64_t>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<int64_t>(context,
                                                                          allocator,
                                                                          tp,
+                                                                         reinterpret_cast<const void*>(&mlas_backend_kernel_selector_config_),
                                                                          einsum_compute_preprocessor,
                                                                          nullptr);
 
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<int64_t>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<int64_t>,
-                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ZeroBuffer);
 
     return einsum_compute_processor.Run();
   }

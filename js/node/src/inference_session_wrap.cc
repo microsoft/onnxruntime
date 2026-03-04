@@ -181,7 +181,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   size_t inputIndex = 0;
   size_t outputIndex = 0;
   Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault};
+  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
 
   try {
     for (auto& name : inputNames_) {
@@ -216,7 +216,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       Napi::Object result = Napi::Object::New(env);
 
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
+        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
       }
       return scope.Escape(result);
     } else {
@@ -244,7 +244,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
       Napi::Object result = Napi::Object::New(env);
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_[i], OrtValueToNapiValue(env, std::move(outputs[i])));
+        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i])));
       }
       return scope.Escape(result);
     }

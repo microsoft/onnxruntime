@@ -119,16 +119,16 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto output_height = output_shape_vector[is_channels_last ? 1 : 2];
   const auto output_width = output_shape_vector[is_channels_last ? 2 : 3];
 
-  uint32_t auto_pad_adjust = conv_attrs_.auto_pad == AutoPadType::SAME_LOWER ? 1 : 0;
-  auto pad0 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[0] : (pads[0] + pads[2] + auto_pad_adjust) / 2;
-  auto pad1 = conv_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
-  std::vector<uint32_t> updated_pads{pad0, pad1};
+  // pads[0] and pads[1] already contain the correct head (beginning) padding values
+  // computed by InferPadsAndOutputShape() which handles auto_pad correctly.
+  // For SAME_UPPER: head gets less padding (pad_needed / 2)
+  // For SAME_LOWER: head gets more padding ((pad_needed + 1) / 2)
+  std::vector<uint32_t> updated_pads{pads[0], pads[1]};
 
   if (CanApplyIm2ColMatMulProgram(context,
                                   is_channels_last,
                                   activation_.activation_kind_ != ActivationKind::None,
                                   kernel_shape,
-                                  conv_attrs_.auto_pad,
                                   onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
     return ApplyIm2ColMatMulProgram(context,
                                     is_channels_last,
@@ -299,8 +299,7 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   // kernel directly from context.Input(1), ignoring prepacked weights.
   // Skip prepacking when this path will be used at runtime.
   if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_.activation_kind_ != ActivationKind::None,
-                                  kernel_shape, conv_attrs_.auto_pad,
-                                  onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
+                                  kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group))) {
     return Status::OK();
   }
 

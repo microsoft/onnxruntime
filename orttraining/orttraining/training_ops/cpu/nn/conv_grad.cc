@@ -169,7 +169,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             skip_im2col ? Xdata + group_id * X_offset : col_buffer_data,
             1,
             dWdata + group_id * W_offset,
-            tp);
+            tp, &mlas_backend_kernel_selector_config_);
       }
     }
     if (dB) {
@@ -207,7 +207,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             dYdata,
             0,
             col_buffer_data,
-            tp);
+            tp, &mlas_backend_kernel_selector_config_);
 
         if (kernel_rank == 2) {
           math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(

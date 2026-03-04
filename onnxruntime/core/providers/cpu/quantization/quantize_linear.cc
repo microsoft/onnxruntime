@@ -121,7 +121,7 @@ static void PrepareForQDQ(const TensorShape& input_shape,
 #define REGISTER_DEQUANTIZELINEAR(T)                                         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                            \
       DequantizeLinear,                                                      \
-      24,                                                                    \
+      25,                                                                    \
       T,                                                                     \
       KernelDefBuilder()                                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
@@ -160,7 +160,7 @@ static void PrepareForQDQ(const TensorShape& input_shape,
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T>);
 
-// Opset24
+// Opset25
 REGISTER_DEQUANTIZELINEAR(int8_t)
 REGISTER_DEQUANTIZELINEAR(uint8_t)
 REGISTER_DEQUANTIZELINEAR(int16_t)
@@ -168,11 +168,28 @@ REGISTER_DEQUANTIZELINEAR(uint16_t)
 REGISTER_DEQUANTIZELINEAR(int32_t)
 REGISTER_DEQUANTIZELINEAR(Int4x2)
 REGISTER_DEQUANTIZELINEAR(UInt4x2)
+REGISTER_DEQUANTIZELINEAR(Int2x4)
+REGISTER_DEQUANTIZELINEAR(UInt2x4)
 #if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FN)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
+
+// opset24
+REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(int16_t, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(uint16_t, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Int4x2, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(UInt4x2, 24, 24)
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FN, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2, 24, 24)
+REGISTER_DEQUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 24, 24)
 #endif
 
 // Opset 23 added support for float4e2m1.
@@ -294,7 +311,7 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
 }  // namespace contrib
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
-template <typename T, typename OutT, bool is_4bit>
+template <typename T, typename OutT, bool is_sub_byte, int elements_per_byte = 0>
 struct DequantizeLinearApply;
 
 // The dimensions before quantize axis and after quantize axis can be flattened.
@@ -302,8 +319,8 @@ struct DequantizeLinearApply;
 // If the quantization happens on the first or last axis, the flattened tensor is
 // effectively rank-2.
 // For per tensor quantization, the tensor is effectively rank-1.
-template <typename T, typename OutT>
-struct DequantizeLinearApply<T, OutT, false> {
+template <typename T, typename OutT, int elements_per_byte>
+struct DequantizeLinearApply<T, OutT, false, elements_per_byte> {
   /**
    * @brief Calculate per-tensor/layer or per-axis quantization of DequantizeLinear on the
    *        flattened tensors.
@@ -398,24 +415,26 @@ struct DequantizeLinearApply<T, OutT, false> {
   }
 };
 
-template <typename T, typename OutT>
-struct DequantizeLinearApply<T, OutT, true> {
-  // per-tensor/layer or per-axis quantization
+template <typename T, typename OutT, int elements_per_byte>
+struct DequantizeLinearApply<T, OutT, true, elements_per_byte> {
+  // per-tensor/layer or per-axis quantization for sub-byte types
   void op(size_t M, size_t K, size_t N,
           const T* input, const OutT* scale, OutT* output, const T* zero_point, concurrency::ThreadPool* thread_pool) {
     ORT_UNUSED_PARAMETER(thread_pool);
     size_t input_index = 0;
+    constexpr size_t shift_bits = (elements_per_byte == 2) ? 1 : 2;  // log2(elements_per_byte)
+    constexpr size_t mask = elements_per_byte - 1;                   // For modulo operation
 
     for (size_t m = 0; m < M; m++) {
       for (size_t bd = 0; bd < K; bd++) {
-        size_t bd_i = bd >> 1;  /*bd / 2*/
-        size_t bd_j = bd & 0x1; /*bd % 2*/
+        size_t bd_i = bd >> shift_bits;  // bd / elements_per_byte
+        size_t bd_j = bd & mask;         // bd % elements_per_byte
         auto zp = zero_point ? static_cast<int32_t>(zero_point[bd_i].GetElem(bd_j)) : 0;
         auto sc = static_cast<float>(scale[bd]);
 
         for (size_t bs = 0; bs < N; bs++) {
-          size_t input_i = input_index >> 1;
-          size_t input_j = input_index & 0x1;
+          size_t input_i = input_index >> shift_bits;
+          size_t input_j = input_index & mask;
           int32_t val = static_cast<int32_t>(input[input_i].GetElem(input_j));
           *output++ = static_cast<OutT>(static_cast<float>(val - zp) * sc);
           input_index += 1;
@@ -432,6 +451,8 @@ struct DequantizeLinearApply<T, OutT, true> {
           const T* input, const OutT* scale, OutT* output, const T* zero_point, concurrency::ThreadPool* thread_pool) {
     ORT_UNUSED_PARAMETER(thread_pool);
     size_t input_index = 0;
+    constexpr size_t shift_bits = (elements_per_byte == 2) ? 1 : 2;  // log2(elements_per_byte)
+    constexpr size_t mask = elements_per_byte - 1;                   // For modulo operation
 
     if (zero_point) {
       size_t zp_index = 0;
@@ -441,10 +462,10 @@ struct DequantizeLinearApply<T, OutT, true> {
           for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {
             auto q_zp_index = zp_index;
             for (size_t bs = 0; bs < N; ++bs, ++input_index, ++q_zp_index) {
-              auto zp = static_cast<int32_t>(zero_point[q_zp_index >> 1].GetElem(q_zp_index & 0x1));
+              auto zp = static_cast<int32_t>(zero_point[q_zp_index >> shift_bits].GetElem(q_zp_index & mask));
               auto sc = static_cast<float>(scale[bs]);
 
-              int32_t val = static_cast<int32_t>(input[input_index >> 1].GetElem(input_index & 0x1));
+              int32_t val = static_cast<int32_t>(input[input_index >> shift_bits].GetElem(input_index & mask));
               *output++ = static_cast<OutT>(static_cast<float>(val - zp) * sc);
             }
           }
@@ -460,7 +481,7 @@ struct DequantizeLinearApply<T, OutT, true> {
             for (size_t bs = 0; bs < N; ++bs, ++input_index) {
               auto sc = static_cast<float>(scale[bs]);
 
-              int32_t val = static_cast<int32_t>(input[input_index >> 1].GetElem(input_index & 0x1));
+              int32_t val = static_cast<int32_t>(input[input_index >> shift_bits].GetElem(input_index & mask));
               *output++ = static_cast<OutT>(static_cast<float>(val) * sc);
             }
           }
@@ -477,8 +498,8 @@ struct DequantizeLinearApply<T, OutT, true> {
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 #define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                          \
-  template <typename OutT>                                                                         \
-  struct DequantizeLinearApply<T, OutT, false> {                                                   \
+  template <typename OutT, int elements_per_byte>                                                  \
+  struct DequantizeLinearApply<T, OutT, false, elements_per_byte> {                                \
     /* Per-tensor/layer or per-axis quantization */                                                \
     void op(size_t M, size_t K, size_t N,                                                          \
             const T* input, const OutT* scale, OutT* output, const T*, concurrency::ThreadPool*) { \
@@ -546,38 +567,42 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   const auto to = x_scale.GetElementType();
   const T* input = x.Data<T>();
-  constexpr bool is_4bit = boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value;
+  constexpr bool is_sub_byte = boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2, Int2x4, UInt2x4>, T>::value;
+  // Determine elements_per_byte: Int4x2/UInt4x2 = 2, Int2x4/UInt2x4 = 4
+  constexpr int elements_per_byte =
+      boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value ? 2 : boost::mp11::mp_contains<TypeList<Int2x4, UInt2x4>, T>::value ? 4
+                                                                                                                                        : 0;
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   if (to == ONNX_NAMESPACE::TensorProto::FLOAT) {
     const float* scale = x_scale.Data<float>();
     float* output = y.MutableData<float>();
     if (block_size_) {
-      DequantizeLinearApply<T, float, is_4bit>().op(static_cast<size_t>(process_block_count),
-                                                    static_cast<size_t>(broadcast_dim),
-                                                    static_cast<size_t>(process_block_size),
-                                                    static_cast<size_t>(block_size_),
-                                                    input, scale, output, zero_point, thread_pool);
+      DequantizeLinearApply<T, float, is_sub_byte, elements_per_byte>().op(static_cast<size_t>(process_block_count),
+                                                                           static_cast<size_t>(broadcast_dim),
+                                                                           static_cast<size_t>(process_block_size),
+                                                                           static_cast<size_t>(block_size_),
+                                                                           input, scale, output, zero_point, thread_pool);
     } else {
-      DequantizeLinearApply<T, float, is_4bit>().op(static_cast<size_t>(process_block_count),
-                                                    static_cast<size_t>(broadcast_dim),
-                                                    static_cast<size_t>(process_block_size),
-                                                    input, scale, output, zero_point, thread_pool);
+      DequantizeLinearApply<T, float, is_sub_byte, elements_per_byte>().op(static_cast<size_t>(process_block_count),
+                                                                           static_cast<size_t>(broadcast_dim),
+                                                                           static_cast<size_t>(process_block_size),
+                                                                           input, scale, output, zero_point, thread_pool);
     }
   } else if (to == ONNX_NAMESPACE::TensorProto::FLOAT16) {
     const MLFloat16* scale = x_scale.Data<MLFloat16>();
     MLFloat16* output = y.MutableData<MLFloat16>();
     if (block_size_) {
-      DequantizeLinearApply<T, MLFloat16, is_4bit>().op(static_cast<size_t>(process_block_count),
-                                                        static_cast<size_t>(broadcast_dim),
-                                                        static_cast<size_t>(process_block_size),
-                                                        static_cast<size_t>(block_size_),
-                                                        input, scale, output, zero_point, thread_pool);
+      DequantizeLinearApply<T, MLFloat16, is_sub_byte, elements_per_byte>().op(static_cast<size_t>(process_block_count),
+                                                                               static_cast<size_t>(broadcast_dim),
+                                                                               static_cast<size_t>(process_block_size),
+                                                                               static_cast<size_t>(block_size_),
+                                                                               input, scale, output, zero_point, thread_pool);
     } else {
-      DequantizeLinearApply<T, MLFloat16, is_4bit>().op(static_cast<size_t>(process_block_count),
-                                                        static_cast<size_t>(broadcast_dim),
-                                                        static_cast<size_t>(process_block_size),
-                                                        input, scale, output, zero_point, thread_pool);
+      DequantizeLinearApply<T, MLFloat16, is_sub_byte, elements_per_byte>().op(static_cast<size_t>(process_block_count),
+                                                                               static_cast<size_t>(broadcast_dim),
+                                                                               static_cast<size_t>(process_block_size),
+                                                                               input, scale, output, zero_point, thread_pool);
     }
   } else if (to == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
     ORT_THROW("DequantizeLinear into BFLOAT16 is not implemented yet.");
@@ -591,12 +616,14 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 #define REGISTER_QUANTIZELINEAR(T)                                          \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                           \
       QuantizeLinear,                                                       \
-      24,                                                                   \
+      25,                                                                   \
       T,                                                                    \
       KernelDefBuilder()                                                    \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),          \
       QuantizeLinear<T>);
 
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T, start_version, end_version)    \
@@ -608,7 +635,21 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
       KernelDefBuilder()                                                    \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),          \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),          \
+      QuantizeLinear<T>);
+
+#define REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(T, start_version, end_version) \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                     \
+      QuantizeLinear,                                                           \
+      start_version,                                                            \
+      end_version,                                                              \
+      T,                                                                        \
+      KernelDefBuilder()                                                        \
+          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),          \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()})     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),              \
       QuantizeLinear<T>);
 
 #define REGISTER_QUANTIZELINEAR_VERSIONED_PRE_19(T)                   \
@@ -632,18 +673,34 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T>);
 
-// Opset 24
+// Opset 25
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
 REGISTER_QUANTIZELINEAR(int16_t)
 REGISTER_QUANTIZELINEAR(uint16_t)
 REGISTER_QUANTIZELINEAR(Int4x2)
 REGISTER_QUANTIZELINEAR(UInt4x2)
+REGISTER_QUANTIZELINEAR(Int2x4)
+REGISTER_QUANTIZELINEAR(UInt2x4)
 #if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_QUANTIZELINEAR(Float8E4M3FN)
 REGISTER_QUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_QUANTIZELINEAR(Float8E5M2)
 REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
+
+// Opset 24
+REGISTER_QUANTIZELINEAR_VERSIONED(int8_t, 24, 24)
+REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t, 24, 24)
+REGISTER_QUANTIZELINEAR_VERSIONED(int16_t, 24, 24)
+REGISTER_QUANTIZELINEAR_VERSIONED(uint16_t, 24, 24)
+REGISTER_QUANTIZELINEAR_VERSIONED(Int4x2, 24, 24)
+REGISTER_QUANTIZELINEAR_VERSIONED(UInt4x2, 24, 24)
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FN, 24, 24)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 24, 24)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2, 24, 24)
+REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 24, 24)
 #endif
 
 // Opset 23 added support for float4e2m1.
@@ -661,28 +718,27 @@ REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 23, 23)
 #endif
 
 // Opset 21 added 16-bit and 4-bit int support to Q ops.
-// TODO(adrianlizarraga): Support int4 and block quantization.
-REGISTER_QUANTIZELINEAR_VERSIONED(int8_t, 21, 22)
-REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t, 21, 22)
-REGISTER_QUANTIZELINEAR_VERSIONED(int16_t, 21, 22)
-REGISTER_QUANTIZELINEAR_VERSIONED(uint16_t, 21, 22)
-REGISTER_QUANTIZELINEAR_VERSIONED(Int4x2, 21, 22)
-REGISTER_QUANTIZELINEAR_VERSIONED(UInt4x2, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(int8_t, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(uint8_t, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(int16_t, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(uint16_t, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Int4x2, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(UInt4x2, 21, 22)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FN, 21, 22)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 21, 22)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2, 21, 22)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Float8E4M3FN, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Float8E4M3FNUZ, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Float8E5M2, 21, 22)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Float8E5M2FNUZ, 21, 22)
 #endif
 
 // Opset 19 added 8-bit floats to Q ops.
-REGISTER_QUANTIZELINEAR_VERSIONED(int8_t, 19, 20)
-REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t, 19, 20)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(int8_t, 19, 20)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(uint8_t, 19, 20)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FN, 19, 20)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E4M3FNUZ, 19, 20)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2, 19, 20)
-REGISTER_QUANTIZELINEAR_VERSIONED(Float8E5M2FNUZ, 19, 20)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Float8E4M3FN, 19, 20)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Float8E4M3FNUZ, 19, 20)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Float8E5M2, 19, 20)
+REGISTER_QUANTIZELINEAR_VERSIONED_PRE_23(Float8E5M2FNUZ, 19, 20)
 #endif
 
 // Before opset 19, Q only supported int8 and uint8.
@@ -790,71 +846,85 @@ void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const
   }
 }
 
-// Quantizes float32 to INT4 (in-place) using MLAS kernel.
-#define DEFINE_COMPUTE_LOOP_FP32_TO_INT4(INT4_TYPE, QUANT_FUNC)                                               \
-  template <>                                                                                                 \
-  void ComputeLoop(OpKernelContext* ctx, const float* input, const float* scale, const INT4_TYPE* zero_point, \
-                   INT4_TYPE* output, int64_t M, int64_t K, int64_t N, bool saturate) {                       \
-    ORT_UNUSED_PARAMETER(saturate);                                                                           \
-    size_t output_index = 0;                                                                                  \
-    for (size_t m = 0; m < static_cast<size_t>(M); m++) {                                                     \
-      for (size_t bd = 0; bd < static_cast<size_t>(K); bd++) {                                                \
-        size_t bd_i = bd >> 1;  /*bd / 2*/                                                                    \
-        size_t bd_j = bd & 0x1; /*bd % 2*/                                                                    \
-        INT4_TYPE::UnpackedType zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                         \
-        QUANT_FUNC(input, output, output_index, output_index + static_cast<size_t>(N),                        \
-                   scale[bd], INT4_TYPE(zp, 0), ctx->GetOperatorThreadPool());                                \
-        input += N;                                                                                           \
-        output_index += static_cast<size_t>(N);                                                               \
-      }                                                                                                       \
-    }                                                                                                         \
-    assert(output_index == static_cast<size_t>(M * K * N));                                                   \
+// Helper macros to create zero point with correct number of constructor arguments
+#define CREATE_SUB_BYTE_ZP_2(TYPE, zp) TYPE(zp, 0)
+#define CREATE_SUB_BYTE_ZP_4(TYPE, zp) TYPE(zp, 0, 0, 0)
+#define CREATE_SUB_BYTE_ZP(TYPE, zp, ELEMENTS_PER_BYTE) CREATE_SUB_BYTE_ZP_##ELEMENTS_PER_BYTE(TYPE, zp)
+
+// Quantizes float32 to sub-byte types using MLAS kernel (4-bit) or generic quantization (2-bit).
+#define DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(SUB_BYTE_TYPE, QUANT_FUNC, ELEMENTS_PER_BYTE)                        \
+  template <>                                                                                                     \
+  void ComputeLoop(OpKernelContext* ctx, const float* input, const float* scale, const SUB_BYTE_TYPE* zero_point, \
+                   SUB_BYTE_TYPE* output, int64_t M, int64_t K, int64_t N, bool saturate) {                       \
+    ORT_UNUSED_PARAMETER(saturate);                                                                               \
+    size_t output_index = 0;                                                                                      \
+    constexpr size_t shift_bits = (ELEMENTS_PER_BYTE == 2) ? 1 : 2; /* log2(ELEMENTS_PER_BYTE) */                 \
+    constexpr size_t mask = ELEMENTS_PER_BYTE - 1;                  /* For modulo operation */                    \
+    for (size_t m = 0; m < static_cast<size_t>(M); m++) {                                                         \
+      for (size_t bd = 0; bd < static_cast<size_t>(K); bd++) {                                                    \
+        size_t bd_i = bd >> shift_bits; /* bd / ELEMENTS_PER_BYTE */                                              \
+        size_t bd_j = bd & mask;        /* bd % ELEMENTS_PER_BYTE */                                              \
+        SUB_BYTE_TYPE::UnpackedType zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                         \
+        QUANT_FUNC(input, output, output_index, output_index + static_cast<size_t>(N),                            \
+                   scale[bd], CREATE_SUB_BYTE_ZP(SUB_BYTE_TYPE, zp, ELEMENTS_PER_BYTE),                           \
+                   ctx->GetOperatorThreadPool());                                                                 \
+        input += N;                                                                                               \
+        output_index += static_cast<size_t>(N);                                                                   \
+      }                                                                                                           \
+    }                                                                                                             \
+    assert(output_index == static_cast<size_t>(M * K * N));                                                       \
   }
 
-DEFINE_COMPUTE_LOOP_FP32_TO_INT4(Int4x2, ParQuantizeLinearStdS4)
-DEFINE_COMPUTE_LOOP_FP32_TO_INT4(UInt4x2, ParQuantizeLinearStdU4)
+DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(Int4x2, ParQuantizeLinearStdS4, 2)
+DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(UInt4x2, ParQuantizeLinearStdU4, 2)
+DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(Int2x4, ParQuantizeLinearStdS2, 4)
+DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(UInt2x4, ParQuantizeLinearStdU2, 4)
 
-// Defines functions to quantize MLFloat16 to INT4.
-// This is not an efficient implementation: we allocate a buffer, quantize to INT8, and then copy/clamp/pack
-// into output INT4 buffer.
-#define DEFINE_COMPUTE_LOOP_FP16_TO_INT4(INT4_TYPE)                                                             \
-  template <>                                                                                                   \
-  void ComputeLoop<INT4_TYPE, MLFloat16>(OpKernelContext * ctx, const MLFloat16* input, const MLFloat16* scale, \
-                                         const INT4_TYPE* zero_point, INT4_TYPE* output, int64_t M,             \
-                                         int64_t K, int64_t N, bool saturate) {                                 \
-    ORT_UNUSED_PARAMETER(saturate);                                                                             \
-                                                                                                                \
-    size_t total_size = static_cast<size_t>(M * K * N);                                                         \
-    auto tmp_buf = std::make_unique<INT4_TYPE::UnpackedType[]>(total_size);                                     \
-    size_t tmp_buf_index = 0;                                                                                   \
-                                                                                                                \
-    for (size_t m = 0; m < static_cast<size_t>(M); m++) {                                                       \
-      for (size_t bd = 0; bd < static_cast<size_t>(K); bd++) {                                                  \
-        size_t bd_i = bd >> 1;  /*bd / 2*/                                                                      \
-        size_t bd_j = bd & 0x1; /*bd % 2*/                                                                      \
-        INT4_TYPE::UnpackedType zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                           \
-        ParQuantizeLinearStd<INT4_TYPE::UnpackedType>(input, tmp_buf.get() + tmp_buf_index,                     \
-                                                      static_cast<size_t>(N), scale[bd],                        \
-                                                      zp, ctx->GetOperatorThreadPool());                        \
-        input += N;                                                                                             \
-        tmp_buf_index += static_cast<size_t>(N);                                                                \
-      }                                                                                                         \
-    }                                                                                                           \
-                                                                                                                \
-    for (size_t i = 0; i < total_size; i++) {                                                                   \
-      tmp_buf[i] = std::min<INT4_TYPE::UnpackedType>(INT4_TYPE::max_val,                                        \
-                                                     std::max<INT4_TYPE::UnpackedType>(INT4_TYPE::min_val,      \
-                                                                                       tmp_buf[i]));            \
-    }                                                                                                           \
-                                                                                                                \
-    size_t num_int4_pairs = (total_size + 1) / 2;                                                               \
-    auto dst = gsl::make_span<INT4_TYPE>(output, num_int4_pairs);                                               \
-    auto src = gsl::make_span<const INT4_TYPE::UnpackedType>(tmp_buf.get(), total_size);                        \
-    INT4_TYPE::Pack(dst, src);                                                                                  \
+// Defines functions to quantize MLFloat16 to sub-byte types.
+// This is not an efficient implementation: we allocate a buffer, quantize to the unpacked type, and then clamp/pack
+// into output sub-byte buffer.
+#define DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(SUB_BYTE_TYPE, ELEMENTS_PER_BYTE)                                         \
+  template <>                                                                                                          \
+  void ComputeLoop<SUB_BYTE_TYPE, MLFloat16>(OpKernelContext * ctx, const MLFloat16* input, const MLFloat16* scale,    \
+                                             const SUB_BYTE_TYPE* zero_point, SUB_BYTE_TYPE* output, int64_t M,        \
+                                             int64_t K, int64_t N, bool saturate) {                                    \
+    ORT_UNUSED_PARAMETER(saturate);                                                                                    \
+                                                                                                                       \
+    size_t total_size = static_cast<size_t>(M * K * N);                                                                \
+    auto tmp_buf = std::make_unique<SUB_BYTE_TYPE::UnpackedType[]>(total_size);                                        \
+    size_t tmp_buf_index = 0;                                                                                          \
+    constexpr size_t shift_bits = (ELEMENTS_PER_BYTE == 2) ? 1 : 2; /* log2(ELEMENTS_PER_BYTE) */                      \
+    constexpr size_t mask = ELEMENTS_PER_BYTE - 1;                  /* For modulo operation */                         \
+                                                                                                                       \
+    for (size_t m = 0; m < static_cast<size_t>(M); m++) {                                                              \
+      for (size_t bd = 0; bd < static_cast<size_t>(K); bd++) {                                                         \
+        size_t bd_i = bd >> shift_bits; /* bd / ELEMENTS_PER_BYTE */                                                   \
+        size_t bd_j = bd & mask;        /* bd % ELEMENTS_PER_BYTE */                                                   \
+        SUB_BYTE_TYPE::UnpackedType zp = zero_point ? zero_point[bd_i].GetElem(bd_j) : 0;                              \
+        ParQuantizeLinearStd<SUB_BYTE_TYPE::UnpackedType>(input, tmp_buf.get() + tmp_buf_index,                        \
+                                                          static_cast<size_t>(N), scale[bd],                           \
+                                                          zp, ctx->GetOperatorThreadPool());                           \
+        input += N;                                                                                                    \
+        tmp_buf_index += static_cast<size_t>(N);                                                                       \
+      }                                                                                                                \
+    }                                                                                                                  \
+                                                                                                                       \
+    for (size_t i = 0; i < total_size; i++) {                                                                          \
+      tmp_buf[i] = std::min<SUB_BYTE_TYPE::UnpackedType>(SUB_BYTE_TYPE::max_val,                                       \
+                                                         std::max<SUB_BYTE_TYPE::UnpackedType>(SUB_BYTE_TYPE::min_val, \
+                                                                                               tmp_buf[i]));           \
+    }                                                                                                                  \
+                                                                                                                       \
+    size_t num_packed = (total_size + ELEMENTS_PER_BYTE - 1) / ELEMENTS_PER_BYTE;                                      \
+    auto dst = gsl::make_span<SUB_BYTE_TYPE>(output, num_packed);                                                      \
+    auto src = gsl::make_span<const SUB_BYTE_TYPE::UnpackedType>(tmp_buf.get(), total_size);                           \
+    SUB_BYTE_TYPE::Pack(dst, src);                                                                                     \
   }
 
-DEFINE_COMPUTE_LOOP_FP16_TO_INT4(Int4x2)
-DEFINE_COMPUTE_LOOP_FP16_TO_INT4(UInt4x2)
+DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(Int4x2, 2)
+DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(UInt4x2, 2)
+DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(Int2x4, 4)
+DEFINE_COMPUTE_LOOP_FP16_TO_SUB_BYTE(UInt2x4, 4)
 
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>
@@ -875,7 +945,8 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   T* output = y.MutableData<T>();
 
   constexpr int output_type_group_ =
-      boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value ? 2
+      boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value   ? 2
+      : boost::mp11::mp_contains<TypeList<Int2x4, UInt2x4>, T>::value ? 3
 #if !defined(DISABLE_FLOAT8_TYPES)
       : boost::mp11::mp_contains<element_type_lists::AllFloat8, T>::value ? 1
 #endif

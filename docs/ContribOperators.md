@@ -2520,15 +2520,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.GroupQueryAttention"></a><a name="com.microsoft.groupqueryattention">**com.microsoft.GroupQueryAttention**</a>
 
-  Group Query Self/Cross Attention.
+  Group Query Self/Cross Attention with KV Cache Quantization Support.
   
-  *Highly recommend using k-v cache share buffer for both CPU and CUDA. Enabled through IOBinding past and present kv.
-  Supports different number of heads for q and kv for CPU and CUDA.
-  Only supports causal and local attention.
-  Supports rotary position embedding for CPU and CUDA.
-  Supports packed input for CPU and CUDA.
-  Supports continuous decoding for batch_size == 1 for CPU and CUDA.
+  This operator implements causal grouped-query attention with past state (KV cache) support.
+  It also supports optional float8, int8 or int4 quantization for the KV cache to reduce memory footprint.
   
+  **Cache Format:**
+  The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
+  
+  **Quantization:**
+  When quantization is enabled, `past_key` and `past_value` inputs can be of type `float8e4m3fn`, `uint8` or `int8`. The corresponding `k_scale` and `v_scale` tensors must be provided.
+  The operator will output `present_key` and `present_value` in same format as the `past_key` and `past_value`.
+  
+  For 4-bit quantization, the data type is uint8 where each byte contains two 4-bit values. The bit width of quantized KV cache can be set using `kv_cache_bit_width` attribute.
+  
+  The shapes of the k_scale, v_scale tensors shall be broadcastable to present_key shape.
+  
+  **Quantization Modes (`k_quant_type`, `v_quant_type` attributes):**
+  - **"NONE"**: No quantization.
+  - **"PER_TENSOR"**: A single scale for the entire tensor. Scale example shape: `[1]`.
+  - **"PER_CHANNEL"**: A scale for each channel. Scale example shape: `[1, num_heads_k, 1, head_size]`.
 
 #### Version
 
@@ -2539,6 +2550,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_quant_type</tt> : string</dt>
+<dd>Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
+<dt><tt>kv_cache_bit_width</tt> : int</dt>
+<dd>Bit width of quantized KV cache. Supported values are 8 and 4.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
@@ -2555,9 +2570,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Use a smooth factor in softmax.</dd>
 <dt><tt>softcap</tt> : float</dt>
 <dd>Softcap value for attention weights. Default value is 0.</dd>
+<dt><tt>v_quant_type</tt> : string</dt>
+<dd>Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
 </dl>
 
-#### Inputs (7 - 12)
+#### Inputs (7 - 14)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2566,9 +2583,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Key with shape (batch_size, kv_sequence_length, kv_hidden_size) </dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, kv_sequence_length, kv_hidden_size)</dd>
-<dt><tt>past_key</tt> (optional) : T</dt>
+<dt><tt>past_key</tt> (optional) : T_CACHE</dt>
 <dd>past state key with support for format BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
-<dt><tt>past_value</tt> (optional) : T</dt>
+<dt><tt>past_value</tt> (optional) : T_CACHE</dt>
 <dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
 <dt><tt>seqlens_k</tt> : M</dt>
 <dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
@@ -2584,6 +2601,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
 <dd>1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.</dd>
+<dt><tt>k_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Scale tensor for past_key.</dd>
+<dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Scale tensor for past_value.</dd>
 </dl>
 
 #### Outputs (3 - 4)
@@ -2591,9 +2612,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>present_key</tt> : T</dt>
+<dt><tt>present_key</tt> : T_CACHE</dt>
 <dd>present state key with support for format BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
-<dt><tt>present_value</tt> : T</dt>
+<dt><tt>present_value</tt> : T_CACHE</dt>
 <dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>output_qk</tt> (optional) : T</dt>
 <dd>Values of QK matrix multiplication, either before or after softmax normalization</dd>
@@ -2604,6 +2625,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
 <dd>Constrain input and output to float tensors.</dd>
+<dt><tt>T_CACHE</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(uint8), tensor(int8), tensor(float8e4m3fn)</dt>
+<dd>Constrain KV cache types.</dd>
+<dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
+<dd>Constrain KV cache scale types.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>
 </dl>

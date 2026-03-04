@@ -132,9 +132,12 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
 
 size_t get_softmax_lse_size(size_t max_seqlen_q, size_t batch_size, size_t num_heads);
 size_t get_softmax_lse_size(size_t token_count, size_t num_heads);
+size_t get_softmax_lse_accum_size(size_t num_splits, size_t batch_size, size_t num_heads, size_t seqlen_q);
+size_t get_out_accum_size(size_t num_splits, size_t batch_size, size_t num_heads,
+                          size_t seqlen_q, size_t head_size_rounded);
 
-std::tuple<size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_size, size_t seqlen_q, size_t seqlen_k, size_t num_heads,
-                                                                   size_t head_size, size_t num_SMs);
+std::tuple<size_t, size_t, size_t> get_num_splits_and_buffer_sizes(size_t batch_size, size_t seqlen_q, size_t seqlen_k,
+                                                                   size_t num_heads, size_t head_size, size_t num_SMs);
 
 bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k);
 
@@ -142,12 +145,6 @@ bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_hea
 template <typename T>
 bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k) {
 #ifdef ORT_QUICK_BUILD
-  // In quick build mode, only fp16 flash attention is built
-  constexpr bool is_bf16 = std::is_same<T, onnxruntime::BFloat16>::value;
-  if (is_bf16) {
-    return false;
-  }
-
   if (head_size != 128) {
     return false;
   }
