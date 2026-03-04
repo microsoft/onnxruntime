@@ -187,15 +187,18 @@ def create_attention_node_and_io(
         # 4D BNSH inputs: [batch, num_heads, seq_len, head_size]
         graph_input = [
             helper.make_tensor_value_info(
-                "query", ort_type,
+                "query",
+                ort_type,
                 [config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size],
             ),
             helper.make_tensor_value_info(
-                "key", ort_type,
+                "key",
+                ort_type,
                 [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
             ),
             helper.make_tensor_value_info(
-                "value", ort_type,
+                "value",
+                ort_type,
                 [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
             ),
         ]
@@ -451,7 +454,8 @@ def attention_prompt_func(
     if config.use_4d_bnsh:
         out_torch = torch.zeros(
             (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size),
-            dtype=out_dtype, device=device,
+            dtype=out_dtype,
+            device=device,
         )
     else:
         out_torch = torch.zeros(
@@ -568,7 +572,8 @@ def attention_past_func(
     if config.use_4d_bnsh:
         out_torch = torch.zeros(
             (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size),
-            dtype=out_dtype, device=device,
+            dtype=out_dtype,
+            device=device,
         )
     else:
         out_torch = torch.zeros(

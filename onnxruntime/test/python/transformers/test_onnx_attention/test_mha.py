@@ -1174,21 +1174,46 @@ def mha_unfused_test_cases():
     verify the unfused kernel handles MHA correctly.
     """
     cases = [
-        ("prompt_causal", AttentionConfig(
-            batch_size=2, q_sequence_length=16, kv_sequence_length=16,
-            q_num_heads=8, kv_num_heads=8, head_size=64, is_causal=1,
-            attn_mask_type="additive",
-        )),
-        ("prompt_noncausal", AttentionConfig(
-            batch_size=2, q_sequence_length=16, kv_sequence_length=16,
-            q_num_heads=8, kv_num_heads=8, head_size=64, is_causal=0,
-            attn_mask_type="additive",
-        )),
-        ("decode_causal", AttentionConfig(
-            batch_size=2, q_sequence_length=1, kv_sequence_length=1,
-            past_kv_sequence_length=32, q_num_heads=8, kv_num_heads=8,
-            head_size=64, is_causal=1, attn_mask_type="additive",
-        )),
+        (
+            "prompt_causal",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=16,
+                kv_sequence_length=16,
+                q_num_heads=8,
+                kv_num_heads=8,
+                head_size=64,
+                is_causal=1,
+                attn_mask_type="additive",
+            ),
+        ),
+        (
+            "prompt_noncausal",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=16,
+                kv_sequence_length=16,
+                q_num_heads=8,
+                kv_num_heads=8,
+                head_size=64,
+                is_causal=0,
+                attn_mask_type="additive",
+            ),
+        ),
+        (
+            "decode_causal",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=1,
+                kv_sequence_length=1,
+                past_kv_sequence_length=32,
+                q_num_heads=8,
+                kv_num_heads=8,
+                head_size=64,
+                is_causal=1,
+                attn_mask_type="additive",
+            ),
+        ),
     ]
     return cases
 
@@ -1277,7 +1302,7 @@ class TestONNXAttentionMHABroadcastMask(unittest.TestCase):
         mask_filter = float(torch.finfo(torch_type).min)
         mask_2d = torch.zeros(16, 16, device=device, dtype=torch_type)
         for i in range(16):
-            mask_2d[i, i + 1:] = mask_filter
+            mask_2d[i, i + 1 :] = mask_filter
         attn_mask = mask_2d.unsqueeze(0).unsqueeze(0)  # (1, 1, 16, 16)
 
         # Reference: expand to full (B, H, Q, K)
@@ -1286,8 +1311,14 @@ class TestONNXAttentionMHABroadcastMask(unittest.TestCase):
 
         # ORT path
         out_ort, _, _ = attention_prompt_func(
-            q=q, k=k, v=v, config=config, attn_mask=attn_mask,
-            ep="CUDAExecutionProvider", device=device, ort_type=TensorProto.FLOAT16,
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
         )
         out_ort = out_ort.reshape(2, 16, 8, 128)
 

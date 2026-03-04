@@ -1164,27 +1164,52 @@ class TestONNXAttentionGQANonpadKVSeqlenCPU(unittest.TestCase):
 def gqa_4d_bnsh_test_cases():
     """Generate test cases for GQA with 4D BNSH input format."""
     return [
-        ("prompt_nomask", AttentionConfig(
-            batch_size=2, q_sequence_length=16, kv_sequence_length=16,
-            q_num_heads=8, kv_num_heads=2, head_size=128, is_causal=1,
-            use_4d_bnsh=True,
-        )),
-        ("prompt_smallhead", AttentionConfig(
-            batch_size=2, q_sequence_length=16, kv_sequence_length=16,
-            q_num_heads=8, kv_num_heads=4, head_size=64, is_causal=1,
-            use_4d_bnsh=True,
-        )),
+        (
+            "prompt_nomask",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=16,
+                kv_sequence_length=16,
+                q_num_heads=8,
+                kv_num_heads=2,
+                head_size=128,
+                is_causal=1,
+                use_4d_bnsh=True,
+            ),
+        ),
+        (
+            "prompt_smallhead",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=16,
+                kv_sequence_length=16,
+                q_num_heads=8,
+                kv_num_heads=4,
+                head_size=64,
+                is_causal=1,
+                use_4d_bnsh=True,
+            ),
+        ),
     ]
 
 
 def gqa_4d_bnsh_past_test_cases():
     """Generate test cases for GQA decode with 4D BNSH input format."""
     return [
-        ("decode_nomask", AttentionConfig(
-            batch_size=2, q_sequence_length=1, kv_sequence_length=1,
-            past_kv_sequence_length=32, q_num_heads=8, kv_num_heads=2,
-            head_size=128, is_causal=1, use_4d_bnsh=True,
-        )),
+        (
+            "decode_nomask",
+            AttentionConfig(
+                batch_size=2,
+                q_sequence_length=1,
+                kv_sequence_length=1,
+                past_kv_sequence_length=32,
+                q_num_heads=8,
+                kv_num_heads=2,
+                head_size=128,
+                is_causal=1,
+                use_4d_bnsh=True,
+            ),
+        ),
     ]
 
 
@@ -1266,8 +1291,13 @@ class TestONNXAttentionGQAFloatMask(unittest.TestCase):
         # Create additive mask with padding pattern: batch 0 has 10 valid, batch 1 full
         seqlens = torch.tensor([10, 16], dtype=torch.int32, device=device)
         attn_mask = create_additive_mask_from_seqlens(
-            seqlens=seqlens, total_seq_len=16, mask_dims=4,
-            q_seq_len=16, num_heads=8, device=device, dtype=torch_type,
+            seqlens=seqlens,
+            total_seq_len=16,
+            mask_dims=4,
+            q_seq_len=16,
+            num_heads=8,
+            device=device,
+            dtype=torch_type,
         )
 
         # Zero padded KV positions
@@ -1282,8 +1312,14 @@ class TestONNXAttentionGQAFloatMask(unittest.TestCase):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         try:
             out_ort, _, _ = attention_prompt_func(
-                q=q, k=k, v=v, config=config, attn_mask=attn_mask,
-                ep="CUDAExecutionProvider", device=device, ort_type=TensorProto.FLOAT16,
+                q=q,
+                k=k,
+                v=v,
+                config=config,
+                attn_mask=attn_mask,
+                ep="CUDAExecutionProvider",
+                device=device,
+                ort_type=TensorProto.FLOAT16,
             )
         finally:
             os.environ.pop("ORT_DISABLE_FLASH_ATTENTION", None)
