@@ -103,39 +103,7 @@ __global__ void ConvertMaskToSeqlensKernel(
   seqlens_k[batch_idx] = seq_len + seqlen_offset;
 }
 
-Status LaunchConvertMaskToSeqlensK(
-    const bool* attn_mask_bool,
-    int* seqlens_k,
-    int batch_size,
-    int total_seq_len,
-    int mask_dims,
-    int64_t mask_dim0,
-    int64_t mask_dim1,
-    int64_t mask_dim2,
-    cudaStream_t stream,
-    int max_threads_per_block) {
-  if (batch_size == 0 || total_seq_len == 0) {
-    return Status::OK();
-  }
-
-  int threads = std::min(batch_size, max_threads_per_block);
-  int blocks = (batch_size + threads - 1) / threads;
-
-  ConvertMaskToSeqlensKernel<<<blocks, threads, 0, stream>>>(
-      attn_mask_bool,
-      seqlens_k,
-      batch_size,
-      total_seq_len,
-      mask_dims,
-      mask_dim0,
-      mask_dim1,
-      mask_dim2,
-      /*seqlen_offset=*/-1);
-
-  return CUDA_CALL(cudaGetLastError());
-}
-
-// Like LaunchConvertMaskToSeqlensK but with a configurable offset.
+// Convert boolean mask to sequence lengths with a configurable offset.
 // seqlens_k[b] = num_true_tokens + seqlen_offset
 Status LaunchConvertMaskToFlashSeqlensK(
     const bool* attn_mask_bool,
@@ -214,6 +182,61 @@ template Status LaunchConvertBoolMaskToAttentionBias<__half>(
     const bool*, __half*, int64_t, float, cudaStream_t, int);
 template Status LaunchConvertBoolMaskToAttentionBias<__nv_bfloat16>(
     const bool*, __nv_bfloat16*, int64_t, float, cudaStream_t, int);
+
+// Broadcast a 2D attention bias [B, kv_seq] to [B, 1, q_seq, kv_seq] by repeating
+// each batch's row across all query positions. This is needed because MEA uses
+// bias_strideM = kv_seq, so each query position must have its own row of kv_seq values.
+// Without expansion, a 2D mask would cause bias_strideM to walk across batch boundaries.
+template <typename T>
+__global__ void BroadcastBias2DToQSeqKernel(
+    const T* __restrict__ src,
+    T* __restrict__ dst,
+    const int batch_size,
+    const int q_seq_len,
+    const int kv_seq_len) {
+  int64_t total = static_cast<int64_t>(batch_size) * q_seq_len * kv_seq_len;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    // Map flat index → (batch, q_pos, kv_pos)
+    int kv_pos = static_cast<int>(idx % kv_seq_len);
+    int b = static_cast<int>(idx / (static_cast<int64_t>(q_seq_len) * kv_seq_len));
+    // All q positions read from the same src row for this batch
+    dst[idx] = src[static_cast<int64_t>(b) * kv_seq_len + kv_pos];
+  }
+}
+
+template <typename T>
+Status LaunchBroadcastBias2DToQSeq(
+    const T* src,
+    T* dst,
+    int batch_size,
+    int q_seq_len,
+    int kv_seq_len,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  int64_t total = static_cast<int64_t>(batch_size) * q_seq_len * kv_seq_len;
+  if (total == 0) {
+    return Status::OK();
+  }
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), total));
+  int64_t blocks = (total + threads - 1) / threads;
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  BroadcastBias2DToQSeqKernel<T><<<grid_size, threads, 0, stream>>>(
+      src, dst, batch_size, q_seq_len, kv_seq_len);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchBroadcastBias2DToQSeq<float>(
+    const float*, float*, int, int, int, cudaStream_t, int);
+template Status LaunchBroadcastBias2DToQSeq<__half>(
+    const __half*, __half*, int, int, int, cudaStream_t, int);
+template Status LaunchBroadcastBias2DToQSeq<__nv_bfloat16>(
+    const __nv_bfloat16*, __nv_bfloat16*, int, int, int, cudaStream_t, int);
 
 // CUDA kernel to convert nonpad_kv_seqlen (int64) to seqlens_k (int32) for GQA.
 // GQA convention: seqlens_k = nonpad_kv_seqlen - 1 (last valid index, not count).

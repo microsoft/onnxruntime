@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Convert a boolean attention mask to sequence lengths for use with GQA kernels.
+// Convert a boolean attention mask to sequence lengths with a configurable offset.
 //
 // The mask is expected to have the following properties:
 // 1. It represents right-padding only (valid tokens first, padding at the end)
@@ -20,39 +20,6 @@ namespace cuda {
 // For 3D mask (num_heads, q_seq_len, total_seq_len): broadcasts across batches, uses first head/q
 // For 4D mask (B, H, q_seq_len, total_seq_len): uses first head, first q position
 //
-// Parameters:
-//   attn_mask_bool: Input boolean mask on GPU (True = valid, False = padding)
-//   seqlens_k: Output buffer for sequence lengths (seqlen - 1 for GQA convention)
-//   batch_size: Number of batches
-//   total_seq_len: Total sequence length (last dimension of mask)
-//   mask_dims: Number of dimensions in the mask (2, 3, or 4)
-//   mask_dim0: First dimension of mask (batch_size for 2D, num_heads for 3D, batch_size for 4D)
-//   mask_dim1: Second dimension (0 for 2D, q_seq_len for 3D, num_heads for 4D)
-//   mask_dim2: Third dimension (0 for 2D/3D, q_seq_len for 4D)
-//   stream: CUDA stream
-//   max_threads_per_block: Maximum threads per block
-//
-// Returns:
-//   Status::OK() on success
-//
-// Note: Mask validity (right-padding convention, starts with True, contiguous True/False)
-//   is checked asynchronously via CUDA_KERNEL_ASSERT inside the kernel. Invalid masks will
-//   trigger a device-side assertion failure.
-Status LaunchConvertMaskToSeqlensK(
-    const bool* attn_mask_bool,
-    int* seqlens_k,
-    int batch_size,
-    int total_seq_len,
-    int mask_dims,
-    int64_t mask_dim0,
-    int64_t mask_dim1,
-    int64_t mask_dim2,
-    cudaStream_t stream,
-    int max_threads_per_block);
-
-// Like LaunchConvertMaskToSeqlensK but with a configurable offset.
-// Flash attention and MEA custom right padding expect count, not last-valid-index.
-//
 // seqlen_offset adjusts the raw token count:
 //   seqlens_k[b] = num_true_tokens + seqlen_offset
 //
@@ -60,6 +27,10 @@ Status LaunchConvertMaskToSeqlensK(
 //   0: actual token count (for prompt with mha_fwd_kvcache, MEA custom right padding)
 //  -N: subtract N from count (for decode with mha_fwd_kvcache where N=kv_sequence_length,
 //      giving the number of tokens already in cache BEFORE appending new ones)
+//
+// Note: Mask validity (right-padding convention, starts with True, contiguous True/False)
+//   is checked asynchronously via CUDA_KERNEL_ASSERT inside the kernel. Invalid masks will
+//   trigger a device-side assertion failure.
 Status LaunchConvertMaskToFlashSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,
@@ -82,6 +53,19 @@ Status LaunchConvertBoolMaskToAttentionBias(
     T* attention_bias,
     int64_t num_elements,
     float mask_filter_value,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+// Broadcast a 2D attention bias [B, kv_seq] → [B, 1, q_seq, kv_seq] by repeating
+// each batch's row across all query positions. CUDA-graph-capturable replacement for
+// the host-side batch×q_seq cudaMemcpyAsync loop.
+template <typename T>
+Status LaunchBroadcastBias2DToQSeq(
+    const T* src,
+    T* dst,
+    int batch_size,
+    int q_seq_len,
+    int kv_seq_len,
     cudaStream_t stream,
     int max_threads_per_block);
 

@@ -114,7 +114,7 @@ Status Attention<T>::RunFlashAttention(
                                          out_accum_bytes, cuda_stream));
   }
 
-  // --- Fix 3: Prepare Q in BSNH format (flash always expects Q as BSNH) ---
+  // --- Transpose Q from BNSH to BSNH (flash always expects Q as BSNH) ---
   const void* q_data = Q->Data<T>();
   IAllocatorUniquePtr<void> q_bsnh_buffer;
   if (!is_bsnh) {
@@ -196,7 +196,7 @@ Status Attention<T>::RunFlashAttention(
         /*local_window_size=*/-1, /*is_rotary_interleaved=*/false,
         /*is_packed_qkv=*/false));
   }
-  // --- Path 2 (Fix 1): Decode with past KV cache ---
+  // --- Path 2: Decode with past KV cache ---
   else if (past_key != nullptr) {
     ORT_ENFORCE(past_value != nullptr, "past_key requires past_value.");
     ORT_ENFORCE(present_key != nullptr && present_value != nullptr,
@@ -361,7 +361,7 @@ Status Attention<T>::RunFlashAttention(
         is_bsnh));
   }
 
-  // --- Fix 3: Transpose output BSNH → BNSH if input was 4D (BNSH) ---
+  // --- Transpose output BSNH → BNSH if input was 4D (BNSH) ---
   if (!is_bsnh && out_bsnh_buffer != nullptr) {
     if constexpr (std::is_same_v<T, MLFloat16>) {
       ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
@@ -479,7 +479,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
   const void* k_data = K->Data<T>();
   const void* v_data = V->Data<T>();
 
-  // --- Fix 3: Transpose Q from BNSH to BSNH if 4D input ---
+  // --- Transpose Q from BNSH to BSNH if 4D input ---
   IAllocatorUniquePtr<void> q_bsnh_buffer;
   if (!is_bsnh) {
     size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
@@ -667,17 +667,9 @@ Status Attention<T>::RunMemoryEfficientAttention(
                               ? reinterpret_cast<const NativeCudaT*>(converted_mask_buffer.get())
                               : reinterpret_cast<const NativeCudaT*>(attn_mask->Data<T>());
         auto* dst = reinterpret_cast<NativeCudaT*>(expanded_buffer.get());
-        const size_t row_bytes = static_cast<size_t>(kv_len) * sizeof(NativeCudaT);
-        for (int b = 0; b < parameters.batch_size; ++b) {
-          const auto* src_row = src + static_cast<int64_t>(b) * kv_len;
-          auto* dst_base = dst + static_cast<int64_t>(b) * q_len * kv_len;
-          for (int q = 0; q < q_len; ++q) {
-            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-                dst_base + static_cast<int64_t>(q) * kv_len,
-                src_row, row_bytes,
-                cudaMemcpyDeviceToDevice, cuda_stream));
-          }
-        }
+        ORT_RETURN_IF_ERROR(LaunchBroadcastBias2DToQSeq<NativeCudaT>(
+            src, dst, parameters.batch_size, q_len, kv_len,
+            cuda_stream, device_prop.maxThreadsPerBlock));
         attn_bias_data = expanded_buffer.get();
         converted_mask_buffer = std::move(expanded_buffer);
         // Expanded shape is [B, 1, q_seq, kv_seq]
@@ -728,7 +720,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     }
   }
 
-  // --- Fix 3: Transpose output BSNH → BNSH if input was 4D (BNSH) ---
+  // --- Transpose output BSNH → BNSH if input was 4D (BNSH) ---
   if (!is_bsnh && out_bsnh_buffer != nullptr) {
     if constexpr (std::is_same_v<T, MLFloat16>) {
       ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
