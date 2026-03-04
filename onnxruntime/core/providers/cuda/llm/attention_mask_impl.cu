@@ -135,9 +135,8 @@ Status LaunchConvertMaskToSeqlensK(
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Like LaunchConvertMaskToSeqlensK but stores actual token count (no -1 offset).
-// Flash attention's mha_fwd_kvcache and MEA's has_custom_right_padding expect
-// seqlens_k = number of valid tokens, not last-valid-index.
+// Like LaunchConvertMaskToSeqlensK but with a configurable offset.
+// seqlens_k[b] = num_true_tokens + seqlen_offset
 Status LaunchConvertMaskToFlashSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,
@@ -148,7 +147,8 @@ Status LaunchConvertMaskToFlashSeqlensK(
     int64_t mask_dim1,
     int64_t mask_dim2,
     cudaStream_t stream,
-    int max_threads_per_block) {
+    int max_threads_per_block,
+    int seqlen_offset) {
   if (batch_size == 0 || total_seq_len == 0) {
     return Status::OK();
   }
@@ -165,7 +165,7 @@ Status LaunchConvertMaskToFlashSeqlensK(
       mask_dim0,
       mask_dim1,
       mask_dim2,
-      /*seqlen_offset=*/0);
+      seqlen_offset);
 
   return CUDA_CALL(cudaGetLastError());
 }

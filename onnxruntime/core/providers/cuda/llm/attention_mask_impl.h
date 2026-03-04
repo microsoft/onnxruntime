@@ -50,8 +50,16 @@ Status LaunchConvertMaskToSeqlensK(
     cudaStream_t stream,
     int max_threads_per_block);
 
-// Like LaunchConvertMaskToSeqlensK but stores actual token count (no -1 offset).
+// Like LaunchConvertMaskToSeqlensK but with a configurable offset.
 // Flash attention and MEA custom right padding expect count, not last-valid-index.
+//
+// seqlen_offset adjusts the raw token count:
+//   seqlens_k[b] = num_true_tokens + seqlen_offset
+//
+// Common offsets:
+//   0: actual token count (for prompt with mha_fwd_kvcache, MEA custom right padding)
+//  -N: subtract N from count (for decode with mha_fwd_kvcache where N=kv_sequence_length,
+//      giving the number of tokens already in cache BEFORE appending new ones)
 Status LaunchConvertMaskToFlashSeqlensK(
     const bool* attn_mask_bool,
     int* seqlens_k,
@@ -62,7 +70,8 @@ Status LaunchConvertMaskToFlashSeqlensK(
     int64_t mask_dim1,
     int64_t mask_dim2,
     cudaStream_t stream,
-    int max_threads_per_block);
+    int max_threads_per_block,
+    int seqlen_offset = 0);
 
 // Convert a boolean attention mask to an additive attention bias for the MHA path.
 // Maps true -> 0.0 (attend) and false -> mask_filter_value (mask out).

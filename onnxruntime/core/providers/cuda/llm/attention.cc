@@ -202,9 +202,20 @@ Status Attention<T>::RunFlashAttention(
     ORT_ENFORCE(present_key != nullptr && present_value != nullptr,
                 "present_key/value outputs are required when past_key is provided.");
 
+    // Zero present buffers before strided copy to avoid stale data in positions
+    // beyond past_seq that mha_fwd_kvcache might read during attention (matching GQA pattern).
+    const size_t num_kv_rows = static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads;
+    const size_t present_k_bytes = num_kv_rows * parameters.total_sequence_length *
+                                   parameters.head_size * sizeof(T);
+    const size_t present_v_bytes = num_kv_rows * parameters.total_sequence_length *
+                                   parameters.v_head_size * sizeof(T);
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_key->MutableData<T>(), 0,
+                                         present_k_bytes, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_value->MutableData<T>(), 0,
+                                         present_v_bytes, cuda_stream));
+
     // Copy past KV (BNSH) into present buffers (BNSH). Strided copy because
     // past has [B, N_kv, past_seq, H] and present has [B, N_kv, total_seq, H].
-    const size_t num_kv_rows = static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads;
     const size_t past_k_row_bytes = static_cast<size_t>(parameters.past_sequence_length) *
                                     parameters.head_size * sizeof(T);
     const size_t present_k_row_bytes = static_cast<size_t>(parameters.total_sequence_length) *
@@ -226,8 +237,9 @@ Status Attention<T>::RunFlashAttention(
         cudaMemcpyDeviceToDevice, cuda_stream));
 
     // seqlens_k: derive per-batch sequence lengths for the KV cache.
-    // When a bool mask is present, use it to get per-batch lengths (handles variable padding).
-    // Otherwise, fill uniformly with past_sequence_length.
+    // mha_fwd_kvcache expects seqlens_k = tokens already in cache BEFORE appending new ones.
+    // When a bool mask is present, it encodes total valid token count (past + new).
+    // Subtract kv_sequence_length to get the pre-append count.
     auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
     if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
       size_t mask_dims = attn_mask->Shape().NumDimensions();
@@ -235,11 +247,13 @@ Status Attention<T>::RunFlashAttention(
       int64_t mask_dim0 = dims[0];
       int64_t mask_dim1 = mask_dims >= 3 ? dims[1] : 0;
       int64_t mask_dim2 = mask_dims >= 4 ? dims[2] : 0;
+      // Offset: mask gives total valid count, subtract kv_sequence_length for pre-append count.
+      int seqlen_offset = -parameters.kv_sequence_length;
       ORT_RETURN_IF_ERROR(LaunchConvertMaskToFlashSeqlensK(
           attn_mask->Data<bool>(), seqlens_k_buffer.get(),
           parameters.batch_size, parameters.total_sequence_length,
           static_cast<int>(mask_dims), mask_dim0, mask_dim1, mask_dim2,
-          cuda_stream, device_prop.maxThreadsPerBlock));
+          cuda_stream, device_prop.maxThreadsPerBlock, seqlen_offset));
     } else {
       ORT_RETURN_IF_ERROR(LaunchFillInt32(seqlens_k_buffer.get(), parameters.past_sequence_length,
                                           parameters.batch_size, cuda_stream,
@@ -327,47 +341,8 @@ Status Attention<T>::RunFlashAttention(
 
     present_kv_already_populated = true;
   }
-  // --- Path 3 (Fix 2): Bool attention mask (right-padding) ---
-  else if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
-    // Convert bool padding mask → seqlens_k (token count per batch).
-    // Use mha_fwd_kvcache with seqlens_k for variable-length attention.
-    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
-    size_t mask_dims = attn_mask->Shape().NumDimensions();
-    auto dims = attn_mask->Shape().GetDims();
-    int64_t mask_dim0 = dims[0];
-    int64_t mask_dim1 = mask_dims >= 3 ? dims[1] : 0;
-    int64_t mask_dim2 = mask_dims >= 4 ? dims[2] : 0;
-    ORT_RETURN_IF_ERROR(LaunchConvertMaskToFlashSeqlensK(
-        attn_mask->Data<bool>(), seqlens_k_buffer.get(),
-        parameters.batch_size, parameters.total_sequence_length,
-        static_cast<int>(mask_dims), mask_dim0, mask_dim1, mask_dim2,
-        cuda_stream, device_prop.maxThreadsPerBlock));
-
-    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
-        device_prop, cuda_stream,
-        const_cast<void*>(q_data),
-        const_cast<void*>(static_cast<const void*>(K->Data<T>())),
-        const_cast<void*>(static_cast<const void*>(V->Data<T>())),
-        /*k=*/nullptr, /*v=*/nullptr,
-        out_data,
-        softmax_lse_buffer.get(),
-        static_cast<void*>(seqlens_k_buffer.get()),
-        /*rotary_cos=*/nullptr, /*rotary_sin=*/nullptr,
-        /*cache_batch_idx=*/nullptr, /*leftpad_k=*/nullptr,
-        /*head_sink=*/nullptr, /*block_table=*/nullptr,
-        parameters.batch_size, parameters.q_num_heads, parameters.kv_num_heads,
-        parameters.head_size,
-        parameters.q_sequence_length, parameters.kv_sequence_length,
-        /*seqlen_k_new=*/0, /*rotary_dim=*/0,
-        parameters.scale, parameters.softcap,
-        parameters.is_causal, is_bf16, /*use_smooth_softmax=*/false,
-        /*past_bsnh=*/is_bsnh,
-        static_cast<int>(num_splits),
-        softmax_lse_accum_buffer.get(), out_accum_buffer.get(),
-        /*local_window_size=*/-1, /*is_rotary_interleaved=*/false,
-        /*is_packed_qkv=*/false));
-  }
-  // --- Path 4: Prompt flash (no past, no mask) ---
+  // --- Path 3: Prompt flash (no past, no mask) ---
+  // Note: prompt with bool mask is handled by MEA (flash_eligible excludes it).
   else {
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
         device_prop, cuda_stream,
@@ -673,11 +648,40 @@ Status Attention<T>::RunMemoryEfficientAttention(
         attn_bias_data = attn_mask->Data<T>();
       }
 
-      // Determine broadcast flags
+      // Determine broadcast flags based on bias logical shape [B, num_heads, q_seq, kv_seq].
+      // MEA always uses bias_strideM = kv_seq, so each query row must have kv_seq elements.
+      // For 2D masks [B, kv_seq]: the mask is constant across q positions, so we must
+      // expand to [B, 1, q_seq, kv_seq] by repeating each row q_seq times. Without this,
+      // bias_strideM would walk through batch boundaries instead of replaying the same mask.
       size_t mask_dims = attn_mask->Shape().NumDimensions();
       auto dims = attn_mask->Shape().GetDims();
       if (mask_dims == 2) {
-        broadcast_bias_dim_0 = true;
+        // Expand [B, kv_seq] → [B, 1, q_seq, kv_seq] by repeating each batch's row
+        using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+        const int kv_len = parameters.total_sequence_length;
+        const int q_len = parameters.q_sequence_length;
+        int64_t expanded_elements = static_cast<int64_t>(parameters.batch_size) * q_len * kv_len;
+        auto expanded_buffer = GetScratchBuffer<void>(
+            expanded_elements * sizeof(NativeCudaT), context->GetComputeStream());
+        const auto* src = (attn_mask->IsDataType<bool>())
+                              ? reinterpret_cast<const NativeCudaT*>(converted_mask_buffer.get())
+                              : reinterpret_cast<const NativeCudaT*>(attn_mask->Data<T>());
+        auto* dst = reinterpret_cast<NativeCudaT*>(expanded_buffer.get());
+        const size_t row_bytes = static_cast<size_t>(kv_len) * sizeof(NativeCudaT);
+        for (int b = 0; b < parameters.batch_size; ++b) {
+          const auto* src_row = src + static_cast<int64_t>(b) * kv_len;
+          auto* dst_base = dst + static_cast<int64_t>(b) * q_len * kv_len;
+          for (int q = 0; q < q_len; ++q) {
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+                dst_base + static_cast<int64_t>(q) * kv_len,
+                src_row, row_bytes,
+                cudaMemcpyDeviceToDevice, cuda_stream));
+          }
+        }
+        attn_bias_data = expanded_buffer.get();
+        converted_mask_buffer = std::move(expanded_buffer);
+        // Expanded shape is [B, 1, q_seq, kv_seq]
+        broadcast_bias_dim_0 = false;
         broadcast_bias_dim_1 = true;
       } else if (mask_dims == 3) {
         broadcast_bias_dim_0 = true;
@@ -1032,7 +1036,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         !has_output_qk &&
         parameters.softcap == 0.0f &&
         parameters.softmax_precision == 0 &&
-        (attn_mask == nullptr || attn_mask->IsDataType<bool>());  // bool masks handled via seqlens_k
+        // Bool masks without past_key (prompt) can't use flash because mha_fwd_kvcache's
+        // causal semantics are decode-oriented (window offset by seqlens_k). For causal
+        // prompt with padding, MEA handles it correctly via attention bias conversion.
+        // Flash handles: no mask, decode with past (±mask), nonpad_kv_seqlen.
+        (attn_mask == nullptr || (attn_mask->IsDataType<bool>() && past_key != nullptr));
 
     if (flash_eligible) {
       return RunFlashAttention(context, Q, K, V, attn_mask, past_key, past_value,
