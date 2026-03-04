@@ -207,7 +207,8 @@ Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor&
 /// Validates that the size of the actual data content in a non-external TensorProto is consistent with its
 /// declared shape and data type. This prevents allocating memory based on a maliciously large
 /// declared shape when the actual data is absent or much smaller.
-/// Skips validation for external data TensorProtos.
+/// The caller must ensure that the TensorProto does not use external data; if it does, this function will
+/// return an error status.
 common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**

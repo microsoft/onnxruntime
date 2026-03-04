@@ -219,7 +219,8 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   // This protects against a model with a huge declared shape but a missing/short external file.
   std::error_code fs_error_code{};
   std::uintmax_t file_length = std::filesystem::file_size(external_file_path, fs_error_code);
-  ORT_RETURN_IF(fs_error_code, fs_error_code.message());
+  ORT_RETURN_IF(fs_error_code, "Failed to get file size for external initializer ", tensor_proto.name(),
+                ". std::filesystem error: ", fs_error_code.message(), " (value: ", fs_error_code.value(), ")");
   SafeInt<onnxruntime::FileOffsetType> end_of_read(file_offset);
   end_of_read += tensor_byte_size;
   ORT_RETURN_IF(file_offset < 0 || static_cast<std::uintmax_t>(end_of_read) > file_length,
