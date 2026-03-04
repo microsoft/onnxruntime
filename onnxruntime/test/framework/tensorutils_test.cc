@@ -764,7 +764,7 @@ TEST(TensorProtoDataSizeShapeValidationTest, NegativeDimsRejected) {
 
   auto status = utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Out of bounds dimensions"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("out-of-bounds dimensions"));
 }
 
 }  // namespace test
