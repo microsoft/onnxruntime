@@ -10,6 +10,16 @@ cmake_policy(SET CMP0104 OLD)
 # Project
 project(onnxruntime C CXX ASM)
 
+# Set C/C++ standard versions
+if (NOT CMAKE_C_STANDARD)
+  # Needed for Java
+  set(CMAKE_C_STANDARD 99)
+endif()
+
+if (NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 20)
+endif()
+
 include(CMakeDependentOption)
 
 # Options
@@ -212,37 +222,6 @@ option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is com
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
-
-# Set C/C++ standard versions
-if (NOT CMAKE_C_STANDARD)
-  # Needed for Java
-  set(CMAKE_C_STANDARD 99)
-endif()
-
-if (NOT CMAKE_CXX_STANDARD)
-  # TODO: enable C++20 for all builds
-  # set(CMAKE_CXX_STANDARD 20)
-
-  if (onnxruntime_USE_CUDA)
-    # Known issues when updating from C++17 to C++20:
-    # - MSVC + onnxruntime_USE_CUDA:
-    #   - Compilation error from CUTLASS header cute/tensor.hpp (https://github.com/NVIDIA/cutlass/issues/3065):
-    #       cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type
-    #       template argument
-    # - GCC + onnxruntime_USE_CUDA:
-    #   - Compilation error from onnxruntime/contrib_ops/cuda/llm/cutlass_heuristic.cc when adding an element to
-    #     `std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>`:
-    #       /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/stl_construct.h:97:14: error: writing 1 byte into a
-    #       region of size 0 [-Werror=stringop-overflow=]
-    #   - Possibly a spurious warning
-    #
-    # When the CUDA EP becomes an independent plugin EP, hopefully we can update all of onnxruntime to C++20.
-    # We can keep building the CUDA plugin EP with C++17 if needed.
-    set(CMAKE_CXX_STANDARD 17)
-  else()
-    set(CMAKE_CXX_STANDARD 20)
-  endif()
-endif()
 
 # Disable fast-math for Intel oneAPI compiler
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")

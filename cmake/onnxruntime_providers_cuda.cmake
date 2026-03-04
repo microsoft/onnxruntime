@@ -149,6 +149,14 @@
     onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_all_srcs})
   endif()
 
+  if (MSVC)
+    # Use /permissive to work around compilation error from CUTLASS header cute/tensor.hpp:
+    #   cutlass-src\include\cute\stride.hpp(299,46): error C3545: 'Ints': parameter pack expects a non-type
+    #     template argument
+    # See https://github.com/NVIDIA/cutlass/issues/3065
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "/permissive")
+  endif()
+
   if(WIN32)
     # FILE_NAME preprocessor definition is used in onnxruntime_providers_cuda.rc
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE FILE_NAME=\"onnxruntime_providers_cuda.dll\")
