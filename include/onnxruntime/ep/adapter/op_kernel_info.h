@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "core/common/status.h"
+#include "core/framework/config_options.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
@@ -75,6 +76,12 @@ struct OpKernelInfo {
 
   const Ort::ConstKernelInfo GetKernelInfo() const noexcept {
     return info_;
+  }
+
+  ConfigOptions GetConfigOptions() const noexcept {
+    ConfigOptions config_options;
+    config_options.configurations = info_.GetConfigEntries().GetKeyValuePairs();
+    return config_options;
   }
 
   int GetInputCount() const noexcept {

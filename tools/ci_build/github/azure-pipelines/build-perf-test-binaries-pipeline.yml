@@ -33,3 +33,7 @@ stages:
         cmake_build_type: Release
         cuda_version: 12.8
         docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+        python_version: '3.14'
+        docker_python_exe_path: '/opt/python/cp314-cp314/bin/python3.14'
+        stage_name: Linux_py_GPU_Wheels_x86_64_3_14
+        wheel_artifact_name: onnxruntime_gpu_3_14
