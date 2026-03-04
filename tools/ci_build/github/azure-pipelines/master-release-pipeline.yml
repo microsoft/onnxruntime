@@ -39,6 +39,7 @@ extends:
         timeoutInMinutes: 600
         pool:
           name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          os: linux
 
         steps:
         - checkout: self
