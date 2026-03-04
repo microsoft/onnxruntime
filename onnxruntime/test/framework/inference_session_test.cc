@@ -48,6 +48,9 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "test/internal_testing_ep/internal_testing_execution_provider.h"
+#endif
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
@@ -1047,6 +1050,40 @@ static void CreateFuseOpModel(const PathString& model_file_name) {
   ASSERT_STATUS_OK(graph.Resolve());
   ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+static void CreateAddSubModel(const PathString& model_file_name) {
+  onnxruntime::Model model("add_sub_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  std::vector<onnxruntime::NodeArg*> inputs;
+  std::vector<onnxruntime::NodeArg*> outputs;
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
+  inputs.push_back(&input_arg_1);
+  inputs.push_back(&input_arg_2);
+  auto& add_output = graph.GetOrCreateNodeArg("add_out", &float_tensor);
+  outputs.push_back(&add_output);
+  graph.AddNode("add_1", "Add", "node add", inputs, outputs);
+
+  inputs.clear();
+  outputs.clear();
+  inputs.push_back(&add_output);
+  inputs.push_back(&input_arg_2);
+  auto& sub_output = graph.GetOrCreateNodeArg("M", &float_tensor);
+  outputs.push_back(&sub_output);
+  graph.AddNode("sub_1", "Sub", "node sub", inputs, outputs);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(ExecutionProviderTest, FunctionTest) {
   PathString model_file_name = ORT_TSTR("execution_provider_test_graph.onnx");
@@ -2378,6 +2415,91 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
     });
   }
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+// Test 5: per session threadpools should not be created when all nodes are assigned to a non-CPU EP
+TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsNoCpuNodes) {
+  PathString model_file_name = ORT_TSTR("lazy_init_all_internal.onnx");
+  CreateAddSubModel(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+
+  so.session_logid = "LazyInitPerSessionThreadPoolsNoCpuNodes";
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set{};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set);
+  internal_testing_ep->TakeAllNodes();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session == nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state == nullptr);
+  ASSERT_TRUE(inter_tp_from_session == nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state == nullptr);
+}
+
+// Test 6: per session threadpools should be created when any nodes remain on CPU
+TEST(InferenceSessionTests, LazyInitPerSessionThreadPoolsWithCpuNodes) {
+  PathString model_file_name = ORT_TSTR("lazy_init_add_sub.onnx");
+  CreateAddSubModel(model_file_name);
+
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  // ensure threadpools are created even on single-core machines
+  so.intra_op_param.thread_pool_size = 2;
+  so.inter_op_param.thread_pool_size = 2;
+
+  so.session_logid = "LazyInitPerSessionThreadPoolsWithCpuNodes";
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> ops = {"Add"};
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(ops);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto intra_tp_from_session = session_object.GetIntraOpThreadPoolToUse();
+  auto intra_tp_from_session_state = session_object.GetSessionState().GetThreadPool();
+  auto inter_tp_from_session = session_object.GetInterOpThreadPoolToUse();
+  auto inter_tp_from_session_state = session_object.GetSessionState().GetInterOpThreadPool();
+
+  ASSERT_TRUE(intra_tp_from_session != nullptr);
+  ASSERT_TRUE(intra_tp_from_session_state != nullptr);
+  ASSERT_TRUE(inter_tp_from_session != nullptr);
+  ASSERT_TRUE(inter_tp_from_session_state != nullptr);
+  ASSERT_TRUE(intra_tp_from_session == intra_tp_from_session_state);
+  ASSERT_TRUE(inter_tp_from_session == inter_tp_from_session_state);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 // Tests for sharing allocators between sessions
 class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {

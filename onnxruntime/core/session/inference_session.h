@@ -771,6 +771,8 @@ class InferenceSession {
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
+  void InitializeThreadPoolsIfNeeded();
+  bool GraphHasCpuNodes() const;
   [[nodiscard]] common::Status HasInvalidCombinationOfExecutionProviders() const;
   [[nodiscard]] common::Status SaveModelMetadata(const onnxruntime::Model& model);
 
