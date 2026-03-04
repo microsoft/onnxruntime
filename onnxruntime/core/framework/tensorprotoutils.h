@@ -166,8 +166,10 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
 /// in shape inferencing, it is cheaper to inline them.
 constexpr const size_t kSmallTensorExternalDataThreshold = 127;  // 127 bytes
 
-/// Max size in bytes for embedded (non-external) initializer data.
-/// Matches protobuf's 2 GiB message size limit — embedded data physically cannot exceed this in a valid protobuf.
+/// Max in-memory tensor size (from shape × dtype) allowed for embedded (non-external) initializers.
+/// This is an allocation guard to prevent a malicious model from triggering excessive memory allocation.
+/// 2 GiB is chosen as a practical upper bound: valid ONNX protobuf messages cannot exceed ~2 GiB of serialized data,
+/// so any embedded initializer whose in-memory representation exceeds this is highly suspect.
 constexpr const size_t kMaxEmbeddedInitializerSizeInBytes = size_t{2} * 1024 * 1024 * 1024;  // 2 GiB
 
 /**
