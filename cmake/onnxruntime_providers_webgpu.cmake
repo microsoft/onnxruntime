@@ -30,7 +30,7 @@
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
 
-  if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  if(NOT onnxruntime_USE_EP_API_ADAPTERS)
     #
     # Build WebGPU EP as a static library
     #

@@ -7,7 +7,9 @@
 //
 // This header file is used as a precompiled header so it is always included first.
 
-#define ORT_USE_EP_API_ADAPTERS
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+#error "This header should only be included when building with EP API adapters (i.e. plugin EP shared library). Please make sure ORT_USE_EP_API_ADAPTERS is defined."
+#endif
 
 #include "api.h"
 #include "common.h"
