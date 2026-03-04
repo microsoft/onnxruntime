@@ -73,24 +73,27 @@ __global__ void ConvertMaskToSeqlensKernel(
     mask_row = attn_mask + effective_batch * batch_stride + h_idx * head_stride + q_idx * q_stride;
   }
 
-  // Validate that mask starts with True (right-padding convention)
-  CUDA_KERNEL_ASSERT(mask_row[0]);  // mask must start with True
-
   // Find the first False (where padding starts)
   // All elements before this should be True, all after should be False
-  int seq_len = total_seq_len;  // Default: all True (no padding)
-  bool found_first_false = false;
+  int seq_len;
+  if (!mask_row[0]) {
+    // Entire row is padding (all-false mask)
+    seq_len = 0;
+  } else {
+    seq_len = total_seq_len;  // Default: all True (no padding)
+    bool found_first_false = false;
 
-  for (int i = 1; i < total_seq_len; ++i) {
-    bool current = mask_row[i];
+    for (int i = 1; i < total_seq_len; ++i) {
+      bool current = mask_row[i];
 
-    if (!found_first_false && !current) {
-      // Found first False - this is where padding starts
-      seq_len = i;
-      found_first_false = true;
-    } else if (found_first_false && current) {
-      // Found True after False - mask is not contiguous (invalid)
-      CUDA_KERNEL_ASSERT(false);  // mask must be contiguous (no True after False)
+      if (!found_first_false && !current) {
+        // Found first False - this is where padding starts
+        seq_len = i;
+        found_first_false = true;
+      } else if (found_first_false && current) {
+        // Found True after False - mask is not contiguous (invalid)
+        CUDA_KERNEL_ASSERT(false);  // mask must be contiguous (no True after False)
+      }
     }
   }
 
