@@ -43,6 +43,9 @@ react {
     //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
     // extraPackagerArgs = []
 
+    /* Autolinking */
+    autolinkLibrariesWithApp()
+
     /* Hermes Commands */
     //   The hermes compiler command to run. By default it is 'hermesc'
     // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
@@ -122,7 +125,6 @@ dependencies {
 
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
-		implementation("com.facebook.react:flipper-integration")
     implementation 'androidx.test.ext:junit:1.1.5'
 
     if (hermesEnabled.toBoolean()) {
@@ -134,8 +136,6 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:3.5.0"
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test:rules:1.5.0"
-
-    implementation (project(':onnxruntime-react-native'))
 }
 
 // Run this once to be able to run the application with BUCK
@@ -144,5 +144,3 @@ task copyDownloadableDepsToLibs(type: Copy) {
     from configurations.implementation
     into 'libs'
 }
-
-apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
