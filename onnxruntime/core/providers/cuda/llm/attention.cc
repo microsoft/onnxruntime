@@ -649,59 +649,15 @@ Status Attention<T>::RunMemoryEfficientAttention(
     }
     onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
   }
-  // --- Fix 2: Bool attention mask → seqlens_k with custom right padding ---
-  else if (attn_mask != nullptr && attn_mask->IsDataType<bool>()) {
-    auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, context->GetComputeStream());
-    size_t mask_dims = attn_mask->Shape().NumDimensions();
-    auto dims = attn_mask->Shape().GetDims();
-    int64_t mask_dim0 = dims[0];
-    int64_t mask_dim1 = mask_dims >= 3 ? dims[1] : 0;
-    int64_t mask_dim2 = mask_dims >= 4 ? dims[2] : 0;
-    ORT_RETURN_IF_ERROR(LaunchConvertMaskToFlashSeqlensK(
-        attn_mask->Data<bool>(), seqlens_k_buffer.get(),
-        parameters.batch_size, parameters.total_sequence_length,
-        static_cast<int>(mask_dims), mask_dim0, mask_dim1, mask_dim2,
-        cuda_stream, device_prop.maxThreadsPerBlock));
-
-    onnxruntime::contrib::cuda::MemoryEfficientAttentionParams p;
-    p.sm = sm;
-    p.is_half = std::is_same<T, MLFloat16>::value;
-    p.is_bf16 = std::is_same<T, BFloat16>::value;
-    p.is_kv_bsnh = is_bsnh;
-    p.batch_size = parameters.batch_size;
-    p.num_heads = parameters.q_num_heads;
-    p.sequence_length = parameters.q_sequence_length;
-    p.kv_sequence_length = parameters.total_sequence_length;
-    p.max_sequence_length = parameters.total_sequence_length;
-    p.qk_head_size = parameters.head_size;
-    p.v_head_size = parameters.v_head_size;
-    p.causal = parameters.is_causal;
-    p.scale = parameters.scale;
-    p.seqlen_k_ptr = seqlens_k_buffer.get();
-    p.has_custom_right_padding = true;
-    p.query = q_data;
-    p.key = k_data;
-    p.value = v_data;
-    p.attn_bias = nullptr;
-    p.stream = cuda_stream;
-    p.output = out_data;
-
-    IAllocatorUniquePtr<void> workspace_buffer;
-    if (onnxruntime::contrib::cuda::MemoryEfficientAttentionParams::need_workspace(
-            parameters.v_head_size, sizeof(T) == sizeof(float))) {
-      size_t workspace_bytes = sizeof(float) * parameters.batch_size * parameters.q_sequence_length *
-                               parameters.q_num_heads * parameters.v_head_size;
-      workspace_buffer = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
-      p.workspace = workspace_buffer.get();
-    } else {
-      p.workspace = nullptr;
-    }
-    onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
-  } else {
-    // Standard MEA path (no nonpad, no bool mask — float attention bias or no mask)
+  // Standard MEA path: float attention bias, bool mask (converted to bias), or no mask.
+  // Bool masks are converted to additive attention bias (true→0, false→mask_filter_value)
+  // which correctly handles all-false masks (uniform softmax weights) unlike the
+  // custom_right_padding seqlens approach which would produce NaN.
+  else {
     if (attn_mask != nullptr) {
       if (attn_mask->IsDataType<bool>()) {
-        // This shouldn't be reached (bool masks are handled above) but keep as fallback
+        // Convert bool mask to additive attention bias (true→0.0, false→mask_filter_value).
+        // This handles all-false masks correctly (uniform softmax weights from extreme bias).
         using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
         int64_t num_elements = attn_mask->Shape().Size();
         converted_mask_buffer = GetScratchBuffer<void>(
