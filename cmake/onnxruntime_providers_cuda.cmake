@@ -156,7 +156,7 @@
     # See https://github.com/NVIDIA/cutlass/issues/3065
     target_compile_options(onnxruntime_providers_cuda PRIVATE
       "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
-      #"$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
     )
   endif()
 
