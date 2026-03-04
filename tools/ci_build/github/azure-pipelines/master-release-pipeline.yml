@@ -38,7 +38,7 @@ extends:
         displayName: 'Trigger and wait for sub-pipelines'
         timeoutInMinutes: 600
         pool:
-          vmImage: 'ubuntu-latest'
+          name: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
         steps:
         - checkout: self
