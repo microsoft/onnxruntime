@@ -295,6 +295,9 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
                   "First dimension (num_rois) of batch_indices and rois don't match");
   }
 
+  // Validate batch_indices values are within [0, batch_size).
+  // batch_indices is always on CPU: for CPU EP natively, and for CUDA EP via
+  // InputMemoryType(OrtMemTypeCPUInput, 2) in the kernel registration.
   const int64_t batch_size = X_ptr->Shape()[0];
   const int64_t* batch_indices_data = batch_indices_ptr->Data<int64_t>();
   const int64_t num_rois = batch_indices_dims[0];
