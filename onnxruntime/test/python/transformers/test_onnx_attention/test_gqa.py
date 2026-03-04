@@ -822,42 +822,9 @@ class TestONNXAttentionMemoryEfficientGQA(unittest.TestCase):
             atol=atol["fp16"],
         )
 
-    @parameterized.expand(gqa_past_test_cases())
-    def test_gqa_past_memory_efficient(self, name, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
-
-
-@unittest.skipIf(not has_cuda_device(80), "BF16 requires Ampere or higher GPU, skipping tests.")
-class TestONNXAttentionMemoryEfficientGQABF16(unittest.TestCase):
-    """Test ONNX Attention op (opset 23) GQA path with Memory Efficient Attention using BFloat16."""
-
-    @parameterized.expand(gqa_past_test_cases())
-    def test_gqa_past_memory_efficient_bf16(self, name, config):
-        if not torch.cuda.is_bf16_supported():
-            self.skipTest("BFloat16 not supported on this device")
-
-        config.kv_cache_type = "bfloat16"
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.bfloat16,
-            ort_type=TensorProto.BFLOAT16,
-            causal=True,
-            rtol=rtol["bf16"],
-            atol=atol["bf16"],
-        )
+    # Note: GQA past tests removed — MEA is ineligible when past_key is present
+    # (ComputeInternal requires past_key == nullptr for MEA). GQA past goes through
+    # flash attention regardless of ORT_DISABLE_FLASH_ATTENTION.
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
@@ -868,29 +835,10 @@ class TestONNXAttentionPaddingMaskGQA(unittest.TestCase):
     These tests verify that the boolean attn_mask is correctly converted to
     sequence lengths on GPU and that the attention computation respects the
     padding. Tests cover 2D, 3D, and 4D mask shapes.
+
+    Note: prompt+bool_mask is ineligible for flash (routed to MEA), so prompt
+    padding tests live in TestONNXAttentionPaddingMaskMemoryEfficientGQA only.
     """
-
-    @parameterized.expand(gqa_prompt_padding_test_cases())
-    def test_gqa_prompt_padding_flash(self, name, config):
-        """Test prompt phase with padding mask using Flash Attention."""
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-
-        seqlens = torch.tensor(
-            [config.kv_sequence_length - 6, config.kv_sequence_length],
-            dtype=torch.int32,
-            device="cuda",
-        )
-
-        parity_check_gqa_prompt_with_padding(
-            config=config,
-            seqlens=seqlens,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
 
     @parameterized.expand(gqa_past_padding_test_cases())
     def test_gqa_past_padding_flash(self, name, config):
