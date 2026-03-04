@@ -29,6 +29,7 @@ __device__ T bilinear_interpolate(
     T y,
     T x,
     const bool is_mode_avg,
+    const bool use_max_bilinear_interp,
     const int index /* index for debug only*/) {
   // deal with cases that inverse elements are out of feature map boundary
   if (y < -1.0 || y > height || x < -1.0 || x > width) {
@@ -72,9 +73,12 @@ __device__ T bilinear_interpolate(
   T v4 = bottom_data[y_high * width + x_high];
   T w1 = hy * hx, w2 = hy * lx, w3 = ly * hx, w4 = ly * lx;
 
-  T val = is_mode_avg
-              ? (w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4)             // mode Avg
-              : max(max(max(w1 * v1, w2 * v2), w3 * v3), w4 * v4);  // mode Max
+  T val;
+  if (is_mode_avg || use_max_bilinear_interp) {
+    val = w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4;
+  } else {
+    val = max(max(max(w1 * v1, w2 * v2), w3 * v3), w4 * v4);
+  }
 
   return val;
 }
@@ -94,6 +98,7 @@ __global__ void RoIAlignForward(
     int64_t roi_cols,
     T* top_data,
     const bool is_mode_avg,
+    const bool use_max_bilinear_interp,
     const bool half_pixel,
     const int64_t* batch_indices_ptr) {
   for (size_t index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads; index += blockDim.x * gridDim.x) {
@@ -149,7 +154,7 @@ __global__ void RoIAlignForward(
                         static_cast<T>(roi_bin_grid_w);
 
         T val = bilinear_interpolate(
-            offset_bottom_data, height, width, y, x, is_mode_avg, index);
+            offset_bottom_data, height, width, y, x, is_mode_avg, use_max_bilinear_interp, index);
 
         if (is_mode_avg) {
           output_val += val;
@@ -187,6 +192,7 @@ void RoiAlignImpl(
     int64_t roi_cols,
     T* top_data,
     const bool is_mode_avg,
+    const bool use_max_bilinear_interp,
     const bool half_pixel,
     const int64_t* batch_indices_ptr) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(nthreads) / GridDim::maxThreadsPerBlock));
@@ -204,6 +210,7 @@ void RoiAlignImpl(
       roi_cols,
       top_data,
       is_mode_avg,
+      use_max_bilinear_interp,
       half_pixel,
       batch_indices_ptr);
 }
@@ -224,6 +231,7 @@ void RoiAlignImpl(
       int64_t roi_cols,             \
       T* top_data,                  \
       const bool is_mode_avg,       \
+      const bool use_max_bilinear_interp, \
       const bool half_pixel,        \
       const int64_t* batch_indices_ptr);
 
