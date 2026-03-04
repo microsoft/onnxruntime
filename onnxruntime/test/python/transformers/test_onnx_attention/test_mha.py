@@ -32,6 +32,7 @@ from test_onnx_attention.common import (
     attention_prompt_func,
     attention_ref,
     create_additive_mask_from_seqlens,
+    create_boolean_mask_from_seqlens,
     enable_deterministic_check,
     has_cuda_device,
     pipeline_mode,
@@ -559,6 +560,169 @@ def mha_attn_bias_test_cases():
                         yield name, config
 
 
+def mha_bool_mask_test_cases():
+    """
+    Generate test cases for MHA path with boolean attention mask.
+
+    Tests 2D, 3D, and 4D boolean masks for right-padding scenarios.
+    The MHA path in attention.cc converts bool masks to additive bias
+    (True -> 0.0, False -> mask_filter_value).
+
+    For the MHA path, ONNX right-aligned broadcasting maps:
+      2D [q_seq, total_seq] → [1, 1, q_seq, total_seq] (all batches share one mask)
+      3D [heads, q_seq, total_seq] → [1, heads, q_seq, total_seq]
+      4D [batch, heads, q_seq, total_seq] → per-batch, per-head masks
+    """
+    batches = [2]
+    seqs = [(16, 16)]
+    heads = [(8, 8)]
+    h_sizes = [128]
+    mask_dims_options = [2, 3, 4]
+
+    for h in h_sizes:
+        for b in batches:
+            for sq, skv in seqs:
+                for n, n2 in heads:
+                    for mask_dims in mask_dims_options:
+                        config = AttentionConfig(
+                            batch_size=b,
+                            q_sequence_length=sq,
+                            kv_sequence_length=skv,
+                            past_kv_sequence_length=0,
+                            q_num_heads=n,
+                            kv_num_heads=n2,
+                            head_size=h,
+                            is_causal=0,
+                            has_attn_mask=True,
+                            attn_mask_dims=mask_dims,
+                            attn_mask_type="bool",
+                        )
+                        name = f"b{b}_sq{sq}_skv{skv}_nh{n}_h{h}_bool{mask_dims}d"
+                        yield name, config
+
+
+def parity_check_mha_prompt_with_bool_mask(
+    config: AttentionConfig,
+    seqlens: torch.Tensor,
+    ep,
+    device,
+    torch_type,
+    ort_type,
+    rtol,
+    atol,
+    std=0.2,
+):
+    """
+    Parity check for ONNX Attention op MHA path with boolean attention mask.
+
+    The MHA path converts bool masks to additive bias (True -> 0.0, False -> -inf).
+    Tests 2D, 3D, and 4D boolean masks with padding simulation.
+    """
+    torch.manual_seed(0)
+
+    # Compute effective per-batch seqlens based on mask broadcasting.
+    # For 2D bool mask [q_seq, total_seq]: all batches share the same mask (first batch's pattern).
+    # For 3D bool mask [heads, q_seq, total_seq]: batch broadcasts, use first batch's pattern.
+    # For 4D bool mask [batch, heads, q_seq, total_seq]: per-batch seqlens apply directly.
+    effective_seqlens = seqlens.clone()
+    if config.attn_mask_dims in (2, 3):
+        effective_seqlens[:] = seqlens[0]
+
+    q = (
+        torch.randn(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    k = (
+        torch.randn(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        * std
+    )
+    v = torch.randn_like(k) * std
+
+    # Zero out padded positions in K, V based on effective seqlens
+    for b in range(config.batch_size):
+        valid_len = effective_seqlens[b].item()
+        if valid_len < config.kv_sequence_length:
+            k[b, valid_len:, :, :] = 0
+            v[b, valid_len:, :, :] = 0
+
+    # Create boolean mask for ORT.
+    # For the MHA path, 2D bool mask shape is [q_seq, total_seq] per ONNX broadcasting rules,
+    # so we build it from the first batch's seqlen (all batches share the same mask).
+    if config.attn_mask_dims == 2:
+        # 2D: [q_seq, total_seq] — single mask pattern for all batches
+        arange = torch.arange(config.kv_sequence_length, device=device)
+        mask_1d = arange < seqlens[0]  # [total_seq]
+        attn_mask = mask_1d.unsqueeze(0).expand(config.q_sequence_length, -1).contiguous()  # [q_seq, total_seq]
+    else:
+        attn_mask = create_boolean_mask_from_seqlens(
+            seqlens=seqlens,
+            total_seq_len=config.kv_sequence_length,
+            mask_dims=config.attn_mask_dims,
+            q_seq_len=config.q_sequence_length,
+            num_heads=config.q_num_heads,
+            device=device,
+        )
+
+    # Create 2D key_padding_mask for reference (per-batch, shape [batch, total_seq])
+    key_padding_mask = create_boolean_mask_from_seqlens(
+        seqlens=effective_seqlens,
+        total_seq_len=config.kv_sequence_length,
+        mask_dims=2,
+        device=device,
+    )
+
+    # --- PyTorch Reference Path ---
+    out_ref, _ = attention_ref(
+        q=q,
+        k=k,
+        v=v,
+        key_padding_mask=key_padding_mask,
+        causal=config.is_causal == 1,
+    )
+
+    # --- ONNX Runtime Path ---
+    out, present_k, present_v = attention_prompt_func(
+        q=q,
+        k=k,
+        v=v,
+        config=config,
+        attn_mask=attn_mask,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+    )
+
+    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))
+
+    # --- Comparison ---
+    # Zero out padded positions in both outputs based on effective seqlens
+    for b in range(config.batch_size):
+        valid_len = effective_seqlens[b].item()
+        if valid_len < config.q_sequence_length:
+            out[b, valid_len:, :, :] = 0
+            out_ref[b, valid_len:, :, :] = 0
+
+    out_np = out.to(torch.float32).detach().cpu().numpy()
+    out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+
+    print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
+    numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
+
+
 # #################################################################################################
 #  Unit Test Classes
 # #################################################################################################
@@ -715,6 +879,36 @@ class TestONNXAttentionMHAAttnBias(unittest.TestCase):
         )
 
         parity_check_mha_prompt_with_attn_bias(
+            config=config,
+            seqlens=seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping MHA tests.")
+class TestONNXAttentionMHABoolMask(unittest.TestCase):
+    """
+    Test ONNX Attention op MHA path with boolean attention mask.
+
+    Tests 2D, 3D, and 4D boolean masks that are converted to additive bias
+    (True -> 0.0, False -> mask_filter_value) in attention.cc. This exercises
+    the LaunchConvertBoolMaskToAttentionBias kernel for the MHA path.
+    """
+
+    @parameterized.expand(mha_bool_mask_test_cases())
+    def test_mha_bool_mask_fp16(self, name, config):
+        seqlens = torch.tensor(
+            [config.kv_sequence_length - 6, config.kv_sequence_length],
+            dtype=torch.int32,
+            device="cuda",
+        )
+
+        parity_check_mha_prompt_with_bool_mask(
             config=config,
             seqlens=seqlens,
             ep="CUDAExecutionProvider",

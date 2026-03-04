@@ -45,8 +45,14 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose);
  * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
+  // Domain for TRT plugin custom ops (domain name: "trt.plugins"). Owns the OrtCustomOpDomain object.
+  // Raw pointers from .get() are handed out to callers via domain_list and may be held by InferenceSession.
   static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+
+  // Owns the TensorRTCustomOp objects for TRT plugins. Raw pointers are stored in custom_op_domain->custom_ops_.
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+
+  // Protects concurrent access to all the above static members.
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
@@ -148,20 +154,18 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 }
 
 void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain) {
-  if (domain != nullptr) {
-    for (auto ptr : domain->custom_ops_) {
-      if (ptr != nullptr) {
-        delete ptr;
-      }
-    }
-    delete domain;
-  }
+  (void)domain;  // Suppress unused parameter warning
+  // The domain and its custom ops are owned by static unique_ptrs in CreateTensorRTCustomOpDomainList().
+  // Callers receive raw pointers via .get().
+  //  1. Manually deleting them would cause a double-free when the static unique_ptrs are destroyed at program exit.
+  //  2. Resetting the static unique_ptrs is also unsafe because other EP instances or InferenceSession objects
+  //     may still hold raw pointers to these same objects (handed out via domain_list).
+  // The static objects are shared across EP instances and persist for the program lifetime.
 }
 
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) {
-  for (auto ptr : custom_op_domain_list) {
-    ReleaseTensorRTCustomOpDomain(ptr);
-  }
+  // Only clear the reference vector, don't delete the static domain objects.
+  custom_op_domain_list.clear();
 }
 
 }  // namespace onnxruntime

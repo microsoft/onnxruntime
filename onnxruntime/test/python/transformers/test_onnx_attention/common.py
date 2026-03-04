@@ -205,18 +205,20 @@ def create_attention_node_and_io(
         else:
             mask_ort_type = ort_type  # additive mask uses same type as Q/K/V
 
-        # Mask shapes differ between GQA (bool) and MHA (additive) paths:
-        # GQA bool: 2D=[batch, total_seq], 3D=[heads, q_seq, total_seq], 4D=[batch, heads, q_seq, total_seq]
-        # MHA additive: 2D=[q_seq, total_seq], 3D=[heads, q_seq, total_seq], 4D=[batch, heads, q_seq, total_seq]
+        # Mask shapes differ between GQA (bool) and MHA (additive/bool) paths:
+        # GQA bool: 2D=[batch, total_seq] — GQA converts to seqlens_k directly, bypassing ONNX broadcasting.
+        # MHA (additive or bool): 2D=[q_seq, total_seq] — follows ONNX right-aligned broadcasting.
+        # 3D and 4D are the same for both paths.
         # ONNX broadcasting aligns from the right: 3D [A, B, C] → [_, A, B, C] where A=heads
-        if config.attn_mask_type == "bool":
+        is_gqa = config.kv_num_heads != config.q_num_heads
+        if config.attn_mask_type == "bool" and is_gqa:
             if config.attn_mask_dims == 2:
                 mask_shape = [config.batch_size, mask_seq_len]
             elif config.attn_mask_dims == 3:
                 mask_shape = [config.q_num_heads, config.q_sequence_length, mask_seq_len]
             else:  # 4D
                 mask_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, mask_seq_len]
-        else:  # additive
+        else:  # additive, or bool on MHA path
             if config.attn_mask_dims == 2:
                 mask_shape = [config.q_sequence_length, mask_seq_len]
             elif config.attn_mask_dims == 3:

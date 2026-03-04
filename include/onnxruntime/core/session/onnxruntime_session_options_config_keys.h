@@ -13,7 +13,7 @@
  * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 2048
+ * The maximum length of the Config Value is 8192
  */
 
 // Key for disable PrePacking,
@@ -379,6 +379,12 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // - "0": Do not use LUT based GEMM. [DEFAULT]
 // - "1": Use LUT based GEMM when available.
 static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
+
+// Use KleidiAI kernels in MLAS if available.
+// Option values:
+// - "0": Use KleidiAI kernels when available. [DEFAULT]
+// - "1": Disable KleidiAI kernels even if available.
+static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.

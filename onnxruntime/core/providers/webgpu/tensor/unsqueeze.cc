@@ -8,61 +8,71 @@
 namespace onnxruntime {
 namespace webgpu {
 
-ONNX_OPERATOR_KERNEL_EX(
-    Unsqueeze,
-    kOnnxDomain,
-    23,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedNumberTypes())
-        .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>())
-        .Alias(0, 0)
-        .InputMemoryType(OrtMemTypeCPU, 1),
-    Unsqueeze);
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateUnsqueezeVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Unsqueeze,
-    kOnnxDomain,
-    21, 22,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedNumberTypes())
-        .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>())
-        .Alias(0, 0)
-        .InputMemoryType(OrtMemTypeCPU, 1),
-    Unsqueeze);
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Unsqueeze>(info);
+    return Status::OK();
+  };
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Unsqueeze,
-    kOnnxDomain,
-    13, 20,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedNumberTypes())
-        .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>())
-        .Alias(0, 0)
-        .InputMemoryType(OrtMemTypeCPU, 1),
-    Unsqueeze);
+  if constexpr (StartVersion >= 13) {
+    return {
+        KernelDefBuilder()
+            .SetName("Unsqueeze")
+            .SetDomain(kOnnxDomain)
+            .SinceVersion(StartVersion, EndVersion)
+            .Provider(kWebGpuExecutionProvider)
+            .TypeConstraint("T", type_constraints)
+            .Alias(0, 0)
+            .InputMemoryType(OrtMemTypeCPU, 1)
+            .Build(),
+        kernel_create_fn};
+  } else {
+    return {
+        KernelDefBuilder()
+            .SetName("Unsqueeze")
+            .SetDomain(kOnnxDomain)
+            .SinceVersion(StartVersion, EndVersion)
+            .Provider(kWebGpuExecutionProvider)
+            .TypeConstraint("T", type_constraints)
+            .Alias(0, 0)
+            .Build(),
+        kernel_create_fn};
+  }
+}
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Unsqueeze,
-    kOnnxDomain,
-    11, 12,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedNumberTypes())
-        .Alias(0, 0),
-    Unsqueeze);
+template <int SinceVersion>
+KernelCreateInfo CreateUnsqueezeKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Unsqueeze,
-    kOnnxDomain,
-    1, 10,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedNumberTypes())
-        .Alias(0, 0),
-    Unsqueeze);
+  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Unsqueeze>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Unsqueeze")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(SinceVersion)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", type_constraints)
+          .Alias(0, 0)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .Build(),
+      kernel_create_fn};
+}
+
+// Explicit template instantiations
+template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<1, 10>(bool);
+template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<11, 12>(bool);
+template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<13, 20>(bool);
+template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<21, 22>(bool);
+template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<23, 23>(bool);
+template KernelCreateInfo CreateUnsqueezeVersionedKernelInfo<24, 24>(bool);
+template KernelCreateInfo CreateUnsqueezeKernelInfo<25>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

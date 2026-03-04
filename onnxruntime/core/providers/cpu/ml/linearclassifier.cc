@@ -36,6 +36,7 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
 
   using_strings_ = !classlabels_strings_.empty();
   class_count_ = static_cast<ptrdiff_t>(intercepts_.size());
+  SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts
@@ -66,7 +67,7 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
                                         1.f, input_data, coefficients.data(), 1.f,
                                         intercepts.data(), &intercepts_shape,
                                         scores_output_data.data(),
-                                        threadpool);
+                                        threadpool, &mlas_backend_kernel_selector_config_);
 
   float* score = scores_output_data.data();
   float* end_scores = score + (num_batches * num_targets);  // we haven't added extra targets yet so iterate the original scores

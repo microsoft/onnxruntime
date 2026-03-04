@@ -3328,6 +3328,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
   auto trt_runtime_config = std::unique_ptr<nvinfer1::IRuntimeConfig>(trt_engine->createRuntimeConfig());
   if (trt_runtime_config && cuda_graph_enable_) {
     trt_runtime_config->setDynamicShapesKernelSpecializationStrategy(nvinfer1::DynamicShapesKernelSpecializationStrategy::kEAGER);
+#if TRT_MAJOR_RTX > 1 || (TRT_MAJOR_RTX == 1 && TRT_MINOR_RTX >= 3)
+    auto cuda_strategy_flag = trt_runtime_config->setCudaGraphStrategy(nvinfer1::CudaGraphStrategy::kWHOLE_GRAPH_CAPTURE);
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] CUDA graph strategy with RTX Graph capture enabled : " << cuda_strategy_flag;
+#else
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] CUDA graph is enabled but RTX Graph capture is not available. "
+                          << "The current TRT RTX version does not support RTX Graph. "
+                          << "Please upgrade to TRT RTX >= 1.3 to use RTX Graph capture feature for optimal CUDA graph performance.";
+#endif
   }
   trt_runtime_config->setExecutionContextAllocationStrategy(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED);
   std::string runtime_cache_file = "";

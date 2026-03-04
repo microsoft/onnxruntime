@@ -924,7 +924,7 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInf
   }
 }
 
-std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
+std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
 std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
 wgpu::Instance WebGpuContextFactory::default_instance_;
@@ -960,6 +960,11 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 
   std::lock_guard<std::mutex> lock(mutex_);
 
+  // Lazy-allocate the contexts map on first use (heap-allocated to avoid static destruction crash).
+  if (contexts_ == nullptr) {
+    contexts_ = new std::unordered_map<int32_t, WebGpuContextInfo>();
+  }
+
   if (default_instance_ == nullptr) {
     // Create wgpu::Instance
     wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
@@ -983,15 +988,15 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                 "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
   }
 
-  auto it = contexts_.find(context_id);
-  if (it == contexts_.end()) {
+  auto it = contexts_->find(context_id);
+  if (it == contexts_->end()) {
     GSL_SUPPRESS(r.11)
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
                                                                     config.validation_mode,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size));
-    it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
+    it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
                     it->second.context->device_.Get() == device,
@@ -1008,8 +1013,9 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  auto it = contexts_.find(context_id);
-  ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
+  ORT_ENFORCE(contexts_ != nullptr, "WebGPU contexts have not been initialized or have been cleaned up.");
+  auto it = contexts_->find(context_id);
+  ORT_ENFORCE(it != contexts_->end(), "WebGPU EP context ID ", context_id, " is not found.");
 
   return *it->second.context;
 }
@@ -1017,17 +1023,19 @@ WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
 void WebGpuContextFactory::ReleaseContext(int context_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  auto it = contexts_.find(context_id);
-  ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
+  ORT_ENFORCE(contexts_ != nullptr, "WebGPU contexts have not been initialized or have been cleaned up.");
+  auto it = contexts_->find(context_id);
+  ORT_ENFORCE(it != contexts_->end(), "WebGPU EP context ID ", context_id, " is not found.");
 
   if (--it->second.ref_count == 0 && !it->second.context->preserve_device_) {
-    contexts_.erase(it);
+    contexts_->erase(it);
   }
 }
 
 void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
-  contexts_.clear();
+  delete contexts_;
+  contexts_ = nullptr;
   default_instance_ = nullptr;
 }
 
