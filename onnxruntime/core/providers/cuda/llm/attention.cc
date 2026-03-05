@@ -77,6 +77,25 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
 // ============================================================================
 // RunFlashAttention: Direct flash attention kernel call
 // ============================================================================
+//
+// PERFORMANCE NOTE: ONNX Attention's decode path is inherently ~15-30% slower than
+// contrib GQA's decode path for grouped-query attention workloads. This is because:
+//
+// 1. No past_present_share_buffer: The ONNX Attention spec requires past_key/value
+//    shape = (B, H, past_seq, head_size) and present_key/value shape =
+//    (B, H, total_seq, head_size) where total_seq = past_seq + kv_seq.
+//    Since past and present have different shapes, they cannot share the same buffer.
+//    Contrib GQA allows past and present to be the same tensor (in-place append),
+//    eliminating the memset + strided copy overhead (~67MB per decode step for typical LLM).
+//
+// 2. No XQA kernel: GQA's specialized XQA decode kernel (xqa_loader.h) requires
+//    past_present_share_buffer to function. Since ONNX Attention cannot share buffers
+//    (see point 1), XQA is fundamentally incompatible with this op's spec design.
+//
+// 3. These are spec-level limitations, not implementation gaps. A graph optimizer that
+//    transparently replaces ONNX Attention with contrib GQA on supported hardware
+//    would be the recommended approach to close this performance gap.
+//
 template <typename T>
 Status Attention<T>::RunFlashAttention(
     OpKernelContext* context,
@@ -204,6 +223,8 @@ Status Attention<T>::RunFlashAttention(
 
     // Zero present buffers before strided copy to avoid stale data in positions
     // beyond past_seq that mha_fwd_kvcache might read during attention (matching GQA pattern).
+    // NOTE: This memset + strided copy is the main decode overhead vs contrib GQA.
+    // See PERFORMANCE NOTE above for why buffer sharing is impossible under the ONNX spec.
     const size_t num_kv_rows = static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads;
     const size_t present_k_bytes = num_kv_rows * parameters.total_sequence_length *
                                    parameters.head_size * sizeof(T);
@@ -411,6 +432,11 @@ Status Attention<T>::RunFlashAttention(
             K->Data<float>(), present_key->MutableData<float>(),
             cuda_stream, device_prop.maxThreadsPerBlock));
       }
+    } else if (present_key != nullptr && !is_bsnh) {
+      // 4D BNSH prompt: K is already BNSH, just D2D copy to present
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+          present_key->MutableData<T>(), K->Data<T>(),
+          K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
     }
     if (present_value != nullptr && is_bsnh) {
       if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -433,6 +459,11 @@ Status Attention<T>::RunFlashAttention(
             V->Data<float>(), present_value->MutableData<float>(),
             cuda_stream, device_prop.maxThreadsPerBlock));
       }
+    } else if (present_value != nullptr && !is_bsnh) {
+      // 4D BNSH prompt: V is already BNSH, just D2D copy to present
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+          present_value->MutableData<T>(), V->Data<T>(),
+          V->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
     }
   }
 
@@ -649,32 +680,17 @@ Status Attention<T>::RunMemoryEfficientAttention(
       }
 
       // Determine broadcast flags based on bias logical shape [B, num_heads, q_seq, kv_seq].
-      // MEA always uses bias_strideM = kv_seq, so each query row must have kv_seq elements.
-      // For 2D masks [B, kv_seq]: the mask is constant across q positions, so we must
-      // expand to [B, 1, q_seq, kv_seq] by repeating each row q_seq times. Without this,
-      // bias_strideM would walk through batch boundaries instead of replaying the same mask.
+      // MEA indexes bias as: offset = batch_id * strideB + head_id * strideH + q_pos * strideM + kv_pos.
+      // broadcast_attn_bias_dim_0=true sets strideB=0; dim_1=true sets strideH=0.
+      // strideM is always total_seq (num_keys), so the data must have [q_seq, total_seq] as inner dims.
       size_t mask_dims = attn_mask->Shape().NumDimensions();
       auto dims = attn_mask->Shape().GetDims();
       if (mask_dims == 2) {
-        // Expand [B, kv_seq] → [B, 1, q_seq, kv_seq] by repeating each batch's row
-        using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
-        const int kv_len = parameters.total_sequence_length;
-        const int q_len = parameters.q_sequence_length;
-        int64_t expanded_elements = static_cast<int64_t>(parameters.batch_size) * q_len * kv_len;
-        auto expanded_buffer = GetScratchBuffer<void>(
-            expanded_elements * sizeof(NativeCudaT), context->GetComputeStream());
-        const auto* src = (attn_mask->IsDataType<bool>())
-                              ? reinterpret_cast<const NativeCudaT*>(converted_mask_buffer.get())
-                              : reinterpret_cast<const NativeCudaT*>(attn_mask->Data<T>());
-        auto* dst = reinterpret_cast<NativeCudaT*>(expanded_buffer.get());
-        ORT_RETURN_IF_ERROR(LaunchBroadcastBias2DToQSeq<NativeCudaT>(
-            src, dst, parameters.batch_size, q_len, kv_len,
-            cuda_stream, device_prop.maxThreadsPerBlock));
-        attn_bias_data = expanded_buffer.get();
-        converted_mask_buffer = std::move(expanded_buffer);
-        // Expanded shape is [B, 1, q_seq, kv_seq]
-        broadcast_bias_dim_0 = false;
-        broadcast_bias_dim_1 = true;
+        // 2D mask: [q_seq, total_seq] per ONNX spec. Broadcasts over batch and heads.
+        // MEA reads bias[q_pos * total_seq + kv_pos] for all (batch, head) pairs
+        // via strideB=0, strideH=0, strideM=total_seq.
+        broadcast_bias_dim_0 = true;  // broadcast over batch
+        broadcast_bias_dim_1 = true;  // broadcast over heads
       } else if (mask_dims == 3) {
         broadcast_bias_dim_0 = true;
         broadcast_bias_dim_1 = dims[0] == 1;
@@ -768,6 +784,11 @@ Status Attention<T>::RunMemoryEfficientAttention(
           K->Data<float>(), present_key->MutableData<float>(),
           cuda_stream, device_prop.maxThreadsPerBlock));
     }
+  } else if (present_key != nullptr && !is_bsnh) {
+    // 4D BNSH prompt: K is already BNSH, just D2D copy to present
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        present_key->MutableData<T>(), K->Data<T>(),
+        K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
   }
   if (present_value != nullptr && is_bsnh) {
     if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -790,6 +811,11 @@ Status Attention<T>::RunMemoryEfficientAttention(
           V->Data<float>(), present_value->MutableData<float>(),
           cuda_stream, device_prop.maxThreadsPerBlock));
     }
+  } else if (present_value != nullptr && !is_bsnh) {
+    // 4D BNSH prompt: V is already BNSH, just D2D copy to present
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        present_value->MutableData<T>(), V->Data<T>(),
+        V->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
   }
 
   return Status::OK();

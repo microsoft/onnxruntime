@@ -168,21 +168,18 @@ def parity_check_gqa_prompt(
         print(f"DEBUG_NAN: First 5 NaN indices: {nan_indices[:5]}")
 
     # Compare KV cache (present_k should match k, present_v should match v)
-    # Skip for 4D BNSH prompt: the dispatcher doesn't populate present_key/value
-    # when inputs are already BNSH and there's no past (known limitation).
-    if not config.use_4d_bnsh or config.past_kv_sequence_length > 0:
-        k_ref_bnsh = k.transpose(1, 2)  # BSNH -> BNSH
-        v_ref_bnsh = v.transpose(1, 2)  # BSNH -> BNSH
+    k_ref_bnsh = k.transpose(1, 2)  # BSNH -> BNSH
+    v_ref_bnsh = v.transpose(1, 2)  # BSNH -> BNSH
 
-        k_ref_np = k_ref_bnsh.to(torch.float32).detach().cpu().numpy()
-        v_ref_np = v_ref_bnsh.to(torch.float32).detach().cpu().numpy()
-        present_k_np = present_k.to(torch.float32).detach().cpu().numpy()
-        present_v_np = present_v.to(torch.float32).detach().cpu().numpy()
+    k_ref_np = k_ref_bnsh.to(torch.float32).detach().cpu().numpy()
+    v_ref_np = v_ref_bnsh.to(torch.float32).detach().cpu().numpy()
+    present_k_np = present_k.to(torch.float32).detach().cpu().numpy()
+    present_v_np = present_v.to(torch.float32).detach().cpu().numpy()
 
-        print_diff_statistics(torch.tensor(present_k_np - k_ref_np), "present_k")
-        numpy.testing.assert_allclose(present_k_np, k_ref_np, rtol=rtol, atol=atol)
-        print_diff_statistics(torch.tensor(present_v_np - v_ref_np), "present_v")
-        numpy.testing.assert_allclose(present_v_np, v_ref_np, rtol=rtol, atol=atol)
+    print_diff_statistics(torch.tensor(present_k_np - k_ref_np), "present_k")
+    numpy.testing.assert_allclose(present_k_np, k_ref_np, rtol=rtol, atol=atol)
+    print_diff_statistics(torch.tensor(present_v_np - v_ref_np), "present_v")
+    numpy.testing.assert_allclose(present_v_np, v_ref_np, rtol=rtol, atol=atol)
 
     print_diff_statistics(torch.tensor(out_np - out_ref_np), "out")
     numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)

@@ -16,7 +16,7 @@ namespace cuda {
 // 3. True values should be contiguous, followed by contiguous False (padding) values
 // 4. The mask must be broadcastable to (batch_size, num_heads, q_seq_len, total_seq_len)
 //
-// For 2D mask (batch_size, total_seq_len): uses the mask directly per batch
+// For 2D mask (q_seq_len, total_seq_len): broadcasts over batch; uses first query position (row 0)
 // For 3D mask (num_heads, q_seq_len, total_seq_len): broadcasts across batches, uses first head/q
 // For 4D mask (B, H, q_seq_len, total_seq_len): uses first head, first q position
 //
@@ -53,19 +53,6 @@ Status LaunchConvertBoolMaskToAttentionBias(
     T* attention_bias,
     int64_t num_elements,
     float mask_filter_value,
-    cudaStream_t stream,
-    int max_threads_per_block);
-
-// Broadcast a 2D attention bias [B, kv_seq] → [B, 1, q_seq, kv_seq] by repeating
-// each batch's row across all query positions. CUDA-graph-capturable replacement for
-// the host-side batch×q_seq cudaMemcpyAsync loop.
-template <typename T>
-Status LaunchBroadcastBias2DToQSeq(
-    const T* src,
-    T* dst,
-    int batch_size,
-    int q_seq_len,
-    int kv_seq_len,
     cudaStream_t stream,
     int max_threads_per_block);
 

@@ -1327,5 +1327,179 @@ class TestONNXAttentionMHABroadcastMask(unittest.TestCase):
         numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
+# #################################################################################################
+#  2D Mask Broadcast Regression Test
+# #################################################################################################
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping 2D mask broadcast tests.")
+class TestONNXAttentionMHA2DMaskBroadcast(unittest.TestCase):
+    """
+    Regression test for 2D mask [q_seq, total_seq] broadcast correctness.
+
+    Per ONNX spec, a 2D attention mask has shape [q_seq, total_seq] and broadcasts
+    over batch and heads. This test uses batch_size > q_seq with a non-uniform
+    mask (different values per row) to verify correct broadcast behavior.
+
+    The old bug indexed the 2D mask by batch index instead of query position,
+    causing OOB reads when batch_size > q_seq.
+    """
+
+    def test_2d_additive_mask_batch_gt_qseq(self):
+        """2D additive mask [q_seq=2, total_seq=8] with batch=4 — would OOB on old code."""
+        config = AttentionConfig(
+            batch_size=4,
+            q_sequence_length=2,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            has_attn_mask=True,
+            attn_mask_dims=2,
+            attn_mask_type="additive",
+        )
+
+        torch.manual_seed(42)
+        device = "cuda"
+        torch_type = torch.float16
+        mask_filter_value = torch.finfo(torch_type).min
+
+        q = (
+            torch.randn(
+                config.batch_size,
+                config.q_sequence_length,
+                config.q_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.2
+        )
+        k = (
+            torch.randn(
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.2
+        )
+        v = torch.randn_like(k) * 0.2
+
+        # Create a non-uniform 2D causal-style mask [q_seq=2, kv_seq=8]:
+        # Row 0: attend to positions 0-3, mask out 4-7
+        # Row 1: attend to positions 0-5, mask out 6-7
+        attn_mask = torch.zeros(config.q_sequence_length, config.kv_sequence_length, device=device, dtype=torch_type)
+        attn_mask[0, 4:] = mask_filter_value
+        attn_mask[1, 6:] = mask_filter_value
+
+        # Reference: broadcast [2, 8] → [4, 4, 2, 8] (same mask for all batches/heads)
+        attn_bias_ref = attn_mask.unsqueeze(0).unsqueeze(0).expand(config.batch_size, config.q_num_heads, -1, -1)
+
+        # PyTorch reference
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_bias_ref, causal=False)
+
+        # ORT path
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
+        out_ort = out_ort.reshape(config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size)
+
+        out_np = out_ort.float().detach().cpu().numpy()
+        out_ref_np = out_ref.float().detach().cpu().numpy()
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+    def test_2d_bool_mask_batch_gt_qseq(self):
+        """2D bool mask [q_seq=2, total_seq=8] with batch=4 — would OOB on old code."""
+        config = AttentionConfig(
+            batch_size=4,
+            q_sequence_length=2,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            has_attn_mask=True,
+            attn_mask_dims=2,
+            attn_mask_type="bool",
+        )
+
+        torch.manual_seed(42)
+        device = "cuda"
+        torch_type = torch.float16
+
+        q = (
+            torch.randn(
+                config.batch_size,
+                config.q_sequence_length,
+                config.q_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.2
+        )
+        k = (
+            torch.randn(
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.2
+        )
+        v = torch.randn_like(k) * 0.2
+
+        # Create non-uniform 2D bool mask [q_seq=2, kv_seq=8]:
+        # Row 0: True for positions 0-3, False for 4-7
+        # Row 1: True for positions 0-5, False for 6-7
+        attn_mask = torch.ones(config.q_sequence_length, config.kv_sequence_length, device=device, dtype=torch.bool)
+        attn_mask[0, 4:] = False
+        attn_mask[1, 6:] = False
+
+        # Zero out K/V at padded positions (use row 0's pattern since 2D mask broadcasts)
+        # For bool mask, the effective seqlen for all batches comes from row 0 (most restrictive)
+        # Actually for cross-attention with different masking per query, just zero out nothing
+        # The reference uses key_padding_mask for padding, or we can use attn_bias directly
+        mask_filter_value = torch.finfo(torch_type).min
+        attn_bias_ref = torch.where(
+            attn_mask.unsqueeze(0).unsqueeze(0).expand(config.batch_size, config.q_num_heads, -1, -1),
+            torch.tensor(0.0, dtype=torch_type, device=device),
+            torch.tensor(mask_filter_value, dtype=torch_type, device=device),
+        )
+
+        # PyTorch reference with explicit bias
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_bias_ref, causal=False)
+
+        # ORT path
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
+        out_ort = out_ort.reshape(config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size)
+
+        out_np = out_ort.float().detach().cpu().numpy()
+        out_ref_np = out_ref.float().detach().cpu().numpy()
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
 if __name__ == "__main__":
     unittest.main()

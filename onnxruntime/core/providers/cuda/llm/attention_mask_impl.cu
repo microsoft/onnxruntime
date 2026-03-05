@@ -19,7 +19,7 @@ namespace cuda {
 // - After the first False, all remaining elements must be False (contiguous padding)
 //
 // Handle broadcasting:
-// - 2D mask (batch_size, total_seq_len): stride = total_seq_len, batch_idx = threadIdx
+// - 2D mask (q_seq_len, total_seq_len): broadcasts over batch; uses first query position (row 0)
 // - 3D mask (num_heads, q_seq_len, total_seq_len): broadcasts to [1, num_heads, q_seq, total_seq]
 //   No per-batch variation; uses first head, first q position for all batches
 // - 4D mask (B, H, q_seq_len, total_seq_len): we look at first head, first q position
@@ -43,10 +43,11 @@ __global__ void ConvertMaskToSeqlensKernel(
   const bool* mask_row = nullptr;
 
   if (mask_dims == 2) {
-    // Shape: (batch_size or 1, total_seq_len)
-    // If mask_dim0 == 1, broadcast across all batches
-    int effective_batch = (mask_dim0 == 1) ? 0 : batch_idx;
-    mask_row = attn_mask + effective_batch * total_seq_len;
+    // Shape: (q_seq_len, total_seq_len) per ONNX spec. Broadcasts over batch.
+    // Use first query position (row 0) for sequence length determination.
+    // For 2D masks [q_seq, total_seq], only used in decode path where q_seq=1,
+    // so row 0 is always correct. Flash excludes 2D bool masks for prompt.
+    mask_row = attn_mask;
   } else if (mask_dims == 3) {
     // Shape: (num_heads, q_seq_len, total_seq_len)
     // This broadcasts to [1, num_heads, q_seq, total_seq] - same mask for all batches
@@ -182,61 +183,6 @@ template Status LaunchConvertBoolMaskToAttentionBias<__half>(
     const bool*, __half*, int64_t, float, cudaStream_t, int);
 template Status LaunchConvertBoolMaskToAttentionBias<__nv_bfloat16>(
     const bool*, __nv_bfloat16*, int64_t, float, cudaStream_t, int);
-
-// Broadcast a 2D attention bias [B, kv_seq] to [B, 1, q_seq, kv_seq] by repeating
-// each batch's row across all query positions. This is needed because MEA uses
-// bias_strideM = kv_seq, so each query position must have its own row of kv_seq values.
-// Without expansion, a 2D mask would cause bias_strideM to walk across batch boundaries.
-template <typename T>
-__global__ void BroadcastBias2DToQSeqKernel(
-    const T* __restrict__ src,
-    T* __restrict__ dst,
-    const int batch_size,
-    const int q_seq_len,
-    const int kv_seq_len) {
-  int64_t total = static_cast<int64_t>(batch_size) * q_seq_len * kv_seq_len;
-  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-       idx < total;
-       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
-    // Map flat index → (batch, q_pos, kv_pos)
-    int kv_pos = static_cast<int>(idx % kv_seq_len);
-    int b = static_cast<int>(idx / (static_cast<int64_t>(q_seq_len) * kv_seq_len));
-    // All q positions read from the same src row for this batch
-    dst[idx] = src[static_cast<int64_t>(b) * kv_seq_len + kv_pos];
-  }
-}
-
-template <typename T>
-Status LaunchBroadcastBias2DToQSeq(
-    const T* src,
-    T* dst,
-    int batch_size,
-    int q_seq_len,
-    int kv_seq_len,
-    cudaStream_t stream,
-    int max_threads_per_block) {
-  int64_t total = static_cast<int64_t>(batch_size) * q_seq_len * kv_seq_len;
-  if (total == 0) {
-    return Status::OK();
-  }
-
-  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), total));
-  int64_t blocks = (total + threads - 1) / threads;
-  constexpr int64_t kMaxGridDimX = 65535;
-  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
-
-  BroadcastBias2DToQSeqKernel<T><<<grid_size, threads, 0, stream>>>(
-      src, dst, batch_size, q_seq_len, kv_seq_len);
-
-  return CUDA_CALL(cudaGetLastError());
-}
-
-template Status LaunchBroadcastBias2DToQSeq<float>(
-    const float*, float*, int, int, int, cudaStream_t, int);
-template Status LaunchBroadcastBias2DToQSeq<__half>(
-    const __half*, __half*, int, int, int, cudaStream_t, int);
-template Status LaunchBroadcastBias2DToQSeq<__nv_bfloat16>(
-    const __nv_bfloat16*, __nv_bfloat16*, int, int, int, cudaStream_t, int);
 
 // CUDA kernel to convert nonpad_kv_seqlen (int64) to seqlens_k (int32) for GQA.
 // GQA convention: seqlens_k = nonpad_kv_seqlen - 1 (last valid index, not count).

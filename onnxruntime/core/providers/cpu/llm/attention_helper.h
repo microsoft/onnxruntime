@@ -131,6 +131,11 @@ inline Status ComputeOutputShapeForAttention(
   }
 
   ORT_ENFORCE(parameters.q_num_heads % parameters.kv_num_heads == 0, "q_num_heads must be a multiple of kv_num_heads. This is required for grouped/multi-query and multi-headed attention.");
+  // TODO: The ONNX spec allows attn_mask last dim to be shorter than total_sequence_length,
+  // with positions beyond the mask padded with -inf. Currently we enforce exact match.
+  // To support: change == to <=, allocate padded buffer, fill remainder with -inf.
+  // See ONNX spec: 'The last dimension can also be shorter than total_sequence_length
+  // and will be padded to total_sequence_length with negative infinity.'
   ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.total_sequence_length,
               "inconsistent total_sequence_length (between attn_mask and past_key and past_value)");
   ORT_ENFORCE(attn_mask == nullptr ||
