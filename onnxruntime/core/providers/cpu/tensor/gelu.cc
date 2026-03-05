@@ -2,16 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/common/cpuid_info.h"
 #include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 
 #include "core/platform/threadpool.h"
-#if defined(MLAS_TARGET_AMD64) && defined(__AVX512F__)
-#include <immintrin.h>
-#endif
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/providers/cpu/element_wise_ranged_transform.h"
 #include "core/providers/cpu/tensor/gelu.h"
@@ -20,123 +16,6 @@ using onnxruntime::narrow;
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
-
-namespace {
-
-template <typename T>
-inline void GeluPreProcessFusedTanh(const T* input, T* transformed, size_t count, T b, T c) {
-  for (size_t i = 0; i < count; ++i) {
-    const T x = input[i];
-    transformed[i] = x * (c * x * x + b);
-  }
-}
-
-template <typename T>
-inline void GeluPreProcessFusedErf(const T* input, T* transformed, size_t count, T scale) {
-  for (size_t i = 0; i < count; ++i) {
-    transformed[i] = input[i] * scale;
-  }
-}
-
-template <>
-inline void GeluPreProcessFusedTanh<float>(const float* input, float* transformed, size_t count, float b, float c) {
-#if defined(MLAS_TARGET_AMD64) && defined(__AVX512F__)
-  static const bool has_avx512f = CPUIDInfo::GetCPUIDInfo().HasAVX512f();
-  if (has_avx512f) {
-    constexpr size_t kSimdWidth = 16;
-    const __m512 bv = _mm512_set1_ps(b);
-    const __m512 cv = _mm512_set1_ps(c);
-
-    size_t i = 0;
-    for (; i + kSimdWidth <= count; i += kSimdWidth) {
-      const __m512 x = _mm512_loadu_ps(input + i);
-      const __m512 x2 = _mm512_mul_ps(x, x);
-      __m512 y = _mm512_fmadd_ps(cv, x2, bv);
-      y = _mm512_mul_ps(y, x);
-      _mm512_storeu_ps(transformed + i, y);
-    }
-
-    for (; i < count; ++i) {
-      const float x = input[i];
-      transformed[i] = x * (c * x * x + b);
-    }
-    return;
-  }
-#endif
-
-  for (size_t i = 0; i < count; ++i) {
-    const float x = input[i];
-    transformed[i] = x * (c * x * x + b);
-  }
-}
-
-template <>
-inline void GeluPreProcessFusedErf<float>(const float* input, float* transformed, size_t count, float scale) {
-#if defined(MLAS_TARGET_AMD64) && defined(__AVX512F__)
-  static const bool has_avx512f = CPUIDInfo::GetCPUIDInfo().HasAVX512f();
-  if (has_avx512f) {
-    constexpr size_t kSimdWidth = 16;
-    const __m512 sv = _mm512_set1_ps(scale);
-
-    size_t i = 0;
-    for (; i + kSimdWidth <= count; i += kSimdWidth) {
-      const __m512 x = _mm512_loadu_ps(input + i);
-      const __m512 y = _mm512_mul_ps(x, sv);
-      _mm512_storeu_ps(transformed + i, y);
-    }
-
-    for (; i < count; ++i) {
-      transformed[i] = input[i] * scale;
-    }
-    return;
-  }
-#endif
-
-  for (size_t i = 0; i < count; ++i) {
-    transformed[i] = input[i] * scale;
-  }
-}
-
-template <typename T>
-inline void GeluPostProcessFused(const T* input, T* transformed, size_t count) {
-  for (size_t i = 0; i < count; ++i) {
-    transformed[i] = static_cast<T>(0.5f) * input[i] * (transformed[i] + static_cast<T>(1.0f));
-  }
-}
-
-template <>
-inline void GeluPostProcessFused<float>(const float* input, float* transformed, size_t count) {
-#if defined(MLAS_TARGET_AMD64) && defined(__AVX512F__)
-  static const bool has_avx512f = CPUIDInfo::GetCPUIDInfo().HasAVX512f();
-  if (has_avx512f) {
-    constexpr size_t kSimdWidth = 16;
-    const __m512 one = _mm512_set1_ps(1.0f);
-    const __m512 half = _mm512_set1_ps(0.5f);
-
-    size_t i = 0;
-    for (; i + kSimdWidth <= count; i += kSimdWidth) {
-      const __m512 x = _mm512_loadu_ps(input + i);
-      __m512 y = _mm512_loadu_ps(transformed + i);
-      y = _mm512_add_ps(y, one);
-      y = _mm512_mul_ps(y, x);
-      y = _mm512_mul_ps(y, half);
-      _mm512_storeu_ps(transformed + i, y);
-    }
-
-    for (; i < count; ++i) {
-      transformed[i] = 0.5f * input[i] * (transformed[i] + 1.0f);
-    }
-
-    return;
-  }
-#endif
-
-  for (size_t i = 0; i < count; ++i) {
-    transformed[i] = 0.5f * input[i] * (transformed[i] + 1.0f);
-  }
-}
-
-}  // namespace
 
 // May revisit the implementations to support inplace computation, if needed.
 
@@ -187,10 +66,16 @@ Status Gelu<T>::Compute(OpKernelContext* context) const {
           T* p_output = output_data + start;
           int64_t count = std::min(length_per_task, elem_count - start);
 
-          GeluPreProcessFusedTanh(p_input, p_output, narrow<size_t>(count),
-                                  static_cast<T>(B), static_cast<T>(C));
+          for (int64_t i = 0; i < count; i++) {
+            T value = p_input[i];
+            p_output[i] = value * (static_cast<T>(C) * value * value + static_cast<T>(B));
+          }
+
           MlasComputeTanh(p_output, p_output, narrow<size_t>(count));
-          GeluPostProcessFused(p_input, p_output, narrow<size_t>(count));
+
+          for (int64_t i = 0; i < count; i++) {
+            p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
+          }
         },
         0);
     return Status::OK();
@@ -203,10 +88,16 @@ Status Gelu<T>::Compute(OpKernelContext* context) const {
           T* p_output = output_data + start;
           int64_t count = std::min(length_per_task, elem_count - start);
 
-          GeluPreProcessFusedErf(p_input, p_output, narrow<size_t>(count),
-                                 static_cast<T>(M_SQRT1_2));
+          for (int64_t i = 0; i < count; i++) {
+            T value = p_input[i];
+            p_output[i] = value * static_cast<T>(M_SQRT1_2);
+          }
+
           MlasComputeErf(p_output, p_output, narrow<size_t>(count));
-          GeluPostProcessFused(p_input, p_output, narrow<size_t>(count));
+
+          for (int64_t i = 0; i < count; i++) {
+            p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
+          }
         },
         0);
     return Status::OK();
