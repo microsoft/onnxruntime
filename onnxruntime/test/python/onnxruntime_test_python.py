@@ -2038,7 +2038,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_tree_ensemble_logistic(self):
         try:
-            import onnx
+            import onnx  # noqa: PLC0415
         except ImportError:
             # onnx is not installed on ARM build.
             self.skipTest("onnx is not installed")
