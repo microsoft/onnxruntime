@@ -4518,7 +4518,7 @@ TEST(TransposeOptimizerTests, RegressionTest_Permute1DConstantEmptyPerm) {
   auto* scalar_input = MakeInput<float>(builder, std::vector<int64_t>{}, std::vector<int64_t>{}, 0.0f, 1.0f);
 
   // Transpose with empty perm — valid ONNX identity on a scalar
-  auto* transpose_out = builder.MakeIntermediate();  
+  auto* transpose_out = builder.MakeIntermediate();
   auto& transpose_node = builder.AddNode("Transpose", {scalar_input}, {transpose_out});
   transpose_node.AddAttribute("perm", std::vector<int64_t>{});
 
