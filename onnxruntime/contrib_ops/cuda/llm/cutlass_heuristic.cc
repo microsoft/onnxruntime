@@ -28,6 +28,7 @@
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/numeric_types.h"
 #include "core/common/common.h"
+#include "onnxruntime_config.h"
 
 #include <cuda_runtime_api.h>
 #include <set>
@@ -280,6 +281,13 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm90(CutlassGemmConfig::Can
   return candidate_configs;
 }
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#if defined(HAS_STRINGOP_OVERFLOW)
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif  // defined(HAS_STRINGOP_OVERFLOW)
+#endif  // __GNUC__
+
 std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::CandidateConfigTypeParam const config) {
 #ifdef FAST_BUILD
   // Fast build disables all configs except this one for SM100
@@ -354,7 +362,11 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
   }
 #endif
 
-}  // namespace kernels
+}
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif  // __GNUC__
 
 std::vector<CutlassGemmConfig> get_candidate_configs(
     int sm, int const max_split_k, CutlassGemmConfig::CandidateConfigTypeParam const config_type_param) {
