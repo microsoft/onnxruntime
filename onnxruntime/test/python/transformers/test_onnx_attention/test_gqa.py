@@ -154,7 +154,9 @@ def parity_check_gqa_prompt(
             torch.testing.assert_close(out, first_out, rtol=0, atol=0, msg="Output mismatch between two runs")
 
     if config.use_4d_bnsh:
-        # 4D BNSH output → BSNH for comparison
+        # Torch SDPA outputs [B, num_heads, q_seq, head_size] (BNSH format).
+        # For 4D BNSH test configs, transpose to [B, q_seq, num_heads, head_size] (BSNH)
+        # to match ORT's 3D output convention for comparison.
         out = out.transpose(1, 2).contiguous()
     else:
         out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size))

@@ -5,7 +5,7 @@
 # --------------------------------------------------------------------------
 
 """
-Tests for ONNX Attention op (opset 23) — MHA path (kv_num_heads == q_num_heads).
+Tests for ONNX Attention op (opset 23+) — MHA path (kv_num_heads == q_num_heads).
 
 The MHA path in attention.cc is exercised when kv_num_heads == q_num_heads.
 On Ampere+ GPUs with fp16/bf16, the dispatch cascade routes to flash attention

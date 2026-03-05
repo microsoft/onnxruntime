@@ -123,6 +123,7 @@ struct GQABufferRequirements {
 };
 
 template <typename T>
+// Also used by ONNX Attention (core/providers/cuda/llm/attention.cc) for GQA head expansion in MEA path.
 Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
                      float2* k_buff, float2* v_buff,
                      const float2* k_og, const float2* v_og,

@@ -78,6 +78,15 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
 // RunFlashAttention: Direct flash attention kernel call
 // ============================================================================
 //
+// Flash Attention dispatch paths:
+//   Path 1: nonpad_kv_seqlen (opset 24 external cache) -> mha_fwd_kvcache
+//   Path 2: past_key + past_value (internal cache decode) -> mha_fwd_kvcache
+//           - Supports: bool mask -> seqlens_k, no mask -> fill past_seq_len
+//           - 4D BNSH: transposes Q/K/V to BSNH before kernel
+//   Path 3: no past, no mask (prompt) -> mha_fwd
+//   Eligibility: fp16/bf16, head_size==v_head_size, no output_qk, no softcap,
+//                no softmax_precision, (no mask OR bool mask + past)
+//
 // PERFORMANCE NOTE: ONNX Attention's decode path is inherently ~15-30% slower than
 // contrib GQA's decode path for grouped-query attention workloads. This is because:
 //
@@ -489,6 +498,14 @@ Status Attention<T>::RunFlashAttention(
 // ============================================================================
 // RunMemoryEfficientAttention: Direct memory-efficient attention kernel call
 // ============================================================================
+//
+// Memory Efficient Attention (cutlass FMHA) dispatch paths:
+//   Path 1: nonpad_kv_seqlen (opset 24 external cache) -> has_custom_right_padding mode
+//   Path 2: no past, with mask (prompt) -> standard MEA with additive bias
+//   Path 3: no past, no mask (prompt) -> standard MEA
+//   Eligibility: fp16/bf16, SM75+, no past_key (decode excluded),
+//                head_size <= 128, bias stride alignment
+//
 template <typename T>
 Status Attention<T>::RunMemoryEfficientAttention(
     OpKernelContext* context,
@@ -840,6 +857,14 @@ Status Attention<T>::RunMemoryEfficientAttention(
 // ============================================================================
 // RunUnfusedAttention: Delegates to MHA's QkvToContext (unfused GEMM+softmax+GEMM)
 // ============================================================================
+//
+// Unfused Attention dispatch paths:
+//   Universal fallback via MHA's QkvToContext.
+//   Path 1: nonpad_kv_seqlen -> converts to attention_bias [B, q_seq, total_seq]
+//   Path 2: all other cases -> passes mask/bias directly
+//   Supports: all dtypes (fp16/bf16/fp32), all mask types, all head sizes
+//   Limitation: MHA only (q_num_heads must equal kv_num_heads)
+//
 template <typename T>
 Status Attention<T>::RunUnfusedAttention(
     OpKernelContext* context,
@@ -1002,7 +1027,8 @@ Status Attention<T>::RunUnfusedAttention(
 // ============================================================================
 // MHA path (q_num_heads == kv_num_heads): uses direct kernel dispatch cascade
 //   flash → memory efficient → unfused
-// GQA path (q_num_heads != kv_num_heads): routes through GQA dispatch (kept for now)
+// GQA path (q_num_heads != kv_num_heads): uses flash (with kvcache) or MEA
+//   (with head expansion via LaunchUngroup). Unfused fallback not yet supported for GQA.
 // ============================================================================
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -1014,6 +1040,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_value = context->Input<Tensor>(5);
   const Tensor* nonpad_kv_seqlen = context->Input<Tensor>(6);  // optional, Opset 24
 
+  // TODO: Support nonpad_kv_seqlen + attn_mask together. The ONNX spec allows both
+  // (additive composition: attn_bias += attn_mask then attn_bias += padding_mask).
+  // CPU implementation supports it. CUDA blocks it because flash has no bias parameter.
+  // To support: route to MEA (set both seqlen_k_ptr and attn_bias) or unfused
+  // (compose two additive biases). ~20 lines. Implement when a real model needs it.
   ORT_ENFORCE(nonpad_kv_seqlen == nullptr || attn_mask == nullptr,
               "nonpad_kv_seqlen and attn_mask cannot both be provided.");
 
@@ -1058,6 +1089,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // causal semantics are decode-oriented (window offset by seqlens_k). For causal
         // prompt with padding, MEA handles it correctly via attention bias conversion.
         // Flash handles: no mask, decode with past (±mask), nonpad_kv_seqlen.
+        // Note: contrib MHA similarly excludes flash when attention_bias is present
+        // (no mask support in mha_fwd). Float masks and bool prompt masks route to MEA
+        // which supports additive bias natively.
         (attn_mask == nullptr || (attn_mask->IsDataType<bool>() && past_key != nullptr));
 
     if (flash_eligible) {
@@ -1126,8 +1160,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (is_gqa) {
     // TODO: Support GQA in unfused attention path for fp32/old-GPU fallback.
-    // Requires ~160 lines: ExpandKVHeads kernel to replicate KV heads, wiring in unfused dispatch.
-    // See issue #27516 for tracking.
+    // Currently blocked because QkvToContext allocates K/V workspace assuming
+    // num_heads == kv_num_heads. GQA needs a head expansion step (ExpandKVHeads kernel)
+    // to replicate kv_num_heads -> q_num_heads before unfused can process.
+    // Requires ~160 lines. See issue #27516.
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "GQA (q_num_heads != kv_num_heads) requires flash or memory efficient attention, "
                            "but neither is eligible. Ensure fp16/bf16 on Ampere+ GPU, or check head_size constraints.");
