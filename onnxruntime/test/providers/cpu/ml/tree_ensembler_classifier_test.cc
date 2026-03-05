@@ -367,9 +367,6 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryProbabilities) {
   test.Run();
 }
 
-// Verify that mismatched class attribute array sizes are rejected at model load
-// time with a clean error, rather than causing out-of-bounds access. This guards
-// against CVE-style attacks using crafted ONNX models (CWE-125).
 TEST(MLOpTest, TreeEnsembleClassifierMismatchedClassArrays) {
   OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
 
@@ -410,7 +407,7 @@ TEST(MLOpTest, TreeEnsembleClassifierMismatchedClassArrays) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "");
 }
 
-// Verify that mismatched nodes_* attribute array sizes are rejected for classifiers.
+
 TEST(MLOpTest, TreeEnsembleClassifierMismatchedNodeArrays) {
   OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
 
