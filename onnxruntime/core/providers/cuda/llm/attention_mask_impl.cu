@@ -15,7 +15,7 @@ namespace cuda {
 // where padding starts. The sequence length is the index of first False.
 //
 // Validation (via CUDA_KERNEL_ASSERT, reported asynchronously):
-// - The mask must start with True (first element must be True)
+// - All-false masks are valid (represents fully masked / zero-length sequence)
 // - After the first False, all remaining elements must be False (contiguous padding)
 //
 // Handle broadcasting:
@@ -101,7 +101,9 @@ __global__ void ConvertMaskToSeqlensKernel(
   // seqlens_k output: seq_len + seqlen_offset
   // GQA convention (seqlen_offset=-1): stores last valid index (count - 1)
   // Flash convention (seqlen_offset=0): stores actual count
-  seqlens_k[batch_idx] = seq_len + seqlen_offset;
+  // Clamp to 0: all-false mask (seq_len=0) with negative offset (e.g. GQA decode)
+  // would produce negative seqlens_k, which is undefined in Flash/GQA kernels.
+  seqlens_k[batch_idx] = max(0, seq_len + seqlen_offset);
 }
 
 // Convert boolean mask to sequence lengths with a configurable offset.
@@ -199,6 +201,9 @@ __global__ void ConvertNonpadKvSeqlenToSeqlensKKernel(
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < batch_size) {
     int64_t val = nonpad_kv_seqlen[idx];
+    // GQA convention: val is a token count (1-based), so val=0 is invalid.
+    // seqlens_k = val - 1 gives a last-valid-index; val=0 would yield -1, which is
+    // undefined in GQA's mha_fwd_kvcache kernel.
     CUDA_KERNEL_ASSERT(val > 0);
     CUDA_KERNEL_ASSERT(val <= static_cast<int64_t>(total_sequence_length));
     if (min_expected_seqlen > 0) {
@@ -240,7 +245,7 @@ __global__ void ConvertNonpadKvSeqlenToFlashSeqlensKKernel(
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < batch_size) {
     int64_t val = nonpad_kv_seqlen[idx];
-    CUDA_KERNEL_ASSERT(val > 0);
+    CUDA_KERNEL_ASSERT(val >= 0);
     CUDA_KERNEL_ASSERT(val <= static_cast<int64_t>(total_sequence_length));
     val = max(static_cast<int64_t>(0), min(val, static_cast<int64_t>(total_sequence_length)));
     seqlens_k[idx] = static_cast<int>(val);  // count, not index
@@ -285,7 +290,7 @@ __global__ void ConvertNonpadKvSeqlenToAttentionBiasKernel(
     int b = static_cast<int>(idx / (static_cast<int64_t>(q_seq_len) * total_seq_len));
     int t = static_cast<int>(idx % total_seq_len);
     int64_t valid_len = nonpad_kv_seqlen[b];
-    CUDA_KERNEL_ASSERT(valid_len > 0 && valid_len <= static_cast<int64_t>(total_seq_len));
+    CUDA_KERNEL_ASSERT(valid_len >= 0 && valid_len <= static_cast<int64_t>(total_seq_len));
     valid_len = max(static_cast<int64_t>(0), min(valid_len, static_cast<int64_t>(total_seq_len)));
     attention_bias[idx] = (t < static_cast<int>(valid_len)) ? T(0.0f) : T(mask_filter_value);
   }

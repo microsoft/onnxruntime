@@ -75,6 +75,39 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 // ============================================================================
+// Transpose helpers: eliminate repeated if-constexpr type-switch blocks.
+// T is the ORT type (MLFloat16, BFloat16, float). The helpers map T to the
+// corresponding CUDA type via ToCudaType<T>::MappedType and forward to the
+// overloaded Transpose functions in contrib_ops.
+// ============================================================================
+
+template <typename T>
+static Status TransposeBNSHtoBSNH(int batch_size, int sequence_length,
+                                  int num_heads, int head_size,
+                                  const void* input, void* output,
+                                  cudaStream_t stream, int max_threads_per_block) {
+  using CudaT = typename ToCudaType<T>::MappedType;
+  return onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
+      batch_size, sequence_length, num_heads, head_size,
+      reinterpret_cast<const CudaT*>(input),
+      reinterpret_cast<CudaT*>(output),
+      stream, max_threads_per_block);
+}
+
+template <typename T>
+static Status TransposeBSNHtoBNSH(int batch_size, int sequence_length,
+                                  int num_heads, int head_size,
+                                  const void* input, void* output,
+                                  cudaStream_t stream, int max_threads_per_block) {
+  using CudaT = typename ToCudaType<T>::MappedType;
+  return onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
+      batch_size, sequence_length, num_heads, head_size,
+      reinterpret_cast<const CudaT*>(input),
+      reinterpret_cast<CudaT*>(output),
+      stream, max_threads_per_block);
+}
+
+// ============================================================================
 // RunFlashAttention: Direct flash attention kernel call
 // ============================================================================
 //
@@ -149,26 +182,11 @@ Status Attention<T>::RunFlashAttention(
     size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
                      parameters.q_num_heads * parameters.head_size;
     q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, context->GetComputeStream());
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.head_size,
-          reinterpret_cast<const half*>(Q->Data<T>()),
-          reinterpret_cast<half*>(q_bsnh_buffer.get()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.head_size,
-          Q->Data<BFloat16>(), reinterpret_cast<BFloat16*>(q_bsnh_buffer.get()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.head_size,
-          Q->Data<float>(), reinterpret_cast<float*>(q_bsnh_buffer.get()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    }
+    ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
+        parameters.batch_size, parameters.q_sequence_length,
+        parameters.q_num_heads, parameters.head_size,
+        Q->Data<T>(), q_bsnh_buffer.get(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
     q_data = q_bsnh_buffer.get();
   }
 
@@ -303,42 +321,16 @@ Status Attention<T>::RunFlashAttention(
                        parameters.kv_num_heads * parameters.v_head_size;
       k_bsnh_buffer = GetScratchBuffer<void>(k_bytes, context->GetComputeStream());
       v_bsnh_buffer = GetScratchBuffer<void>(v_bytes, context->GetComputeStream());
-      if constexpr (std::is_same_v<T, MLFloat16>) {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.head_size,
-            reinterpret_cast<const half*>(K->Data<T>()),
-            reinterpret_cast<half*>(k_bsnh_buffer.get()),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.v_head_size,
-            reinterpret_cast<const half*>(V->Data<T>()),
-            reinterpret_cast<half*>(v_bsnh_buffer.get()),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      } else if constexpr (std::is_same_v<T, BFloat16>) {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.head_size,
-            K->Data<BFloat16>(), reinterpret_cast<BFloat16*>(k_bsnh_buffer.get()),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.v_head_size,
-            V->Data<BFloat16>(), reinterpret_cast<BFloat16*>(v_bsnh_buffer.get()),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      } else {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.head_size,
-            K->Data<float>(), reinterpret_cast<float*>(k_bsnh_buffer.get()),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.v_head_size,
-            V->Data<float>(), reinterpret_cast<float*>(v_bsnh_buffer.get()),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      }
+      ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
+          parameters.batch_size, parameters.kv_sequence_length,
+          parameters.kv_num_heads, parameters.head_size,
+          K->Data<T>(), k_bsnh_buffer.get(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
+      ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
+          parameters.batch_size, parameters.kv_sequence_length,
+          parameters.kv_num_heads, parameters.v_head_size,
+          V->Data<T>(), v_bsnh_buffer.get(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
       k_new = k_bsnh_buffer.get();
       v_new = v_bsnh_buffer.get();
     }
@@ -393,54 +385,22 @@ Status Attention<T>::RunFlashAttention(
 
   // --- Transpose output BSNH → BNSH if input was 4D (BNSH) ---
   if (!is_bsnh && out_bsnh_buffer != nullptr) {
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.v_head_size,
-          reinterpret_cast<const half*>(out_bsnh_buffer.get()),
-          reinterpret_cast<half*>(Y->MutableData<T>()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.v_head_size,
-          reinterpret_cast<const BFloat16*>(out_bsnh_buffer.get()),
-          Y->MutableData<BFloat16>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.v_head_size,
-          reinterpret_cast<const float*>(out_bsnh_buffer.get()),
-          Y->MutableData<float>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    }
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.q_sequence_length,
+        parameters.q_num_heads, parameters.v_head_size,
+        out_bsnh_buffer.get(), Y->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
   }
 
   // --- Populate present_key/value (BNSH) from K/V (BSNH) ---
   // Skip for decode path where mha_fwd_kvcache already populated present buffers.
   if (!present_kv_already_populated) {
     if (present_key != nullptr && is_bsnh) {
-      if constexpr (std::is_same_v<T, MLFloat16>) {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.head_size,
-            reinterpret_cast<const half*>(K->Data<T>()),
-            reinterpret_cast<half*>(present_key->MutableData<T>()),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      } else if constexpr (std::is_same_v<T, BFloat16>) {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.head_size,
-            K->Data<BFloat16>(), present_key->MutableData<BFloat16>(),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      } else {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.head_size,
-            K->Data<float>(), present_key->MutableData<float>(),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      }
+      ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+          parameters.batch_size, parameters.kv_sequence_length,
+          parameters.kv_num_heads, parameters.head_size,
+          K->Data<T>(), present_key->MutableData<T>(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_key != nullptr && !is_bsnh) {
       // 4D BNSH prompt: K is already BNSH, just D2D copy to present
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
@@ -448,26 +408,11 @@ Status Attention<T>::RunFlashAttention(
           K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
     }
     if (present_value != nullptr && is_bsnh) {
-      if constexpr (std::is_same_v<T, MLFloat16>) {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.v_head_size,
-            reinterpret_cast<const half*>(V->Data<T>()),
-            reinterpret_cast<half*>(present_value->MutableData<T>()),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      } else if constexpr (std::is_same_v<T, BFloat16>) {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.v_head_size,
-            V->Data<BFloat16>(), present_value->MutableData<BFloat16>(),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      } else {
-        ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-            parameters.batch_size, parameters.kv_sequence_length,
-            parameters.kv_num_heads, parameters.v_head_size,
-            V->Data<float>(), present_value->MutableData<float>(),
-            cuda_stream, device_prop.maxThreadsPerBlock));
-      }
+      ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+          parameters.batch_size, parameters.kv_sequence_length,
+          parameters.kv_num_heads, parameters.v_head_size,
+          V->Data<T>(), present_value->MutableData<T>(),
+          cuda_stream, device_prop.maxThreadsPerBlock));
     } else if (present_value != nullptr && !is_bsnh) {
       // 4D BNSH prompt: V is already BNSH, just D2D copy to present
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
@@ -533,26 +478,11 @@ Status Attention<T>::RunMemoryEfficientAttention(
     size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
                      parameters.q_num_heads * parameters.head_size;
     q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, context->GetComputeStream());
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.head_size,
-          reinterpret_cast<const half*>(Q->Data<T>()),
-          reinterpret_cast<half*>(q_bsnh_buffer.get()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.head_size,
-          Q->Data<BFloat16>(), reinterpret_cast<BFloat16*>(q_bsnh_buffer.get()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BNSH_to_BSNH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.head_size,
-          Q->Data<float>(), reinterpret_cast<float*>(q_bsnh_buffer.get()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    }
+    ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
+        parameters.batch_size, parameters.q_sequence_length,
+        parameters.q_num_heads, parameters.head_size,
+        Q->Data<T>(), q_bsnh_buffer.get(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
     q_data = q_bsnh_buffer.get();
   }
 
@@ -620,7 +550,6 @@ Status Attention<T>::RunMemoryEfficientAttention(
 
   // Handle attention mask → attention_bias conversion
   IAllocatorUniquePtr<void> converted_mask_buffer;
-  IAllocatorUniquePtr<void> nonpad_bias_buffer;
   const void* attn_bias_data = nullptr;
   bool broadcast_bias_dim_0 = false;
   bool broadcast_bias_dim_1 = false;
@@ -740,67 +669,35 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.stream = cuda_stream;
     p.output = out_data;
 
+    IAllocatorUniquePtr<void> workspace_buffer;
     if (onnxruntime::contrib::cuda::MemoryEfficientAttentionParams::need_workspace(
             parameters.v_head_size, sizeof(T) == sizeof(float))) {
       size_t workspace_bytes = sizeof(float) * parameters.batch_size * parameters.q_sequence_length *
                                parameters.q_num_heads * parameters.v_head_size;
-      auto workspace_buffer = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+      workspace_buffer = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
       p.workspace = workspace_buffer.get();
-      onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
     } else {
       p.workspace = nullptr;
-      onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
     }
+    onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
   }
 
   // --- Transpose output BSNH → BNSH if input was 4D (BNSH) ---
   if (!is_bsnh && out_bsnh_buffer != nullptr) {
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.v_head_size,
-          reinterpret_cast<const half*>(out_bsnh_buffer.get()),
-          reinterpret_cast<half*>(Y->MutableData<T>()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.v_head_size,
-          reinterpret_cast<const BFloat16*>(out_bsnh_buffer.get()),
-          Y->MutableData<BFloat16>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.q_sequence_length,
-          parameters.q_num_heads, parameters.v_head_size,
-          reinterpret_cast<const float*>(out_bsnh_buffer.get()),
-          Y->MutableData<float>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    }
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.q_sequence_length,
+        parameters.q_num_heads, parameters.v_head_size,
+        out_bsnh_buffer.get(), Y->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
   }
 
   // Populate present_key/present_value (BNSH) if requested
   if (present_key != nullptr && is_bsnh) {
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.head_size,
-          reinterpret_cast<const half*>(K->Data<T>()),
-          reinterpret_cast<half*>(present_key->MutableData<T>()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.head_size,
-          K->Data<BFloat16>(), present_key->MutableData<BFloat16>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.head_size,
-          K->Data<float>(), present_key->MutableData<float>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    }
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.kv_sequence_length,
+        parameters.kv_num_heads, parameters.head_size,
+        K->Data<T>(), present_key->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
   } else if (present_key != nullptr && !is_bsnh) {
     // 4D BNSH prompt: K is already BNSH, just D2D copy to present
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
@@ -808,26 +705,11 @@ Status Attention<T>::RunMemoryEfficientAttention(
         K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
   }
   if (present_value != nullptr && is_bsnh) {
-    if constexpr (std::is_same_v<T, MLFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.v_head_size,
-          reinterpret_cast<const half*>(V->Data<T>()),
-          reinterpret_cast<half*>(present_value->MutableData<T>()),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else if constexpr (std::is_same_v<T, BFloat16>) {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.v_head_size,
-          V->Data<BFloat16>(), present_value->MutableData<BFloat16>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    } else {
-      ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::Transpose_BSNH_to_BNSH(
-          parameters.batch_size, parameters.kv_sequence_length,
-          parameters.kv_num_heads, parameters.v_head_size,
-          V->Data<float>(), present_value->MutableData<float>(),
-          cuda_stream, device_prop.maxThreadsPerBlock));
-    }
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.kv_sequence_length,
+        parameters.kv_num_heads, parameters.v_head_size,
+        V->Data<T>(), present_value->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
   } else if (present_value != nullptr && !is_bsnh) {
     // 4D BNSH prompt: V is already BNSH, just D2D copy to present
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(

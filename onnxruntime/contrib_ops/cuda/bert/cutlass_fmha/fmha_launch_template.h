@@ -264,6 +264,7 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
     int num_keys = params.kv_sequence_length;
     int num_queries = params.sequence_length;
     int bias_strideM = num_keys;
+    // Broadcast dimensions use stride=0, which satisfies any alignment (0 % N == 0).
     int bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : num_queries * num_keys;
     int bias_strideB = params.broadcast_attn_bias_dim_0
                            ? 0
