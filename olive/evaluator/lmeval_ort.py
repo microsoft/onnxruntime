@@ -43,7 +43,7 @@ class LMEvalOnnxBase(TemplateLM):
         pass
 
     @abstractmethod
-    def model_call(self, input_ids: torch.Tensor) -> torch.Tensor:
+    def model_call(self, input_ids: torch.Tensor, cont_len: int = 0) -> torch.Tensor:
         pass
 
     @abstractmethod
@@ -128,8 +128,9 @@ class LMEvalOnnxBase(TemplateLM):
                 inplens.append(inplen)
 
             batched_inps = pad_and_concat(padding_len_inp, inps, padding_side="right")  # [batch, padding_len_inp]
+            max_cont_len = max(len(c) for c in cont_toks_list)
 
-            multi_logits = self.model_call(batched_inps)  # [batch, padding_length (inp or cont), vocab]
+            multi_logits = self.model_call(batched_inps, max_cont_len)  # [batch, padding_length (inp or cont), vocab]
 
             # ruff: noqa: PLW2901
             for (request_str, ctx_tokens, _), logits, inplen, cont_toks in zip(
@@ -258,7 +259,7 @@ class LMEvalORTEvaluator(LMEvalOnnxBase):
         max_length = min(max_length, self.max_length)
         self.prefill.initialize_buffers(self.batch_size, max_length)
 
-    def model_call(self, input_ids: torch.Tensor) -> torch.Tensor:
+    def model_call(self, input_ids: torch.Tensor, cont_len: int = 0) -> torch.Tensor:
         return self.prefill.run(input_ids)
 
     def complete(self):
@@ -513,6 +514,21 @@ class LMEvalORTGenAIEvaluator(LMEvalOnnxBase):
         self.params.set_search_options(max_length=self.max_length, past_present_share_buffer=False)
 
         self.device = device
+        self._returns_full_logits = self._detect_full_logits()
+
+    def _detect_full_logits(self) -> bool:
+        """Check if the model returns logits for all input positions or only the last."""
+        try:
+            dummy_len = 3
+            params = og.GeneratorParams(self.model)
+            params.set_search_options(max_length=self.max_length, past_present_share_buffer=False, batch_size=1)
+            generator = og.Generator(self.model, params)
+            dummy_ids = [[self._eot_token_id] * dummy_len]
+            generator.append_tokens(dummy_ids)
+            logits = generator.get_output("logits")
+            return logits.shape[1] == dummy_len
+        except Exception:
+            return False
 
     @property
     def eot_token_id(self):
@@ -525,13 +541,37 @@ class LMEvalORTGenAIEvaluator(LMEvalOnnxBase):
     def prepare(self, requests: list[LogLikelihoodInputs]):
         pass
 
-    def model_call(self, input_ids: torch.Tensor) -> torch.Tensor:
-        batch_size, _ = input_ids.shape
+    def model_call(self, input_ids: torch.Tensor, cont_len: int = 0) -> torch.Tensor:
+        batch_size, seq_len = input_ids.shape
         self.params.set_search_options(batch_size=batch_size)
         generator = og.Generator(self.model, self.params)
-        generator.append_tokens(input_ids.tolist())
-        # [1, seq, vocab]
-        return torch.from_numpy(generator.get_output("logits")).to(self.device)
+
+        if self._returns_full_logits:
+            generator.append_tokens(input_ids.tolist())
+            return torch.from_numpy(generator.get_output("logits")).to(self.device)
+
+        # Model only returns logits for the last appended position.
+        if batch_size > 1 and cont_len > 1:
+            raise ValueError(
+                "batch_size > 1 is not supported when the model returns single-position logits"
+                " and continuation length > 1. Right-padding misaligns continuation positions across"
+                " batch elements. Use batch_size=1 instead."
+            )
+
+        # Bulk-append context tokens, then step through the last cont_len tokens
+        # one at a time to collect only the logits we actually need.
+        n_logits = max(cont_len, 1)
+        prefix_len = seq_len - n_logits
+        generator.append_tokens(input_ids[:, : prefix_len + 1].tolist())
+        all_logits = [torch.from_numpy(generator.get_output("logits")).to(self.device)]
+        for i in range(prefix_len + 1, seq_len):
+            generator.append_tokens(input_ids[:, i : i + 1].tolist())
+            all_logits.append(torch.from_numpy(generator.get_output("logits")).to(self.device))
+
+        # No need to pad to [batch, seq_len, vocab]. The slicing in _loglikelihood_tokens computes
+        # ctx_len = inplen + (logits.shape[0] - padding_len_inp), which adjusts for the shorter
+        # seq dimension so the continuation slice still lands on the correct positions.
+        return torch.cat(all_logits, dim=1)  # [batch, n_logits, vocab]
 
     def complete(self):
         pass

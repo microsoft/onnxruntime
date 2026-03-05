@@ -99,10 +99,6 @@ _inc_quantization_config = {
             the quantization level (quant_level). Currently 3 quant_levels are supported.
             0 is conservative strategy, 1 is basic or user-specified strategy,
             auto (default) is the combination of 0 and 1.
-            Please refer to
-            https://github.com/intel/neural-compressor/blob/master/docs/source/tuning_strategies.md#tuning-process
-            https://github.com/intel/neural-compressor/blob/master/docs/source/tuning_strategies.md#tuning-algorithms
-            for more details
         """,
     ),
     "excluded_precisions": PassConfigParam(

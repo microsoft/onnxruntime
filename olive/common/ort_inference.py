@@ -57,6 +57,15 @@ def maybe_register_ep_libraries(ep_paths: dict[str, str]):
         if ep_path is None:
             continue
 
+        if ep_name == "OpenVINOExecutionProvider":
+            # importing openvino may be required for putting openvino.dll on path/loading it
+            try:
+                import openvino as _  # noqa: F401
+            except ImportError:
+                logger.info(
+                    "Failed to import openvino. May see DLL not found error when registering OpenVINOExecutionProvider."
+                )
+
         try:
             logger.debug("Registering EP %s with path %s", ep_name, ep_path)
             ort.register_execution_provider_library(ep_name, ep_path)
