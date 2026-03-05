@@ -198,6 +198,13 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
                                      shifted_logit.data(),
                                      log_prob_data);
 
+  // Validate label values are within [0, d) to prevent out-of-bounds reads.
+  for (ptrdiff_t i = 0; i < n; i++) {
+    ORT_RETURN_IF(label_data[i] < 0 || label_data[i] >= d,
+                  "SparseSoftmaxCrossEntropy: label value ", label_data[i],
+                  " at index ", i, " is out of range [0, ", d, ")");
+  }
+
   std::vector<float> loss_sample(n);
 
   if (OpKernel::Node().InputDefs().size() == 3) {
