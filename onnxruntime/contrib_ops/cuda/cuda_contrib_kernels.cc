@@ -281,6 +281,17 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, DistributedSqueeze);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, DistributedSqueeze);
 #endif
 
+// Linear Attention ops
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionRecurrent);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionRecurrent);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionRecurrent);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionChunkParallel);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionChunkParallel);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionChunkParallel);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConv1DWithState);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalConv1DWithState);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CausalConv1DWithState);
+
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
   KernelCreateInfo info;
@@ -291,6 +302,18 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample)>,
+
+      // Linear Attention ops
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionRecurrent)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionRecurrent)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionRecurrent)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttentionChunkParallel)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttentionChunkParallel)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionChunkParallel)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, CausalConv1DWithState)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalConv1DWithState)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CausalConv1DWithState)>,
+
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, FastGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, FastGelu)>,
