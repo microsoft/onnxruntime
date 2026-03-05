@@ -971,8 +971,9 @@ typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_
 
 /** \brief Thread pool work start callback
  *
- * Called when a worker thread is about to start executing work.
- * This runs on the worker thread.
+ * Called when a thread is about to start executing work.
+ * This typically runs on a worker thread, but may also run on the submitting thread
+ * when the work queue is full and work is executed synchronously.
  * \param[in] user_context The user-provided context passed when configuring callbacks
  * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
  */
@@ -980,8 +981,10 @@ typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ v
 
 /** \brief Thread pool work stop callback
  *
- * Called when a worker thread has finished executing work.
- * This runs on the worker thread, and is guaranteed to be called regardless of whether the work finishes successfully or not.
+ * Called when a thread has finished executing work.
+ * This typically runs on a worker thread, but may also run on the submitting thread
+ * when the work queue is full and work is executed synchronously.
+ * Guaranteed to be called regardless of whether the work finishes successfully or not.
  * \param[in] user_context The user-provided context passed when configuring callbacks
  * \param[in] enqueue_data Data returned by the corresponding OnEnqueue call
  */

@@ -188,6 +188,7 @@ class Environment {
 
 #ifdef ORT_SESSION_THREADPOOL_CALLBACKS
   const ThreadPoolWorkCallbacks* GetDefaultSessionWorkCallbacks() const {
+    std::lock_guard<std::mutex> lock{mutex_};
     return default_session_work_callbacks_.has_value()
                ? &default_session_work_callbacks_.value()
                : nullptr;

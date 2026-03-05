@@ -1478,7 +1478,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // Called when enqueued work is abandoned (revoked or rejected) without execution.
   // Allows the on_abandon callback to free resources associated with enqueue_data.
   void InvokeOnAbandon(void* enqueue_data) {
-    if (enqueue_data && work_callbacks_.on_abandon) {
+    if (work_callbacks_.on_abandon) {
       work_callbacks_.on_abandon(work_callbacks_.user_context, enqueue_data);
     }
   }

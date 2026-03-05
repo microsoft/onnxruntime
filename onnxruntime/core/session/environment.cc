@@ -449,6 +449,7 @@ Status Environment::SetDefaultSessionWorkCallbacks(
     OrtThreadPoolWorkStopFn on_stop,
     OrtThreadPoolWorkAbandonFn on_abandon,
     void* user_context) {
+  std::lock_guard<std::mutex> lock{mutex_};
   ThreadPoolWorkCallbacks cbs;
   cbs.on_enqueue = on_enqueue;
   cbs.on_start_work = on_start;
