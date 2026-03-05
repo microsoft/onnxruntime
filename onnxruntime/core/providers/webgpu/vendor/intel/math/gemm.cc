@@ -90,8 +90,7 @@ Status ApplyGemmIntel(const Tensor* a,
   const uint32_t dispatch_y = narrow<uint32_t>((M + kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1]));
 
-  GemmSubgroupProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar,
-                              is_vec4, elements_per_thread};
+  GemmSubgroupProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, is_vec4, elements_per_thread};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
