@@ -295,7 +295,7 @@ TEST(TensorOpTest, TileOverflowRepeats1D) {
   // 6148914691236517206 = (2^64 + 2) / 3, so 3 * 6148914691236517206 overflows int64_t
   test.AddInput<int64_t>("repeats", {1}, {int64_t{6148914691236517206}});
   test.AddOutput<float>("output", {0}, {});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
 // Test overflow detection with a 2D tensor where only one axis overflows
@@ -315,7 +315,7 @@ TEST(TensorOpTest, TileOverflowRepeatsFirstAxis) {
   // First axis: 2 * 4611686018427387904 = 2^63 which overflows signed int64_t
   test.AddInput<int64_t>("repeats", {2}, {int64_t{4611686018427387904}, 1});
   test.AddOutput<float>("output", {0, 0}, {});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
 // Test overflow with int32 input type to ensure all fixed-size type paths are covered
@@ -324,7 +324,7 @@ TEST(TensorOpTest, TileOverflowRepeatsInt32) {
   test.AddInput<int32_t>("input", {3}, {1, 2, 3});
   test.AddInput<int64_t>("repeats", {1}, {int64_t{6148914691236517206}});
   test.AddOutput<int32_t>("output", {0}, {});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
 // Test overflow with string input type
@@ -354,7 +354,7 @@ TEST(TensorOpTest, TileOverflowMultipleAxes) {
   int64_t large_repeat = int64_t{4611686018427387904};  // 2^62
   test.AddInput<int64_t>("repeats", {3}, {large_repeat, 1, 1});
   test.AddOutput<float>("output", {0, 0, 0}, {});
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test
