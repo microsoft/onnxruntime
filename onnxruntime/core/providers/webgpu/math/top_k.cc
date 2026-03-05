@@ -67,6 +67,24 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // For largest (descending): flip the ascending bit so biggest values come first.
   const std::string asc_expr = largest_ ? "((i / block_size) & 1u) != 0u" : "((i / block_size) & 1u) == 0u";
 
+  // Composite key for stable sort per ONNX spec: "the element with the lower
+  // index will appear first" among tied values.
+  //
+  // For largest=false (ascending): key = (value, index). Lower key first.
+  //   asc swap:  va > vb || (va == vb && ia > ib)  — lower key to position i
+  //   desc swap: va < vb || (va == vb && ia < ib)  — higher key to position i
+  //
+  // For largest=true (descending): key = (value, -index). Higher key first.
+  //   Among ties, higher key = lower index, so lower index appears first.
+  //   asc swap:  va > vb || (va == vb && ia < ib)  — lower key to position i
+  //   desc swap: va < vb || (va == vb && ia > ib)  — higher key to position i
+  const std::string asc_swap = largest_
+      ? "va > vb || (va == vb && ia < ib)"
+      : "va > vb || (va == vb && ia > ib)";
+  const std::string desc_swap = largest_
+      ? "va < vb || (va == vb && ia > ib)"
+      : "va < vb || (va == vb && ia < ib)";
+
   // Declare shared memory for bitonic sort
   shader.AdditionalImplementation()
       << "var<workgroup> shared_vals: array<x_element_t, " << shared_size_ << ">;\n"
@@ -102,9 +120,7 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "      let vb = shared_vals[j];\n"
       << "      let ia = shared_idxs[i];\n"
       << "      let ib = shared_idxs[j];\n"
-      << "      let gt = va > vb;\n"
-      << "      let lt = va < vb;\n"
-      << "      let do_swap = select(lt || (va == vb && ia < ib), gt || (va == vb && ia > ib), asc);\n"
+      << "      let do_swap = select(" << desc_swap << ", " << asc_swap << ", asc);\n"
       << "      if (do_swap) {\n"
       << "        shared_vals[i] = vb;\n"
       << "        shared_vals[j] = va;\n"
