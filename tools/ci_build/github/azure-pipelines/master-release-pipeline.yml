@@ -56,7 +56,7 @@ extends:
         - task: AzureCLI@2
           displayName: 'Run master orchestrator'
           inputs:
-            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            azureSubscription: aiinfra-MAIA-cicd-kusto-sp
             scriptType: 'bash'
             scriptLocation: 'inlineScript'
             inlineScript: |
