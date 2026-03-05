@@ -49,6 +49,15 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
 void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**
+ * This function is used to get element size of TensorProto data.
+ *
+ * It will be used mostly to convert data on big endian systems
+ * after unpacking data.
+ * @param tensor_proto tensor to get element size from
+ */
+size_t GetElementSizeInTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+/**
  * Wrapper function for set_raw_data.
  * First calls the set_raw_data and then calls ConvertRawDataInTensorProto
  * under big endian system.

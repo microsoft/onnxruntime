@@ -210,6 +210,7 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   if (external_file_path == kTensorProtoMemoryAddressTag) {
     // The external data is in the same memory as the tensor proto.
     // The offset is the address of the data.
+    // NOTE: this is an exception: data in memory is already in native endian format
     unpacked_tensor.resize(tensor_byte_size);
     std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
     return Status::OK();
@@ -235,6 +236,16 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
       file_offset,
       tensor_byte_size,
       gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
+
+  if constexpr (endian::native != endian::little) {
+    size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(tensor_proto);
+
+    if (element_size > 1) {
+      onnxruntime::utils::SwapByteOrderInplace(
+          element_size,
+          gsl::make_span(reinterpret_cast<std::byte*>(unpacked_tensor.data()), tensor_byte_size));
+    }
+  }
 
   return Status::OK();
 }
@@ -454,6 +465,39 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::str
   }
 }
 
+size_t GetElementSizeInTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  static const std::unordered_map<size_t, size_t> tensorproto_data_size{
+      {TensorProto_DataType_FLOAT, sizeof(float)},
+      {TensorProto_DataType_UINT8, sizeof(uint8_t)},
+      {TensorProto_DataType_INT8, sizeof(int8_t)},
+      {TensorProto_DataType_UINT16, sizeof(uint16_t)},
+      {TensorProto_DataType_INT16, sizeof(int16_t)},
+      {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
+      {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
+      {TensorProto_DataType_INT32, sizeof(int32_t)},
+      {TensorProto_DataType_UINT32, sizeof(uint32_t)},
+      {TensorProto_DataType_UINT64, sizeof(uint64_t)},
+      {TensorProto_DataType_INT64, sizeof(int64_t)},
+      {TensorProto_DataType_DOUBLE, sizeof(double)},
+      {TensorProto_DataType_BOOL, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E5M2, sizeof(uint8_t)},
+      {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
+      {TensorProto_DataType_UINT4, sizeof(uint8_t)},
+      {TensorProto_DataType_INT4, sizeof(uint8_t)},
+      {TensorProto_DataType_UINT2, sizeof(uint8_t)},
+      {TensorProto_DataType_INT2, sizeof(uint8_t)},
+  };
+
+  auto pos = tensorproto_data_size.find(tensor_proto.data_type());
+  if (pos == tensorproto_data_size.end()) {
+    return 0;
+  }
+
+  return pos->second;
+}
+
 void ConvertRawDataInTensorProto(TensorProto& tensor) {
   size_t element_size = 1;
   void* bytes = NULL;
@@ -462,35 +506,9 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   // For some data_type, element size differs for raw data vs
   // data set using the add_<data_type>data() API
   if (HasRawData(tensor)) {
-    static std::unordered_map<size_t, size_t> tensorproto_data_size{
-        {TensorProto_DataType_FLOAT, sizeof(float)},
-        {TensorProto_DataType_UINT8, sizeof(uint8_t)},
-        {TensorProto_DataType_INT8, sizeof(int8_t)},
-        {TensorProto_DataType_UINT16, sizeof(uint16_t)},
-        {TensorProto_DataType_INT16, sizeof(int16_t)},
-        {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
-        {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
-        {TensorProto_DataType_INT32, sizeof(int32_t)},
-        {TensorProto_DataType_UINT32, sizeof(uint32_t)},
-        {TensorProto_DataType_UINT64, sizeof(uint64_t)},
-        {TensorProto_DataType_INT64, sizeof(int64_t)},
-        {TensorProto_DataType_DOUBLE, sizeof(double)},
-        {TensorProto_DataType_BOOL, sizeof(uint8_t)},
-        {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
-        {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
-        {TensorProto_DataType_FLOAT8E5M2, sizeof(uint8_t)},
-        {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
-        {TensorProto_DataType_UINT4, sizeof(uint8_t)},
-        {TensorProto_DataType_INT4, sizeof(uint8_t)},
-        {TensorProto_DataType_UINT2, sizeof(uint8_t)},
-        {TensorProto_DataType_INT2, sizeof(uint8_t)},
-    };
-    auto pos = tensorproto_data_size.find(tensor.data_type());
-    if (pos == tensorproto_data_size.end()) {
-      return;
-    }
-    element_size = pos->second;
-    if (element_size == 1) {
+    element_size = GetElementSizeInTensorProto(tensor);
+
+    if (element_size <= 1) {
       return;
     }
     num_elements = tensor.raw_data().size() / element_size;
