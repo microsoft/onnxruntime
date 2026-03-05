@@ -43,7 +43,7 @@
 using namespace Concurrency;
 #endif
 
-#if defined(ONNXRUNTIME_ENABLE_INSTRUMENT) || defined(RAMA_TRACE)
+#if defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
 #include <Windows.h>
 #include "core/platform/tracing.h"
 namespace {
@@ -67,6 +67,12 @@ namespace onnxruntime {
 // Global trace data storage
 std::mutex g_trace_mutex;
 std::vector<std::pair<std::string, int64_t>> g_trace_data;
+
+void RecordTraceData(const std::string& name, int64_t microseconds)
+  {
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    g_trace_data.emplace_back(name, microseconds);
+  }
 
 void FlushTraceData() {
   std::lock_guard<std::mutex> lock(g_trace_mutex);
@@ -103,7 +109,8 @@ void FlushTraceData() {
   size_t count = 0;
 
   for (const auto& entry : g_trace_data) {
-    if (entry.first != "If" && entry.first != "Loop") {
+    auto& name = entry.first;
+    if (name != "If" && name != "Loop" && name != "SessionStart" && name != "SessionEnd") {
       min_time = std::min(min_time, entry.second);
       max_time = std::max(max_time, entry.second);
       sum_time += entry.second;
@@ -259,6 +266,13 @@ class SessionScope {
 #ifdef RAMA_TRACE
     ReserveTraceData(50000);
 #endif
+#ifdef RAMA_TRACE
+  auto current_time = std::chrono::high_resolution_clock::now();
+  auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+      current_time.time_since_epoch()).count();
+  // Store trace data in global storage
+  RecordTraceData("SessionStart", microseconds);
+#endif
 
     if (session_state_.Profiler().IsEnabled()) {
       session_start_ = session_state.Profiler().Start();
@@ -282,6 +296,14 @@ class SessionScope {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionScope);
 
   ~SessionScope() {
+#ifdef RAMA_TRACE
+  auto current_time = std::chrono::high_resolution_clock::now();
+  auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(
+      current_time.time_since_epoch()).count();
+  // Store trace data in global storage
+  RecordTraceData("SessionEnd", microseconds);
+#endif
+
 #ifdef ENABLE_NVTX_PROFILE
     // Make sure forward Range object call Begin and End.
     if (!forward_range_.IsBeginCalled()) {
@@ -367,7 +389,13 @@ class SessionScope {
 
 class KernelScope {
   private:
+#ifdef RAMA_TRACE
+    std::chrono::time_point<std::chrono::high_resolution_clock> kernel_start;
+#endif
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     LARGE_INTEGER kernel_start;
+#endif
+
  public:
   KernelScope(SessionScope& session_scope,
               OpKernelContextInternal& kernel_context,
@@ -418,8 +446,11 @@ class KernelScope {
     }
 #endif
 
-#if defined(ONNXRUNTIME_ENABLE_INSTRUMENT) || defined(RAMA_TRACE)
+#if defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
     QueryPerformanceCounter(&this->kernel_start);
+#endif
+#ifdef RAMA_TRACE
+    this->kernel_start = std::chrono::high_resolution_clock::now();
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
@@ -472,24 +503,20 @@ class KernelScope {
     }
 
 
-#if defined(ONNXRUNTIME_ENABLE_INSTRUMENT) || defined(RAMA_TRACE)
+#ifdef RAMA_TRACE
+  auto kernel_stop = std::chrono::high_resolution_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(kernel_stop - this->kernel_start).count();
+  // Store trace data in global storage
+  RecordTraceData(kernel_.KernelDef().OpName(), elapsed);
+#endif
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   LARGE_INTEGER kernel_stop;
   QueryPerformanceCounter(&kernel_stop);
   LARGE_INTEGER elapsed;
   elapsed.QuadPart = kernel_stop.QuadPart - this->kernel_start.QuadPart;
   elapsed.QuadPart *= 1000000;
   elapsed.QuadPart /= perf_freq.QuadPart;
-#endif
-
-#ifdef RAMA_TRACE
-  // Store trace data in global storage
-  {
-    std::lock_guard<std::mutex> lock(g_trace_mutex);
-    g_trace_data.emplace_back(kernel_.KernelDef().OpName(), elapsed.QuadPart);
-  }
-#endif
-
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     // Log an event
     TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
                       "OpEnd",                    // Event Name that should uniquely identify your event.
