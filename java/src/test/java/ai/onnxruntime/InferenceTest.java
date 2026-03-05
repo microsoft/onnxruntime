@@ -2124,9 +2124,6 @@ public class InferenceTest {
         case ACL:
           options.addACL(false);
           break;
-        case ARM_NN:
-          options.addArmNN(false);
-          break;
         case CORE_ML:
           options.addCoreML();
           break;
