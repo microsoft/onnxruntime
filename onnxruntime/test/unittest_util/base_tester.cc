@@ -74,7 +74,9 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
         tensor_proto.add_string_data(string_data[i]);
       }
     } else {
-      auto buffer_size = tensor.DataType()->Size() * shape.Size();
+      // Note: need to use Tensor::CalculateTensorStorageSize (instead of shape.Size() * elem_size) to properly
+      // calculate the storage size for sub-byte types (e.g., Int4 or Int2)
+      auto buffer_size = Tensor::CalculateTensorStorageSize(tensor.DataType(), shape);
       utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), buffer_size);
     }
 

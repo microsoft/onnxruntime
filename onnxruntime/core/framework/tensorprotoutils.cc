@@ -207,14 +207,28 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_byte_size));
 
-  unpacked_tensor.resize(tensor_byte_size);
-
   if (external_file_path == kTensorProtoMemoryAddressTag) {
     // The external data is in the same memory as the tensor proto.
     // The offset is the address of the data.
+    unpacked_tensor.resize(tensor_byte_size);
     std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
     return Status::OK();
   }
+
+  // Validate that the external file is large enough before allocating.
+  // This protects against a model with a huge declared shape but a missing/short external file.
+  std::error_code fs_error_code{};
+  std::uintmax_t file_length = std::filesystem::file_size(external_file_path, fs_error_code);
+  ORT_RETURN_IF(fs_error_code, "Failed to get file size for external initializer ", tensor_proto.name(),
+                ". std::filesystem error: ", fs_error_code.message(), " (value: ", fs_error_code.value(), ")");
+  SafeInt<onnxruntime::FileOffsetType> end_of_read(file_offset);
+  end_of_read += tensor_byte_size;
+  ORT_RETURN_IF(file_offset < 0 || static_cast<std::uintmax_t>(end_of_read) > file_length,
+                "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
+                " size to read: ", static_cast<size_t>(tensor_byte_size), " given file_length: ", file_length,
+                " are out of bounds or cannot be read in full.");
+
+  unpacked_tensor.resize(tensor_byte_size);
 
   ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
       external_file_path.c_str(),
@@ -237,6 +251,13 @@ Status TensorProtoToOrtValueImpl(const Env& env, const std::filesystem::path& mo
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
   if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING && (m || !alloc)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor requires allocator to be provided.");
+  }
+
+  // Validate data consistency and enforce size limits before allocating memory.
+  // This prevents a malicious model from triggering a massive allocation with a
+  // large declared shape that has no/insufficient actual data.
+  if (!utils::HasExternalData(tensor_proto)) {
+    ORT_RETURN_IF_ERROR(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto));
   }
 
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
@@ -1126,8 +1147,8 @@ INSTANTIATE_UNPACK_TENSOR(UInt2x4)
     break;
 
 template <size_t alignment>
-common::Status GetSizeInBytesFromTensorShapeAndType(const TensorShape& shape, int32_t element_type, size_t* out) {
-  const auto size = narrow<size_t>(shape.Size());
+static common::Status GetSizeInBytesFromTensorElemCountAndType(size_t elem_count, int32_t element_type, size_t* out) {
+  const size_t size = elem_count;  // Used by CASE_PROTO_TRACE macros
   switch (element_type) {
     CASE_PROTO_TRACE(FLOAT, float);
     CASE_PROTO_TRACE(DOUBLE, double);
@@ -1161,6 +1182,12 @@ common::Status GetSizeInBytesFromTensorShapeAndType(const TensorShape& shape, in
       return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
   }
   return Status::OK();
+}
+
+template <size_t alignment>
+static common::Status GetSizeInBytesFromTensorShapeAndType(const TensorShape& shape, int32_t element_type, size_t* out) {
+  const auto size = narrow<size_t>(shape.Size());
+  return GetSizeInBytesFromTensorElemCountAndType<alignment>(size, element_type, out);
 }
 
 template <size_t alignment>
@@ -1199,6 +1226,110 @@ common::Status GetSizeInBytesFromTensorTypeProto(const ONNX_NAMESPACE::TypeProto
 }
 
 template Status GetSizeInBytesFromTensorTypeProto<0>(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_proto, size_t* out);
+
+common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  ORT_RETURN_IF(HasExternalData(tensor_proto), "Expected to validate an embedded (non-external) TensorProto");
+
+  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
+  const int64_t num_elems_signed = tensor_shape.Size();  // returns -1 if any dim is negative.
+
+  ORT_RETURN_IF(num_elems_signed < 0, "Initializer '", tensor_proto.name(), "' has negative dimensions");
+
+  // Need to ensure num_elements < SIZE_MAX. This would be an issue in 32-bit platforms.
+  ORT_RETURN_IF(static_cast<uint64_t>(num_elems_signed) > std::numeric_limits<size_t>::max(),
+                "Initializer '", tensor_proto.name(), "' has a number of elements (", num_elems_signed,
+                ") that exceeds SIZE_MAX (", std::numeric_limits<size_t>::max(), ")");
+
+  const size_t num_elems_unsigned = gsl::narrow_cast<size_t>(num_elems_signed);
+  size_t byte_size_from_shape = 0;
+  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorElemCountAndType<0>(num_elems_unsigned, tensor_proto.data_type(),
+                                                                  &byte_size_from_shape));
+  ORT_RETURN_IF_NOT(byte_size_from_shape <= kMaxEmbeddedInitializerSizeInBytes,
+                    "Initializer '", tensor_proto.name(), "' declares a size of ", byte_size_from_shape,
+                    " bytes which exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                    " byte limit for embedded initializer data. Use external data for large initializers.");
+
+  if (HasRawData(tensor_proto)) {
+    ORT_RETURN_IF_NOT(tensor_proto.raw_data().size() == byte_size_from_shape,
+                      "Initializer '", tensor_proto.name(), "': raw_data size (", tensor_proto.raw_data().size(),
+                      " bytes) does not match expected size from shape and data type (",
+                      byte_size_from_shape, " bytes)");
+  } else if (HasString(tensor_proto)) {
+    ORT_RETURN_IF_NOT(tensor_proto.string_data_size() == num_elems_signed,
+                      "Initializer '", tensor_proto.name(), "': string_data count (", tensor_proto.string_data_size(),
+                      ") does not match expected count from shape (",
+                      num_elems_signed, ")");
+  } else {
+    // Typed data fields. Each data type maps to a specific repeated field in the proto.
+    int64_t expected_count = 0;
+    int64_t actual_count = 0;
+
+    switch (tensor_proto.data_type()) {
+      case TensorProto_DataType_FLOAT:
+        expected_count = num_elems_signed;
+        actual_count = tensor_proto.float_data_size();
+        break;
+      case TensorProto_DataType_DOUBLE:
+        expected_count = num_elems_signed;
+        actual_count = tensor_proto.double_data_size();
+        break;
+      case TensorProto_DataType_INT64:
+        expected_count = num_elems_signed;
+        actual_count = tensor_proto.int64_data_size();
+        break;
+      case TensorProto_DataType_UINT64:
+      case TensorProto_DataType_UINT32:
+        expected_count = num_elems_signed;
+        actual_count = tensor_proto.uint64_data_size();
+        break;
+      case TensorProto_DataType_INT4:
+      case TensorProto_DataType_UINT4:
+        expected_count = static_cast<int64_t>(Int4x2::CalcNumInt4Pairs(num_elems_unsigned));
+        actual_count = tensor_proto.int32_data_size();
+        break;
+      case TensorProto_DataType_INT2:
+      case TensorProto_DataType_UINT2:
+        expected_count = static_cast<int64_t>(Int2x4::CalcNumInt2Quads(num_elems_unsigned));
+        actual_count = tensor_proto.int32_data_size();
+        break;
+#if !defined(DISABLE_FLOAT4_TYPES)
+      case TensorProto_DataType_FLOAT4E2M1:
+        expected_count = static_cast<int64_t>(Float4E2M1x2::CalcNumFloat4Pairs(num_elems_unsigned));
+        actual_count = tensor_proto.int32_data_size();
+        break;
+#endif
+      case TensorProto_DataType_BOOL:
+      case TensorProto_DataType_UINT8:
+      case TensorProto_DataType_INT8:
+      case TensorProto_DataType_UINT16:
+      case TensorProto_DataType_INT16:
+      case TensorProto_DataType_FLOAT16:
+      case TensorProto_DataType_BFLOAT16:
+#if !defined(DISABLE_FLOAT8_TYPES)
+      case TensorProto_DataType_FLOAT8E4M3FN:
+      case TensorProto_DataType_FLOAT8E4M3FNUZ:
+      case TensorProto_DataType_FLOAT8E5M2:
+      case TensorProto_DataType_FLOAT8E5M2FNUZ:
+#endif
+      case TensorProto_DataType_INT32:
+        // BOOL, INT8, UINT8, INT16, UINT16, FLOAT16, BFLOAT16, INT32, FLOAT8* all use int32_data
+        expected_count = num_elems_signed;
+        actual_count = tensor_proto.int32_data_size();
+        break;
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unhandled TensorProto_DataType (", tensor_proto.data_type(),
+                               ") in ValidateEmbeddedTensorProtoDataSizeAndShape()");
+    }
+
+    ORT_RETURN_IF_NOT(actual_count == expected_count,
+                      "Initializer '", tensor_proto.name(),
+                      "': data field count (", actual_count,
+                      ") does not match expected count from shape (",
+                      expected_count, ")");
+  }
+
+  return Status::OK();
+}
 
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
   const auto& dims = tensor_shape_proto.dim();
@@ -1572,6 +1703,12 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
 common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                            const ONNX_NAMESPACE::TensorProto& tensor_proto, Tensor& tensor) {
   ORT_RETURN_IF_NOT(utils::HasDataType(tensor_proto), "Initializer must have a datatype");
+
+  // Validate data consistency and enforce size limits before allocating memory.
+  if (!utils::HasExternalData(tensor_proto)) {
+    ORT_RETURN_IF_ERROR(ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto));
+  }
+
   auto proto_data_type = tensor_proto.data_type();
 
   auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
