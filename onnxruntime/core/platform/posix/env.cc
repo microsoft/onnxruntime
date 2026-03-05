@@ -16,6 +16,10 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 #ifdef USE_1DS_TELEMETRY
 #include "core/platform/posix/telemetry.h"
 #endif
@@ -619,8 +623,6 @@ class PosixEnv : public Env {
  private:
 #ifdef USE_1DS_TELEMETRY
   PosixTelemetry telemetry_provider_;
-#else
-  Telemetry telemetry_provider_;
 #endif
 #ifdef ORT_USE_CPUINFO
   PosixEnv() {

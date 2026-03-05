@@ -58,6 +58,8 @@ else()
     # Telemetry for non-Windows platforms (enabled by USE_TELEMETRY)
     if (onnxruntime_USE_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
         )
@@ -216,13 +218,16 @@ endif()
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   if(TARGET mat)
     target_link_libraries(onnxruntime_common PRIVATE mat)
-    # Add 1DS SDK include directories for telemetry.cc
-    FetchContent_GetProperties(cpp_client_telemetry SOURCE_DIR CPP_CLIENT_TELEMETRY_SRC)
-    target_include_directories(onnxruntime_common PRIVATE
-      "${CPP_CLIENT_TELEMETRY_SRC}/lib/include/public"
-      "${CPP_CLIENT_TELEMETRY_SRC}/lib/include"
-      "${CPP_CLIENT_TELEMETRY_SRC}"
-    )
+    # cpp_client_telemetry uses include_directories() (directory-scoped) rather than
+    # target_include_directories(), so include paths don't propagate via target_link_libraries.
+    # Add them explicitly for onnxruntime_common.
+    if(DEFINED cpp_client_telemetry_SOURCE_DIR)
+      target_include_directories(onnxruntime_common PRIVATE
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/public
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat
+        ${cpp_client_telemetry_SOURCE_DIR}/lib
+      )
+    endif()
     # Platform-specific system libraries required by the 1DS SDK
     if(APPLE)
       target_link_libraries(onnxruntime_common PRIVATE

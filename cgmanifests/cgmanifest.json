@@ -345,6 +345,16 @@
         },
         "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "ee2ded25e539f64052c9d8635bef4ea62c30e014",
+          "repositoryUrl": "https://github.com/microsoft/cpp_client_telemetry.git"
+        },
+        "comments": "1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms (macOS, Linux, Android, iOS)."
+      }
     }
   ],
   "Version": 1

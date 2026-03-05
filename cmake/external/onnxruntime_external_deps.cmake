@@ -893,12 +893,39 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   set(BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
   set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
 
-  # The 1DS SDK CMakeLists.txt expects MAC_ARCH on macOS (non-iOS)
-  if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    if(NOT DEFINED MAC_ARCH)
-      set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
-      if(NOT MAC_ARCH)
-        set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
+  # The 1DS SDK CMakeLists.txt expects specific variables on Apple platforms.
+  # For iOS: We set BUILD_IOS=YES so the 1DS SDK skips its CURL dependency
+  # (iOS uses NSURLSession instead). We disable FORCE_RESET_OSX_DEPLOYMENT_TARGET
+  # and provide IOS_DEPLOYMENT_TARGET to prevent the SDK from clearing cmake's
+  # deployment target or adding empty -miphoneos-version-min flags.
+  # The SDK's internal xcodebuild call may fail (license issues), but cmake's
+  # toolchain already provides the correct sysroot via CMAKE_OSX_SYSROOT.
+  if(APPLE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+      set(BUILD_IOS YES CACHE BOOL "Tell 1DS SDK this is an iOS build" FORCE)
+      set(FORCE_RESET_OSX_DEPLOYMENT_TARGET NO CACHE BOOL "Don't let 1DS SDK clear deployment target" FORCE)
+      if(NOT DEFINED IOS_DEPLOYMENT_TARGET)
+        set(IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}" CACHE STRING "iOS deployment target for 1DS SDK" FORCE)
+      endif()
+      if(NOT DEFINED IOS_ARCH)
+        set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
+        if(NOT IOS_ARCH)
+          set(IOS_ARCH "arm64" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
+        endif()
+      endif()
+      if(NOT DEFINED IOS_PLAT)
+        if(CMAKE_OSX_SYSROOT MATCHES "iPhoneSimulator")
+          set(IOS_PLAT "iphonesimulator" CACHE STRING "iOS platform for 1DS SDK" FORCE)
+        else()
+          set(IOS_PLAT "iphoneos" CACHE STRING "iOS platform for 1DS SDK" FORCE)
+        endif()
+      endif()
+    else()
+      if(NOT DEFINED MAC_ARCH)
+        set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
+        if(NOT MAC_ARCH)
+          set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
+        endif()
       endif()
     endif()
   endif()
@@ -927,13 +954,17 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     endif()
   endif()
 
-  # The 1DS SDK uses include_directories(${CMAKE_SOURCE_DIR}) to find its bundled
-  # nlohmann/json.hpp, sqlite, and zlib headers. When built via FetchContent,
-  # CMAKE_SOURCE_DIR points to ORT's root instead of the SDK source dir.
-  # Fix by adding the SDK source root to the mat target's include directories.
+  # cpp_client_telemetry's CMakeLists.txt uses include_directories(${CMAKE_SOURCE_DIR}) to find
+  # its bundled nlohmann/, sqlite/, and zlib/ headers. When built via FetchContent, CMAKE_SOURCE_DIR
+  # points to ORT's root instead. Fix by adding the actual source dir as an include path.
   if(TARGET mat)
-    FetchContent_GetProperties(cpp_client_telemetry SOURCE_DIR CPP_CLIENT_TELEMETRY_SRC)
-    target_include_directories(mat PRIVATE "${CPP_CLIENT_TELEMETRY_SRC}")
+    target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR})
+    # The 1DS SDK's iOS path calls xcodebuild to find the sysroot, which can
+    # fail (license not accepted, missing tools) and leave CMAKE_OSX_SYSROOT
+    # empty in its scope. Force the correct sysroot via compile options.
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND CMAKE_OSX_SYSROOT)
+      target_compile_options(mat PRIVATE "-isysroot" "${CMAKE_OSX_SYSROOT}")
+    endif()
   endif()
 
   set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
