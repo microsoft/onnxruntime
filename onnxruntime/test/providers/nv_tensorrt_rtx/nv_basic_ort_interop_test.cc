@@ -11,6 +11,7 @@
 #include "test/common/trt_op_test_utils.h"
 #include "test/common/random_generator.h"
 #include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
+#include "test/unittest_util/conversion.h"
 
 #include <cstring>
 #include <gtest/gtest.h>
@@ -149,9 +150,9 @@ void FlushAndWait(ID3D12Device* pDevice, ID3D12CommandQueue* pQueue) {
 }
 
 }  // namespace
-#endif  // USE_DX_INTEROP && _WIN32
 
 // Test InitGraphicsInteropForEpDevice with command_queue = nullptr (graceful exit).
+// Only built when D3D12 interop is enabled; otherwise Init would return ORT_NOT_IMPLEMENTED.
 TEST(NvExecutionProviderTest, GraphicsInteropInitWithoutCommandQueue) {
   ASSERT_NE(ort_env.get(), nullptr);
 
@@ -177,7 +178,6 @@ TEST(NvExecutionProviderTest, GraphicsInteropInitWithoutCommandQueue) {
   }
 }
 
-#if defined(USE_DX_INTEROP) && USE_DX_INTEROP && defined(_WIN32)
 // Test full D3D12 graphics interop: create D3D12 device and command queue,
 // init graphics interop, create sync stream, release, deinit.
 TEST(NvExecutionProviderTest, GraphicsInteropD3D12InitStreamDeinit) {
@@ -267,15 +267,14 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
     ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_name));
   }
 
-  // Random input data (instead of loading an image)
+  // Random input data in valid float16 range (not raw uint16 bit patterns)
   std::vector<uint16_t> cpuInputHalf(tensor_num_elements);
   std::vector<uint16_t> cpuOutputHalf(tensor_num_elements);
   {
     RandomValueGenerator random{};
     std::vector<int64_t> shape{3, image_dim, image_dim};
-    std::vector<uint16_t> input_data =
-        random.Uniform<uint16_t>(shape, static_cast<uint16_t>(0), static_cast<uint16_t>(65535));
-    memcpy(cpuInputHalf.data(), input_data.data(), tensor_byte_size);
+    std::vector<MLFloat16> input_fp16 = random.Uniform<MLFloat16>(shape, -2.f, 2.f);
+    memcpy(cpuInputHalf.data(), input_fp16.data(), tensor_byte_size);
   }
 
   D3D12CreateDeviceLoadResult d3d12 = LoadD3D12CreateDevice();
@@ -354,8 +353,11 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
   OrtMemoryInfo* memory_info_agnostic = nullptr;
   const OrtHardwareDevice* hw_device = ort_api.EpDevice_Device(trt_ep_device);
   UINT vID = ort_api.HardwareDevice_VendorId(hw_device);
-  ort_api.CreateMemoryInfo_V2("Device_Agnostic", OrtMemoryInfoDeviceType_GPU, vID, 0,
-                              OrtDeviceMemoryType_DEFAULT, 0, OrtArenaAllocator, &memory_info_agnostic);
+  {
+    Ort::Status mem_status(ort_api.CreateMemoryInfo_V2("Device_Agnostic", OrtMemoryInfoDeviceType_GPU, vID, 0,
+                                                      OrtDeviceMemoryType_DEFAULT, 0, OrtArenaAllocator, &memory_info_agnostic));
+    ASSERT_TRUE(mem_status.IsOK()) << mem_status.GetErrorMessage();
+  }
   ASSERT_NE(memory_info_agnostic, nullptr);
 
   // Session options: user compute stream for non-CPU EPs
@@ -368,15 +370,19 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
 
   const OrtEpDevice* const* ep_devices = nullptr;
   size_t num_ep_devices = 0;
-  ort_api.GetEpDevices(*ort_env, &ep_devices, &num_ep_devices);
+  {
+    Ort::Status get_devices_status(ort_api.GetEpDevices(*ort_env, &ep_devices, &num_ep_devices));
+    ASSERT_TRUE(get_devices_status.IsOK()) << get_devices_status.GetErrorMessage();
+  }
   char stream_address[32];
   sprintf_s(stream_address, "%llu", static_cast<unsigned long long>(reinterpret_cast<size_t>(ort_api.SyncStream_GetHandle(stream))));
   const char* option_keys[] = {"user_compute_stream", "has_user_compute_stream"};
   const char* option_values[] = {stream_address, "1"};
   for (size_t i = 0; i < num_ep_devices; i++) {
     if (strcmp(ort_api.EpDevice_EpName(ep_devices[i]), "CPUExecutionProvider") != 0) {
-      ort_api.SessionOptionsAppendExecutionProvider_V2(sessionOptions, *ort_env, &ep_devices[i], 1,
-                                                       option_keys, option_values, 2);
+      Ort::Status append_ep_status(ort_api.SessionOptionsAppendExecutionProvider_V2(
+          sessionOptions, *ort_env, &ep_devices[i], 1, option_keys, option_values, 2));
+      ASSERT_TRUE(append_ep_status.IsOK()) << append_ep_status.GetErrorMessage();
     }
   }
 
@@ -403,63 +409,72 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
   pDownloadCommandList->CopyResource(pDownloadRes.Get(), pOutput.Get());
   pDownloadCommandList->Close();
 
-  Ort::Session session(*ort_env, model_name.c_str(), sessionOptions);
-  Ort::IoBinding ioBinding(session);
-  Ort::AllocatorWithDefaultOptions allocator;
-  Ort::AllocatedStringPtr input_name = session.GetInputNameAllocated(0, allocator);
-  Ort::AllocatedStringPtr output_name = session.GetOutputNameAllocated(0, allocator);
-  int64_t input_dim[] = {1, 3, image_dim, image_dim};
-  int64_t output_dim[] = {1, 3, image_dim, image_dim};
+  // Session and inference in inner scope so TensorRT engine is destroyed before we destroy the CIG context in Deinit.
+  {
+    Ort::Session session(*ort_env, model_name.c_str(), sessionOptions);
+    Ort::IoBinding ioBinding(session);
+    Ort::AllocatorWithDefaultOptions allocator;
+    Ort::AllocatedStringPtr input_name = session.GetInputNameAllocated(0, allocator);
+    Ort::AllocatedStringPtr output_name = session.GetOutputNameAllocated(0, allocator);
+    int64_t input_dim[] = {1, 3, image_dim, image_dim};
+    int64_t output_dim[] = {1, 3, image_dim, image_dim};
 
-  // Upload random input to D3D12 upload buffer
-  void* pData = nullptr;
-  pUploadRes->Map(0, nullptr, &pData);
-  memcpy(pData, cpuInputHalf.data(), tensor_byte_size);
-  pUploadRes->Unmap(0, nullptr);
+    // Upload random input to D3D12 upload buffer
+    void* pData = nullptr;
+    pUploadRes->Map(0, nullptr, &pData);
+    memcpy(pData, cpuInputHalf.data(), tensor_byte_size);
+    pUploadRes->Unmap(0, nullptr);
 
-  Ort::Value input_tensor(Ort::Value::CreateTensor(
-      memory_info_agnostic, reinterpret_cast<void*>(pInput->GetGPUVirtualAddress()),
-      tensor_byte_size, input_dim, 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
-  Ort::Value output_tensor(Ort::Value::CreateTensor(
-      memory_info_agnostic, reinterpret_cast<void*>(pOutput->GetGPUVirtualAddress()),
-      tensor_byte_size, output_dim, 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
-  ioBinding.BindInput(input_name.get(), input_tensor);
-  ioBinding.BindOutput(output_name.get(), output_tensor);
-  ioBinding.SynchronizeInputs();
+    Ort::Value input_tensor(Ort::Value::CreateTensor(
+        memory_info_agnostic, reinterpret_cast<void*>(pInput->GetGPUVirtualAddress()),
+        tensor_byte_size, input_dim, 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
+    Ort::Value output_tensor(Ort::Value::CreateTensor(
+        memory_info_agnostic, reinterpret_cast<void*>(pOutput->GetGPUVirtualAddress()),
+        tensor_byte_size, output_dim, 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
+    ioBinding.BindInput(input_name.get(), input_tensor);
+    ioBinding.BindOutput(output_name.get(), output_tensor);
+    ioBinding.SynchronizeInputs();
 
-  // Run 2 iterations: upload -> sync -> inference -> download
-  const bool use_semaphore_sync = (importer != nullptr && ort_sem_handle != nullptr);
-  enum FenceState { FENCE_UPLOAD_DONE = 1, FENCE_KERNEL_DONE = 2 };
-  Ort::RunOptions run_options;
-  run_options.AddConfigEntry("disable_synchronize_execution_providers", "1");
-  for (int iter = 0; iter < 2; iter++) {
-    ID3D12CommandList* upload_list = pUploadCommandList.Get();
-    pCommandQueue->ExecuteCommandLists(1, &upload_list);
-    if (use_semaphore_sync) {
-      pCommandQueue->Signal(pFence.Get(), FENCE_UPLOAD_DONE);
-      Ort::Status s(interop_api.WaitSemaphore(importer, ort_sem_handle, stream, FENCE_UPLOAD_DONE));
-      ASSERT_TRUE(s.IsOK()) << s.GetErrorMessage();
-    } else {
+    // Run 2 iterations: upload -> sync -> inference -> download
+    const bool use_semaphore_sync = (importer != nullptr && ort_sem_handle != nullptr);
+    enum FenceState { FENCE_UPLOAD_DONE = 1, FENCE_KERNEL_DONE = 2 };
+    Ort::RunOptions run_options;
+    run_options.AddConfigEntry("disable_synchronize_execution_providers", "1");
+    for (int iter = 0; iter < 2; iter++) {
+      ID3D12CommandList* upload_list = pUploadCommandList.Get();
+      pCommandQueue->ExecuteCommandLists(1, &upload_list);
+      if (use_semaphore_sync) {
+        pCommandQueue->Signal(pFence.Get(), FENCE_UPLOAD_DONE);
+        Ort::Status s(interop_api.WaitSemaphore(importer, ort_sem_handle, stream, FENCE_UPLOAD_DONE));
+        ASSERT_TRUE(s.IsOK()) << s.GetErrorMessage();
+      } else {
+        FlushAndWait(pDevice.Get(), pCommandQueue.Get());
+      }
+      session.Run(run_options, ioBinding);
+      if (use_semaphore_sync) {
+        Ort::Status s(interop_api.SignalSemaphore(importer, ort_sem_handle, stream, FENCE_KERNEL_DONE));
+        ASSERT_TRUE(s.IsOK()) << s.GetErrorMessage();
+        pCommandQueue->Wait(pFence.Get(), FENCE_KERNEL_DONE);
+      }
+      ID3D12CommandList* download_list = pDownloadCommandList.Get();
+      pCommandQueue->ExecuteCommandLists(1, &download_list);
       FlushAndWait(pDevice.Get(), pCommandQueue.Get());
     }
-    session.Run(run_options, ioBinding);
-    if (use_semaphore_sync) {
-      Ort::Status s(interop_api.SignalSemaphore(importer, ort_sem_handle, stream, FENCE_KERNEL_DONE));
-      ASSERT_TRUE(s.IsOK()) << s.GetErrorMessage();
-      pCommandQueue->Wait(pFence.Get(), FENCE_KERNEL_DONE);
-    }
-    ID3D12CommandList* download_list = pDownloadCommandList.Get();
-    pCommandQueue->ExecuteCommandLists(1, &download_list);
-    FlushAndWait(pDevice.Get(), pCommandQueue.Get());
-  }
 
-  // Read back output and sanity check (Relu: output >= 0)
-  void* pOutputData = nullptr;
-  pDownloadRes->Map(0, nullptr, &pOutputData);
-  memcpy(cpuOutputHalf.data(), pOutputData, tensor_byte_size);
-  pDownloadRes->Unmap(0, nullptr);
-  for (size_t i = 0; i < tensor_num_elements; i++) {
-    ASSERT_GE(cpuOutputHalf[i], 0) << "Relu output should be >= 0 at index " << i;
+    // Read back output and validate Relu: interpret as float16, compare to max(0, input)
+    void* pOutputData = nullptr;
+    pDownloadRes->Map(0, nullptr, &pOutputData);
+    memcpy(cpuOutputHalf.data(), pOutputData, tensor_byte_size);
+    pDownloadRes->Unmap(0, nullptr);
+    std::vector<float> input_float(tensor_num_elements);
+    std::vector<float> output_float(tensor_num_elements);
+    ConvertMLFloat16ToFloat(reinterpret_cast<const MLFloat16*>(cpuInputHalf.data()), input_float.data(), tensor_num_elements);
+    ConvertMLFloat16ToFloat(reinterpret_cast<const MLFloat16*>(cpuOutputHalf.data()), output_float.data(), tensor_num_elements);
+    const float tol = 1e-2f;  // float16 limited precision
+    for (size_t i = 0; i < tensor_num_elements; i++) {
+      float expected = std::max(0.f, input_float[i]);
+      ASSERT_NEAR(output_float[i], expected, tol) << "Relu mismatch at index " << i;
+    }
   }
 
   // Cleanup: release resources that use the interop context before DeinitGraphicsInteropForEpDevice
@@ -470,7 +485,10 @@ TEST(NvExecutionProviderTest, GraphicsInteropD3D12FullInference) {
     CloseHandle(sharedFenceHandle);
   }
   ort_api.ReleaseMemoryInfo(memory_info_agnostic);
-  interop_api.DeinitGraphicsInteropForEpDevice(trt_ep_device);
+  {
+    Ort::Status deinit_status(interop_api.DeinitGraphicsInteropForEpDevice(trt_ep_device));
+    ASSERT_TRUE(deinit_status.IsOK()) << deinit_status.GetErrorMessage();
+  }
 }
 
 #endif  // USE_DX_INTEROP && _WIN32

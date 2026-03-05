@@ -430,7 +430,7 @@ static constexpr OrtInteropApi ort_interop_api = {
     &OrtInteropAPI::SignalSemaphore,
     &OrtInteropAPI::InitGraphicsInteropForEpDevice,
     &OrtInteropAPI::DeinitGraphicsInteropForEpDevice,
-    // End of Version 24 - DO NOT MODIFY ABOVE
+    // End of Version 25 - DO NOT MODIFY ABOVE
 };
 
 // Checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
