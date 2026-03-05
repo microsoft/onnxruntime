@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import logging
 import os
@@ -14,13 +15,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+import pandas
 import requests
+from azure.kusto.data import DataFormat, KustoConnectionStringBuilder
+from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
 
 logger = logging.getLogger(__name__)
 
 ADO_ORGANIZATION = "aiinfra"
 DEFAULT_PROJECT = "Lotus"
 POLL_INTERVAL_SECONDS = 60
+
+KUSTO_CLUSTER = "maia-cicd.westus3"
+KUSTO_DATABASE = "kusbandi-build-metrics-test"
+KUSTO_TABLE = "onnx_pipeline_run_status_test"
 
 
 class BuildResult(Enum):
@@ -54,6 +62,19 @@ class TriggeredRun:
     web_url: str
     state: BuildState = BuildState.UNKNOWN
     result: BuildResult = BuildResult.NONE
+
+
+@dataclass
+class PipelineStatusRecord:
+    Timestamp: str
+    OrchestratorBuildId: str
+    Branch: str
+    PipelineName: str
+    PipelineId: int
+    RunId: int
+    State: str
+    Result: str
+    Url: str
 
 
 PIPELINE_REGISTRY: list[PipelineConfig] = [
@@ -164,12 +185,19 @@ def get_run_status(run: TriggeredRun, token: str) -> TriggeredRun:
     return run
 
 
-def wait_for_run(run: TriggeredRun, token: str, poll_interval: int) -> TriggeredRun:
+def wait_for_run(
+    run: TriggeredRun,
+    token: str,
+    poll_interval: int,
+    branch: str,
+    kusto_client: QueuedIngestClient | None,
+) -> TriggeredRun:
     logger.info("Waiting for '%s' (run %d) to complete (polling every %ds)...", run.config.name, run.run_id, poll_interval)
 
     while True:
         time.sleep(poll_interval)
         get_run_status(run, token)
+        publish_run_status(run, branch, kusto_client)
 
         if run.state == BuildState.COMPLETED:
             symbol = "OK" if run.result == BuildResult.SUCCEEDED else "FAIL"
@@ -177,6 +205,53 @@ def wait_for_run(run: TriggeredRun, token: str, poll_interval: int) -> Triggered
             return run
 
         logger.info("'%s' (run %d): state=%s", run.config.name, run.run_id, run.state.value)
+
+
+def _create_kusto_client() -> QueuedIngestClient | None:
+    """Create a Kusto ingest client. Returns None if KUSTO_TABLE is not set."""
+    if not KUSTO_TABLE:
+        logger.info("KUSTO_TABLE is empty — Kusto publishing disabled.")
+        return None
+    kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(f"https://ingest-{KUSTO_CLUSTER}.kusto.windows.net")
+    return QueuedIngestClient(kcsb)
+
+
+def publish_run_status(
+    run: TriggeredRun,
+    branch: str,
+    kusto_client: QueuedIngestClient | None,
+) -> None:
+    """Publish the current status of a single run to Kusto."""
+    if kusto_client is None:
+        return
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    build_id = os.environ.get("BUILD_BUILDID", "")
+    record = PipelineStatusRecord(
+        Timestamp=now_str,
+        OrchestratorBuildId=build_id,
+        Branch=branch,
+        PipelineName=run.config.name,
+        PipelineId=run.config.id,
+        RunId=run.run_id,
+        State=run.state.value,
+        Result=run.result.value,
+        Url=run.web_url,
+    )
+    ingestion_props = IngestionProperties(
+        database=KUSTO_DATABASE,
+        table=KUSTO_TABLE,
+        data_format=DataFormat.CSV,
+        report_level=ReportLevel.FailuresAndSuccesses,
+    )
+    df = pandas.DataFrame([vars(record)])
+    try:
+        kusto_client.ingest_from_dataframe(df, ingestion_properties=ingestion_props)
+        logger.info(
+            "Published status to Kusto: '%s' (run %d) state=%s result=%s",
+            run.config.name, run.run_id, run.state.value, run.result.value,
+        )
+    except Exception as e:
+        logger.warning("Failed to publish to Kusto for run %d: %s", run.run_id, e)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -228,12 +303,14 @@ def main() -> int:
         return 0
 
     token = get_token()
+    kusto_client = _create_kusto_client()
 
     triggered: list[TriggeredRun] = []
     for cfg in configs:
         run = trigger_pipeline(cfg, branch, token)
         if run:
             triggered.append(run)
+            publish_run_status(run, branch, kusto_client)
         else:
             logger.error("Failed to trigger '%s'", cfg.name)
 
@@ -243,7 +320,7 @@ def main() -> int:
 
     any_failed = False
     for run in triggered:
-        wait_for_run(run, token, args.poll_interval)
+        wait_for_run(run, token, args.poll_interval, branch, kusto_client)
         if run.result != BuildResult.SUCCEEDED:
             any_failed = True
 

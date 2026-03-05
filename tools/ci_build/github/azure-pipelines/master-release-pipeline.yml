@@ -50,21 +50,26 @@ extends:
           displayName: 'Use Python 3.12'
 
         - script: |
-            pip install requests
+            pip install requests pandas azure-kusto-data[pandas]==4.5.1 azure-kusto-ingest[pandas]==4.5.1
           displayName: 'Install Python dependencies'
 
-        - script: |
-            set -euo pipefail
-
-            CMD="python tools/python/trigger_and_wait_pipelines.py"
-            CMD="$CMD --branch ${{ parameters.branch }}"
-
-            if [ "${{ parameters.dry_run }}" = "True" ]; then
-              CMD="$CMD --dry-run"
-            fi
-
-            echo "Running: $CMD"
-            eval $CMD
+        - task: AzureCLI@2
           displayName: 'Run master orchestrator'
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set -euo pipefail
+
+              CMD="python tools/python/trigger_and_wait_pipelines.py"
+              CMD="$CMD --branch ${{ parameters.branch }}"
+
+              if [ "${{ parameters.dry_run }}" = "True" ]; then
+                CMD="$CMD --dry-run"
+              fi
+
+              echo "Running: $CMD"
+              eval $CMD
           env:
             SYSTEM_ACCESSTOKEN: $(System.AccessToken)
