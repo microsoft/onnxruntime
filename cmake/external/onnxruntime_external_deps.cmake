@@ -892,6 +892,13 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   )
   onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
 
+  # cpp_client_telemetry's CMakeLists.txt uses include_directories(${CMAKE_SOURCE_DIR}) to find
+  # its bundled nlohmann/, sqlite/, and zlib/ headers. When built via FetchContent, CMAKE_SOURCE_DIR
+  # points to ORT's root instead. Fix by adding the actual source dir as an include path.
+  if(TARGET mat)
+    target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR})
+  endif()
+
   set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
   set(BUILD_FUNC_TESTS "${BUILD_FUNC_TESTS_SAVED}" CACHE BOOL "" FORCE)
   set(BUILD_SAMPLES "${BUILD_SAMPLES_SAVED}" CACHE BOOL "" FORCE)

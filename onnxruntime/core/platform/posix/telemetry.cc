@@ -1,30 +1,38 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef _WIN32  // Only for non-Windows platforms
-
 #include "core/platform/posix/telemetry.h"
+#include "core/platform/posix/device_id.h"
 
-// 1DS SDK includes
+// 1DS SDK
 #include <LogManager.hpp>
-#include <ILogger.hpp>
-#include <ISemanticContext.hpp>
+#include <api/ContextFieldsProvider.hpp>
 
-#include <fstream>
-#include <sstream>
 #include <unistd.h>
-#include <sys/utsname.h>
 #include <sys/resource.h>
+
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__linux__) || defined(__ANDROID__)
+#include <fstream>
+#endif
+
+#include <thread>
+#include <sstream>
+#include <iomanip>
 
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "onnxruntime_config.h"
 
-#ifdef __APPLE__
-#include <TargetConditionals.h>
-#endif
-
 using namespace Microsoft::Applications::Events;
+
+// Instantiate the LogManager singleton (defines the static ILogManager* instance).
+// Required because cpp_client_telemetry's LogManagerCX.cpp is not compiled in the FetchContent build.
+LOGMANAGER_INSTANCE
 
 namespace onnxruntime {
 
@@ -42,27 +50,19 @@ enum class EventPriority {
   CRITICAL = EventLatency_RealTime  // ProcessInfo, SessionCreation
 };
 
-// Transmit profiles
-constexpr const char* PROFILE_REAL_TIME = "REAL_TIME";
-constexpr const char* PROFILE_NEAR_REAL_TIME = "NEAR_REAL_TIME";
-constexpr const char* PROFILE_BEST_EFFORT = "BEST_EFFORT";
-
 // Helper class to build events with common properties
 class EventBuilder {
  private:
   EventProperties props_;
 
  public:
-  explicit EventBuilder(const char* event_name, EventPriority priority)
-      : props_(event_name) {
+  explicit EventBuilder(std::string event_name, EventPriority priority)
+      : props_(std::move(event_name)) {
     // Set latency/priority
     props_.SetLatency(static_cast<EventLatency>(priority));
 
     // Set schema version for compatibility with Windows
     props_.SetProperty("schemaVersion", static_cast<int64_t>(0));
-
-    // Privacy flags - no PII collection
-    props_.SetPIIKind(PiiKind_None);
   }
 
   EventBuilder& AddString(const char* key, const std::string& value) {
@@ -151,8 +151,6 @@ class EventBuilder {
 
   // Add common platform/device context
   EventBuilder& AddCommonContext(const PosixTelemetry* telemetry) {
-    props_.SetProperty("platform", telemetry->GetPlatformInfo());
-    props_.SetProperty("device", telemetry->GetDeviceInfo());
     props_.SetProperty("projection", static_cast<int64_t>(telemetry->projection_.load()));
     return *this;
   }
@@ -160,13 +158,24 @@ class EventBuilder {
   EventProperties Build() { return std::move(props_); }
 };
 
+// Hash a device ID string using std::hash and format as fixed-width hex.
+// Ensures raw device identifiers are never sent over the wire.
+static std::string HashDeviceId(const std::string& id) {
+  size_t hash = std::hash<std::string>{}(id);
+  std::ostringstream oss;
+  oss << std::hex << std::setfill('0') << std::setw(sizeof(size_t) * 2) << hash;
+  return oss.str();
+}
+
 PosixTelemetry::PosixTelemetry() {
   std::lock_guard<std::mutex> lock(global_mutex_);
 
-  if (global_register_count_ == 0) {
+  // Always increment so destructor pairing is symmetric
+  global_register_count_++;
+
+  if (global_register_count_ == 1) {
     try {
       Initialize();
-      global_register_count_++;
     } catch (const std::exception& ex) {
       // Log error but don't fail construction
       // Telemetry failures should not break application functionality
@@ -178,30 +187,21 @@ PosixTelemetry::PosixTelemetry() {
 PosixTelemetry::~PosixTelemetry() {
   std::lock_guard<std::mutex> lock(global_mutex_);
 
-  if (global_register_count_ > 0) {
-    global_register_count_--;
-    if (global_register_count_ == 0) {
-      try {
-        Shutdown();
-      } catch (const std::exception& ex) {
-        // Log error but don't throw from destructor
-        LOGS_DEFAULT(WARNING) << "Error during telemetry shutdown: " << ex.what();
-      }
+  global_register_count_--;
+  if (global_register_count_ == 0) {
+    try {
+      Shutdown();
+    } catch (const std::exception& ex) {
+      // Log error but don't throw from destructor
+      LOGS_DEFAULT(WARNING) << "Error during telemetry shutdown: " << ex.what();
     }
   }
 }
 
-// Safe async event logging with error handling
-void PosixTelemetry::LogEventAsync(microsoft::applications::events::EventProperties&& props) const {
-  if (!enabled_ || !logger_) {
-    return;
-  }
-
+void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventProperties&& props) const {
   try {
-    // Use async LogEvent for non-blocking telemetry
     logger_->LogEvent(std::move(props));
   } catch (const std::exception& ex) {
-    // Log telemetry failures to ORT logging system
     LOGS_DEFAULT(WARNING) << "[Telemetry] Failed to log event: " << ex.what();
   }
 }
@@ -210,29 +210,35 @@ void PosixTelemetry::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
 
   // Configure 1DS SDK for optimal async performance
-  LogConfiguration config;
+  ILogConfiguration config;
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
   config[CFG_INT_MAX_TEARDOWN_TIME] = 10;                    // 10 seconds max for shutdown
 
-  // Configure cache for offline scenarios
-  config[CFG_STR_CACHE_FILE_PATH] = "/tmp/onnxruntime_telemetry_cache";
+  // Configure cache for offline scenarios - use same directory as device ID storage
+  {
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+    constexpr bool is_mobile = true;
+#else
+    constexpr bool is_mobile = false;
+#endif
+    std::string cache_dir = DeviceId::GetStorageDirectory(is_mobile);
+    if (!cache_dir.empty()) {
+      std::string cache_path = cache_dir + "/telemetry_cache.db";
+      config[CFG_STR_CACHE_FILE_PATH] = cache_path;
+    }
+  }
 
   // Configure RAM queue for async batching
   config[CFG_INT_RAM_QUEUE_SIZE] = 512 * 1024;  // 512KB RAM queue
   config[CFG_INT_RAM_QUEUE_BUFFERS] = 3;        // Triple buffering for smooth async operation
 
-  // Sampling configuration (percentage: 100 = 100%, 10 = 10%)
-  // Sample 100% of critical events, 10% of routine events for performance
-  config[CFG_STR_SAMPLING_PERCENTAGE] =
-      "ProcessInfo=100,SessionCreation=100,SessionCreationStart=100,"
-      "RuntimeError=100,EvaluationStart=10,EvaluationStop=10,"
-      "RuntimePerf=10,CompileModelStart=50,CompileModelComplete=50,"
-      "EpAutoSelection=50,ProviderOptions=10";
-
-  // Create logger instance
-  logger_ = LogManager::Initialize(TENANT_TOKEN, config);
+  // Create logger instance (raw pointer, owned by LogManager)
+  auto* raw_logger = LogManager::Initialize(TENANT_TOKEN, config);
+  // Store as shared_ptr with no-op deleter since LogManager owns the lifetime
+  logger_ = std::shared_ptr<::Microsoft::Applications::Events::ILogger>(
+      raw_logger, [](::Microsoft::Applications::Events::ILogger*) {});
 
   if (logger_) {
     // Set privacy level - no PII collection
@@ -240,7 +246,29 @@ void PosixTelemetry::Initialize() {
 
     // Set platform information as context
     logger_->SetContext("Platform", GetPlatformInfo());
-    logger_->SetContext("Device", GetDeviceInfo());
+
+    // Override the device ID with a hashed version for privacy.
+    // The "c:" prefix tells the backend it's a caller-supplied identifier.
+    auto* ctx = LogManager::GetSemanticContext();
+    if (ctx) {
+      std::string raw_device_id;
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+      // Mobile: read the SDK's auto-generated platform device ID (e.g., identifierForVendor
+      // on iOS, ANDROID_ID on Android) and hash it before sending.
+      auto* provider = static_cast<ContextFieldsProvider*>(ctx);
+      auto& fields = provider->GetCommonFields();
+      auto it = fields.find(COMMONFIELDS_DEVICE_ID);
+      if (it != fields.end()) {
+        raw_device_id = it->second.to_string();
+      }
+#else
+      // Desktop: use our custom persistent UUID.
+      raw_device_id = DeviceId::Instance().GetValue();
+#endif
+      if (!raw_device_id.empty()) {
+        ctx->SetDeviceId("c:" + HashDeviceId(raw_device_id));
+      }
+    }
 
     // Set application information
     logger_->SetContext("AppName", "ONNXRuntime");
@@ -272,21 +300,13 @@ void PosixTelemetry::Shutdown() {
 }
 
 std::string PosixTelemetry::GetPlatformInfo() const {
-  struct utsname system_info;
-  if (uname(&system_info) == 0) {
-    std::ostringstream oss;
-    oss << system_info.sysname << " " << system_info.release;
-    return oss.str();
-  }
-  return "Unknown";
-}
-
-std::string PosixTelemetry::GetDeviceInfo() const {
-#ifdef __APPLE__
+#if defined(__APPLE__)
 #if TARGET_OS_IOS
   return "iOS";
 #elif TARGET_OS_MAC
   return "macOS";
+#else
+  return "Apple";
 #endif
 #elif defined(__ANDROID__)
   return "Android";
@@ -295,6 +315,148 @@ std::string PosixTelemetry::GetDeviceInfo() const {
 #else
   return "Unknown";
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// Process / system info helpers for LogProcessInfo
+// ---------------------------------------------------------------------------
+
+// Get detailed OS version string (e.g., "macOS 15.2", "Ubuntu 22.04 LTS")
+std::string PosixTelemetry::GetOsDescription() const {
+#if defined(__APPLE__)
+  char version[64] = {};
+  size_t len = sizeof(version);
+  if (sysctlbyname("kern.osproductversion", version, &len, nullptr, 0) == 0) {
+#if TARGET_OS_IOS
+    return std::string("iOS ") + version;
+#else
+    return std::string("macOS ") + version;
+#endif
+  }
+  return GetPlatformInfo();
+
+#elif defined(__ANDROID__)
+  // Read Android system properties via /system/build.prop
+  std::string release, sdk;
+  std::ifstream prop("/system/build.prop");
+  if (prop.is_open()) {
+    std::string line;
+    while (std::getline(prop, line)) {
+      if (line.rfind("ro.build.version.release=", 0) == 0)
+        release = line.substr(25);
+      else if (line.rfind("ro.build.version.sdk=", 0) == 0)
+        sdk = line.substr(21);
+    }
+  }
+  if (!release.empty()) {
+    std::string result = "Android " + release;
+    if (!sdk.empty()) result += " (API " + sdk + ")";
+    return result;
+  }
+  return "Android";
+
+#elif defined(__linux__)
+  // Parse /etc/os-release for PRETTY_NAME (e.g., "Ubuntu 22.04.3 LTS")
+  std::ifstream os_release("/etc/os-release");
+  if (os_release.is_open()) {
+    std::string line;
+    while (std::getline(os_release, line)) {
+      if (line.rfind("PRETTY_NAME=", 0) == 0) {
+        std::string value = line.substr(12);
+        if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+          value = value.substr(1, value.size() - 2);
+        }
+        return value;
+      }
+    }
+  }
+  return "Linux";
+
+#else
+  return "Unknown";
+#endif
+}
+
+// Get the name of the current process
+std::string PosixTelemetry::GetProcessName() const {
+#if defined(__APPLE__) || defined(__FreeBSD__)
+  const char* name = getprogname();
+  return name ? name : "";
+
+#elif defined(__linux__) || defined(__ANDROID__)
+  // /proc/self/comm contains the process name (up to 15 chars)
+  std::ifstream comm("/proc/self/comm");
+  if (comm.is_open()) {
+    std::string name;
+    std::getline(comm, name);
+    while (!name.empty() && (name.back() == '\n' || name.back() == '\r'))
+      name.pop_back();
+    return name;
+  }
+  return "";
+
+#else
+  return "";
+#endif
+}
+
+// Get the CPU architecture the binary was compiled for
+std::string PosixTelemetry::GetArchitecture() {
+#if defined(__x86_64__)
+  return "x86_64";
+#elif defined(__i386__)
+  return "x86";
+#elif defined(__aarch64__)
+  return "arm64";
+#elif defined(__arm__)
+  return "arm";
+#elif defined(__riscv)
+  return "riscv";
+#elif defined(__wasm__)
+  return "wasm";
+#else
+  return "unknown";
+#endif
+}
+
+// Get total physical memory in MB
+int64_t PosixTelemetry::GetTotalMemoryMB() {
+#if defined(__APPLE__)
+  int64_t mem = 0;
+  size_t len = sizeof(mem);
+  if (sysctlbyname("hw.memsize", &mem, &len, nullptr, 0) == 0) {
+    return mem / (1024 * 1024);
+  }
+  return -1;
+
+#elif defined(__linux__) || defined(__ANDROID__)
+  long pages = sysconf(_SC_PHYS_PAGES);
+  long page_size = sysconf(_SC_PAGE_SIZE);
+  if (pages > 0 && page_size > 0) {
+    return static_cast<int64_t>(pages) * page_size / (1024 * 1024);
+  }
+  return -1;
+
+#else
+  return -1;
+#endif
+}
+
+// Get system locale (e.g., "en-US", "ja-JP")
+std::string PosixTelemetry::GetLocale() {
+  const char* lang = std::getenv("LANG");
+  if (lang && lang[0]) {
+    std::string loc(lang);
+    // Strip encoding suffix (e.g., "en_US.UTF-8" → "en_US")
+    auto dot = loc.find('.');
+    if (dot != std::string::npos) loc = loc.substr(0, dot);
+    // Normalize separator: "en_US" → "en-US"
+    for (auto& c : loc) {
+      if (c == '_') c = '-';
+    }
+    return loc;
+  }
+  return "";
 }
 
 void PosixTelemetry::EnableTelemetryEvents() const {
@@ -322,7 +484,8 @@ uint64_t PosixTelemetry::Keyword() const {
 }
 
 void PosixTelemetry::LogProcessInfo() const {
-  if (!enabled_ || !logger_) {
+  // LogProcessInfo only collects system metadata and always fires if we have a valid logger.
+  if (!logger_) {
     return;
   }
 
@@ -331,13 +494,22 @@ void PosixTelemetry::LogProcessInfo() const {
     return;
   }
 
-  auto event = EventBuilder("ProcessInfo", EventPriority::CRITICAL)
-                   .AddCommonContext(this)
-                   .AddString("runtimeVersion", ORT_VERSION)
-                   .AddInt32("processId", static_cast<int32_t>(getpid()))
-                   .Build();
+  auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL)
+                     .AddCommonContext(this)
+                     .AddString("runtimeVersion", ORT_VERSION)
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+                     .AddString("DeviceInfo.Status", "Mobile")
+#else
+                     .AddString("DeviceInfo.Status", DeviceId::Instance().GetStatusString())
+#endif
+                     .AddString("osDescription", GetOsDescription())
+                     .AddString("processName", GetProcessName())
+                     .AddString("architecture", GetArchitecture())
+                     .AddInt32("cpuCount", static_cast<int32_t>(std::thread::hardware_concurrency()))
+                     .AddInt64("totalMemoryMB", GetTotalMemoryMB())
+                     .AddString("locale", GetLocale());
 
-  LogEventAsync(std::move(event));
+  LogEventAsync(builder.Build());
 }
 
 void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
@@ -364,6 +536,9 @@ void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
                    .Build();
 
   LogEventAsync(std::move(event));
+
+  // Capture system metrics after each inference run to observe impact
+  LogSystemMetrics(session_id);
 }
 
 void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
@@ -398,9 +573,11 @@ void PosixTelemetry::LogSessionCreation(
     return;
   }
 
-  const char* event_name = captureState ? "SessionCreation_CaptureState" : "SessionCreation";
+  // captureState is currently only triggered on Windows via ETW's EVENT_CONTROL_CODE_CAPTURE_STATE callback
+  // (LogAllSessions). Kept here for future compatibility if a similar mechanism is added for POSIX.
+  std::string event_name = captureState ? "SessionCreation_CaptureState" : "SessionCreation";
 
-  auto builder = EventBuilder(event_name, EventPriority::CRITICAL)
+  auto builder = EventBuilder(std::move(event_name), EventPriority::CRITICAL)
                      .AddCommonContext(this)
                      .AddUInt32("sessionId", session_id)
                      .AddInt64("irVersion", ir_version)
@@ -553,9 +730,9 @@ void PosixTelemetry::LogProviderOptions(
     return;
   }
 
-  const char* event_name = captureState ? "ProviderOptions_CaptureState" : "ProviderOptions";
+  std::string event_name = captureState ? "ProviderOptions_CaptureState" : "ProviderOptions";
 
-  auto event = EventBuilder(event_name, EventPriority::NORMAL)
+  auto event = EventBuilder(std::move(event_name), EventPriority::NORMAL)
                    .AddCommonContext(this)
                    .AddString("providerId", provider_id)
                    .AddString("providerOptions", provider_options_string)
@@ -564,22 +741,21 @@ void PosixTelemetry::LogProviderOptions(
   LogEventAsync(std::move(event));
 }
 
-// Posix-specific: Log system resource metrics
-void PosixTelemetry::LogPosixSystemMetrics(uint32_t session_id) const {
+void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
   if (!enabled_ || !logger_) {
     return;
   }
 
   struct rusage usage;
   if (getrusage(RUSAGE_SELF, &usage) == 0) {
-    // Note: ru_maxrss is in KB on Linux, bytes on macOS
+    // ru_maxrss is in KB on Linux, bytes on macOS
 #ifdef __APPLE__
     int64_t max_rss_kb = usage.ru_maxrss / 1024;
 #else
     int64_t max_rss_kb = usage.ru_maxrss;
 #endif
 
-    auto event = EventBuilder("PosixSystemMetrics", EventPriority::NORMAL)
+    auto event = EventBuilder("SystemMetrics", EventPriority::NORMAL)
                      .AddCommonContext(this)
                      .AddUInt32("sessionId", session_id)
                      .AddInt64("maxRssKb", max_rss_kb)
@@ -598,5 +774,3 @@ void PosixTelemetry::LogPosixSystemMetrics(uint32_t session_id) const {
 }
 
 }  // namespace onnxruntime
-
-#endif  // !_WIN32

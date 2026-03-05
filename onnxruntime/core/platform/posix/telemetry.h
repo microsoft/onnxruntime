@@ -3,8 +3,6 @@
 
 #pragma once
 
-#ifndef _WIN32  // Only for non-Windows platforms
-
 #include "core/platform/telemetry.h"
 #include <atomic>
 #include <memory>
@@ -12,25 +10,24 @@
 #include <string>
 #include <vector>
 
-// Forward declarations of 1DS SDK types (must be at global scope)
+// Forward declarations of 1DS SDK types
 namespace Microsoft::Applications::Events {
 class ILogger;
-class ISemanticContext;
 class EventProperties;
 }  // namespace Microsoft::Applications::Events
 
 namespace onnxruntime {
 
 /**
-* @brief Telemetry implementation for non-Windows platforms.
-* 
-* This class provides telemetry logging capabilities for macOS, Linux, Android, and iOS
-* using the cpp_client_telemetry library (1DS SDK). It implements the same interface
-* as WindowsTelemetry to provide consistent telemetry across all platforms.
-* 
-* Configuration:
-* - Telemetry is opt-in via build flags
-*/
+ * @brief Cross-platform telemetry implementation using 1DS SDK (cpp_client_telemetry).
+ *
+ * This class provides telemetry logging capabilities for all platforms
+ * using the cpp_client_telemetry library (1DS SDK). It implements the same interface
+ * as the original WindowsTelemetry to provide consistent telemetry across all platforms.
+ *
+ * Configuration:
+ * - Telemetry is opt-in via build flags
+ */
 class PosixTelemetry : public Telemetry {
  public:
   PosixTelemetry();
@@ -106,15 +103,21 @@ class PosixTelemetry : public Telemetry {
   // Shutdown telemetry SDK logger
   void Shutdown();
 
-  // Helper to get platform-specific information
+  // Helper to get platform name
   std::string GetPlatformInfo() const;
-  std::string GetDeviceInfo() const;
 
-  // Safe async event logging
+  // Process/system info helpers for LogProcessInfo
+  std::string GetOsDescription() const;
+  std::string GetProcessName() const;
+  static std::string GetArchitecture();
+  static int64_t GetTotalMemoryMB();
+  static std::string GetLocale();
+
+  // Safe async event logging.
   void LogEventAsync(::Microsoft::Applications::Events::EventProperties&& props) const;
 
-  // Posix-specific: Log system resource metrics
-  void LogPosixSystemMetrics(uint32_t session_id) const;
+  // Log system resource metrics
+  void LogSystemMetrics(uint32_t session_id) const;
 
   // Mutex for thread-safe access
   mutable std::mutex mutex_;
@@ -135,10 +138,8 @@ class PosixTelemetry : public Telemetry {
   static std::atomic<uint32_t> global_register_count_;
   static std::mutex global_mutex_;
 
-  // Make EventBuilder a friend so it can access GetPlatformInfo/GetDeviceInfo
+  // Make EventBuilder a friend so it can access projection_
   friend class EventBuilder;
 };
 
 }  // namespace onnxruntime
-
-#endif  // !_WIN32
