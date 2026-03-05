@@ -300,6 +300,19 @@ def main() -> int:
 
     if args.dry_run:
         logger.info("DRY RUN — no pipelines were triggered.")
+        logger.info("Verifying Kusto connectivity...")
+        kusto_client = _create_kusto_client()
+        if kusto_client is not None:
+            test_run = TriggeredRun(
+                config=PipelineConfig(id=0, name="dry-run-connectivity-test", project=""),
+                run_id=0,
+                web_url="",
+                state=BuildState.COMPLETED,
+                result=BuildResult.SUCCEEDED,
+            )
+            publish_run_status(test_run, branch, kusto_client)
+        else:
+            logger.warning("Kusto client could not be created — check configuration.")
         return 0
 
     token = get_token()
