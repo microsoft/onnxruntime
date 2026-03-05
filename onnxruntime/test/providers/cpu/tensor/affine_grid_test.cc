@@ -4,6 +4,7 @@
 #include "core/util/math.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/op_tester.h"  // Ensure this include is present
 
 namespace onnxruntime {
 namespace test {
@@ -177,6 +178,96 @@ TEST(AffineGridTest, test_3d_7) {
   test.AddOutput<float>("grid", {2, 2, 2, 3, 3}, {-0.6098f, 1.5490f, -8.2197f, -0.3500f, 0.2500f, -6.8447f, -0.0902f, -1.0490f, -5.4697f, -0.6098f, 4.5490f, 1.3066f, -0.3500f, 3.2500f, 2.6816f, -0.0902f, 1.9510f, 4.0566f, -0.9098f, -2.9510f, -3.4566f, -0.6500f, -4.2500f, -2.0816f, -0.3902f, -5.5490f, -0.7066f, -0.9098f, 0.0490f, 6.0697f, -0.6500f, -1.2500f, 7.4447f, -0.3902f, -2.5490f, 8.8197f, -0.6098f, 1.5490f, -8.2197f, -0.3500f, 0.2500f, -6.8447f, -0.0902f, -1.0490f, -5.4697f, -0.6098f, 4.5490f, 1.3066f, -0.3500f, 3.2500f, 2.6816f, -0.0902f, 1.9510f, 4.0566f, -0.9098f, -2.9510f, -3.4566f, -0.6500f, -4.2500f, -2.0816f, -0.3902f, -5.5490f, -0.7066f, -0.9098f, 0.0490f, 6.0697f, -0.6500f, -1.2500f, 7.4447f, -0.3902f, -2.5490f, 8.8197f});
   test.SetOutputTolerance(0.0001f);
   test.Run();
+}
+
+// Validation tests for input shape checks
+
+// Test: theta must be a 3D tensor
+TEST(AffineGridTest, invalid_theta_not_3d) {
+  OpTester test("AffineGrid", 20);
+  // theta is 2D instead of 3D
+  test.AddInput<float>("theta", {2, 6}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {4}, {2, 1, 2, 3});
+  test.AddOutput<float>("grid", {2, 2, 3, 2}, std::vector<float>(24, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "AffineGrid : Input theta tensor dimension is not 3");
+}
+
+// Test: size length must be 4 or 5
+TEST(AffineGridTest, invalid_size_length_3) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {3}, {1, 1, 2});
+  test.AddOutput<float>("grid", {1, 2, 2}, std::vector<float>(4, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Length of input 'size' is 3. It must be 4 for 2D or 5 for 5D");
+}
+
+// Test: size length must be 4 or 5 (too long)
+TEST(AffineGridTest, invalid_size_length_6) {
+  OpTester test("AffineGrid", 20);
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {6}, {1, 1, 2, 3, 4, 5});
+  test.AddOutput<float>("grid", {1, 2, 3, 2}, std::vector<float>(12, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Length of input 'size' is 6. It must be 4 for 2D or 5 for 5D");
+}
+
+// Test: 2D - batch dimension mismatch between theta and size
+TEST(AffineGridTest, invalid_2d_batch_mismatch) {
+  OpTester test("AffineGrid", 20);
+  // theta has N=1, but size has N=2
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {4}, {2, 1, 2, 3});
+  test.AddOutput<float>("grid", {2, 2, 3, 2}, std::vector<float>(24, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must equal theta batch dimension");
+}
+
+// Test: 2D - theta shape must be [N, 2, 3], wrong second dimension
+TEST(AffineGridTest, invalid_2d_theta_wrong_dim1) {
+  OpTester test("AffineGrid", 20);
+  // theta is [1, 3, 3] but for 2D it must be [N, 2, 3]
+  test.AddInput<float>("theta", {1, 3, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f});
+  test.AddInput<int64_t>("size", {4}, {1, 1, 2, 3});
+  test.AddOutput<float>("grid", {1, 2, 3, 2}, std::vector<float>(12, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "theta shape must be [N, 2, 3] for 2D");
+}
+
+// Test: 2D - theta shape must be [N, 2, 3], wrong third dimension
+TEST(AffineGridTest, invalid_2d_theta_wrong_dim2) {
+  OpTester test("AffineGrid", 20);
+  // theta is [1, 2, 4] but for 2D it must be [N, 2, 3]
+  test.AddInput<float>("theta", {1, 2, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f});
+  test.AddInput<int64_t>("size", {4}, {1, 1, 2, 3});
+  test.AddOutput<float>("grid", {1, 2, 3, 2}, std::vector<float>(12, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "theta shape must be [N, 2, 3] for 2D");
+}
+
+// Test: 3D - batch dimension mismatch between theta and size
+TEST(AffineGridTest, invalid_3d_batch_mismatch) {
+  OpTester test("AffineGrid", 20);
+  // theta has N=1, but size has N=2
+  test.AddInput<float>("theta", {1, 3, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {5}, {2, 1, 2, 2, 3});
+  test.AddOutput<float>("grid", {2, 2, 2, 3, 3}, std::vector<float>(72, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must equal theta batch dimension");
+}
+
+// Test: 3D - theta shape must be [N, 3, 4], wrong second dimension
+TEST(AffineGridTest, invalid_3d_theta_wrong_dim1) {
+  OpTester test("AffineGrid", 20);
+  // theta is [1, 2, 4] but for 3D it must be [N, 3, 4]
+  test.AddInput<float>("theta", {1, 2, 4}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f});
+  test.AddInput<int64_t>("size", {5}, {1, 1, 2, 2, 3});
+  test.AddOutput<float>("grid", {1, 2, 2, 3, 3}, std::vector<float>(36, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "theta shape must be [N, 3, 4] for 3D");
+}
+
+// Test: 3D - theta shape must be [N, 3, 4], wrong third dimension
+TEST(AffineGridTest, invalid_3d_theta_wrong_dim2) {
+  OpTester test("AffineGrid", 20);
+  // theta is [1, 3, 3] but for 3D it must be [N, 3, 4]
+  test.AddInput<float>("theta", {1, 3, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f});
+  test.AddInput<int64_t>("size", {5}, {1, 1, 2, 2, 3});
+  test.AddOutput<float>("grid", {1, 2, 2, 3, 3}, std::vector<float>(36, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "theta shape must be [N, 3, 4] for 3D");
 }
 }  // namespace test
 }  // namespace onnxruntime
