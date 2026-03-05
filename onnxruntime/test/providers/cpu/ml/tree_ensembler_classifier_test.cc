@@ -404,7 +404,8 @@ TEST(MLOpTest, TreeEnsembleClassifierMismatchedClassArrays) {
   test.AddOutput<int64_t>("Y", {1}, {0});
   test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "");
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "target_class_ids and target_class_nodeids must have the same size");
 }
 
 
@@ -444,7 +445,8 @@ TEST(MLOpTest, TreeEnsembleClassifierMismatchedNodeArrays) {
   test.AddOutput<int64_t>("Y", {1}, {0});
   test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "");
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "nodes_falsenodeids and nodes_featureids must have the same size");
 }
 
 }  // namespace test
