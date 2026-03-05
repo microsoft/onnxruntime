@@ -27,7 +27,7 @@ DEFAULT_PROJECT = "Lotus"
 POLL_INTERVAL_SECONDS = 60
 
 KUSTO_CLUSTER = "maia-cicd.westus3"
-KUSTO_DATABASE = "kusbandi-build-metrics-test"
+KUSTO_DATABASE = "ci-logs"
 KUSTO_TABLE = "onnx_pipeline_run_status_test"
 
 
