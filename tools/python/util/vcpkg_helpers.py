@@ -280,7 +280,7 @@ def generate_triplet_for_android(
 
             if ldflags:
                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
-            f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
+            f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=20)\n")
             add_build_type(f, config)
             add_port_configs(
                 f, enable_exception, False, enable_minimal_build, use_full_protobuf=use_full_protobuf
@@ -471,10 +471,9 @@ def generate_triplet_for_posix_platform(
 
             if ldflags:
                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
-            if os_name == "osx":
-                f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=20)\n")
-            else:
-                f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
+
+            f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=20)\n")
+
             add_build_type(f, config)
             add_port_configs(
                 f, enable_exception, False, enable_minimal_build, use_full_protobuf=use_full_protobuf
@@ -734,7 +733,7 @@ def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version
                                         if cxxflags:
                                             f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
                                         f.write(
-                                            "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n"
+                                            "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=20)\n"
                                         )
                                         if ldflags:
                                             f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
