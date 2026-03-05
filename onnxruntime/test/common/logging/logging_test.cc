@@ -4,12 +4,14 @@
 #include <exception>
 #include <functional>
 #include <string>
+#include <cstdlib>
 
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 
 #include "test/common/logging/helpers.h"
+#include "test/util/include/scoped_env_vars.h"
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26400)
@@ -25,6 +27,9 @@ using namespace logging;
 using InstanceType = LoggingManager::InstanceType;
 
 namespace test {
+
+using ::onnxruntime::test::EnvVarMap;
+using ::onnxruntime::test::ScopedEnvironmentVariables;
 
 static std::string default_logger_id{"TestFixtureDefaultLogger"};
 
@@ -311,6 +316,108 @@ TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStateme
 
   log_from_conditional_without_compound_statement(true);
   log_from_conditional_without_compound_statement(false);
+}
+
+// Tests for SeverityFromString helper
+TEST(SeverityFromStringTest, ParsesValidNames) {
+  Severity sev;
+  EXPECT_TRUE(SeverityFromString("VERBOSE", sev));
+  EXPECT_EQ(sev, Severity::kVERBOSE);
+
+  EXPECT_TRUE(SeverityFromString("INFO", sev));
+  EXPECT_EQ(sev, Severity::kINFO);
+
+  EXPECT_TRUE(SeverityFromString("WARNING", sev));
+  EXPECT_EQ(sev, Severity::kWARNING);
+
+  EXPECT_TRUE(SeverityFromString("ERROR", sev));
+  EXPECT_EQ(sev, Severity::kERROR);
+
+  EXPECT_TRUE(SeverityFromString("FATAL", sev));
+  EXPECT_EQ(sev, Severity::kFATAL);
+}
+
+TEST(SeverityFromStringTest, ParsesNumericValues) {
+  Severity sev;
+  EXPECT_TRUE(SeverityFromString("0", sev));
+  EXPECT_EQ(sev, Severity::kVERBOSE);
+
+  EXPECT_TRUE(SeverityFromString("1", sev));
+  EXPECT_EQ(sev, Severity::kINFO);
+
+  EXPECT_TRUE(SeverityFromString("2", sev));
+  EXPECT_EQ(sev, Severity::kWARNING);
+
+  EXPECT_TRUE(SeverityFromString("3", sev));
+  EXPECT_EQ(sev, Severity::kERROR);
+
+  EXPECT_TRUE(SeverityFromString("4", sev));
+  EXPECT_EQ(sev, Severity::kFATAL);
+}
+
+TEST(SeverityFromStringTest, RejectsInvalidValues) {
+  Severity sev;
+  EXPECT_FALSE(SeverityFromString("INVALID", sev));
+  EXPECT_FALSE(SeverityFromString("", sev));
+  EXPECT_FALSE(SeverityFromString("5", sev));
+  EXPECT_FALSE(SeverityFromString(nullptr, sev));
+}
+
+// Tests for ORT_LOG_LEVEL environment variable
+TEST(EnvVarLogLevelTest, EnvVarOverridesDefault) {
+  ScopedEnvironmentVariables env_guard{EnvVarMap{{"ORT_LOG_LEVEL", {"VERBOSE"}}}};
+
+  const std::string logger_id{"EnvVarTest"};
+  auto manager = std::make_unique<LoggingManager>(
+      std::unique_ptr<ISink>{new CLogSink{}}, Severity::kWARNING, false,
+      InstanceType::Temporal);
+
+  auto logger = manager->CreateLogger(logger_id);
+  // The logger should use VERBOSE (from env var) instead of WARNING
+  EXPECT_TRUE(logger->OutputIsEnabled(Severity::kVERBOSE, ::onnxruntime::logging::DataType::SYSTEM));
+}
+
+TEST(EnvVarLogLevelTest, InvalidEnvVarIsIgnored) {
+  ScopedEnvironmentVariables env_guard{EnvVarMap{{"ORT_LOG_LEVEL", {"INVALID_VALUE"}}}};
+
+  const std::string logger_id{"InvalidEnvVarTest"};
+  auto manager = std::make_unique<LoggingManager>(
+      std::unique_ptr<ISink>{new CLogSink{}}, Severity::kWARNING, false,
+      InstanceType::Temporal);
+
+  auto logger = manager->CreateLogger(logger_id);
+  // Should still use WARNING since env var is invalid
+  EXPECT_FALSE(logger->OutputIsEnabled(Severity::kINFO, ::onnxruntime::logging::DataType::SYSTEM));
+  EXPECT_TRUE(logger->OutputIsEnabled(Severity::kWARNING, ::onnxruntime::logging::DataType::SYSTEM));
+}
+
+TEST(EnvVarLogLevelTest, NumericEnvVarWorks) {
+  ScopedEnvironmentVariables env_guard{EnvVarMap{{"ORT_LOG_LEVEL", {"1"}}}};
+
+  const std::string logger_id{"NumericEnvVarTest"};
+  auto manager = std::make_unique<LoggingManager>(
+      std::unique_ptr<ISink>{new CLogSink{}}, Severity::kWARNING, false,
+      InstanceType::Temporal);
+
+  auto logger = manager->CreateLogger(logger_id);
+  // INFO messages should now be visible
+  EXPECT_TRUE(logger->OutputIsEnabled(Severity::kINFO, ::onnxruntime::logging::DataType::SYSTEM));
+  // VERBOSE should still be filtered
+  EXPECT_FALSE(logger->OutputIsEnabled(Severity::kVERBOSE, ::onnxruntime::logging::DataType::SYSTEM));
+}
+
+TEST(EnvVarLogLevelTest, EnvVarOverridesExplicitSeverity) {
+  ScopedEnvironmentVariables env_guard{EnvVarMap{{"ORT_LOG_LEVEL", {"VERBOSE"}}}};
+
+  const std::string logger_id{"ExplicitSeverityTest"};
+  // Even though kERROR is passed, the env var takes precedence as a deployment-time override.
+  auto manager = std::make_unique<LoggingManager>(
+      std::unique_ptr<ISink>{new CLogSink{}}, Severity::kERROR, false,
+      InstanceType::Temporal);
+
+  auto logger = manager->CreateLogger(logger_id);
+  // The env var VERBOSE overrides the programmatic kERROR
+  EXPECT_TRUE(logger->OutputIsEnabled(Severity::kVERBOSE, ::onnxruntime::logging::DataType::SYSTEM));
 }
 
 }  // namespace test
