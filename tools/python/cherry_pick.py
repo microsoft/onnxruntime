@@ -141,6 +141,7 @@ def check_missing_dependencies(prs, branch):
         if pr.get("mergeCommit"):
             cherry_pick_oids.add(pr["mergeCommit"]["oid"])
 
+    conflicting_prs_count = 0
     for pr in prs:
         if not pr.get("mergeCommit"):
             continue
@@ -179,12 +180,19 @@ def check_missing_dependencies(prs, branch):
                     missing_commits[c] = (existing_title, existing_files)
 
         # Print deduplicated warnings
-        for missing_oid, (title, affected_files) in missing_commits.items():
-            files_str = ", ".join(affected_files)
-            print(
-                f"WARNING: PR #{number} ({oid}) modifies files that were also changed by commit {missing_oid} ({title}), "
-                f"which is not in the cherry-pick list. This may indicate missing related changes. Affected files: {files_str}"
-            )
+        if missing_commits:
+            conflicting_prs_count += 1
+            for missing_oid, (title, affected_files) in missing_commits.items():
+                files_str = ", ".join(affected_files)
+                print(
+                    f"WARNING: PR #{number} ({oid}) modifies files that were also changed by commit {missing_oid} ({title}), "
+                    f"which is not in the cherry-pick list. This may indicate missing related changes. Affected files: {files_str}"
+                )
+
+    if conflicting_prs_count == 0:
+        print("No potential missing dependencies found.")
+    else:
+        print(f"\nDone. Found potential missing dependencies for {conflicting_prs_count} PRs.")
 
 
 def main():
