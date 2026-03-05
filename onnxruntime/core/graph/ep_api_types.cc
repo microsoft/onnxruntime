@@ -327,7 +327,8 @@ static Status GetInputIndices(const EpNode& consumer_node,
       [&found, &value_info_name, &indices](gsl::span<const EpValueInfo* const> input_value_infos,
                                            bool is_implicit) -> void {
     for (size_t i = 0; i < input_value_infos.size(); i++) {
-      if (input_value_infos[i] == nullptr) {  // input_value_info == nullptr means the input is optional
+      if (input_value_infos[i] == nullptr) {
+        // This is a missing optional input. Skip it.
         continue;
       }
       if (input_value_infos[i]->GetName() == value_info_name) {
@@ -351,6 +352,11 @@ static Status GetOutputIndex(const EpNode& producer_node,
   gsl::span<const EpValueInfo* const> outputs = producer_node.GetOutputsSpan();
 
   for (size_t i = 0; i < outputs.size(); i++) {
+    if (outputs[i] == nullptr) {
+      // This is a missing optional output. Skip it.
+      continue;
+    }
+
     if (outputs[i]->GetName() == value_info_name) {
       index = i;
       found = true;

@@ -180,6 +180,13 @@ TEST(EpGraphTest, CheckModelExternalInitializers) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
+TEST(EpGraphTest, CheckModelOptionalIntermediateNodeOutputs) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/skip_simplified_layer_normalization.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
 static void RunConvQDQExtIni(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::SessionOptions sess_options;
