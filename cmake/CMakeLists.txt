@@ -20,6 +20,13 @@ if (NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 20)
 endif()
 
+# We don't use C++20 modules yet.
+# There are some known issues to address first:
+# - Android builds from Linux Docker containers have trouble finding clang-scan-deps.
+# - The MSVC /permissive option is needed for compiling some of the CUDA EP code which uses CUTLASS.
+#   This option is not compatible with C++20 modules.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 # Disable fast-math for Intel oneAPI compiler
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
   if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
