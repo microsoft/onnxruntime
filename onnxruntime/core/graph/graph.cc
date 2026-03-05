@@ -4892,6 +4892,18 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
       std::vector<uint8_t> raw_data;
       ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
+
+      // Convert it data to little endian before saving to file
+      if constexpr (endian::native != endian::little) {
+        size_t element_size = onnxruntime::utils::GetElementSizeInTensorProto(initializer);
+
+        if (element_size > 1) {
+          onnxruntime::utils::SwapByteOrderInplace(
+              element_size,
+              gsl::make_span(reinterpret_cast<std::byte*>(raw_data.data()), tensor_bytes_size));
+        }
+      }
+
       if (model_saving_options.force_embed_external_ini ||
           tensor_bytes_size < model_saving_options.initializer_size_threshold) {
         *output_proto = initializer;
