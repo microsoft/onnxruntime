@@ -114,7 +114,6 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
         name="QNN_Nuget_Windows",
         template_parameters={
             "IsReleaseBuild": True,
-            "NugetPackageSuffix": "NONE",
         },
     ),
     PipelineConfig(
@@ -123,7 +122,6 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
         template_parameters={
             "DoEsrp": True,
             "IsReleaseBuild": True,
-            "NugetPackageSuffix": "NONE",
         },
     ),
     PipelineConfig(
