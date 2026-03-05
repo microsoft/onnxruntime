@@ -20,7 +20,8 @@ index a8af62be..74409054 100644
     * This function can be overridden to dispatch to the appropriate cuMemsetD*Async API
    */
 +  // Patching to work around this error:
-+  //   include\cutlass/cuda_host_adapter.hpp(414): error #20011-D: calling a __host__ function("memsetDeviceImpl") from a __host__ __device__ function("memsetDevice") is not allowed
++  //   include\cutlass/cuda_host_adapter.hpp(414): error #20011-D: calling a __host__ function("memsetDeviceImpl")
++  //     from a __host__ __device__ function("memsetDevice") is not allowed
 +  CUTLASS_HOST_DEVICE
    virtual Status memsetDeviceImpl(
      void* destination, ///< Device memory pointer to be filled
