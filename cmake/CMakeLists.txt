@@ -46,6 +46,10 @@ endif()
 if (MSVC)
   #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+
+  # Prevents CMake from injecting '#pragma system_header', which results in warnings being disabled in projects that
+  # use precompiled headers.
+  set(CMAKE_PCH_PROLOGUE "")
 endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -146,8 +150,8 @@ option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
+option(onnxruntime_USE_EP_API_ADAPTERS "Build EP (e.g. WebGPU) as a plugin EP shared library using EP API adapters" OFF)
 option(onnxruntime_WGSL_TEMPLATE "Specify the code generator for WGSL template. Default is static." "static")
-option(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB "Build WebGPU EP as a static library" OFF)
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
@@ -395,6 +399,11 @@ if (onnxruntime_ENABLE_TRITON)
   if (onnxruntime_BUILD_UNIT_TESTS)
     set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
   endif()
+endif()
+
+# Building plugin EPs that depend on EP API adapters.
+if(onnxruntime_USE_EP_API_ADAPTERS)
+  add_compile_definitions(ORT_USE_EP_API_ADAPTERS=1)
 endif()
 
 # General C# properties
@@ -982,10 +991,10 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
-    if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+    if (NOT onnxruntime_USE_EP_API_ADAPTERS)
       list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_SHARED_LIBRARY=1)
     else()
-      message(FATAL_ERROR "onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=OFF is not supported with onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON")
+      message(FATAL_ERROR "onnxruntime_USE_EP_API_ADAPTERS=ON is not supported with onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON")
     endif()
   endif()
 

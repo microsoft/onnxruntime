@@ -13,7 +13,7 @@
  * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 2048
+ * The maximum length of the Config Value is 8192
  */
 
 // Key for disable PrePacking,
@@ -409,6 +409,11 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// Enable the DQ->MatMulNBits fusion graph transformer.
+// "0": disabled (default). "1": enabled.
+// This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
+static const char* const kOrtSessionOptionsEnableDQMatMulNBitsFusion = "session.enable_dq_matmulnbits_fusion";
 
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
 // Meant to be used with SetEpDynamicOptions

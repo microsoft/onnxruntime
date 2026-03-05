@@ -884,11 +884,9 @@ def generate_build_tree(
                 raise BuildError(
                     "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
                 )
-    elif args.use_webgpu == "static_lib":
-        cmake_args += ["-Donnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=ON"]
-    else:
-        # Shared library build
-        cmake_args += ["-Donnxruntime_BUILD_WEBGPU_EP_STATIC_LIB=OFF"]
+    elif args.use_webgpu == "shared_lib":
+        # Shared library build (plugin EP)
+        cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
 
