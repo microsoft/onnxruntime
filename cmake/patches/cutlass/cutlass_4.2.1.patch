@@ -12,10 +12,10 @@ index cb161369..2fdff179 100644
                             if constexpr (is_constant_v<0, decltype(get<i>(flat_stride))>) { return append(init, i); }
                             else                                                           { return init;            }
 diff --git a/include/cutlass/cuda_host_adapter.hpp b/include/cutlass/cuda_host_adapter.hpp
-index a8af62be..74409054 100644
+index a8af62be..22e7332d 100644
 --- a/include/cutlass/cuda_host_adapter.hpp
 +++ b/include/cutlass/cuda_host_adapter.hpp
-@@ -394,6 +394,9 @@ protected:
+@@ -394,6 +394,10 @@ protected:
     * Fills a buffer in Global Memory with a byte sequence copied from host memory.
     * This function can be overridden to dispatch to the appropriate cuMemsetD*Async API
    */
