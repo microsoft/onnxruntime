@@ -101,7 +101,7 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
             return;
           }
           int position_col_index = index % sequence_length;
-          if (position_col_index >= position_embedding_length) {
+          if (position_col_index < 0 || position_col_index >= position_embedding_length) {
             failed.store(true, std::memory_order_release);
             return;
           }
