@@ -38,6 +38,7 @@
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
@@ -2306,6 +2307,16 @@ common::Status InferenceSession::Initialize() {
         saved_runtime_optimization_produced_node_op_schemas_.insert(&op_schema);
         return Status::OK();
       };
+
+      // Enable DQ->MatMulNBits fusion if NvTensorRTRTX EP is registered.
+      if (execution_providers_.Get(onnxruntime::kNvTensorRTRTXExecutionProvider) != nullptr) {
+        if (session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsEnableDQMatMulNBitsFusion, "") == "") {
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              session_options_.config_options.AddConfigEntry(
+                  kOrtSessionOptionsEnableDQMatMulNBitsFusion, "1"));
+        }
+      }
 
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
