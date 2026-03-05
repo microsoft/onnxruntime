@@ -281,23 +281,6 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm90(CutlassGemmConfig::Can
   return candidate_configs;
 }
 
-// Suppressing this warning from a Release build with GCC:
-//
-//  In function ‘constexpr decltype (::new(void*(0)) _Tp) std::construct_at(_Tp*, _Args&& ...) [with _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}]’,
-//     inlined from ‘static constexpr void std::allocator_traits<std::allocator<_CharT> >::construct(allocator_type&, _Up*, _Args&& ...) [with _Up = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}; _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/alloc_traits.h:577:21,
-//     inlined from ‘constexpr std::vector<_Tp, _Alloc>::reference std::vector<_Tp, _Alloc>::emplace_back(_Args&& ...) [with _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}; _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Alloc = std::allocator<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/vector.tcc:117:30,
-//     inlined from ‘constexpr void std::vector<_Tp, _Alloc>::push_back(value_type&&) [with _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Alloc = std::allocator<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/stl_vector.h:1301:21,
-//     inlined from ‘std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> onnxruntime::llm::kernels::cutlass_kernels::get_candidate_configs_sm100(onnxruntime::llm::cutlass_extensions::CutlassGemmConfig::CandidateConfigTypeParam)’ at /onnxruntime_src/onnxruntime/contrib_ops/cuda/llm/cutlass_heuristic.cc:298:34:
-// /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/stl_construct.h:97:14: error: writing 1 byte into a region of size 0 [-Werror=stringop-overflow=]
-//    97 |     { return ::new((void*)__location) _Tp(std::forward<_Args>(__args)...); }
-//       |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#if defined(HAS_STRINGOP_OVERFLOW)
-#pragma GCC diagnostic ignored "-Wstringop-overflow"
-#endif  // defined(HAS_STRINGOP_OVERFLOW)
-#endif  // __GNUC__
-
 std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::CandidateConfigTypeParam const config) {
 #ifdef FAST_BUILD
   // Fast build disables all configs except this one for SM100
@@ -313,8 +296,27 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
                                                     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_2x1x1});
       // candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x256x128B,
       //                                               MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x1x1});
+      // Suppressing this warning from a Release build with GCC:
+//
+//  In function ‘constexpr decltype (::new(void*(0)) _Tp) std::construct_at(_Tp*, _Args&& ...) [with _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}]’,
+//     inlined from ‘static constexpr void std::allocator_traits<std::allocator<_CharT> >::construct(allocator_type&, _Up*, _Args&& ...) [with _Up = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}; _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/alloc_traits.h:577:21,
+//     inlined from ‘constexpr std::vector<_Tp, _Alloc>::reference std::vector<_Tp, _Alloc>::emplace_back(_Args&& ...) [with _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}; _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Alloc = std::allocator<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/vector.tcc:117:30,
+//     inlined from ‘constexpr void std::vector<_Tp, _Alloc>::push_back(value_type&&) [with _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Alloc = std::allocator<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/stl_vector.h:1301:21,
+//     inlined from ‘std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> onnxruntime::llm::kernels::cutlass_kernels::get_candidate_configs_sm100(onnxruntime::llm::cutlass_extensions::CutlassGemmConfig::CandidateConfigTypeParam)’ at /onnxruntime_src/onnxruntime/contrib_ops/cuda/llm/cutlass_heuristic.cc:298:34:
+// /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/stl_construct.h:97:14: error: writing 1 byte into a region of size 0 [-Werror=stringop-overflow=]
+//    97 |     { return ::new((void*)__location) _Tp(std::forward<_Args>(__args)...); }
+//       |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#if defined(HAS_STRINGOP_OVERFLOW)
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif  // defined(HAS_STRINGOP_OVERFLOW)
+#endif  // __GNUC__
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x256x128B,
                                                     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x2x1});
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif  // __GNUC__
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape256x64x128B,
                                                     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_2x1x1});
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x64x128B,
@@ -373,10 +375,6 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
 #endif
 
 }
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif  // __GNUC__
 
 std::vector<CutlassGemmConfig> get_candidate_configs(
     int sm, int const max_split_k, CutlassGemmConfig::CandidateConfigTypeParam const config_type_param) {
