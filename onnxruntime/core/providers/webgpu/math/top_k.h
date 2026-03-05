@@ -12,8 +12,8 @@ namespace webgpu {
 
 class TopKProgram final : public Program<TopKProgram> {
  public:
-  TopKProgram(uint32_t wg, bool largest, bool is_fp16)
-      : Program{"TopK"}, wg_{wg}, largest_{largest}, is_fp16_{is_fp16} {}
+  TopKProgram(uint32_t wg, uint32_t shared_size, bool largest, bool is_fp16)
+      : Program{"TopK"}, wg_{wg}, shared_size_{shared_size}, largest_{largest}, is_fp16_{is_fp16} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -23,6 +23,7 @@ class TopKProgram final : public Program<TopKProgram> {
 
  private:
   uint32_t wg_;
+  uint32_t shared_size_;
   bool largest_;
   bool is_fp16_;
 };
