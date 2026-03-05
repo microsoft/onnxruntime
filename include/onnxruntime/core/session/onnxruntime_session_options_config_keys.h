@@ -391,6 +391,11 @@ static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_k
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
 
+// Enable the DQ->MatMulNBits fusion graph transformer.
+// "0": disabled (default). "1": enabled.
+// This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
+static const char* const kOrtSessionOptionsEnableDQMatMulNBitsFusion = "session.enable_dq_matmulnbits_fusion";
+
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
 // Meant to be used with SetEpDynamicOptions
 // Specify the type of workload for this session.

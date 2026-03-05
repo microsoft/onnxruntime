@@ -74,7 +74,9 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
         tensor_proto.add_string_data(string_data[i]);
       }
     } else {
-      auto buffer_size = tensor.DataType()->Size() * shape.Size();
+      // Note: need to use Tensor::CalculateTensorStorageSize (instead of shape.Size() * elem_size) to properly
+      // calculate the storage size for sub-byte types (e.g., Int4 or Int2)
+      auto buffer_size = Tensor::CalculateTensorStorageSize(tensor.DataType(), shape);
       utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), buffer_size);
     }
 
@@ -676,7 +678,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
           kWebGpuExecutionProvider,
 #endif
       };
@@ -750,7 +752,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
-#if !defined(USE_WEBGPU) || defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if !defined(USE_WEBGPU) || !defined(ORT_USE_EP_API_ADAPTERS)
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();
 #endif
