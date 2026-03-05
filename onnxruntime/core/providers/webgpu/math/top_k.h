@@ -1,0 +1,55 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_kernel.h"
+#include "core/providers/webgpu/program.h"
+
+namespace onnxruntime {
+namespace webgpu {
+
+class TopKProgram final : public Program<TopKProgram> {
+ public:
+  TopKProgram(uint32_t wg, bool largest, bool is_fp16)
+      : Program{"TopK"}, wg_{wg}, largest_{largest}, is_fp16_{is_fp16} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"cols", ProgramUniformVariableDataType::Int32},
+      {"k", ProgramUniformVariableDataType::Int32});
+
+ private:
+  uint32_t wg_;
+  bool largest_;
+  bool is_fp16_;
+};
+
+class TopK final : public WebGpuKernel {
+ public:
+  TopK(const OpKernelInfo& info) : WebGpuKernel{info} {
+    opset_ = info.node().SinceVersion();
+    info.GetAttrOrDefault<int64_t>("axis", &axis_, -1);
+    info.GetAttrOrDefault<int64_t>("largest", &largest_, 1);
+    info.GetAttrOrDefault<int64_t>("sorted", &sorted_, 1);
+    if (opset_ <= 9) {
+      int64_t k_temp;
+      ORT_ENFORCE(info.GetAttr<int64_t>("k", &k_temp).IsOK());
+      attr_k_ = k_temp;
+    }
+  }
+
+  Status ComputeInternal(ComputeContext& context) const override;
+
+ private:
+  int64_t axis_ = -1;
+  int64_t largest_ = 1;
+  int64_t sorted_ = 1;
+  int64_t attr_k_ = 0;
+  int opset_;
+};
+
+}  // namespace webgpu
+}  // namespace onnxruntime
