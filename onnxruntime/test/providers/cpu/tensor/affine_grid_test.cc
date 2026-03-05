@@ -4,7 +4,7 @@
 #include "core/util/math.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/unittest_util/op_tester.h"  // Ensure this include is present
+#include "test/unittest_util/op_tester.h"  // Provides OpTester used in these tests
 
 namespace onnxruntime {
 namespace test {
