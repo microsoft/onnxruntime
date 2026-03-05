@@ -69,24 +69,24 @@ struct TreeEnsembleAttributesV3 {
       target_class_nodeids = info.GetAttrsOrDefault<int64_t>("target_nodeids");
       target_class_treeids = info.GetAttrsOrDefault<int64_t>("target_treeids");
       target_class_weights = info.GetAttrsOrDefault<float>("target_weights");
-
-      ORT_ENFORCE(n_targets_or_classes > 0);
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_featureids.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_modes_string.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_nodeids.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_treeids.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_truenodeids.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size() ||
-                  nodes_falsenodeids.size() == nodes_values_as_tensor.size());
-      ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
-      ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
-      ORT_ENFORCE(target_class_weights.empty() || target_class_ids.size() == target_class_weights.size());
-      ORT_ENFORCE(base_values.empty() || base_values_as_tensor.empty());
-      ORT_ENFORCE(nodes_hitrates.empty() || nodes_hitrates_as_tensor.empty());
-      ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty());
-      ORT_ENFORCE(target_class_weights.empty() || target_class_weights_as_tensor.empty());
-      ORT_ENFORCE(nodes_modes_string.size() < std::numeric_limits<uint32_t>::max());
     }
+
+    ORT_ENFORCE(n_targets_or_classes > 0);
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_featureids.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_modes.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_nodeids.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_treeids.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_truenodeids.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size() ||
+                nodes_falsenodeids.size() == nodes_values_as_tensor.size());
+    ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
+    ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
+    ORT_ENFORCE(target_class_weights.empty() || target_class_ids.size() == target_class_weights.size());
+    ORT_ENFORCE(base_values.empty() || base_values_as_tensor.empty());
+    ORT_ENFORCE(nodes_hitrates.empty() || nodes_hitrates_as_tensor.empty());
+    ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty());
+    ORT_ENFORCE(target_class_weights.empty() || target_class_weights_as_tensor.empty());
+    ORT_ENFORCE(nodes_modes.size() < std::numeric_limits<uint32_t>::max());
   }
 
   std::string aggregate_function;
