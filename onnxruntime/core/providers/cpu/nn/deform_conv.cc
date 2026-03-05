@@ -73,7 +73,7 @@ void DeformableIm2col(
   // This ensures sequential access to data_col and better locality for data_im.
 
   concurrency::ThreadPool::TryParallelFor(
-      thread_pool, channels, 1.0,
+      thread_pool, static_cast<std::ptrdiff_t>(channels), 1.0,
       [&](ptrdiff_t c_im_start, ptrdiff_t c_im_end) {
         for (int64_t c_im = c_im_start; c_im < c_im_end; ++c_im) {
           const int64_t offset_grp = c_im / channel_per_offset_group;
@@ -265,7 +265,7 @@ Status DeformConv<T>::Compute(OpKernelContext* context) const {
   if (Bdata != nullptr) {
     int64_t total_work = N * M;
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, total_work, static_cast<double>(output_image_size),
+        thread_pool, static_cast<std::ptrdiff_t>(total_work), static_cast<double>(output_image_size),
         [&](ptrdiff_t first, ptrdiff_t last) {
           for (ptrdiff_t idx = first; idx < last; ++idx) {
             int64_t n = idx / M;
