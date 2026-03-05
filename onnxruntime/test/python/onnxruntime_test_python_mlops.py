@@ -11,27 +11,25 @@ from helper import get_name
 
 import onnxruntime as onnxrt
 
-
 available_providers = [
     (
         ep,
         {"enable_cann_subgraph": True},
-    ) if ep == "CANNExecutionProvider" else ep
+    )
+    if ep == "CANNExecutionProvider"
+    else ep
     for ep in onnxrt.get_available_providers()
 ]
 
 # CANN EP doesn't support test_run_model_tree_ensemble_aionnxml_3
 available_providers_without_cann = [
-    provider
-    for provider in onnxrt.get_available_providers()
-    if provider not in {"CANNExecutionProvider"}
+    provider for provider in onnxrt.get_available_providers() if provider not in {"CANNExecutionProvider"}
 ]
+
+
 class TestInferenceSession(unittest.TestCase):
     def test_zip_map_string_float(self):
-        sess = onnxrt.InferenceSession(
-            get_name("zipmap_stringfloat.onnx"),
-            providers=available_providers
-        )
+        sess = onnxrt.InferenceSession(get_name("zipmap_stringfloat.onnx"), providers=available_providers)
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
@@ -73,10 +71,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def test_dict_vectorizer(self):
-        sess = onnxrt.InferenceSession(
-            get_name("pipeline_vectorize.onnx"),
-            providers=available_providers
-        )
+        sess = onnxrt.InferenceSession(get_name("pipeline_vectorize.onnx"), providers=available_providers)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "float_input")
         input_type = str(sess.get_inputs()[0].type)
@@ -155,7 +150,6 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model_mlnet(self):
-
         # The Windows GPU CI pipeline builds the wheel with both CUDA and DML enabled and ORT does not support cases
         # where one node is assigned to CUDA and one node to DML, as it doesn't have the data transfer capabilities to
         # deal with potentially different device memory. Hence, use a session with only DML and CPU (excluding CUDA)

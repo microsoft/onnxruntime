@@ -28,7 +28,9 @@ available_providers = [
     (
         ep,
         {"enable_cann_subgraph": True},
-    ) if ep == "CANNExecutionProvider" else ep
+    )
+    if ep == "CANNExecutionProvider"
+    else ep
     for ep in onnxrt.get_available_providers()
 ]
 
@@ -44,9 +46,7 @@ available_providers = [
 # * testSequenceInsert
 # * testSequenceLength
 available_providers_without_tvm = [
-    ep
-    for ep in available_providers
-    if (ep[0] if isinstance(ep, tuple) else ep) not in {"TvmExecutionProvider"}
+    ep for ep in available_providers if (ep[0] if isinstance(ep, tuple) else ep) not in {"TvmExecutionProvider"}
 ]
 
 available_providers_without_tvm_and_tensorrt = [
