@@ -706,7 +706,7 @@ TEST(TensorProtoDataSizeShapeValidationTest, EmbeddedInitializerExceeding2GiBRej
     auto status = utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path{},
                                                tensor_proto, CPUAllocator::DefaultInstance(), ort_value);
     ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the 2 GiB limit"));
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the 2147483648 byte limit"));
   }
 
   // Test call to CreateTensorFromTensorProto
@@ -715,7 +715,7 @@ TEST(TensorProtoDataSizeShapeValidationTest, EmbeddedInitializerExceeding2GiBRej
     auto status = utils::CreateTensorFromTensorProto(Env::Default(), std::filesystem::path{},
                                                      tensor_proto, tensor);
     ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the 2 GiB limit"));
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds the 2147483648 byte limit"));
   }
 }
 
@@ -752,7 +752,7 @@ TEST(TensorProtoDataSizeShapeValidationTest, NegativeDimsRejected) {
 
   auto status = utils::ValidateEmbeddedTensorProtoDataSizeAndShape(tensor_proto);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("out-of-bounds dimensions"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("negative dimensions"));
 }
 
 #if !defined(__wasm__)

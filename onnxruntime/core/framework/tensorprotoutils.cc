@@ -1231,35 +1231,32 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
   ORT_RETURN_IF(HasExternalData(tensor_proto), "Expected to validate an embedded (non-external) TensorProto");
 
   TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
-  bool any_out_of_bounds = std::any_of(tensor_shape.GetDims().begin(), tensor_shape.GetDims().end(),
-                                       [](int64_t dim) {
-                                         return dim < 0 ||
-                                                static_cast<uint64_t>(dim) >= std::numeric_limits<size_t>::max();
-                                       });
-  ORT_RETURN_IF(any_out_of_bounds, "Initializer '", tensor_proto.name(),
-                "' has out-of-bounds dimensions");
+  const int64_t num_elems_signed = tensor_shape.Size();  // returns -1 if any dim is negative.
 
-  const int64_t num_elems_signed = tensor_shape.Size();
-  const size_t num_elems_unsigned = narrow<size_t>(num_elems_signed);
+  ORT_RETURN_IF(num_elems_signed < 0, "Initializer '", tensor_proto.name(), "' has negative dimensions");
+
+  // Need to ensure num_elements < SIZE_MAX. This would be an issue in 32-bit platforms.
+  ORT_RETURN_IF(static_cast<uint64_t>(num_elems_signed) > std::numeric_limits<size_t>::max(),
+                "Initializer '", tensor_proto.name(), "' has a number of elements (", num_elems_signed,
+                ") that exceeds SIZE_MAX (", std::numeric_limits<size_t>::max(), ")");
+
+  const size_t num_elems_unsigned = gsl::narrow_cast<size_t>(num_elems_signed);
   size_t byte_size_from_shape = 0;
   ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorElemCountAndType<0>(num_elems_unsigned, tensor_proto.data_type(),
                                                                   &byte_size_from_shape));
   ORT_RETURN_IF_NOT(byte_size_from_shape <= kMaxEmbeddedInitializerSizeInBytes,
-                    "Initializer '", tensor_proto.name(),
-                    "' declares a size of ", byte_size_from_shape,
-                    " bytes which exceeds the 2 GiB limit for embedded initializer data. ",
-                    "Use external data for large initializers.");
+                    "Initializer '", tensor_proto.name(), "' declares a size of ", byte_size_from_shape,
+                    " bytes which exceeds the ", kMaxEmbeddedInitializerSizeInBytes,
+                    " byte limit for embedded initializer data. Use external data for large initializers.");
 
   if (HasRawData(tensor_proto)) {
     ORT_RETURN_IF_NOT(tensor_proto.raw_data().size() == byte_size_from_shape,
-                      "Initializer '", tensor_proto.name(),
-                      "': raw_data size (", tensor_proto.raw_data().size(),
+                      "Initializer '", tensor_proto.name(), "': raw_data size (", tensor_proto.raw_data().size(),
                       " bytes) does not match expected size from shape and data type (",
                       byte_size_from_shape, " bytes)");
   } else if (HasString(tensor_proto)) {
     ORT_RETURN_IF_NOT(tensor_proto.string_data_size() == num_elems_signed,
-                      "Initializer '", tensor_proto.name(),
-                      "': string_data count (", tensor_proto.string_data_size(),
+                      "Initializer '", tensor_proto.name(), "': string_data count (", tensor_proto.string_data_size(),
                       ") does not match expected count from shape (",
                       num_elems_signed, ")");
   } else {
