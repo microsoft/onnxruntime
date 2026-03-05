@@ -349,98 +349,95 @@ Status TensorProtoWithExternalDataToTensorProto(
   return Status::OK();
 }
 
+// Wraps std::filesystem::weakly_canonical with error_code handling.
+static Status WeaklyCanonicalPath(const std::filesystem::path& path, std::filesystem::path& result) {
+  std::error_code ec;
+  result = std::filesystem::weakly_canonical(path, ec);
+  ORT_RETURN_IF(ec, "Failed to resolve path: ", path, " - ", ec.message());
+  return Status::OK();
+}
+
+// Checks whether `child` is under `base` by comparing path components.
+static bool IsUnderDirectory(const std::filesystem::path& base, const std::filesystem::path& child) {
+  auto [base_end, child_it] = std::mismatch(base.begin(), base.end(), child.begin(), child.end());
+  return base_end == base.end();
+}
+
 Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
                                 const std::filesystem::path& location,
                                 const std::filesystem::path& model_path) {
   // Reject absolute paths
   ORT_RETURN_IF(location.is_absolute(),
                 "Absolute paths not allowed for external data location");
-  if (!base_dir.empty()) {
-    // Resolve and verify the path stays within model directory
-    std::error_code ec;
-    auto base_canonical = std::filesystem::weakly_canonical(base_dir, ec);
-    ORT_RETURN_IF(ec, "Failed to resolve base directory: ", base_dir, " - ", ec.message());
-
-    // If the symlink exists, it resolves to the target path;
-    // so if the symlink is outside the directory it would be caught here.
-    auto resolved = std::filesystem::weakly_canonical(base_dir / location, ec);
-    ORT_RETURN_IF(ec, "Failed to resolve external data path: ", location, " - ", ec.message());
-
-    // Check that resolved path starts with base directory
-    auto [base_end, resolved_it] = std::mismatch(
-        base_canonical.begin(), base_canonical.end(),
-        resolved.begin(), resolved.end());
-
-    if (base_end != base_canonical.end()) {
-      // If validation against logical base_dir fails, we check against the
-      // real (canonical) path of the model file to support symlinked models
-      // (e.g. models in Hugging Face Hub local cache).
-      if (!model_path.empty()) {
-        auto real_model_path = std::filesystem::weakly_canonical(model_path, ec);
-        ORT_RETURN_IF(ec, "Failed to resolve model path: ", model_path, " - ", ec.message());
-        auto real_model_dir = real_model_path.parent_path();
-
-        auto [real_base_end, real_resolved_it] = std::mismatch(
-            real_model_dir.begin(), real_model_dir.end(),
-            resolved.begin(), resolved.end());
-
-        if (real_base_end == real_model_dir.end()) {
-          return Status::OK();
-        }
-
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "External data path: ", location, " (resolved path: ", resolved,
-                               ") escapes both model directory: ", base_dir,
-                               " and real model directory: ", real_model_dir);
-      }
-
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "External data path: ", location, " (resolved path: ", resolved,
-                             ") escapes model directory: ", base_dir);
-    }
-  } else {
-    // The basedir is empty, which occurs when 1) the session loads a model from bytes and 2) the application does not
-    // set an external file folder path via the session config option
-    // `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
 
 #if defined(__wasm__)
-    // We conservatively check that the normalized relative path does not contain ".." path components that would allow
-    // access to arbitrary files outside of the current working directory. Based on ONNX checker validation.
+  if (base_dir.empty()) {
+    // On WASM we can only do a lexical check: reject ".." components that escape the working directory.
     auto norm_location = location.lexically_normal();
-
     for (const auto& path_component : norm_location) {
       if (path_component == ORT_TSTR("..")) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data path: ", location,
                                " (model loaded from bytes) escapes working directory");
       }
     }
-#else
-    // Use weakly_canonical to resolve symlinks, then verify that the path stays within the current working directory.
-    // This catches scenarios where a seemingly correct path actually points outside the working directory
-    // (e.g., ./a/symlink.bin -> /outside/data.bin).
-    std::error_code ec;
-    auto cwd = std::filesystem::current_path(ec);
-    ORT_RETURN_IF(ec, "Failed to get current working directory: ", ec.message());
-
-    auto cwd_canonical = std::filesystem::weakly_canonical(cwd, ec);
-    ORT_RETURN_IF(ec, "Failed to resolve current working directory: ", ec.message());
-
-    auto resolved = std::filesystem::weakly_canonical(cwd / location, ec);
-    ORT_RETURN_IF(ec, "Failed to resolve external data path: ", location, " - ", ec.message());
-
-    auto [base_end, resolved_it] = std::mismatch(
-        cwd_canonical.begin(), cwd_canonical.end(),
-        resolved.begin(), resolved.end());
-
-    if (base_end != cwd_canonical.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "External data path for model loaded from bytes escapes working directory. ",
-                             "External data path: ", location, " resolved path: ", resolved, " ",
-                             "working directory: ", cwd);
-    }
-#endif  // defined(__wasm__)
+    return Status::OK();
   }
-  return Status::OK();
+
+  // If there is a "base_dir" in WASM, then there may be a virtual filesystem and we fallthrough
+  // to the logic that resolves symlinks.
+#endif  // defined(__wasm__)
+
+  // Determine the anchor directory: use base_dir if provided, otherwise the current working directory.
+  std::filesystem::path anchor_dir;
+  const bool has_base_dir = !base_dir.empty();
+
+  if (has_base_dir) {
+    anchor_dir = base_dir;
+  } else {
+    std::error_code ec;
+    anchor_dir = std::filesystem::current_path(ec);
+    ORT_RETURN_IF(ec, "Failed to get current working directory: ", ec.message());
+  }
+
+  // Resolve the anchor directory and the full location path to their canonical forms.
+  // This resolves symlinks so that a link pointing outside the anchor is detected.
+  std::filesystem::path anchor_canonical;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(anchor_dir, anchor_canonical));
+
+  std::filesystem::path resolved;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(anchor_dir / location, resolved));
+
+  if (IsUnderDirectory(anchor_canonical, resolved)) {
+    return Status::OK();
+  }
+
+  // For models with a known path, fall back to checking against the canonical model directory.
+  // This supports symlinked models (e.g., Hugging Face Hub local cache).
+  if (has_base_dir && !model_path.empty()) {
+    std::filesystem::path real_model_path;
+    ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
+    auto real_model_dir = real_model_path.parent_path();
+
+    if (IsUnderDirectory(real_model_dir, resolved)) {
+      return Status::OK();
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "External data path: ", location, " (resolved path: ", resolved,
+                           ") escapes both model directory: ", base_dir,
+                           " and real model directory: ", real_model_dir);
+  }
+
+  if (has_base_dir) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "External data path: ", location, " (resolved path: ", resolved,
+                           ") escapes model directory: ", base_dir);
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "External data path for model loaded from bytes escapes working directory. ",
+                         "External data path: ", location, " resolved path: ", resolved, " ",
+                         "working directory: ", anchor_dir);
 }
 
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
