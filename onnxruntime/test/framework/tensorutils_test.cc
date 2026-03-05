@@ -537,35 +537,38 @@ class PathValidationTest : public ::testing::Test {
 
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
+  // Use a model path whose parent is base_dir_.
+  auto model_path = base_dir_ / "model.onnx";
+
   // Valid relative path.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "data.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "data.bin"));
 
   // Empty location.
   // Only validate it is not an absolute path.
-  ASSERT_TRUE(utils::ValidateExternalDataPath(base_dir_, "").IsOK());
+  ASSERT_TRUE(utils::ValidateExternalDataPath(model_path, "").IsOK());
 
   // Path with ".." that escapes the base directory.
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "../data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "../data.bin").IsOK());
 
   // Absolute path.
 #ifdef _WIN32
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "C:\\data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "C:\\data.bin").IsOK());
   ASSERT_FALSE(utils::ValidateExternalDataPath("", "C:\\data.bin").IsOK());
 #else
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "/data.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "/data.bin").IsOK());
   ASSERT_FALSE(utils::ValidateExternalDataPath("", "/data.bin").IsOK());
 #endif  // Absolute path.
 
   // Windows vs Unix path separators.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "sub/data.bin"));
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "sub\\data.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub/data.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "sub\\data.bin"));
 
-  // Base directory does not exist.
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir", "data.bin"));
+  // Model in a directory that does not exist.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath("non_existent_dir/model.onnx", "data.bin"));
 
   //
-  // Tests for an empty base directory.
-  // The base directory would be empty when 1) the session loads a model from bytes and 2) the application does not
+  // Tests for an empty model path (model loaded from bytes).
+  // The model path would be empty when 1) the session loads a model from bytes and 2) the application does not
   // set an external file folder path via the session config option
   // kOrtSessionOptionsModelExternalInitializersFileFolderPath.
   //
@@ -589,6 +592,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPath) {
 
 TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
   // Symbolic link that points inside the base directory.
+  auto model_path = base_dir_ / "model.onnx";
   try {
     auto target = base_dir_ / "target.bin";
     std::ofstream{target};
@@ -598,11 +602,12 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkInside) {
     GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: "
                  << e.what();
   }
-  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(base_dir_, "link.bin"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(model_path, "link.bin"));
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   // Symbolic link that points outside the base directory.
+  auto model_path = base_dir_ / "model.onnx";
   auto outside_target = outside_dir_ / "outside.bin";
   try {
     {
@@ -613,7 +618,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPathWithSymlinkOutside) {
   } catch (const std::exception& e) {
     GTEST_SKIP() << "Skipping symlink tests since symlink creation is not supported in this environment. Exception: " << e.what();
   }
-  ASSERT_FALSE(utils::ValidateExternalDataPath(base_dir_, "outside_link.bin").IsOK());
+  ASSERT_FALSE(utils::ValidateExternalDataPath(model_path, "outside_link.bin").IsOK());
 }
 
 #if !defined(__wasm__)

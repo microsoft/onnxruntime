@@ -540,20 +540,19 @@ Status TensorProtoWithExternalDataToTensorProto(
 
 /// <summary>
 /// Validates if the external data path is under the model directory.
-/// If the model is a symlink, it checks against both the logical model directory (base_dir)
+/// The model directory is derived from model_path.parent_path().
+/// If the model is a symlink, it checks against both the logical model directory
 /// and the real/canonical directory of the model.
-/// If the `base_dir` is empty (model loaded from bytes), the function ensures that `location` is not
+/// If model_path is empty (model loaded from bytes), the function ensures that `location` is not
 /// an absolute path, does not contain ".." components that escape the current working directory, and
 /// resolves symlinks to verify the target stays within the current working directory.
 /// </summary>
-/// <param name="base_dir">Logical model location directory</param>
+/// <param name="model_path">Path to the model file. If empty, the model was loaded from bytes.</param>
 /// <param name="location">Location string retrieved from TensorProto external data</param>
-/// <param name="model_path">Optional path to the model file, used for canonical path validation if base_dir check fails</param>
 /// <returns>The function will fail if the resolved full path is not under the logical model directory
 ///          nor the real directory of the model path</returns>
-Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location,
-                                const std::filesystem::path& model_path = {});
+Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                const std::filesystem::path& location);
 
 #endif  // !defined(SHARED_PROVIDER)
 
