@@ -367,12 +367,12 @@ Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
                                 const std::filesystem::path& location,
                                 const std::filesystem::path& model_path) {
   // Reject absolute paths
-  ORT_RETURN_IF(location.is_absolute(),
-                "Absolute paths not allowed for external data location");
+  ORT_RETURN_IF(location.is_absolute(), "Absolute paths not allowed for external data location");
 
 #if defined(__wasm__)
   if (base_dir.empty()) {
-    // On WASM we can only do a lexical check: reject ".." components that escape the working directory.
+    // On WASM, std::filesystem::current_path() is not always supported.
+    // So, we only do a lexical check: reject ".." components that would escape the working directory.
     auto norm_location = location.lexically_normal();
     for (const auto& path_component : norm_location) {
       if (path_component == ORT_TSTR("..")) {
