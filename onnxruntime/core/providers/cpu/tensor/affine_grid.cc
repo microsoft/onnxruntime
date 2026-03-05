@@ -81,7 +81,7 @@ void affine_grid_generator_2d(const Tensor* theta, const Eigen::Matrix<T, 2, Eig
   auto grid_batch_offset = batch_num * H * W * 2;
   T* grid_data = grid->MutableData<T>() + grid_batch_offset;
   Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 2, option>> grid_matrix(grid_data, narrow<size_t>(H * W), 2);
-  grid_matrix = ((theta_R * base_grid_transposed).array().colwise() + theta_T).matrix().transpose();  //(2x2 * 2xN).colwise() + 2x1).transpose()
+  grid_matrix = ((theta_R * base_grid_transposed).array().colwise() + theta_T).matrix().transpose();  // ((2x2 * 2xN).array().colwise() + 2x1).matrix().transpose() => Nx2
 }
 
 template <typename T>
